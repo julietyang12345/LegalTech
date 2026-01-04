@@ -6,3 +6,4 @@ export { ConceptCheckStep } from './ConceptCheckStep';
 export { TaskStep } from './TaskStep';
 export { BossMilestoneStep } from './BossMilestoneStep';
 export { ReflectionStep } from './ReflectionStep';
+export { CourseSidebar } from './CourseSidebar';

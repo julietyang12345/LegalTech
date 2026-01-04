@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { X, Clock, MessageCircle } from 'lucide-react';
+import { X, Clock } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
 import { StepPills } from '@/components/common';
 import { CompanionChat, CompanionBubble } from '@/components/companion';
+import { CourseSidebar } from '@/components/session/CourseSidebar';
 import type { SessionStep } from '@/types';
 
 const STEPS: SessionStep[] = [
@@ -22,6 +23,7 @@ const STEPS: SessionStep[] = [
 
 interface FocusModeLayoutProps {
   children: React.ReactNode;
+  showSidebar?: boolean;
 }
 
 function ExitConfirmModal({ isOpen, onClose, onConfirm }: {
@@ -183,13 +185,44 @@ function PresenceBar() {
   );
 }
 
-export function FocusModeLayout({ children }: FocusModeLayoutProps) {
+export function FocusModeLayout({ children, showSidebar = true }: FocusModeLayoutProps) {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const { startDay, activeSession, loadDayContent, canStartDay } = useSessionStore();
+
+  const handleDayClick = async (dayNumber: number) => {
+    if (!activeSession || !canStartDay(dayNumber)) return;
+
+    // Load day content if not loaded
+    const day = activeSession.curriculum.days.find(d => d.day === dayNumber);
+    if (day && !day.detailsLoaded) {
+      await loadDayContent(dayNumber);
+    }
+    startDay(dayNumber);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <PresenceBar />
 
-      {/* Content area - narrow and centered */}
-      <main className="max-w-focus mx-auto px-4 py-8">
+      {/* Course Sidebar */}
+      {showSidebar && (
+        <CourseSidebar
+          onDayClick={handleDayClick}
+          onCollapseChange={setSidebarCollapsed}
+        />
+      )}
+
+      {/* Content area - offset for sidebar */}
+      <main
+        className={clsx(
+          'transition-all duration-200 ease-in-out',
+          showSidebar ? 'ml-[320px]' : 'ml-0',
+          'max-w-focus mx-auto px-4 py-8'
+        )}
+        style={{
+          marginLeft: showSidebar ? (sidebarCollapsed ? 56 : 320) : 0
+        }}
+      >
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
