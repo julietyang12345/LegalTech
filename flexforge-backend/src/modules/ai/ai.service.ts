@@ -258,7 +258,7 @@ export class AiService {
   ): Promise<AIResponse> {
     const response = await this.anthropic.messages.create({
       model,
-      max_tokens: 4096,
+      max_tokens: 16384,
       system: systemPrompt || '',
       messages: [{ role: 'user', content: prompt }],
     });
@@ -292,7 +292,7 @@ export class AiService {
     const response = await this.openai.chat.completions.create({
       model,
       messages,
-      max_tokens: 4096,
+      max_tokens: 16384,
     });
 
     const content = response.choices[0]?.message?.content || '';
@@ -348,7 +348,7 @@ export class AiService {
     const response = await this.groq.chat.completions.create({
       model,
       messages,
-      max_tokens: 4096,
+      max_tokens: 8192,
     });
 
     const content = response.choices[0]?.message?.content || '';

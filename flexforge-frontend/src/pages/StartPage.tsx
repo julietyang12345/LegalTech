@@ -149,7 +149,8 @@ function HoursSelector({
 function SuggestedSkills({ onSelect }: { onSelect: (skill: string) => void }) {
   const suggestions = [
     'Python Basics',
-    'Build AI Agents',
+    'Automate tasks with AI',
+    'AI-powered productivity workflows',
     'Web Development',
     'Data Analysis',
     'Machine Learning',

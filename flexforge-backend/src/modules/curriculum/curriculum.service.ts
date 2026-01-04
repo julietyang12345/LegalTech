@@ -87,16 +87,33 @@ export class CurriculumService {
     // Step 5: Parse and validate curriculum
     let curriculum: any;
     try {
-      const cleanedContent = aiResponse.content
+      let cleanedContent = aiResponse.content
         .replace(/```json\n?/g, '')
-        .replace(/```\n?$/g, '')
+        .replace(/```\n?/g, '')
         .trim();
-      curriculum = JSON.parse(cleanedContent);
+
+      // Try to extract JSON if there's extra text before/after
+      const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanedContent = jsonMatch[0];
+      }
+
+      // Try parsing, if fails attempt to fix common issues
+      try {
+        curriculum = JSON.parse(cleanedContent);
+      } catch (parseError) {
+        this.logger.warn('First parse failed, attempting to fix JSON...');
+        // Fix trailing commas (common AI mistake)
+        const fixedContent = cleanedContent.replace(/,(\s*[}\]])/g, '$1');
+        curriculum = JSON.parse(fixedContent);
+        this.logger.log('✅ JSON fixed and parsed successfully');
+      }
 
       this.logger.log('✅ Curriculum JSON parsed successfully');
     } catch (error) {
       this.logger.error('❌ Failed to parse curriculum JSON:', error.message);
-      throw new BadRequestException('Failed to generate valid curriculum');
+      this.logger.error('Raw AI response (first 1000 chars):', aiResponse.content.substring(0, 1000));
+      throw new BadRequestException('Failed to generate valid curriculum. Please try again.');
     }
 
     // Step 6: Process video placeholders (if video indexing enabled)
