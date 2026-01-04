@@ -1,0 +1,292 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   FlexForge Custom Styles
+   ============================================ */
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900;
+  }
+
+  /* Focus states */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-brand-500 ring-offset-2;
+  }
+}
+
+@layer components {
+  /* ============================================
+     Button Variants
+     ============================================ */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 font-medium rounded-lg
+           transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand-500 text-white shadow-md
+           hover:bg-brand-600 hover:shadow-lg
+           active:scale-[0.98] focus-visible:ring-brand-500;
+  }
+
+  .btn-secondary {
+    @apply btn bg-white text-gray-700 border border-gray-300
+           hover:bg-gray-50 hover:border-gray-400
+           active:scale-[0.98] focus-visible:ring-gray-500;
+  }
+
+  .btn-accent {
+    @apply btn bg-gradient-to-r from-alert-500 to-orange-500 text-white shadow-md
+           hover:from-alert-600 hover:to-orange-600 hover:shadow-lg
+           active:scale-[0.98] focus-visible:ring-alert-500;
+  }
+
+  .btn-ghost {
+    @apply btn text-gray-600 hover:bg-gray-100 hover:text-gray-900
+           active:scale-[0.98];
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-sm;
+  }
+
+  .btn-md {
+    @apply px-4 py-2 text-sm;
+  }
+
+  .btn-lg {
+    @apply px-6 py-3 text-base;
+  }
+
+  .btn-xl {
+    @apply px-8 py-4 text-lg;
+  }
+
+  /* ============================================
+     Card Styles
+     ============================================ */
+  .card {
+    @apply bg-white rounded-xl shadow-card;
+  }
+
+  .card-hover {
+    @apply card transition-all duration-200
+           hover:shadow-card-hover hover:-translate-y-0.5;
+  }
+
+  .card-active {
+    @apply card border-l-4 border-l-brand-500;
+  }
+
+  /* ============================================
+     Input Styles
+     ============================================ */
+  .input {
+    @apply w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg
+           text-gray-900 placeholder-gray-400
+           transition-colors duration-200
+           hover:border-gray-400
+           focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none;
+  }
+
+  .textarea {
+    @apply input resize-none min-h-[100px];
+  }
+
+  /* ============================================
+     Step Pills (Focus Mode Progress)
+     ============================================ */
+  .step-pill {
+    @apply w-8 h-8 rounded-full flex items-center justify-center
+           text-sm font-medium transition-all duration-200;
+  }
+
+  .step-pill-complete {
+    @apply step-pill bg-focus-500 text-white;
+  }
+
+  .step-pill-current {
+    @apply step-pill bg-brand-500 text-white ring-4 ring-brand-200;
+  }
+
+  .step-pill-upcoming {
+    @apply step-pill bg-gray-200 text-gray-500;
+  }
+
+  /* ============================================
+     Confidence Slider
+     ============================================ */
+  .confidence-box {
+    @apply flex-1 h-14 rounded-lg border-2 border-gray-200
+           flex flex-col items-center justify-center gap-1
+           cursor-pointer transition-all duration-200
+           hover:border-gray-300 hover:bg-gray-50;
+  }
+
+  .confidence-box-selected {
+    @apply confidence-box border-brand-500 bg-brand-50;
+  }
+
+  /* ============================================
+     Companion Styles
+     ============================================ */
+  .companion-bubble {
+    @apply fixed bottom-6 right-6 w-14 h-14 rounded-full
+           bg-gradient-to-br from-brand-500 to-brand-600
+           shadow-lg flex items-center justify-center
+           cursor-pointer transition-all duration-200
+           hover:scale-110 hover:shadow-xl
+           z-40;
+  }
+
+  .companion-chat {
+    @apply fixed bottom-24 right-6 w-96 max-h-[500px]
+           bg-white rounded-2xl shadow-companion
+           flex flex-col overflow-hidden
+           z-40 animate-scale-in;
+  }
+
+  /* ============================================
+     Toast Styles
+     ============================================ */
+  .toast-celebration {
+    @apply bg-gradient-to-r from-pink-500 to-purple-500 text-white;
+  }
+
+  .toast-encouragement {
+    @apply bg-gradient-to-r from-amber-500 to-yellow-500 text-white;
+  }
+
+  .toast-support {
+    @apply bg-gradient-to-r from-cyan-500 to-blue-500 text-white;
+  }
+
+  /* ============================================
+     Progress Bar
+     ============================================ */
+  .progress-track {
+    @apply h-2 bg-gray-200 rounded-full overflow-hidden;
+  }
+
+  .progress-fill {
+    @apply h-full bg-brand-500 rounded-full
+           transition-all duration-300 ease-bounce-out;
+  }
+
+  .progress-fill-animated {
+    @apply progress-fill origin-left animate-progress-fill;
+  }
+
+  /* ============================================
+     Code Editor Placeholder
+     ============================================ */
+  .code-editor {
+    @apply font-mono text-sm bg-gray-900 text-gray-100
+           rounded-lg p-4 overflow-auto;
+  }
+
+  /* ============================================
+     Streak Badge
+     ============================================ */
+  .streak-badge {
+    @apply inline-flex items-center gap-1.5 px-3 py-1
+           bg-gradient-to-r from-alert-500 to-orange-500
+           text-white font-semibold rounded-full text-sm;
+  }
+
+  .streak-badge-pulse {
+    @apply streak-badge animate-pulse-soft;
+  }
+
+  /* ============================================
+     Skill Tree Node
+     ============================================ */
+  .skill-node {
+    @apply w-20 h-20 rounded-xl flex flex-col items-center justify-center
+           text-xs font-medium transition-all duration-300;
+  }
+
+  .skill-node-complete {
+    @apply skill-node bg-focus-500 text-white;
+  }
+
+  .skill-node-progress {
+    @apply skill-node bg-brand-100 text-brand-700 border-2 border-brand-300;
+  }
+
+  .skill-node-locked {
+    @apply skill-node bg-gray-100 text-gray-400;
+  }
+
+  /* ============================================
+     Typing Indicator
+     ============================================ */
+  .typing-dot {
+    @apply w-2 h-2 bg-gray-400 rounded-full;
+  }
+
+  .typing-dot:nth-child(1) {
+    animation: typingDot 1.4s ease-in-out 0s infinite;
+  }
+
+  .typing-dot:nth-child(2) {
+    animation: typingDot 1.4s ease-in-out 0.2s infinite;
+  }
+
+  .typing-dot:nth-child(3) {
+    animation: typingDot 1.4s ease-in-out 0.4s infinite;
+  }
+}
+
+@layer utilities {
+  /* Scrollbar styling */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.gray.300') transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 rounded-full;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400;
+  }
+
+  /* Text gradient */
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r;
+  }
+
+  /* Glass effect */
+  .glass {
+    @apply bg-white/80 backdrop-blur-lg;
+  }
+
+  /* Hide scrollbar but keep scrolling */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
