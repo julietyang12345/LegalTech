@@ -54,13 +54,21 @@ export class AuthService {
   async validateCredentials(email: string, password: string) {
     const user = await this.userService.findByEmail(email);
 
+    console.log('Login attempt:', { email, userFound: !!user });
+
     if (!user) {
+      console.log('User not found for email:', email);
       return null;
     }
+
+    console.log('Stored password:', user.password);
+    console.log('Provided password:', password);
+    console.log('Password match:', user.password === password);
 
     const isPasswordValid = await this.userService.validatePassword(user, password);
 
     if (!isPasswordValid) {
+      console.log('Password validation failed');
       return null;
     }
 

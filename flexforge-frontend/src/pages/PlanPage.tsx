@@ -13,40 +13,67 @@ import {
   Clock,
   Archive,
   Plus,
+  FastForward,
+  Loader2,
+  CheckCircle,
+  SkipForward,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useAuthStore } from '@/stores/authStore';
 import { Button, Card, ProgressBar } from '@/components/common';
-import { SessionMode, QuotaTier } from '@/types';
+import { SessionMode, QuotaTier, DayStatus, CurriculumDay } from '@/types';
 
-// Day card in timeline
+// Day card in timeline with two-phase support
 function DayCard({
   day,
   dayData,
-  isComplete,
-  isCurrent,
-  isLocked,
   onExpand,
   isExpanded,
+  onStartDay,
+  onSkipTest,
+  isLoading,
 }: {
   day: number;
-  dayData: any;
-  isComplete: boolean;
-  isCurrent: boolean;
-  isLocked: boolean;
+  dayData: CurriculumDay;
   onExpand: () => void;
   isExpanded: boolean;
+  onStartDay: () => void;
+  onSkipTest: () => void;
+  isLoading: boolean;
 }) {
+  const status = dayData?.status || DayStatus.LOCKED;
+  const isLocked = status === DayStatus.LOCKED;
+  const isUnlockable = status === DayStatus.UNLOCKABLE;
+  const isInProgress = status === DayStatus.IN_PROGRESS;
+  const isCompleted = status === DayStatus.COMPLETED;
+  const isSkipped = status === DayStatus.SKIPPED;
+
+  const getStatusIcon = () => {
+    if (isCompleted) return <CheckCircle className="w-5 h-5" />;
+    if (isSkipped) return <SkipForward className="w-5 h-5" />;
+    if (isLoading) return <Loader2 className="w-5 h-5 animate-spin" />;
+    if (isLocked) return <Lock className="w-4 h-4" />;
+    return <span className="font-semibold">{day}</span>;
+  };
+
+  const getStatusStyles = () => {
+    if (isCompleted || isSkipped) return 'bg-focus-500 text-white';
+    if (isInProgress) return 'bg-brand-500 text-white';
+    if (isUnlockable) return 'bg-brand-100 text-brand-700 ring-2 ring-brand-300';
+    return 'bg-gray-200 text-gray-400';
+  };
+
   return (
     <Card
-      variant={isCurrent ? 'active' : 'default'}
+      variant={isInProgress || isUnlockable ? 'active' : 'default'}
       className={clsx(
-        'transition-all duration-200 cursor-pointer',
+        'transition-all duration-200',
         isLocked && 'opacity-60',
-        isCurrent && 'ring-2 ring-brand-200'
+        (isInProgress || isUnlockable) && 'ring-2 ring-brand-200',
+        !isLocked && 'cursor-pointer'
       )}
-      onClick={onExpand}
+      onClick={isLocked ? undefined : onExpand}
     >
       <div className="p-4">
         <div className="flex items-center justify-between">
@@ -55,41 +82,42 @@ function DayCard({
             <div
               className={clsx(
                 'w-10 h-10 rounded-full flex items-center justify-center',
-                isComplete && 'bg-focus-500 text-white',
-                isCurrent && !isComplete && 'bg-brand-500 text-white',
-                isLocked && 'bg-gray-200 text-gray-400'
+                getStatusStyles()
               )}
             >
-              {isComplete ? (
-                <Check className="w-5 h-5" />
-              ) : isLocked ? (
-                <Lock className="w-4 h-4" />
-              ) : (
-                <span className="font-semibold">{day}</span>
-              )}
+              {getStatusIcon()}
             </div>
 
             {/* Day info */}
             <div>
-              <h3 className="font-medium text-gray-900">
-                Day {day}: {dayData?.title?.split(':')[1]?.trim() || 'Loading...'}
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-medium text-gray-900">
+                  Day {day}: {dayData?.title?.split(':')[1]?.trim() || dayData?.title || 'Loading...'}
+                </h3>
+                {isSkipped && (
+                  <span className="px-2 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-full">
+                    Mastered
+                  </span>
+                )}
+              </div>
               <p className="text-sm text-gray-500">
-                ~{dayData?.estimatedMinutes || 45} min
+                ~{dayData?.skeleton?.estimatedMinutes || dayData?.estimatedMinutes || 45} min
               </p>
             </div>
           </div>
 
-          {/* Expand chevron */}
-          <motion.div
-            animate={{ rotate: isExpanded ? 180 : 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <ChevronDown className="w-5 h-5 text-gray-400" />
-          </motion.div>
+          {/* Expand chevron or action buttons */}
+          {!isLocked && (
+            <motion.div
+              animate={{ rotate: isExpanded ? 180 : 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <ChevronDown className="w-5 h-5 text-gray-400" />
+            </motion.div>
+          )}
         </div>
 
-        {/* Expanded content */}
+        {/* Expanded content - skeleton preview */}
         <AnimatePresence>
           {isExpanded && (
             <motion.div
@@ -99,25 +127,67 @@ function DayCard({
               transition={{ duration: 0.2 }}
               className="overflow-hidden"
             >
-              <div className="pt-4 mt-4 border-t border-gray-100 space-y-3">
-                {/* Topics */}
-                <div>
-                  <p className="text-sm font-medium text-gray-600 mb-2">Today's topics:</p>
-                  <ul className="space-y-1">
-                    <li className="text-sm text-gray-700 flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-brand-500" />
-                      {dayData?.video?.title || 'Video lesson'}
-                    </li>
-                    <li className="text-sm text-gray-700 flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-brand-500" />
-                      {dayData?.task1?.title || 'Coding task'}
-                    </li>
-                    <li className="text-sm text-gray-700 flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-brand-500" />
-                      {dayData?.practiceProject?.title || 'Practice project'}
-                    </li>
-                  </ul>
-                </div>
+              <div className="pt-4 mt-4 border-t border-gray-100 space-y-4">
+                {/* Objectives */}
+                {dayData?.objectives && dayData.objectives.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-600 mb-2">Learning objectives:</p>
+                    <ul className="space-y-1">
+                      {dayData.objectives.map((obj: string, i: number) => (
+                        <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-brand-500 mt-1.5 flex-shrink-0" />
+                          {obj}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Skeleton preview (Phase 1 content) */}
+                {dayData?.skeleton && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-gray-600">What you'll learn:</p>
+                    <div className="grid grid-cols-1 gap-2">
+                      <div className="p-2 bg-gray-50 rounded text-sm">
+                        <span className="text-gray-500">Video:</span>{' '}
+                        <span className="text-gray-700">{dayData.skeleton.videoTitle}</span>
+                      </div>
+                      <div className="p-2 bg-gray-50 rounded text-sm">
+                        <span className="text-gray-500">Task:</span>{' '}
+                        <span className="text-gray-700">{dayData.skeleton.task1Preview}</span>
+                      </div>
+                      <div className="p-2 bg-gray-50 rounded text-sm">
+                        <span className="text-gray-500">Practice:</span>{' '}
+                        <span className="text-gray-700">{dayData.skeleton.practicePreview}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Full content preview if loaded */}
+                {dayData?.detailsLoaded && dayData.video && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-600 mb-2">Today's content:</p>
+                    <ul className="space-y-1">
+                      <li className="text-sm text-gray-700 flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-brand-500" />
+                        {dayData.video.title}
+                      </li>
+                      {dayData.task1 && (
+                        <li className="text-sm text-gray-700 flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-brand-500" />
+                          {dayData.task1.title}
+                        </li>
+                      )}
+                      {dayData.practiceProject && (
+                        <li className="text-sm text-gray-700 flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-brand-500" />
+                          {dayData.practiceProject.title}
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                )}
 
                 {/* Boss milestone if present */}
                 {dayData?.bossMilestone && (
@@ -126,6 +196,34 @@ function DayCard({
                       <Zap className="w-4 h-4" />
                       Boss Milestone: {dayData.bossMilestone.description}
                     </p>
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                {(isUnlockable || isInProgress) && !isCompleted && !isSkipped && (
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStartDay();
+                      }}
+                      disabled={isLoading}
+                      leftIcon={isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                    >
+                      {isLoading ? 'Generating...' : dayData?.detailsLoaded ? 'Continue Day' : 'Start Day'}
+                    </Button>
+                    {dayData?.skipTest && !dayData.detailsLoaded && (
+                      <Button
+                        variant="secondary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSkipTest();
+                        }}
+                        leftIcon={<FastForward className="w-4 h-4" />}
+                      >
+                        Skip Test
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>
@@ -165,13 +263,6 @@ function LifeHappensModal({
       title: 'Extend Mode',
       description: 'Add extra days for more practice. Take your time to master each concept.',
       color: 'from-blue-500 to-cyan-500',
-    },
-    {
-      mode: SessionMode.PAUSED,
-      icon: Pause,
-      title: 'Pause',
-      description: 'Take a break. Your progress is saved. 5-min review when you return.',
-      color: 'from-gray-500 to-gray-600',
     },
   ];
 
@@ -222,6 +313,115 @@ function LifeHappensModal({
           <Button variant="secondary" onClick={() => onSelectMode(SessionMode.NORMAL)}>
             Back to Normal
           </Button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// Skip Test Modal
+function SkipTestModal({
+  isOpen,
+  onClose,
+  dayNumber,
+  skipTest,
+  onSubmit,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  dayNumber: number;
+  skipTest: { instructions: string; questions: Array<{ question: string; correctAnswer: string; difficulty: string }> } | undefined;
+  onSubmit: (answers: string[]) => void;
+}) {
+  const [answers, setAnswers] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [result, setResult] = useState<{ passed: boolean; correctCount: number; totalQuestions: number } | null>(null);
+
+  useEffect(() => {
+    if (isOpen && skipTest) {
+      setAnswers(new Array(skipTest.questions.length).fill(''));
+      setResult(null);
+    }
+  }, [isOpen, skipTest]);
+
+  if (!isOpen || !skipTest) return null;
+
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    try {
+      onSubmit(answers);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-xl max-h-[90vh] overflow-y-auto"
+      >
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+            <FastForward className="w-5 h-5 text-purple-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Skip Test - Day {dayNumber}</h2>
+            <p className="text-sm text-gray-600">{skipTest.instructions}</p>
+          </div>
+        </div>
+
+        <div className="space-y-6 mb-6">
+          {skipTest.questions.map((q, i) => (
+            <div key={i} className="space-y-2">
+              <div className="flex items-start gap-2">
+                <span className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-sm font-medium flex-shrink-0">
+                  {i + 1}
+                </span>
+                <div className="flex-1">
+                  <p className="text-gray-800 font-medium">{q.question}</p>
+                  <span className={clsx(
+                    'inline-block mt-1 px-2 py-0.5 text-xs rounded-full',
+                    q.difficulty === 'easy' && 'bg-green-100 text-green-700',
+                    q.difficulty === 'medium' && 'bg-yellow-100 text-yellow-700',
+                    q.difficulty === 'hard' && 'bg-red-100 text-red-700'
+                  )}>
+                    {q.difficulty}
+                  </span>
+                </div>
+              </div>
+              <textarea
+                className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-200 focus:border-brand-400 resize-none"
+                rows={3}
+                placeholder="Your answer..."
+                value={answers[i] || ''}
+                onChange={(e) => {
+                  const newAnswers = [...answers];
+                  newAnswers[i] = e.target.value;
+                  setAnswers(newAnswers);
+                }}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="flex justify-between items-center pt-4 border-t border-gray-100">
+          <p className="text-sm text-gray-500">
+            Pass threshold: 2 out of 3 correct
+          </p>
+          <div className="flex gap-3">
+            <Button variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={isSubmitting || answers.some(a => !a.trim())}
+              leftIcon={isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined}
+            >
+              {isSubmitting ? 'Checking...' : 'Submit Answers'}
+            </Button>
+          </div>
         </div>
       </motion.div>
     </div>
@@ -284,11 +484,23 @@ function BacklogDrawer({ isOpen, onClose, tasks }: {
 
 export function PlanPage() {
   const navigate = useNavigate();
-  const { activeSession, updateSession, fetchActiveSession } = useSessionStore();
+  const {
+    activeSession,
+    updateSession,
+    fetchActiveSession,
+    loadDayContent,
+    submitSkipTest,
+    isDayLoading,
+    dayLoadingNumber,
+    error,
+    clearError,
+  } = useSessionStore();
   const { hasTierAccess } = useAuthStore();
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const [showLifeHappens, setShowLifeHappens] = useState(false);
   const [showBacklog, setShowBacklog] = useState(false);
+  const [skipTestDay, setSkipTestDay] = useState<number | null>(null);
+  const [skipTestResult, setSkipTestResult] = useState<{ passed: boolean; message: string } | null>(null);
 
   useEffect(() => {
     if (!activeSession) {
@@ -299,6 +511,47 @@ export function PlanPage() {
   const handleModeChange = async (mode: SessionMode) => {
     if (!activeSession) return;
     await updateSession(activeSession.id, { mode });
+  };
+
+  const handleStartDay = async (dayNumber: number) => {
+    try {
+      await loadDayContent(dayNumber);
+      navigate(`/session/${activeSession?.id}`);
+    } catch (err) {
+      console.error('Failed to start day:', err);
+    }
+  };
+
+  const handleOpenSkipTest = (dayNumber: number) => {
+    setSkipTestDay(dayNumber);
+    setSkipTestResult(null);
+  };
+
+  const handleSubmitSkipTest = async (answers: string[]) => {
+    if (skipTestDay === null) return;
+
+    try {
+      const result = await submitSkipTest(skipTestDay, answers);
+      setSkipTestResult({
+        passed: result.passed,
+        message: result.message,
+      });
+
+      if (result.passed) {
+        // Close modal after a delay to show success
+        setTimeout(() => {
+          setSkipTestDay(null);
+          setSkipTestResult(null);
+        }, 2000);
+      }
+    } catch (err) {
+      console.error('Failed to submit skip test:', err);
+    }
+  };
+
+  const getSkipTestForDay = (dayNumber: number) => {
+    const day = activeSession?.curriculum.days.find(d => d.day === dayNumber);
+    return day?.skipTest;
   };
 
   if (!activeSession) {
@@ -365,24 +618,33 @@ export function PlanPage() {
         </div>
       </Card>
 
+      {/* Error display */}
+      {error && (
+        <Card className="mb-4 p-4 bg-red-50 border-red-200">
+          <div className="flex items-center justify-between">
+            <p className="text-red-700 text-sm">{error}</p>
+            <button onClick={clearError} className="text-red-500 hover:text-red-700">
+              ×
+            </button>
+          </div>
+        </Card>
+      )}
+
       {/* Timeline */}
       <div className="space-y-3">
-        {curriculum.days.map((dayData, index) => {
-          const day = index + 1;
-          const isComplete = day < currentDay;
-          const isCurrent = day === currentDay;
-          const isLocked = day > currentDay;
+        {curriculum.days.map((dayData) => {
+          const day = dayData.day;
 
           return (
             <DayCard
               key={day}
               day={day}
               dayData={dayData}
-              isComplete={isComplete}
-              isCurrent={isCurrent}
-              isLocked={isLocked}
               isExpanded={expandedDay === day}
               onExpand={() => setExpandedDay(expandedDay === day ? null : day)}
+              onStartDay={() => handleStartDay(day)}
+              onSkipTest={() => handleOpenSkipTest(day)}
+              isLoading={isDayLoading && dayLoadingNumber === day}
             />
           );
         })}
@@ -437,6 +699,31 @@ export function PlanPage() {
         onClose={() => setShowBacklog(false)}
         tasks={[]} // Would come from session state
       />
+
+      <SkipTestModal
+        isOpen={skipTestDay !== null}
+        onClose={() => setSkipTestDay(null)}
+        dayNumber={skipTestDay || 1}
+        skipTest={skipTestDay ? getSkipTestForDay(skipTestDay) : undefined}
+        onSubmit={handleSubmitSkipTest}
+      />
+
+      {/* Skip test result toast */}
+      <AnimatePresence>
+        {skipTestResult && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className={clsx(
+              'fixed bottom-4 right-4 p-4 rounded-lg shadow-lg z-50',
+              skipTestResult.passed ? 'bg-green-500 text-white' : 'bg-amber-500 text-white'
+            )}
+          >
+            <p className="font-medium">{skipTestResult.message}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -5,6 +5,10 @@ import type {
   UpdateSessionDto,
   SessionResponse,
   ProgressStats,
+  StartDayResponse,
+  SkipTestResponse,
+  PracticeSubmitResponse,
+  DayDetailsResponse,
 } from '@/types';
 
 export const sessionService = {
@@ -79,5 +83,66 @@ export const sessionService = {
    */
   async advanceDay(id: string): Promise<{ message: string; session: Session }> {
     return this.update(id, { currentDay: undefined }); // Backend handles increment
+  },
+
+  // ═══════════════════════════════════════════════════
+  // TWO-PHASE CURRICULUM METHODS
+  // ═══════════════════════════════════════════════════
+
+  /**
+   * Start a day - generates full day content (Phase 2)
+   * Day 1: Always available
+   * Day 2+: Requires previous day's practice project submitted
+   */
+  async startDay(sessionId: string, dayNumber: number): Promise<StartDayResponse> {
+    const { data } = await api.post<StartDayResponse>(
+      `/sessions/${sessionId}/days/${dayNumber}/start`
+    );
+    return data;
+  },
+
+  /**
+   * Submit skip test answers to skip a day
+   * If passed (2/3 correct), day is marked as skipped/mastered
+   */
+  async submitSkipTest(
+    sessionId: string,
+    dayNumber: number,
+    answers: string[]
+  ): Promise<SkipTestResponse> {
+    const { data } = await api.post<SkipTestResponse>(
+      `/sessions/${sessionId}/days/${dayNumber}/skip-test`,
+      { answers }
+    );
+    return data;
+  },
+
+  /**
+   * Submit practice project answer - unlocks next day
+   */
+  async submitPracticeProject(
+    sessionId: string,
+    dayNumber: number,
+    answer: string,
+    confidence?: number
+  ): Promise<PracticeSubmitResponse> {
+    const { data } = await api.post<PracticeSubmitResponse>(
+      `/sessions/${sessionId}/days/${dayNumber}/practice/submit`,
+      { answer, confidence }
+    );
+    return data;
+  },
+
+  /**
+   * Get day details (if already loaded)
+   */
+  async getDayDetails(
+    sessionId: string,
+    dayNumber: number
+  ): Promise<DayDetailsResponse> {
+    const { data } = await api.get<DayDetailsResponse>(
+      `/sessions/${sessionId}/days/${dayNumber}`
+    );
+    return data;
   },
 };

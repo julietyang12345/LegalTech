@@ -395,5 +395,223 @@ export class SessionService {
     };
   }
 
-  
+  // ═══════════════════════════════════════════════════
+  // TWO-PHASE CURRICULUM METHODS
+  // ═══════════════════════════════════════════════════
+
+  /**
+   * Start a day - generates full day content (Phase 2)
+   * Day 1: Always available
+   * Day 2+: Requires previous day's practice project submitted
+   */
+  async startDay(
+    sessionId: string,
+    userId: string,
+    dayNumber: number,
+  ): Promise<{ dayContent: any; tokensUsed: number }> {
+    const session = await this.findOne(sessionId, userId);
+    const user = await this.userService.findById(userId);
+    const tierString = user.quotaTier.toUpperCase();
+
+    // Check if day is unlockable
+    const dayOverview = session.curriculum.days.find((d: any) => d.day === dayNumber);
+    if (!dayOverview) {
+      throw new NotFoundException(`Day ${dayNumber} not found`);
+    }
+
+    // Day 1 is always unlockable
+    if (dayNumber > 1) {
+      const previousDay = session.curriculum.days.find((d: any) => d.day === dayNumber - 1);
+      if (previousDay?.status !== 'completed' && previousDay?.status !== 'skipped') {
+        throw new ForbiddenException(
+          `Complete Day ${dayNumber - 1} practice project first to unlock Day ${dayNumber}`,
+        );
+      }
+    }
+
+    // Check if already loaded
+    if (dayOverview.detailsLoaded && dayOverview.content) {
+      return {
+        dayContent: dayOverview.content,
+        tokensUsed: 0, // Already loaded, no new tokens used
+      };
+    }
+
+    // Generate day details (Phase 2)
+    const result = await this.curriculumService.generateDayDetails(
+      session.curriculum,
+      dayNumber,
+      tierString,
+    );
+
+    // Update session curriculum with loaded content
+    const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
+    session.curriculum.days[dayIndex] = {
+      ...session.curriculum.days[dayIndex],
+      content: result.dayContent,
+      detailsLoaded: true,
+      status: 'in_progress',
+    };
+
+    // Increment user's usage
+    await this.userService.incrementUsage(userId, result.tokensUsed, 0);
+
+    // Save session
+    await this.sessionsRepository.save(session);
+
+    this.logger.log(`✅ Day ${dayNumber} started for session ${sessionId}`);
+
+    return {
+      dayContent: result.dayContent,
+      tokensUsed: result.tokensUsed,
+    };
+  }
+
+  /**
+   * Submit skip test answers to skip a day
+   */
+  async submitSkipTest(
+    sessionId: string,
+    userId: string,
+    dayNumber: number,
+    answers: string[],
+  ): Promise<{
+    passed: boolean;
+    correctCount: number;
+    totalQuestions: number;
+    passThreshold: number;
+  }> {
+    const session = await this.findOne(sessionId, userId);
+
+    const dayOverview = session.curriculum.days.find((d: any) => d.day === dayNumber);
+    if (!dayOverview) {
+      throw new NotFoundException(`Day ${dayNumber} not found`);
+    }
+
+    const skipTest = dayOverview.skipTest;
+    if (!skipTest) {
+      throw new NotFoundException(`Skip test not found for Day ${dayNumber}`);
+    }
+
+    // Check answers (case-insensitive, trim whitespace)
+    let correctCount = 0;
+    const questions = skipTest.questions || [];
+
+    answers.forEach((answer, index) => {
+      if (index < questions.length) {
+        const correctAnswer = questions[index].answer.toLowerCase().trim();
+        const userAnswer = answer.toLowerCase().trim();
+        // Simple match - could be improved with fuzzy matching
+        if (userAnswer.includes(correctAnswer) || correctAnswer.includes(userAnswer)) {
+          correctCount++;
+        }
+      }
+    });
+
+    const passThreshold = skipTest.passThreshold || 2;
+    const passed = correctCount >= passThreshold;
+
+    if (passed) {
+      // Mark day as skipped/mastered
+      const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
+      session.curriculum.days[dayIndex].status = 'skipped';
+
+      // Unlock next day
+      if (dayNumber < session.curriculum.days.length) {
+        const nextDayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber + 1);
+        if (nextDayIndex !== -1) {
+          session.curriculum.days[nextDayIndex].status = 'unlockable';
+        }
+      }
+
+      await this.sessionsRepository.save(session);
+      this.logger.log(`✅ Day ${dayNumber} skipped (mastered) for session ${sessionId}`);
+    }
+
+    return {
+      passed,
+      correctCount,
+      totalQuestions: questions.length,
+      passThreshold,
+    };
+  }
+
+  /**
+   * Submit practice project answer - unlocks next day
+   */
+  async submitPracticeProject(
+    sessionId: string,
+    userId: string,
+    dayNumber: number,
+    answer: string,
+    confidence?: number,
+  ): Promise<{
+    nextDayUnlocked: boolean;
+    feedback?: string;
+  }> {
+    const session = await this.findOne(sessionId, userId);
+
+    const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
+    if (dayIndex === -1) {
+      throw new NotFoundException(`Day ${dayNumber} not found`);
+    }
+
+    // Mark day as completed
+    session.curriculum.days[dayIndex].status = 'completed';
+    session.curriculum.days[dayIndex].practiceSubmitted = true;
+    session.curriculum.days[dayIndex].practiceAnswer = answer;
+    session.curriculum.days[dayIndex].practiceConfidence = confidence;
+
+    // Unlock next day
+    let nextDayUnlocked = false;
+    if (dayNumber < session.curriculum.days.length) {
+      const nextDayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber + 1);
+      if (nextDayIndex !== -1) {
+        session.curriculum.days[nextDayIndex].status = 'unlockable';
+        nextDayUnlocked = true;
+      }
+    }
+
+    // Update current day
+    if (dayNumber >= session.currentDay) {
+      session.currentDay = dayNumber + 1;
+    }
+
+    await this.sessionsRepository.save(session);
+
+    this.logger.log(`✅ Day ${dayNumber} practice submitted for session ${sessionId}`);
+
+    return {
+      nextDayUnlocked,
+      feedback: 'Great job! Your submission has been recorded.',
+    };
+  }
+
+  /**
+   * Get day details (overview + content if loaded)
+   */
+  async getDayDetails(
+    sessionId: string,
+    userId: string,
+    dayNumber: number,
+  ): Promise<{
+    day: any;
+    status: string;
+    detailsLoaded: boolean;
+    content?: any;
+  }> {
+    const session = await this.findOne(sessionId, userId);
+
+    const dayOverview = session.curriculum.days.find((d: any) => d.day === dayNumber);
+    if (!dayOverview) {
+      throw new NotFoundException(`Day ${dayNumber} not found`);
+    }
+
+    return {
+      day: dayOverview,
+      status: dayOverview.status || 'locked',
+      detailsLoaded: dayOverview.detailsLoaded || false,
+      content: dayOverview.content,
+    };
+  }
 }

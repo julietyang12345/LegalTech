@@ -1,12 +1,15 @@
 import { create } from 'zustand';
-import type {
-  Session,
-  CreateSessionDto,
-  SessionStatus,
-  SessionMode,
-  CurriculumDay,
-  Progress,
-  SessionStep,
+import {
+  DayStatus,
+  type Session,
+  type CreateSessionDto,
+  type SessionStatus,
+  type SessionMode,
+  type CurriculumDay,
+  type Progress,
+  type SessionStep,
+  type SkipTestResponse,
+  type PracticeSubmitResponse,
 } from '@/types';
 import { sessionService } from '@/services/sessionService';
 import { progressService } from '@/services/progressService';
@@ -25,6 +28,10 @@ interface SessionState {
   stepStartTime: Date | null;
   sessionProgress: Progress[];
 
+  // Two-phase curriculum state
+  isDayLoading: boolean;
+  dayLoadingNumber: number | null;
+
   // Actions
   createSession: (dto: CreateSessionDto) => Promise<Session>;
   fetchSessions: () => Promise<void>;
@@ -38,6 +45,13 @@ interface SessionState {
   setCurrentStep: (step: SessionStep) => void;
   completeStep: (step: SessionStep) => void;
   resetSteps: () => void;
+
+  // Two-phase curriculum actions
+  loadDayContent: (dayNumber: number) => Promise<CurriculumDay>;
+  submitSkipTest: (dayNumber: number, answers: string[]) => Promise<SkipTestResponse>;
+  submitPracticeProject: (dayNumber: number, answer: string, confidence?: number) => Promise<PracticeSubmitResponse>;
+  getDayStatus: (dayNumber: number) => DayStatus;
+  canStartDay: (dayNumber: number) => boolean;
 
   // Progress actions
   fetchProgress: (sessionId: string) => Promise<void>;
@@ -71,6 +85,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   completedSteps: [],
   stepStartTime: null,
   sessionProgress: [],
+
+  // Two-phase curriculum state
+  isDayLoading: false,
+  dayLoadingNumber: null,
 
   createSession: async (dto: CreateSessionDto) => {
     set({ isLoading: true, error: null });
@@ -248,6 +266,158 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
 
+  // Two-phase curriculum actions
+  loadDayContent: async (dayNumber: number) => {
+    const { activeSession } = get();
+    if (!activeSession) throw new Error('No active session');
+
+    set({ isDayLoading: true, dayLoadingNumber: dayNumber, error: null });
+
+    try {
+      const response = await sessionService.startDay(activeSession.id, dayNumber);
+      const dayContent = response.dayContent;
+
+      // Update the curriculum day with full content
+      set((state) => {
+        if (!state.activeSession) return state;
+
+        const updatedDays = state.activeSession.curriculum.days.map((d) =>
+          d.day === dayNumber
+            ? { ...d, ...dayContent, detailsLoaded: true, status: DayStatus.IN_PROGRESS }
+            : d
+        );
+
+        return {
+          activeSession: {
+            ...state.activeSession,
+            curriculum: {
+              ...state.activeSession.curriculum,
+              days: updatedDays,
+            },
+          },
+          currentDay: dayContent,
+          isDayLoading: false,
+          dayLoadingNumber: null,
+        };
+      });
+
+      return dayContent;
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || 'Failed to load day content',
+        isDayLoading: false,
+        dayLoadingNumber: null,
+      });
+      throw error;
+    }
+  },
+
+  submitSkipTest: async (dayNumber: number, answers: string[]) => {
+    const { activeSession } = get();
+    if (!activeSession) throw new Error('No active session');
+
+    try {
+      const result = await sessionService.submitSkipTest(activeSession.id, dayNumber, answers);
+
+      if (result.passed) {
+        // Update day status to skipped and unlock next day
+        set((state) => {
+          if (!state.activeSession) return state;
+
+          const updatedDays = state.activeSession.curriculum.days.map((d) => {
+            if (d.day === dayNumber) {
+              return { ...d, status: DayStatus.SKIPPED };
+            }
+            if (d.day === dayNumber + 1) {
+              return { ...d, status: DayStatus.UNLOCKABLE };
+            }
+            return d;
+          });
+
+          return {
+            activeSession: {
+              ...state.activeSession,
+              curriculum: {
+                ...state.activeSession.curriculum,
+                days: updatedDays,
+              },
+            },
+          };
+        });
+      }
+
+      return result;
+    } catch (error: any) {
+      set({ error: error.response?.data?.message || 'Failed to submit skip test' });
+      throw error;
+    }
+  },
+
+  submitPracticeProject: async (dayNumber: number, answer: string, confidence?: number) => {
+    const { activeSession } = get();
+    if (!activeSession) throw new Error('No active session');
+
+    try {
+      const result = await sessionService.submitPracticeProject(
+        activeSession.id,
+        dayNumber,
+        answer,
+        confidence
+      );
+
+      if (result.nextDayUnlocked) {
+        // Update day status to completed and unlock next day
+        set((state) => {
+          if (!state.activeSession) return state;
+
+          const updatedDays = state.activeSession.curriculum.days.map((d) => {
+            if (d.day === dayNumber) {
+              return { ...d, status: DayStatus.COMPLETED };
+            }
+            if (d.day === dayNumber + 1) {
+              return { ...d, status: DayStatus.UNLOCKABLE };
+            }
+            return d;
+          });
+
+          return {
+            activeSession: {
+              ...state.activeSession,
+              curriculum: {
+                ...state.activeSession.curriculum,
+                days: updatedDays,
+              },
+            },
+          };
+        });
+      }
+
+      return result;
+    } catch (error: any) {
+      set({ error: error.response?.data?.message || 'Failed to submit practice project' });
+      throw error;
+    }
+  },
+
+  getDayStatus: (dayNumber: number) => {
+    const { activeSession } = get();
+    if (!activeSession) return DayStatus.LOCKED;
+
+    const day = activeSession.curriculum.days.find((d) => d.day === dayNumber);
+    return day?.status || DayStatus.LOCKED;
+  },
+
+  canStartDay: (dayNumber: number) => {
+    const { activeSession } = get();
+    if (!activeSession) return false;
+
+    const day = activeSession.curriculum.days.find((d) => d.day === dayNumber);
+    if (!day) return false;
+
+    // Can start if status is 'unlockable' or 'in_progress'
+    return day.status === DayStatus.UNLOCKABLE || day.status === DayStatus.IN_PROGRESS;
+  },
+
   // Helpers
   getCurrentDayData: () => {
     const { activeSession } = get();
@@ -258,11 +428,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   getStepProgress: () => {
     const { completedSteps, currentDay } = get();
     let total = STEP_ORDER.length;
-    
+
     // Adjust total based on what's available
     if (currentDay?.day === 1) total -= 1; // No memory bridge
     if (!currentDay?.bossMilestone) total -= 1; // No boss milestone
-    
+
     return {
       current: completedSteps.length,
       total,

@@ -5,14 +5,32 @@ import { GenerateCurriculumDto } from './dto/generate-curriculum.dto';
 import { SkillDetectorService, SkillType } from './services/skill-detector.service';
 import { GeminiVideoIndexerService } from './services/gemini-video-indexer.service';
 import { FileGeneratorService } from './services/file-generator.service';
-import { buildCurriculumPrompt } from './prompts/curriculum-prompt';
+import {
+  buildOverviewPrompt,
+  buildDayDetailPrompt,
+  buildBossDetailPrompt,
+  DayDetailParams,
+  BossDetailParams,
+} from './prompts/curriculum-prompt';
 
 export interface CurriculumResult {
-  curriculum: any;
+  curriculum: any; // Overview curriculum (skeleton)
   tokensUsed: number;
   cost: number;
   skillDetection: any;
   warnings?: string[];
+}
+
+export interface DayDetailResult {
+  dayContent: any;
+  tokensUsed: number;
+  cost: number;
+}
+
+export interface BossDetailResult {
+  bossContent: any;
+  tokensUsed: number;
+  cost: number;
 }
 
 @Injectable()
@@ -63,8 +81,8 @@ export class CurriculumService {
       );
     }
 
-    // Step 3: Build curriculum prompt
-    const { systemPrompt, userPrompt } = buildCurriculumPrompt({
+    // Step 3: Build OVERVIEW prompt (Phase 1 - skeleton only)
+    const { systemPrompt, userPrompt } = buildOverviewPrompt({
       skillName: dto.skillName,
       durationDays: dto.durationDays,
       hoursPerDay: dto.hoursPerDay,
@@ -76,8 +94,8 @@ export class CurriculumService {
       prerequisiteSkills: skillDetection.prerequisiteSkills,
     });
 
-    // Step 4: Generate curriculum with AI
-    this.logger.log('🤖 Generating curriculum with AI...');
+    // Step 4: Generate curriculum OVERVIEW with AI (Phase 1)
+    this.logger.log('🤖 Generating curriculum overview (Phase 1)...');
     const aiResponse = await this.aiService.routeRequest(
       AITask.CURRICULUM_GENERATION,
       userPrompt,
@@ -109,26 +127,53 @@ export class CurriculumService {
         this.logger.log('✅ JSON fixed and parsed successfully');
       }
 
-      this.logger.log('✅ Curriculum JSON parsed successfully');
+      this.logger.log('✅ Curriculum overview parsed successfully');
     } catch (error) {
       this.logger.error('❌ Failed to parse curriculum JSON:', error.message);
       this.logger.error('Raw AI response (first 1000 chars):', aiResponse.content.substring(0, 1000));
-      throw new BadRequestException('Failed to generate valid curriculum. Please try again.');
+      throw new BadRequestException('Failed to generate curriculum overview. Please try again.');
     }
 
-    // Step 6: Process video placeholders (if video indexing enabled)
-    if (this.configService.get('features.videoIndexing')) {
-      curriculum = await this.processVideoPlaceholders(curriculum, userTier);
-    }
+    // Add metadata to curriculum
+    curriculum.metadata = {
+      skillName: dto.skillName,
+      durationDays: dto.durationDays,
+      hoursPerDay: dto.hoursPerDay,
+      skillLevel: dto.skillLevel,
+      skillType: skillDetection.skillType,
+      complexity: skillDetection.complexity,
+      suggestedLanguage: skillDetection.suggestedLanguage,
+    };
 
-    // Step 7: Generate file resources (starter code, hints, solutions)
-    if (skillDetection.skillType === SkillType.CODE || 
-        skillDetection.skillType === SkillType.AI_AGENT) {
-      curriculum = await this.generateFileResources(curriculum, skillDetection.suggestedLanguage);
+    // Merge day1 (full content) with days array (skeletons for days 2-N)
+    // New two-tier structure: day1 is separate object with full content
+    if (curriculum.day1) {
+      const day1WithStatus = {
+        ...curriculum.day1,
+        status: 'unlockable',
+        detailsLoaded: true, // Day 1 already has full content
+      };
+
+      // Ensure days array exists and add day1 at the beginning
+      const skeletonDays = (curriculum.days || []).map((day: any) => ({
+        ...day,
+        status: 'locked',
+        detailsLoaded: false,
+      }));
+
+      curriculum.days = [day1WithStatus, ...skeletonDays];
+      delete curriculum.day1; // Remove separate day1 object
+    } else {
+      // Fallback for legacy format (all days in days array)
+      curriculum.days = curriculum.days.map((day: any, index: number) => ({
+        ...day,
+        status: index === 0 ? 'unlockable' : 'locked',
+        detailsLoaded: false,
+      }));
     }
 
     this.logger.log(
-      `✅ Curriculum generated. Tokens: ${aiResponse.tokensUsed}, Cost: $${aiResponse.cost.toFixed(4)}`,
+      `✅ Curriculum overview generated. Tokens: ${aiResponse.tokensUsed}, Cost: $${aiResponse.cost.toFixed(4)}`,
     );
 
     return {
@@ -138,6 +183,206 @@ export class CurriculumService {
       skillDetection,
       warnings: warnings.length > 0 ? warnings : undefined,
     };
+  }
+
+  /**
+   * PHASE 2: Generate full content for a specific day
+   * Called when student starts a day (clicks "Start Day")
+   */
+  async generateDayDetails(
+    curriculum: any,
+    dayNumber: number,
+    userTier: string = 'FREE',
+  ): Promise<DayDetailResult> {
+    this.logger.log(`🎯 Generating Day ${dayNumber} details (Phase 2)...`);
+
+    const dayOverview = curriculum.days.find((d: any) => d.day === dayNumber);
+    if (!dayOverview) {
+      throw new BadRequestException(`Day ${dayNumber} not found in curriculum`);
+    }
+
+    const previousDay = curriculum.days.find((d: any) => d.day === dayNumber - 1);
+
+    const params: DayDetailParams = {
+      skillName: curriculum.metadata.skillName,
+      dayNumber,
+      dayTitle: dayOverview.title,
+      dayObjectives: dayOverview.objectives,
+      skeleton: dayOverview.skeleton,
+      previousDayTitle: previousDay?.title,
+      skillType: curriculum.metadata.skillType,
+      complexity: curriculum.metadata.complexity,
+      userTier,
+      hoursPerDay: curriculum.metadata.hoursPerDay,
+      suggestedLanguage: curriculum.metadata.suggestedLanguage,
+    };
+
+    const { systemPrompt, userPrompt } = buildDayDetailPrompt(params);
+
+    const aiResponse = await this.aiService.routeRequest(
+      AITask.CURRICULUM_GENERATION,
+      userPrompt,
+      systemPrompt,
+    );
+
+    let dayContent: any;
+    try {
+      let cleanedContent = aiResponse.content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
+
+      const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanedContent = jsonMatch[0];
+      }
+
+      try {
+        dayContent = JSON.parse(cleanedContent);
+      } catch {
+        const fixedContent = cleanedContent.replace(/,(\s*[}\]])/g, '$1');
+        dayContent = JSON.parse(fixedContent);
+      }
+
+      this.logger.log(`✅ Day ${dayNumber} details parsed successfully`);
+    } catch (error) {
+      this.logger.error(`❌ Failed to parse Day ${dayNumber} details:`, error.message);
+      throw new BadRequestException('Failed to generate day details. Please try again.');
+    }
+
+    // Generate file resources for tasks if needed
+    if (
+      curriculum.metadata.skillType === SkillType.CODE ||
+      curriculum.metadata.skillType === SkillType.AI_AGENT
+    ) {
+      dayContent = await this.generateDayFileResources(
+        dayContent,
+        curriculum.metadata.suggestedLanguage,
+      );
+    }
+
+    this.logger.log(
+      `✅ Day ${dayNumber} details generated. Tokens: ${aiResponse.tokensUsed}, Cost: $${aiResponse.cost.toFixed(4)}`,
+    );
+
+    return {
+      dayContent,
+      tokensUsed: aiResponse.tokensUsed,
+      cost: aiResponse.cost,
+    };
+  }
+
+  /**
+   * PHASE 2: Generate full content for a boss project
+   */
+  async generateBossDetails(
+    curriculum: any,
+    bossDay: number,
+    userTier: string = 'FREE',
+  ): Promise<BossDetailResult> {
+    this.logger.log(`🎯 Generating Boss Project for Day ${bossDay} (Phase 2)...`);
+
+    const bossOverview = curriculum.bossProjects?.find((b: any) => b.day === bossDay);
+    if (!bossOverview) {
+      throw new BadRequestException(`Boss project for day ${bossDay} not found`);
+    }
+
+    // Get titles of combined days
+    const dayTitles = bossOverview.combinesDays.map((dayNum: number) => {
+      const day = curriculum.days.find((d: any) => d.day === dayNum);
+      return day?.title || `Day ${dayNum}`;
+    });
+
+    const params: BossDetailParams = {
+      skillName: curriculum.metadata.skillName,
+      bossTitle: bossOverview.title,
+      bossDescription: bossOverview.description,
+      bossDay,
+      combinesDays: bossOverview.combinesDays,
+      dayTitles,
+      userTier,
+      suggestedLanguage: curriculum.metadata.suggestedLanguage,
+    };
+
+    const { systemPrompt, userPrompt } = buildBossDetailPrompt(params);
+
+    const aiResponse = await this.aiService.routeRequest(
+      AITask.CURRICULUM_GENERATION,
+      userPrompt,
+      systemPrompt,
+    );
+
+    let bossContent: any;
+    try {
+      let cleanedContent = aiResponse.content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
+
+      const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanedContent = jsonMatch[0];
+      }
+
+      try {
+        bossContent = JSON.parse(cleanedContent);
+      } catch {
+        const fixedContent = cleanedContent.replace(/,(\s*[}\]])/g, '$1');
+        bossContent = JSON.parse(fixedContent);
+      }
+
+      this.logger.log(`✅ Boss Project Day ${bossDay} details parsed successfully`);
+    } catch (error) {
+      this.logger.error(`❌ Failed to parse Boss Project details:`, error.message);
+      throw new BadRequestException('Failed to generate boss project details. Please try again.');
+    }
+
+    this.logger.log(
+      `✅ Boss Project generated. Tokens: ${aiResponse.tokensUsed}, Cost: $${aiResponse.cost.toFixed(4)}`,
+    );
+
+    return {
+      bossContent,
+      tokensUsed: aiResponse.tokensUsed,
+      cost: aiResponse.cost,
+    };
+  }
+
+  /**
+   * Generate file resources for a single day's tasks
+   */
+  private async generateDayFileResources(dayContent: any, language?: string): Promise<any> {
+    if (dayContent.task1?.solution) {
+      try {
+        const files = await this.fileGenerator.generateTaskFiles({
+          taskId: dayContent.task1.id,
+          taskTitle: dayContent.task1.title,
+          taskDescription: dayContent.task1.description,
+          answer: dayContent.task1.solution,
+          language,
+        });
+        dayContent.task1.files = files;
+      } catch (error) {
+        this.logger.warn('Task 1 file generation failed');
+      }
+    }
+
+    if (dayContent.practiceProject?.solution) {
+      try {
+        const files = await this.fileGenerator.generateTaskFiles({
+          taskId: dayContent.practiceProject.id,
+          taskTitle: dayContent.practiceProject.title,
+          taskDescription: dayContent.practiceProject.challenge,
+          answer: dayContent.practiceProject.solution,
+          language,
+        });
+        dayContent.practiceProject.files = files;
+      } catch (error) {
+        this.logger.warn('Practice project file generation failed');
+      }
+    }
+
+    return dayContent;
   }
 
   /**

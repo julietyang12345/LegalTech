@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Play, Calendar, Trophy, ChevronRight, Sparkles } from 'lucide-react';
+import { Play, Calendar, Trophy, ChevronRight, Sparkles, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
 import { Button, Card, StreakBadge, ProgressBar } from '@/components/common';
+import { DayStatus } from '@/types';
 
 // Yesterday's Fog - memory bridge before starting
 function YesterdaysFog({ yesterdayTopic, question }: { yesterdayTopic: string; question: string }) {
@@ -141,7 +142,14 @@ function NoSessionState() {
 export function TodayPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { activeSession, fetchActiveSession, startDay, isLoading } = useSessionStore();
+  const {
+    activeSession,
+    fetchActiveSession,
+    loadDayContent,
+    isLoading,
+    isDayLoading,
+    canStartDay,
+  } = useSessionStore();
   const { addSystemMessage } = useCompanionStore();
 
   useEffect(() => {
@@ -156,16 +164,25 @@ export function TodayPage() {
     if (hour >= 17) greeting = 'Good evening';
 
     addSystemMessage(
-      `${greeting}, ${user?.name || 'friend'}! 👋 Ready to learn today?`,
+      `${greeting}, ${user?.name || 'friend'}! Ready to learn today?`,
       'welcoming'
     );
   }, [user?.name, addSystemMessage]);
 
-  const handleStartSession = () => {
+  const handleStartSession = async () => {
     if (!activeSession) return;
-    startDay(activeSession.currentDay);
-    navigate(`/session/${activeSession.id}`);
+
+    try {
+      // Load day content (Phase 2) before navigating
+      await loadDayContent(activeSession.currentDay);
+      navigate(`/session/${activeSession.id}`);
+    } catch (err) {
+      console.error('Failed to start session:', err);
+    }
   };
+
+  // Check if current day can be started
+  const canStart = activeSession ? canStartDay(activeSession.currentDay) : false;
 
   // Loading state
   if (isLoading) {
@@ -268,11 +285,22 @@ export function TodayPage() {
             <h2 className="text-xl font-bold text-gray-900 mb-2">
               {currentDayData?.title || `Day ${activeSession.currentDay}`}
             </h2>
-            
-            <p className="text-gray-600 mb-6">
-              {currentDayData?.prePrompt?.primeQuestions?.[0] || 
-                'Ready to learn something new today?'}
-            </p>
+
+            {/* Show objectives or skeleton preview */}
+            {currentDayData?.objectives && currentDayData.objectives.length > 0 ? (
+              <p className="text-gray-600 mb-6">
+                {currentDayData.objectives[0]}
+              </p>
+            ) : currentDayData?.skeleton?.videoDescription ? (
+              <p className="text-gray-600 mb-6">
+                {currentDayData.skeleton.videoDescription}
+              </p>
+            ) : (
+              <p className="text-gray-600 mb-6">
+                {currentDayData?.prePrompt?.primeQuestions?.[0] ||
+                  'Ready to learn something new today?'}
+              </p>
+            )}
 
             <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-6">
               <span>⏱️ ~{currentDayData?.estimatedMinutes || 45} minutes</span>
@@ -281,15 +309,24 @@ export function TodayPage() {
             <Button
               size="xl"
               onClick={handleStartSession}
-              leftIcon={<Play className="w-5 h-5" />}
+              disabled={isDayLoading || !canStart}
+              leftIcon={isDayLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
               className="w-full sm:w-auto"
             >
-              Start Session
+              {isDayLoading ? 'Generating Content...' : 'Start Session'}
             </Button>
 
-            <p className="mt-4 text-xs text-gray-400">
-              Just one button. That's it.
-            </p>
+            {!canStart && activeSession.currentDay > 1 && (
+              <p className="mt-4 text-sm text-amber-600">
+                Complete yesterday's practice project to unlock today's session.
+              </p>
+            )}
+
+            {canStart && (
+              <p className="mt-4 text-xs text-gray-400">
+                Just one button. That's it.
+              </p>
+            )}
           </div>
         </Card>
       </motion.div>

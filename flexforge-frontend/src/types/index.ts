@@ -21,6 +21,14 @@ export enum SessionMode {
   EXTENDED = 'EXTENDED',
 }
 
+export enum DayStatus {
+  LOCKED = 'locked',
+  UNLOCKABLE = 'unlockable',
+  IN_PROGRESS = 'in_progress',
+  COMPLETED = 'completed',
+  SKIPPED = 'skipped',
+}
+
 export enum QuotaTier {
   FREE = 'free',
   PRO = 'pro',
@@ -108,6 +116,16 @@ export interface UpdateSessionDto {
 // Curriculum Types
 // ============================================
 
+export interface CurriculumMetadata {
+  skillName: string;
+  durationDays: number;
+  hoursPerDay: number;
+  skillLevel: SkillLevel;
+  skillType: SkillType;
+  complexity: SkillComplexity;
+  suggestedLanguage?: string;
+}
+
 export interface Curriculum {
   finalProjectTitle: string;
   finalProjectDescription: string;
@@ -116,20 +134,51 @@ export interface Curriculum {
   bossProjects: BossProject[];
   prerequisites: string[];
   recommendedTools: string[];
+  metadata?: CurriculumMetadata;
+}
+
+// Skip test for testing out of a day
+export interface SkipTestQuestion {
+  question: string;
+  correctAnswer: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+}
+
+export interface SkipTest {
+  instructions: string;
+  questions: SkipTestQuestion[];
+  passThreshold: number;
+}
+
+// Day skeleton (Phase 1 - overview only)
+export interface DaySkeleton {
+  videoTitle: string;
+  videoDescription: string;
+  task1Preview: string;
+  practicePreview: string;
+  estimatedMinutes: number;
 }
 
 export interface CurriculumDay {
   day: number;
   title: string;
+  objectives: string[];
   estimatedMinutes: number;
   adaptationNote?: string;
-  
-  prePrompt: {
+
+  // Two-phase architecture fields
+  status: DayStatus;
+  detailsLoaded: boolean;
+  skeleton?: DaySkeleton;
+  skipTest?: SkipTest;
+
+  // Full content (loaded in Phase 2)
+  prePrompt?: {
     text: string;
     primeQuestions: string[];
   };
-  
-  video: {
+
+  video?: {
     title: string;
     url?: string;
     startTime?: string;
@@ -139,8 +188,8 @@ export interface CurriculumDay {
     estimatedMinutes: number;
     verified?: boolean;
   };
-  
-  activeRecall: {
+
+  activeRecall?: {
     part1: {
       instruction: string;
       keyPointsToInclude: string[];
@@ -153,18 +202,18 @@ export interface CurriculumDay {
       exampleConnection: string;
     };
   };
-  
-  conceptCheck: {
+
+  conceptCheck?: {
     questions: ConceptQuestion[];
   };
-  
-  task1: Task;
-  practiceProject: PracticeProject;
-  
-  reflection: {
+
+  task1?: Task;
+  practiceProject?: PracticeProject;
+
+  reflection?: {
     questions: ReflectionQuestion[];
   };
-  
+
   bossMilestone?: BossMilestone;
 }
 
@@ -404,6 +453,34 @@ export interface ProgressResponse {
     content: string;
     mood: string;
   };
+}
+
+// Two-phase curriculum responses
+export interface StartDayResponse {
+  message: string;
+  dayContent: CurriculumDay;
+  tokensUsed: number;
+}
+
+export interface SkipTestResponse {
+  passed: boolean;
+  correctCount: number;
+  totalQuestions: number;
+  message: string;
+  nextDayUnlocked: boolean;
+}
+
+export interface PracticeSubmitResponse {
+  message: string;
+  nextDayUnlocked: boolean;
+  feedback?: string;
+}
+
+export interface DayDetailsResponse {
+  day: CurriculumDay;
+  status: DayStatus;
+  detailsLoaded: boolean;
+  content?: CurriculumDay;
 }
 
 // ============================================
