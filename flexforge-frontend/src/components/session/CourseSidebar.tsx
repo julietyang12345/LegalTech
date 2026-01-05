@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronRight,
@@ -7,7 +8,11 @@ import {
   PlayCircle,
   SkipForward,
   Circle,
-  Trophy
+  Trophy,
+  Eye,
+  Clock,
+  Target,
+  X
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
@@ -15,13 +20,158 @@ import { DayStatus, type CurriculumDay } from '@/types';
 
 interface CourseSidebarProps {
   onDayClick?: (dayNumber: number) => void;
-  onCollapseChange?: (collapsed: boolean) => void;
+}
+
+// Preview modal for locked days
+function DayPreviewModal({
+  day,
+  isOpen,
+  onClose,
+  clickY,
+  sidebarCollapsed
+}: {
+  day: CurriculumDay | null;
+  isOpen: boolean;
+  onClose: () => void;
+  clickY: number;
+  sidebarCollapsed: boolean;
+}) {
+  if (!isOpen || !day) return null;
+
+  // Calculate top position, ensuring modal stays within viewport
+  const topPosition = Math.min(Math.max(clickY - 50, 70), window.innerHeight - 500);
+  // Left position based on sidebar state
+  const leftPosition = sidebarCollapsed ? 70 : 340;
+
+  const topic = day.title?.includes(':')
+    ? day.title.split(':')[1]?.trim()
+    : day.title;
+
+  // Get description from various possible sources
+  const description = (day as any).description
+    || (day as any).subtitle
+    || (day as any).teaser
+    || day.skeleton?.videoDescription;
+
+  // Use createPortal to render modal at document body level but positioned near sidebar
+  return ReactDOM.createPortal(
+    <div
+      className="fixed inset-0 z-50 bg-black/30"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, x: -10 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -10 }}
+        className="absolute bg-white rounded-2xl w-[420px] shadow-xl overflow-hidden max-h-[calc(100vh-100px)] overflow-y-auto"
+        style={{ top: topPosition, left: leftPosition }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="bg-gradient-to-r from-brand-50 to-brand-100 p-4 border-b border-brand-200">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-medium text-brand-600 bg-brand-200/50 px-2 py-0.5 rounded-full">
+                Day {day.day} Preview
+              </span>
+              <h3 className="text-lg font-semibold text-gray-900 mt-2">
+                {topic || `Day ${day.day}`}
+              </h3>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Day description */}
+          {description && (
+            <p className="text-sm text-gray-600 mt-2">
+              {description}
+            </p>
+          )}
+
+          {/* Time estimate */}
+          {day.estimatedMinutes && (
+            <div className="flex items-center gap-1.5 mt-3 text-sm text-gray-500">
+              <Clock className="w-4 h-4 text-brand-500" />
+              <span>~{day.estimatedMinutes} minutes</span>
+            </div>
+          )}
+        </div>
+
+        {/* Content */}
+        <div className="p-4 space-y-4">
+          {/* Learning Objectives */}
+          {day.objectives && day.objectives.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                <Target className="w-4 h-4 text-brand-500" />
+                <span>What you'll learn</span>
+              </div>
+              <ul className="space-y-1.5">
+                {day.objectives.map((objective, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
+                    <span className="text-brand-400 mt-1">•</span>
+                    <span>{objective}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* What you'll build (from skeleton) */}
+          {day.skeleton && (day.skeleton.task1Preview || day.skeleton.practicePreview) && (
+            <div>
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                <Sparkles className="w-4 h-4 text-amber-500" />
+                <span>What you'll build</span>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600 border border-gray-100">
+                {day.skeleton.task1Preview || day.skeleton.practicePreview}
+              </div>
+            </div>
+          )}
+
+          {/* Video topic preview */}
+          {day.skeleton?.videoTitle && (
+            <div>
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                <PlayCircle className="w-4 h-4 text-red-500" />
+                <span>Today's lesson</span>
+              </div>
+              <p className="text-sm text-gray-600">{day.skeleton.videoTitle}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 pb-4 space-y-3">
+          {/* Locked notice */}
+          <p className="text-sm text-center text-gray-500">
+            Complete previous days to unlock, or take a skip test.
+          </p>
+
+          {/* Close button */}
+          <button
+            onClick={onClose}
+            className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors"
+          >
+            Got it
+          </button>
+        </div>
+      </motion.div>
+    </div>,
+    document.body
+  );
 }
 
 const STATUS_CONFIG: Record<DayStatus, { icon: React.ReactNode; dotColor: string; lineColor: string }> = {
   [DayStatus.LOCKED]: {
-    icon: <Lock className="w-3.5 h-3.5" />,
-    dotColor: 'bg-gray-200 text-gray-400 border-gray-300',
+    icon: <Eye className="w-3.5 h-3.5" />,
+    dotColor: 'bg-gray-100 text-gray-500 border-gray-300 hover:border-brand-300 hover:bg-brand-50',
     lineColor: 'bg-gray-200'
   },
   [DayStatus.UNLOCKABLE]: {
@@ -74,22 +224,32 @@ function DayItem({
   isActive,
   isLast,
   onClick,
+  onPreviewClick,
   hasBoss
 }: {
   day: CurriculumDay;
   isActive: boolean;
   isLast: boolean;
   onClick?: () => void;
+  onPreviewClick?: (e: React.MouseEvent) => void;
   hasBoss?: boolean;
 }) {
   const status = day.status || DayStatus.LOCKED;
-  const canClick = status !== DayStatus.LOCKED;
+  const isLocked = status === DayStatus.LOCKED;
   const config = STATUS_CONFIG[status];
 
   // Extract topic from title
   const topic = day.title?.includes(':')
     ? day.title.split(':')[1]?.trim()
     : day.title;
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (isLocked) {
+      onPreviewClick?.(e);
+    } else {
+      onClick?.();
+    }
+  };
 
   return (
     <div className="relative flex gap-4">
@@ -108,33 +268,40 @@ function DayItem({
 
       {/* Content card */}
       <motion.button
-        onClick={canClick ? onClick : undefined}
-        disabled={!canClick}
-        whileHover={canClick ? { x: 4 } : {}}
-        whileTap={canClick ? { scale: 0.98 } : {}}
+        onClick={(e) => handleClick(e)}
+        whileHover={{ x: 4 }}
+        whileTap={{ scale: 0.98 }}
         className={clsx(
           'flex-1 text-left p-3 rounded-xl transition-all mb-2',
-          'border',
-          status === DayStatus.LOCKED && 'opacity-50 cursor-not-allowed border-gray-100 bg-gray-50',
-          status === DayStatus.UNLOCKABLE && 'border-brand-200 bg-brand-50/50 hover:bg-brand-50 cursor-pointer',
+          'border cursor-pointer',
+          status === DayStatus.LOCKED && 'border-gray-200 bg-gray-50/80 hover:bg-gray-100 hover:border-brand-200',
+          status === DayStatus.UNLOCKABLE && 'border-brand-200 bg-brand-50/50 hover:bg-brand-50',
           status === DayStatus.IN_PROGRESS && 'border-brand-300 bg-brand-50 shadow-sm',
-          status === DayStatus.COMPLETED && 'border-green-200 bg-green-50/50 hover:bg-green-50 cursor-pointer',
-          status === DayStatus.SKIPPED && 'border-amber-200 bg-amber-50/50 hover:bg-amber-50 cursor-pointer',
+          status === DayStatus.COMPLETED && 'border-green-200 bg-green-50/50 hover:bg-green-50',
+          status === DayStatus.SKIPPED && 'border-amber-200 bg-amber-50/50 hover:bg-amber-50',
           isActive && 'shadow-md'
         )}
       >
         {/* Day number badge */}
         <div className="flex items-center justify-between mb-1">
-          <span className={clsx(
-            'text-xs font-medium px-2 py-0.5 rounded-full',
-            status === DayStatus.LOCKED && 'bg-gray-100 text-gray-400',
-            status === DayStatus.UNLOCKABLE && 'bg-brand-100 text-brand-600',
-            status === DayStatus.IN_PROGRESS && 'bg-brand-200 text-brand-700',
-            status === DayStatus.COMPLETED && 'bg-green-100 text-green-700',
-            status === DayStatus.SKIPPED && 'bg-amber-100 text-amber-700',
-          )}>
-            Day {day.day}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span className={clsx(
+              'text-xs font-medium px-2 py-0.5 rounded-full',
+              status === DayStatus.LOCKED && 'bg-gray-100 text-gray-500',
+              status === DayStatus.UNLOCKABLE && 'bg-brand-100 text-brand-600',
+              status === DayStatus.IN_PROGRESS && 'bg-brand-200 text-brand-700',
+              status === DayStatus.COMPLETED && 'bg-green-100 text-green-700',
+              status === DayStatus.SKIPPED && 'bg-amber-100 text-amber-700',
+            )}>
+              Day {day.day}
+            </span>
+            {isLocked && (
+              <span className="flex items-center gap-0.5 text-xs text-gray-400">
+                <Eye className="w-3 h-3" />
+                <span>Preview</span>
+              </span>
+            )}
+          </div>
           {day.estimatedMinutes && (
             <span className="text-xs text-gray-400">
               {day.estimatedMinutes}m
@@ -145,7 +312,7 @@ function DayItem({
         {/* Title */}
         <h4 className={clsx(
           'font-medium text-sm leading-snug',
-          status === DayStatus.LOCKED ? 'text-gray-400' : 'text-gray-900'
+          status === DayStatus.LOCKED ? 'text-gray-600' : 'text-gray-900'
         )}>
           {topic || `Day ${day.day}`}
         </h4>
@@ -154,7 +321,7 @@ function DayItem({
         {((day as any).subtitle || (day as any).teaser) && (
           <p className={clsx(
             'text-xs mt-1 line-clamp-2',
-            status === DayStatus.LOCKED ? 'text-gray-300' : 'text-gray-500'
+            status === DayStatus.LOCKED ? 'text-gray-400' : 'text-gray-500'
           )}>
             {(day as any).subtitle || (day as any).teaser}
           </p>
@@ -169,7 +336,7 @@ function DayItem({
                 className={clsx(
                   'text-xs px-1.5 py-0.5 rounded-md',
                   status === DayStatus.LOCKED
-                    ? 'bg-gray-100 text-gray-400'
+                    ? 'bg-gray-100 text-gray-500'
                     : 'bg-white/80 text-gray-600 border border-gray-200'
                 )}
               >
@@ -183,14 +350,17 @@ function DayItem({
   );
 }
 
-export function CourseSidebar({ onDayClick, onCollapseChange }: CourseSidebarProps) {
+export function CourseSidebar({ onDayClick }: CourseSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [previewDay, setPreviewDay] = useState<CurriculumDay | null>(null);
+  const [previewClickY, setPreviewClickY] = useState(0);
 
-  const handleCollapse = (collapsed: boolean) => {
-    setIsCollapsed(collapsed);
-    onCollapseChange?.(collapsed);
-  };
   const { activeSession, currentDay } = useSessionStore();
+
+  const handlePreviewClick = (day: CurriculumDay, e: React.MouseEvent) => {
+    setPreviewDay(day);
+    setPreviewClickY(e.clientY);
+  };
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to active day
@@ -228,7 +398,7 @@ export function CourseSidebar({ onDayClick, onCollapseChange }: CourseSidebarPro
     >
       {/* Collapse toggle */}
       <button
-        onClick={() => handleCollapse(!isCollapsed)}
+        onClick={() => setIsCollapsed(!isCollapsed)}
         className={clsx(
           'absolute -right-3 top-6 z-30',
           'w-6 h-6 rounded-full bg-white border border-gray-200 shadow-md',
@@ -269,16 +439,21 @@ export function CourseSidebar({ onDayClick, onCollapseChange }: CourseSidebarPro
                   )}
 
                   <motion.button
-                    onClick={() => status !== DayStatus.LOCKED && onDayClick?.(day.day)}
-                    disabled={status === DayStatus.LOCKED}
-                    whileHover={status !== DayStatus.LOCKED ? { scale: 1.2 } : {}}
+                    onClick={(e) => {
+                      if (status === DayStatus.LOCKED) {
+                        handlePreviewClick(day, e);
+                      } else {
+                        onDayClick?.(day.day);
+                      }
+                    }}
+                    whileHover={{ scale: 1.2 }}
                     className={clsx(
                       'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold',
-                      'border-2 transition-all relative',
+                      'border-2 transition-all relative cursor-pointer',
                       config.dotColor,
                       isActive && 'ring-4 ring-brand-100'
                     )}
-                    title={day.title}
+                    title={status === DayStatus.LOCKED ? `Preview: ${day.title}` : day.title}
                   >
                     {day.day}
                     {hasBoss && (
@@ -340,6 +515,7 @@ export function CourseSidebar({ onDayClick, onCollapseChange }: CourseSidebarPro
                     isActive={currentDay?.day === day.day}
                     isLast={index === days.length - 1}
                     onClick={() => onDayClick?.(day.day)}
+                    onPreviewClick={(e) => handlePreviewClick(day, e)}
                     hasBoss={bossProjectDays.has(day.day)}
                   />
                 </div>
@@ -358,6 +534,15 @@ export function CourseSidebar({ onDayClick, onCollapseChange }: CourseSidebarPro
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Preview Modal for locked days */}
+      <DayPreviewModal
+        day={previewDay}
+        isOpen={previewDay !== null}
+        onClose={() => setPreviewDay(null)}
+        clickY={previewClickY}
+        sidebarCollapsed={isCollapsed}
+      />
     </motion.aside>
   );
 }

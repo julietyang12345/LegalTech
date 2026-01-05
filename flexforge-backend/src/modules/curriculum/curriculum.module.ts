@@ -4,6 +4,7 @@ import { CurriculumController } from './curriculum.controller';
 import { GeminiVideoIndexerService } from './services/gemini-video-indexer.service';
 import { FileGeneratorService } from './services/file-generator.service';
 import { SkillDetectorService } from './services/skill-detector.service';
+import { VideoMatchingService } from './services/video-matching.service';
 import { AiModule } from '../ai/ai.module';
 
 @Module({
@@ -14,7 +15,8 @@ import { AiModule } from '../ai/ai.module';
     GeminiVideoIndexerService,
     FileGeneratorService,
     SkillDetectorService,
+    VideoMatchingService,
   ],
-  exports: [CurriculumService],
+  exports: [CurriculumService, VideoMatchingService],
 })
 export class CurriculumModule {}

@@ -186,7 +186,6 @@ function PresenceBar() {
 }
 
 export function FocusModeLayout({ children, showSidebar = true }: FocusModeLayoutProps) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { startDay, activeSession, loadDayContent, canStartDay } = useSessionStore();
 
   const handleDayClick = async (dayNumber: number) => {
@@ -208,21 +207,11 @@ export function FocusModeLayout({ children, showSidebar = true }: FocusModeLayou
       {showSidebar && (
         <CourseSidebar
           onDayClick={handleDayClick}
-          onCollapseChange={setSidebarCollapsed}
         />
       )}
 
-      {/* Content area - offset for sidebar */}
-      <main
-        className={clsx(
-          'transition-all duration-200 ease-in-out',
-          showSidebar ? 'ml-[320px]' : 'ml-0',
-          'max-w-focus mx-auto px-4 py-8'
-        )}
-        style={{
-          marginLeft: showSidebar ? (sidebarCollapsed ? 56 : 320) : 0
-        }}
-      >
+      {/* Content area - always centered */}
+      <main className="max-w-focus mx-auto px-4 py-8">
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}

@@ -61,6 +61,7 @@ export function PrePromptStep({ day }: PrePromptStepProps) {
       <div className="text-center text-sm text-gray-500">
         💡 Don't worry about knowing the answers yet - just let your brain start connecting!
       </div>
+
     </div>
   );
 }
