@@ -77,6 +77,14 @@ export interface ScoredVideo {
   validationResult: VideoValidationResult;
 }
 
+export interface VideoAlternative {
+  video: VideoCandidate;
+  watchPlan: WatchPlan;
+  scores: ScoredVideo['scores'];
+  differentiator: string;     // e.g., "⚡ Shorter", "🎨 Different style"
+  matchPercent: number;       // 0-100 for UI display
+}
+
 export interface VideoMatchResult {
   success: boolean;
   video?: VideoCandidate;
@@ -86,6 +94,8 @@ export interface VideoMatchResult {
   layer: 1 | 2 | 3;           // Which layer found the match
   tokenCost: number;          // Tokens used (0 for Layer 1-2)
   whyThisVideo?: string[];    // Reasons for selection
+  matchPercent?: number;      // 0-100 for UI confidence display
+  alternatives?: VideoAlternative[];  // Other good options (personalization UX)
   error?: string;
 }
 
@@ -357,6 +367,18 @@ export class VideoMatchingService {
       // Build "why this video" reasons
       const whyThisVideo = this.buildWhyThisVideo(selectedCandidate);
 
+      // Calculate match percent for confidence display
+      const maxPossibleScore = 100; // Theoretical max
+      const matchPercent = Math.min(100, Math.round(selectedCandidate.totalScore));
+
+      // Build alternatives (personalization UX - not "regenerate")
+      const alternatives = await this.buildAlternatives(
+        topCandidates,
+        selectedCandidate,
+        context,
+        htmlCache,
+      );
+
       return {
         success: true,
         video: selectedCandidate.video,
@@ -366,6 +388,8 @@ export class VideoMatchingService {
         layer: deepVerify ? 3 : 2,
         tokenCost,
         whyThisVideo,
+        matchPercent,
+        alternatives,
       };
     } catch (error) {
       this.logger.error('Video matching failed:', error.message);
@@ -1496,6 +1520,62 @@ Return JSON only:
       .sort((a, b) => a.priority - b.priority)
       .slice(0, 4)
       .map(r => r.reason);
+  }
+
+  /**
+   * Build 1 alternative for personalization UX
+   * Framed as "Also Great" not "regenerate if we got it wrong"
+   */
+  private async buildAlternatives(
+    topCandidates: ScoredVideo[],
+    selected: ScoredVideo,
+    context: VideoMatchContext,
+    htmlCache?: Map<string, string>,
+  ): Promise<VideoAlternative[]> {
+    // Get best candidate that isn't the selected one
+    const other = topCandidates.find(c => c.video.videoId !== selected.video.videoId);
+    if (!other) return [];
+
+    try {
+      // Generate watch plan for the alternative
+      const watchPlan = await this.generateWatchPlan(
+        other.video,
+        context,
+        false, // Don't use AI for alternative
+        htmlCache,
+      );
+
+      // Determine what makes this alternative different
+      const differentiator = this.getDifferentiator(other, selected);
+
+      return [{
+        video: other.video,
+        watchPlan,
+        scores: other.scores,
+        differentiator,
+        matchPercent: Math.min(100, Math.round(other.totalScore)),
+      }];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Determine what makes an alternative different from the main recommendation
+   */
+  private getDifferentiator(alt: ScoredVideo, main: ScoredVideo): string {
+    const altDuration = alt.video.duration;
+    const mainDuration = main.video.duration;
+
+    if (altDuration < mainDuration * 0.7) return '⚡ Shorter';
+    if (altDuration > mainDuration * 1.3) return '📖 More detailed';
+    if (alt.video.channelId !== main.video.channelId) {
+      if (alt.scores.channelTrust >= 85) return '⭐ Top channel';
+      return '🎨 Different style';
+    }
+    if (alt.video.hasChapters && !main.video.hasChapters) return '📑 Has chapters';
+    if (alt.video.hasRepository && !main.video.hasRepository) return '💻 Has code';
+    return '✨ Alternative';
   }
 
   /**

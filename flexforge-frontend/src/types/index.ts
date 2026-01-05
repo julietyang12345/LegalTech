@@ -159,6 +159,40 @@ export interface DaySkeleton {
   estimatedMinutes: number;
 }
 
+// Video matching types (from backend VideoMatchResult)
+export interface VideoMatch {
+  title: string;
+  url?: string;
+  videoId?: string;
+  channelName?: string;
+  thumbnailUrl?: string;
+  duration?: number;          // seconds
+  startTime?: string;
+  endTime?: string;
+  watchInstructions?: string;
+  keyTopics?: string[];
+  estimatedMinutes: number;
+  verified?: boolean;
+  matchPercent?: number;      // 0-100 confidence
+  whyThisVideo?: string[];    // Reasons for selection
+  alternative?: VideoAlternative;  // 1 alternative for personalization
+}
+
+export interface VideoAlternative {
+  title: string;
+  url?: string;
+  videoId: string;
+  channelName?: string;
+  thumbnailUrl?: string;
+  duration?: number;
+  startTime?: string;
+  endTime?: string;
+  watchInstructions?: string;
+  estimatedMinutes?: number;
+  differentiator: string;     // e.g., "⚡ Shorter", "🎨 Different style"
+  matchPercent: number;
+}
+
 export interface CurriculumDay {
   day: number;
   title: string;
@@ -178,16 +212,7 @@ export interface CurriculumDay {
     primeQuestions: string[];
   };
 
-  video?: {
-    title: string;
-    url?: string;
-    startTime?: string;
-    endTime?: string;
-    watchInstructions?: string;
-    keyTopics?: string[];
-    estimatedMinutes: number;
-    verified?: boolean;
-  };
+  video?: VideoMatch;
 
   activeRecall?: {
     part1: {
