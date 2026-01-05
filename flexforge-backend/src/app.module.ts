@@ -9,6 +9,12 @@ import { User } from './database/entities/user.entity';
 import { Session } from './database/entities/session.entity';
 import { Progress } from './database/entities/progress.entity';
 import { Project } from './database/entities/project.entity';
+import {
+  CurriculumCacheKey,
+  CurriculumCacheVariant,
+  CurriculumServe,
+  SkillAlias,
+} from './database/entities/curriculum-cache.entity';
 
 // Modules
 import { AuthModule } from './modules/auth/auth.module';
@@ -38,7 +44,16 @@ import { CompanionModule } from './modules/companion/companion.module';
         username: configService.get('database.username'),
         password: configService.get('database.password'),
         database: configService.get('database.database'),
-        entities: [User, Session, Progress, Project],
+        entities: [
+          User,
+          Session,
+          Progress,
+          Project,
+          CurriculumCacheKey,
+          CurriculumCacheVariant,
+          CurriculumServe,
+          SkillAlias,
+        ],
         synchronize: configService.get('nodeEnv') === 'development',
         logging: configService.get('nodeEnv') === 'development',
       }),
