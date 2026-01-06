@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Clock, CheckCircle2, MessageCircle, Lock, Star, ChevronDown, Youtube, ExternalLink } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Play, Clock, CheckCircle2, MessageCircle, Lock, Star, Youtube, ExternalLink, RefreshCw, Loader2 } from 'lucide-react';
 import { Card, Button } from '@/components/common';
 import { useAuthStore } from '@/stores/authStore';
+import { useSessionStore } from '@/stores/sessionStore';
+import { sessionService } from '@/services/sessionService';
 import { QuotaTier } from '@/types';
 import type { CurriculumDay, Session, VideoMatch, VideoAlternative } from '@/types';
 
@@ -48,17 +50,19 @@ function VideoCard({
   fallbackTitle,
   isAlternative = false,
   onSelect,
+  isActive = false,
 }: {
   video: VideoMatch | VideoAlternative | null;
   fallbackTitle: string;
   isAlternative?: boolean;
   onSelect?: () => void;
+  isActive?: boolean;
 }) {
   const embedUrl = buildEmbedUrl(video);
   const youtubeUrl = video?.videoId ? `https://www.youtube.com/watch?v=${video.videoId}` : null;
 
   return (
-    <div className={isAlternative ? 'border border-gray-200 rounded-xl overflow-hidden' : ''}>
+    <div className={`rounded-xl overflow-hidden ${isAlternative ? 'border-2' : ''} ${isActive ? 'border-brand-500 ring-2 ring-brand-200' : 'border-gray-200'}`}>
       {/* Video embed */}
       <div className={`aspect-video bg-gray-900 relative ${isAlternative ? 'max-h-48' : ''}`}>
         {embedUrl ? (
@@ -123,13 +127,18 @@ function VideoCard({
               <p className="text-xs text-gray-500 mt-1">{video.channelName}</p>
             )}
           </div>
-          {isAlternative && onSelect && (
+          {isAlternative && onSelect && !isActive && (
             <button
               onClick={onSelect}
               className="shrink-0 px-3 py-1.5 text-sm bg-brand-50 text-brand-600 rounded-lg hover:bg-brand-100 transition-colors"
             >
               Use This
             </button>
+          )}
+          {isActive && (
+            <span className="shrink-0 px-3 py-1.5 text-sm bg-brand-100 text-brand-700 rounded-lg font-medium">
+              Selected
+            </span>
           )}
         </div>
 
@@ -154,24 +163,102 @@ function VideoCard({
 
 export function VideoStep({ day, session }: VideoStepProps) {
   const [hasWatched, setHasWatched] = useState(false);
-  const [showAlternative, setShowAlternative] = useState(false);
-  const [activeVideo, setActiveVideo] = useState<'main' | 'alt'>('main');
+  const [activeVideo, setActiveVideo] = useState<'main' | 'alt' | 'new'>('main');
+  const [isSearchingNew, setIsSearchingNew] = useState(false);
+  const [newVideo, setNewVideo] = useState<VideoMatch | null>(null);
+  const [usedVideoIds, setUsedVideoIds] = useState<string[]>([]);
   const { hasTierAccess } = useAuthStore();
+  const { activeSession } = useSessionStore();
   const canAskAI = hasTierAccess(QuotaTier.PRO);
 
   const video = day.video;
   const alternative = video?.alternative;
-  const currentVideo = activeVideo === 'main' ? video : alternative;
+
+  // Determine current video based on selection
+  const getCurrentVideo = (): VideoMatch | VideoAlternative | null => {
+    if (activeVideo === 'new' && newVideo) return newVideo;
+    if (activeVideo === 'alt' && alternative) return alternative;
+    return video || null;
+  };
+
+  const currentVideo = getCurrentVideo();
+
+  // Track video IDs that have been used/seen
+  const trackVideoId = (videoId: string) => {
+    if (!usedVideoIds.includes(videoId)) {
+      setUsedVideoIds(prev => [...prev, videoId]);
+    }
+  };
+
+  // Handle "Find New Video" button click
+  const handleFindNewVideo = async () => {
+    // First click: switch to alternative if available and not already used
+    if (activeVideo === 'main' && alternative && !usedVideoIds.includes(alternative.videoId)) {
+      trackVideoId(video?.videoId || '');
+      trackVideoId(alternative.videoId);
+      setActiveVideo('alt');
+      return;
+    }
+
+    // Already on alternative or no alternative: search for new video (Layer 3)
+    setIsSearchingNew(true);
+    try {
+      // Collect all video IDs to exclude
+      const excludeIds = [...usedVideoIds];
+      if (video?.videoId && !excludeIds.includes(video.videoId)) {
+        excludeIds.push(video.videoId);
+      }
+      if (alternative?.videoId && !excludeIds.includes(alternative.videoId)) {
+        excludeIds.push(alternative.videoId);
+      }
+      if (newVideo?.videoId && !excludeIds.includes(newVideo.videoId)) {
+        excludeIds.push(newVideo.videoId);
+      }
+
+      const result = await sessionService.refreshVideo({
+        sessionId: session.id,
+        dayNumber: day.day,
+        concept: video?.topicFocus || day.title,
+        skillLevel: session.skillLevel,
+        excludeVideoIds: excludeIds,
+      });
+
+      // Convert response to VideoMatch format
+      const fetchedVideo: VideoMatch = {
+        title: result.video.title,
+        videoId: result.video.videoId,
+        channelName: result.video.channelName,
+        url: result.video.url,
+        startTime: result.video.startTime,
+        endTime: result.video.endTime,
+        watchInstructions: result.video.watchInstructions,
+        estimatedMinutes: result.video.estimatedMinutes,
+        matchPercent: result.video.matchPercent,
+        keyTopics: result.video.keyTopics,
+        whyThisVideo: result.video.whyThisVideo,
+        alternative: result.video.alternative,
+      };
+
+      setNewVideo(fetchedVideo);
+      setActiveVideo('new');
+      trackVideoId(fetchedVideo.videoId || '');
+    } catch (error) {
+      console.error('Failed to find new video:', error);
+    } finally {
+      setIsSearchingNew(false);
+    }
+  };
+
+  // Switch to main video
+  const handleUseMain = () => {
+    setActiveVideo('main');
+    if (video?.videoId) trackVideoId(video.videoId);
+  };
 
   // Switch to alternative
   const handleUseAlternative = () => {
     setActiveVideo('alt');
-    setShowAlternative(false);
-  };
-
-  // Switch back to main
-  const handleUseMain = () => {
-    setActiveVideo('main');
+    if (alternative?.videoId) trackVideoId(alternative.videoId);
   };
 
   return (
@@ -193,26 +280,28 @@ export function VideoStep({ day, session }: VideoStepProps) {
       {/* Main Video Card */}
       <Card className="overflow-hidden">
         {/* Recommendation badge */}
-        {video?.matchPercent && (
+        {(video?.matchPercent || currentVideo?.matchPercent) && (
           <div className="px-6 py-3 bg-gradient-to-r from-brand-50 to-brand-100 border-b border-brand-200 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Star className="w-4 h-4 text-brand-500 fill-current" />
               <span className="text-sm font-medium text-brand-700">
-                {activeVideo === 'main' ? 'Recommended' : alternative?.differentiator || 'Alternative'}
+                {activeVideo === 'main' ? 'Recommended' :
+                 activeVideo === 'alt' ? (alternative?.differentiator || 'Alternative') :
+                 'AI Selected'}
               </span>
             </div>
             <span className="text-xs text-brand-600 bg-brand-200 px-2 py-0.5 rounded-full">
-              {activeVideo === 'main' ? video.matchPercent : alternative?.matchPercent}% match
+              {currentVideo?.matchPercent || video?.matchPercent}% match
             </span>
           </div>
         )}
 
         <VideoCard
-          video={currentVideo || null}
+          video={currentVideo}
           fallbackTitle={day.title}
         />
 
-        {/* Why this video - only for main */}
+        {/* Why this video */}
         {activeVideo === 'main' && video?.whyThisVideo && video.whyThisVideo.length > 0 && (
           <div className="px-6 pb-6">
             <div className="flex flex-wrap gap-2">
@@ -225,8 +314,8 @@ export function VideoStep({ day, session }: VideoStepProps) {
           </div>
         )}
 
-        {/* Switch back link when viewing alternative */}
-        {activeVideo === 'alt' && (
+        {/* Switch back link when not viewing main */}
+        {activeVideo !== 'main' && (
           <div className="px-6 pb-4">
             <button
               onClick={handleUseMain}
@@ -253,47 +342,50 @@ export function VideoStep({ day, session }: VideoStepProps) {
         )}
       </Card>
 
-      {/* Alternative Option - only when main is active */}
-      {activeVideo === 'main' && alternative && (
-        <div className="space-y-3">
-          {!showAlternative ? (
-            <button
-              onClick={() => setShowAlternative(true)}
-              className="w-full flex items-center justify-center gap-2 py-3 text-sm text-gray-500 hover:text-gray-700 transition-colors"
-            >
-              <span>Also great: {alternative.differentiator}</span>
-              <ChevronDown className="w-4 h-4" />
-            </button>
-          ) : (
-            <AnimatePresence>
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="space-y-2"
-              >
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-medium text-gray-600">
-                    {alternative.differentiator}
-                  </h4>
-                  <button
-                    onClick={() => setShowAlternative(false)}
-                    className="text-xs text-gray-400 hover:text-gray-600"
-                  >
-                    Hide
-                  </button>
-                </div>
-                <VideoCard
-                  video={alternative}
-                  fallbackTitle={day.title}
-                  isAlternative
-                  onSelect={handleUseAlternative}
-                />
-              </motion.div>
-            </AnimatePresence>
-          )}
-        </div>
+      {/* Alternative Video - Always Visible When Available */}
+      {alternative && activeVideo === 'main' && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="space-y-3"
+        >
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+              <span className="text-lg">{alternative.differentiator.split(' ')[0]}</span>
+              Also great: {alternative.differentiator.split(' ').slice(1).join(' ')}
+            </h4>
+            <span className="text-xs text-gray-500">{alternative.matchPercent}% match</span>
+          </div>
+          <VideoCard
+            video={alternative}
+            fallbackTitle={day.title}
+            isAlternative
+            onSelect={handleUseAlternative}
+          />
+        </motion.div>
       )}
+
+      {/* Find New Video Button */}
+      <div className="flex justify-center">
+        <button
+          onClick={handleFindNewVideo}
+          disabled={isSearchingNew}
+          className="flex items-center gap-2 px-4 py-2 text-sm text-gray-500 hover:text-gray-700
+                     hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isSearchingNew ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Searching for new video...
+            </>
+          ) : (
+            <>
+              <RefreshCw className="w-4 h-4" />
+              {activeVideo === 'main' && alternative ? 'Try a different video' : 'Find new video (AI search)'}
+            </>
+          )}
+        </button>
+      </div>
 
       {/* Mark as watched */}
       <motion.div

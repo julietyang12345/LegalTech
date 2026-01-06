@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Play, Calendar, Trophy, ChevronRight, Sparkles, Loader2 } from 'lucide-react';
+import { Play, Calendar, Trophy, ChevronRight, Sparkles, Loader2, RefreshCw } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
 import { Button, Card, StreakBadge, ProgressBar } from '@/components/common';
 import { DayStatus } from '@/types';
+import { sessionService } from '@/services/sessionService';
 
 // Yesterday's Fog - memory bridge before starting
 function YesterdaysFog({ yesterdayTopic, question }: { yesterdayTopic: string; question: string }) {
@@ -146,15 +147,42 @@ export function TodayPage() {
     activeSession,
     fetchActiveSession,
     loadDayContent,
+    deleteSession,
     isLoading,
     isDayLoading,
     canStartDay,
   } = useSessionStore();
   const { addSystemMessage } = useCompanionStore();
+  const [isRegenerating, setIsRegenerating] = useState(false);
 
   useEffect(() => {
     fetchActiveSession();
   }, [fetchActiveSession]);
+
+  // Handle regeneration - only available on Day 1
+  const handleRegenerateCurriculum = async () => {
+    if (!activeSession || activeSession.currentDay !== 1) return;
+
+    setIsRegenerating(true);
+    try {
+      // 1. Mark the current variant as regenerated (negative signal for cache)
+      if (activeSession.variantId) {
+        await sessionService.markRegenerated(
+          activeSession.variantId,
+          activeSession.id
+        );
+      }
+
+      // 2. Delete the current session
+      await deleteSession(activeSession.id);
+
+      // 3. Navigate back to start to create a new one
+      navigate('/start');
+    } catch (err) {
+      console.error('Failed to regenerate:', err);
+      setIsRegenerating(false);
+    }
+  };
 
   useEffect(() => {
     // Greet user when they arrive
@@ -326,6 +354,25 @@ export function TodayPage() {
               <p className="mt-4 text-xs text-gray-400">
                 Just one button. That's it.
               </p>
+            )}
+
+            {/* Generate New option - only on Day 1 */}
+            {activeSession.currentDay === 1 && (
+              <div className="mt-6 pt-4 border-t border-gray-100">
+                <button
+                  onClick={handleRegenerateCurriculum}
+                  disabled={isRegenerating || isDayLoading}
+                  className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1.5 mx-auto
+                           disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isRegenerating ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4" />
+                  )}
+                  {isRegenerating ? 'Generating new curriculum...' : 'Not what you expected? Generate new'}
+                </button>
+              </div>
             )}
           </div>
         </Card>

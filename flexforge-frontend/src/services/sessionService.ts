@@ -205,4 +205,44 @@ export const sessionService = {
     const { data } = await api.get('/curriculum/cache-stats');
     return data;
   },
+
+  /**
+   * Find a new video for a day using Layer 3 deep verification
+   * Called when user exhausts the alternative and clicks "Find New Video" again
+   */
+  async refreshVideo(params: {
+    sessionId: string;
+    dayNumber: number;
+    concept: string;
+    skillLevel: string;
+    excludeVideoIds?: string[];
+  }): Promise<{
+    message: string;
+    video: {
+      videoId: string;
+      title: string;
+      channelName?: string;
+      url: string;
+      startTime?: string;
+      endTime?: string;
+      watchInstructions?: string;
+      estimatedMinutes: number;
+      matchPercent?: number;
+      keyTopics?: string[];
+      whyThisVideo?: string[];
+      alternative?: {
+        videoId: string;
+        title: string;
+        channelName?: string;
+        startTime?: string;
+        endTime?: string;
+        estimatedMinutes?: number;
+        differentiator: string;
+        matchPercent: number;
+      };
+    };
+  }> {
+    const { data } = await api.post('/curriculum/refresh-video', params);
+    return data;
+  },
 };

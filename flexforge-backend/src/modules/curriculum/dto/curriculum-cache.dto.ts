@@ -1,4 +1,4 @@
-import { IsString, IsUUID, IsOptional, IsInt, IsNumber, IsEnum, Min, Max } from 'class-validator';
+import { IsString, IsUUID, IsOptional, IsInt, IsNumber, IsEnum, IsArray, Min, Max } from 'class-validator';
 import { SkillLevel } from '../../../database/entities/session.entity';
 
 /**
@@ -74,6 +74,29 @@ export class RecordBounceDto {
 
   @IsUUID()
   sessionId: string;
+}
+
+/**
+ * DTO for refreshing video for a specific day
+ * Used when user clicks "Find New Video" after exhausting alternatives
+ */
+export class RefreshVideoDto {
+  @IsUUID()
+  sessionId: string;
+
+  @IsInt()
+  @Min(1)
+  dayNumber: number;
+
+  @IsString()
+  concept: string; // The topic/concept to search for
+
+  @IsEnum(SkillLevel)
+  skillLevel: SkillLevel;
+
+  @IsOptional()
+  @IsString({ each: true })
+  excludeVideoIds?: string[]; // Video IDs to exclude from search
 }
 
 /**

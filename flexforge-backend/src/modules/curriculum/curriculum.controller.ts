@@ -14,8 +14,10 @@ import {
   RegenerateCurriculumDto,
   RecordCompletionDto,
   RecordBounceDto,
+  RefreshVideoDto,
   CurriculumCacheResponse,
 } from './dto/curriculum-cache.dto';
+import { VideoMatchingService } from './services/video-matching.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { User } from '../../database/entities/user.entity';
@@ -26,6 +28,7 @@ export class CurriculumController {
   constructor(
     private curriculumService: CurriculumService,
     private cacheService: CurriculumCacheService,
+    private videoMatcher: VideoMatchingService,
   ) {}
 
   /**
@@ -255,5 +258,99 @@ export class CurriculumController {
   async getCacheStats() {
     const stats = await this.cacheService.getCacheStats();
     return { stats };
+  }
+
+  /**
+   * POST /api/v1/curriculum/refresh-video
+   * Find a new video for a day using Layer 3 deep verification
+   * Called when user exhausts the alternative and clicks "Find New Video" again
+   */
+  @Post('refresh-video')
+  async refreshVideo(@Body() dto: RefreshVideoDto) {
+    try {
+      const levelMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
+        BEGINNER: 'beginner',
+        INTERMEDIATE: 'intermediate',
+        ADVANCED: 'advanced',
+      };
+
+      const videoResult = await this.videoMatcher.findBestVideo(
+        {
+          concept: dto.concept,
+          userSlot: 6, // Default 6 minutes
+          userLevel: levelMap[dto.skillLevel] || 'beginner',
+        },
+        {
+          deepVerify: true, // Layer 3 AI verification
+          excludeVideoIds: dto.excludeVideoIds || [],
+        },
+      );
+
+      if (!videoResult.success || !videoResult.video) {
+        throw new BadRequestException(
+          videoResult.error || 'No suitable video found',
+        );
+      }
+
+      const video = videoResult.video;
+      const watchPlan = videoResult.watchPlan;
+
+      // Build alternative if available
+      const alt = videoResult.alternatives?.[0];
+      const alternative = alt
+        ? {
+            videoId: alt.video.videoId,
+            title: alt.video.title,
+            channelName: alt.video.channelName,
+            startTime: this.secondsToTime(alt.watchPlan.primarySegment.startSeconds),
+            endTime: this.secondsToTime(alt.watchPlan.primarySegment.endSeconds),
+            estimatedMinutes: Math.round(
+              (alt.watchPlan.primarySegment.endSeconds -
+                alt.watchPlan.primarySegment.startSeconds) /
+                60,
+            ),
+            differentiator: alt.differentiator,
+            matchPercent: alt.matchPercent,
+          }
+        : undefined;
+
+      return {
+        message: 'New video found',
+        video: {
+          videoId: video.videoId,
+          title: video.title,
+          channelName: video.channelName,
+          url: `https://www.youtube.com/watch?v=${video.videoId}`,
+          startTime: watchPlan
+            ? this.secondsToTime(watchPlan.primarySegment.startSeconds)
+            : undefined,
+          endTime: watchPlan
+            ? this.secondsToTime(watchPlan.primarySegment.endSeconds)
+            : undefined,
+          watchInstructions: watchPlan?.watchInstructions,
+          estimatedMinutes: watchPlan
+            ? Math.round(
+                (watchPlan.primarySegment.endSeconds -
+                  watchPlan.primarySegment.startSeconds) /
+                  60,
+              )
+            : 6,
+          matchPercent: videoResult.matchPercent,
+          keyTopics: video.chapters?.slice(0, 5).map((c) => c.title),
+          whyThisVideo: videoResult.whyThisVideo,
+          alternative,
+        },
+      };
+    } catch (error) {
+      throw new BadRequestException(
+        error.message || 'Failed to find new video',
+      );
+    }
+  }
+
+  private secondsToTime(seconds: number): string {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   }
 }

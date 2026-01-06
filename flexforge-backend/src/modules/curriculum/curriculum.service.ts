@@ -202,6 +202,32 @@ export class CurriculumService {
           const video = videoResult.video;
           const watchPlan = videoResult.watchPlan;
 
+          // Debug: log alternatives from video matching
+          this.logger.log(`🔍 Video alternatives count: ${videoResult.alternatives?.length ?? 0}`);
+          if (videoResult.alternatives?.[0]) {
+            this.logger.log(`🔍 Alternative video: ${videoResult.alternatives[0].video.title}`);
+          }
+
+          // Build alternative video from buildAlternatives() result
+          const alt = videoResult.alternatives?.[0];
+          const alternative = alt ? {
+            videoId: alt.video.videoId,
+            title: alt.video.title,
+            channelName: alt.video.channelName,
+            duration: alt.video.duration,
+            startTime: alt.watchPlan?.primarySegment
+              ? this.secondsToTime(alt.watchPlan.primarySegment.startSeconds)
+              : undefined,
+            endTime: alt.watchPlan?.primarySegment
+              ? this.secondsToTime(alt.watchPlan.primarySegment.endSeconds)
+              : undefined,
+            estimatedMinutes: alt.watchPlan?.primarySegment
+              ? Math.ceil((alt.watchPlan.primarySegment.endSeconds - alt.watchPlan.primarySegment.startSeconds) / 60)
+              : 6,
+            differentiator: alt.differentiator,
+            matchPercent: alt.matchPercent,
+          } : undefined;
+
           curriculum.days[0].video = {
             ...day1.video,
             url: `https://www.youtube.com/watch?v=${video.videoId}`,
@@ -219,8 +245,9 @@ export class CurriculumService {
             verified: true,
             matchPercent: videoResult.matchPercent,
             whyThisVideo: videoResult.whyThisVideo,
+            alternative,
           };
-          this.logger.log(`✅ Day 1 video found: ${video.title} (${videoResult.matchPercent}% match)`);
+          this.logger.log(`✅ Day 1 video found: ${video.title} (${videoResult.matchPercent}% match)${alternative ? ' + alternative' : ''}`);
         } else {
           this.logger.warn(`⚠️ Day 1 video not found: ${videoResult.error}`);
         }

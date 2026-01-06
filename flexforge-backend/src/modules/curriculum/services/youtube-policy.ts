@@ -821,8 +821,10 @@ export function validateVideo(video: {
     recommendation = 'use';
   }
 
+  // Allow videos with hard flags if score is still decent (50+)
+  // This prevents over-filtering of educational content with minor marketing
   return {
-    isValid: !hasHardFlags && score >= 70,
+    isValid: score >= 50,
     score,
     policy: channelCheck.policy,
     contentCompleteness,

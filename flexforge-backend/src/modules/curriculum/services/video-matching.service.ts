@@ -309,6 +309,8 @@ export class VideoMatchingService {
       // ═══════════════════════════════════════════
       const scoredVideos = this.scoreVideos(enrichedCandidates, context, cheapScoreMap);
 
+      this.logger.log(`Layer 2: ${scoredVideos.length} videos after scoring (from ${enrichedCandidates.length} enriched)`);
+
       if (scoredVideos.length === 0) {
         return {
           success: false,
@@ -320,8 +322,11 @@ export class VideoMatchingService {
 
       const topCandidates = scoredVideos.slice(0, 5);
       this.logger.log(
-        `Layer 2: Top score ${topCandidates[0]?.totalScore.toFixed(1)} - "${topCandidates[0]?.video.title}"`,
+        `Layer 2: Top ${topCandidates.length} candidates. Best: ${topCandidates[0]?.totalScore.toFixed(1)} - "${topCandidates[0]?.video.title}"`,
       );
+      if (topCandidates.length > 1) {
+        this.logger.log(`Layer 2: #2: "${topCandidates[1]?.video.title}" (${topCandidates[1]?.video.channelName})`);
+      }
 
       // ═══════════════════════════════════════════
       // LAYER 3: Deep Verification (COSTS TOKENS)
@@ -413,18 +418,29 @@ export class VideoMatchingService {
     try {
       const allResults: any[] = [];
 
-      // Search with preferred channels first
+      // Search with ALL preferred channels for better coverage
       if (preferredChannels.length > 0) {
-        for (const channel of preferredChannels.slice(0, 3)) {
-          const channelQuery = `${query} ${channel.name}`;
-          const results = await youtubeSearch.GetListByKeyword(channelQuery, false, 5);
-          if (results.items) {
-            allResults.push(...results.items);
-          }
+        this.logger.log(`Searching ${preferredChannels.length} preferred channels for "${query}"`);
+
+        // Search in parallel batches of 5 for speed
+        const batchSize = 5;
+        for (let i = 0; i < preferredChannels.length; i += batchSize) {
+          const batch = preferredChannels.slice(i, i + batchSize);
+          const batchPromises = batch.map(async (channel) => {
+            try {
+              const channelQuery = `${query} ${channel.name}`;
+              const results = await youtubeSearch.GetListByKeyword(channelQuery, false, 3);
+              return results.items || [];
+            } catch {
+              return [];
+            }
+          });
+          const batchResults = await Promise.all(batchPromises);
+          batchResults.forEach(items => allResults.push(...items));
         }
       }
 
-      // Generic search
+      // Generic search as fallback
       const genericResults = await youtubeSearch.GetListByKeyword(query, false, limit);
       if (genericResults.items) {
         allResults.push(...genericResults.items);
@@ -451,6 +467,7 @@ export class VideoMatchingService {
         });
       }
 
+      this.logger.log(`Found ${uniqueVideos.size} unique videos from ${allResults.length} total results`);
       return Array.from(uniqueVideos.values()).slice(0, limit);
     } catch (error) {
       this.logger.error('YouTube search failed:', error.message);
@@ -1532,9 +1549,14 @@ Return JSON only:
     context: VideoMatchContext,
     htmlCache?: Map<string, string>,
   ): Promise<VideoAlternative[]> {
+    this.logger.log(`Building alternatives: ${topCandidates.length} candidates, selected=${selected.video.videoId}`);
+
     // Get best candidate that isn't the selected one
     const other = topCandidates.find(c => c.video.videoId !== selected.video.videoId);
-    if (!other) return [];
+    if (!other) {
+      this.logger.log('No alternative found - only 1 candidate');
+      return [];
+    }
 
     try {
       // Generate watch plan for the alternative
@@ -1548,6 +1570,7 @@ Return JSON only:
       // Determine what makes this alternative different
       const differentiator = this.getDifferentiator(other, selected);
 
+      this.logger.log(`Alternative found: "${other.video.title}" (${differentiator})`);
       return [{
         video: other.video,
         watchPlan,
@@ -1555,7 +1578,8 @@ Return JSON only:
         differentiator,
         matchPercent: Math.min(100, Math.round(other.totalScore)),
       }];
-    } catch {
+    } catch (error) {
+      this.logger.warn(`Failed to build alternative: ${error.message}`);
       return [];
     }
   }
