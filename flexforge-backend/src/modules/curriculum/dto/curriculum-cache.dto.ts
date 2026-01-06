@@ -77,6 +77,18 @@ export class RecordBounceDto {
 }
 
 /**
+ * DTO for recording regeneration signal (user clicked "Generate New")
+ * Just records the signal - does NOT generate new curriculum
+ */
+export class RecordRegenerationDto {
+  @IsUUID()
+  previousVariantId: string;
+
+  @IsUUID()
+  sessionId: string;
+}
+
+/**
  * DTO for refreshing video for a specific day
  * Used when user clicks "Find New Video" after exhausting alternatives
  */

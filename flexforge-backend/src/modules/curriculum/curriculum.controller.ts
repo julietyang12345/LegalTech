@@ -14,6 +14,7 @@ import {
   RegenerateCurriculumDto,
   RecordCompletionDto,
   RecordBounceDto,
+  RecordRegenerationDto,
   RefreshVideoDto,
   CurriculumCacheResponse,
 } from './dto/curriculum-cache.dto';
@@ -211,6 +212,29 @@ export class CurriculumController {
       };
     } catch (error) {
       throw new BadRequestException(error.message || 'Failed to regenerate curriculum');
+    }
+  }
+
+  /**
+   * POST /api/v1/curriculum/mark-regenerated
+   * Records regeneration signal without generating new curriculum
+   * User will navigate to /start to create new session with possibly different params
+   */
+  @Post('mark-regenerated')
+  async markRegenerated(
+    @Body() dto: RecordRegenerationDto,
+    @CurrentUser() user: User,
+  ) {
+    try {
+      await this.cacheService.markAsRegenerated(
+        dto.previousVariantId,
+        user.id,
+        dto.sessionId,
+      );
+      return { message: 'Regeneration signal recorded' };
+    } catch (error) {
+      // Don't fail the request if recording fails
+      return { message: 'Signal noted' };
     }
   }
 

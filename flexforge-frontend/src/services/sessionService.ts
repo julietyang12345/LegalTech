@@ -158,7 +158,7 @@ export const sessionService = {
     previousVariantId: string,
     sessionId: string
   ): Promise<void> {
-    await api.post('/curriculum/regenerate', {
+    await api.post('/curriculum/mark-regenerated', {
       previousVariantId,
       sessionId,
     });
