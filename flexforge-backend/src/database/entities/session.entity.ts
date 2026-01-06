@@ -95,6 +95,13 @@ export class Session {
   @Column({ nullable: true })
   originalDuration: number;
 
+  // Curriculum cache tracking
+  @Column({ type: 'uuid', nullable: true })
+  variantId: string;
+
+  @Column({ default: false })
+  fromCache: boolean;
+
   @Column({ default: 0 })
   extensionsDays: number;
 

@@ -94,6 +94,9 @@ export interface Session {
   startedAt: string;
   completedAt?: string;
   originalDuration?: number;
+  // Cache tracking
+  variantId?: string;
+  fromCache?: boolean;
   progress: Progress[];
   createdAt: string;
   updatedAt: string;
@@ -474,6 +477,9 @@ export interface SessionResponse {
     estimatedDaysNeeded: number;
     cognitiveLoadWarning?: string;
   };
+  // Cache info
+  fromCache?: boolean;
+  variantId?: string;
 }
 
 export interface ProgressResponse {

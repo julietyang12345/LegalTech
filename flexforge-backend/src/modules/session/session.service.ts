@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import * as crypto from 'crypto';
 import {
   Session,
   SessionStatus,
@@ -15,6 +16,7 @@ import { QuotaTier } from '../../database/entities/user.entity';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { UpdateSessionDto } from './dto/update-session.dto';
 import { CurriculumService } from '../curriculum/curriculum.service';
+import { CurriculumCacheService } from '../curriculum/services/curriculum-cache.service';
 import { UserService } from '../user/user.service';
 
 @Injectable()
@@ -25,6 +27,7 @@ export class SessionService {
     @InjectRepository(Session)
     private sessionsRepository: Repository<Session>,
     private curriculumService: CurriculumService,
+    private cacheService: CurriculumCacheService,
     private userService: UserService,
   ) {}
 
@@ -38,6 +41,8 @@ export class SessionService {
     session: Session;
     warnings?: string[];
     skillDetection?: any;
+    fromCache?: boolean;
+    variantId?: string;
   }> {
     // Get user and check quota
     const user = await this.userService.findById(userId);
@@ -64,24 +69,64 @@ export class SessionService {
 
     // Generate curriculum with tier-specific access
     const tierString = user.quotaTier.toUpperCase();
-    
+
     this.logger.log(
       `Creating session for user ${userId} (${tierString} tier): ${createSessionDto.skillName}`,
     );
 
-    const {
-      curriculum,
-      tokensUsed,
-      cost,
-      skillDetection,
-      warnings,
-    } = await this.curriculumService.generateCurriculum(
+    // Generate a session ID upfront for cache tracking
+    const tempSessionId = crypto.randomUUID();
+
+    // Try to get from cache first
+    let curriculum: any;
+    let variantId: string | null = null;
+    let fromCache = false;
+    let tokensUsed = 0;
+    let cost = 0;
+    let skillDetection: any = null;
+    let warnings: string[] = [];
+
+    const cacheResult = await this.cacheService.tryGetFromCache(
       createSessionDto,
-      tierString,
+      userId,
+      tempSessionId,
     );
 
-    // Increment user's usage
-    await this.userService.incrementUsage(userId, tokensUsed, 1);
+    if (cacheResult) {
+      // Cache HIT
+      curriculum = cacheResult.curriculum;
+      variantId = cacheResult.variantId;
+      fromCache = true;
+      this.logger.log(`📦 Cache HIT for "${createSessionDto.skillName}" - variant ${variantId}`);
+    } else {
+      // Cache MISS - generate new curriculum
+      const generated = await this.curriculumService.generateCurriculum(
+        createSessionDto,
+        tierString,
+      );
+
+      curriculum = generated.curriculum;
+      tokensUsed = generated.tokensUsed;
+      cost = generated.cost;
+      skillDetection = generated.skillDetection;
+      warnings = generated.warnings || [];
+
+      // Cache the new content
+      const cached = await this.cacheService.cacheNewContent(
+        createSessionDto,
+        curriculum,
+        userId,
+        tempSessionId,
+      );
+      variantId = cached.variantId;
+
+      this.logger.log(`🆕 Cache MISS for "${createSessionDto.skillName}" - created variant ${variantId}`);
+    }
+
+    // Increment user's usage (only if we generated new content)
+    if (tokensUsed > 0) {
+      await this.userService.incrementUsage(userId, tokensUsed, 1);
+    }
 
     // Create session
     const session = this.sessionsRepository.create({
@@ -91,6 +136,8 @@ export class SessionService {
       hoursPerDay: createSessionDto.hoursPerDay,
       skillLevel: createSessionDto.skillLevel,
       curriculum,
+      variantId,
+      fromCache,
       status: SessionStatus.ACTIVE,
       currentDay: 1,
       mode: SessionMode.NORMAL,
@@ -99,14 +146,20 @@ export class SessionService {
 
     const savedSession = await this.sessionsRepository.save(session);
 
-    this.logger.log(
-      `✅ Session created: ${savedSession.id}. Type: ${skillDetection.skillType}, Complexity: ${skillDetection.complexity}, Tokens: ${tokensUsed}, Cost: $${cost.toFixed(4)}`,
-    );
+    if (fromCache) {
+      this.logger.log(`✅ Session created: ${savedSession.id} (from cache, variant=${variantId})`);
+    } else {
+      this.logger.log(
+        `✅ Session created: ${savedSession.id}. Type: ${skillDetection?.skillType}, Complexity: ${skillDetection?.complexity}, Tokens: ${tokensUsed}, Cost: $${cost.toFixed(4)}`,
+      );
+    }
 
     return {
       session: savedSession,
       warnings,
       skillDetection,
+      fromCache,
+      variantId,
     };
   }
 

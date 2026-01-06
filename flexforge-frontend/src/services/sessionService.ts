@@ -145,4 +145,64 @@ export const sessionService = {
     );
     return data;
   },
+
+  // ═══════════════════════════════════════════════════
+  // CURRICULUM CACHE TRACKING
+  // ═══════════════════════════════════════════════════
+
+  /**
+   * Record that user clicked "Generate New" (regeneration signal)
+   * Call this BEFORE creating a new session when user rejects previous curriculum
+   */
+  async markRegenerated(
+    previousVariantId: string,
+    sessionId: string
+  ): Promise<void> {
+    await api.post('/curriculum/regenerate', {
+      previousVariantId,
+      sessionId,
+    });
+  },
+
+  /**
+   * Record Day 1 completion (positive signal for cache quality)
+   */
+  async recordDay1Completion(
+    variantId: string,
+    sessionId: string
+  ): Promise<void> {
+    await api.post('/curriculum/complete-day', {
+      variantId,
+      sessionId,
+    });
+  },
+
+  /**
+   * Record bounce (user left quickly - negative signal)
+   * Use with navigator.sendBeacon for reliability
+   */
+  async recordBounce(
+    variantId: string,
+    sessionId: string
+  ): Promise<void> {
+    await api.post('/curriculum/bounce', {
+      variantId,
+      sessionId,
+    });
+  },
+
+  /**
+   * Get cache stats (debug/admin)
+   */
+  async getCacheStats(): Promise<{
+    totalKeys: number;
+    totalVariants: number;
+    activeVariants: number;
+    winners: number;
+    totalServes: number;
+    avgRegenRate: number;
+  }> {
+    const { data } = await api.get('/curriculum/cache-stats');
+    return data;
+  },
 };
