@@ -176,6 +176,11 @@ export interface VideoMatch {
   matchPercent?: number;      // 0-100 confidence
   whyThisVideo?: string[];    // Reasons for selection
   alternative?: VideoAlternative;  // 1 alternative for personalization
+  // Fallback fields when video search fails (from AI placeholder)
+  searchQuery?: string;
+  preferredChannels?: string[];
+  topicFocus?: string;
+  watchPoints?: string[];
 }
 
 export interface VideoAlternative {

@@ -176,6 +176,48 @@ export class CurriculumService {
       `✅ Curriculum overview generated. Tokens: ${aiResponse.tokensUsed}, Cost: $${aiResponse.cost.toFixed(4)}`,
     );
 
+    // Step 6: Process video placeholders for Day 1 (which has full content)
+    // This finds actual YouTube videos for the video placeholders
+    const day1 = curriculum.days?.[0];
+    if (day1?.video?.searchQuery) {
+      this.logger.log('🎥 Finding video for Day 1...');
+      try {
+        const videoResult = await this.videoIndexer.findBestVideoSegment(
+          {
+            searchQuery: day1.video.searchQuery,
+            preferredChannels: day1.video.preferredChannels || [],
+            topicFocus: day1.video.topicFocus || day1.title,
+            idealDuration: day1.video.idealDuration || '6 minutes',
+          },
+          userTier !== 'FREE',
+        );
+
+        if (videoResult.success && videoResult.url) {
+          // Extract videoId from URL (format: https://www.youtube.com/watch?v=VIDEOID)
+          const videoIdMatch = videoResult.url.match(/[?&]v=([^&]+)/);
+          const videoId = videoIdMatch ? videoIdMatch[1] : undefined;
+
+          curriculum.days[0].video = {
+            ...day1.video,
+            url: videoResult.url,
+            videoId,
+            title: day1.video.title,
+            startTime: videoResult.startTime,
+            endTime: videoResult.endTime,
+            watchInstructions: videoResult.watchInstructions,
+            keyTopics: videoResult.keyTopics || day1.video.watchPoints,
+            estimatedMinutes: 6,
+            verified: videoResult.verified,
+          };
+          this.logger.log(`✅ Day 1 video found: ${videoResult.url}`);
+        } else {
+          this.logger.warn('⚠️ Day 1 video not found, keeping placeholder');
+        }
+      } catch (error) {
+        this.logger.warn(`⚠️ Video search failed: ${error.message}`);
+      }
+    }
+
     return {
       curriculum,
       tokensUsed: aiResponse.tokensUsed,
