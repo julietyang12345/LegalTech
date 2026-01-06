@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Clock, CheckCircle2, MessageCircle, Lock, Star, ChevronDown, Youtube } from 'lucide-react';
+import { Play, Clock, CheckCircle2, MessageCircle, Lock, Star, ChevronDown, Youtube, ExternalLink } from 'lucide-react';
 import { Card, Button } from '@/components/common';
 import { useAuthStore } from '@/stores/authStore';
 import { QuotaTier } from '@/types';
@@ -10,6 +10,36 @@ interface VideoStepProps {
   day: CurriculumDay;
   session: Session;
   onComplete: () => void;
+}
+
+// Parse time string "3:20" to seconds
+function parseTimeToSeconds(t: string | undefined): number {
+  if (!t) return 0;
+  const parts = t.split(':').map(n => parseInt(n, 10));
+  if (parts.some(Number.isNaN)) return 0;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return 0;
+}
+
+// Build proper YouTube embed URL from videoId
+function buildEmbedUrl(video: VideoMatch | VideoAlternative | null): string {
+  if (!video?.videoId) return '';
+
+  const startSeconds = parseTimeToSeconds(video.startTime);
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+
+  const params = new URLSearchParams({
+    enablejsapi: '1',
+    playsinline: '1',
+    rel: '0',
+    modestbranding: '1',
+  });
+
+  if (origin) params.set('origin', origin);
+  if (startSeconds > 0) params.set('start', String(startSeconds));
+
+  return `https://www.youtube.com/embed/${video.videoId}?${params.toString()}`;
 }
 
 // Video card component - reused for main and alternative
@@ -24,8 +54,8 @@ function VideoCard({
   isAlternative?: boolean;
   onSelect?: () => void;
 }) {
-  const embedUrl = video?.url?.replace('watch?v=', 'embed/') ||
-                   (video?.videoId ? `https://www.youtube.com/embed/${video.videoId}` : '');
+  const embedUrl = buildEmbedUrl(video);
+  const youtubeUrl = video?.videoId ? `https://www.youtube.com/watch?v=${video.videoId}` : null;
 
   return (
     <div className={isAlternative ? 'border border-gray-200 rounded-xl overflow-hidden' : ''}>
@@ -33,21 +63,44 @@ function VideoCard({
       <div className={`aspect-video bg-gray-900 relative ${isAlternative ? 'max-h-48' : ''}`}>
         {embedUrl ? (
           <iframe
+            title={video?.title || fallbackTitle}
             src={embedUrl}
             className="w-full h-full"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            referrerPolicy="strict-origin-when-cross-origin"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
           />
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-white">
             <Play className="w-12 h-12 mb-3 opacity-50" />
             <p className="text-sm font-medium mb-2">{video?.title || fallbackTitle}</p>
-            <p className="text-xs text-gray-400">
-              {video?.searchQuery
-                ? `Search: "${video.searchQuery}"`
-                : 'Video not available'}
-            </p>
+            {video && 'searchQuery' in video && video.searchQuery ? (
+              <a
+                href={`https://www.youtube.com/results?search_query=${encodeURIComponent(video.searchQuery)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-4 py-2 mt-2 text-sm bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+              >
+                <Youtube className="w-4 h-4" />
+                Search on YouTube
+              </a>
+            ) : (
+              <p className="text-xs text-gray-400">Video not available</p>
+            )}
           </div>
+        )}
+
+        {/* Open on YouTube link - always show if we have a video */}
+        {youtubeUrl && (
+          <a
+            href={youtubeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-white bg-black/60 hover:bg-black/80 rounded-lg transition-colors"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            Open on YouTube
+          </a>
         )}
       </div>
 

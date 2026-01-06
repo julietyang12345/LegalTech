@@ -4,6 +4,7 @@ import { AiService, AITask } from '../ai/ai.service';
 import { GenerateCurriculumDto } from './dto/generate-curriculum.dto';
 import { SkillDetectorService, SkillType } from './services/skill-detector.service';
 import { GeminiVideoIndexerService } from './services/gemini-video-indexer.service';
+import { VideoMatchingService } from './services/video-matching.service';
 import { FileGeneratorService } from './services/file-generator.service';
 import {
   buildOverviewPrompt,
@@ -41,6 +42,7 @@ export class CurriculumService {
     private aiService: AiService,
     private skillDetector: SkillDetectorService,
     private videoIndexer: GeminiVideoIndexerService,
+    private videoMatcher: VideoMatchingService,
     private fileGenerator: FileGeneratorService,
     private configService: ConfigService,
   ) {}
@@ -176,42 +178,51 @@ export class CurriculumService {
       `✅ Curriculum overview generated. Tokens: ${aiResponse.tokensUsed}, Cost: $${aiResponse.cost.toFixed(4)}`,
     );
 
-    // Step 6: Process video placeholders for Day 1 (which has full content)
-    // This finds actual YouTube videos for the video placeholders
+    // Step 6: Find actual YouTube video for Day 1
+    // Uses VideoMatchingService which has robust search + scoring
     const day1 = curriculum.days?.[0];
-    if (day1?.video?.searchQuery) {
+    if (day1?.video) {
       this.logger.log('🎥 Finding video for Day 1...');
       try {
-        const videoResult = await this.videoIndexer.findBestVideoSegment(
-          {
-            searchQuery: day1.video.searchQuery,
-            preferredChannels: day1.video.preferredChannels || [],
-            topicFocus: day1.video.topicFocus || day1.title,
-            idealDuration: day1.video.idealDuration || '6 minutes',
-          },
-          userTier !== 'FREE',
-        );
+        // Map skill level to video matcher level
+        const levelMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
+          'BEGINNER': 'beginner',
+          'INTERMEDIATE': 'intermediate',
+          'ADVANCED': 'advanced',
+        };
 
-        if (videoResult.success && videoResult.url) {
-          // Extract videoId from URL (format: https://www.youtube.com/watch?v=VIDEOID)
-          const videoIdMatch = videoResult.url.match(/[?&]v=([^&]+)/);
-          const videoId = videoIdMatch ? videoIdMatch[1] : undefined;
+        const videoResult = await this.videoMatcher.findBestVideo({
+          concept: day1.video.topicFocus || day1.title,
+          userSlot: 6, // 6 minutes default video slot
+          userLevel: levelMap[dto.skillLevel] || 'beginner',
+          skillType: skillDetection.skillType,
+        });
+
+        if (videoResult.success && videoResult.video) {
+          const video = videoResult.video;
+          const watchPlan = videoResult.watchPlan;
 
           curriculum.days[0].video = {
             ...day1.video,
-            url: videoResult.url,
-            videoId,
-            title: day1.video.title,
-            startTime: videoResult.startTime,
-            endTime: videoResult.endTime,
-            watchInstructions: videoResult.watchInstructions,
-            keyTopics: videoResult.keyTopics || day1.video.watchPoints,
-            estimatedMinutes: 6,
-            verified: videoResult.verified,
+            url: `https://www.youtube.com/watch?v=${video.videoId}`,
+            videoId: video.videoId,
+            title: video.title,
+            channelName: video.channelName,
+            duration: video.duration,
+            startTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.startSeconds) : undefined,
+            endTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.endSeconds) : undefined,
+            watchInstructions: watchPlan?.primarySegment?.description || `Watch this video to learn about ${day1.title}`,
+            keyTopics: day1.video.watchPoints,
+            estimatedMinutes: watchPlan?.primarySegment
+              ? Math.ceil((watchPlan.primarySegment.endSeconds - watchPlan.primarySegment.startSeconds) / 60)
+              : 6,
+            verified: true,
+            matchPercent: videoResult.matchPercent,
+            whyThisVideo: videoResult.whyThisVideo,
           };
-          this.logger.log(`✅ Day 1 video found: ${videoResult.url}`);
+          this.logger.log(`✅ Day 1 video found: ${video.title} (${videoResult.matchPercent}% match)`);
         } else {
-          this.logger.warn('⚠️ Day 1 video not found, keeping placeholder');
+          this.logger.warn(`⚠️ Day 1 video not found: ${videoResult.error}`);
         }
       } catch (error) {
         this.logger.warn(`⚠️ Video search failed: ${error.message}`);
@@ -464,6 +475,15 @@ export class CurriculumService {
     }
 
     return curriculum;
+  }
+
+  /**
+   * Convert seconds to MM:SS format
+   */
+  private secondsToTime(seconds: number): string {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   }
 
   /**
