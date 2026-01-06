@@ -42,6 +42,8 @@ export interface WatchPlan {
   }>;
   watchUrl: string;
   watchInstructions: string;
+  keyTopics?: string[];  // Key topics extracted from video content
+  summary?: string;      // 3-sentence summary of video content for Active Recall
 }
 
 export interface VideoCandidate {
@@ -1281,8 +1283,8 @@ Answer with JSON only:
       return this.generateWatchPlanFromChapters(video, context, userSlotSeconds);
     }
 
-    // If video is short enough, use whole thing
-    if (video.duration <= userSlotSeconds * 1.2) {
+    // If video is short enough (≤ slot duration), use whole thing
+    if (video.duration <= userSlotSeconds) {
       return this.generateSimpleWatchPlan(video, userSlotSeconds);
     }
 
@@ -1366,6 +1368,12 @@ Answer with JSON only:
       ? startChapter?.title || context.concept
       : `${startChapter?.title} → ${chapters[endIdx]?.title}`;
 
+    // Extract key topics from chapter titles in the selected range
+    const keyTopics = chapters
+      .slice(startIdx, endIdx + 1)
+      .map(ch => ch.title)
+      .slice(0, 5);  // Limit to 5 topics
+
     return {
       primarySegment: {
         startSeconds,
@@ -1375,6 +1383,7 @@ Answer with JSON only:
       skipSections,
       watchUrl: `https://www.youtube.com/watch?v=${video.videoId}&t=${startSeconds}`,
       watchInstructions: `Watch ${this.formatTime(startSeconds)} → ${this.formatTime(endSeconds)} (${Math.round((endSeconds - startSeconds) / 60)} min). ${description}`,
+      keyTopics,
     };
   }
 
@@ -1422,7 +1431,9 @@ Return JSON only:
   "start_seconds": 180,
   "end_seconds": 600,
   "description": "what this segment covers",
-  "skip_intro_seconds": 0
+  "skip_intro_seconds": 0,
+  "key_topics": ["Key concept 1 covered in video", "Key concept 2 covered", "Important technique shown"],
+  "summary": "A 3-sentence summary of what this video segment teaches. First sentence covers the main concept. Second sentence explains the key technique or approach. Third sentence highlights an important takeaway or common pitfall."
 }`;
 
     const result = await model.generateContent(prompt);
@@ -1452,6 +1463,8 @@ Return JSON only:
       skipSections,
       watchUrl: `https://www.youtube.com/watch?v=${video.videoId}&t=${analysis.start_seconds}`,
       watchInstructions: `Watch ${this.formatTime(analysis.start_seconds)} → ${this.formatTime(analysis.end_seconds)} (${Math.round((analysis.end_seconds - analysis.start_seconds) / 60)} min). ${analysis.description}`,
+      keyTopics: analysis.key_topics || [],
+      summary: analysis.summary || '',
     };
   }
 
@@ -1477,6 +1490,7 @@ Return JSON only:
         : [],
       watchUrl: `https://www.youtube.com/watch?v=${video.videoId}${startSeconds > 0 ? `&t=${startSeconds}` : ''}`,
       watchInstructions: `Watch ${this.formatTime(startSeconds)} → ${this.formatTime(endSeconds)} (${Math.round((endSeconds - startSeconds) / 60)} min)`,
+      keyTopics: [],  // No AI/chapters available to extract topics
     };
   }
 

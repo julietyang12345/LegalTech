@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { AiService, AITask } from '../ai/ai.service';
 import { GenerateCurriculumDto } from './dto/generate-curriculum.dto';
 import { SkillDetectorService, SkillType } from './services/skill-detector.service';
-import { GeminiVideoIndexerService } from './services/gemini-video-indexer.service';
 import { VideoMatchingService } from './services/video-matching.service';
 import { FileGeneratorService } from './services/file-generator.service';
 import {
@@ -41,7 +40,6 @@ export class CurriculumService {
   constructor(
     private aiService: AiService,
     private skillDetector: SkillDetectorService,
-    private videoIndexer: GeminiVideoIndexerService,
     private videoMatcher: VideoMatchingService,
     private fileGenerator: FileGeneratorService,
     private configService: ConfigService,
@@ -196,7 +194,7 @@ export class CurriculumService {
           userSlot: 6, // 6 minutes default video slot
           userLevel: levelMap[dto.skillLevel] || 'beginner',
           skillType: skillDetection.skillType,
-        });
+        }, { deepVerify: true });  // Enable AI transcript analysis for keyTopics + summary
 
         if (videoResult.success && videoResult.video) {
           const video = videoResult.video;
@@ -238,7 +236,8 @@ export class CurriculumService {
             startTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.startSeconds) : undefined,
             endTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.endSeconds) : undefined,
             watchInstructions: watchPlan?.primarySegment?.description || `Watch this video to learn about ${day1.title}`,
-            keyTopics: day1.video.watchPoints,
+            keyTopics: watchPlan?.keyTopics?.length ? watchPlan.keyTopics : day1.video.watchPoints,
+            summary: watchPlan?.summary,  // AI-generated video summary for Active Recall
             estimatedMinutes: watchPlan?.primarySegment
               ? Math.ceil((watchPlan.primarySegment.endSeconds - watchPlan.primarySegment.startSeconds) / 60)
               : 6,
@@ -463,45 +462,6 @@ export class CurriculumService {
     }
 
     return dayContent;
-  }
-
-  /**
-   * Process video placeholders and find actual videos
-   */
-  private async processVideoPlaceholders(
-    curriculum: any,
-    userTier: string,
-  ): Promise<any> {
-    this.logger.log('🎥 Processing video placeholders...');
-
-    const allowPaidIndexing = userTier !== 'FREE';
-
-    for (const day of curriculum.days) {
-      if (day.video?.videoPlaceholder) {
-        const result = await this.videoIndexer.findBestVideoSegment(
-          day.video.videoPlaceholder,
-          allowPaidIndexing,
-        );
-
-        if (result.success) {
-          day.video.url = result.url;
-          day.video.startTime = result.startTime;
-          day.video.endTime = result.endTime;
-          day.video.watchInstructions = result.watchInstructions;
-          day.video.keyTopics = result.keyTopics;
-          day.video.verified = result.verified;
-
-          this.logger.log(`  ✅ Day ${day.day}: Found video`);
-        } else {
-          this.logger.warn(`  ⚠️ Day ${day.day}: Video not found, using placeholder`);
-        }
-
-        // Remove placeholder after processing
-        delete day.video.videoPlaceholder;
-      }
-    }
-
-    return curriculum;
   }
 
   /**

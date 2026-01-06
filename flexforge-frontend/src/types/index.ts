@@ -174,6 +174,7 @@ export interface VideoMatch {
   endTime?: string;
   watchInstructions?: string;
   keyTopics?: string[];
+  summary?: string;           // AI-generated 3-sentence summary for Active Recall
   estimatedMinutes: number;
   verified?: boolean;
   matchPercent?: number;      // 0-100 confidence

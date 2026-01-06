@@ -21,6 +21,9 @@ export function ActiveRecallStep({ day }: ActiveRecallStepProps) {
 
   const activeRecall = day.activeRecall;
   const instruction = activeRecall?.part1?.instruction || 'Explain what you just learned in your own words (3 sentences)';
+
+  // Use AI video summary if available, fallback to Claude's keyPointsToInclude
+  const videoSummary = day.video?.summary;
   const keyPoints = activeRecall?.part1?.keyPointsToInclude || [];
 
   const handleAIReview = async () => {
@@ -81,7 +84,7 @@ export function ActiveRecallStep({ day }: ActiveRecallStepProps) {
                   size="sm"
                   onClick={handleAIReview}
                   isLoading={isReviewing}
-                  disabled={userExplanation.length < 20}
+                  disabled={userExplanation.length < 50}
                   leftIcon={<Sparkles className="w-4 h-4" />}
                 >
                   AI Review
@@ -93,15 +96,15 @@ export function ActiveRecallStep({ day }: ActiveRecallStepProps) {
                 </div>
               )}
 
-              {/* Reveal key points */}
+              {/* Show answer */}
               <Button
                 variant={showKeyPoints ? 'secondary' : 'primary'}
                 size="sm"
                 onClick={() => setShowKeyPoints(!showKeyPoints)}
-                disabled={userExplanation.length < 10}
+                disabled={userExplanation.length < 50}
                 leftIcon={showKeyPoints ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               >
-                {showKeyPoints ? 'Hide' : 'Reveal'} Key Points
+                {showKeyPoints ? 'Hide Answer' : 'Check My Understanding'}
               </Button>
             </div>
           </div>
@@ -110,7 +113,7 @@ export function ActiveRecallStep({ day }: ActiveRecallStepProps) {
 
       {/* Key points reveal */}
       <AnimatePresence>
-        {showKeyPoints && keyPoints.length > 0 && (
+        {showKeyPoints && (videoSummary || keyPoints.length > 0) && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
@@ -120,30 +123,43 @@ export function ActiveRecallStep({ day }: ActiveRecallStepProps) {
               <div className="p-6">
                 <h3 className="font-semibold text-focus-800 mb-4 flex items-center gap-2">
                   <CheckCircle2 className="w-5 h-5" />
-                  Key points to include:
+                  {videoSummary ? 'Video Summary' : 'Key points to include:'}
                 </h3>
-                <ul className="space-y-3">
-                  {keyPoints.map((point, index) => (
-                    <motion.li
-                      key={index}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                      className="flex items-start gap-3"
-                    >
-                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-focus-200 
-                                     flex items-center justify-center text-sm font-medium text-focus-700">
-                        {index + 1}
-                      </span>
-                      <p className="text-focus-800">{point}</p>
-                    </motion.li>
-                  ))}
-                </ul>
+
+                {/* AI Video Summary (preferred) */}
+                {videoSummary ? (
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="text-focus-800 leading-relaxed"
+                  >
+                    {videoSummary}
+                  </motion.p>
+                ) : (
+                  /* Fallback to key points list */
+                  <ul className="space-y-3">
+                    {keyPoints.map((point, index) => (
+                      <motion.li
+                        key={index}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                        className="flex items-start gap-3"
+                      >
+                        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-focus-200
+                                       flex items-center justify-center text-sm font-medium text-focus-700">
+                          {index + 1}
+                        </span>
+                        <p className="text-focus-800">{point}</p>
+                      </motion.li>
+                    ))}
+                  </ul>
+                )}
 
                 {/* Self-check */}
                 <div className="mt-6 p-4 bg-white rounded-lg">
                   <p className="text-sm text-gray-600">
-                    <strong>Self-check:</strong> Did your explanation cover these points? 
+                    <strong>Self-check:</strong> Did your explanation cover these points?
                     It's okay if you missed some - that's what we're here to learn!
                   </p>
                 </div>

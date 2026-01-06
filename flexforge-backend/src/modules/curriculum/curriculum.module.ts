@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CurriculumService } from './curriculum.service';
 import { CurriculumController } from './curriculum.controller';
-import { GeminiVideoIndexerService } from './services/gemini-video-indexer.service';
 import { FileGeneratorService } from './services/file-generator.service';
 import { SkillDetectorService } from './services/skill-detector.service';
 import { VideoMatchingService } from './services/video-matching.service';
@@ -28,7 +27,6 @@ import {
   controllers: [CurriculumController],
   providers: [
     CurriculumService,
-    GeminiVideoIndexerService,
     FileGeneratorService,
     SkillDetectorService,
     VideoMatchingService,
