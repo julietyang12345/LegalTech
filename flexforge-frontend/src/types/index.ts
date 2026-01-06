@@ -107,6 +107,7 @@ export interface CreateSessionDto {
   durationDays: number;
   hoursPerDay: number;
   skillLevel: SkillLevel;
+  previewCurriculum?: any; // Preview curriculum to reuse (avoids regeneration)
 }
 
 export interface UpdateSessionDto {

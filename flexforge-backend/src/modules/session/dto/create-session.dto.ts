@@ -1,4 +1,4 @@
-import { IsString, IsInt, IsNumber, IsEnum, Min, Max } from 'class-validator';
+import { IsString, IsInt, IsNumber, IsEnum, IsOptional, IsObject, Min, Max } from 'class-validator';
 import { SkillLevel } from '../../../database/entities/session.entity';
 
 export class CreateSessionDto {
@@ -17,4 +17,8 @@ export class CreateSessionDto {
 
   @IsEnum(SkillLevel)
   skillLevel: SkillLevel;
+
+  @IsOptional()
+  @IsObject()
+  previewCurriculum?: any; // Preview curriculum to reuse (avoids regeneration)
 }

@@ -77,41 +77,23 @@ export class SessionService {
     // Generate a session ID upfront for cache tracking
     const tempSessionId = crypto.randomUUID();
 
-    // Try to get from cache first
+    // Try to use preview curriculum first, then cache, then generate new
     let curriculum: any;
     let variantId: string | null = null;
     let fromCache = false;
+    let fromPreview = false;
     let tokensUsed = 0;
     let cost = 0;
     let skillDetection: any = null;
     let warnings: string[] = [];
 
-    const cacheResult = await this.cacheService.tryGetFromCache(
-      createSessionDto,
-      userId,
-      tempSessionId,
-    );
+    if (createSessionDto.previewCurriculum) {
+      // Use preview curriculum (instant - no AI call needed)
+      curriculum = createSessionDto.previewCurriculum;
+      fromPreview = true;
+      this.logger.log(`⚡ Using preview curriculum for "${createSessionDto.skillName}" (instant)`);
 
-    if (cacheResult) {
-      // Cache HIT
-      curriculum = cacheResult.curriculum;
-      variantId = cacheResult.variantId;
-      fromCache = true;
-      this.logger.log(`📦 Cache HIT for "${createSessionDto.skillName}" - variant ${variantId}`);
-    } else {
-      // Cache MISS - generate new curriculum
-      const generated = await this.curriculumService.generateCurriculum(
-        createSessionDto,
-        tierString,
-      );
-
-      curriculum = generated.curriculum;
-      tokensUsed = generated.tokensUsed;
-      cost = generated.cost;
-      skillDetection = generated.skillDetection;
-      warnings = generated.warnings || [];
-
-      // Cache the new content
+      // Cache the preview for future users
       const cached = await this.cacheService.cacheNewContent(
         createSessionDto,
         curriculum,
@@ -119,8 +101,44 @@ export class SessionService {
         tempSessionId,
       );
       variantId = cached.variantId;
+    } else {
+      // No preview - try cache or generate new
+      const cacheResult = await this.cacheService.tryGetFromCache(
+        createSessionDto,
+        userId,
+        tempSessionId,
+      );
 
-      this.logger.log(`🆕 Cache MISS for "${createSessionDto.skillName}" - created variant ${variantId}`);
+      if (cacheResult) {
+        // Cache HIT
+        curriculum = cacheResult.curriculum;
+        variantId = cacheResult.variantId;
+        fromCache = true;
+        this.logger.log(`📦 Cache HIT for "${createSessionDto.skillName}" - variant ${variantId}`);
+      } else {
+        // Cache MISS - generate new curriculum
+        const generated = await this.curriculumService.generateCurriculum(
+          createSessionDto,
+          tierString,
+        );
+
+        curriculum = generated.curriculum;
+        tokensUsed = generated.tokensUsed;
+        cost = generated.cost;
+        skillDetection = generated.skillDetection;
+        warnings = generated.warnings || [];
+
+        // Cache the new content
+        const cached = await this.cacheService.cacheNewContent(
+          createSessionDto,
+          curriculum,
+          userId,
+          tempSessionId,
+        );
+        variantId = cached.variantId;
+
+        this.logger.log(`🆕 Cache MISS for "${createSessionDto.skillName}" - created variant ${variantId}`);
+      }
     }
 
     // Increment user's usage (only if we generated new content)
@@ -146,7 +164,9 @@ export class SessionService {
 
     const savedSession = await this.sessionsRepository.save(session);
 
-    if (fromCache) {
+    if (fromPreview) {
+      this.logger.log(`✅ Session created: ${savedSession.id} (from preview, instant)`);
+    } else if (fromCache) {
       this.logger.log(`✅ Session created: ${savedSession.id} (from cache, variant=${variantId})`);
     } else {
       this.logger.log(
@@ -160,7 +180,7 @@ export class SessionService {
       session: savedSession,
       warnings,
       skillDetection,
-      fromCache,
+      fromCache: fromCache || fromPreview,
       variantId,
     };
   }

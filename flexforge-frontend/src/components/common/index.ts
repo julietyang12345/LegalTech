@@ -5,3 +5,5 @@ export { ProgressBar, CircularProgress } from './Progress';
 export { ConfidenceSlider, ConfidenceDisplay } from './ConfidenceSlider';
 export { StepPills, StepPillsExpanded } from './StepPills';
 export { StreakBadge, MilestoneBadge } from './StreakBadge';
+export { GeneratingScreen } from './GeneratingScreen';
+export type { LoadingStep } from './GeneratingScreen';

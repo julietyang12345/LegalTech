@@ -378,12 +378,7 @@ ${JSON.stringify(params.skeleton, null, 2)}
   },
 
   "video": {
-    "title": "Video title",
-    "searchQuery": "YouTube search query",
-    "preferredChannels": ["Channels"],
-    "topicFocus": "What to focus on",
-    "idealDuration": "${time.video} min",
-    "watchPoints": ["Point 1", "Point 2"]
+    "watchPoints": ["Key concept to look for", "Important technique shown"]
   },
 
   "activeRecall": {

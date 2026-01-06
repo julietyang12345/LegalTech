@@ -1,13 +1,22 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Play, Calendar, Trophy, ChevronRight, Sparkles, Loader2, RefreshCw } from 'lucide-react';
+import { Play, Calendar, Trophy, ChevronRight, Sparkles, Loader2, RefreshCw, Target, BookOpen, CheckCircle } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
-import { Button, Card, StreakBadge, ProgressBar } from '@/components/common';
-import { DayStatus } from '@/types';
+import { Button, Card, StreakBadge, ProgressBar, GeneratingScreen } from '@/components/common';
 import { sessionService } from '@/services/sessionService';
+
+// Loading steps for day content generation (~60-90 seconds)
+const DAY_LOADING_STEPS = [
+  { icon: Sparkles, text: 'Generating day content...', duration: 15000 },
+  { icon: Target, text: 'Creating practice exercises...', duration: 12000 },
+  { icon: BookOpen, text: 'Finding perfect video...', duration: 10000 },
+  { icon: Trophy, text: 'Adding boss projects...', duration: 8000 },
+  { icon: CheckCircle, text: 'Finalizing your lesson...', duration: 5000 },
+];
+
 
 // Yesterday's Fog - memory bridge before starting
 function YesterdaysFog({ yesterdayTopic, question }: { yesterdayTopic: string; question: string }) {
@@ -225,6 +234,18 @@ export function TodayPage() {
     );
   }
 
+  // Day content generation loading screen
+  if (isDayLoading && activeSession) {
+    return (
+      <GeneratingScreen
+        steps={DAY_LOADING_STEPS}
+        title={`Preparing Day ${activeSession.currentDay}`}
+        subtitle={`Creating your ${activeSession.skillName} lesson`}
+        timeEstimate="This usually takes 1-2 minutes"
+      />
+    );
+  }
+
   // No session state
   if (!activeSession) {
     return (
@@ -243,7 +264,7 @@ export function TodayPage() {
   );
 
   // Find next boss project
-  const nextBoss = activeSession.curriculum.bossProjects.find(
+  const nextBoss = activeSession.curriculum.bossProjects?.find(
     b => b.day > activeSession.currentDay
   );
   const daysUntilBoss = nextBoss ? nextBoss.day - activeSession.currentDay : 0;
