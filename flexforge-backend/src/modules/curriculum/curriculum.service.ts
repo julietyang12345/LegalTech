@@ -7,6 +7,7 @@ import { VideoMatchingService } from './services/video-matching.service';
 import { FileGeneratorService } from './services/file-generator.service';
 import {
   buildOverviewPrompt,
+  buildPreviewPrompt,
   buildDayDetailPrompt,
   buildBossDetailPrompt,
   DayDetailParams,
@@ -31,6 +32,14 @@ export interface BossDetailResult {
   bossContent: any;
   tokensUsed: number;
   cost: number;
+}
+
+export interface PreviewResult {
+  preview: any; // Skeleton curriculum for all days
+  tokensUsed: number;
+  cost: number;
+  skillDetection: any;
+  warnings?: string[];
 }
 
 @Injectable()
@@ -145,27 +154,128 @@ export class CurriculumService {
       suggestedLanguage: skillDetection.suggestedLanguage,
     };
 
-    // Merge day1 (full content) with days array (skeletons for days 2-N)
-    // New two-tier structure: day1 is separate object with full content
-    if (curriculum.day1) {
-      const day1WithStatus = {
-        ...curriculum.day1,
-        status: 'unlockable',
-        detailsLoaded: true, // Day 1 already has full content
-      };
+    // All days are skeletons - full content generated on-demand when user starts each day
+    curriculum.days = curriculum.days.map((day: any, index: number) => ({
+      ...day,
+      status: index === 0 ? 'unlockable' : 'locked',
+      detailsLoaded: false, // Full content will be loaded when user clicks "Start Learning"
+    }));
 
-      // Ensure days array exists and add day1 at the beginning
-      const skeletonDays = (curriculum.days || []).map((day: any) => ({
-        ...day,
-        status: 'locked',
-        detailsLoaded: false,
-      }));
+    this.logger.log(
+      `✅ Curriculum overview generated. Tokens: ${aiResponse.tokensUsed}, Cost: $${aiResponse.cost.toFixed(4)}`,
+    );
 
-      curriculum.days = [day1WithStatus, ...skeletonDays];
-      delete curriculum.day1; // Remove separate day1 object
-    } else {
-      // Fallback for legacy format (all days in days array)
-      curriculum.days = curriculum.days.map((day: any, index: number) => ({
+    // Note: Video search for each day happens in generateDayDetails when user starts the day
+
+    return {
+      curriculum,
+      tokensUsed: aiResponse.tokensUsed,
+      cost: aiResponse.cost,
+      skillDetection,
+      warnings: warnings.length > 0 ? warnings : undefined,
+    };
+  }
+
+  /**
+   * PHASE 1: Generate PREVIEW (skeleton only for all days)
+   * Fast generation (~500-1000 tokens) for user to see timeline before committing
+   * NO video search - that happens in Phase 2 when user clicks "Start Learning"
+   */
+  async generatePreview(dto: GenerateCurriculumDto): Promise<PreviewResult> {
+    this.logger.log(
+      `🎯 Generating curriculum PREVIEW: ${dto.skillName} (${dto.durationDays} days)`,
+    );
+
+    // Step 1: Detect skill type and complexity
+    const skillDetection = await this.skillDetector.detectSkillType(dto.skillName);
+
+    this.logger.log(
+      `✅ Skill detected: ${skillDetection.skillType} (${skillDetection.complexity})`,
+    );
+
+    // Step 2: Validate timeframe
+    const timeframeValidation = this.skillDetector.validateTimeframe(
+      skillDetection.estimatedDaysNeeded,
+      dto.durationDays,
+      skillDetection.complexity,
+    );
+
+    const warnings: string[] = [];
+    if (timeframeValidation.warning) {
+      warnings.push(timeframeValidation.warning);
+    }
+    if (timeframeValidation.recommendation) {
+      warnings.push(timeframeValidation.recommendation);
+    }
+
+    if (!timeframeValidation.feasible) {
+      throw new BadRequestException(
+        `This skill cannot be taught in ${dto.durationDays} days. ${timeframeValidation.recommendation}`,
+      );
+    }
+
+    // Step 3: Build PREVIEW prompt (skeleton only for ALL days)
+    const { systemPrompt, userPrompt } = buildPreviewPrompt({
+      skillName: dto.skillName,
+      durationDays: dto.durationDays,
+      hoursPerDay: dto.hoursPerDay,
+      skillLevel: dto.skillLevel,
+      skillType: skillDetection.skillType,
+      complexity: skillDetection.complexity,
+      userTier: 'FREE', // Preview doesn't need tier-specific content
+      suggestedLanguage: skillDetection.suggestedLanguage,
+    });
+
+    // Step 4: Generate preview with AI (fast, skeleton only)
+    this.logger.log('🤖 Generating curriculum preview (skeleton only)...');
+    const aiResponse = await this.aiService.routeRequest(
+      AITask.CURRICULUM_GENERATION,
+      userPrompt,
+      systemPrompt,
+    );
+
+    // Step 5: Parse preview response
+    let preview: any;
+    try {
+      let cleanedContent = aiResponse.content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
+
+      const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanedContent = jsonMatch[0];
+      }
+
+      try {
+        preview = JSON.parse(cleanedContent);
+      } catch (parseError) {
+        this.logger.warn('First parse failed, attempting to fix JSON...');
+        const fixedContent = cleanedContent.replace(/,(\s*[}\]])/g, '$1');
+        preview = JSON.parse(fixedContent);
+        this.logger.log('✅ JSON fixed and parsed successfully');
+      }
+
+      this.logger.log('✅ Curriculum preview parsed successfully');
+    } catch (error) {
+      this.logger.error('❌ Failed to parse preview JSON:', error.message);
+      throw new BadRequestException('Failed to generate curriculum preview. Please try again.');
+    }
+
+    // Step 6: Add metadata and status to all days
+    preview.metadata = {
+      skillName: dto.skillName,
+      durationDays: dto.durationDays,
+      hoursPerDay: dto.hoursPerDay,
+      skillLevel: dto.skillLevel,
+      skillType: skillDetection.skillType,
+      complexity: skillDetection.complexity,
+      suggestedLanguage: skillDetection.suggestedLanguage,
+    };
+
+    // Mark all days as skeletons (not yet loaded)
+    if (preview.days) {
+      preview.days = preview.days.map((day: any, index: number) => ({
         ...day,
         status: index === 0 ? 'unlockable' : 'locked',
         detailsLoaded: false,
@@ -173,90 +283,11 @@ export class CurriculumService {
     }
 
     this.logger.log(
-      `✅ Curriculum overview generated. Tokens: ${aiResponse.tokensUsed}, Cost: $${aiResponse.cost.toFixed(4)}`,
+      `✅ Preview generated. Tokens: ${aiResponse.tokensUsed}, Cost: $${aiResponse.cost.toFixed(4)}`,
     );
 
-    // Step 6: Find actual YouTube video for Day 1
-    // Uses VideoMatchingService which has robust search + scoring
-    const day1 = curriculum.days?.[0];
-    if (day1?.video) {
-      this.logger.log('🎥 Finding video for Day 1...');
-      try {
-        // Map skill level to video matcher level
-        const levelMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
-          'BEGINNER': 'beginner',
-          'INTERMEDIATE': 'intermediate',
-          'ADVANCED': 'advanced',
-        };
-
-        const videoResult = await this.videoMatcher.findBestVideo({
-          concept: day1.video.topicFocus || day1.title,
-          userSlot: 6, // 6 minutes default video slot
-          userLevel: levelMap[dto.skillLevel] || 'beginner',
-          skillType: skillDetection.skillType,
-        }, { deepVerify: true });  // Enable AI transcript analysis for keyTopics + summary
-
-        if (videoResult.success && videoResult.video) {
-          const video = videoResult.video;
-          const watchPlan = videoResult.watchPlan;
-
-          // Debug: log alternatives from video matching
-          this.logger.log(`🔍 Video alternatives count: ${videoResult.alternatives?.length ?? 0}`);
-          if (videoResult.alternatives?.[0]) {
-            this.logger.log(`🔍 Alternative video: ${videoResult.alternatives[0].video.title}`);
-          }
-
-          // Build alternative video from buildAlternatives() result
-          const alt = videoResult.alternatives?.[0];
-          const alternative = alt ? {
-            videoId: alt.video.videoId,
-            title: alt.video.title,
-            channelName: alt.video.channelName,
-            duration: alt.video.duration,
-            startTime: alt.watchPlan?.primarySegment
-              ? this.secondsToTime(alt.watchPlan.primarySegment.startSeconds)
-              : undefined,
-            endTime: alt.watchPlan?.primarySegment
-              ? this.secondsToTime(alt.watchPlan.primarySegment.endSeconds)
-              : undefined,
-            estimatedMinutes: alt.watchPlan?.primarySegment
-              ? Math.ceil((alt.watchPlan.primarySegment.endSeconds - alt.watchPlan.primarySegment.startSeconds) / 60)
-              : 6,
-            differentiator: alt.differentiator,
-            matchPercent: alt.matchPercent,
-          } : undefined;
-
-          curriculum.days[0].video = {
-            ...day1.video,
-            url: `https://www.youtube.com/watch?v=${video.videoId}`,
-            videoId: video.videoId,
-            title: video.title,
-            channelName: video.channelName,
-            duration: video.duration,
-            startTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.startSeconds) : undefined,
-            endTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.endSeconds) : undefined,
-            watchInstructions: watchPlan?.primarySegment?.description || `Watch this video to learn about ${day1.title}`,
-            keyTopics: watchPlan?.keyTopics?.length ? watchPlan.keyTopics : day1.video.watchPoints,
-            summary: watchPlan?.summary,  // AI-generated video summary for Active Recall
-            estimatedMinutes: watchPlan?.primarySegment
-              ? Math.ceil((watchPlan.primarySegment.endSeconds - watchPlan.primarySegment.startSeconds) / 60)
-              : 6,
-            verified: true,
-            matchPercent: videoResult.matchPercent,
-            whyThisVideo: videoResult.whyThisVideo,
-            alternative,
-          };
-          this.logger.log(`✅ Day 1 video found: ${video.title} (${videoResult.matchPercent}% match)${alternative ? ' + alternative' : ''}`);
-        } else {
-          this.logger.warn(`⚠️ Day 1 video not found: ${videoResult.error}`);
-        }
-      } catch (error) {
-        this.logger.warn(`⚠️ Video search failed: ${error.message}`);
-      }
-    }
-
     return {
-      curriculum,
+      preview,
       tokensUsed: aiResponse.tokensUsed,
       cost: aiResponse.cost,
       skillDetection,
@@ -286,8 +317,8 @@ export class CurriculumService {
       skillName: curriculum.metadata.skillName,
       dayNumber,
       dayTitle: dayOverview.title,
-      dayObjectives: dayOverview.objectives,
-      skeleton: dayOverview.skeleton,
+      dayObjectives: dayOverview.skills, // skills from skeleton
+      skeleton: dayOverview, // pass the entire day overview as skeleton
       previousDayTitle: previousDay?.title,
       skillType: curriculum.metadata.skillType,
       complexity: curriculum.metadata.complexity,
@@ -338,6 +369,76 @@ export class CurriculumService {
         dayContent,
         curriculum.metadata.suggestedLanguage,
       );
+    }
+
+    // Find actual YouTube video for this day
+    if (dayContent.video) {
+      this.logger.log(`🎥 Finding video for Day ${dayNumber}...`);
+      try {
+        const levelMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
+          'BEGINNER': 'beginner',
+          'INTERMEDIATE': 'intermediate',
+          'ADVANCED': 'advanced',
+        };
+
+        const videoResult = await this.videoMatcher.findBestVideo({
+          concept: dayContent.video.topicFocus || dayContent.title,
+          userSlot: 6, // 6 minutes default video slot
+          userLevel: levelMap[curriculum.metadata.skillLevel] || 'beginner',
+          skillType: curriculum.metadata.skillType,
+        }, { deepVerify: true }); // Enable AI transcript analysis for keyTopics + summary
+
+        if (videoResult.success && videoResult.video) {
+          const video = videoResult.video;
+          const watchPlan = videoResult.watchPlan;
+
+          // Build alternative video from buildAlternatives() result
+          const alt = videoResult.alternatives?.[0];
+          const alternative = alt ? {
+            videoId: alt.video.videoId,
+            title: alt.video.title,
+            channelName: alt.video.channelName,
+            duration: alt.video.duration,
+            startTime: alt.watchPlan?.primarySegment
+              ? this.secondsToTime(alt.watchPlan.primarySegment.startSeconds)
+              : undefined,
+            endTime: alt.watchPlan?.primarySegment
+              ? this.secondsToTime(alt.watchPlan.primarySegment.endSeconds)
+              : undefined,
+            estimatedMinutes: alt.watchPlan?.primarySegment
+              ? Math.ceil((alt.watchPlan.primarySegment.endSeconds - alt.watchPlan.primarySegment.startSeconds) / 60)
+              : 6,
+            differentiator: alt.differentiator,
+            matchPercent: alt.matchPercent,
+          } : undefined;
+
+          dayContent.video = {
+            ...dayContent.video,
+            url: `https://www.youtube.com/watch?v=${video.videoId}`,
+            videoId: video.videoId,
+            title: video.title,
+            channelName: video.channelName,
+            duration: video.duration,
+            startTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.startSeconds) : undefined,
+            endTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.endSeconds) : undefined,
+            watchInstructions: watchPlan?.primarySegment?.description || `Watch this video to learn about ${dayContent.title}`,
+            keyTopics: watchPlan?.keyTopics?.length ? watchPlan.keyTopics : dayContent.video.watchPoints,
+            summary: watchPlan?.summary, // AI-generated video summary for Active Recall
+            estimatedMinutes: watchPlan?.primarySegment
+              ? Math.ceil((watchPlan.primarySegment.endSeconds - watchPlan.primarySegment.startSeconds) / 60)
+              : 6,
+            verified: true,
+            matchPercent: videoResult.matchPercent,
+            whyThisVideo: videoResult.whyThisVideo,
+            alternative,
+          };
+          this.logger.log(`✅ Day ${dayNumber} video found: ${video.title} (${videoResult.matchPercent}% match)${alternative ? ' + alternative' : ''}`);
+        } else {
+          this.logger.warn(`⚠️ Day ${dayNumber} video not found: ${videoResult.error}`);
+        }
+      } catch (error) {
+        this.logger.warn(`⚠️ Day ${dayNumber} video search failed: ${error.message}`);
+      }
     }
 
     this.logger.log(

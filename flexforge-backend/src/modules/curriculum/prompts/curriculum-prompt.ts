@@ -131,8 +131,9 @@ function getSkillTypeGuidance(skillType: SkillType, complexity: SkillComplexity,
 }
 
 /**
- * PRIMARY PROMPT: Generates Day 1 FULL + Days 2-N SKELETON
- * Two-tier architecture optimized for token efficiency
+ * PRIMARY PROMPT: Generates SKELETON for ALL days (including Day 1)
+ * Day content is generated on-demand when user clicks "Start Learning" via buildDayDetailPrompt
+ * Optimized for token efficiency - full content generated only when needed
  */
 export function buildCurriculumPrompt(params: CurriculumPromptParams): {
   systemPrompt: string;
@@ -168,15 +169,16 @@ BOSS PROJECTS: Days ${bossDays.join(', ')} (60-90 min, combines ALL previous con
 
 ${getTierInstructions(params.userTier)}
 
-TWO-TIER OUTPUT REQUIREMENT:
-- Day 1: Generate COMPLETE content (all sections with full answers, solutions, skip test)
-- Days 2-${params.durationDays}: Generate SKELETON only (title, subtitle, skills, teaser, estimatedMinutes, skipTest)
+OUTPUT REQUIREMENT:
+Generate SKELETON only for ALL days (including Day 1).
+Full day content will be generated on-demand when user starts each day.
+Include: title, subtitle, skills, teaser, estimatedMinutes, hasBossProject, skipTest
 
 Output valid JSON only. No markdown formatting.`;
 
   const userPrompt = `Create ${params.durationDays}-day curriculum for "${params.skillName}".
 
-CRITICAL: Day 1 = FULL content. Days 2-${params.durationDays} = SKELETON only.
+Generate SKELETON for ALL days (Day 1 through Day ${params.durationDays}).
 
 {
   "title": "Curriculum title",
@@ -184,147 +186,25 @@ CRITICAL: Day 1 = FULL content. Days 2-${params.durationDays} = SKELETON only.
   "finalProject": "Capstone project they'll build",
   "skillType": "${params.skillType}",
 
-  "day1": {
-    "day": 1,
-    "title": "Day 1: [Specific Topic]",
-    "subtitle": "Compelling one-line tagline",
-    "skills": ["Specific skill 1", "Specific skill 2", "Specific skill 3"],
-    "estimatedMinutes": ${time.totalMinutes},
-
-    "skipTest": {
-      "description": "Already know this? Prove mastery to skip ahead",
-      "questions": [
-        {"question": "Challenging Q1 that proves understanding?", "answer": "Correct answer"},
-        {"question": "Application Q2 that shows real skill?", "answer": "Correct answer"},
-        {"question": "Edge case Q3 that experts would know?", "answer": "Correct answer"}
-      ],
-      "passThreshold": 2
-    },
-
-    "prePrompt": {
-      "text": "Today you'll learn [X]. This matters because [Y]. By the end, you'll be able to [Z].",
-      "primeQuestions": ["What do you already know about X?", "Where might you use this in real life?"]
-    },
-
-    "video": {
-      "title": "Descriptive video title",
-      "searchQuery": "Specific YouTube search query",
-      "preferredChannels": ["Quality channel 1", "Quality channel 2"],
-      "topicFocus": "Exactly what segment to watch for",
-      "idealDuration": "${time.video} minutes",
-      "watchPoints": ["Key concept 1 to notice", "Key concept 2 to notice", "Common mistake to avoid"]
-    },
-
-    "activeRecall": {
-      "instruction": "BEFORE seeing the answer, explain in your own words (3 sentences): What is [concept]? When would you use it? Give one example.",
-      "keyPointsToInclude": [
-        "Essential point 1 their answer should mention",
-        "Essential point 2 their answer should mention",
-        "Essential point 3 their answer should mention"
-      ],
-      "sampleGoodAnswer": "Example of what a complete, correct explanation looks like",
-      "connectionToYesterday": null
-    },
-
-    "conceptCheck": {
-      "questions": [
-        {
-          "level": 1,
-          "question": "What is X?",
-          "options": ["Option A (correct)", "Option B (plausible wrong)", "Option C (plausible wrong)", "Option D (plausible wrong)"],
-          "correctIndex": 0,
-          "explanation": "Why this is correct and why other options are wrong"
-        },
-        {
-          "level": 2,
-          "question": "When would you use X instead of Y?",
-          "options": ["Correct scenario", "Wrong scenario 1", "Wrong scenario 2", "Wrong scenario 3"],
-          "correctIndex": 0,
-          "explanation": "Context for the right answer and common misconceptions"
-        },
-        {
-          "level": 3,
-          "question": "Why does X work this way?",
-          "options": ["Correct principle", "Common misconception 1", "Common misconception 2", "Common misconception 3"],
-          "correctIndex": 0,
-          "explanation": "Deeper understanding of the underlying mechanism"
-        }
-      ]
-    },
-
-    "task1": {
-      "id": "day1-task1",
-      "title": "Task title",
-      "description": "Clear description of what to build/do",
-      "estimatedMinutes": ${time.task1},
-      "challenge": "Specific challenge statement",
-      "expectedOutput": "What success looks like (be specific)",
-      "starterCode": "// Template or starting point (if applicable)",
-      "hints": [
-        {"level": 1, "hint": "Gentle directional nudge - what to think about"},
-        {"level": 2, "hint": "More specific guidance - which concept/function to use"},
-        {"level": 3, "hint": "Nearly the approach - step by step without full answer"}
-      ],
-      "solution": "// COMPLETE working solution with inline comments",
-      "solutionAnnotations": ["// WHY: Explanation of key decision 1", "// WHY: Explanation of key decision 2"],
-      "stuckDetection": {
-        "triggerAfterMinutes": 7,
-        "suggestions": ["Re-watch video section on X", "Try the first hint", "Start with a simpler version"]
-      }
-    },
-
-    ${time.task2 > 0 ? `"task2": {
-      "id": "day1-task2",
-      "title": "Extended Practice: [Different Context]",
-      "description": "Apply same concept in new context",
-      "estimatedMinutes": ${time.task2},
-      "challenge": "Variation that reinforces learning",
-      "expectedOutput": "Success criteria",
-      "hints": [{"level": 1, "hint": "Hint"}, {"level": 2, "hint": "Hint"}, {"level": 3, "hint": "Hint"}],
-      "solution": "// Complete solution",
-      "connectionToTask1": "How this reinforces Task 1 learning"
-    },` : ''}
-
-    ${time.practice > 0 ? `"practiceProject": {
-      "id": "day1-practice",
-      "title": "Mini Project: [Real-world application]",
-      "description": "Build something useful with today's concepts",
-      "estimatedMinutes": ${time.practice},
-      "coreChallenge": "Main challenge description",
-      "requirements": ["Requirement 1", "Requirement 2", "Requirement 3"],
-      "starterTemplate": "// Starting template if needed",
-      "hints": ["Approach hint 1", "Approach hint 2", "Approach hint 3"],
-      "solution": "// COMPLETE working solution",
-      "stretchGoals": [
-        {"condition": "Finished early", "goal": "Add [bonus feature]"},
-        {"condition": "Want more challenge", "goal": "Implement [advanced variation]"},
-        {"condition": "Struggling", "goal": "Use starter template (PRO)", "tier": "PRO"}
-      ],
-      "tierResources": {
-        "free": {"hints": 1, "solution": true, "stepByStep": false},
-        "pro": {"hints": 3, "solution": true, "stepByStep": true, "aiTutor": true},
-        "premium": {
-          "adaptiveDifficulty": {
-            "high": "Challenge mode: Add [extra requirement]",
-            "medium": "Standard: Complete as described",
-            "low": "Guided: Use detailed walkthrough"
-          }
-        }
-      }
-    },` : ''}
-
-    "reflection": {
-      "questions": [
-        {"id": "confidence", "question": "Rate your confidence with today's concept (1-5)", "type": "scale"},
-        {"id": "clicked", "question": "What clicked or made sense today?", "type": "text"},
-        {"id": "foggy", "question": "What's still unclear or needs more practice?", "type": "text"},
-        {"id": "summary", "question": "Explain today's main concept in ONE sentence", "type": "text"},
-        {"id": "warmup", "question": "What will you review in tomorrow's 5-min warmup?", "type": "text"}
-      ]
-    }
-  },
-
   "days": [
+    {
+      "day": 1,
+      "title": "Day 1: [Specific Topic]",
+      "subtitle": "Compelling one-line tagline",
+      "skills": ["Specific skill 1", "Specific skill 2", "Specific skill 3"],
+      "teaser": "You'll learn [exciting thing]!",
+      "estimatedMinutes": ${time.totalMinutes},
+      "hasBossProject": ${bossDays.includes(1)},
+      "skipTest": {
+        "description": "Already know this? Prove mastery to skip ahead",
+        "questions": [
+          {"question": "Challenging Q1 that proves understanding?", "answer": "Correct answer"},
+          {"question": "Application Q2 that shows real skill?", "answer": "Correct answer"},
+          {"question": "Edge case Q3 that experts would know?", "answer": "Correct answer"}
+        ],
+        "passThreshold": 2
+      }
+    },
     {
       "day": 2,
       "title": "Day 2: [Topic Name]",
@@ -363,10 +243,8 @@ CRITICAL: Day 1 = FULL content. Days 2-${params.durationDays} = SKELETON only.
   }
 }
 
-Generate ALL ${params.durationDays} days:
-- Day 1: FULL content (everything above)
-- Days 2-${params.durationDays}: SKELETON only (day, title, subtitle, skills, teaser, estimatedMinutes, hasBossProject, skipTest)
-
+Generate ALL ${params.durationDays} days as SKELETONS.
+Each day skeleton must include: day, title, subtitle, skills, teaser, estimatedMinutes, hasBossProject, skipTest.
 Boss projects on days: ${bossDays.join(', ')} (set hasBossProject: true for those days).`;
 
   return { systemPrompt, userPrompt };
@@ -374,6 +252,65 @@ Boss projects on days: ${bossDays.join(', ')} (set hasBossProject: true for thos
 
 // Alias for backward compatibility
 export const buildOverviewPrompt = buildCurriculumPrompt;
+
+/**
+ * PREVIEW PROMPT: Generates SKELETON ONLY for ALL days (fast preview)
+ * Used for Phase 1 - user sees timeline before committing to "Start Learning"
+ * ~500-1000 tokens output vs ~3000-5000 for full generation
+ */
+export function buildPreviewPrompt(params: CurriculumPromptParams): {
+  systemPrompt: string;
+  userPrompt: string;
+} {
+  const time = getTimeStructure(params.hoursPerDay);
+  const bossDays = getBossProjectDays(params.durationDays);
+
+  const systemPrompt = `You are an expert curriculum designer. Generate a PREVIEW/SKELETON only.
+
+SKILL: ${params.skillName}
+TYPE: ${params.skillType} | LEVEL: ${params.skillLevel}
+DURATION: ${params.durationDays} days × ${time.totalMinutes} min/day
+
+OUTPUT: Generate SKELETON for ALL days. NO full content - just titles, skills, and teasers.
+This is a QUICK PREVIEW for the user to see the learning path before starting.
+
+Boss projects on days: ${bossDays.join(', ')}
+
+Output valid JSON only. Keep it concise.`;
+
+  const userPrompt = `Create ${params.durationDays}-day curriculum PREVIEW for "${params.skillName}".
+
+SKELETON ONLY for ALL days. Output format:
+
+{
+  "title": "Curriculum title",
+  "description": "One sentence on what student will master",
+  "finalProject": "Brief capstone description",
+  "skillType": "${params.skillType}",
+  "days": [
+    {
+      "day": 1,
+      "title": "Day 1: [Topic]",
+      "subtitle": "Compelling tagline",
+      "skills": ["Skill 1", "Skill 2", "Skill 3"],
+      "teaser": "What they'll build/learn today",
+      "estimatedMinutes": ${time.totalMinutes},
+      "hasBossProject": false
+    }
+  ],
+  "metadata": {
+    "skillName": "${params.skillName}",
+    "durationDays": ${params.durationDays},
+    "hoursPerDay": ${params.hoursPerDay},
+    "skillLevel": "${params.skillLevel}",
+    "suggestedLanguage": "${params.suggestedLanguage || 'English'}"
+  }
+}
+
+Generate ALL ${params.durationDays} days as skeletons. Boss projects on days: ${bossDays.join(', ')}.`;
+
+  return { systemPrompt, userPrompt };
+}
 
 /**
  * DAY DETAIL PROMPT: Generates full content for a specific day (Day 2+)

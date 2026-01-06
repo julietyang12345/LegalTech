@@ -112,6 +112,23 @@ export class RefreshVideoDto {
 }
 
 /**
+ * DTO for generating full day content
+ * Called when user clicks "Start Learning" on a day
+ */
+export class GenerateDayDetailsDto {
+  @IsUUID()
+  sessionId: string;
+
+  @IsInt()
+  @Min(1)
+  dayNumber: number;
+
+  // The full curriculum object (skeleton) is passed from frontend
+  // This allows stateless backend - no need to store curriculum between requests
+  curriculum: any;
+}
+
+/**
  * Response for curriculum generation with cache info
  */
 export interface CurriculumCacheResponse {

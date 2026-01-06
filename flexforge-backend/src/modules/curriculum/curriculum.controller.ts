@@ -16,6 +16,7 @@ import {
   RecordBounceDto,
   RecordRegenerationDto,
   RefreshVideoDto,
+  GenerateDayDetailsDto,
   CurriculumCacheResponse,
 } from './dto/curriculum-cache.dto';
 import { VideoMatchingService } from './services/video-matching.service';
@@ -33,8 +34,37 @@ export class CurriculumController {
   ) {}
 
   /**
+   * POST /api/v1/curriculum/preview
+   * Generate curriculum PREVIEW (skeleton only for all days)
+   * Fast generation (~500-1000 tokens) for user to see timeline before committing
+   * Phase 1 of two-phase generation
+   */
+  @Post('preview')
+  async generatePreview(@Body() dto: GenerateCurriculumDto) {
+    try {
+      const result = await this.curriculumService.generatePreview(dto);
+
+      return {
+        message: 'Curriculum preview generated successfully',
+        preview: result.preview,
+        skillDetection: result.skillDetection,
+        metadata: {
+          tokensUsed: result.tokensUsed,
+          cost: result.cost,
+        },
+        warnings: result.warnings,
+      };
+    } catch (error) {
+      throw new BadRequestException(
+        error.message || 'Failed to generate curriculum preview',
+      );
+    }
+  }
+
+  /**
    * POST /api/v1/curriculum/generate
-   * Generate curriculum (for preview, not saved to session)
+   * Generate FULL curriculum (Day 1 full + Days 2-N skeleton)
+   * Phase 2 - called when user clicks "Start Learning" after seeing preview
    */
   @Post('generate')
   async generate(@Body() dto: GenerateCurriculumDto) {
@@ -52,6 +82,38 @@ export class CurriculumController {
     } catch (error) {
       throw new BadRequestException(
         error.message || 'Failed to generate curriculum',
+      );
+    }
+  }
+
+  /**
+   * POST /api/v1/curriculum/day-details
+   * Generate full content for a specific day
+   * Called when user clicks "Start Learning" on any day (including Day 1)
+   */
+  @Post('day-details')
+  async generateDayDetails(
+    @Body() dto: GenerateDayDetailsDto,
+    @CurrentUser() user: User,
+  ) {
+    try {
+      const result = await this.curriculumService.generateDayDetails(
+        dto.curriculum,
+        dto.dayNumber,
+        user.quotaTier,
+      );
+
+      return {
+        message: `Day ${dto.dayNumber} details generated successfully`,
+        dayContent: result.dayContent,
+        metadata: {
+          tokensUsed: result.tokensUsed,
+          cost: result.cost,
+        },
+      };
+    } catch (error) {
+      throw new BadRequestException(
+        error.message || `Failed to generate Day ${dto.dayNumber} details`,
       );
     }
   }

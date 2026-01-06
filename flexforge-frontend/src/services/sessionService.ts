@@ -9,11 +9,62 @@ import type {
   SkipTestResponse,
   PracticeSubmitResponse,
   DayDetailsResponse,
+  SkillType,
+  SkillComplexity,
 } from '@/types';
+
+// Preview response type
+export interface PreviewResponse {
+  message: string;
+  preview: {
+    title: string;
+    description: string;
+    finalProject: string;
+    skillType: SkillType;
+    days: Array<{
+      day: number;
+      title: string;
+      subtitle: string;
+      skills: string[];
+      teaser: string;
+      estimatedMinutes: number;
+      hasBossProject?: boolean;
+    }>;
+    metadata: {
+      skillName: string;
+      durationDays: number;
+      hoursPerDay: number;
+      skillLevel: string;
+      skillType: SkillType;
+      complexity: SkillComplexity;
+      suggestedLanguage?: string;
+    };
+  };
+  skillDetection: {
+    skillType: SkillType;
+    complexity: SkillComplexity;
+    estimatedDaysNeeded: number;
+  };
+  metadata: {
+    tokensUsed: number;
+    cost: number;
+  };
+  warnings?: string[];
+}
 
 export const sessionService = {
   /**
+   * Generate curriculum PREVIEW (skeleton only for all days)
+   * Phase 1: Fast generation for user to see timeline before committing
+   */
+  async generatePreview(dto: CreateSessionDto): Promise<PreviewResponse> {
+    const { data } = await api.post<PreviewResponse>('/curriculum/preview', dto);
+    return data;
+  },
+
+  /**
    * Create new learning session with AI-generated curriculum
+   * Phase 2: Full Day 1 content generation after user confirms preview
    */
   async create(dto: CreateSessionDto): Promise<SessionResponse> {
     const { data } = await api.post<SessionResponse>('/sessions', dto);
