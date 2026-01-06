@@ -154,6 +154,8 @@ export class SessionService {
       );
     }
 
+    // Day 1 content will be generated when user clicks "Start Day 1" via startDay()
+
     return {
       session: savedSession,
       warnings,

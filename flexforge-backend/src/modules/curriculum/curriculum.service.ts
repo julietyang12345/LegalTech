@@ -298,6 +298,9 @@ export class CurriculumService {
   /**
    * PHASE 2: Generate full content for a specific day
    * Called when student starts a day (clicks "Start Day")
+   *
+   * OPTIMIZATION: Video search runs in parallel with AI content generation
+   * using skeleton info (dayOverview.title + skills) instead of waiting for AI response
    */
   async generateDayDetails(
     curriculum: any,
@@ -313,6 +316,30 @@ export class CurriculumService {
 
     const previousDay = curriculum.days.find((d: any) => d.day === dayNumber - 1);
 
+    // Start video search EARLY using skeleton info (runs in parallel with AI)
+    const levelMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
+      'BEGINNER': 'beginner',
+      'INTERMEDIATE': 'intermediate',
+      'ADVANCED': 'advanced',
+    };
+
+    // Use skeleton's title + first skill as video search concept
+    const videoSearchConcept = dayOverview.skills?.[0]
+      ? `${dayOverview.title} ${dayOverview.skills[0]}`
+      : dayOverview.title;
+
+    this.logger.log(`🎥 Starting video search in parallel for: "${videoSearchConcept}"`);
+    const videoSearchPromise = this.videoMatcher.findBestVideo({
+      concept: videoSearchConcept,
+      userSlot: 6, // 6 minutes default video slot
+      userLevel: levelMap[curriculum.metadata.skillLevel] || 'beginner',
+      skillType: curriculum.metadata.skillType,
+    }, { deepVerify: true }).catch(error => {
+      this.logger.warn(`⚠️ Video search failed: ${error.message}`);
+      return null;
+    });
+
+    // Generate day content with AI (runs in parallel with video search)
     const params: DayDetailParams = {
       skillName: curriculum.metadata.skillName,
       dayNumber,
@@ -371,74 +398,57 @@ export class CurriculumService {
       );
     }
 
-    // Find actual YouTube video for this day
-    if (dayContent.video) {
-      this.logger.log(`🎥 Finding video for Day ${dayNumber}...`);
-      try {
-        const levelMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
-          'BEGINNER': 'beginner',
-          'INTERMEDIATE': 'intermediate',
-          'ADVANCED': 'advanced',
-        };
+    // Await video search result (should be done or almost done by now)
+    const videoResult = await videoSearchPromise;
 
-        const videoResult = await this.videoMatcher.findBestVideo({
-          concept: dayContent.video.topicFocus || dayContent.title,
-          userSlot: 6, // 6 minutes default video slot
-          userLevel: levelMap[curriculum.metadata.skillLevel] || 'beginner',
-          skillType: curriculum.metadata.skillType,
-        }, { deepVerify: true }); // Enable AI transcript analysis for keyTopics + summary
+    // Merge video result into dayContent
+    if (dayContent.video && videoResult?.success && videoResult.video) {
+      const video = videoResult.video;
+      const watchPlan = videoResult.watchPlan;
 
-        if (videoResult.success && videoResult.video) {
-          const video = videoResult.video;
-          const watchPlan = videoResult.watchPlan;
+      // Build alternative video from buildAlternatives() result
+      const alt = videoResult.alternatives?.[0];
+      const alternative = alt ? {
+        videoId: alt.video.videoId,
+        title: alt.video.title,
+        channelName: alt.video.channelName,
+        duration: alt.video.duration,
+        startTime: alt.watchPlan?.primarySegment
+          ? this.secondsToTime(alt.watchPlan.primarySegment.startSeconds)
+          : undefined,
+        endTime: alt.watchPlan?.primarySegment
+          ? this.secondsToTime(alt.watchPlan.primarySegment.endSeconds)
+          : undefined,
+        estimatedMinutes: alt.watchPlan?.primarySegment
+          ? Math.ceil((alt.watchPlan.primarySegment.endSeconds - alt.watchPlan.primarySegment.startSeconds) / 60)
+          : 6,
+        differentiator: alt.differentiator,
+        matchPercent: alt.matchPercent,
+      } : undefined;
 
-          // Build alternative video from buildAlternatives() result
-          const alt = videoResult.alternatives?.[0];
-          const alternative = alt ? {
-            videoId: alt.video.videoId,
-            title: alt.video.title,
-            channelName: alt.video.channelName,
-            duration: alt.video.duration,
-            startTime: alt.watchPlan?.primarySegment
-              ? this.secondsToTime(alt.watchPlan.primarySegment.startSeconds)
-              : undefined,
-            endTime: alt.watchPlan?.primarySegment
-              ? this.secondsToTime(alt.watchPlan.primarySegment.endSeconds)
-              : undefined,
-            estimatedMinutes: alt.watchPlan?.primarySegment
-              ? Math.ceil((alt.watchPlan.primarySegment.endSeconds - alt.watchPlan.primarySegment.startSeconds) / 60)
-              : 6,
-            differentiator: alt.differentiator,
-            matchPercent: alt.matchPercent,
-          } : undefined;
-
-          dayContent.video = {
-            ...dayContent.video,
-            url: `https://www.youtube.com/watch?v=${video.videoId}`,
-            videoId: video.videoId,
-            title: video.title,
-            channelName: video.channelName,
-            duration: video.duration,
-            startTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.startSeconds) : undefined,
-            endTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.endSeconds) : undefined,
-            watchInstructions: watchPlan?.primarySegment?.description || `Watch this video to learn about ${dayContent.title}`,
-            keyTopics: watchPlan?.keyTopics?.length ? watchPlan.keyTopics : dayContent.video.watchPoints,
-            summary: watchPlan?.summary, // AI-generated video summary for Active Recall
-            estimatedMinutes: watchPlan?.primarySegment
-              ? Math.ceil((watchPlan.primarySegment.endSeconds - watchPlan.primarySegment.startSeconds) / 60)
-              : 6,
-            verified: true,
-            matchPercent: videoResult.matchPercent,
-            whyThisVideo: videoResult.whyThisVideo,
-            alternative,
-          };
-          this.logger.log(`✅ Day ${dayNumber} video found: ${video.title} (${videoResult.matchPercent}% match)${alternative ? ' + alternative' : ''}`);
-        } else {
-          this.logger.warn(`⚠️ Day ${dayNumber} video not found: ${videoResult.error}`);
-        }
-      } catch (error) {
-        this.logger.warn(`⚠️ Day ${dayNumber} video search failed: ${error.message}`);
-      }
+      dayContent.video = {
+        ...dayContent.video,
+        url: `https://www.youtube.com/watch?v=${video.videoId}`,
+        videoId: video.videoId,
+        title: video.title,
+        channelName: video.channelName,
+        duration: video.duration,
+        startTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.startSeconds) : undefined,
+        endTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.endSeconds) : undefined,
+        watchInstructions: watchPlan?.primarySegment?.description || `Watch this video to learn about ${dayContent.title}`,
+        keyTopics: watchPlan?.keyTopics?.length ? watchPlan.keyTopics : dayContent.video.watchPoints,
+        summary: watchPlan?.summary, // AI-generated video summary for Active Recall
+        estimatedMinutes: watchPlan?.primarySegment
+          ? Math.ceil((watchPlan.primarySegment.endSeconds - watchPlan.primarySegment.startSeconds) / 60)
+          : 6,
+        verified: true,
+        matchPercent: videoResult.matchPercent,
+        whyThisVideo: videoResult.whyThisVideo,
+        alternative,
+      };
+      this.logger.log(`✅ Day ${dayNumber} video found: ${video.title} (${videoResult.matchPercent}% match)${alternative ? ' + alternative' : ''}`);
+    } else if (dayContent.video && videoResult && !videoResult.success) {
+      this.logger.warn(`⚠️ Day ${dayNumber} video not found: ${videoResult.error}`);
     }
 
     this.logger.log(

@@ -5,17 +5,13 @@ import {
   Sparkles,
   Clock,
   Calendar,
-  Zap,
-  ChevronRight,
   AlertTriangle,
   Loader2,
   Search,
   BookOpen,
-  Target,
   CheckCircle,
   Brain,
   Trophy,
-  ArrowLeft,
   Play,
   RefreshCw,
 } from 'lucide-react';
@@ -34,14 +30,6 @@ const PREVIEW_LOADING_STEPS = [
   { icon: CheckCircle, text: 'Creating your preview...', duration: 3000 },
 ];
 
-// Loading steps for FULL generation (~60-90 seconds)
-const FULL_LOADING_STEPS = [
-  { icon: Sparkles, text: 'Generating Day 1 content...', duration: 15000 },
-  { icon: Target, text: 'Creating practice exercises...', duration: 12000 },
-  { icon: BookOpen, text: 'Finding perfect video...', duration: 10000 },
-  { icon: Trophy, text: 'Adding boss projects...', duration: 8000 },
-  { icon: CheckCircle, text: 'Finalizing your curriculum...', duration: 5000 },
-];
 
 // Generating Screen Component (reusable for preview and full generation)
 function GeneratingScreen({
@@ -173,7 +161,7 @@ function GeneratingScreen({
               />
             </div>
             <p className="text-xs text-gray-500 text-center mt-2">
-              {steps === PREVIEW_LOADING_STEPS ? 'This takes about 10-15 seconds' : 'This usually takes 1-2 minutes'}
+              This takes about 10-15 seconds
             </p>
           </div>
         </Card>
@@ -329,7 +317,7 @@ function PreviewScreen({
         </div>
 
         <p className="text-center text-sm text-gray-500 mt-4">
-          Clicking "Start Learning" will generate Day 1's full content
+          Day 1 content will be generated when you start your first lesson
         </p>
       </div>
     </motion.div>
@@ -495,7 +483,7 @@ function SuggestedSkills({ onSelect }: { onSelect: (skill: string) => void }) {
   );
 }
 
-type PagePhase = 'form' | 'generating-preview' | 'preview' | 'generating-full';
+type PagePhase = 'form' | 'generating-preview' | 'preview';
 
 export function StartPage() {
   const navigate = useNavigate();
@@ -543,10 +531,8 @@ export function StartPage() {
     }
   };
 
-  // Phase 2: Create full session after user confirms preview
+  // Phase 2: Create full session after user confirms preview (instant - Day 1 generated on demand)
   const handleStartLearning = async () => {
-    setPhase('generating-full');
-
     try {
       await createSession({
         skillName,
@@ -562,7 +548,6 @@ export function StartPage() {
 
       navigate('/today');
     } catch (err: any) {
-      setPhase('preview');
       setPreviewError(err.response?.data?.message || err.message || 'Failed to start session');
     }
   };
@@ -585,17 +570,6 @@ export function StartPage() {
     );
   }
 
-  // Show full generation loading screen
-  if (phase === 'generating-full') {
-    return (
-      <GeneratingScreen
-        skillName={skillName}
-        steps={FULL_LOADING_STEPS}
-        title="Starting your journey"
-        subtitle="Generating Day 1 content with videos and exercises..."
-      />
-    );
-  }
 
   // Show preview screen
   if (phase === 'preview' && previewData) {
