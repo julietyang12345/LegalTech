@@ -254,7 +254,9 @@ export interface CurriculumDay {
 export interface ConceptQuestion {
   level: 1 | 2 | 3;
   question: string;
-  answer: string;
+  options: string[];      // 4 multiple choice options
+  correctIndex: number;   // Index of correct answer (0-3)
+  explanation: string;    // Why correct answer is right
 }
 
 export interface Task {

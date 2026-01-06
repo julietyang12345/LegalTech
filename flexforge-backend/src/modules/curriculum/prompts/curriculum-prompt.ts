@@ -228,9 +228,27 @@ CRITICAL: Day 1 = FULL content. Days 2-${params.durationDays} = SKELETON only.
 
     "conceptCheck": {
       "questions": [
-        {"level": 1, "type": "recall", "question": "What is X?", "answer": "Clear definition", "explanation": "Why this definition matters"},
-        {"level": 2, "type": "application", "question": "When would you use X instead of Y?", "answer": "Use cases with reasoning", "explanation": "Real-world decision context"},
-        {"level": 3, "type": "analysis", "question": "Why does X work this way? What's the underlying principle?", "answer": "Deeper mechanism/principle", "explanation": "Connects to broader understanding"}
+        {
+          "level": 1,
+          "question": "What is X?",
+          "options": ["Option A (correct)", "Option B (plausible wrong)", "Option C (plausible wrong)", "Option D (plausible wrong)"],
+          "correctIndex": 0,
+          "explanation": "Why this is correct and why other options are wrong"
+        },
+        {
+          "level": 2,
+          "question": "When would you use X instead of Y?",
+          "options": ["Correct scenario", "Wrong scenario 1", "Wrong scenario 2", "Wrong scenario 3"],
+          "correctIndex": 0,
+          "explanation": "Context for the right answer and common misconceptions"
+        },
+        {
+          "level": 3,
+          "question": "Why does X work this way?",
+          "options": ["Correct principle", "Common misconception 1", "Common misconception 2", "Common misconception 3"],
+          "correctIndex": 0,
+          "explanation": "Deeper understanding of the underlying mechanism"
+        }
       ]
     },
 
@@ -443,9 +461,27 @@ ${JSON.stringify(params.skeleton, null, 2)}
 
   "conceptCheck": {
     "questions": [
-      {"level": 1, "type": "recall", "question": "What?", "answer": "Answer", "explanation": "Why"},
-      {"level": 2, "type": "application", "question": "When/How?", "answer": "Answer", "explanation": "Why"},
-      {"level": 3, "type": "analysis", "question": "Why?", "answer": "Answer", "explanation": "Why"}
+      {
+        "level": 1,
+        "question": "What is [key concept]?",
+        "options": ["Correct answer", "Plausible wrong 1", "Plausible wrong 2", "Plausible wrong 3"],
+        "correctIndex": 0,
+        "explanation": "Why correct and why others wrong"
+      },
+      {
+        "level": 2,
+        "question": "When/How would you use [concept]?",
+        "options": ["Correct scenario", "Wrong scenario 1", "Wrong scenario 2", "Wrong scenario 3"],
+        "correctIndex": 0,
+        "explanation": "Context and common misconceptions"
+      },
+      {
+        "level": 3,
+        "question": "Why does [concept] work this way?",
+        "options": ["Correct principle", "Misconception 1", "Misconception 2", "Misconception 3"],
+        "correctIndex": 0,
+        "explanation": "Deeper mechanism understanding"
+      }
     ]
   },
 
