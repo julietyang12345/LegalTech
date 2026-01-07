@@ -78,19 +78,20 @@ function VideoCard({
           <div className="flex flex-col items-center justify-center h-full text-white">
             <Play className="w-12 h-12 mb-3 opacity-50" />
             <p className="text-sm font-medium mb-2">{video?.title || fallbackTitle}</p>
-            {video && 'searchQuery' in video && video.searchQuery ? (
-              <a
-                href={`https://www.youtube.com/results?search_query=${encodeURIComponent(video.searchQuery)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-4 py-2 mt-2 text-sm bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
-              >
-                <Youtube className="w-4 h-4" />
-                Search on YouTube
-              </a>
-            ) : (
-              <p className="text-xs text-gray-400">Video not available</p>
-            )}
+            <p className="text-xs text-gray-400 mb-3">Video search failed - find one manually</p>
+            <a
+              href={`https://www.youtube.com/results?search_query=${encodeURIComponent(
+                (video && 'searchQuery' in video && video.searchQuery)
+                  ? video.searchQuery
+                  : (video?.title || fallbackTitle) + ' tutorial'
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+            >
+              <Youtube className="w-4 h-4" />
+              Search on YouTube
+            </a>
           </div>
         )}
 
@@ -163,57 +164,54 @@ function VideoCard({
 
 export function VideoStep({ day, session }: VideoStepProps) {
   const [hasWatched, setHasWatched] = useState(false);
-  const [activeVideo, setActiveVideo] = useState<'main' | 'alt' | 'new'>('main');
+  const [activeVideoIndex, setActiveVideoIndex] = useState(0); // 0=main, 1=alt1, 2=alt2, 3+=AI generated
   const [isSearchingNew, setIsSearchingNew] = useState(false);
-  const [newVideo, setNewVideo] = useState<VideoMatch | null>(null);
-  const [usedVideoIds, setUsedVideoIds] = useState<string[]>([]);
+  const [aiGeneratedVideos, setAiGeneratedVideos] = useState<VideoMatch[]>([]);
   const { hasTierAccess } = useAuthStore();
   const { activeSession } = useSessionStore();
   const canAskAI = hasTierAccess(QuotaTier.PRO);
 
   const video = day.video;
-  const alternative = video?.alternative;
 
-  // Determine current video based on selection
+  // Support both single alternative and array of alternatives
+  const alternatives: VideoAlternative[] = video?.alternatives || (video?.alternative ? [video.alternative] : []);
+
+  // Determine current video based on index
+  // 0 = main video, 1-N = alternatives, N+ = AI generated
   const getCurrentVideo = (): VideoMatch | VideoAlternative | null => {
-    if (activeVideo === 'new' && newVideo) return newVideo;
-    if (activeVideo === 'alt' && alternative) return alternative;
-    return video || null;
+    if (activeVideoIndex === 0) return video || null;
+    if (activeVideoIndex <= alternatives.length) return alternatives[activeVideoIndex - 1];
+    const aiIndex = activeVideoIndex - 1 - alternatives.length;
+    return aiGeneratedVideos[aiIndex] || null;
   };
 
-  const currentVideo = getCurrentVideo();
+  const currentVideo = getCurrentVideo() || video;
+  const isOnMainVideo = activeVideoIndex === 0;
+  const remainingPreScreened = Math.max(0, alternatives.length - activeVideoIndex); // How many pre-screened left after current
 
-  // Track video IDs that have been used/seen
-  const trackVideoId = (videoId: string) => {
-    if (!usedVideoIds.includes(videoId)) {
-      setUsedVideoIds(prev => [...prev, videoId]);
-    }
+  // Get all used video IDs for exclusion
+  const getUsedVideoIds = (): string[] => {
+    const ids: string[] = [];
+    if (video?.videoId) ids.push(video.videoId);
+    alternatives.forEach(alt => { if (alt.videoId) ids.push(alt.videoId); });
+    aiGeneratedVideos.forEach(v => { if (v.videoId) ids.push(v.videoId); });
+    return ids;
   };
 
-  // Handle "Find New Video" button click
-  const handleFindNewVideo = async () => {
-    // First click: switch to alternative if available and not already used
-    if (activeVideo === 'main' && alternative && !usedVideoIds.includes(alternative.videoId)) {
-      trackVideoId(video?.videoId || '');
-      trackVideoId(alternative.videoId);
-      setActiveVideo('alt');
+  // Handle "Try a different one" click - progressive fallback
+  const handleTryDifferent = async () => {
+    const nextIndex = activeVideoIndex + 1;
+
+    // If we have more pre-screened alternatives, use them
+    if (nextIndex <= alternatives.length) {
+      setActiveVideoIndex(nextIndex);
       return;
     }
 
-    // Already on alternative or no alternative: search for new video (Layer 3)
+    // No more pre-screened alternatives - search for new video via AI
     setIsSearchingNew(true);
     try {
-      // Collect all video IDs to exclude
-      const excludeIds = [...usedVideoIds];
-      if (video?.videoId && !excludeIds.includes(video.videoId)) {
-        excludeIds.push(video.videoId);
-      }
-      if (alternative?.videoId && !excludeIds.includes(alternative.videoId)) {
-        excludeIds.push(alternative.videoId);
-      }
-      if (newVideo?.videoId && !excludeIds.includes(newVideo.videoId)) {
-        excludeIds.push(newVideo.videoId);
-      }
+      const excludeIds = getUsedVideoIds();
 
       const result = await sessionService.refreshVideo({
         sessionId: session.id,
@@ -236,12 +234,13 @@ export function VideoStep({ day, session }: VideoStepProps) {
         matchPercent: result.video.matchPercent,
         keyTopics: result.video.keyTopics,
         whyThisVideo: result.video.whyThisVideo,
-        alternative: result.video.alternative,
+        alternatives: result.video.alternatives,
       };
 
-      setNewVideo(fetchedVideo);
-      setActiveVideo('new');
-      trackVideoId(fetchedVideo.videoId || '');
+      setAiGeneratedVideos(prev => [...prev, fetchedVideo]);
+      // Index: 0=main, 1..N=alternatives, N+1..=AI videos
+      // New AI video index = 1 + alternatives.length + current AI count
+      setActiveVideoIndex(1 + alternatives.length + aiGeneratedVideos.length);
     } catch (error) {
       console.error('Failed to find new video:', error);
     } finally {
@@ -249,16 +248,16 @@ export function VideoStep({ day, session }: VideoStepProps) {
     }
   };
 
-  // Switch to main video
+  // Switch back to main video
   const handleUseMain = () => {
-    setActiveVideo('main');
-    if (video?.videoId) trackVideoId(video.videoId);
+    setActiveVideoIndex(0);
   };
 
-  // Switch to alternative
-  const handleUseAlternative = () => {
-    setActiveVideo('alt');
-    if (alternative?.videoId) trackVideoId(alternative.videoId);
+  // Get button text based on remaining options
+  const getTryDifferentText = (): string => {
+    if (isSearchingNew) return 'Searching for new video...';
+    if (remainingPreScreened > 0) return 'Not quite right? Try a different one';
+    return 'Find another video (AI search)';
   };
 
   return (
@@ -285,9 +284,10 @@ export function VideoStep({ day, session }: VideoStepProps) {
             <div className="flex items-center gap-2">
               <Star className="w-4 h-4 text-brand-500 fill-current" />
               <span className="text-sm font-medium text-brand-700">
-                {activeVideo === 'main' ? 'Recommended' :
-                 activeVideo === 'alt' ? (alternative?.differentiator || 'Alternative') :
-                 'AI Selected'}
+                {isOnMainVideo ? 'Recommended' :
+                 activeVideoIndex <= alternatives.length
+                   ? ((alternatives[activeVideoIndex - 1] as VideoAlternative)?.differentiator || 'Alternative')
+                   : 'AI Selected'}
               </span>
             </div>
             <span className="text-xs text-brand-600 bg-brand-200 px-2 py-0.5 rounded-full">
@@ -302,7 +302,7 @@ export function VideoStep({ day, session }: VideoStepProps) {
         />
 
         {/* Why this video */}
-        {activeVideo === 'main' && video?.whyThisVideo && video.whyThisVideo.length > 0 && (
+        {isOnMainVideo && video?.whyThisVideo && video.whyThisVideo.length > 0 && (
           <div className="px-6 pb-6">
             <div className="flex flex-wrap gap-2">
               {video.whyThisVideo.map((reason, idx) => (
@@ -315,7 +315,7 @@ export function VideoStep({ day, session }: VideoStepProps) {
         )}
 
         {/* Switch back link when not viewing main */}
-        {activeVideo !== 'main' && (
+        {!isOnMainVideo && (
           <div className="px-6 pb-4">
             <button
               onClick={handleUseMain}
@@ -342,33 +342,10 @@ export function VideoStep({ day, session }: VideoStepProps) {
         )}
       </Card>
 
-      {/* Alternative Video - Always Visible When Available */}
-      {alternative && activeVideo === 'main' && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="space-y-3"
-        >
-          <div className="flex items-center justify-between">
-            <h4 className="text-sm font-medium text-gray-700 flex items-center gap-2">
-              <span className="text-lg">{alternative.differentiator.split(' ')[0]}</span>
-              Also great: {alternative.differentiator.split(' ').slice(1).join(' ')}
-            </h4>
-            <span className="text-xs text-gray-500">{alternative.matchPercent}% match</span>
-          </div>
-          <VideoCard
-            video={alternative}
-            fallbackTitle={day.title}
-            isAlternative
-            onSelect={handleUseAlternative}
-          />
-        </motion.div>
-      )}
-
-      {/* Find New Video Button */}
+      {/* Try a different one - subtle link (progressive fallback) */}
       <div className="flex justify-center">
         <button
-          onClick={handleFindNewVideo}
+          onClick={handleTryDifferent}
           disabled={isSearchingNew}
           className="flex items-center gap-2 px-4 py-2 text-sm text-gray-500 hover:text-gray-700
                      hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -381,7 +358,7 @@ export function VideoStep({ day, session }: VideoStepProps) {
           ) : (
             <>
               <RefreshCw className="w-4 h-4" />
-              {activeVideo === 'main' && alternative ? 'Try a different video' : 'Find new video (AI search)'}
+              {getTryDifferentText()}
             </>
           )}
         </button>

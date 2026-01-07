@@ -613,6 +613,8 @@ export const CONTENT_SIGNALS = {
       'reaction',
       'sponsor',
       'this video is sponsored',
+      'made simple',
+      'made easy',
     ],
     hard: [
       'coupon code',
@@ -627,6 +629,14 @@ export const CONTENT_SIGNALS = {
       'nft tutorial',
       'free course preview',
       'full course available',
+      'sign up free',
+      'start free trial',
+      'get started free',
+      'try it free',
+      'official tutorial',
+      'product demo',
+      'product tour',
+      'platform overview',
     ],
   },
 };

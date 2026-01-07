@@ -8,10 +8,23 @@ import {
   buildSearchQuery,
   getPreferredChannelsForTopic,
   getChannelPolicy,
-  CONTENT_SIGNALS,
   type VideoValidationResult,
   type YouTubeChannel,
 } from './youtube-policy';
+import {
+  SCORING_WEIGHTS,
+  MARKETING_WEIGHTS,
+  CONCEPT_SYNONYMS,
+  scoreMarketingPenalty,
+  scoreChannelTrust,
+  scoreConceptMatch,
+  scoreDurationFit,
+  scoreCognitiveLoad,
+  scoreEngagement,
+  scoreSegmentability,
+  type ScoringVideo,
+  type ScoringContext,
+} from '../utils/video-scoring.utils';
 
 // ============================================
 // TYPES
@@ -107,71 +120,7 @@ export interface VideoMatchOptions {
   maxCandidates?: number;     // Max videos to consider (default 20)
 }
 
-// ============================================
-// SCORING WEIGHTS (sum to 1.0)
-// ============================================
-
-const SCORING_WEIGHTS = {
-beginner: {
-  conceptMatch: 0.25,
-  channelTrust: 0.25,
-  durationFit: 0.10,
-  cognitiveLoad: 0.20,
-  engagement: 0.05,
-  segmentability: 0.15,
-},
-intermediate: {
-  conceptMatch: 0.30,
-  channelTrust: 0.15,
-  durationFit: 0.10,
-  cognitiveLoad: 0.10,
-  engagement: 0.10,
-  segmentability: 0.25,
-},
-advanced: {
-  conceptMatch: 0.35,
-  channelTrust: 0.10,
-  durationFit: 0.10,
-  cognitiveLoad: 0.10,
-  engagement: 0.10,
-  segmentability: 0.25,
-},
-
-};
-
-// Cognitive load signals by level
-const COGNITIVE_SIGNALS = {
-  beginner: {
-    positive: ['for beginners', 'simply', 'easy', 'basic', 'introduction', 'intro to', 'getting started', 'first'],
-    negative: ['advanced', 'deep dive', 'under the hood', 'internals', 'vs', 'performance'],
-  },
-  intermediate: {
-    positive: ['tutorial', 'explained', 'how to', 'in practice', 'real world'],
-    negative: ['for beginners', 'basics', 'internals'],
-  },
-  advanced: {
-    positive: ['deep dive', 'under the hood', 'internals', 'performance', 'architecture', 'advanced'],
-    negative: ['for beginners', 'basics', 'introduction'],
-  },
-};
-
-// Concept synonyms: key tokens -> related terms
-const CONCEPT_SYNONYMS: Record<string, string[]> = {
-  usestate: ['state', 'react state', 'state hook', 'state management', 'usestate'],
-  useeffect: ['effect', 'side effect', 'lifecycle', 'effect hook', 'useeffect'],
-  props: ['properties', 'component props', 'passing data', 'props'],
-  component: ['components', 'react component', 'functional component'],
-  api: ['rest api', 'fetch', 'http', 'endpoints', 'backend', 'api'],
-  async: ['asynchronous', 'promises', 'await', 'async/await', 'async'],
-  hook: ['hooks', 'react hook', 'custom hook'],
-  reducer: ['usereducer', 'reducer', 'state reducer'],
-  context: ['usecontext', 'context api', 'react context'],
-  typescript: ['ts', 'type script', 'types', 'typescript'],
-  javascript: ['js', 'java script', 'javascript'],
-  python: ['py', 'python'],
-  node: ['nodejs', 'node.js', 'node'],
-  react: ['reactjs', 'react.js', 'react'],
-};
+// Scoring weights and signals imported from video-scoring.utils.ts
 
 // Enrichment cache to avoid repeated scraping
 interface CachedEnrichment {
@@ -829,17 +778,35 @@ export class VideoMatchingService {
     cheapScoreMap: Map<string, number>,
   ): ScoredVideo[] {
     const weights = SCORING_WEIGHTS[context.userLevel];
+    const scoringContext: ScoringContext = {
+      concept: context.concept,
+      userSlot: context.userSlot,
+      userLevel: context.userLevel,
+    };
 
     return videos
       .map(video => {
+        // Convert to ScoringVideo for utils functions
+        const scoringVideo: ScoringVideo = {
+          videoId: video.videoId,
+          title: video.title,
+          description: video.description,
+          channelId: video.channelId,
+          channelName: video.channelName,
+          duration: video.duration,
+          hasChapters: video.hasChapters,
+          hasRepository: video.hasRepository,
+          chapters: video.chapters,
+        };
+
         const scores = {
-          conceptMatch: this.scoreConceptMatch(video, context),
-          channelTrust: this.scoreChannelTrust(video),
-          marketingPenalty: this.scoreMarketingPenalty(video),
-          durationFit: this.scoreDurationFit(video, context),
-          cognitiveLoad: this.scoreCognitiveLoad(video, context),
-          engagement: this.scoreEngagement(video),
-          segmentability: this.scoreSegmentability(video),
+          conceptMatch: scoreConceptMatch(scoringVideo, scoringContext),
+          channelTrust: scoreChannelTrust(scoringVideo),
+          marketingPenalty: scoreMarketingPenalty(scoringVideo),
+          durationFit: scoreDurationFit(scoringVideo, scoringContext),
+          cognitiveLoad: scoreCognitiveLoad(scoringVideo, scoringContext),
+          engagement: this.scoreEngagementEnriched(video), // Use enriched version
+          segmentability: this.scoreSegmentabilityEnriched(video), // Use enriched version
         };
 
         // Get validation result for additional info
@@ -858,13 +825,7 @@ export class VideoMatchingService {
           return null;
         }
 
-        // Marketing penalty weight varies by level (beginners more sensitive)
-        const marketingWeight: Record<string, number> = {
-          beginner: 0.5,
-          intermediate: 0.4,
-          advanced: 0.3,
-        };
-        const mw = marketingWeight[context.userLevel] ?? 0.4;
+        const mw = MARKETING_WEIGHTS[context.userLevel] ?? 0.4;
 
         // Calculate weighted total (marketing penalty is subtracted)
         const totalScore =
@@ -889,225 +850,12 @@ export class VideoMatchingService {
   }
 
   /**
-   * Score marketing penalty (0-30)
-   * Higher = more marketing signals = worse
-   * Dedupes matched signals and normalizes by description length
-   */
-  private scoreMarketingPenalty(video: VideoCandidate): number {
-    let hardPenalty = 0;
-    let softPenalty = 0;
-    const combined = (video.title + ' ' + video.description).toLowerCase();
-    const matchedSignals = new Set<string>();
-
-    // Check for hard marketing signals: +10 each (dedupe)
-    for (const signal of CONTENT_SIGNALS.negative.hard) {
-      const signalLower = signal.toLowerCase();
-      if (combined.includes(signalLower) && !matchedSignals.has(signalLower)) {
-        matchedSignals.add(signalLower);
-        hardPenalty += 10;
-      }
-    }
-
-    // Check for soft marketing signals: +3 each (skip if already matched as hard)
-    // Cap soft signal contributions to 12 to prevent long descriptions over-penalizing
-    for (const signal of CONTENT_SIGNALS.negative.soft) {
-      const signalLower = signal.toLowerCase();
-      if (combined.includes(signalLower) && !matchedSignals.has(signalLower)) {
-        matchedSignals.add(signalLower);
-        softPenalty += 3;
-      }
-    }
-    softPenalty = Math.min(12, softPenalty); // Cap soft signals
-
-    // Channel marketing level
-    let channelPenalty = 0;
-    const channelInfo = getChannelPolicy(video.channelId);
-    if (channelInfo.channel) {
-      const marketingPenalties: Record<string, number> = {
-        none: 0,
-        light: 2,
-        moderate: 5,
-        heavy: 10,
-      };
-      channelPenalty = marketingPenalties[channelInfo.channel.marketingLevel] || 0;
-    }
-
-    return Math.min(30, hardPenalty + softPenalty + channelPenalty);
-  }
-
-  /**
-   * Score concept match (0-100)
-   * How well does title/description match the concept?
-   */
-  private scoreConceptMatch(video: VideoCandidate, context: VideoMatchContext): number {
-    let score = 50; // Base score
-    const titleLower = video.title.toLowerCase();
-    const descLower = video.description.toLowerCase();
-    const conceptLower = context.concept.toLowerCase();
-
-    // Exact concept in title: +30
-    if (titleLower.includes(conceptLower)) {
-      score += 30;
-    }
-
-    // Concept words in title: +10 per word
-    const conceptWords = conceptLower.split(' ').filter(w => w.length > 2);
-    for (const word of conceptWords) {
-      if (titleLower.includes(word)) {
-        score += 10;
-      }
-    }
-
-    // Check synonyms by extracting core tokens from concept
-    for (const [token, synonyms] of Object.entries(CONCEPT_SYNONYMS)) {
-      if (conceptLower.includes(token)) {
-        for (const synonym of synonyms) {
-          if (titleLower.includes(synonym) || descLower.includes(synonym)) {
-            score += 5;
-            break;
-          }
-        }
-      }
-    }
-
-    // Concept in description: +8
-    if (descLower.includes(conceptLower)) {
-      score += 8;
-    }
-
-    // Chapter titles contain concept: +12
-    if (video.chapters) {
-      const chapterContainsConcept = video.chapters.some(ch =>
-        ch.title.toLowerCase().includes(conceptLower) ||
-        conceptWords.some(word => ch.title.toLowerCase().includes(word)),
-      );
-      if (chapterContainsConcept) {
-        score += 12;
-      }
-    }
-
-    return Math.min(100, score);
-  }
-
-  /**
-   * Score channel trust (0-100)
-   * Based on channel policy and quality rating
-   */
-  private scoreChannelTrust(video: VideoCandidate): number {
-    const channelInfo = getChannelPolicy(video.channelId);
-
-    if (channelInfo.policy === 'block') {
-      return 0;
-    }
-
-    if (channelInfo.policy === 'deprioritize') {
-      return 40;
-    }
-
-    // Allow policy
-    if (channelInfo.channel) {
-      // Known channel - score based on quality
-      const qualityScores: Record<string, number> = {
-        excellent: 100,
-        good: 85,
-        acceptable: 70,
-      };
-      return qualityScores[channelInfo.channel.contentQuality] || 70;
-    }
-
-    // Unknown channel with low confidence
-    return 60;
-  }
-
-  /**
-   * Score duration fit (0-100)
-   * How well does video duration match user slot?
-   * Takes into account segmentability
-   */
-  private scoreDurationFit(video: VideoCandidate, context: VideoMatchContext): number {
-    // Unknown duration (parsing failed) - penalize but don't exclude
-    if (video.duration === 0) {
-      return 40;
-    }
-
-    const idealDuration = context.userSlot * 60;
-    const ratio = video.duration / idealDuration;
-
-    // Perfect fit: 0.8-1.3x slot duration
-    if (ratio >= 0.8 && ratio <= 1.3) {
-      return 100;
-    }
-
-    // Good fit: 0.5-0.8x or 1.3-2x
-    if ((ratio >= 0.5 && ratio < 0.8) || (ratio > 1.3 && ratio <= 2)) {
-      return 85;
-    }
-
-    // Longer video but has chapters = can segment
-    if (ratio > 2 && video.hasChapters) {
-      return 80;
-    }
-
-    // Longer video without chapters = harder to segment
-    if (ratio > 2 && !video.hasChapters) {
-      return 60;
-    }
-
-    // Too short
-    if (ratio < 0.5) {
-      return 50;
-    }
-
-    // Very long (5x+) even with chapters
-    if (ratio > 5) {
-      return 40;
-    }
-
-    return 70;
-  }
-
-  /**
-   * Score cognitive load (0-100)
-   * Is complexity appropriate for user level?
-   */
-  private scoreCognitiveLoad(video: VideoCandidate, context: VideoMatchContext): number {
-    const titleLower = video.title.toLowerCase();
-    const signals = COGNITIVE_SIGNALS[context.userLevel];
-    let score = 70; // Base score
-
-    // Positive signals for this level: +5 each
-    for (const signal of signals.positive) {
-      if (titleLower.includes(signal)) {
-        score += 5;
-      }
-    }
-
-    // Negative signals for this level: -8 each
-    for (const signal of signals.negative) {
-      if (titleLower.includes(signal)) {
-        score -= 8;
-      }
-    }
-
-    // Duration-based cognitive load
-    const durationMinutes = video.duration / 60;
-    if (context.userLevel === 'beginner') {
-      if (durationMinutes >= 5 && durationMinutes <= 15) {
-        score += 10;
-      } else if (durationMinutes > 30 && !video.hasChapters) {
-        score -= 10;
-      }
-    }
-
-    return Math.max(30, Math.min(100, score));
-  }
-
-  /**
    * Score engagement (0-100)
    * Based on views, recency, and like ratio
+   * NOTE: This method extends the utils version with enriched video data
    */
-  private scoreEngagement(video: VideoCandidate): number {
-    let score = 60; // Base score for non-enriched
+  private scoreEngagementEnriched(video: VideoCandidate): number {
+    let score = scoreEngagement(video); // Start with base score from utils
 
     if (!video.enriched) {
       return score;
@@ -1138,8 +886,9 @@ export class VideoMatchingService {
   /**
    * Score segmentability (0-100)
    * How easy is it to extract a good segment?
+   * NOTE: This method extends the utils version with enriched video data
    */
-  private scoreSegmentability(video: VideoCandidate): number {
+  private scoreSegmentabilityEnriched(video: VideoCandidate): number {
     // Enrichment failed = likely transcript unavailable too
     // But short videos can still be used whole, so be less harsh
     if (video.enrichFailed) {
@@ -1554,8 +1303,8 @@ Return JSON only:
   }
 
   /**
-   * Build 1 alternative for personalization UX
-   * Framed as "Also Great" not "regenerate if we got it wrong"
+   * Build up to 2 alternatives for personalization UX
+   * User can cycle through pre-screened alternatives before triggering AI search
    */
   private async buildAlternatives(
     topCandidates: ScoredVideo[],
@@ -1565,37 +1314,46 @@ Return JSON only:
   ): Promise<VideoAlternative[]> {
     this.logger.log(`Building alternatives: ${topCandidates.length} candidates, selected=${selected.video.videoId}`);
 
-    // Get best candidate that isn't the selected one
-    const other = topCandidates.find(c => c.video.videoId !== selected.video.videoId);
-    if (!other) {
-      this.logger.log('No alternative found - only 1 candidate');
+    // Get candidates that aren't the selected one (up to 2)
+    const others = topCandidates
+      .filter(c => c.video.videoId !== selected.video.videoId)
+      .slice(0, 2);
+
+    if (others.length === 0) {
+      this.logger.log('No alternatives found - only 1 candidate');
       return [];
     }
 
-    try {
-      // Generate watch plan for the alternative
-      const watchPlan = await this.generateWatchPlan(
-        other.video,
-        context,
-        false, // Don't use AI for alternative
-        htmlCache,
-      );
+    const alternatives: VideoAlternative[] = [];
 
-      // Determine what makes this alternative different
-      const differentiator = this.getDifferentiator(other, selected);
+    for (const other of others) {
+      try {
+        // Generate watch plan for the alternative
+        const watchPlan = await this.generateWatchPlan(
+          other.video,
+          context,
+          false, // Don't use AI for alternative
+          htmlCache,
+        );
 
-      this.logger.log(`Alternative found: "${other.video.title}" (${differentiator})`);
-      return [{
-        video: other.video,
-        watchPlan,
-        scores: other.scores,
-        differentiator,
-        matchPercent: Math.min(100, Math.round(other.totalScore)),
-      }];
-    } catch (error) {
-      this.logger.warn(`Failed to build alternative: ${error.message}`);
-      return [];
+        // Determine what makes this alternative different
+        const differentiator = this.getDifferentiator(other, selected);
+
+        alternatives.push({
+          video: other.video,
+          watchPlan,
+          scores: other.scores,
+          differentiator,
+          matchPercent: Math.min(100, Math.round(other.totalScore)),
+        });
+
+        this.logger.log(`Alternative ${alternatives.length} found: "${other.video.title}" (${differentiator})`);
+      } catch (error) {
+        this.logger.warn(`Failed to build alternative: ${error.message}`);
+      }
     }
+
+    return alternatives;
   }
 
   /**

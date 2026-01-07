@@ -8,13 +8,13 @@ import { useCompanionStore } from '@/stores/companionStore';
 import { Button, Card, StreakBadge, ProgressBar, GeneratingScreen } from '@/components/common';
 import { sessionService } from '@/services/sessionService';
 
-// Loading steps for day content generation (~60-90 seconds)
+// Loading steps for day content generation (~3 minutes total = 180000ms)
 const DAY_LOADING_STEPS = [
-  { icon: Sparkles, text: 'Generating day content...', duration: 15000 },
-  { icon: Target, text: 'Creating practice exercises...', duration: 12000 },
-  { icon: BookOpen, text: 'Finding perfect video...', duration: 10000 },
-  { icon: Trophy, text: 'Adding boss projects...', duration: 8000 },
-  { icon: CheckCircle, text: 'Finalizing your lesson...', duration: 5000 },
+  { icon: Sparkles, text: 'Generating day content...', duration: 50000 },
+  { icon: Target, text: 'Creating practice exercises...', duration: 45000 },
+  { icon: BookOpen, text: 'Finding perfect video...', duration: 40000 },
+  { icon: Trophy, text: 'Adding boss projects...', duration: 30000 },
+  { icon: CheckCircle, text: 'Finalizing your lesson...', duration: 15000 },
 ];
 
 
@@ -241,7 +241,7 @@ export function TodayPage() {
         steps={DAY_LOADING_STEPS}
         title={`Preparing Day ${activeSession.currentDay}`}
         subtitle={`Creating your ${activeSession.skillName} lesson`}
-        timeEstimate="This usually takes 1-2 minutes"
+        timeEstimate="This usually takes 2-3 minutes"
       />
     );
   }

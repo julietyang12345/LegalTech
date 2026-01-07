@@ -180,7 +180,8 @@ export interface VideoMatch {
   verified?: boolean;
   matchPercent?: number;      // 0-100 confidence
   whyThisVideo?: string[];    // Reasons for selection
-  alternative?: VideoAlternative;  // 1 alternative for personalization
+  alternative?: VideoAlternative;    // Legacy: single alternative
+  alternatives?: VideoAlternative[]; // Up to 2 pre-screened alternatives
   // Fallback fields when video search fails (from AI placeholder)
   searchQuery?: string;
   preferredChannels?: string[];

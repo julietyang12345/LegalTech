@@ -406,9 +406,9 @@ export class CurriculumService {
       const video = videoResult.video;
       const watchPlan = videoResult.watchPlan;
 
-      // Build alternative video from buildAlternatives() result
-      const alt = videoResult.alternatives?.[0];
-      const alternative = alt ? {
+      // Build ALL alternative videos from buildAlternatives() result (up to 2)
+      // These are the next-best ranked videos for progressive "try different" UX
+      const alternatives = videoResult.alternatives?.map(alt => ({
         videoId: alt.video.videoId,
         title: alt.video.title,
         channelName: alt.video.channelName,
@@ -424,7 +424,7 @@ export class CurriculumService {
           : 6,
         differentiator: alt.differentiator,
         matchPercent: alt.matchPercent,
-      } : undefined;
+      })) || [];
 
       dayContent.video = {
         ...dayContent.video,
@@ -444,9 +444,9 @@ export class CurriculumService {
         verified: true,
         matchPercent: videoResult.matchPercent,
         whyThisVideo: videoResult.whyThisVideo,
-        alternative,
+        alternatives,
       };
-      this.logger.log(`✅ Day ${dayNumber} video found: ${video.title} (${videoResult.matchPercent}% match)${alternative ? ' + alternative' : ''}`);
+      this.logger.log(`✅ Day ${dayNumber} video found: ${video.title} (${videoResult.matchPercent}% match)${alternatives.length > 0 ? ` + ${alternatives.length} alternatives` : ''}`);
     } else if (dayContent.video && videoResult && !videoResult.success) {
       this.logger.warn(`⚠️ Day ${dayNumber} video not found: ${videoResult.error}`);
     }

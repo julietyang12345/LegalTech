@@ -151,7 +151,7 @@ function DayPreviewModal({
         <div className="px-4 pb-4 space-y-3">
           {/* Locked notice */}
           <p className="text-sm text-center text-gray-500">
-            Complete previous days to unlock, or <span className="text-brand-600 font-medium hover:underline cursor-pointer">take a skip test</span>.
+            Complete previous days to unlock, or take a skip test.
           </p>
 
           {/* Close button */}
