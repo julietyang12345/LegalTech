@@ -11,6 +11,7 @@ import {
   RegenCategory,
 } from '../../../database/entities/curriculum-cache.entity';
 import { GenerateCurriculumDto } from '../dto/generate-curriculum.dto';
+import { AiService, AITask } from '../../ai/ai.service';
 
 // ============================================================================
 // CONFIGURATION
@@ -69,6 +70,7 @@ export interface VariantStats {
 export class CurriculumCacheService implements OnModuleInit {
   private readonly logger = new Logger(CurriculumCacheService.name);
   private aliasMap: Map<string, string> = new Map();
+  private normalizedSkillCache: Map<string, string> = new Map(); // AI-normalized skill cache
 
   constructor(
     @InjectRepository(CurriculumCacheKey)
@@ -84,6 +86,8 @@ export class CurriculumCacheService implements OnModuleInit {
     private readonly aliasRepo: Repository<SkillAlias>,
 
     private readonly dataSource: DataSource,
+
+    private readonly aiService: AiService,
   ) {}
 
   async onModuleInit() {

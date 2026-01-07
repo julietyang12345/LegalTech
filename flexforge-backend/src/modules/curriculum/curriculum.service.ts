@@ -1,10 +1,12 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as crypto from 'crypto';
 import { AiService, AITask } from '../ai/ai.service';
 import { GenerateCurriculumDto } from './dto/generate-curriculum.dto';
 import { SkillDetectorService, SkillType } from './services/skill-detector.service';
 import { VideoMatchingService } from './services/video-matching.service';
 import { FileGeneratorService } from './services/file-generator.service';
+import { CurriculumCacheService } from './services/curriculum-cache.service';
 import {
   buildOverviewPrompt,
   buildPreviewPrompt,
@@ -40,6 +42,7 @@ export interface PreviewResult {
   cost: number;
   skillDetection: any;
   warnings?: string[];
+  fromCache?: boolean;
 }
 
 @Injectable()
@@ -52,6 +55,7 @@ export class CurriculumService {
     private videoMatcher: VideoMatchingService,
     private fileGenerator: FileGeneratorService,
     private configService: ConfigService,
+    private cacheService: CurriculumCacheService,
   ) {}
 
   async generateCurriculum(
@@ -186,6 +190,32 @@ export class CurriculumService {
       `🎯 Generating curriculum PREVIEW: ${dto.skillName} (${dto.durationDays} days)`,
     );
 
+    // Step 0: Check cache first - return cached preview if available
+    const tempSessionId = crypto.randomUUID();
+    const cachedResult = await this.cacheService.tryGetFromCache(dto, 'preview', tempSessionId);
+
+    if (cachedResult) {
+      this.logger.log(`📦 Preview cache HIT for "${dto.skillName}" - returning cached preview`);
+
+      // Extract skill detection from cached metadata
+      const skillDetection = {
+        skillType: cachedResult.curriculum.metadata?.skillType,
+        complexity: cachedResult.curriculum.metadata?.complexity,
+        suggestedLanguage: cachedResult.curriculum.metadata?.suggestedLanguage,
+      };
+
+      return {
+        preview: cachedResult.curriculum,
+        tokensUsed: 0,
+        cost: 0,
+        skillDetection,
+        warnings: [],
+        fromCache: true,
+      };
+    }
+
+    this.logger.log(`🆕 Preview cache MISS for "${dto.skillName}" - generating fresh`);
+
     // Step 1: Detect skill type and complexity
     const skillDetection = await this.skillDetector.detectSkillType(dto.skillName);
 
@@ -286,12 +316,17 @@ export class CurriculumService {
       `✅ Preview generated. Tokens: ${aiResponse.tokensUsed}, Cost: $${aiResponse.cost.toFixed(4)}`,
     );
 
+    // Cache the new preview for future users
+    await this.cacheService.cacheNewContent(dto, preview, 'preview', tempSessionId);
+    this.logger.log(`📦 Preview cached for "${dto.skillName}"`);
+
     return {
       preview,
       tokensUsed: aiResponse.tokensUsed,
       cost: aiResponse.cost,
       skillDetection,
       warnings: warnings.length > 0 ? warnings : undefined,
+      fromCache: false,
     };
   }
 
