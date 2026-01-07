@@ -8,13 +8,13 @@ import { useCompanionStore } from '@/stores/companionStore';
 import { Button, Card, StreakBadge, ProgressBar, GeneratingScreen } from '@/components/common';
 import { sessionService } from '@/services/sessionService';
 
-// Loading steps for day content generation (~3 minutes total = 180000ms)
+// Loading steps for day content generation (~3 minutes total = 150000ms)
 const DAY_LOADING_STEPS = [
-  { icon: Sparkles, text: 'Generating day content...', duration: 50000 },
-  { icon: Target, text: 'Creating practice exercises...', duration: 45000 },
+  { icon: Sparkles, text: 'Generating day content...', duration: 40000 },
+  { icon: Target, text: 'Creating practice exercises...', duration: 40000 },
   { icon: BookOpen, text: 'Finding perfect video...', duration: 40000 },
-  { icon: Trophy, text: 'Adding boss projects...', duration: 30000 },
-  { icon: CheckCircle, text: 'Finalizing your lesson...', duration: 15000 },
+  { icon: Trophy, text: 'Adding boss projects...', duration: 40000 },
+  { icon: CheckCircle, text: 'Finalizing your lesson...', duration: 10000 },
 ];
 
 

@@ -14,6 +14,7 @@ import {
   scoreChannelTrust,
   scoreConceptMatch,
   scoreCognitiveLoad,
+  scanTranscriptForPromotion,
 } from '../utils/video-scoring.utils';
 
 // Test video with expected outcome
@@ -216,5 +217,137 @@ function runTests() {
   }
 }
 
-// Run
+// ============================================
+// TRANSCRIPT PROMOTIONAL SCAN TESTS
+// ============================================
+
+interface TranscriptTestCase {
+  name: string;
+  transcript: string;
+  expectedPromotional: boolean;
+  reason: string;
+}
+
+const TRANSCRIPT_TEST_CASES: TranscriptTestCase[] = [
+  // GOOD transcripts (educational)
+  {
+    name: 'Educational - React Tutorial',
+    transcript: `Today we're going to learn about React hooks. First, let's understand what useState does.
+    When you call useState, you get back an array with the current value and a setter function.
+    Let me show you an example. Here we have a counter component. We declare our state like this.
+    The beauty of hooks is that they let you use state in functional components.`,
+    expectedPromotional: false,
+    reason: 'Pure educational content, no promotional language',
+  },
+  {
+    name: 'Educational - Python Data Science',
+    transcript: `In this video we'll cover pandas dataframes. A dataframe is essentially a table with rows and columns.
+    You can create one from a dictionary or by reading a CSV file. Let me demonstrate.
+    Once you have your data loaded, you can use methods like head, describe, and info to explore it.
+    Practice these operations on your own datasets to get comfortable with them.`,
+    expectedPromotional: false,
+    reason: 'Teaching focused, no marketing',
+  },
+
+  // BAD transcripts (promotional)
+  {
+    name: 'Promotional - Zapier Vendor',
+    transcript: `Welcome to this Zapier tutorial. At Zapier we've built a platform that makes automation easy.
+    Our platform connects over 5000 apps. With our tool you can automate any workflow.
+    Sign up for free and start your automation journey. Our customers love how easy it is.
+    Click the link in the description to get started today.`,
+    expectedPromotional: true,
+    reason: 'Vendor self-promotion, "our platform", "sign up for free", CTA',
+  },
+  {
+    name: 'Promotional - Sponsored Content',
+    transcript: `This video is a paid promotion by Notion. Thanks to our sponsor for making this possible.
+    Notion is an amazing tool for productivity. You should definitely try it out.
+    Use my code SAVE20 for a discount. Link in the description below.
+    Start your free trial today and see why millions love Notion.`,
+    expectedPromotional: true,
+    reason: 'Paid promotion, sponsor, discount code, free trial CTA',
+  },
+  {
+    name: 'Promotional - SaaS Product Tour',
+    transcript: `Hey everyone, today I'm going to show you our new feature. Our team has been working hard on this.
+    We designed this feature with our users in mind. Here at monday.com we believe in simplicity.
+    Our customers have been asking for this. Join thousands of teams already using our solution.
+    Head over to monday.com to get started.`,
+    expectedPromotional: true,
+    reason: 'Vendor language, "our team", "our customers", "here at"',
+  },
+
+  // EDGE CASES
+  {
+    name: 'Edge - Light Sponsor Mention',
+    transcript: `Today's video is brought to you by a sponsor but let's get into the actual content.
+    We're going to learn about machine learning fundamentals. Neural networks consist of layers.
+    Each layer transforms the input data. The key is understanding backpropagation.
+    Let me walk you through a simple example with code.`,
+    expectedPromotional: false,
+    reason: 'Brief sponsor mention but mostly educational',
+  },
+  {
+    name: 'Edge - GitHub Link',
+    transcript: `All the code for this tutorial is available on GitHub. Link in the description.
+    Let's start coding our REST API. First we need to set up Express.
+    I'll show you how to handle routes and middleware. This is a practical example.
+    By the end you'll have a working API you can deploy.`,
+    expectedPromotional: false,
+    reason: 'GitHub link is educational, not promotional',
+  },
+];
+
+function runTranscriptTests() {
+  console.log();
+  console.log('='.repeat(60));
+  console.log('TRANSCRIPT PROMOTIONAL SCAN TEST');
+  console.log('='.repeat(60));
+  console.log();
+
+  let passed = 0;
+  let failed = 0;
+
+  for (const testCase of TRANSCRIPT_TEST_CASES) {
+    const result = scanTranscriptForPromotion(testCase.transcript);
+    const isCorrect = result.isPromotional === testCase.expectedPromotional;
+
+    if (isCorrect) {
+      passed++;
+      console.log(`✅ ${testCase.name}`);
+    } else {
+      failed++;
+      console.log(`❌ ${testCase.name}`);
+      console.log(`   Expected: ${testCase.expectedPromotional ? 'PROMOTIONAL' : 'EDUCATIONAL'}`);
+      console.log(`   Got: ${result.isPromotional ? 'PROMOTIONAL' : 'EDUCATIONAL'}`);
+    }
+
+    console.log(`   Penalty: ${result.penalty} | Confidence: ${result.confidence}`);
+    if (result.strongMatches.length > 0) {
+      console.log(`   Strong: [${result.strongMatches.slice(0, 3).join(', ')}]`);
+    }
+    if (result.vendorMatches.length > 0) {
+      console.log(`   Vendor: [${result.vendorMatches.slice(0, 3).join(', ')}]`);
+    }
+    if (result.ctaMatches.length > 0) {
+      console.log(`   CTA: [${result.ctaMatches.slice(0, 3).join(', ')}]`);
+    }
+    console.log(`   Reason: ${testCase.reason}`);
+    console.log();
+  }
+
+  console.log('='.repeat(60));
+  console.log(`TRANSCRIPT TEST RESULTS: ${passed}/${passed + failed} passed`);
+  console.log('='.repeat(60));
+
+  if (failed === 0) {
+    console.log('✅ All transcript tests passed!');
+  } else {
+    console.log(`⚠️  ${failed} test(s) failed - review transcript keywords`);
+  }
+}
+
+// Run all tests
 runTests();
+runTranscriptTests();

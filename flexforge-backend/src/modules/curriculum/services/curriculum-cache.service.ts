@@ -113,7 +113,7 @@ export class CurriculumCacheService implements OnModuleInit {
     userId: string,
     sessionId: string,
   ): Promise<CacheResult | null> {
-    const normalizedSkill = this.normalizeSkillName(dto.skillName);
+    const normalizedSkill = await this.normalizeSkillName(dto.skillName);
     const hash = this.generateHash(dto, normalizedSkill);
 
     // Find cache key (active and not expired)
@@ -165,7 +165,7 @@ export class CurriculumCacheService implements OnModuleInit {
     userId: string,
     sessionId: string,
   ): Promise<CacheResult> {
-    const normalizedSkill = this.normalizeSkillName(dto.skillName);
+    const normalizedSkill = await this.normalizeSkillName(dto.skillName);
     const hash = this.generateHash(dto, normalizedSkill);
 
     const { variant } = await this.saveToCache(dto, normalizedSkill, hash, content);
@@ -499,24 +499,79 @@ export class CurriculumCacheService implements OnModuleInit {
     });
   }
 
-  private normalizeSkillName(skillName: string): string {
-    let normalized = skillName
+  /**
+   * Normalize skill name using AI to detect semantic similarity.
+   * Groups "AI automation", "automation with AI", "AI workflow automation" together.
+   * Keeps specific skills separate from broad ones.
+   */
+  private async normalizeSkillName(skillName: string): Promise<string> {
+    // Quick clean first
+    const cleaned = skillName
       .toLowerCase()
       .trim()
-      // Remove common filler words
       .replace(/\b(tutorial|course|learn|guide|introduction|intro|basics|how to|for beginners)\b/gi, '')
-      // Remove special characters except hyphens
       .replace(/[^a-z0-9\s-]/g, '')
-      // Collapse whitespace
       .replace(/\s+/g, ' ')
       .trim();
 
-    // Apply aliases
-    if (this.aliasMap.has(normalized)) {
-      normalized = this.aliasMap.get(normalized)!;
+    // Check memory cache first
+    if (this.normalizedSkillCache.has(cleaned)) {
+      return this.normalizedSkillCache.get(cleaned)!;
     }
 
-    return normalized;
+    // Check database aliases
+    if (this.aliasMap.has(cleaned)) {
+      const aliased = this.aliasMap.get(cleaned)!;
+      this.normalizedSkillCache.set(cleaned, aliased);
+      return aliased;
+    }
+
+    // Use AI to normalize (fast model - GPT-4o-mini)
+    try {
+      const prompt = `Extract the canonical skill/topic from this user input for caching purposes.
+
+INPUT: "${skillName}"
+
+Rules:
+1. Return ONLY the core skill/topic in lowercase, 2-5 words max
+2. Group synonymous terms: "AI automation" = "automation AI" = "workflow automation with AI" → "ai automation"
+3. Keep specificity: "React hooks" stays "react hooks" (not just "react")
+4. Remove filler words: tutorial, learn, beginner, guide, how to, with, using, etc.
+5. Use common abbreviations: artificial intelligence → ai, machine learning → ml, javascript → js
+
+Examples:
+- "Learn automation with AI for beginners" → "ai automation"
+- "AI workflow automation tutorial" → "ai automation"
+- "React hooks explained" → "react hooks"
+- "Building REST APIs with Node.js" → "nodejs rest api"
+- "Python machine learning basics" → "python ml"
+
+Return ONLY the normalized skill name, nothing else.`;
+
+      const response = await this.aiService.routeRequest(
+        AITask.SIMPLE_CLASSIFICATION,
+        prompt,
+      );
+
+      const normalized = response.content.trim().toLowerCase();
+
+      // Cache the result
+      this.normalizedSkillCache.set(cleaned, normalized);
+
+      // Keep cache size reasonable (LRU eviction)
+      if (this.normalizedSkillCache.size > 1000) {
+        const firstKey = this.normalizedSkillCache.keys().next().value;
+        if (firstKey) this.normalizedSkillCache.delete(firstKey);
+      }
+
+      this.logger.debug(`AI normalized: "${skillName}" → "${normalized}"`);
+      return normalized;
+    } catch (error) {
+      // Fallback to cleaned version if AI fails
+      this.logger.warn(`AI normalization failed for "${skillName}", using fallback`);
+      this.normalizedSkillCache.set(cleaned, cleaned);
+      return cleaned;
+    }
   }
 
   private generateHash(dto: GenerateCurriculumDto, normalizedSkill: string): string {
