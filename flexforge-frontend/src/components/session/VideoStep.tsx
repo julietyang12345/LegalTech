@@ -167,6 +167,7 @@ export function VideoStep({ day, session }: VideoStepProps) {
   const [activeVideoIndex, setActiveVideoIndex] = useState(0); // 0=main, 1=alt1, 2=alt2, 3+=AI generated
   const [isSearchingNew, setIsSearchingNew] = useState(false);
   const [aiGeneratedVideos, setAiGeneratedVideos] = useState<VideoMatch[]>([]);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const { hasTierAccess } = useAuthStore();
   const { activeSession } = useSessionStore();
   const canAskAI = hasTierAccess(QuotaTier.PRO);
@@ -185,7 +186,7 @@ export function VideoStep({ day, session }: VideoStepProps) {
     return aiGeneratedVideos[aiIndex] || null;
   };
 
-  const currentVideo = getCurrentVideo() || video;
+  const currentVideo = getCurrentVideo() || video || null;
   const isOnMainVideo = activeVideoIndex === 0;
   const remainingPreScreened = Math.max(0, alternatives.length - activeVideoIndex); // How many pre-screened left after current
 
@@ -213,10 +214,14 @@ export function VideoStep({ day, session }: VideoStepProps) {
     try {
       const excludeIds = getUsedVideoIds();
 
+      // Extract concept from day title (remove "Day N: " prefix if present)
+      const rawTitle = video?.topicFocus || day.title || '';
+      const concept = rawTitle.replace(/^Day\s+\d+:\s*/i, '').trim() || 'tutorial';
+
       const result = await sessionService.refreshVideo({
         sessionId: session.id,
         dayNumber: day.day,
-        concept: video?.topicFocus || day.title,
+        concept,
         skillLevel: session.skillLevel,
         excludeVideoIds: excludeIds,
       });
@@ -241,8 +246,11 @@ export function VideoStep({ day, session }: VideoStepProps) {
       // Index: 0=main, 1..N=alternatives, N+1..=AI videos
       // New AI video index = 1 + alternatives.length + current AI count
       setActiveVideoIndex(1 + alternatives.length + aiGeneratedVideos.length);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to find new video:', error);
+      // Show user-friendly error
+      const errorMessage = error?.response?.data?.message || error?.message || 'Could not find a suitable video';
+      alert(`Video search failed: ${errorMessage}\n\nPlease try the main recommended video.`);
     } finally {
       setIsSearchingNew(false);
     }

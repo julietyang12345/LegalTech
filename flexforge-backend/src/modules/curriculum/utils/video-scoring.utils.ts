@@ -192,28 +192,28 @@ export interface ScoringContext {
 
 export const SCORING_WEIGHTS = {
   beginner: {
-    conceptMatch: 0.25,
+    conceptMatch: 0.28,      // +0.03: prioritize learning fit
     channelTrust: 0.25,
     durationFit: 0.10,
-    cognitiveLoad: 0.10,
-    engagement: 0.10,
+    cognitiveLoad: 0.12,     // +0.02: beginners need appropriate difficulty
+    engagement: 0.05,        // -0.05: popularity ≠ pedagogy
     segmentability: 0.20,
   },
   intermediate: {
-    conceptMatch: 0.30,
+    conceptMatch: 0.32,      // +0.02
     channelTrust: 0.15,
     durationFit: 0.10,
-    cognitiveLoad: 0.10,
-    engagement: 0.10,
+    cognitiveLoad: 0.12,     // +0.02
+    engagement: 0.06,        // -0.04
     segmentability: 0.25,
   },
   advanced: {
-    conceptMatch: 0.35,
+    conceptMatch: 0.37,      // +0.02
     channelTrust: 0.10,
     durationFit: 0.10,
-    cognitiveLoad: 0.10,
-    engagement: 0.10,
-    segmentability: 0.25,
+    cognitiveLoad: 0.13,     // +0.03: depth matters more
+    engagement: 0.08,        // -0.02: advanced learners tolerate some promo
+    segmentability: 0.22,    // -0.03
   },
 };
 
@@ -857,13 +857,22 @@ export function calculateTotalScore(
   const weights = SCORING_WEIGHTS[context.userLevel];
   const mw = MARKETING_WEIGHTS[context.userLevel] ?? 0.4;
 
+  const marketingPenalty = scoreMarketingPenalty(video);
+  let engagement = scoreEngagement(video);
+
+  // Cap engagement for salesy videos: popular + promotional should never win
+  // High marketing penalty (>25) caps engagement contribution
+  if (marketingPenalty > 25) {
+    engagement = Math.min(engagement, 50);
+  }
+
   const scores = {
     conceptMatch: scoreConceptMatch(video, context),
     channelTrust: scoreChannelTrust(video),
-    marketingPenalty: scoreMarketingPenalty(video),
+    marketingPenalty,
     durationFit: scoreDurationFit(video, context),
     cognitiveLoad: scoreCognitiveLoad(video, context),
-    engagement: scoreEngagement(video),
+    engagement,
     segmentability: scoreSegmentability(video),
   };
 

@@ -281,7 +281,7 @@ export const sessionService = {
       matchPercent?: number;
       keyTopics?: string[];
       whyThisVideo?: string[];
-      alternative?: {
+      alternatives?: Array<{
         videoId: string;
         title: string;
         channelName?: string;
@@ -290,7 +290,7 @@ export const sessionService = {
         estimatedMinutes?: number;
         differentiator: string;
         matchPercent: number;
-      };
+      }>;
     };
   }> {
     const { data } = await api.post('/curriculum/refresh-video', params);

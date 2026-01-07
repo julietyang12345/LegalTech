@@ -354,6 +354,12 @@ export class CurriculumController {
   @Post('refresh-video')
   async refreshVideo(@Body() dto: RefreshVideoDto) {
     try {
+      console.log('[refresh-video] Request:', {
+        concept: dto.concept,
+        skillLevel: dto.skillLevel,
+        excludeCount: dto.excludeVideoIds?.length || 0,
+      });
+
       const levelMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
         BEGINNER: 'beginner',
         INTERMEDIATE: 'intermediate',
@@ -372,6 +378,13 @@ export class CurriculumController {
         },
       );
 
+      console.log('[refresh-video] Result:', {
+        success: videoResult.success,
+        hasVideo: !!videoResult.video,
+        error: videoResult.error,
+        layer: videoResult.layer,
+      });
+
       if (!videoResult.success || !videoResult.video) {
         throw new BadRequestException(
           videoResult.error || 'No suitable video found',
@@ -381,24 +394,21 @@ export class CurriculumController {
       const video = videoResult.video;
       const watchPlan = videoResult.watchPlan;
 
-      // Build alternative if available
-      const alt = videoResult.alternatives?.[0];
-      const alternative = alt
-        ? {
-            videoId: alt.video.videoId,
-            title: alt.video.title,
-            channelName: alt.video.channelName,
-            startTime: this.secondsToTime(alt.watchPlan.primarySegment.startSeconds),
-            endTime: this.secondsToTime(alt.watchPlan.primarySegment.endSeconds),
-            estimatedMinutes: Math.round(
-              (alt.watchPlan.primarySegment.endSeconds -
-                alt.watchPlan.primarySegment.startSeconds) /
-                60,
-            ),
-            differentiator: alt.differentiator,
-            matchPercent: alt.matchPercent,
-          }
-        : undefined;
+      // Build alternatives array (up to 2)
+      const alternatives = (videoResult.alternatives || []).slice(0, 2).map(alt => ({
+        videoId: alt.video.videoId,
+        title: alt.video.title,
+        channelName: alt.video.channelName,
+        startTime: this.secondsToTime(alt.watchPlan.primarySegment.startSeconds),
+        endTime: this.secondsToTime(alt.watchPlan.primarySegment.endSeconds),
+        estimatedMinutes: Math.round(
+          (alt.watchPlan.primarySegment.endSeconds -
+            alt.watchPlan.primarySegment.startSeconds) /
+            60,
+        ),
+        differentiator: alt.differentiator,
+        matchPercent: alt.matchPercent,
+      }));
 
       return {
         message: 'New video found',
@@ -424,10 +434,11 @@ export class CurriculumController {
           matchPercent: videoResult.matchPercent,
           keyTopics: video.chapters?.slice(0, 5).map((c) => c.title),
           whyThisVideo: videoResult.whyThisVideo,
-          alternative,
+          alternatives,
         },
       };
     } catch (error) {
+      console.error('[refresh-video] Error:', error.message);
       throw new BadRequestException(
         error.message || 'Failed to find new video',
       );

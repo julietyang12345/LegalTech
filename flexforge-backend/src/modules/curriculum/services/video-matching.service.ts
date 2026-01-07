@@ -203,7 +203,7 @@ export class VideoMatchingService {
       // ═══════════════════════════════════════════
       // LAYER 1: Fast Filter (FREE)
       // ═══════════════════════════════════════════
-      const searchQuery = buildSearchQuery(context.concept, context.userLevel);1
+      const searchQuery = buildSearchQuery(context.concept, context.userLevel);
       const preferredChannels = getPreferredChannelsForTopic(context.concept);
 
       const rawVideos = await this.searchYouTube(
@@ -276,13 +276,34 @@ export class VideoMatchingService {
 
       this.logger.log(`Layer 2: ${scoredVideos.length} videos after scoring (from ${enrichedCandidates.length} enriched)`);
 
+      // If all videos were filtered, use enriched candidates as fallback
+      // (better to show a video with some promo than no video at all)
       if (scoredVideos.length === 0) {
-        return {
-          success: false,
-          layer: 2,
-          tokenCost: 0,
-          error: 'No valid videos after scoring',
-        };
+        if (enrichedCandidates.length > 0) {
+          this.logger.warn('Layer 2: All videos blocked by scoring - using first enriched as fallback');
+          // Create a basic scored video from the first enriched candidate
+          const fallback = enrichedCandidates[0];
+          scoredVideos.push({
+            video: fallback,
+            totalScore: 50, // Neutral score
+            scores: {
+              conceptMatch: 50,
+              channelTrust: 50,
+              marketingPenalty: 0,
+              cognitiveLoad: 50,
+              engagement: 50,
+              segmentability: 50,
+              durationFit: 50,
+            },
+          } as any);
+        } else {
+          return {
+            success: false,
+            layer: 2,
+            tokenCost: 0,
+            error: 'No valid videos after scoring',
+          };
+        }
       }
 
       const topCandidates = scoredVideos.slice(0, 10);
@@ -338,6 +359,32 @@ export class VideoMatchingService {
         deepVerify,
         htmlCache,
       );
+
+      // Add skip ending for hard-sell videos (funnel at the end)
+      // Use the good middle, avoid sales pitch endings
+      if (promoAnalysis?.isHardSell && promoAnalysis.lastQuarterPromoDensity > 0.7) {
+        const skipStart = Math.floor(selectedCandidate.video.duration * 0.75);
+        const skipEnd = selectedCandidate.video.duration;
+        // Don't add duplicate skip section
+        const alreadySkipped = watchPlan.skipSections.some(
+          s => s.start <= skipStart && s.end >= skipEnd,
+        );
+        if (!alreadySkipped) {
+          watchPlan.skipSections.push({
+            start: skipStart,
+            end: skipEnd,
+            reason: 'Sales pitch / CTA-heavy ending',
+          });
+          // Also cap primarySegment if it extends into skip zone
+          if (watchPlan.primarySegment.endSeconds > skipStart) {
+            watchPlan.primarySegment.endSeconds = skipStart;
+            watchPlan.watchInstructions = watchPlan.watchInstructions.replace(
+              /→ \d+:\d+/,
+              `→ ${this.formatTime(skipStart)}`,
+            );
+          }
+        }
+      }
 
       // Build "why this video" reasons
       const whyThisVideo = this.buildWhyThisVideo(selectedCandidate);
@@ -859,7 +906,7 @@ export class VideoMatchingService {
           marketingPenalty: promoScore,
           durationFit: scoreDurationFit(scoringVideo, scoringContext),
           cognitiveLoad: scoreCognitiveLoad(scoringVideo, scoringContext),
-          engagement: this.scoreEngagementEnriched(video), // Use enriched version
+          engagement: this.scoreEngagementEnriched(video, promoScore), // Pass promo for early cap
           segmentability: this.scoreSegmentabilityEnriched(video), // Use enriched version
         };
 
@@ -867,11 +914,6 @@ export class VideoMatchingService {
         if (!isTrusted && promoSoftBlock && scores.conceptMatch < 70) {
           this.logger.debug(`Soft-blocked (promo=${promoScore}, concept=${scores.conceptMatch}): "${video.title}"`);
           return null;
-        }
-
-        // Cap engagement when promo signals exist (D fix)
-        if (scores.marketingPenalty >= 12) {
-          scores.engagement = Math.min(scores.engagement, 60);
         }
 
         // Get validation result for additional info
@@ -890,12 +932,12 @@ export class VideoMatchingService {
           return null;
         }
 
-        // Increase marketing weight for untrusted channels (D fix)
+        // Increase marketing weight for untrusted channels
         const baseMw = MARKETING_WEIGHTS[context.userLevel] ?? 0.4;
         const mw = isTrusted ? baseMw : baseMw * 1.4;
 
         // Calculate weighted total (marketing penalty is subtracted)
-        const totalScore =
+        let totalScore =
           scores.conceptMatch * weights.conceptMatch +
           scores.channelTrust * weights.channelTrust +
           scores.durationFit * weights.durationFit +
@@ -903,6 +945,13 @@ export class VideoMatchingService {
           scores.engagement * weights.engagement +
           scores.segmentability * weights.segmentability -
           scores.marketingPenalty * mw;
+
+        // Apply usable ratio as additive penalty (0-15 points)
+        // Penalizes marketing-heavy long videos where chapters show little concept content
+        // Less strict than multiplicative: doesn't globally dampen good scores
+        const usableRatio = this.estimateUsableRatio(video, context.concept);
+        const usablePenalty = (1 - usableRatio) * 15;
+        totalScore = totalScore - usablePenalty;
 
         return {
           video,
@@ -919,35 +968,53 @@ export class VideoMatchingService {
   /**
    * Score engagement (0-100)
    * Based on views, recency, and like ratio
-   * NOTE: This method extends the utils version with enriched video data
+   *
+   * IMPORTANT: If marketing signals exist, engagement becomes a LIABILITY.
+   * High engagement + promo = viral funnel content, not quality education.
    */
-  private scoreEngagementEnriched(video: VideoCandidate): number {
+  private scoreEngagementEnriched(video: VideoCandidate, marketingPenalty = 0): number {
     let score = scoreEngagement(video); // Start with base score from utils
 
     if (!video.enriched) {
+      // Promo exists but not enriched: cap early
+      if (marketingPenalty >= 8) return Math.min(score, 35);
       return score;
     }
 
-    // View count bonus (log scale)
+    // Calculate raw engagement boost from views/recency
+    let engagementBoost = 0;
+
     if (video.viewCount) {
-      if (video.viewCount > 1000000) score += 20;
-      else if (video.viewCount > 100000) score += 15;
-      else if (video.viewCount > 10000) score += 10;
-      else if (video.viewCount > 1000) score += 5;
+      if (video.viewCount > 1000000) engagementBoost += 12;
+      else if (video.viewCount > 100000) engagementBoost += 8;
+      else if (video.viewCount > 10000) engagementBoost += 5;
+      else if (video.viewCount > 1000) engagementBoost += 2;
     }
 
-    // Recency bonus
     if (video.publishedAt) {
       const publishDate = new Date(video.publishedAt);
       const monthsAgo = (Date.now() - publishDate.getTime()) / (1000 * 60 * 60 * 24 * 30);
 
-      if (monthsAgo < 6) score += 15;
-      else if (monthsAgo < 12) score += 10;
-      else if (monthsAgo < 24) score += 5;
-      else if (monthsAgo > 48) score -= 5; // Old content penalty
+      if (monthsAgo < 6) engagementBoost += 6;
+      else if (monthsAgo < 12) engagementBoost += 4;
+      else if (monthsAgo < 24) engagementBoost += 2;
+      else if (monthsAgo > 48) engagementBoost -= 4;
     }
 
-    return Math.min(100, score);
+    // When promo exists, flip engagement from positive to liability
+    // High engagement + promo = viral funnel → should lose to low-engagement educational
+    if (marketingPenalty >= 18) {
+      // Strong promo: engagement becomes fully inverted
+      // The more viral, the worse (subtract boost instead of adding)
+      return Math.max(20, score - engagementBoost);
+    }
+    if (marketingPenalty >= 8) {
+      // Moderate promo: cap at 35, no boost
+      return Math.min(score, 35);
+    }
+
+    // Clean video: apply normal engagement boost
+    return Math.min(100, score + engagementBoost);
   }
 
   /**
@@ -986,6 +1053,39 @@ export class VideoMatchingService {
 
     // Long video without chapters
     return 50;
+  }
+
+  /**
+   * Estimate usable segment ratio (0-1) based on chapters + description
+   * Proxy signal for Layer 2 (cheap, no transcript needed)
+   * Prevents salesy long videos from reaching top candidates
+   */
+  private estimateUsableRatio(video: VideoCandidate, concept: string): number {
+    const promoWords = [
+      'course', 'community', 'cohort', 'accelerator', 'sponsor', 'discount',
+      'trial', 'sign up', 'newsletter', 'enroll', 'membership', 'premium',
+      'patreon', 'subscribe', 'outro', 'conclusion',
+    ];
+    const conceptWords = concept.toLowerCase().split(' ').filter(w => w.length > 2);
+
+    // If chapters exist, count chapters that match concept AND aren't promo
+    if (video.chapters && video.chapters.length >= 3) {
+      let goodChapters = 0;
+      for (const ch of video.chapters) {
+        const titleLower = ch.title.toLowerCase();
+        const isPromo = promoWords.some(p => titleLower.includes(p));
+        const matchesConcept = conceptWords.some(w => titleLower.includes(w)) ||
+                               titleLower.includes(concept.toLowerCase());
+        if (matchesConcept && !isPromo) goodChapters++;
+      }
+      const ratio = goodChapters / video.chapters.length;
+      return Math.max(0.1, Math.min(0.9, ratio));
+    }
+
+    // No chapters: estimate based on duration (short = more likely usable)
+    if (video.duration <= 12 * 60) return 0.45;   // Short: often usable
+    if (video.duration <= 30 * 60) return 0.35;   // Medium: harder
+    return 0.25;  // Long + no chapters: likely lots of fluff/promo
   }
 
   /**
@@ -1179,15 +1279,19 @@ Answer with JSON only:
       }
     }
 
-    // If all candidates were rejected as promotional, log warning
-    if (rejectedPromotional.length === candidates.length) {
-      this.logger.warn('Layer 3: All candidates rejected as promotional content');
+    // If all candidates were rejected as promotional, log warning but STILL return the best one
+    // Having a video with some promo is better than no video at all
+    if (rejectedPromotional.length === candidates.length && candidates.length > 0) {
+      this.logger.warn(
+        `Layer 3: All ${candidates.length} candidates rejected as promotional - returning best anyway`,
+      );
+      // Return the first candidate (highest scored) as fallback
+      return { bestVideo: candidates[0], tokenCost: totalTokens, promoAnalysis: selectedPromoAnalysis };
     }
 
     // If AI verification didn't find a better match, return first non-promotional candidate
-    // or null if all were promotional
     const firstNonPromotional = candidates.find(c => !rejectedPromotional.includes(c.video.videoId));
-    return { bestVideo: firstNonPromotional || null, tokenCost: totalTokens, promoAnalysis: selectedPromoAnalysis };
+    return { bestVideo: firstNonPromotional || candidates[0] || null, tokenCost: totalTokens, promoAnalysis: selectedPromoAnalysis };
   }
 
   /**
