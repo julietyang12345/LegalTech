@@ -371,6 +371,13 @@ export class CurriculumService {
       ? `${dayOverview.title} ${dayOverview.skills[0]}`
       : dayOverview.title;
 
+    // Calculate video slot based on session duration (matches getTimeStructure in prompt)
+    const sessionMinutes = Math.round(curriculum.metadata.hoursPerDay * 60);
+    const videoSlot = sessionMinutes <= 30 ? 5
+      : sessionMinutes <= 45 ? 6
+      : sessionMinutes <= 60 ? 7
+      : 10; // 90+ min sessions
+
     // Decide video search based on videoStrategy (AI-decided)
     let videoSearchPromise: Promise<any> | null = null;
 
@@ -379,24 +386,26 @@ export class CurriculumService {
       this.logger.log(`📝 Skipping video search for Day ${dayNumber} (videoStrategy: skip)`);
     } else if (videoStrategy === 'optional' || contentSource === 'university') {
       // Optional or university: search but prefer trusted educational channels
-      this.logger.log(`🎓 Starting educational video search for: "${searchConcept}"`);
+      this.logger.log(`🎓 Starting educational video search for: "${searchConcept}" (${videoSlot}min slot)`);
       videoSearchPromise = this.videoMatcher.findBestVideo({
         concept: `${searchConcept} lecture tutorial MIT Stanford freeCodeCamp`,
-        userSlot: videoStrategy === 'optional' ? 6 : 10,
+        userSlot: videoSlot,
         userLevel: levelMap[curriculum.metadata.skillLevel] || 'beginner',
         skillType: curriculum.metadata.skillType,
+        contentSource, // Pass for duration filtering
       }, { deepVerify: true }).catch(error => {
         this.logger.warn(`⚠️ Educational video search failed: ${error.message}`);
         return null;
       });
     } else {
       // helpful or recommended: standard video search
-      this.logger.log(`🎥 Starting video search for: "${searchConcept}"`);
+      this.logger.log(`🎥 Starting video search for: "${searchConcept}" (${videoSlot}min slot)`);
       videoSearchPromise = this.videoMatcher.findBestVideo({
         concept: searchConcept,
-        userSlot: 6,
+        userSlot: videoSlot,
         userLevel: levelMap[curriculum.metadata.skillLevel] || 'beginner',
         skillType: curriculum.metadata.skillType,
+        contentSource, // Pass for duration filtering
       }, { deepVerify: true }).catch(error => {
         this.logger.warn(`⚠️ Video search failed: ${error.message}`);
         return null;

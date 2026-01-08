@@ -21,14 +21,9 @@ import {
   scoreDurationFit,
   scoreCognitiveLoad,
   scoreEngagement,
-  scoreSegmentability,
-  scanTranscriptForPromotion,
-  scoreToolFirstPenalty,
-  scoreCTARatio,
   analyzePromoContent,
   type ScoringVideo,
   type ScoringContext,
-  type TranscriptScanResult,
   type PromoAnalysisResult,
 } from '../utils/video-scoring.utils';
 
@@ -41,6 +36,7 @@ export interface VideoMatchContext {
   userSlot: number;             // Available minutes for video
   userLevel: 'beginner' | 'intermediate' | 'advanced';
   skillType?: string;           // e.g., 'CODE', 'AI_AGENT', 'DESIGN'
+  contentSource?: 'university' | 'youtube' | 'text' | 'docs';  // Content source type
 }
 
 export interface WatchPlan {
@@ -224,7 +220,11 @@ export class VideoMatchingService {
       // Basic filter: exclude specified videos and extremely short/long videos
       // Note: duration=0 means parsing failed, allow through but penalize in scoring
       const minDuration = 60;  // At least 1 minute
-      const maxDuration = context.userSlot * 300; // Up to 5x slot (we can segment)
+      // University content: allow any length (lectures can be 1-2 hours)
+      // YouTube: up to 10x slot (allows longer content, we segment)
+      const maxDuration = context.contentSource === 'university'
+        ? Infinity
+        : context.userSlot * 600;
 
       let candidates = rawVideos.filter(v => {
         if (excludeVideoIds.includes(v.videoId)) return false;

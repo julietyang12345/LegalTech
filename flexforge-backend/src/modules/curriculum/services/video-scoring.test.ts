@@ -9,12 +9,15 @@
 import {
   ScoringVideo,
   ScoringContext,
-  calculateTotalScore,
+  SCORING_WEIGHTS,
+  MARKETING_WEIGHTS,
   scoreMarketingPenalty,
   scoreChannelTrust,
   scoreConceptMatch,
   scoreCognitiveLoad,
-  scanTranscriptForPromotion,
+  scoreDurationFit,
+  scoreEngagement,
+  analyzePromoContent,
 } from '../utils/video-scoring.utils';
 
 // Test video with expected outcome
@@ -146,6 +149,31 @@ const TEST_CONTEXT: ScoringContext = {
   userLevel: 'beginner',
 };
 
+// Calculate total score using same logic as service
+function calculateScore(video: ScoringVideo, context: ScoringContext): { total: number; scores: Record<string, number> } {
+  const weights = SCORING_WEIGHTS[context.userLevel];
+  const mw = MARKETING_WEIGHTS[context.userLevel] ?? 0.4;
+
+  const scores = {
+    conceptMatch: scoreConceptMatch(video, context),
+    channelTrust: scoreChannelTrust(video),
+    marketingPenalty: scoreMarketingPenalty(video),
+    durationFit: scoreDurationFit(video, context),
+    cognitiveLoad: scoreCognitiveLoad(video, context),
+    engagement: scoreEngagement(video),
+  };
+
+  const total =
+    scores.conceptMatch * weights.conceptMatch +
+    scores.channelTrust * weights.channelTrust +
+    scores.durationFit * weights.durationFit +
+    scores.cognitiveLoad * weights.cognitiveLoad +
+    scores.engagement * weights.engagement -
+    scores.marketingPenalty * mw;
+
+  return { total, scores };
+}
+
 function runTests() {
   console.log('='.repeat(60));
   console.log('VIDEO SCORING TEST');
@@ -159,13 +187,13 @@ function runTests() {
   console.log('GOOD VIDEOS:');
   console.log('-'.repeat(60));
   for (const video of GOOD_VIDEOS) {
-    const { total, scores } = calculateTotalScore(video, TEST_CONTEXT);
+    const { total, scores } = calculateScore(video, TEST_CONTEXT);
     goodScores.push(total);
 
     console.log(`✅ ${video.title.substring(0, 50)}...`);
     console.log(`   Channel: ${video.channelName}`);
     console.log(`   concept=${scores.conceptMatch} trust=${scores.channelTrust} cognitive=${scores.cognitiveLoad}`);
-    console.log(`   duration=${scores.durationFit} engage=${scores.engagement} segment=${scores.segmentability}`);
+    console.log(`   duration=${scores.durationFit} engage=${scores.engagement}`);
     console.log(`   marketing=-${scores.marketingPenalty}`);
     console.log(`   TOTAL: ${total.toFixed(1)} | ${video.reason}`);
     console.log();
@@ -174,13 +202,13 @@ function runTests() {
   console.log('BAD VIDEOS:');
   console.log('-'.repeat(60));
   for (const video of BAD_VIDEOS) {
-    const { total, scores } = calculateTotalScore(video, TEST_CONTEXT);
+    const { total, scores } = calculateScore(video, TEST_CONTEXT);
     badScores.push(total);
 
     console.log(`❌ ${video.title.substring(0, 50)}...`);
     console.log(`   Channel: ${video.channelName}`);
     console.log(`   concept=${scores.conceptMatch} trust=${scores.channelTrust} cognitive=${scores.cognitiveLoad}`);
-    console.log(`   duration=${scores.durationFit} engage=${scores.engagement} segment=${scores.segmentability}`);
+    console.log(`   duration=${scores.durationFit} engage=${scores.engagement}`);
     console.log(`   marketing=-${scores.marketingPenalty}`);
     console.log(`   TOTAL: ${total.toFixed(1)} | ${video.reason}`);
     console.log();
@@ -302,7 +330,7 @@ const TRANSCRIPT_TEST_CASES: TranscriptTestCase[] = [
 function runTranscriptTests() {
   console.log();
   console.log('='.repeat(60));
-  console.log('TRANSCRIPT PROMOTIONAL SCAN TEST');
+  console.log('TRANSCRIPT PROMOTIONAL ANALYSIS TEST');
   console.log('='.repeat(60));
   console.log();
 
@@ -310,8 +338,18 @@ function runTranscriptTests() {
   let failed = 0;
 
   for (const testCase of TRANSCRIPT_TEST_CASES) {
-    const result = scanTranscriptForPromotion(testCase.transcript);
-    const isCorrect = result.isPromotional === testCase.expectedPromotional;
+    // Convert transcript string to array format expected by analyzePromoContent
+    const transcriptArray = testCase.transcript.split('\n').map((text, i) => ({
+      text: text.trim(),
+      start: i * 30, // Simulate 30 seconds per line
+    })).filter(t => t.text.length > 0);
+
+    const videoDuration = transcriptArray.length * 30;
+    const result = analyzePromoContent(transcriptArray, videoDuration);
+
+    // Map verdict to promotional boolean
+    const isPromotional = result.verdict === 'reject' || result.promoLevel === 'strong';
+    const isCorrect = isPromotional === testCase.expectedPromotional;
 
     if (isCorrect) {
       passed++;
@@ -320,19 +358,15 @@ function runTranscriptTests() {
       failed++;
       console.log(`❌ ${testCase.name}`);
       console.log(`   Expected: ${testCase.expectedPromotional ? 'PROMOTIONAL' : 'EDUCATIONAL'}`);
-      console.log(`   Got: ${result.isPromotional ? 'PROMOTIONAL' : 'EDUCATIONAL'}`);
+      console.log(`   Got: ${isPromotional ? 'PROMOTIONAL' : 'EDUCATIONAL'}`);
     }
 
-    console.log(`   Penalty: ${result.penalty} | Confidence: ${result.confidence}`);
-    if (result.strongMatches.length > 0) {
-      console.log(`   Strong: [${result.strongMatches.slice(0, 3).join(', ')}]`);
+    console.log(`   Verdict: ${result.verdict} | PromoLevel: ${result.promoLevel}`);
+    console.log(`   CTA Density: ${result.ctaDensity.toFixed(2)}/min | Teaching Ratio: ${result.teachingRatio.toFixed(2)}`);
+    if (result.dominantTools.length > 0) {
+      console.log(`   Tools: [${result.dominantTools.join(', ')}]`);
     }
-    if (result.vendorMatches.length > 0) {
-      console.log(`   Vendor: [${result.vendorMatches.slice(0, 3).join(', ')}]`);
-    }
-    if (result.ctaMatches.length > 0) {
-      console.log(`   CTA: [${result.ctaMatches.slice(0, 3).join(', ')}]`);
-    }
+    console.log(`   Penalty: ${result.totalPenalty}`);
     console.log(`   Reason: ${testCase.reason}`);
     console.log();
   }
@@ -344,7 +378,7 @@ function runTranscriptTests() {
   if (failed === 0) {
     console.log('✅ All transcript tests passed!');
   } else {
-    console.log(`⚠️  ${failed} test(s) failed - review transcript keywords`);
+    console.log(`⚠️  ${failed} test(s) failed - review promo analysis thresholds`);
   }
 }
 

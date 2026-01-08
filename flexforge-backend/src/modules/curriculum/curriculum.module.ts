@@ -6,6 +6,7 @@ import { FileGeneratorService } from './services/file-generator.service';
 import { SkillDetectorService } from './services/skill-detector.service';
 import { VideoMatchingService } from './services/video-matching.service';
 import { CurriculumCacheService } from './services/curriculum-cache.service';
+import { UniversityResourceService } from './services/university-resource.service';
 import { AiModule } from '../ai/ai.module';
 import {
   CurriculumCacheKey,
@@ -31,6 +32,7 @@ import {
     SkillDetectorService,
     VideoMatchingService,
     CurriculumCacheService,
+    UniversityResourceService,
   ],
   exports: [CurriculumService, VideoMatchingService, CurriculumCacheService],
 })
