@@ -19,7 +19,7 @@ import {
   GenerateDayDetailsDto,
   CurriculumCacheResponse,
 } from './dto/curriculum-cache.dto';
-import { VideoMatchingService } from './services/video-matching.service';
+import { VideoMatchingService } from './services/youtube/video-matching.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { User } from '../../database/entities/user.entity';

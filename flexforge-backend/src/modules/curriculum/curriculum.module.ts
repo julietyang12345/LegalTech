@@ -4,9 +4,10 @@ import { CurriculumService } from './curriculum.service';
 import { CurriculumController } from './curriculum.controller';
 import { FileGeneratorService } from './services/file-generator.service';
 import { SkillDetectorService } from './services/skill-detector.service';
-import { VideoMatchingService } from './services/video-matching.service';
+import { VideoMatchingService } from './services/youtube/video-matching.service';
 import { CurriculumCacheService } from './services/curriculum-cache.service';
-import { UniversityResourceService } from './services/university-resource.service';
+import { UniversityResourceService } from './services/university/university-resource.service';
+import { DocumentationFetchService } from './services/docs/documentation-fetch.service';
 import { AiModule } from '../ai/ai.module';
 import {
   CurriculumCacheKey,
@@ -33,6 +34,7 @@ import {
     VideoMatchingService,
     CurriculumCacheService,
     UniversityResourceService,
+    DocumentationFetchService,
   ],
   exports: [CurriculumService, VideoMatchingService, CurriculumCacheService],
 })

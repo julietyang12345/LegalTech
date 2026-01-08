@@ -6,7 +6,7 @@
 import {
   CONTENT_SIGNALS,
   getChannelPolicy,
-} from '../services/youtube-policy';
+} from './youtube-policy';
 
 // ============================================
 // UNIFIED PROMOTIONAL SIGNALS

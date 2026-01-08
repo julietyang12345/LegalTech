@@ -4,10 +4,11 @@ import * as crypto from 'crypto';
 import { AiService, AITask } from '../ai/ai.service';
 import { GenerateCurriculumDto } from './dto/generate-curriculum.dto';
 import { SkillDetectorService, SkillType } from './services/skill-detector.service';
-import { VideoMatchingService } from './services/video-matching.service';
+import { VideoMatchingService } from './services/youtube/video-matching.service';
 import { FileGeneratorService } from './services/file-generator.service';
 import { CurriculumCacheService } from './services/curriculum-cache.service';
-import { UniversityResourceService } from './services/university-resource.service';
+import { UniversityResourceService } from './services/university/university-resource.service';
+import { DocumentationFetchService, DocFetchResult } from './services/docs/documentation-fetch.service';
 import {
   buildOverviewPrompt,
   buildPreviewPrompt,
@@ -58,6 +59,7 @@ export class CurriculumService {
     private configService: ConfigService,
     private cacheService: CurriculumCacheService,
     private universityResource: UniversityResourceService,
+    private docFetcher: DocumentationFetchService,
   ) {}
 
   async generateCurriculum(
@@ -383,6 +385,7 @@ export class CurriculumService {
     // Decide video search based on videoStrategy (AI-decided)
     let videoSearchPromise: Promise<any> | null = null;
     let universityResourcePromise: Promise<any> | null = null;
+    let docFetchPromise: Promise<DocFetchResult | null> | null = null;
 
     if (videoStrategy === 'skip' || contentSource === 'text' || contentSource === 'docs') {
       // AI decided video adds no value, or content comes from text/docs (no video needed)
@@ -424,6 +427,20 @@ export class CurriculumService {
         this.universityResource.searchResources(searchConcept, 'problem_set', 2),
       ]).catch(error => {
         this.logger.warn(`⚠️ University resource search failed: ${error.message}`);
+        return null;
+      });
+    }
+
+    // Fetch official documentation when contentSource is 'docs'
+    // Runs in parallel with AI generation
+    if (contentSource === 'docs') {
+      this.logger.log(`📚 Starting documentation fetch for: "${searchConcept}"`);
+      docFetchPromise = this.docFetcher.fetchDocumentation(
+        searchConcept,
+        curriculum.metadata.suggestedLanguage,
+        3, // max 3 doc pages
+      ).catch(error => {
+        this.logger.warn(`⚠️ Documentation fetch failed: ${error.message}`);
         return null;
       });
     }
@@ -493,6 +510,9 @@ export class CurriculumService {
 
     // Await university resource search result
     const universityResults = universityResourcePromise ? await universityResourcePromise : null;
+
+    // Await documentation fetch result
+    const docResult = docFetchPromise ? await docFetchPromise : null;
 
     // Merge strategy metadata into dayContent for frontend
     dayContent.contentLayer = contentLayer;
@@ -586,6 +606,26 @@ export class CurriculumService {
         dayContent.universityResources = universityResources;
         this.logger.log(`✅ Day ${dayNumber}: Found ${universityResources.length} university resources`);
       }
+    }
+
+    // Add official documentation resources if available
+    if (docResult?.success && docResult.docs?.length > 0) {
+      dayContent.documentation = {
+        source: docResult.source,
+        searchQuery: docResult.searchQuery,
+        resources: docResult.docs.map(doc => ({
+          title: doc.title,
+          url: doc.url,
+          source: doc.source,
+          sections: doc.sections.map(section => ({
+            heading: section.heading,
+            content: section.content,
+            codeExamples: section.codeExamples,
+            apiSignatures: section.apiSignatures,
+          })),
+        })),
+      };
+      this.logger.log(`✅ Day ${dayNumber}: Found ${docResult.docs.length} documentation pages from ${docResult.source}`);
     }
 
     this.logger.log(

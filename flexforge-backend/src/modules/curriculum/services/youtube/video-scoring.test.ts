@@ -18,7 +18,7 @@ import {
   scoreDurationFit,
   scoreEngagement,
   analyzePromoContent,
-} from '../utils/video-scoring.utils';
+} from './video-scoring.utils';
 
 // Test video with expected outcome
 interface TestVideo extends ScoringVideo {

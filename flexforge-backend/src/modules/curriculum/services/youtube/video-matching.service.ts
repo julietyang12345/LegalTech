@@ -10,7 +10,7 @@ import {
   getChannelPolicy,
   type VideoValidationResult,
   type YouTubeChannel,
-} from './youtube-policy';
+} from '../youtube/youtube-policy';
 import {
   SCORING_WEIGHTS,
   MARKETING_WEIGHTS,
@@ -25,7 +25,7 @@ import {
   type ScoringVideo,
   type ScoringContext,
   type PromoAnalysisResult,
-} from '../utils/video-scoring.utils';
+} from './video-scoring.utils';
 
 // ============================================
 // TYPES
