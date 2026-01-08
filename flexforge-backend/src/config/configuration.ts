@@ -36,6 +36,12 @@ export default () => ({
     primaryProvider: process.env.AI_PRIMARY_PROVIDER || 'anthropic',
     fallbackEnabled: process.env.AI_FALLBACK_ENABLED === 'true',
   },
+  google: {
+    cse: {
+      apiKey: process.env.GOOGLE_CSE_API_KEY || '',
+      engineId: process.env.GOOGLE_CSE_ID || '',
+    },
+  },
   rateLimit: {
     ttl: parseInt(process.env.RATE_LIMIT_TTL, 10) || 60,
     limit: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 100,

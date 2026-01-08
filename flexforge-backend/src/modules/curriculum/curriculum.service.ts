@@ -7,6 +7,7 @@ import { SkillDetectorService, SkillType } from './services/skill-detector.servi
 import { VideoMatchingService } from './services/video-matching.service';
 import { FileGeneratorService } from './services/file-generator.service';
 import { CurriculumCacheService } from './services/curriculum-cache.service';
+import { UniversityResourceService } from './services/university-resource.service';
 import {
   buildOverviewPrompt,
   buildPreviewPrompt,
@@ -56,6 +57,7 @@ export class CurriculumService {
     private fileGenerator: FileGeneratorService,
     private configService: ConfigService,
     private cacheService: CurriculumCacheService,
+    private universityResource: UniversityResourceService,
   ) {}
 
   async generateCurriculum(
@@ -380,10 +382,11 @@ export class CurriculumService {
 
     // Decide video search based on videoStrategy (AI-decided)
     let videoSearchPromise: Promise<any> | null = null;
+    let universityResourcePromise: Promise<any> | null = null;
 
-    if (videoStrategy === 'skip') {
-      // AI decided video adds no value for this topic
-      this.logger.log(`📝 Skipping video search for Day ${dayNumber} (videoStrategy: skip)`);
+    if (videoStrategy === 'skip' || contentSource === 'text' || contentSource === 'docs') {
+      // AI decided video adds no value, or content comes from text/docs (no video needed)
+      this.logger.log(`📝 Skipping video search for Day ${dayNumber} (videoStrategy: ${videoStrategy}, contentSource: ${contentSource})`);
     } else if (videoStrategy === 'optional' || contentSource === 'university') {
       // Optional or university: search but prefer trusted educational channels
       this.logger.log(`🎓 Starting educational video search for: "${searchConcept}" (${videoSlot}min slot)`);
@@ -408,6 +411,19 @@ export class CurriculumService {
         contentSource, // Pass for duration filtering
       }, { deepVerify: true }).catch(error => {
         this.logger.warn(`⚠️ Video search failed: ${error.message}`);
+        return null;
+      });
+    }
+
+    // Search for university resources when contentSource is 'university'
+    // Runs in parallel with video search and AI generation
+    if (contentSource === 'university') {
+      this.logger.log(`🎓 Starting university resource search for: "${searchConcept}"`);
+      universityResourcePromise = Promise.all([
+        this.universityResource.searchResources(searchConcept, 'lecture_notes', 2),
+        this.universityResource.searchResources(searchConcept, 'problem_set', 2),
+      ]).catch(error => {
+        this.logger.warn(`⚠️ University resource search failed: ${error.message}`);
         return null;
       });
     }
@@ -475,6 +491,9 @@ export class CurriculumService {
     // videoSearchPromise is null if contentSource is 'text' or 'docs'
     const videoResult = videoSearchPromise ? await videoSearchPromise : null;
 
+    // Await university resource search result
+    const universityResults = universityResourcePromise ? await universityResourcePromise : null;
+
     // Merge strategy metadata into dayContent for frontend
     dayContent.contentLayer = contentLayer;
     dayContent.videoStrategy = videoStrategy;
@@ -536,6 +555,37 @@ export class CurriculumService {
       this.logger.log(`✅ Day ${dayNumber} video found: ${video.title} (${videoResult.matchPercent}% match)${alternatives.length > 0 ? ` + ${alternatives.length} alternatives` : ''}`);
     } else if (dayContent.video && videoResult && !videoResult.success) {
       this.logger.warn(`⚠️ Day ${dayNumber} video not found: ${videoResult.error}`);
+    }
+
+    // Add university resources (lecture notes, problem sets) if available
+    if (universityResults) {
+      const [lectureNotesResult, problemSetsResult] = universityResults;
+      const universityResources: any[] = [];
+
+      if (lectureNotesResult?.success && lectureNotesResult.resources?.length > 0) {
+        universityResources.push(...lectureNotesResult.resources.map((r: any) => ({
+          type: 'lecture_notes',
+          source: r.source,
+          title: r.title,
+          url: r.url,
+          description: r.description,
+        })));
+      }
+
+      if (problemSetsResult?.success && problemSetsResult.resources?.length > 0) {
+        universityResources.push(...problemSetsResult.resources.map((r: any) => ({
+          type: 'problem_set',
+          source: r.source,
+          title: r.title,
+          url: r.url,
+          description: r.description,
+        })));
+      }
+
+      if (universityResources.length > 0) {
+        dayContent.universityResources = universityResources;
+        this.logger.log(`✅ Day ${dayNumber}: Found ${universityResources.length} university resources`);
+      }
     }
 
     this.logger.log(

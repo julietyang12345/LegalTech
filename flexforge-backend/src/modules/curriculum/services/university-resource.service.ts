@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import axios from 'axios';
 import {
   UNIVERSITY_SOURCES,
@@ -15,7 +14,7 @@ import {
 // Searches for educational resources from universities:
 // - MIT OCW, Stanford, Berkeley, CMU, Harvard
 // - Lecture videos, notes, problem sets
-// - Zero marketing, high rigor
+// - Uses Google Custom Search API (100 free/day)
 // ============================================
 
 export interface UniversitySearchResult {
@@ -24,21 +23,38 @@ export interface UniversitySearchResult {
   error?: string;
 }
 
+interface GoogleCSEItem {
+  title: string;
+  link: string;
+  snippet?: string;
+  displayLink?: string;
+}
+
+interface GoogleCSEResponse {
+  items?: GoogleCSEItem[];
+  searchInformation?: {
+    totalResults: string;
+  };
+}
+
 @Injectable()
 export class UniversityResourceService {
   private readonly logger = new Logger(UniversityResourceService.name);
-  private genAI: GoogleGenerativeAI | null = null;
+  private readonly apiKey: string;
+  private readonly engineId: string;
 
   constructor(private configService: ConfigService) {
-    const apiKey = this.configService.get<string>('ai.gemini.apiKey');
-    if (apiKey) {
-      this.genAI = new GoogleGenerativeAI(apiKey);
+    this.apiKey = this.configService.get<string>('google.cse.apiKey') || '';
+    this.engineId = this.configService.get<string>('google.cse.engineId') || '';
+
+    if (!this.apiKey || !this.engineId) {
+      this.logger.warn('Google CSE not configured - university search will be limited');
     }
   }
 
   /**
    * Search for university resources on a topic
-   * Uses domain-filtered web search
+   * Uses Google Custom Search API with .edu domain filter
    */
   async searchResources(
     concept: string,
@@ -47,33 +63,27 @@ export class UniversityResourceService {
   ): Promise<UniversitySearchResult> {
     this.logger.log(`🎓 Searching university resources for: "${concept}" (${resourceType})`);
 
-    try {
-      // Build domain filter for search
-      const domains = UNIVERSITY_SOURCES
-        .filter(u => u.resourceTypes.includes(resourceType))
-        .map(u => `site:${u.domain}`)
-        .join(' OR ');
+    if (!this.apiKey || !this.engineId) {
+      return {
+        success: false,
+        resources: [],
+        error: 'Google CSE not configured',
+      };
+    }
 
+    try {
       // Build search query based on resource type
       const typeKeyword = resourceType === 'lecture_video' ? 'lecture video'
-        : resourceType === 'problem_set' ? 'problem set homework solutions'
+        : resourceType === 'problem_set' ? 'problem set solutions'
         : resourceType === 'slides' ? 'slides pdf'
         : 'lecture notes';
 
-      const searchQuery = `${concept} ${typeKeyword} (${domains})`;
+      const searchQuery = `${concept} ${typeKeyword}`;
 
-      // Use DuckDuckGo HTML search (no API key needed)
-      const resources = await this.searchDuckDuckGo(searchQuery, concept, resourceType, limit);
+      // Search with .edu site restriction
+      const resources = await this.searchGoogleCSE(searchQuery, resourceType, limit);
 
       if (resources.length === 0) {
-        // Fallback: try with just .edu domain
-        const fallbackQuery = `${concept} ${typeKeyword} site:edu`;
-        const fallbackResources = await this.searchDuckDuckGo(fallbackQuery, concept, resourceType, limit);
-
-        if (fallbackResources.length > 0) {
-          return { success: true, resources: fallbackResources };
-        }
-
         return {
           success: false,
           resources: [],
@@ -95,150 +105,135 @@ export class UniversityResourceService {
   }
 
   /**
-   * Search DuckDuckGo and parse results
-   * No API key needed
+   * Search using Google Custom Search API
    */
-  private async searchDuckDuckGo(
+  private async searchGoogleCSE(
     query: string,
-    concept: string,
     resourceType: UniversityResourceType,
     limit: number,
   ): Promise<UniversityResource[]> {
     try {
-      // Use DuckDuckGo HTML endpoint
-      const response = await axios.get('https://html.duckduckgo.com/html/', {
-        params: { q: query },
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; FlexForge/1.0)',
+      const response = await axios.get<GoogleCSEResponse>(
+        'https://www.googleapis.com/customsearch/v1',
+        {
+          params: {
+            key: this.apiKey,
+            cx: this.engineId,
+            q: query + ' site:edu',  // Restrict to .edu domains
+            num: Math.min(limit, 10), // Max 10 per request
+          },
+          timeout: 10000,
         },
-        timeout: 10000,
-      });
+      );
 
-      const html = response.data;
+      const items = response.data.items || [];
       const resources: UniversityResource[] = [];
 
-      // Parse results using regex (simple but effective)
-      const resultRegex = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([^<]+)<\/a>/g;
-      const snippetRegex = /<a[^>]+class="result__snippet"[^>]*>([^<]+)<\/a>/g;
+      for (const item of items) {
+        // Verify it's from a trusted university
+        const { trusted, source } = isUniversityUrl(item.link);
 
-      let match;
-      const urls: string[] = [];
-      const titles: string[] = [];
-      const snippets: string[] = [];
-
-      while ((match = resultRegex.exec(html)) !== null) {
-        urls.push(match[1]);
-        titles.push(match[2]);
-      }
-
-      while ((match = snippetRegex.exec(html)) !== null) {
-        snippets.push(match[1]);
-      }
-
-      // Process results
-      for (let i = 0; i < Math.min(urls.length, limit); i++) {
-        const url = urls[i];
-        const title = titles[i] || '';
-        const description = snippets[i] || '';
-
-        // Check if from trusted university
-        const { trusted, source } = isUniversityUrl(url);
-        if (!trusted) continue;
+        // Accept any .edu domain
+        const isEdu = item.link.includes('.edu');
+        if (!trusted && !isEdu) continue;
 
         resources.push({
           type: resourceType,
-          source: source?.shortName || 'University',
-          title: this.cleanHtmlEntities(title),
-          url,
-          description: this.cleanHtmlEntities(description),
+          source: source?.shortName || this.extractUniversityName(item.displayLink || item.link),
+          title: item.title,
+          url: item.link,
+          description: item.snippet || '',
         });
       }
 
       return resources;
 
     } catch (error) {
-      this.logger.warn(`DuckDuckGo search failed: ${error.message}`);
-      return [];
+      if (axios.isAxiosError(error) && error.response?.status === 429) {
+        this.logger.warn('Google CSE rate limit reached (100/day)');
+      }
+      throw error;
     }
   }
 
   /**
-   * Use Gemini to find and summarize university resources
-   * More intelligent but costs tokens
+   * Search for resources from specific universities
+   * More targeted search for high-quality results
    */
-  async searchWithAI(
+  async searchSpecificUniversity(
     concept: string,
+    universityShortName: 'MIT' | 'Stanford' | 'Berkeley' | 'Harvard' | 'CMU',
     resourceType: UniversityResourceType = 'lecture_video',
   ): Promise<UniversitySearchResult> {
-    if (!this.genAI) {
-      return this.searchResources(concept, resourceType);
+    const university = UNIVERSITY_SOURCES.find(u => u.shortName === universityShortName);
+    if (!university) {
+      return { success: false, resources: [], error: 'University not found' };
     }
 
+    const typeKeyword = resourceType === 'lecture_video' ? 'lecture video'
+      : resourceType === 'problem_set' ? 'problem set'
+      : resourceType === 'slides' ? 'slides'
+      : 'lecture notes';
+
+    const query = `${concept} ${typeKeyword} site:${university.domain}`;
+
     try {
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+      const response = await axios.get<GoogleCSEResponse>(
+        'https://www.googleapis.com/customsearch/v1',
+        {
+          params: {
+            key: this.apiKey,
+            cx: this.engineId,
+            q: query,
+            num: 5,
+          },
+          timeout: 10000,
+        },
+      );
 
-      const prompt = `Find the best university educational resources for learning "${concept}".
-
-Focus on:
-- MIT OpenCourseWare (ocw.mit.edu)
-- Stanford Online (online.stanford.edu, cs.stanford.edu)
-- UC Berkeley (cs.berkeley.edu)
-- Harvard (pll.harvard.edu, cs.harvard.edu)
-- CMU (cs.cmu.edu)
-
-Resource type: ${resourceType}
-
-Return JSON array with up to 3 resources:
-[
-  {
-    "title": "Resource title",
-    "url": "Full URL",
-    "source": "MIT" | "Stanford" | "Berkeley" | "Harvard" | "CMU",
-    "description": "Brief description",
-    "courseName": "Course name if applicable"
-  }
-]
-
-Only include REAL resources that exist. If you're not sure, return empty array [].
-Return ONLY the JSON array, no other text.`;
-
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-
-      // Parse JSON response
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) {
-        return { success: false, resources: [], error: 'No resources found' };
-      }
-
-      const parsed = JSON.parse(jsonMatch[0]);
-      const resources: UniversityResource[] = parsed.map((r: any) => ({
+      const items = response.data.items || [];
+      const resources: UniversityResource[] = items.map(item => ({
         type: resourceType,
-        source: r.source,
-        title: r.title,
-        url: r.url,
-        description: r.description,
-        courseName: r.courseName,
+        source: university.shortName,
+        title: item.title,
+        url: item.link,
+        description: item.snippet || '',
       }));
 
       return { success: true, resources };
 
     } catch (error) {
-      this.logger.warn(`AI search failed, falling back to web search: ${error.message}`);
-      return this.searchResources(concept, resourceType);
+      return { success: false, resources: [], error: error.message };
     }
   }
 
   /**
-   * Clean HTML entities from text
+   * Extract university name from URL
    */
-  private cleanHtmlEntities(text: string): string {
-    return text
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/<[^>]+>/g, '');
+  private extractUniversityName(url: string): string {
+    try {
+      const hostname = new URL(url).hostname;
+
+      // Check known universities
+      if (hostname.includes('mit.edu')) return 'MIT';
+      if (hostname.includes('stanford.edu')) return 'Stanford';
+      if (hostname.includes('berkeley.edu')) return 'Berkeley';
+      if (hostname.includes('harvard.edu')) return 'Harvard';
+      if (hostname.includes('cmu.edu')) return 'CMU';
+      if (hostname.includes('princeton.edu')) return 'Princeton';
+      if (hostname.includes('cornell.edu')) return 'Cornell';
+      if (hostname.includes('yale.edu')) return 'Yale';
+
+      // Extract from hostname (e.g., "cs.ucla.edu" -> "UCLA")
+      const parts = hostname.split('.');
+      const eduIndex = parts.indexOf('edu');
+      if (eduIndex > 0) {
+        return parts[eduIndex - 1].toUpperCase();
+      }
+
+      return 'University';
+    } catch {
+      return 'University';
+    }
   }
 }
