@@ -14,11 +14,28 @@ export interface CurriculumPromptParams {
   prerequisiteSkills?: string[];
 }
 
+// ============================================
+// CONTENT LAYER & STRATEGY TYPES (AI-decided per day)
+// ============================================
+
+// Content layer: What type of learning is this day?
+export type ContentLayer = 'foundation' | 'language_core' | 'framework' | 'tool' | 'project';
+
+// Video strategy: Should we search for video? (AI decides based on topic)
+export type VideoStrategy = 'skip' | 'optional' | 'helpful' | 'recommended';
+
+// Transferability: Does this skill transfer to other contexts?
+export type Transferability = 'high' | 'medium' | 'low';
+
+// Content source: Where to get the content
+export type ContentSource = 'university' | 'youtube' | 'text' | 'docs';
+
 // Consolidated time structure with all activities
+// NOTE: Video slot is now OPTIONAL - AI decides if video is needed per day
 function getTimeStructure(hoursPerDay: number): {
   totalMinutes: number;
   mode: string;
-  video: number;
+  maxVideo: number;          // Max video time IF video is used (0 = no video)
   recall: number;
   check: number;
   task1: number;
@@ -26,34 +43,105 @@ function getTimeStructure(hoursPerDay: number): {
   practice: number;
   reflect: number;
   structure: string;
+  structureNoVideo: string;  // Alternative structure when no video
 } {
   const total = Math.round(hoursPerDay * 60);
 
   if (total <= 30) {
     return {
       totalMinutes: total, mode: 'Quick',
-      video: 5, recall: 5, check: 0, task1: 15, task2: 0, practice: 0, reflect: 3,
-      structure: 'PrePrompt(30s) → Video(5m) → ActiveRecall(5m) → Task(15m) → Reflect(3m)'
+      maxVideo: 5, recall: 5, check: 0, task1: 15, task2: 0, practice: 0, reflect: 3,
+      structure: 'PrePrompt(30s) → Video(5m) → ActiveRecall(5m) → Task(15m) → Reflect(3m)',
+      structureNoVideo: 'PrePrompt(30s) → Explanation(5m) → ActiveRecall(5m) → Task(15m) → Reflect(3m)'
     };
   } else if (total <= 45) {
     return {
       totalMinutes: total, mode: 'Standard',
-      video: 6, recall: 6, check: 4, task1: 12, task2: 0, practice: 12, reflect: 4,
-      structure: 'PrePrompt(30s) → Video(6m) → ActiveRecall(6m) → ConceptCheck(4m) → Task(12m) → Practice(12m) → Reflect(4m)'
+      maxVideo: 6, recall: 6, check: 4, task1: 12, task2: 0, practice: 12, reflect: 4,
+      structure: 'PrePrompt(30s) → Video(6m) → ActiveRecall(6m) → ConceptCheck(4m) → Task(12m) → Practice(12m) → Reflect(4m)',
+      structureNoVideo: 'PrePrompt(30s) → Explanation(6m) → ActiveRecall(6m) → ConceptCheck(4m) → Task(12m) → Practice(12m) → Reflect(4m)'
     };
   } else if (total <= 60) {
     return {
       totalMinutes: total, mode: 'Focused',
-      video: 7, recall: 8, check: 5, task1: 15, task2: 0, practice: 18, reflect: 5,
-      structure: 'PrePrompt(1m) → Video(7m) → ActiveRecall(8m) → ConceptCheck(5m) → Task(15m) → Practice(18m) → Reflect(5m)'
+      maxVideo: 7, recall: 8, check: 5, task1: 15, task2: 0, practice: 18, reflect: 5,
+      structure: 'PrePrompt(1m) → Video(7m) → ActiveRecall(8m) → ConceptCheck(5m) → Task(15m) → Practice(18m) → Reflect(5m)',
+      structureNoVideo: 'PrePrompt(1m) → Explanation(7m) → ActiveRecall(8m) → ConceptCheck(5m) → Task(15m) → Practice(18m) → Reflect(5m)'
     };
   }
   // Deep Dive: 90+ min - includes Task 2
   return {
     totalMinutes: total, mode: 'DeepDive',
-    video: 10, recall: 12, check: 8, task1: 15, task2: 15, practice: 25, reflect: 8,
-    structure: 'PrePrompt(2m) → Video(10m) → ActiveRecall(12m) → ConceptCheck(8m) → Task1(15m) → Task2(15m) → Practice(25m) → Reflect(8m)'
+    maxVideo: 10, recall: 12, check: 8, task1: 15, task2: 15, practice: 25, reflect: 8,
+    structure: 'PrePrompt(2m) → Video(10m) → ActiveRecall(12m) → ConceptCheck(8m) → Task1(15m) → Task2(15m) → Practice(25m) → Reflect(8m)',
+    structureNoVideo: 'PrePrompt(2m) → Explanation(10m) → ActiveRecall(12m) → ConceptCheck(8m) → Task1(15m) → Task2(15m) → Practice(25m) → Reflect(8m)'
   };
+}
+
+// Content layer and strategy guidance for AI
+function getContentStrategyGuidance(): string {
+  return `
+CONTENT STRATEGY (decide per day):
+
+═══ CONTENT LAYER ═══
+Classify each day's primary learning type:
+
+"foundation"     - Core concepts: variables, functions, data structures, algorithms
+                   These are universal programming building blocks.
+
+"language_core"  - Language fundamentals: Python basics, JS syntax, TS types
+                   The core language features before frameworks.
+
+"framework"      - Framework patterns: React hooks, Next.js routing, Django views
+                   Architecture, conventions, idiomatic usage.
+
+"tool"           - Tools & platforms: Claude API, Cursor, VSCode, Vercel, Make.com
+                   UI walkthroughs, setup, configuration.
+
+"project"        - Building & integrating: Build a todo app, deploy to production
+                   End-to-end implementation, debugging, decisions.
+
+═══ VIDEO STRATEGY ═══
+Decide if video helps for THIS specific topic:
+
+"skip"        - Video adds NO value. Text + practice is better.
+                Use for: pure concepts, syntax, algorithms, theory.
+
+"optional"    - Video might help some learners. Not required.
+                Use for: language basics, simple patterns.
+
+"helpful"     - Video provides useful mental models or flow.
+                Use for: framework patterns, project walkthroughs.
+
+"recommended" - Video is the BEST way to learn this.
+                Use for: UI-heavy tools, visual workflows, debugging.
+
+═══ TRANSFERABILITY ═══
+Does this skill transfer to other tools/contexts?
+
+"high"   - Universal concept. Works everywhere.
+           Examples: "event-driven architecture", "state management patterns"
+
+"medium" - Transfers to similar tools/contexts.
+           Examples: "webhook patterns", "REST API design"
+
+"low"    - Platform-specific. Only works here.
+           Examples: "Make.com scenario UI", "Vercel dashboard settings"
+
+═══ CONTENT SOURCE ═══
+Where to get the primary content:
+
+"university" - MIT OCW, Stanford lectures (theory, algorithms)
+"youtube"    - Curated tutorials (tool demos, walkthroughs)
+"text"       - Generated explanations (simple concepts)
+"docs"       - Official documentation (API reference)
+
+For each day, output ALL of:
+- "contentLayer": "foundation" | "language_core" | "framework" | "tool" | "project"
+- "videoStrategy": "skip" | "optional" | "helpful" | "recommended"
+- "transferability": "high" | "medium" | "low"
+- "contentSource": "university" | "youtube" | "text" | "docs"
+`;
 }
 
 function getBossProjectDays(totalDays: number): number[] {
@@ -160,8 +248,11 @@ LEARNING SCIENCE PRINCIPLES:
 
 ${getSkillTypeGuidance(params.skillType, params.complexity, params.safetyLevel)}
 
-DAILY STRUCTURE (${time.mode} Mode - ${time.totalMinutes} min):
-${time.structure}
+${getContentStrategyGuidance()}
+
+DAILY STRUCTURE OPTIONS (${time.mode} Mode - ${time.totalMinutes} min):
+With video: ${time.structure}
+Without video: ${time.structureNoVideo}
 
 ${time.task2 > 0 ? 'NOTE: Deep Dive mode includes TASK 2 (extended practice in different context).' : ''}
 
@@ -172,7 +263,16 @@ ${getTierInstructions(params.userTier)}
 OUTPUT REQUIREMENT:
 Generate SKELETON only for ALL days (including Day 1).
 Full day content will be generated on-demand when user starts each day.
-Include: title, subtitle, skills, teaser, estimatedMinutes, hasBossProject, skipTest
+
+For each day, include:
+- title, subtitle, skills, teaser, estimatedMinutes, hasBossProject, skipTest
+- contentLayer: "foundation" | "language_core" | "framework" | "tool" | "project"
+- videoStrategy: "skip" | "optional" | "helpful" | "recommended"
+- transferability: "high" | "medium" | "low"
+- contentSource: "university" | "youtube" | "text" | "docs"
+
+The AI decides ALL strategy fields based on the specific topic for each day.
+There are no rigid rules — use judgment for what helps learning best.
 
 Output valid JSON only. No markdown formatting.`;
 
@@ -195,6 +295,10 @@ Generate SKELETON for ALL days (Day 1 through Day ${params.durationDays}).
       "teaser": "You'll learn [exciting thing]!",
       "estimatedMinutes": ${time.totalMinutes},
       "hasBossProject": ${bossDays.includes(1)},
+      "contentLayer": "foundation",
+      "videoStrategy": "skip",
+      "transferability": "high",
+      "contentSource": "text",
       "skipTest": {
         "description": "Already know this? Prove mastery to skip ahead",
         "questions": [
@@ -213,6 +317,10 @@ Generate SKELETON for ALL days (Day 1 through Day ${params.durationDays}).
       "teaser": "You'll build [exciting thing]!",
       "estimatedMinutes": ${time.totalMinutes},
       "hasBossProject": ${bossDays.includes(2)},
+      "contentLayer": "tool",
+      "videoStrategy": "recommended",
+      "transferability": "medium",
+      "contentSource": "youtube",
       "skipTest": {
         "description": "Prove mastery to skip",
         "questions": [
@@ -244,8 +352,14 @@ Generate SKELETON for ALL days (Day 1 through Day ${params.durationDays}).
 }
 
 Generate ALL ${params.durationDays} days as SKELETONS.
-Each day skeleton must include: day, title, subtitle, skills, teaser, estimatedMinutes, hasBossProject, skipTest.
-Boss projects on days: ${bossDays.join(', ')} (set hasBossProject: true for those days).`;
+Each day must include: day, title, subtitle, skills, teaser, estimatedMinutes, hasBossProject, contentLayer, videoStrategy, transferability, contentSource, skipTest.
+Boss projects on days: ${bossDays.join(', ')} (set hasBossProject: true for those days).
+
+DECIDE FOR EACH DAY:
+- contentLayer: What type of learning? (foundation/language_core/framework/tool/project)
+- videoStrategy: Does video help? (skip/optional/helpful/recommended)
+- transferability: Does skill transfer? (high/medium/low)
+- contentSource: Where to get content? (university/youtube/text/docs)`;
 
   return { systemPrompt, userPrompt };
 }
@@ -271,10 +385,16 @@ SKILL: ${params.skillName}
 TYPE: ${params.skillType} | LEVEL: ${params.skillLevel}
 DURATION: ${params.durationDays} days × ${time.totalMinutes} min/day
 
-OUTPUT: Generate SKELETON for ALL days. NO full content - just titles, skills, and teasers.
+OUTPUT: Generate SKELETON for ALL days. NO full content.
 This is a QUICK PREVIEW for the user to see the learning path before starting.
 
 Boss projects on days: ${bossDays.join(', ')}
+
+For each day, decide:
+- contentLayer: foundation | language_core | framework | tool | project
+- videoStrategy: skip | optional | helpful | recommended
+- transferability: high | medium | low
+- contentSource: university | youtube | text | docs
 
 Output valid JSON only. Keep it concise.`;
 
@@ -295,7 +415,11 @@ SKELETON ONLY for ALL days. Output format:
       "skills": ["Skill 1", "Skill 2", "Skill 3"],
       "teaser": "What they'll build/learn today",
       "estimatedMinutes": ${time.totalMinutes},
-      "hasBossProject": false
+      "hasBossProject": false,
+      "contentLayer": "foundation",
+      "videoStrategy": "skip",
+      "transferability": "high",
+      "contentSource": "text"
     }
   ],
   "metadata": {
@@ -307,7 +431,8 @@ SKELETON ONLY for ALL days. Output format:
   }
 }
 
-Generate ALL ${params.durationDays} days as skeletons. Boss projects on days: ${bossDays.join(', ')}.`;
+Generate ALL ${params.durationDays} days. Boss projects on days: ${bossDays.join(', ')}.
+Decide contentLayer, videoStrategy, transferability, contentSource for each day.`;
 
   return { systemPrompt, userPrompt };
 }

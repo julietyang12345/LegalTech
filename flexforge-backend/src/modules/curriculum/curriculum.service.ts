@@ -351,28 +351,57 @@ export class CurriculumService {
 
     const previousDay = curriculum.days.find((d: any) => d.day === dayNumber - 1);
 
-    // Start video search EARLY using skeleton info (runs in parallel with AI)
+    // Get AI-decided strategy fields from skeleton
+    const contentLayer = dayOverview.contentLayer || 'framework';     // foundation|language_core|framework|tool|project
+    const videoStrategy = dayOverview.videoStrategy || 'helpful';     // skip|optional|helpful|recommended
+    const transferability = dayOverview.transferability || 'medium';  // high|medium|low
+    const contentSource = dayOverview.contentSource || 'youtube';     // university|youtube|text|docs
+
+    this.logger.log(`📚 Day ${dayNumber} strategy: layer=${contentLayer}, video=${videoStrategy}, transfer=${transferability}, source=${contentSource}`);
+
+    // Start video/resource search EARLY (runs in parallel with AI)
     const levelMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
       'BEGINNER': 'beginner',
       'INTERMEDIATE': 'intermediate',
       'ADVANCED': 'advanced',
     };
 
-    // Use skeleton's title + first skill as video search concept
-    const videoSearchConcept = dayOverview.skills?.[0]
+    // Use skeleton's title + first skill as search concept
+    const searchConcept = dayOverview.skills?.[0]
       ? `${dayOverview.title} ${dayOverview.skills[0]}`
       : dayOverview.title;
 
-    this.logger.log(`🎥 Starting video search in parallel for: "${videoSearchConcept}"`);
-    const videoSearchPromise = this.videoMatcher.findBestVideo({
-      concept: videoSearchConcept,
-      userSlot: 6, // 6 minutes default video slot
-      userLevel: levelMap[curriculum.metadata.skillLevel] || 'beginner',
-      skillType: curriculum.metadata.skillType,
-    }, { deepVerify: true }).catch(error => {
-      this.logger.warn(`⚠️ Video search failed: ${error.message}`);
-      return null;
-    });
+    // Decide video search based on videoStrategy (AI-decided)
+    let videoSearchPromise: Promise<any> | null = null;
+
+    if (videoStrategy === 'skip') {
+      // AI decided video adds no value for this topic
+      this.logger.log(`📝 Skipping video search for Day ${dayNumber} (videoStrategy: skip)`);
+    } else if (videoStrategy === 'optional' || contentSource === 'university') {
+      // Optional or university: search but prefer trusted educational channels
+      this.logger.log(`🎓 Starting educational video search for: "${searchConcept}"`);
+      videoSearchPromise = this.videoMatcher.findBestVideo({
+        concept: `${searchConcept} lecture tutorial MIT Stanford freeCodeCamp`,
+        userSlot: videoStrategy === 'optional' ? 6 : 10,
+        userLevel: levelMap[curriculum.metadata.skillLevel] || 'beginner',
+        skillType: curriculum.metadata.skillType,
+      }, { deepVerify: true }).catch(error => {
+        this.logger.warn(`⚠️ Educational video search failed: ${error.message}`);
+        return null;
+      });
+    } else {
+      // helpful or recommended: standard video search
+      this.logger.log(`🎥 Starting video search for: "${searchConcept}"`);
+      videoSearchPromise = this.videoMatcher.findBestVideo({
+        concept: searchConcept,
+        userSlot: 6,
+        userLevel: levelMap[curriculum.metadata.skillLevel] || 'beginner',
+        skillType: curriculum.metadata.skillType,
+      }, { deepVerify: true }).catch(error => {
+        this.logger.warn(`⚠️ Video search failed: ${error.message}`);
+        return null;
+      });
+    }
 
     // Generate day content with AI (runs in parallel with video search)
     const params: DayDetailParams = {
@@ -434,9 +463,15 @@ export class CurriculumService {
     }
 
     // Await video search result (should be done or almost done by now)
-    const videoResult = await videoSearchPromise;
+    // videoSearchPromise is null if contentSource is 'text' or 'docs'
+    const videoResult = videoSearchPromise ? await videoSearchPromise : null;
 
-    // Merge video result into dayContent
+    // Merge strategy metadata into dayContent for frontend
+    dayContent.contentLayer = contentLayer;
+    dayContent.videoStrategy = videoStrategy;
+    dayContent.transferability = transferability;
+    dayContent.contentSource = contentSource;
+
     if (dayContent.video && videoResult?.success && videoResult.video) {
       const video = videoResult.video;
       const watchPlan = videoResult.watchPlan;
@@ -461,6 +496,11 @@ export class CurriculumService {
         matchPercent: alt.matchPercent,
       })) || [];
 
+      // Check if this is a university channel (MIT OCW, CS50, etc.)
+      const universityChannels = ['MIT OpenCourseWare', 'Harvard CS50', 'freeCodeCamp', 'Khan Academy', 'Stanford Online'];
+      const isUniversityVideo = contentSource === 'university' ||
+        universityChannels.some(ch => video.channelName?.toLowerCase().includes(ch.toLowerCase()));
+
       dayContent.video = {
         ...dayContent.video,
         url: `https://www.youtube.com/watch?v=${video.videoId}`,
@@ -480,6 +520,9 @@ export class CurriculumService {
         matchPercent: videoResult.matchPercent,
         whyThisVideo: videoResult.whyThisVideo,
         alternatives,
+        // New: Tag for frontend display
+        isUniversityLecture: isUniversityVideo,
+        sourceType: contentSource, // 'university' | 'youtube'
       };
       this.logger.log(`✅ Day ${dayNumber} video found: ${video.title} (${videoResult.matchPercent}% match)${alternatives.length > 0 ? ` + ${alternatives.length} alternatives` : ''}`);
     } else if (dayContent.video && videoResult && !videoResult.success) {
