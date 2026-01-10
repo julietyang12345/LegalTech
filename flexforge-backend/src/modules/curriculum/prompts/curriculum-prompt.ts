@@ -451,11 +451,19 @@ Output valid JSON only.`;
 
   "skipTest": {
     "description": "Prove mastery to skip this day",
-    "questions": [
-      {"question": "Conceptual question about day's core topic?", "answer": "Expected answer"},
-      {"question": "Applied question testing practical understanding?", "answer": "Expected answer"},
-      {"question": "Edge case or gotcha question?", "answer": "Expected answer"}
+    "questionSets": [
+      [
+        {"question": "Conceptual question about day's core topic?", "answer": "Short answer"},
+        {"question": "Applied question testing practical understanding?", "answer": "Short answer"},
+        {"question": "Edge case or gotcha question?", "answer": "Short answer"}
+      ],
+      [
+        {"question": "Different conceptual question on same topic?", "answer": "Short answer"},
+        {"question": "Different applied question?", "answer": "Short answer"},
+        {"question": "Different edge case question?", "answer": "Short answer"}
+      ]
     ],
+    "currentSetIndex": 0,
     "passThreshold": 2
   }
 }`;

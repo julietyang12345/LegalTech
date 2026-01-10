@@ -544,6 +544,7 @@ export class SessionService {
 
   /**
    * Submit skip test answers to skip a day
+   * Uses pre-generated question sets, then suggests completing the course
    */
   async submitSkipTest(
     sessionId: string,
@@ -555,10 +556,14 @@ export class SessionService {
     correctCount: number;
     totalQuestions: number;
     passThreshold: number;
+    newQuestions?: { question: string; answer: string }[];
+    suggestion?: string;
+    allSetsExhausted?: boolean;
   }> {
     const session = await this.findOne(sessionId, userId);
 
-    const dayOverview = session.curriculum.days.find((d: any) => d.day === dayNumber);
+    const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
+    const dayOverview = session.curriculum.days[dayIndex];
     if (!dayOverview) {
       throw new NotFoundException(`Day ${dayNumber} not found`);
     }
@@ -568,15 +573,19 @@ export class SessionService {
       throw new NotFoundException(`Skip test not found for Day ${dayNumber}`);
     }
 
+    // Get current questions - support both old format (questions) and new format (questionSets)
+    const questionSets = skipTest.questionSets || null;
+    const currentSetIndex = skipTest.currentSetIndex ?? 0;
+    const questions = questionSets
+      ? questionSets[currentSetIndex] || []
+      : skipTest.questions || [];
+
     // Check answers (case-insensitive, trim whitespace)
     let correctCount = 0;
-    const questions = skipTest.questions || [];
-
     answers.forEach((answer, index) => {
       if (index < questions.length) {
         const correctAnswer = questions[index].answer.toLowerCase().trim();
         const userAnswer = answer.toLowerCase().trim();
-        // Simple match - could be improved with fuzzy matching
         if (userAnswer.includes(correctAnswer) || correctAnswer.includes(userAnswer)) {
           correctCount++;
         }
@@ -588,7 +597,6 @@ export class SessionService {
 
     if (passed) {
       // Mark day as skipped/mastered
-      const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
       session.curriculum.days[dayIndex].status = 'skipped';
 
       // Unlock next day
@@ -601,14 +609,88 @@ export class SessionService {
 
       await this.sessionsRepository.save(session);
       this.logger.log(`✅ Day ${dayNumber} skipped (mastered) for session ${sessionId}`);
+
+      return {
+        passed: true,
+        correctCount,
+        totalQuestions: questions.length,
+        passThreshold,
+      };
     }
 
+    // Failed - determine next action
+    this.logger.log(`❌ Skip test failed for Day ${dayNumber} (${correctCount}/${passThreshold})`);
+
+    if (questionSets && currentSetIndex < questionSets.length - 1) {
+      // Use next pre-generated set (instant)
+      const nextSetIndex = currentSetIndex + 1;
+      const newQuestions = questionSets[nextSetIndex];
+
+      session.curriculum.days[dayIndex].skipTest = {
+        ...skipTest,
+        currentSetIndex: nextSetIndex,
+      };
+
+      await this.sessionsRepository.save(session);
+      this.logger.log(`📝 Switching to question set ${nextSetIndex + 1}/${questionSets.length} for Day ${dayNumber}`);
+
+      return {
+        passed: false,
+        correctCount,
+        totalQuestions: questions.length,
+        passThreshold,
+        newQuestions,
+        suggestion: "Try again with a different set of questions, or complete the lesson to build a stronger foundation.",
+      };
+    }
+
+    // All sets exhausted - suggest taking the course, but allow force skip
+    this.logger.log(`📚 All question sets exhausted for Day ${dayNumber}. Suggesting course completion.`);
+
     return {
-      passed,
+      passed: false,
       correctCount,
       totalQuestions: questions.length,
       passThreshold,
+      allSetsExhausted: true,
+      suggestion: "We recommend completing the lesson to build a stronger foundation. You can still skip if you're confident in your knowledge.",
     };
+  }
+
+  /**
+   * Force skip a day without passing the test
+   * Used when user exhausts all question sets but still wants to skip
+   */
+  async forceSkipDay(
+    sessionId: string,
+    userId: string,
+    dayNumber: number,
+  ): Promise<{ success: boolean; nextDayUnlocked: boolean }> {
+    const session = await this.findOne(sessionId, userId);
+
+    const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
+    if (dayIndex === -1) {
+      throw new NotFoundException(`Day ${dayNumber} not found`);
+    }
+
+    // Mark day as skipped
+    session.curriculum.days[dayIndex].status = 'skipped';
+    session.curriculum.days[dayIndex].forceSkipped = true;
+
+    // Unlock next day
+    let nextDayUnlocked = false;
+    if (dayNumber < session.curriculum.days.length) {
+      const nextDayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber + 1);
+      if (nextDayIndex !== -1) {
+        session.curriculum.days[nextDayIndex].status = 'unlockable';
+        nextDayUnlocked = true;
+      }
+    }
+
+    await this.sessionsRepository.save(session);
+    this.logger.log(`⏭️ Day ${dayNumber} force-skipped for session ${sessionId}`);
+
+    return { success: true, nextDayUnlocked };
   }
 
   /**

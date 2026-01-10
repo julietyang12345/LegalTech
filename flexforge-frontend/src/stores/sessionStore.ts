@@ -49,6 +49,7 @@ interface SessionState {
   // Two-phase curriculum actions
   loadDayContent: (dayNumber: number) => Promise<CurriculumDay>;
   submitSkipTest: (dayNumber: number, answers: string[]) => Promise<SkipTestResponse>;
+  forceSkipDay: (dayNumber: number) => Promise<{ success: boolean; nextDayUnlocked: boolean }>;
   submitPracticeProject: (dayNumber: number, answer: string, confidence?: number) => Promise<PracticeSubmitResponse>;
   getDayStatus: (dayNumber: number) => DayStatus;
   canStartDay: (dayNumber: number) => boolean;
@@ -373,11 +374,81 @@ export const useSessionStore = create<SessionState>((set, get) => ({
             },
           };
         });
+      } else if (result.newQuestions) {
+        // Failed but have another question set: increment currentSetIndex
+        set((state) => {
+          if (!state.activeSession) return state;
+
+          const updatedDays = state.activeSession.curriculum.days.map((d) => {
+            if (d.day === dayNumber && d.skipTest?.questionSets) {
+              const currentSetIndex = d.skipTest.currentSetIndex ?? 0;
+              return {
+                ...d,
+                skipTest: {
+                  ...d.skipTest,
+                  currentSetIndex: currentSetIndex + 1,
+                },
+              };
+            }
+            return d;
+          });
+
+          return {
+            activeSession: {
+              ...state.activeSession,
+              curriculum: {
+                ...state.activeSession.curriculum,
+                days: updatedDays,
+              },
+            },
+          };
+        });
       }
+      // If allSetsExhausted, no state update needed - user must complete day or force skip
 
       return result;
     } catch (error: any) {
       set({ error: error.response?.data?.message || 'Failed to submit skip test' });
+      throw error;
+    }
+  },
+
+  forceSkipDay: async (dayNumber: number) => {
+    const { activeSession } = get();
+    if (!activeSession) throw new Error('No active session');
+
+    try {
+      const result = await sessionService.forceSkipDay(activeSession.id, dayNumber);
+
+      if (result.success) {
+        set((state) => {
+          if (!state.activeSession) return state;
+
+          const updatedDays = state.activeSession.curriculum.days.map((d) => {
+            if (d.day === dayNumber) {
+              return { ...d, status: DayStatus.SKIPPED };
+            }
+            if (d.day === dayNumber + 1 && result.nextDayUnlocked) {
+              return { ...d, status: DayStatus.UNLOCKABLE };
+            }
+            return d;
+          });
+
+          return {
+            activeSession: {
+              ...state.activeSession,
+              curriculum: {
+                ...state.activeSession.curriculum,
+                days: updatedDays,
+              },
+            },
+          };
+        });
+      }
+
+      return result;
+    } catch (error: any) {
+      set({ error: error.response?.data?.message || 'Failed to skip day' });
       throw error;
     }
   },

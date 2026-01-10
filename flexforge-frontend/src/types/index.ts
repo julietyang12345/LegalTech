@@ -150,7 +150,11 @@ export interface SkipTestQuestion {
 
 export interface SkipTest {
   instructions: string;
-  questions: SkipTestQuestion[];
+  // Old format (single set)
+  questions?: SkipTestQuestion[];
+  // New format (multiple pre-generated sets)
+  questionSets?: SkipTestQuestion[][];
+  currentSetIndex?: number;
   passThreshold: number;
 }
 
@@ -549,8 +553,12 @@ export interface SkipTestResponse {
   passed: boolean;
   correctCount: number;
   totalQuestions: number;
+  passThreshold: number;
   message: string;
   nextDayUnlocked: boolean;
+  newQuestions?: { question: string; answer: string }[];
+  suggestion?: string;
+  allSetsExhausted?: boolean;
 }
 
 export interface PracticeSubmitResponse {

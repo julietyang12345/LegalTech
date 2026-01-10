@@ -185,10 +185,37 @@ export class SessionController {
       passed: result.passed,
       correctCount: result.correctCount,
       totalQuestions: result.totalQuestions,
+      passThreshold: result.passThreshold,
       message: result.passed
         ? `Congratulations! You've mastered Day ${dayNumber} content. Moving to next day.`
         : `You got ${result.correctCount}/${result.totalQuestions} correct. Need ${result.passThreshold} to skip.`,
       nextDayUnlocked: result.passed,
+      newQuestions: result.newQuestions,
+      suggestion: result.suggestion,
+      allSetsExhausted: result.allSetsExhausted,
+    };
+  }
+
+  /**
+   * POST /api/v1/sessions/:id/days/:dayNumber/force-skip
+   * Force skip a day without passing the test
+   */
+  @Post(':id/days/:dayNumber/force-skip')
+  async forceSkipDay(
+    @Request() req,
+    @Param('id') id: string,
+    @Param('dayNumber') dayNumber: string,
+  ) {
+    const result = await this.sessionService.forceSkipDay(
+      id,
+      req.user.id,
+      parseInt(dayNumber, 10),
+    );
+
+    return {
+      success: result.success,
+      message: `Day ${dayNumber} skipped. You can always come back to review the content later.`,
+      nextDayUnlocked: result.nextDayUnlocked,
     };
   }
 

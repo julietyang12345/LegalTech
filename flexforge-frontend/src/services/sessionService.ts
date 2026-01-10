@@ -169,6 +169,19 @@ export const sessionService = {
   },
 
   /**
+   * Force skip a day without passing the test
+   */
+  async forceSkipDay(
+    sessionId: string,
+    dayNumber: number
+  ): Promise<{ success: boolean; message: string; nextDayUnlocked: boolean }> {
+    const { data } = await api.post(
+      `/sessions/${sessionId}/days/${dayNumber}/force-skip`
+    );
+    return data;
+  },
+
+  /**
    * Submit practice project answer - unlocks next day
    */
   async submitPracticeProject(

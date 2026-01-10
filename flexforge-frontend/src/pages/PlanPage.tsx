@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -212,7 +212,7 @@ function DayCard({
                     >
                       {isLoading ? 'Generating...' : dayData?.detailsLoaded ? 'Continue Day' : 'Start Day'}
                     </Button>
-                    {dayData?.skipTest && !dayData.detailsLoaded && (
+                    {dayData?.skipTest && isInProgress && (
                       <Button
                         variant="secondary"
                         onClick={(e) => {
@@ -330,21 +330,40 @@ function SkipTestModal({
   isOpen: boolean;
   onClose: () => void;
   dayNumber: number;
-  skipTest: { instructions: string; questions: Array<{ question: string; correctAnswer: string; difficulty: string }> } | undefined;
+  skipTest: {
+    instructions: string;
+    questions?: Array<{ question: string; correctAnswer: string; difficulty?: string }>;
+    questionSets?: Array<Array<{ question: string; correctAnswer?: string; answer?: string; difficulty?: string }>>;
+    currentSetIndex?: number;
+  } | undefined;
   onSubmit: (answers: string[]) => void;
 }) {
   const [answers, setAnswers] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<{ passed: boolean; correctCount: number; totalQuestions: number } | null>(null);
 
+  // Get current questions from either questionSets or questions
+  const questions = useMemo(() => {
+    if (!skipTest) return [];
+    if (skipTest.questionSets && skipTest.questionSets.length > 0) {
+      const setIndex = skipTest.currentSetIndex ?? 0;
+      return skipTest.questionSets[setIndex]?.map(q => ({
+        question: q.question,
+        correctAnswer: q.correctAnswer || q.answer || '',
+        difficulty: q.difficulty || 'medium',
+      })) || [];
+    }
+    return skipTest.questions || [];
+  }, [skipTest]);
+
   useEffect(() => {
-    if (isOpen && skipTest) {
-      setAnswers(new Array(skipTest.questions.length).fill(''));
+    if (isOpen && questions.length > 0) {
+      setAnswers(new Array(questions.length).fill(''));
       setResult(null);
     }
-  }, [isOpen, skipTest]);
+  }, [isOpen, questions]);
 
-  if (!isOpen || !skipTest) return null;
+  if (!isOpen || !skipTest || questions.length === 0) return null;
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
@@ -373,7 +392,7 @@ function SkipTestModal({
         </div>
 
         <div className="space-y-6 mb-6">
-          {skipTest.questions.map((q, i) => (
+          {questions.map((q, i) => (
             <div key={i} className="space-y-2">
               <div className="flex items-start gap-2">
                 <span className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-sm font-medium flex-shrink-0">
@@ -387,7 +406,7 @@ function SkipTestModal({
                     q.difficulty === 'medium' && 'bg-yellow-100 text-yellow-700',
                     q.difficulty === 'hard' && 'bg-red-100 text-red-700'
                   )}>
-                    {q.difficulty}
+                    {q.difficulty || 'medium'}
                   </span>
                 </div>
               </div>
@@ -490,6 +509,7 @@ export function PlanPage() {
     fetchActiveSession,
     loadDayContent,
     submitSkipTest,
+    forceSkipDay,
     isDayLoading,
     dayLoadingNumber,
     error,
@@ -500,7 +520,7 @@ export function PlanPage() {
   const [showLifeHappens, setShowLifeHappens] = useState(false);
   const [showBacklog, setShowBacklog] = useState(false);
   const [skipTestDay, setSkipTestDay] = useState<number | null>(null);
-  const [skipTestResult, setSkipTestResult] = useState<{ passed: boolean; message: string } | null>(null);
+  const [skipTestResult, setSkipTestResult] = useState<{ passed: boolean; message: string; suggestion?: string; allSetsExhausted?: boolean } | null>(null);
 
   useEffect(() => {
     if (!activeSession) {
@@ -534,7 +554,11 @@ export function PlanPage() {
       const result = await submitSkipTest(skipTestDay, answers);
       setSkipTestResult({
         passed: result.passed,
-        message: result.message,
+        message: result.passed
+          ? `Day ${skipTestDay} skipped! You demonstrated mastery.`
+          : `${result.correctCount}/${result.totalQuestions} correct. Need ${result.passThreshold} to pass.`,
+        suggestion: result.suggestion,
+        allSetsExhausted: result.allSetsExhausted,
       });
 
       if (result.passed) {
@@ -546,6 +570,18 @@ export function PlanPage() {
       }
     } catch (err) {
       console.error('Failed to submit skip test:', err);
+    }
+  };
+
+  const handleForceSkip = async () => {
+    if (skipTestDay === null) return;
+
+    try {
+      await forceSkipDay(skipTestDay);
+      setSkipTestDay(null);
+      setSkipTestResult(null);
+    } catch (err) {
+      console.error('Failed to force skip:', err);
     }
   };
 
@@ -716,11 +752,57 @@ export function PlanPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 50 }}
             className={clsx(
-              'fixed bottom-4 right-4 p-4 rounded-lg shadow-lg z-50',
+              'fixed bottom-4 right-4 p-4 rounded-lg shadow-lg z-50 max-w-md',
               skipTestResult.passed ? 'bg-green-500 text-white' : 'bg-amber-500 text-white'
             )}
           >
             <p className="font-medium">{skipTestResult.message}</p>
+            {skipTestResult.suggestion && (
+              <p className="text-sm mt-2 opacity-90">{skipTestResult.suggestion}</p>
+            )}
+            {!skipTestResult.passed && (
+              <div className="flex gap-2 mt-3">
+                {skipTestResult.allSetsExhausted ? (
+                  <>
+                    <button
+                      onClick={() => {
+                        setSkipTestDay(null);
+                        setSkipTestResult(null);
+                        if (skipTestDay) handleStartDay(skipTestDay);
+                      }}
+                      className="px-3 py-1 bg-white hover:bg-white/90 text-amber-600 rounded text-sm font-medium transition-colors"
+                    >
+                      Complete Day
+                    </button>
+                    <button
+                      onClick={handleForceSkip}
+                      className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-sm font-medium transition-colors"
+                    >
+                      Skip Anyway
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setSkipTestResult(null)}
+                      className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-sm font-medium transition-colors"
+                    >
+                      Try Again
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSkipTestDay(null);
+                        setSkipTestResult(null);
+                        if (skipTestDay) handleStartDay(skipTestDay);
+                      }}
+                      className="px-3 py-1 bg-white hover:bg-white/90 text-amber-600 rounded text-sm font-medium transition-colors"
+                    >
+                      Continue Day
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
