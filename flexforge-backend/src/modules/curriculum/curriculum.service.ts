@@ -51,6 +51,74 @@ export interface PreviewResult {
 export class CurriculumService {
   private readonly logger = new Logger(CurriculumService.name);
 
+  /**
+   * Extract key concepts from generated day content for video search
+   * Uses foundationCards concepts and task title/description to build search query
+   * Includes skill context to avoid overly generic searches
+   */
+  private extractSearchConceptsFromContent(
+    dayContent: any,
+    fallbackTitle: string,
+    skillName?: string,
+  ): string {
+    const concepts: string[] = [];
+
+    // Extract from foundationCards (primary concepts)
+    if (dayContent.foundationCards && Array.isArray(dayContent.foundationCards)) {
+      // Get concepts from first 3-4 cards (core concepts, skip intro card)
+      const coreCards = dayContent.foundationCards.slice(1, 5);
+      for (const card of coreCards) {
+        if (card.concept) {
+          // Clean concept - remove questions like "What is X?" -> "X"
+          const cleaned = card.concept
+            .replace(/^(What is|What are|How to|Why|When to use)\s*/i, '')
+            .replace(/\?$/, '')
+            .trim();
+          if (cleaned && cleaned.length > 2) {
+            concepts.push(cleaned);
+          }
+        }
+      }
+    }
+
+    // Extract from task title (practical application)
+    if (dayContent.task1?.title) {
+      const taskConcept = dayContent.task1.title
+        .replace(/^(Build|Create|Implement|Write|Make|Set up|Configure)\s*/i, '')
+        .trim();
+      if (taskConcept && taskConcept.length > 3) {
+        concepts.push(taskConcept);
+      }
+    }
+
+    // Build search query with skill context for relevance
+    if (concepts.length > 0) {
+      // Take first 2-3 concepts
+      const conceptQuery = concepts.slice(0, 3).join(' ');
+
+      // Always include skill context to ensure domain-specific results
+      // e.g., "AI Automation" + "API request" → "AI Automation API request"
+      if (skillName) {
+        const skillContext = skillName
+          .replace(/\b(introduction to|intro to|basics of|fundamentals of|learning|course|tutorial)\b/gi, '')
+          .trim()
+          .split(' ')
+          .slice(0, 2)  // First 2 words of skill name
+          .join(' ');
+
+        const searchQuery = `${skillContext} ${conceptQuery}`;
+        this.logger.log(`🔍 Search query: "${searchQuery}" (skill: ${skillContext}, concepts: ${conceptQuery})`);
+        return searchQuery;
+      }
+
+      this.logger.log(`🔍 Search query (no skill context): "${conceptQuery}"`);
+      return conceptQuery;
+    }
+
+    this.logger.log(`🔍 Using fallback search concept: "${fallbackTitle}"`);
+    return fallbackTitle;
+  }
+
   constructor(
     private aiService: AiService,
     private skillDetector: SkillDetectorService,
@@ -386,59 +454,19 @@ export class CurriculumService {
       : sessionMinutes <= 60 ? 7
       : 10; // 90+ min sessions
 
-    // Decide video search based on videoStrategy (AI-decided)
-    let videoSearchPromise: Promise<any> | null = null;
+    // Video search will happen AFTER content generation to match video with actual content
+    // This ensures video content aligns with foundationCards and tasks
     let universityResourcePromise: Promise<any> | null = null;
     let docFetchPromise: Promise<DocFetchResult | null> | null = null;
+    const shouldSearchVideo = contentSource === 'university' ||
+      (videoStrategy !== 'skip' && contentSource !== 'text' && contentSource !== 'docs');
 
-    // PRIORITY: contentSource === 'university' should ALWAYS search for videos
-    // University content (MIT OCW, CS50, etc.) IS video-based, so don't skip even if videoStrategy === 'skip'
-    if (contentSource === 'university') {
-      // University content: search for educational videos (lectures from MIT, Stanford, etc.)
-      this.logger.log(`🎓 Starting university video search for: "${searchConcept}" (${videoSlot}min slot)`);
-      videoSearchPromise = this.videoMatcher.findBestVideo({
-        concept: searchConcept,
-        userSlot: videoSlot,
-        userLevel: levelMap[curriculum.metadata.skillLevel] || 'beginner',
-        skillType: curriculum.metadata.skillType,
-        contentSource,
-      }, { deepVerify: true }).catch(error => {
-        this.logger.warn(`⚠️ University video search failed: ${error.message}`);
-        return null;
-      });
-    } else if (videoStrategy === 'skip' || contentSource === 'text' || contentSource === 'docs') {
-      // AI decided video adds no value, or content comes from text/docs (no video needed)
+    if (!shouldSearchVideo) {
       this.logger.log(`📝 Skipping video search for Day ${dayNumber} (videoStrategy: ${videoStrategy}, contentSource: ${contentSource})`);
-    } else if (videoStrategy === 'optional') {
-      // Optional: search but prefer trusted educational channels
-      this.logger.log(`🎓 Starting educational video search for: "${searchConcept}" (${videoSlot}min slot)`);
-      videoSearchPromise = this.videoMatcher.findBestVideo({
-        concept: searchConcept,
-        userSlot: videoSlot,
-        userLevel: levelMap[curriculum.metadata.skillLevel] || 'beginner',
-        skillType: curriculum.metadata.skillType,
-        contentSource,
-      }, { deepVerify: true }).catch(error => {
-        this.logger.warn(`⚠️ Educational video search failed: ${error.message}`);
-        return null;
-      });
-    } else {
-      // helpful or recommended: standard video search
-      this.logger.log(`🎥 Starting video search for: "${searchConcept}" (${videoSlot}min slot)`);
-      videoSearchPromise = this.videoMatcher.findBestVideo({
-        concept: searchConcept,
-        userSlot: videoSlot,
-        userLevel: levelMap[curriculum.metadata.skillLevel] || 'beginner',
-        skillType: curriculum.metadata.skillType,
-        contentSource, // Pass for duration filtering
-      }, { deepVerify: true }).catch(error => {
-        this.logger.warn(`⚠️ Video search failed: ${error.message}`);
-        return null;
-      });
     }
 
     // Search for university resources when contentSource is 'university'
-    // Runs in parallel with video search and AI generation
+    // Runs in parallel with AI generation (not dependent on content)
     if (contentSource === 'university') {
       this.logger.log(`🎓 Starting university resource search for: "${searchConcept}"`);
       universityResourcePromise = Promise.all([
@@ -547,15 +575,38 @@ export class CurriculumService {
       );
     }
 
-    // Await video search result (should be done or almost done by now)
-    // videoSearchPromise is null if contentSource is 'text' or 'docs'
-    const videoResult = videoSearchPromise ? await videoSearchPromise : null;
-
     // Await university resource search result
     const universityResults = universityResourcePromise ? await universityResourcePromise : null;
 
     // Await documentation fetch result
     const docResult = docFetchPromise ? await docFetchPromise : null;
+
+    // NOW search for video using concepts from generated content
+    // This ensures video matches what foundationCards and tasks actually teach
+    let videoResult: any = null;
+    if (shouldSearchVideo && dayContent.video) {
+      // Extract key concepts from generated content, include skill name for context
+      const contentBasedConcept = this.extractSearchConceptsFromContent(
+        dayContent,
+        searchConcept,
+        curriculum.metadata.skillName,
+      );
+
+      this.logger.log(`🎥 Searching video for content-based concept: "${contentBasedConcept}" (${videoSlot}min slot)`);
+
+      try {
+        videoResult = await this.videoMatcher.findBestVideo({
+          concept: contentBasedConcept,
+          userSlot: videoSlot,
+          userLevel: levelMap[curriculum.metadata.skillLevel] || 'beginner',
+          skillType: curriculum.metadata.skillType,
+          contentSource,
+        }, { deepVerify: true });
+      } catch (error: any) {
+        this.logger.warn(`⚠️ Video search failed: ${error.message}`);
+        videoResult = null;
+      }
+    }
 
     // Merge strategy metadata into dayContent for frontend
     dayContent.contentLayer = contentLayer;
@@ -624,7 +675,7 @@ export class CurriculumService {
     // FALLBACK: If video failed/skipped AND contentLayer is 'foundation', try university resources
     // This catches cases where AI didn't set contentSource='university' but topic is academic
     let fallbackUniversityResults = null;
-    if (!universityResults && contentLayer === 'foundation' && (!videoResult?.success || !videoSearchPromise)) {
+    if (!universityResults && contentLayer === 'foundation' && (!videoResult?.success || !shouldSearchVideo)) {
       this.logger.log(`🎓 Fallback: Searching university resources for foundation topic: "${searchConcept}"`);
       try {
         fallbackUniversityResults = await Promise.all([
