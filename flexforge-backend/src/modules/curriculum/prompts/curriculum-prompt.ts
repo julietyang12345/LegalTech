@@ -108,6 +108,18 @@ For foundational CS topics (algorithms, data structures, Big O, recursion, trees
 `;
 }
 
+// Topic relevance filter to prevent AI bloat/filler content
+function getTopicRelevanceGuidance(): string {
+  return `
+TOPIC FILTER - each topic must pass:
+1. BLOCKER: Skip this → stuck? If no, exclude
+2. APPLICATION: What can they DO after? If nothing concrete, exclude
+3. DEPTH: USE it → teach usage only | BUILD ON it → teach how it works | PROVE it → teach proof
+
+EXCLUDE: history, unused theory, "good to know", alternative methods, unnecessary depth
+`;
+}
+
 function getBossProjectDays(totalDays: number): number[] {
   if (totalDays <= 3) return [totalDays];
   if (totalDays === 4) return [4];
@@ -203,6 +215,8 @@ ${getSkillTypeGuidance(params.skillType, params.complexity, params.safetyLevel)}
 
 ${getContentStrategyGuidance()}
 
+${getTopicRelevanceGuidance()}
+
 Per day include: day, title, subtitle, skills[], teaser, estimatedMinutes, hasBossProject, skipTest, contentLayer, videoStrategy, transferability, contentSource.
 
 Output valid JSON only.`;
@@ -265,6 +279,8 @@ Boss project days: ${bossDays.join(', ')}
 Per day: day, title, subtitle, skills[], teaser, estimatedMinutes, hasBossProject, contentLayer, videoStrategy, transferability, contentSource.
 
 ${getContentStrategyGuidance()}
+
+${getTopicRelevanceGuidance()}
 Output valid JSON only.`;
 
   const userPrompt = `{
@@ -431,6 +447,16 @@ Output valid JSON only.`;
       {"id": "connection", "question": "How does today connect to Day ${params.dayNumber - 1}?", "type": "text"},
       {"id": "warmup", "question": "Tomorrow's warmup plan?", "type": "text"}
     ]
+  },
+
+  "skipTest": {
+    "description": "Prove mastery to skip this day",
+    "questions": [
+      {"question": "Conceptual question about day's core topic?", "answer": "Expected answer"},
+      {"question": "Applied question testing practical understanding?", "answer": "Expected answer"},
+      {"question": "Edge case or gotcha question?", "answer": "Expected answer"}
+    ],
+    "passThreshold": 2
   }
 }`;
 
