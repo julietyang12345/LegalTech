@@ -55,19 +55,29 @@ export class UserService {
    * Find user by ID
    */
   async findById(id: string): Promise<User | null> {
-    return this.usersRepository.findOne({
+    const user = await this.usersRepository.findOne({
       where: { id },
       relations: ['sessions', 'projects'],
     });
+
+    if (user && this.hasUnlimitedAccess(user.email)) {
+      user.quotaTier = QuotaTier.PREMIUM;
+    }
+    return user;
   }
 
   /**
    * Find user by email
    */
   async findByEmail(email: string): Promise<User | null> {
-    return this.usersRepository.findOne({
+    const user = await this.usersRepository.findOne({
       where: { email },
     });
+
+    if (user && this.hasUnlimitedAccess(user.email)) {
+      user.quotaTier = QuotaTier.PREMIUM;
+    }
+    return user;
   }
 
   /**

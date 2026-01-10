@@ -202,8 +202,16 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (!activeSession) return;
 
     const dayData = activeSession.curriculum.days.find(d => d.day === dayNumber);
+
+    // Merge day.content into top level if present (for refresh after content was loaded)
+    // Backend saves as day.content = {...}, but frontend expects day.video, day.foundationCards etc.
+    let mergedDay = dayData;
+    if (dayData?.content && typeof dayData.content === 'object') {
+      mergedDay = { ...dayData, ...dayData.content };
+    }
+
     set({
-      currentDay: dayData || null,
+      currentDay: mergedDay || null,
       currentStep: 'prePrompt',
       completedSteps: [],
       stepStartTime: new Date(),
@@ -219,10 +227,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   completeStep: (step) => {
     const { completedSteps, currentDay } = get();
-    if (completedSteps.includes(step)) return;
 
     const STEP_ORDER = getStepOrder(currentDay);
-    const newCompletedSteps = [...completedSteps, step];
     const currentIndex = STEP_ORDER.indexOf(step);
 
     // Find next step (skip memoryBridge on day 1, skip bossMilestone if not present)
@@ -237,6 +243,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (nextStep === 'bossMilestone' && !currentDay?.bossMilestone) {
       nextStep = STEP_ORDER[currentIndex + 2];
     }
+
+    // Add to completed steps if not already there
+    const newCompletedSteps = completedSteps.includes(step)
+      ? completedSteps
+      : [...completedSteps, step];
 
     set({
       completedSteps: newCompletedSteps,

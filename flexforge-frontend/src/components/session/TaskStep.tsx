@@ -30,8 +30,10 @@ export function TaskStep({ day, onComplete }: TaskStepProps) {
   
   const task = day.task1;
   const stuckThreshold = task?.stuckDetection?.triggerAfterMinutes || 7;
-  const maxFreeHints = 1;
-  const maxProHints = 3;
+  // Use actual hints array length if available
+  const totalHints = task?.hints?.length || 3;
+  const maxFreeHints = Math.min(totalHints, 1);
+  const maxProHints = totalHints;
 
   // Timer effect
   useEffect(() => {
@@ -58,11 +60,15 @@ export function TaskStep({ day, onComplete }: TaskStepProps) {
   };
 
   const getHint = (index: number): string | undefined => {
-    // PRO users get multiple hints from pro.hints array
+    // Backend generates hints as array of {level, hint} objects
+    if (task?.hints && Array.isArray(task.hints) && task.hints[index]) {
+      const hint = task.hints[index];
+      return typeof hint === 'string' ? hint : hint?.hint;
+    }
+    // Fallback to legacy structure
     if (canUseAITutor && task?.pro?.hints && task.pro.hints[index]) {
       return task.pro.hints[index];
     }
-    // Free users get single hint
     return task?.free?.hint1;
   };
 
@@ -158,21 +164,21 @@ export function TaskStep({ day, onComplete }: TaskStepProps) {
           </p>
 
           {/* Expected output */}
-          {task?.free?.expectedOutput && (
+          {(task?.expectedOutput || task?.free?.expectedOutput) && (
             <div className="p-4 bg-gray-100 rounded-lg mb-4">
               <p className="text-sm font-medium text-gray-700 mb-1">Expected output:</p>
               <pre className="text-sm text-gray-600 whitespace-pre-wrap">
-                {task.free.expectedOutput}
+                {task?.expectedOutput || task?.free?.expectedOutput}
               </pre>
             </div>
           )}
 
-          {/* Starter code */}
-          {canUseAITutor && task?.pro?.starterCode && (
+          {/* Starter code - available for all tiers */}
+          {(task?.starterCode || task?.pro?.starterCode) && (
             <div className="mb-4">
               <p className="text-sm font-medium text-gray-700 mb-2">Starter code:</p>
               <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg text-sm overflow-x-auto">
-                {task.pro.starterCode}
+                {task?.starterCode || task?.pro?.starterCode}
               </pre>
             </div>
           )}
@@ -265,14 +271,15 @@ export function TaskStep({ day, onComplete }: TaskStepProps) {
               <div className="p-4">
                 <h4 className="font-medium text-focus-800 mb-3">Here's one way to do it:</h4>
                 <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg text-sm overflow-x-auto whitespace-pre-wrap">
-                  {task?.free?.solution || '// Solution will be shown here'}
+                  {task?.solution || task?.free?.solution || '// Solution will be shown here'}
                 </pre>
 
                 {/* Annotations */}
-                {task?.free?.solutionAnnotations && task.free.solutionAnnotations.length > 0 && (
+                {((task?.solutionAnnotations && task.solutionAnnotations.length > 0) ||
+                  (task?.free?.solutionAnnotations && task.free.solutionAnnotations.length > 0)) && (
                   <div className="mt-4 space-y-2">
                     <h5 className="font-medium text-focus-700">Why this works:</h5>
-                    {task.free.solutionAnnotations.map((annotation: string, i: number) => (
+                    {(task?.solutionAnnotations || task?.free?.solutionAnnotations || []).map((annotation: string, i: number) => (
                       <p key={i} className="text-sm text-focus-700">{annotation}</p>
                     ))}
                   </div>

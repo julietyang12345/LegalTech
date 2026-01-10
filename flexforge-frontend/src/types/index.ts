@@ -217,6 +217,9 @@ export interface CurriculumDay {
   skeleton?: DaySkeleton;
   skipTest?: SkipTest;
 
+  // Nested content object (backend saves day content here, merged on load)
+  content?: Record<string, unknown>;
+
   // Full content (loaded in Phase 2)
   prePrompt?: {
     text: string;
@@ -294,7 +297,17 @@ export interface Task {
   title: string;
   description: string;
   estimatedMinutes: number;
-  free: {
+
+  // New flat structure from backend
+  challenge?: string;
+  expectedOutput?: string;
+  starterCode?: string;
+  hints?: Array<{ level: number; hint: string } | string>;
+  solution?: string;
+  solutionAnnotations?: string[];
+
+  // Legacy nested structure (kept for backward compatibility)
+  free?: {
     challengeDescription: string;
     expectedOutput: string;
     hint1: string;
@@ -306,7 +319,8 @@ export interface Task {
     hints: string[];
     aiTutorAccess: boolean;
   };
-  stuckDetection: {
+
+  stuckDetection?: {
     triggerAfterMinutes: number;
     suggestions: string[];
   };
