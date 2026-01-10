@@ -48,7 +48,7 @@ interface SessionState {
 
   // Two-phase curriculum actions
   loadDayContent: (dayNumber: number) => Promise<CurriculumDay>;
-  submitSkipTest: (dayNumber: number, answers: string[]) => Promise<SkipTestResponse>;
+  submitSkipTest: (dayNumber: number, answers: number[]) => Promise<SkipTestResponse>;
   forceSkipDay: (dayNumber: number) => Promise<{ success: boolean; nextDayUnlocked: boolean }>;
   submitPracticeProject: (dayNumber: number, answer: string, confidence?: number) => Promise<PracticeSubmitResponse>;
   getDayStatus: (dayNumber: number) => DayStatus;
@@ -342,7 +342,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
 
-  submitSkipTest: async (dayNumber: number, answers: string[]) => {
+  submitSkipTest: async (dayNumber: number, answers: number[]) => {
     const { activeSession } = get();
     if (!activeSession) throw new Error('No active session');
 

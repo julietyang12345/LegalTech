@@ -165,14 +165,14 @@ export class SessionController {
   /**
    * POST /api/v1/sessions/:id/days/:dayNumber/skip-test
    * Submit skip test answers to skip a day
-   * If passed (2/3 correct), day is marked as skipped/mastered
+   * Multiple choice - must get all correct to skip
    */
   @Post(':id/days/:dayNumber/skip-test')
   async submitSkipTest(
     @Request() req,
     @Param('id') id: string,
     @Param('dayNumber') dayNumber: string,
-    @Body() body: { answers: string[] },
+    @Body() body: { answers: number[] },
   ) {
     const result = await this.sessionService.submitSkipTest(
       id,

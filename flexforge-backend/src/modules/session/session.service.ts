@@ -543,20 +543,20 @@ export class SessionService {
   }
 
   /**
-   * Submit skip test answers to skip a day
+   * Submit skip test answers to skip a day (multiple choice)
    * Uses pre-generated question sets, then suggests completing the course
    */
   async submitSkipTest(
     sessionId: string,
     userId: string,
     dayNumber: number,
-    answers: string[],
+    answers: number[], // Array of selected option indices
   ): Promise<{
     passed: boolean;
     correctCount: number;
     totalQuestions: number;
     passThreshold: number;
-    newQuestions?: { question: string; answer: string }[];
+    newQuestions?: { question: string; options: string[]; correctIndex: number }[];
     suggestion?: string;
     allSetsExhausted?: boolean;
   }> {
@@ -573,26 +573,22 @@ export class SessionService {
       throw new NotFoundException(`Skip test not found for Day ${dayNumber}`);
     }
 
-    // Get current questions - support both old format (questions) and new format (questionSets)
-    const questionSets = skipTest.questionSets || null;
+    // Get current questions from questionSets
+    const questionSets = skipTest.questionSets || [];
     const currentSetIndex = skipTest.currentSetIndex ?? 0;
-    const questions = questionSets
-      ? questionSets[currentSetIndex] || []
-      : skipTest.questions || [];
+    const questions = questionSets[currentSetIndex] || [];
 
-    // Check answers (case-insensitive, trim whitespace)
+    // Check answers by comparing selected index to correctIndex
     let correctCount = 0;
-    answers.forEach((answer, index) => {
-      if (index < questions.length) {
-        const correctAnswer = questions[index].answer.toLowerCase().trim();
-        const userAnswer = answer.toLowerCase().trim();
-        if (userAnswer.includes(correctAnswer) || correctAnswer.includes(userAnswer)) {
+    answers.forEach((selectedIndex, questionIndex) => {
+      if (questionIndex < questions.length) {
+        if (selectedIndex === questions[questionIndex].correctIndex) {
           correctCount++;
         }
       }
     });
 
-    const passThreshold = skipTest.passThreshold || 2;
+    const passThreshold = skipTest.passThreshold || 3;
     const passed = correctCount >= passThreshold;
 
     if (passed) {

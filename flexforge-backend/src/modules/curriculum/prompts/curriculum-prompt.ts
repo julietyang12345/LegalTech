@@ -111,12 +111,7 @@ For foundational CS topics (algorithms, data structures, Big O, recursion, trees
 // Topic relevance filter to prevent AI bloat/filler content
 function getTopicRelevanceGuidance(): string {
   return `
-TOPIC FILTER - each topic must pass:
-1. BLOCKER: Skip this → stuck? If no, exclude
-2. APPLICATION: What can they DO after? If nothing concrete, exclude
-3. DEPTH: USE it → teach usage only | BUILD ON it → teach how it works | PROVE it → teach proof
-
-EXCLUDE: history, unused theory, "good to know", alternative methods, unnecessary depth
+TOPIC FILTER: Only include what blocks progress toward the goal. MEANS (tools/setup) → minimum to use. ENDS (goal itself) → full depth. No history, theory, or comparisons for things they just use.
 `;
 }
 
@@ -450,21 +445,20 @@ Output valid JSON only.`;
   },
 
   "skipTest": {
-    "description": "Prove mastery to skip this day",
     "questionSets": [
       [
-        {"question": "Conceptual question about day's core topic?", "answer": "Short answer"},
-        {"question": "Applied question testing practical understanding?", "answer": "Short answer"},
-        {"question": "Edge case or gotcha question?", "answer": "Short answer"}
+        {"question": "Hard edge case question testing deep understanding?", "options": ["Plausible wrong A", "Plausible wrong B", "Correct answer", "Plausible wrong C"], "correctIndex": 2},
+        {"question": "Tricky question about common misconception?", "options": ["Correct answer", "Common mistake", "Sounds right but wrong", "Another trap"], "correctIndex": 0},
+        {"question": "Applied scenario requiring nuanced knowledge?", "options": ["Wrong approach A", "Wrong approach B", "Wrong approach C", "Correct approach"], "correctIndex": 3}
       ],
       [
-        {"question": "Different conceptual question on same topic?", "answer": "Short answer"},
-        {"question": "Different applied question?", "answer": "Short answer"},
-        {"question": "Different edge case question?", "answer": "Short answer"}
+        {"question": "Different hard question on same concept?", "options": ["Trap A", "Correct answer", "Trap B", "Trap C"], "correctIndex": 1},
+        {"question": "Another tricky misconception question?", "options": ["Wrong", "Wrong", "Correct answer", "Wrong"], "correctIndex": 2},
+        {"question": "Different applied scenario?", "options": ["Correct approach", "Plausible wrong", "Plausible wrong", "Plausible wrong"], "correctIndex": 0}
       ]
     ],
     "currentSetIndex": 0,
-    "passThreshold": 2
+    "passThreshold": 3
   }
 }`;
 

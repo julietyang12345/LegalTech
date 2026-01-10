@@ -141,20 +141,16 @@ export interface Curriculum {
   metadata?: CurriculumMetadata;
 }
 
-// Skip test for testing out of a day
+// Skip test for testing out of a day (multiple choice)
 export interface SkipTestQuestion {
   question: string;
-  correctAnswer: string;
-  difficulty: 'easy' | 'medium' | 'hard';
+  options: string[];
+  correctIndex: number;
 }
 
 export interface SkipTest {
-  instructions: string;
-  // Old format (single set)
-  questions?: SkipTestQuestion[];
-  // New format (multiple pre-generated sets)
-  questionSets?: SkipTestQuestion[][];
-  currentSetIndex?: number;
+  questionSets: SkipTestQuestion[][];
+  currentSetIndex: number;
   passThreshold: number;
 }
 
@@ -556,7 +552,7 @@ export interface SkipTestResponse {
   passThreshold: number;
   message: string;
   nextDayUnlocked: boolean;
-  newQuestions?: { question: string; answer: string }[];
+  newQuestions?: { question: string; options: string[]; correctIndex: number }[];
   suggestion?: string;
   allSetsExhausted?: boolean;
 }

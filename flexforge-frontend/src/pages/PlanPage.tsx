@@ -319,7 +319,7 @@ function LifeHappensModal({
   );
 }
 
-// Skip Test Modal
+// Skip Test Modal (Multiple Choice)
 function SkipTestModal({
   isOpen,
   onClose,
@@ -331,44 +331,39 @@ function SkipTestModal({
   onClose: () => void;
   dayNumber: number;
   skipTest: {
-    instructions: string;
-    questions?: Array<{ question: string; correctAnswer: string; difficulty?: string }>;
-    questionSets?: Array<Array<{ question: string; correctAnswer?: string; answer?: string; difficulty?: string }>>;
+    questionSets?: Array<Array<{ question: string; options: string[]; correctIndex: number }>>;
     currentSetIndex?: number;
+    passThreshold?: number;
   } | undefined;
-  onSubmit: (answers: string[]) => void;
+  onSubmit: (answers: number[]) => void;
 }) {
-  const [answers, setAnswers] = useState<string[]>([]);
+  const [selectedAnswers, setSelectedAnswers] = useState<(number | null)[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [result, setResult] = useState<{ passed: boolean; correctCount: number; totalQuestions: number } | null>(null);
 
-  // Get current questions from either questionSets or questions
+  // Get current questions from questionSets
   const questions = useMemo(() => {
-    if (!skipTest) return [];
-    if (skipTest.questionSets && skipTest.questionSets.length > 0) {
-      const setIndex = skipTest.currentSetIndex ?? 0;
-      return skipTest.questionSets[setIndex]?.map(q => ({
-        question: q.question,
-        correctAnswer: q.correctAnswer || q.answer || '',
-        difficulty: q.difficulty || 'medium',
-      })) || [];
-    }
-    return skipTest.questions || [];
+    if (!skipTest?.questionSets || skipTest.questionSets.length === 0) return [];
+    const setIndex = skipTest.currentSetIndex ?? 0;
+    return skipTest.questionSets[setIndex] || [];
   }, [skipTest]);
+
+  const passThreshold = skipTest?.passThreshold ?? 3;
 
   useEffect(() => {
     if (isOpen && questions.length > 0) {
-      setAnswers(new Array(questions.length).fill(''));
-      setResult(null);
+      setSelectedAnswers(new Array(questions.length).fill(null));
     }
   }, [isOpen, questions]);
 
   if (!isOpen || !skipTest || questions.length === 0) return null;
 
+  const allAnswered = selectedAnswers.every(a => a !== null);
+
   const handleSubmit = async () => {
+    if (!allAnswered) return;
     setIsSubmitting(true);
     try {
-      onSubmit(answers);
+      onSubmit(selectedAnswers as number[]);
     } finally {
       setIsSubmitting(false);
     }
@@ -387,47 +382,47 @@ function SkipTestModal({
           </div>
           <div>
             <h2 className="text-xl font-bold text-gray-900">Skip Test - Day {dayNumber}</h2>
-            <p className="text-sm text-gray-600">{skipTest.instructions}</p>
+            <p className="text-sm text-gray-600">Answer all questions correctly to skip this day</p>
           </div>
         </div>
 
         <div className="space-y-6 mb-6">
-          {questions.map((q, i) => (
-            <div key={i} className="space-y-2">
+          {questions.map((q, qIndex) => (
+            <div key={qIndex} className="space-y-3">
               <div className="flex items-start gap-2">
-                <span className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-sm font-medium flex-shrink-0">
-                  {i + 1}
+                <span className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-sm font-medium flex-shrink-0 mt-0.5">
+                  {qIndex + 1}
                 </span>
-                <div className="flex-1">
-                  <p className="text-gray-800 font-medium">{q.question}</p>
-                  <span className={clsx(
-                    'inline-block mt-1 px-2 py-0.5 text-xs rounded-full',
-                    q.difficulty === 'easy' && 'bg-green-100 text-green-700',
-                    q.difficulty === 'medium' && 'bg-yellow-100 text-yellow-700',
-                    q.difficulty === 'hard' && 'bg-red-100 text-red-700'
-                  )}>
-                    {q.difficulty || 'medium'}
-                  </span>
-                </div>
+                <p className="text-gray-800 font-medium">{q.question}</p>
               </div>
-              <textarea
-                className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-200 focus:border-brand-400 resize-none"
-                rows={3}
-                placeholder="Your answer..."
-                value={answers[i] || ''}
-                onChange={(e) => {
-                  const newAnswers = [...answers];
-                  newAnswers[i] = e.target.value;
-                  setAnswers(newAnswers);
-                }}
-              />
+              <div className="grid gap-2 pl-8">
+                {q.options.map((option, optIndex) => (
+                  <button
+                    key={optIndex}
+                    onClick={() => {
+                      const newAnswers = [...selectedAnswers];
+                      newAnswers[qIndex] = optIndex;
+                      setSelectedAnswers(newAnswers);
+                    }}
+                    className={clsx(
+                      'w-full text-left px-4 py-3 rounded-lg border-2 transition-all',
+                      selectedAnswers[qIndex] === optIndex
+                        ? 'border-brand-500 bg-brand-50 text-brand-700'
+                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                    )}
+                  >
+                    <span className="font-medium mr-2">{String.fromCharCode(65 + optIndex)}.</span>
+                    {option}
+                  </button>
+                ))}
+              </div>
             </div>
           ))}
         </div>
 
         <div className="flex justify-between items-center pt-4 border-t border-gray-100">
           <p className="text-sm text-gray-500">
-            Pass threshold: 2 out of 3 correct
+            Must get all {passThreshold} correct to skip
           </p>
           <div className="flex gap-3">
             <Button variant="ghost" onClick={onClose}>
@@ -435,7 +430,7 @@ function SkipTestModal({
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={isSubmitting || answers.some(a => !a.trim())}
+              disabled={isSubmitting || !allAnswered}
               leftIcon={isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined}
             >
               {isSubmitting ? 'Checking...' : 'Submit Answers'}
@@ -547,7 +542,7 @@ export function PlanPage() {
     setSkipTestResult(null);
   };
 
-  const handleSubmitSkipTest = async (answers: string[]) => {
+  const handleSubmitSkipTest = async (answers: number[]) => {
     if (skipTestDay === null) return;
 
     try {

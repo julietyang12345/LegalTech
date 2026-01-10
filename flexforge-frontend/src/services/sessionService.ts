@@ -153,13 +153,13 @@ export const sessionService = {
   },
 
   /**
-   * Submit skip test answers to skip a day
-   * If passed (2/3 correct), day is marked as skipped/mastered
+   * Submit skip test answers to skip a day (multiple choice)
+   * Must get all correct to skip
    */
   async submitSkipTest(
     sessionId: string,
     dayNumber: number,
-    answers: string[]
+    answers: number[]
   ): Promise<SkipTestResponse> {
     const { data } = await api.post<SkipTestResponse>(
       `/sessions/${sessionId}/days/${dayNumber}/skip-test`,

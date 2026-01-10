@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Zap, X, CheckCircle, XCircle, Loader2 } from 'lucide-react';
@@ -22,7 +22,7 @@ import { ReflectionStep } from '@/components/session/ReflectionStep';
 
 import type { SessionStep as SessionStepType } from '@/types';
 
-// Skip Test Modal
+// Skip Test Modal (Multiple Choice)
 function SkipTestModal({
   day,
   isOpen,
@@ -35,7 +35,7 @@ function SkipTestModal({
   onSuccess: () => void;
 }) {
   const { submitSkipTest } = useSessionStore();
-  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [selectedAnswers, setSelectedAnswers] = useState<(number | null)[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<{
     passed: boolean;
@@ -44,10 +44,28 @@ function SkipTestModal({
     message: string;
   } | null>(null);
 
+  // Get questions from questionSets (filter for valid multiple choice format)
+  const questions = useMemo(() => {
+    if (!day.skipTest?.questionSets || day.skipTest.questionSets.length === 0) return [];
+    const setIndex = day.skipTest.currentSetIndex ?? 0;
+    const questionSet = day.skipTest.questionSets[setIndex] || [];
+    // Only include questions with valid options array (for multiple choice format)
+    return questionSet.filter(q => q.options && Array.isArray(q.options) && q.options.length > 0);
+  }, [day.skipTest]);
+
+  const passThreshold = day.skipTest?.passThreshold ?? 3;
+
+  useEffect(() => {
+    if (isOpen && questions.length > 0) {
+      setSelectedAnswers(new Array(questions.length).fill(null));
+      setResult(null);
+    }
+  }, [isOpen, questions.length]);
+
   if (!isOpen) return null;
 
-  // If skipTest not loaded, show message
-  if (!day.skipTest) {
+  // If skipTest not loaded or no questions, show message
+  if (!day.skipTest || questions.length === 0) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
         <motion.div
@@ -73,15 +91,14 @@ function SkipTestModal({
     );
   }
 
-  const { questions, instructions } = day.skipTest;
-  const allAnswered = questions.every((_, i) => answers[i]?.trim());
+  const allAnswered = selectedAnswers.every(a => a !== null);
 
   const handleSubmit = async () => {
     if (!allAnswered) return;
 
     setIsSubmitting(true);
     try {
-      const submitResult = await submitSkipTest(day.day, questions.map((_, i) => answers[i]));
+      const submitResult = await submitSkipTest(day.day, selectedAnswers as number[]);
       setResult(submitResult);
       if (submitResult.passed) {
         setTimeout(() => {
@@ -96,7 +113,7 @@ function SkipTestModal({
   };
 
   const handleClose = () => {
-    setAnswers({});
+    setSelectedAnswers([]);
     setResult(null);
     onClose();
   };
@@ -115,7 +132,7 @@ function SkipTestModal({
               Skip Test: Day {day.day}
             </h3>
             <p className="text-sm text-gray-500 mt-0.5">
-              {instructions || 'Answer correctly to skip this day'}
+              Answer all {passThreshold} questions correctly to skip
             </p>
           </div>
           <button
@@ -160,20 +177,32 @@ function SkipTestModal({
               )}
             </div>
           ) : (
-            questions.map((q, index) => (
-              <div key={index} className="space-y-2">
-                <label className="block">
-                  <span className="text-sm font-medium text-gray-700">
-                    {index + 1}. {q.question}
-                  </span>
-                </label>
-                <textarea
-                  value={answers[index] || ''}
-                  onChange={(e) => setAnswers({ ...answers, [index]: e.target.value })}
-                  placeholder="Type your answer..."
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none text-sm"
-                />
+            questions.map((q, qIndex) => (
+              <div key={qIndex} className="space-y-3">
+                <p className="text-sm font-medium text-gray-700">
+                  {qIndex + 1}. {q.question}
+                </p>
+                <div className="space-y-2">
+                  {q.options.map((option, optIndex) => (
+                    <button
+                      key={optIndex}
+                      onClick={() => {
+                        const newAnswers = [...selectedAnswers];
+                        newAnswers[qIndex] = optIndex;
+                        setSelectedAnswers(newAnswers);
+                      }}
+                      className={clsx(
+                        'w-full text-left px-4 py-3 rounded-lg border-2 transition-all text-sm',
+                        selectedAnswers[qIndex] === optIndex
+                          ? 'border-brand-500 bg-brand-50 text-brand-700'
+                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      )}
+                    >
+                      <span className="font-medium mr-2">{String.fromCharCode(65 + optIndex)}.</span>
+                      {option}
+                    </button>
+                  ))}
+                </div>
               </div>
             ))
           )}
