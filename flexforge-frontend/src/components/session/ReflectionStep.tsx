@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BookOpen, Sparkles, Lock, ChevronDown, Mic, Check } from 'lucide-react';
-import { Card, Button, TextArea, ConfidenceSlider } from '@/components/common';
+import { BookOpen, Sparkles, Lock, ChevronDown, Check } from 'lucide-react';
+import { Card, Button, ConfidenceSlider } from '@/components/common';
+import { StepLayout } from './StepLayout';
 import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { QuotaTier } from '@/types';
@@ -171,7 +172,7 @@ export function ReflectionStep({ day, onComplete }: ReflectionStepProps) {
 
   // Dynamic sentence suggestions based on day content
   const sentenceSuggestions = [
-    `${day.skills?.[0] || 'This concept'} helps me...`,
+    `${day.objectives?.[0] || 'This concept'} helps me...`,
     `The key pattern is...`,
     `I can use this when...`,
     `This connects to yesterday by...`,
@@ -210,21 +211,12 @@ export function ReflectionStep({ day, onComplete }: ReflectionStepProps) {
   const canComplete = confidence !== null && (whatClicked !== null || warmupPlan !== null);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full
-                       bg-gradient-to-br from-indigo-400 to-indigo-500 mb-4">
-          <BookOpen className="w-8 h-8 text-white" />
-        </div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          Quick Reflection
-        </h1>
-        <p className="text-gray-600">
-          Help future you by locking in what matters
-        </p>
-      </div>
-
+    <StepLayout
+      icon={BookOpen}
+      iconGradient="from-indigo-400 to-indigo-500"
+      title="Quick Reflection"
+      subtitle="Help future you by locking in what matters"
+    >
       {/* Confidence slider */}
       <Card>
         <div className="p-6">
@@ -451,6 +443,6 @@ export function ReflectionStep({ day, onComplete }: ReflectionStepProps) {
       <p className="text-center text-xs text-gray-400">
         Quick reflections → 23% better retention
       </p>
-    </div>
+    </StepLayout>
   );
 }

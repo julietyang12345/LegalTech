@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Trophy, ArrowRight, CheckCircle2, Code2 } from 'lucide-react';
 import { Card, Button, TextArea, ProgressBar } from '@/components/common';
+import { StepLayout } from './StepLayout';
 import { useCompanionStore } from '@/stores/companionStore';
 import type { CurriculumDay, Session } from '@/types';
 
@@ -37,21 +38,12 @@ export function BossMilestoneStep({ day, session }: BossMilestoneStepProps) {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full 
-                       bg-gradient-to-br from-purple-400 to-pink-500 mb-4">
-          <Trophy className="w-8 h-8 text-white" />
-        </div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          Boss Milestone 🏆
-        </h1>
-        <p className="text-gray-600">
-          Build a piece of your portfolio project today
-        </p>
-      </div>
-
+    <StepLayout
+      icon={Trophy}
+      iconGradient="from-purple-400 to-pink-500"
+      title="Boss Milestone 🏆"
+      subtitle="Build a piece of your portfolio project today"
+    >
       {/* Progress toward boss project */}
       <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
         <div className="p-6">
@@ -189,6 +181,6 @@ export function BossMilestoneStep({ day, session }: BossMilestoneStepProps) {
       <div className="text-center text-sm text-gray-500">
         💡 By doing a little each day, you'll have 80% of your project done before Boss Day!
       </div>
-    </div>
+    </StepLayout>
   );
 }

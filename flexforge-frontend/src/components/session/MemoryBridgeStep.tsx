@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link2, Eye, EyeOff, Lightbulb } from 'lucide-react';
 import { Card, Button, TextArea } from '@/components/common';
+import { StepLayout } from './StepLayout';
 import type { CurriculumDay, Session } from '@/types';
 
 interface MemoryBridgeStepProps {
@@ -27,21 +28,12 @@ export function MemoryBridgeStep({ day, session }: MemoryBridgeStepProps) {
   const previousTopic = previousDay?.title?.split(':')[1]?.trim() || 'yesterday\'s concept';
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full 
-                       bg-gradient-to-br from-cyan-400 to-cyan-500 mb-4">
-          <Link2 className="w-8 h-8 text-white" />
-        </div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          Memory Bridge 🌉
-        </h1>
-        <p className="text-gray-600">
-          Connect today's learning to yesterday's
-        </p>
-      </div>
-
+    <StepLayout
+      icon={Link2}
+      iconGradient="from-cyan-400 to-cyan-500"
+      title="Memory Bridge 🌉"
+      subtitle="Connect today's learning to yesterday's"
+    >
       {/* Yesterday's recall */}
       <Card>
         <div className="p-6">
@@ -152,10 +144,10 @@ export function MemoryBridgeStep({ day, session }: MemoryBridgeStepProps) {
       {/* Why this matters */}
       <div className="text-center p-4 bg-gray-50 rounded-lg">
         <p className="text-sm text-gray-600">
-          <strong>Why this matters:</strong> Interleaving (mixing topics) improves retention by 200-400% 
+          <strong>Why this matters:</strong> Interleaving (mixing topics) improves retention by 200-400%
           compared to studying one topic at a time!
         </p>
       </div>
-    </div>
+    </StepLayout>
   );
 }

@@ -9,3 +9,6 @@ export { GeneratingScreen } from './GeneratingScreen';
 export type { LoadingStep } from './GeneratingScreen';
 export { Toast, QuotaExceededModal } from './Toast';
 export type { ToastType } from './Toast';
+export { MultipleChoiceQuestion } from './MultipleChoiceQuestion';
+export type { MultipleChoiceQuestionProps } from './MultipleChoiceQuestion';
+export { RevealableContent } from './RevealableContent';

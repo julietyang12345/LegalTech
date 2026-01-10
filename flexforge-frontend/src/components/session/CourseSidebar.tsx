@@ -12,7 +12,8 @@ import {
   Eye,
   Clock,
   Target,
-  X
+  X,
+  Sparkles
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';

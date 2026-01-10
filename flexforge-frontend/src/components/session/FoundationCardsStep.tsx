@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
-import { Layers, ChevronLeft, ChevronRight, Check, X } from 'lucide-react';
-import { Card } from '@/components/common';
+import { Layers, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Card, MultipleChoiceQuestion } from '@/components/common';
+import { StepLayout } from './StepLayout';
 import { clsx } from 'clsx';
 import type { CurriculumDay, Session, FoundationCard, MicroQuestion } from '@/types';
 
@@ -10,8 +11,6 @@ interface FoundationCardsStepProps {
   session: Session;
   onComplete: () => void;
 }
-
-const OPTION_LABELS = ['A', 'B', 'C', 'D'];
 
 // Swipe threshold for card navigation
 const SWIPE_CONFIDENCE_THRESHOLD = 10000;
@@ -92,21 +91,12 @@ export function FoundationCardsStep({ day, onComplete }: FoundationCardsStepProp
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full
-                       bg-gradient-to-br from-violet-400 to-violet-500 mb-4">
-          <Layers className="w-8 h-8 text-white" />
-        </div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          Learn the Concepts
-        </h1>
-        <p className="text-gray-600">
-          Swipe through {cards.length} concept cards
-        </p>
-      </div>
-
+    <StepLayout
+      icon={Layers}
+      iconGradient="from-violet-400 to-violet-500"
+      title="Learn the Concepts"
+      subtitle={`Swipe through ${cards.length} concept cards`}
+    >
       {/* Progress indicator */}
       <div className="flex items-center justify-between px-4">
         <span className="text-sm text-gray-500">
@@ -277,7 +267,7 @@ export function FoundationCardsStep({ day, onComplete }: FoundationCardsStepProp
           All cards reviewed! Click Continue to proceed.
         </motion.div>
       )}
-    </div>
+    </StepLayout>
   );
 }
 
@@ -339,72 +329,15 @@ function MicroQuestionComponent({ cardId, question, onAnswer, answered, wasCorre
 
   return (
     <div className="border-t border-gray-100 pt-4">
-      <p className="text-gray-800 font-medium mb-4">{question.question}</p>
-      <div className="space-y-2">
-        {question.options?.map((option, index) => {
-          const isSelected = selectedIndex === index;
-          const isCorrectOption = index === question.correctIndex;
-          const showResult = answered;
-
-          return (
-            <button
-              key={index}
-              onClick={() => handleSelect(index)}
-              disabled={answered}
-              className={clsx(
-                'w-full p-3 rounded-lg border text-left flex items-start gap-3 transition-all',
-                !answered && 'hover:border-brand-300 hover:bg-brand-50 cursor-pointer',
-                answered && 'cursor-default',
-                !showResult && 'bg-white border-gray-200',
-                showResult && isCorrectOption && 'bg-green-100 border-green-400',
-                showResult && isSelected && !isCorrectOption && 'bg-red-100 border-red-400',
-                showResult && !isSelected && !isCorrectOption && 'bg-gray-50 border-gray-200 opacity-60'
-              )}
-            >
-              <span className={clsx(
-                'flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm font-medium',
-                !showResult && 'bg-gray-100 text-gray-600',
-                showResult && isCorrectOption && 'bg-green-500 text-white',
-                showResult && isSelected && !isCorrectOption && 'bg-red-500 text-white',
-                showResult && !isSelected && !isCorrectOption && 'bg-gray-200 text-gray-500'
-              )}>
-                {showResult && isCorrectOption ? (
-                  <Check className="w-4 h-4" />
-                ) : showResult && isSelected && !isCorrectOption ? (
-                  <X className="w-4 h-4" />
-                ) : (
-                  OPTION_LABELS[index]
-                )}
-              </span>
-              <span className={clsx(
-                'text-sm',
-                showResult && isCorrectOption && 'text-green-800 font-medium',
-                showResult && isSelected && !isCorrectOption && 'text-red-800',
-                !showResult && 'text-gray-700'
-              )}>
-                {option}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Explanation */}
-      {showExplanation && question.explanation && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={clsx(
-            'mt-4 p-3 rounded-lg text-sm',
-            wasCorrect ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'
-          )}
-        >
-          <p className="font-medium mb-1">
-            {wasCorrect ? '✓ Correct!' : '✗ Not quite'}
-          </p>
-          <p>{question.explanation}</p>
-        </motion.div>
-      )}
+      <MultipleChoiceQuestion
+        question={question.question}
+        options={question.options || []}
+        correctIndex={question.correctIndex ?? 0}
+        explanation={question.explanation}
+        selectedIndex={selectedIndex}
+        onSelect={handleSelect}
+        showResult={answered}
+      />
     </div>
   );
 }

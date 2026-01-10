@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckSquare, ChevronDown, ChevronUp, Check, X } from 'lucide-react';
-import { Card } from '@/components/common';
+import { CheckSquare, ChevronDown, ChevronUp } from 'lucide-react';
+import { Card, MultipleChoiceQuestion } from '@/components/common';
+import { StepLayout } from './StepLayout';
 import { clsx } from 'clsx';
 import type { CurriculumDay, Session, ConceptQuestion } from '@/types';
 
@@ -16,8 +17,6 @@ const LEVEL_INFO = {
   2: { label: 'When to use it?', color: 'blue', emoji: '🎯' },
   3: { label: 'Why does it work?', color: 'purple', emoji: '🧠' },
 };
-
-const OPTION_LABELS = ['A', 'B', 'C', 'D'];
 
 export function ConceptCheckStep({ day }: ConceptCheckStepProps) {
   const [expandedLevel, setExpandedLevel] = useState<number | null>(1);
@@ -50,21 +49,12 @@ export function ConceptCheckStep({ day }: ConceptCheckStepProps) {
   }, {} as Record<number, (ConceptQuestion & { id: string })[]>);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full
-                       bg-gradient-to-br from-emerald-400 to-emerald-500 mb-4">
-          <CheckSquare className="w-8 h-8 text-white" />
-        </div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          Concept Check ✓
-        </h1>
-        <p className="text-gray-600">
-          3 levels of understanding - select the best answer
-        </p>
-      </div>
-
+    <StepLayout
+      icon={CheckSquare}
+      iconGradient="from-emerald-400 to-emerald-500"
+      title="Concept Check ✓"
+      subtitle="3 levels of understanding - select the best answer"
+    >
       {/* Level accordion */}
       <div className="space-y-3">
         {[1, 2, 3].map((level) => {
@@ -127,97 +117,19 @@ export function ConceptCheckStep({ day }: ConceptCheckStepProps) {
                     className="overflow-hidden"
                   >
                     <div className="px-4 pb-4 space-y-4">
-                      {levelQuestions.map((q, index) => {
-                        const hasAnswered = selectedAnswers[q.id] !== undefined;
-                        const isCorrect = hasAnswered && isAnswerCorrect(q.id, q.correctIndex);
-
-                        return (
-                          <div
-                            key={q.id}
-                            className={clsx(
-                              'p-4 rounded-lg border',
-                              isCorrect && 'bg-green-50 border-green-200',
-                              hasAnswered && !isCorrect && 'bg-amber-50 border-amber-200',
-                              !hasAnswered && 'bg-gray-50 border-gray-200'
-                            )}
-                          >
-                            <p className="font-medium text-gray-900 mb-4">
-                              {index + 1}. {q.question}
-                            </p>
-
-                            {/* Multiple choice options */}
-                            <div className="space-y-2">
-                              {q.options?.map((option, optionIndex) => {
-                                const isSelected = selectedAnswers[q.id] === optionIndex;
-                                const isCorrectOption = optionIndex === q.correctIndex;
-                                const showResult = hasAnswered;
-
-                                return (
-                                  <button
-                                    key={optionIndex}
-                                    onClick={() => !hasAnswered && handleSelectOption(q.id, optionIndex, q.correctIndex)}
-                                    disabled={hasAnswered}
-                                    className={clsx(
-                                      'w-full p-3 rounded-lg border text-left flex items-start gap-3 transition-all',
-                                      !hasAnswered && 'hover:border-brand-300 hover:bg-brand-50 cursor-pointer',
-                                      hasAnswered && 'cursor-default',
-                                      // Before answering
-                                      !showResult && 'bg-white border-gray-200',
-                                      // After answering - correct option
-                                      showResult && isCorrectOption && 'bg-green-100 border-green-400',
-                                      // After answering - selected wrong option
-                                      showResult && isSelected && !isCorrectOption && 'bg-red-100 border-red-400',
-                                      // After answering - other unselected options
-                                      showResult && !isSelected && !isCorrectOption && 'bg-gray-50 border-gray-200 opacity-60'
-                                    )}
-                                  >
-                                    <span className={clsx(
-                                      'flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm font-medium',
-                                      !showResult && 'bg-gray-100 text-gray-600',
-                                      showResult && isCorrectOption && 'bg-green-500 text-white',
-                                      showResult && isSelected && !isCorrectOption && 'bg-red-500 text-white',
-                                      showResult && !isSelected && !isCorrectOption && 'bg-gray-200 text-gray-500'
-                                    )}>
-                                      {showResult && isCorrectOption ? (
-                                        <Check className="w-4 h-4" />
-                                      ) : showResult && isSelected && !isCorrectOption ? (
-                                        <X className="w-4 h-4" />
-                                      ) : (
-                                        OPTION_LABELS[optionIndex]
-                                      )}
-                                    </span>
-                                    <span className={clsx(
-                                      'text-sm',
-                                      showResult && isCorrectOption && 'text-green-800 font-medium',
-                                      showResult && isSelected && !isCorrectOption && 'text-red-800',
-                                      !showResult && 'text-gray-700'
-                                    )}>
-                                      {option}
-                                    </span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-
-                            {/* Explanation after answering */}
-                            {showExplanations[q.id] && q.explanation && (
-                              <motion.div
-                                initial={{ opacity: 0, y: -10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className={clsx(
-                                  'mt-4 p-3 rounded-lg text-sm',
-                                  isCorrect ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'
-                                )}
-                              >
-                                <p className="font-medium mb-1">
-                                  {isCorrect ? '✓ Correct!' : '✗ Not quite'}
-                                </p>
-                                <p>{q.explanation}</p>
-                              </motion.div>
-                            )}
-                          </div>
-                        );
-                      })}
+                      {levelQuestions.map((q, index) => (
+                        <MultipleChoiceQuestion
+                          key={q.id}
+                          question={q.question}
+                          options={q.options || []}
+                          correctIndex={q.correctIndex}
+                          explanation={q.explanation}
+                          selectedIndex={selectedAnswers[q.id] ?? null}
+                          onSelect={(optionIndex) => handleSelectOption(q.id, optionIndex, q.correctIndex)}
+                          showResult={selectedAnswers[q.id] !== undefined}
+                          questionNumber={index + 1}
+                        />
+                      ))}
                     </div>
                   </motion.div>
                 )}
@@ -235,6 +147,6 @@ export function ConceptCheckStep({ day }: ConceptCheckStepProps) {
           ).length} of {questions.length} correct
         </div>
       )}
-    </div>
+    </StepLayout>
   );
 }

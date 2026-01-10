@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Brain, Eye, EyeOff, CheckCircle2, Sparkles, Lock } from 'lucide-react';
 import { Card, Button, TextArea } from '@/components/common';
+import { StepLayout } from './StepLayout';
 import { useAuthStore } from '@/stores/authStore';
 import { QuotaTier } from '@/types';
 import type { CurriculumDay, Session } from '@/types';
@@ -35,21 +36,12 @@ export function ActiveRecallStep({ day }: ActiveRecallStepProps) {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full 
-                       bg-gradient-to-br from-purple-400 to-purple-500 mb-4">
-          <Brain className="w-8 h-8 text-white" />
-        </div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          Active Recall 🧠
-        </h1>
-        <p className="text-gray-600">
-          Write before you peek - this is how learning sticks!
-        </p>
-      </div>
-
+    <StepLayout
+      icon={Brain}
+      iconGradient="from-purple-400 to-purple-500"
+      title="Active Recall 🧠"
+      subtitle="Write before you peek - this is how learning sticks!"
+    >
       {/* Instruction */}
       <Card className="bg-purple-50 border border-purple-100">
         <div className="p-4">
@@ -179,6 +171,6 @@ export function ActiveRecallStep({ day }: ActiveRecallStepProps) {
           💪 Great effort! Now reveal the key points to compare.
         </motion.div>
       )}
-    </div>
+    </StepLayout>
   );
 }

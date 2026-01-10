@@ -92,6 +92,17 @@ const getStepOrder = (day: CurriculumDay | null): SessionStep[] => {
   return hasFoundationCards ? STEP_ORDER_NEW : STEP_ORDER_LEGACY;
 };
 
+// Helper to update day statuses in curriculum days array
+const updateDayStatuses = (
+  days: CurriculumDay[],
+  updates: Array<{ dayNumber: number; status: DayStatus }>
+): CurriculumDay[] => {
+  return days.map((d) => {
+    const update = updates.find((u) => u.dayNumber === d.day);
+    return update ? { ...d, status: update.status } : d;
+  });
+};
+
 export const useSessionStore = create<SessionState>((set, get) => ({
   activeSession: null,
   sessions: [],
@@ -354,15 +365,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         set((state) => {
           if (!state.activeSession) return state;
 
-          const updatedDays = state.activeSession.curriculum.days.map((d) => {
-            if (d.day === dayNumber) {
-              return { ...d, status: DayStatus.SKIPPED };
-            }
-            if (d.day === dayNumber + 1) {
-              return { ...d, status: DayStatus.UNLOCKABLE };
-            }
-            return d;
-          });
+          const updatedDays = updateDayStatuses(state.activeSession.curriculum.days, [
+            { dayNumber, status: DayStatus.SKIPPED },
+            { dayNumber: dayNumber + 1, status: DayStatus.UNLOCKABLE },
+          ]);
 
           return {
             activeSession: {
@@ -424,15 +430,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         set((state) => {
           if (!state.activeSession) return state;
 
-          const updatedDays = state.activeSession.curriculum.days.map((d) => {
-            if (d.day === dayNumber) {
-              return { ...d, status: DayStatus.SKIPPED };
-            }
-            if (d.day === dayNumber + 1 && result.nextDayUnlocked) {
-              return { ...d, status: DayStatus.UNLOCKABLE };
-            }
-            return d;
-          });
+          const updates = [{ dayNumber, status: DayStatus.SKIPPED }];
+          if (result.nextDayUnlocked) {
+            updates.push({ dayNumber: dayNumber + 1, status: DayStatus.UNLOCKABLE });
+          }
+
+          const updatedDays = updateDayStatuses(state.activeSession.curriculum.days, updates);
 
           return {
             activeSession: {
@@ -470,15 +473,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         set((state) => {
           if (!state.activeSession) return state;
 
-          const updatedDays = state.activeSession.curriculum.days.map((d) => {
-            if (d.day === dayNumber) {
-              return { ...d, status: DayStatus.COMPLETED };
-            }
-            if (d.day === dayNumber + 1) {
-              return { ...d, status: DayStatus.UNLOCKABLE };
-            }
-            return d;
-          });
+          const updatedDays = updateDayStatuses(state.activeSession.curriculum.days, [
+            { dayNumber, status: DayStatus.COMPLETED },
+            { dayNumber: dayNumber + 1, status: DayStatus.UNLOCKABLE },
+          ]);
 
           return {
             activeSession: {

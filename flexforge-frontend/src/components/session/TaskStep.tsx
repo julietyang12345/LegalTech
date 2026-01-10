@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Code2, Lightbulb, Eye, Clock, MessageCircle, Lock, AlertTriangle } from 'lucide-react';
 import { Card, Button, TextArea, ProgressBar } from '@/components/common';
+import { StepLayout } from './StepLayout';
 import { useAuthStore } from '@/stores/authStore';
 import { useCompanionStore } from '@/stores/companionStore';
 import { QuotaTier } from '@/types';
@@ -73,21 +74,12 @@ export function TaskStep({ day, onComplete }: TaskStepProps) {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full 
-                       bg-gradient-to-br from-focus-400 to-focus-500 mb-4">
-          <Code2 className="w-8 h-8 text-white" />
-        </div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          Let's Try It! 💻
-        </h1>
-        <p className="text-gray-600">
-          Experiment freely — mistakes help you learn
-        </p>
-      </div>
-
+    <StepLayout
+      icon={Code2}
+      iconGradient="from-focus-400 to-focus-500"
+      title="Let's Try It! 💻"
+      subtitle="Experiment freely — mistakes help you learn"
+    >
       {/* Timer and progress */}
       <div className="flex items-center justify-between text-sm">
         <div className="flex items-center gap-2 text-gray-500">
@@ -306,6 +298,6 @@ export function TaskStep({ day, onComplete }: TaskStepProps) {
           </p>
         )}
       </div>
-    </div>
+    </StepLayout>
   );
 }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Play, Clock, CheckCircle2, MessageCircle, Lock, Star, Youtube, ExternalLink, RefreshCw, Loader2 } from 'lucide-react';
 import { Card, Button } from '@/components/common';
+import { StepLayout } from './StepLayout';
 import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { sessionService } from '@/services/sessionService';
@@ -269,21 +270,12 @@ export function VideoStep({ day, session }: VideoStepProps) {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full
-                       bg-gradient-to-br from-red-400 to-red-500 mb-4">
-          <Play className="w-8 h-8 text-white" />
-        </div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          Watch & Learn 📺
-        </h1>
-        <p className="text-gray-600">
-          {currentVideo?.estimatedMinutes || video?.estimatedMinutes || 6} minute focused video
-        </p>
-      </div>
-
+    <StepLayout
+      icon={Play}
+      iconGradient="from-red-400 to-red-500"
+      title="Watch & Learn 📺"
+      subtitle={`${currentVideo?.estimatedMinutes || video?.estimatedMinutes || 6} minute focused video`}
+    >
       {/* Main Video Card */}
       <Card className="overflow-hidden">
         {/* Recommendation badge */}
@@ -407,6 +399,6 @@ export function VideoStep({ day, session }: VideoStepProps) {
           </div>
         )}
       </motion.div>
-    </div>
+    </StepLayout>
   );
 }

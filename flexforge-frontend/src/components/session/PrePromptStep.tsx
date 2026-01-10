@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { Lightbulb } from 'lucide-react';
 import { Card } from '@/components/common';
+import { StepLayout } from './StepLayout';
 import type { CurriculumDay, Session } from '@/types';
 
 interface PrePromptStepProps {
@@ -11,21 +12,12 @@ interface PrePromptStepProps {
 
 export function PrePromptStep({ day }: PrePromptStepProps) {
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full 
-                       bg-gradient-to-br from-brand-400 to-brand-500 mb-4">
-          <Lightbulb className="w-8 h-8 text-white" />
-        </div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          Get Ready 🧠
-        </h1>
-        <p className="text-gray-600">
-          Take 30 seconds to prime your brain
-        </p>
-      </div>
-
+    <StepLayout
+      icon={Lightbulb}
+      iconGradient="from-brand-400 to-brand-500"
+      title="Get Ready 🧠"
+      subtitle="Take 30 seconds to prime your brain"
+    >
       {/* Pre-prompt content */}
       <Card className="bg-gradient-to-br from-brand-50 to-white border border-brand-100">
         <div className="p-6">
@@ -61,7 +53,6 @@ export function PrePromptStep({ day }: PrePromptStepProps) {
       <div className="text-center text-sm text-gray-500">
         💡 Don't worry about knowing the answers yet - just let your brain start connecting!
       </div>
-
-    </div>
+    </StepLayout>
   );
 }
