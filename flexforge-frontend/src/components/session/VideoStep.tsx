@@ -339,12 +339,16 @@ export function VideoStep({ day, session }: VideoStepProps) {
           <div className="px-6 pb-6 space-y-2">
             <h3 className="text-sm font-medium text-gray-700">Key topics to focus on:</h3>
             <ul className="space-y-1">
-              {video.keyTopics.map((topic, index) => (
-                <li key={index} className="flex items-center gap-2 text-sm text-gray-600">
-                  <span className="w-1.5 h-1.5 rounded-full bg-brand-500" />
-                  {topic}
-                </li>
-              ))}
+              {video.keyTopics.map((topic, index) => {
+                const topicText = typeof topic === 'string' ? topic : (topic as any)?.note || (topic as any)?.title || '';
+                if (!topicText) return null;
+                return (
+                  <li key={index} className="flex items-center gap-2 text-sm text-gray-600">
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-500" />
+                    {topicText}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}

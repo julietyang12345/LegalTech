@@ -602,7 +602,8 @@ export class CurriculumService {
         startTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.startSeconds) : undefined,
         endTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.endSeconds) : undefined,
         watchInstructions: watchPlan?.primarySegment?.description || `Watch this video to learn about ${dayContent.title}`,
-        keyTopics: watchPlan?.keyTopics?.length ? watchPlan.keyTopics : dayContent.video.watchPoints,
+        // Only use keyTopics from actual video (chapters/AI analysis), NOT fallback to generic watchPoints
+        keyTopics: watchPlan?.keyTopics?.length ? watchPlan.keyTopics : undefined,
         summary: watchPlan?.summary, // AI-generated video summary for Active Recall
         estimatedMinutes: watchPlan?.primarySegment
           ? Math.ceil((watchPlan.primarySegment.endSeconds - watchPlan.primarySegment.startSeconds) / 60)

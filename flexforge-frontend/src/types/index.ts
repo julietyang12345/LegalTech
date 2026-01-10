@@ -282,6 +282,8 @@ export interface FoundationCard {
   concept: string;           // One-line title (max 60 chars)
   visual?: string;           // Emoji hint
   explanation: string;       // 2-3 sentences
+  realWorldContext?: string; // Why this matters in real work (1 sentence)
+  videoTimestampRef?: string; // Reference to video moment (e.g., "Remember at 2:15...")
   codeExample?: string;      // Optional code snippet (max 5 lines)
   microQuestion: MicroQuestion;
   order: number;

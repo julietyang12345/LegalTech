@@ -175,11 +175,31 @@ export function FoundationCardsStep({ day, onComplete }: FoundationCardsStepProp
               </div>
 
               {/* Explanation */}
-              <div className="p-6">
+              <div className="p-6 pb-3">
                 <p className="text-gray-700 leading-relaxed text-lg">
                   {currentCard.explanation}
                 </p>
               </div>
+
+              {/* Real World Context - Why This Matters */}
+              {currentCard.realWorldContext && (
+                <div className="mx-6 mb-4 p-3 rounded-lg bg-gradient-to-r from-brand-50 to-focus-50 border border-brand-100">
+                  <div className="flex items-start gap-2">
+                    <span className="text-brand-500 flex-shrink-0">🎯</span>
+                    <p className="text-sm text-brand-800 font-medium">
+                      {currentCard.realWorldContext}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Video Timestamp Reference */}
+              {currentCard.videoTimestampRef && (
+                <div className="mx-6 mb-4 flex items-center gap-2 text-sm text-gray-500">
+                  <span className="text-focus-500">📹</span>
+                  <p className="italic">{currentCard.videoTimestampRef}</p>
+                </div>
+              )}
 
               {/* Code Example (if present) */}
               {currentCard.codeExample && (

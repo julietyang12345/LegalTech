@@ -14,7 +14,7 @@ interface TaskStepProps {
   onComplete: () => void;
 }
 
-export function TaskStep({ day, session }: TaskStepProps) {
+export function TaskStep({ day, onComplete }: TaskStepProps) {
   const [code, setCode] = useState('');
   const [showHint, setShowHint] = useState(false);
   const [hintsUsed, setHintsUsed] = useState(0);
@@ -57,10 +57,12 @@ export function TaskStep({ day, session }: TaskStepProps) {
     }
   };
 
-  const getHint = (index: number) => {
-    if (canUseAITutor && task?.pro?.hints) {
-      return task.pro.hints[index] || task.free?.hint1;
+  const getHint = (index: number): string | undefined => {
+    // PRO users get multiple hints from pro.hints array
+    if (canUseAITutor && task?.pro?.hints && task.pro.hints[index]) {
+      return task.pro.hints[index];
     }
+    // Free users get single hint
     return task?.free?.hint1;
   };
 
@@ -73,10 +75,10 @@ export function TaskStep({ day, session }: TaskStepProps) {
           <Code2 className="w-8 h-8 text-white" />
         </div>
         <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          Code Time! 💻
+          Let's Try It! 💻
         </h1>
         <p className="text-gray-600">
-          Apply what you just learned
+          Experiment freely — mistakes help you learn
         </p>
       </div>
 
@@ -108,10 +110,10 @@ export function TaskStep({ day, session }: TaskStepProps) {
                   <AlertTriangle className="w-5 h-5 text-alert-500 flex-shrink-0 mt-0.5" />
                   <div>
                     <h3 className="font-medium text-alert-800 mb-1">
-                      Taking longer than expected?
+                      Need a nudge?
                     </h3>
                     <p className="text-sm text-alert-700 mb-3">
-                      That's okay! Here are some options:
+                      Totally normal! Try one of these:
                     </p>
                     <ul className="text-sm text-alert-700 space-y-1 mb-3">
                       {task?.stuckDetection?.suggestions?.map((suggestion, i) => (
@@ -165,7 +167,7 @@ export function TaskStep({ day, session }: TaskStepProps) {
             </div>
           )}
 
-          {/* Starter code (PRO) */}
+          {/* Starter code */}
           {canUseAITutor && task?.pro?.starterCode && (
             <div className="mb-4">
               <p className="text-sm font-medium text-gray-700 mb-2">Starter code:</p>
@@ -181,12 +183,15 @@ export function TaskStep({ day, session }: TaskStepProps) {
       <Card>
         <div className="p-6">
           <TextArea
-            label="Your solution"
-            placeholder="// Write your code here..."
+            label="Give it a try"
+            placeholder="// Start typing... there's no wrong answer while learning!"
             value={code}
             onChange={(e) => setCode(e.target.value)}
             className="min-h-[200px] font-mono text-sm"
           />
+          <p className="text-xs text-gray-400 mt-2">
+            Stuck? Use hints or peek at the solution — that's what they're for!
+          </p>
         </div>
       </Card>
 
@@ -221,7 +226,7 @@ export function TaskStep({ day, session }: TaskStepProps) {
           onClick={() => setShowSolution(!showSolution)}
           leftIcon={<Eye className="w-4 h-4" />}
         >
-          {showSolution ? 'Hide' : 'Show'} Solution
+          {showSolution ? 'Hide Answer' : 'See How It Works'}
         </Button>
       </div>
 
@@ -258,16 +263,16 @@ export function TaskStep({ day, session }: TaskStepProps) {
           >
             <Card className="bg-focus-50 border border-focus-200">
               <div className="p-4">
-                <h4 className="font-medium text-focus-800 mb-3">Solution</h4>
+                <h4 className="font-medium text-focus-800 mb-3">Here's one way to do it:</h4>
                 <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg text-sm overflow-x-auto whitespace-pre-wrap">
                   {task?.free?.solution || '// Solution will be shown here'}
                 </pre>
-                
+
                 {/* Annotations */}
                 {task?.free?.solutionAnnotations && task.free.solutionAnnotations.length > 0 && (
                   <div className="mt-4 space-y-2">
                     <h5 className="font-medium text-focus-700">Why this works:</h5>
-                    {task.free.solutionAnnotations.map((annotation, i) => (
+                    {task.free.solutionAnnotations.map((annotation: string, i: number) => (
                       <p key={i} className="text-sm text-focus-700">{annotation}</p>
                     ))}
                   </div>
@@ -277,6 +282,23 @@ export function TaskStep({ day, session }: TaskStepProps) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Complete task button */}
+      <div className="pt-4">
+        <Button
+          size="lg"
+          className="w-full"
+          onClick={onComplete}
+          disabled={!code.trim() && !showSolution}
+        >
+          {code.trim() ? "Done — let's move on!" : showSolution ? 'Got it, continue' : 'Try something first'}
+        </Button>
+        {!code.trim() && !showSolution && (
+          <p className="text-center text-sm text-gray-500 mt-2">
+            Give it a shot, or check the solution if you're stuck
+          </p>
+        )}
+      </div>
     </div>
   );
 }

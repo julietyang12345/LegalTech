@@ -338,6 +338,14 @@ ${params.dayNumber === 1 ? `- Card 1: INTRO CARD - "Today we'll learn [X]. Here'
 - Cards 8-9: Gotchas/edge cases
 - Card 10: Preview of next topic (optional)
 
+REQUIRED FIELDS for each card:
+- realWorldContext: 1 sentence explaining WHERE/WHY this is used in real work
+  Example: "In production React apps, this prevents unnecessary re-renders that slow your UI."
+  Example: "Senior developers use this pattern in code reviews to catch bugs early."
+- videoTimestampRef (optional): Reference to video moment that shows this concept
+  Example: "Remember at 2:15 when the instructor showed the console output? That's this."
+  Only include if there's a relevant video moment to reference.
+
 MicroQuestion types:
 - "gotit": Simple "Got it! / Still confused" - use for recap/intro cards
 - "understanding": Multiple choice (3-4 options) - use for concept cards
@@ -358,8 +366,8 @@ Output valid JSON only.`;
   "video": {"watchPoints": []},
 
   "foundationCards": [
-    {"id": "day${params.dayNumber}-card-1", "concept": "", "visual": "", "explanation": "", "microQuestion": {"question": "", "type": "gotit"}, "order": 1},
-    {"id": "day${params.dayNumber}-card-2", "concept": "", "visual": "", "explanation": "", "codeExample": "", "microQuestion": {"question": "", "type": "understanding", "options": [], "correctIndex": 0, "explanation": ""}, "order": 2}
+    {"id": "day${params.dayNumber}-card-1", "concept": "", "visual": "", "explanation": "", "realWorldContext": "Where/why this matters in real work", "microQuestion": {"question": "", "type": "gotit"}, "order": 1},
+    {"id": "day${params.dayNumber}-card-2", "concept": "", "visual": "", "explanation": "", "realWorldContext": "", "videoTimestampRef": "Remember at X:XX when...", "codeExample": "", "microQuestion": {"question": "", "type": "understanding", "options": [], "correctIndex": 0, "explanation": ""}, "order": 2}
   ],
 
   "task1": {
