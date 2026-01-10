@@ -370,10 +370,14 @@ export class CurriculumService {
       'ADVANCED': 'advanced',
     };
 
-    // Use skeleton's title + first skill as search concept
-    const searchConcept = dayOverview.skills?.[0]
-      ? `${dayOverview.title} ${dayOverview.skills[0]}`
-      : dayOverview.title;
+    // Use skeleton's title as search concept
+    // Strip "Day X:" prefix, filler words, and special characters for cleaner YouTube search
+    let searchConcept = (dayOverview.title || '')
+      .replace(/^Day\s*\d+\s*[:.-]\s*/i, '')  // Remove "Day 1:" prefix
+      .replace(/&/g, ' ')                      // Replace & with space
+      .replace(/\b(Basic|Basics|Beginner|Beginning|Introduction to|Intro to|Advanced|Intermediate|Fundamentals of|Fundamentals|Essential|Essentials|Getting Started with|Overview of|Deep Dive into|Mastering)\b/gi, '')
+      .replace(/\s+/g, ' ')                    // Collapse multiple spaces
+      .trim();
 
     // Calculate video slot based on session duration (matches getTimeStructure in prompt)
     const sessionMinutes = Math.round(curriculum.metadata.hoursPerDay * 60);
@@ -387,18 +391,33 @@ export class CurriculumService {
     let universityResourcePromise: Promise<any> | null = null;
     let docFetchPromise: Promise<DocFetchResult | null> | null = null;
 
-    if (videoStrategy === 'skip' || contentSource === 'text' || contentSource === 'docs') {
-      // AI decided video adds no value, or content comes from text/docs (no video needed)
-      this.logger.log(`📝 Skipping video search for Day ${dayNumber} (videoStrategy: ${videoStrategy}, contentSource: ${contentSource})`);
-    } else if (videoStrategy === 'optional' || contentSource === 'university') {
-      // Optional or university: search but prefer trusted educational channels
-      this.logger.log(`🎓 Starting educational video search for: "${searchConcept}" (${videoSlot}min slot)`);
+    // PRIORITY: contentSource === 'university' should ALWAYS search for videos
+    // University content (MIT OCW, CS50, etc.) IS video-based, so don't skip even if videoStrategy === 'skip'
+    if (contentSource === 'university') {
+      // University content: search for educational videos (lectures from MIT, Stanford, etc.)
+      this.logger.log(`🎓 Starting university video search for: "${searchConcept}" (${videoSlot}min slot)`);
       videoSearchPromise = this.videoMatcher.findBestVideo({
-        concept: `${searchConcept} lecture tutorial MIT Stanford freeCodeCamp`,
+        concept: searchConcept,
         userSlot: videoSlot,
         userLevel: levelMap[curriculum.metadata.skillLevel] || 'beginner',
         skillType: curriculum.metadata.skillType,
-        contentSource, // Pass for duration filtering
+        contentSource,
+      }, { deepVerify: true }).catch(error => {
+        this.logger.warn(`⚠️ University video search failed: ${error.message}`);
+        return null;
+      });
+    } else if (videoStrategy === 'skip' || contentSource === 'text' || contentSource === 'docs') {
+      // AI decided video adds no value, or content comes from text/docs (no video needed)
+      this.logger.log(`📝 Skipping video search for Day ${dayNumber} (videoStrategy: ${videoStrategy}, contentSource: ${contentSource})`);
+    } else if (videoStrategy === 'optional') {
+      // Optional: search but prefer trusted educational channels
+      this.logger.log(`🎓 Starting educational video search for: "${searchConcept}" (${videoSlot}min slot)`);
+      videoSearchPromise = this.videoMatcher.findBestVideo({
+        concept: searchConcept,
+        userSlot: videoSlot,
+        userLevel: levelMap[curriculum.metadata.skillLevel] || 'beginner',
+        skillType: curriculum.metadata.skillType,
+        contentSource,
       }, { deepVerify: true }).catch(error => {
         this.logger.warn(`⚠️ Educational video search failed: ${error.message}`);
         return null;
@@ -577,9 +596,27 @@ export class CurriculumService {
       this.logger.warn(`⚠️ Day ${dayNumber} video not found: ${videoResult.error}`);
     }
 
+    // FALLBACK: If video failed/skipped AND contentLayer is 'foundation', try university resources
+    // This catches cases where AI didn't set contentSource='university' but topic is academic
+    let fallbackUniversityResults = null;
+    if (!universityResults && contentLayer === 'foundation' && (!videoResult?.success || !videoSearchPromise)) {
+      this.logger.log(`🎓 Fallback: Searching university resources for foundation topic: "${searchConcept}"`);
+      try {
+        fallbackUniversityResults = await Promise.all([
+          this.universityResource.searchResources(searchConcept, 'lecture_video', 2),
+          this.universityResource.searchResources(searchConcept, 'lecture_notes', 2),
+        ]);
+      } catch (error) {
+        this.logger.warn(`⚠️ Fallback university search failed: ${error.message}`);
+      }
+    }
+
+    // Use fallback results if original universityResults is null
+    const finalUniversityResults = universityResults || fallbackUniversityResults;
+
     // Add university resources (lecture notes, problem sets) if available
-    if (universityResults) {
-      const [lectureNotesResult, problemSetsResult] = universityResults;
+    if (finalUniversityResults) {
+      const [lectureNotesResult, problemSetsResult] = finalUniversityResults;
       const universityResources: any[] = [];
 
       if (lectureNotesResult?.success && lectureNotesResult.resources?.length > 0) {

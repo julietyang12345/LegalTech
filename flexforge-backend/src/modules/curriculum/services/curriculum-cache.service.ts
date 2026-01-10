@@ -500,86 +500,91 @@ export class CurriculumCacheService implements OnModuleInit {
   }
 
   /**
-   * Normalize skill name using AI to detect semantic similarity.
-   * Groups "AI automation", "automation with AI", "AI workflow automation" together.
-   * Keeps specific skills separate from broad ones.
+   * Normalize skill name for consistent caching.
+   * Handles: case, word order, pluralization, symbols, filler words.
+   *
+   * Examples:
+   * - "Algorithms and Data Structures" → "algorithm data structure"
+   * - "data structures & algorithms" → "algorithm data structure"
+   * - "Data Structure and Algorithm" → "algorithm data structure"
    */
   private async normalizeSkillName(skillName: string): Promise<string> {
-    // Quick clean first
-    const cleaned = skillName
+    // Step 1: Basic cleanup
+    let cleaned = skillName
       .toLowerCase()
       .trim()
-      .replace(/\b(tutorial|course|learn|guide|introduction|intro|basics|how to|for beginners)\b/gi, '')
-      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/&/g, ' and ')  // Replace & with 'and' first
+      .replace(/\b(tutorial|course|learn|learning|guide|introduction|intro|basics|basic|beginner|beginners|advanced|intermediate|how to|for|with|using|the|a|an)\b/gi, '')
+      .replace(/[^a-z0-9\s]/g, ' ')  // Remove special chars
       .replace(/\s+/g, ' ')
       .trim();
 
-    // Check memory cache first
-    if (this.normalizedSkillCache.has(cleaned)) {
-      return this.normalizedSkillCache.get(cleaned)!;
+    // Step 2: Simple rule-based singularization
+    const singularize = (word: string): string => {
+      // Special cases
+      if (word === 'apis') return 'api';
+      if (word === 'uis') return 'ui';
+
+      // Words ending in "ies" → "y" (queries → query, libraries → library)
+      if (word.endsWith('ies') && word.length > 4) {
+        return word.slice(0, -3) + 'y';
+      }
+
+      // Words ending in "ses", "xes", "zes", "ches", "shes" → remove "es"
+      if (/(?:s|x|z|ch|sh)es$/.test(word)) {
+        return word.slice(0, -2);
+      }
+
+      // Words ending in "s" (but not "ss", "us", "is") → remove "s"
+      if (word.endsWith('s') && !word.endsWith('ss') && !word.endsWith('us') && !word.endsWith('is') && word.length > 2) {
+        return word.slice(0, -1);
+      }
+
+      return word;
+    };
+
+    // Step 3: Process words - singularize, remove conjunctions, sort, dedupe
+    const words = cleaned
+      .split(' ')
+      .filter(w => w.length > 0)
+      .map(singularize)
+      .filter(w => w !== 'and' && w !== 'or')  // Remove conjunctions
+      .sort()  // Sort alphabetically for consistent order
+      .filter((w, i, arr) => arr.indexOf(w) === i);  // Remove duplicates
+
+    const normalized = words.join(' ');
+
+    // Check memory cache
+    if (this.normalizedSkillCache.has(normalized)) {
+      return this.normalizedSkillCache.get(normalized)!;
     }
 
-    // Check database aliases
-    if (this.aliasMap.has(cleaned)) {
-      const aliased = this.aliasMap.get(cleaned)!;
-      this.normalizedSkillCache.set(cleaned, aliased);
+    // Check database aliases for additional semantic mappings
+    if (this.aliasMap.has(normalized)) {
+      const aliased = this.aliasMap.get(normalized)!;
+      this.normalizedSkillCache.set(normalized, aliased);
       return aliased;
     }
 
-    // Use AI to normalize (fast model - GPT-4o-mini)
-    try {
-      const prompt = `Extract the canonical skill/topic from this user input for caching purposes.
+    // Cache and return
+    this.normalizedSkillCache.set(normalized, normalized);
 
-INPUT: "${skillName}"
-
-Rules:
-1. Return ONLY the core skill/topic in lowercase, 2-5 words max
-2. Group synonymous terms: "AI automation" = "automation AI" = "workflow automation with AI" → "ai automation"
-3. Keep specificity: "React hooks" stays "react hooks" (not just "react")
-4. Remove filler words: tutorial, learn, beginner, guide, how to, with, using, etc.
-5. Use common abbreviations: artificial intelligence → ai, machine learning → ml, javascript → js
-
-Examples:
-- "Learn automation with AI for beginners" → "ai automation"
-- "AI workflow automation tutorial" → "ai automation"
-- "React hooks explained" → "react hooks"
-- "Building REST APIs with Node.js" → "nodejs rest api"
-- "Python machine learning basics" → "python ml"
-
-Return ONLY the normalized skill name, nothing else.`;
-
-      const response = await this.aiService.routeRequest(
-        AITask.SIMPLE_CLASSIFICATION,
-        prompt,
-      );
-
-      const normalized = response.content.trim().toLowerCase();
-
-      // Cache the result
-      this.normalizedSkillCache.set(cleaned, normalized);
-
-      // Keep cache size reasonable (LRU eviction)
-      if (this.normalizedSkillCache.size > 1000) {
-        const firstKey = this.normalizedSkillCache.keys().next().value;
-        if (firstKey) this.normalizedSkillCache.delete(firstKey);
-      }
-
-      this.logger.debug(`AI normalized: "${skillName}" → "${normalized}"`);
-      return normalized;
-    } catch (error) {
-      // Fallback to cleaned version if AI fails
-      this.logger.warn(`AI normalization failed for "${skillName}", using fallback`);
-      this.normalizedSkillCache.set(cleaned, cleaned);
-      return cleaned;
+    // LRU eviction
+    if (this.normalizedSkillCache.size > 1000) {
+      const firstKey = this.normalizedSkillCache.keys().next().value;
+      if (firstKey) this.normalizedSkillCache.delete(firstKey);
     }
+
+    this.logger.debug(`Normalized: "${skillName}" → "${normalized}"`);
+    return normalized;
   }
 
   private generateHash(dto: GenerateCurriculumDto, normalizedSkill: string): string {
     const components = [
-      normalizedSkill,
+      normalizedSkill.toLowerCase().trim(),  // Ensure case-insensitive
       dto.durationDays.toString(),
       dto.hoursPerDay.toFixed(1),
-      dto.skillLevel,
+      dto.skillLevel.toLowerCase(),          // Ensure case-insensitive
       CACHE_CONFIG.promptVersion,
       CACHE_CONFIG.modelVersion,
     ].join('|');

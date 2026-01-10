@@ -884,10 +884,11 @@ export class VideoMatchingService {
           chapters: video.chapters,
         };
 
-        // Check if channel is trusted
+        // Check if channel is trusted (null/undefined = not trusted)
         const channelInfo = getChannelPolicy(video.channelId);
-        const isTrusted = channelInfo.channel !== undefined &&
-          (channelInfo.channel.contentQuality === 'excellent' || channelInfo.channel.contentQuality === 'good');
+        const isTrusted =
+          channelInfo.channel?.contentQuality === 'excellent' ||
+          channelInfo.channel?.contentQuality === 'good';
 
         // Compute promo score first for hard-block check
         const promoScore = scoreMarketingPenalty(scoringVideo);

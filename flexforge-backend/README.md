@@ -60,7 +60,16 @@ docker-compose up -d
 # Verify services are running
 docker-compose ps
 ```
-
+<!-- #Check cached variants based on skill
+SELECT
+      v.content->'metadata'->>'skillName' AS skill_name,
+      COUNT(*) AS total_variants,
+      SUM(v.times_served) AS total_served,
+      ROUND(AVG(v.regen_rate)::numeric, 3) AS avg_regen_rate,
+      STRING_AGG(DISTINCT v.content->'metadata'->>'skillLevel', ', ') AS levels
+  FROM curriculum_cache_variants v
+  GROUP BY v.content->'metadata'->>'skillName'
+  ORDER BY total_served DESC; -->
 ### 4. Run Application
 
 ```bash

@@ -105,16 +105,18 @@ Classify each day's primary learning type:
 Decide if video helps for THIS specific topic:
 
 "skip"        - Video adds NO value. Text + practice is better.
-                Use for: pure concepts, syntax, algorithms, theory.
+                Use for: simple syntax, basic variable declarations, trivial concepts.
+                DO NOT use for algorithms, data structures, or CS theory (these benefit from lectures).
 
 "optional"    - Video might help some learners. Not required.
-                Use for: language basics, simple patterns.
+                Use for: language basics, simple patterns, straightforward API usage.
 
 "helpful"     - Video provides useful mental models or flow.
-                Use for: framework patterns, project walkthroughs.
+                Use for: framework patterns, project walkthroughs, algorithm visualization.
 
 "recommended" - Video is the BEST way to learn this.
-                Use for: UI-heavy tools, visual workflows, debugging.
+                Use for: UI-heavy tools, visual workflows, debugging, complex algorithms,
+                data structure operations, Big O analysis (visual explanations help greatly).
 
 ═══ TRANSFERABILITY ═══
 Does this skill transfer to other tools/contexts?
@@ -131,10 +133,29 @@ Does this skill transfer to other tools/contexts?
 ═══ CONTENT SOURCE ═══
 Where to get the primary content:
 
-"university" - MIT OCW, Stanford lectures (theory, algorithms)
-"youtube"    - Curated tutorials (tool demos, walkthroughs)
-"text"       - Generated explanations (simple concepts)
-"docs"       - Official documentation (API reference)
+"university" - MIT OCW, Stanford, Harvard lectures
+              USE FOR: algorithms, data structures, computer science theory,
+              math foundations, system design principles, database theory,
+              networking fundamentals, operating systems concepts.
+              WHEN: contentLayer is "foundation" AND topic is academic/theoretical.
+
+"youtube"    - Curated tutorials from trusted creators
+              USE FOR: framework tutorials, tool demos, project walkthroughs,
+              coding along, visual explanations of practical concepts.
+              WHEN: contentLayer is "framework", "tool", or "project".
+
+"text"       - AI-generated explanations (no external content)
+              USE FOR: simple syntax, basic concepts that don't need video,
+              quick reference material.
+              WHEN: videoStrategy is "skip" AND topic is straightforward.
+
+"docs"       - Official documentation (MDN, React docs, Python docs, etc.)
+              USE FOR: API reference, language features, standard library,
+              official best practices.
+              WHEN: contentLayer is "language_core" AND topic is well-documented.
+
+IMPORTANT: For foundational CS topics like algorithms, data structures, Big O,
+recursion, trees, graphs, sorting - ALWAYS use "university" as contentSource.
 
 For each day, output ALL of:
 - "contentLayer": "foundation" | "language_core" | "framework" | "tool" | "project"
@@ -481,6 +502,7 @@ REQUIREMENTS:
 3. Include 3 levels of hints (gentle → specific → approach)
 4. Active recall: student explains BEFORE seeing answer
 5. Include stuck detection triggers
+6. ALWAYS include conceptCheck with 3 multiple-choice questions (levels 1, 2, 3) - this is REQUIRED for all days
 
 Output valid JSON only.`;
 
@@ -517,24 +539,25 @@ ${JSON.stringify(params.skeleton, null, 2)}
   },
 
   "conceptCheck": {
+    "description": "REQUIRED - Generate 3 actual multiple-choice questions about today's topic",
     "questions": [
       {
         "level": 1,
-        "question": "What is [key concept]?",
+        "question": "Basic understanding question about ${params.dayTitle}?",
         "options": ["Correct answer", "Plausible wrong 1", "Plausible wrong 2", "Plausible wrong 3"],
         "correctIndex": 0,
         "explanation": "Why correct and why others wrong"
       },
       {
         "level": 2,
-        "question": "When/How would you use [concept]?",
+        "question": "Application question - when/how to use this concept?",
         "options": ["Correct scenario", "Wrong scenario 1", "Wrong scenario 2", "Wrong scenario 3"],
         "correctIndex": 0,
         "explanation": "Context and common misconceptions"
       },
       {
         "level": 3,
-        "question": "Why does [concept] work this way?",
+        "question": "Deep understanding - why does this work this way?",
         "options": ["Correct principle", "Misconception 1", "Misconception 2", "Misconception 3"],
         "correctIndex": 0,
         "explanation": "Deeper mechanism understanding"
