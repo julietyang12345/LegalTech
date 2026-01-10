@@ -512,6 +512,24 @@ export class CurriculumService {
       throw new BadRequestException('Failed to generate day details. Please try again.');
     }
 
+    // Validate and normalize foundationCards if present
+    if (dayContent.foundationCards && Array.isArray(dayContent.foundationCards)) {
+      dayContent.foundationCards = dayContent.foundationCards.map((card: any, index: number) => ({
+        ...card,
+        id: card.id || `day${dayNumber}-card-${index + 1}`,
+        order: card.order ?? index + 1,
+        // Ensure microQuestion has required fields
+        microQuestion: {
+          ...card.microQuestion,
+          type: card.microQuestion?.type || 'understanding',
+        },
+      }));
+      this.logger.log(`✅ Day ${dayNumber}: Generated ${dayContent.foundationCards.length} foundation cards`);
+      this.logger.log(`📋 Card IDs: ${dayContent.foundationCards.map((c: any) => c.id).join(', ')}`);
+    } else {
+      this.logger.warn(`⚠️ Day ${dayNumber}: No foundationCards in AI response. Has activeRecall: ${!!dayContent.activeRecall}, Has conceptCheck: ${!!dayContent.conceptCheck}`);
+    }
+
     // Generate file resources for tasks if needed
     if (
       curriculum.metadata.skillType === SkillType.CODE ||

@@ -225,6 +225,10 @@ export interface CurriculumDay {
 
   video?: VideoMatch;
 
+  // Foundation cards (new Imprint-style flow - replaces activeRecall + conceptCheck)
+  foundationCards?: FoundationCard[];
+
+  // Legacy fields (kept for backward compatibility)
   activeRecall?: {
     part1: {
       instruction: string;
@@ -259,6 +263,28 @@ export interface ConceptQuestion {
   options: string[];      // 4 multiple choice options
   correctIndex: number;   // Index of correct answer (0-3)
   explanation: string;    // Why correct answer is right
+}
+
+// ============================================
+// Foundation Cards Types (Imprint-style chunked learning)
+// ============================================
+
+export interface MicroQuestion {
+  question: string;
+  type: 'understanding' | 'gotit';  // MCQ or simple yes/confused
+  options?: string[];               // For 'understanding' type (2-4 options)
+  correctIndex?: number;            // For 'understanding' type
+  explanation?: string;             // Shown after answering
+}
+
+export interface FoundationCard {
+  id: string;
+  concept: string;           // One-line title (max 60 chars)
+  visual?: string;           // Emoji hint
+  explanation: string;       // 2-3 sentences
+  codeExample?: string;      // Optional code snippet (max 5 lines)
+  microQuestion: MicroQuestion;
+  order: number;
 }
 
 export interface Task {
@@ -531,9 +557,10 @@ export interface DayDetailsResponse {
 export type SessionStep =
   | 'prePrompt'
   | 'video'
-  | 'activeRecall'
-  | 'memoryBridge'
-  | 'conceptCheck'
+  | 'foundationCards'  // New Imprint-style flow
+  | 'activeRecall'     // Legacy
+  | 'memoryBridge'     // Legacy
+  | 'conceptCheck'     // Legacy
   | 'task1'
   | 'bossMilestone'
   | 'reflection';

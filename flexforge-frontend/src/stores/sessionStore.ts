@@ -63,7 +63,18 @@ interface SessionState {
   clearError: () => void;
 }
 
-const STEP_ORDER: SessionStep[] = [
+// New flow with foundation cards
+const STEP_ORDER_NEW: SessionStep[] = [
+  'prePrompt',
+  'video',
+  'foundationCards',
+  'task1',
+  'bossMilestone',
+  'reflection',
+];
+
+// Legacy flow for backward compatibility
+const STEP_ORDER_LEGACY: SessionStep[] = [
   'prePrompt',
   'video',
   'activeRecall',
@@ -73,6 +84,12 @@ const STEP_ORDER: SessionStep[] = [
   'bossMilestone',
   'reflection',
 ];
+
+// Helper to get appropriate step order based on day content
+const getStepOrder = (day: CurriculumDay | null): SessionStep[] => {
+  const hasFoundationCards = day?.foundationCards && day.foundationCards.length > 0;
+  return hasFoundationCards ? STEP_ORDER_NEW : STEP_ORDER_LEGACY;
+};
 
 export const useSessionStore = create<SessionState>((set, get) => ({
   activeSession: null,
@@ -204,17 +221,18 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const { completedSteps, currentDay } = get();
     if (completedSteps.includes(step)) return;
 
+    const STEP_ORDER = getStepOrder(currentDay);
     const newCompletedSteps = [...completedSteps, step];
     const currentIndex = STEP_ORDER.indexOf(step);
-    
+
     // Find next step (skip memoryBridge on day 1, skip bossMilestone if not present)
     let nextStep = STEP_ORDER[currentIndex + 1];
-    
-    // Skip memoryBridge on day 1
+
+    // Skip memoryBridge on day 1 (only relevant in legacy flow)
     if (nextStep === 'memoryBridge' && currentDay?.day === 1) {
       nextStep = STEP_ORDER[currentIndex + 2];
     }
-    
+
     // Skip bossMilestone if not present
     if (nextStep === 'bossMilestone' && !currentDay?.bossMilestone) {
       nextStep = STEP_ORDER[currentIndex + 2];
@@ -427,10 +445,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   getStepProgress: () => {
     const { completedSteps, currentDay } = get();
+    const STEP_ORDER = getStepOrder(currentDay);
     let total = STEP_ORDER.length;
 
     // Adjust total based on what's available
-    if (currentDay?.day === 1) total -= 1; // No memory bridge
+    if (currentDay?.day === 1 && STEP_ORDER.includes('memoryBridge')) total -= 1; // No memory bridge on day 1 (legacy)
     if (!currentDay?.bossMilestone) total -= 1; // No boss milestone
 
     return {

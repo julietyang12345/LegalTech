@@ -13,6 +13,7 @@ interface StepPillsProps {
 const STEP_LABELS: Record<SessionStep, string> = {
   prePrompt: 'Prep',
   video: 'Watch',
+  foundationCards: 'Learn',
   activeRecall: 'Recall',
   memoryBridge: 'Connect',
   conceptCheck: 'Check',

@@ -500,9 +500,27 @@ REQUIREMENTS:
 1. Connect to previous day's concept (spaced repetition)
 2. Provide COMPLETE working solutions (not pseudocode)
 3. Include 3 levels of hints (gentle → specific → approach)
-4. Active recall: student explains BEFORE seeing answer
-5. Include stuck detection triggers
-6. ALWAYS include conceptCheck with 3 multiple-choice questions (levels 1, 2, 3) - this is REQUIRED for all days
+4. Include stuck detection triggers
+5. ALWAYS generate foundationCards (6-10 cards) - this is REQUIRED for all days
+
+FOUNDATION CARDS GUIDELINES:
+Generate 6-10 swipeable concept cards that progressively build understanding.
+Each card = ONE atomic concept (can be grasped in 30-60 seconds).
+
+Card structure:
+${params.dayNumber === 1 ? `- Card 1: INTRO CARD - "Today we'll learn [X]. Here's why it matters..."` : `- Card 1: RECAP CARD - "Yesterday we learned [X]. Today builds on that by..."`}
+- Cards 2-3: Core definitions (what is X?)
+- Cards 4-5: How/when to use
+- Cards 6-7: Common patterns/examples
+- Cards 8-9: Gotchas/edge cases
+- Card 10: Preview of next topic (optional)
+
+MicroQuestion types:
+- "gotit": Simple "Got it! / Still confused" - use for recap/intro cards
+- "understanding": Multiple choice (3-4 options) - use for concept cards
+
+Code examples: Keep under 5 lines, use real runnable syntax.
+For non-code skills: Use real-world examples instead of code.
 
 Output valid JSON only.`;
 
@@ -528,42 +546,59 @@ ${JSON.stringify(params.skeleton, null, 2)}
     "watchPoints": ["Key concept to look for", "Important technique shown"]
   },
 
-  "activeRecall": {
-    "instruction": "Explain in your own words BEFORE seeing answer",
-    "keyPointsToInclude": ["Point 1", "Point 2", "Point 3"],
-    "sampleGoodAnswer": "Example answer",
-    "connectionToYesterday": {
-      "question": "How does today's [concept] build on yesterday's [${params.previousDayTitle || 'concept'}]?",
-      "sampleConnection": "Example of how they connect"
+  "foundationCards": [
+    ${params.dayNumber === 1 ? `{
+      "id": "day${params.dayNumber}-card-1",
+      "concept": "Welcome: Today's Learning Journey",
+      "visual": "🚀",
+      "explanation": "Today we'll learn [main topic]. This is important because [why it matters]. By the end, you'll be able to [outcome].",
+      "microQuestion": {
+        "question": "Ready to dive in?",
+        "type": "gotit"
+      },
+      "order": 1
+    }` : `{
+      "id": "day${params.dayNumber}-card-1",
+      "concept": "Recap: ${params.previousDayTitle || 'Yesterday'}",
+      "visual": "🔄",
+      "explanation": "Yesterday we learned [key concept from ${params.previousDayTitle || 'previous day'}]. Today builds on that by [connection]. Quick mental check: can you recall the main idea?",
+      "microQuestion": {
+        "question": "Do you remember yesterday's key concept?",
+        "type": "gotit"
+      },
+      "order": 1
+    }`},
+    {
+      "id": "day${params.dayNumber}-card-2",
+      "concept": "Core concept title (max 60 chars)",
+      "visual": "💡",
+      "explanation": "2-3 sentence explanation of this atomic concept. Use simple language.",
+      "codeExample": "// Short code example (max 5 lines)\\nconst example = 'value';",
+      "microQuestion": {
+        "question": "Quick check about this concept?",
+        "type": "understanding",
+        "options": ["Correct answer", "Plausible wrong 1", "Plausible wrong 2"],
+        "correctIndex": 0,
+        "explanation": "Why this is correct"
+      },
+      "order": 2
+    },
+    {
+      "id": "day${params.dayNumber}-card-3",
+      "concept": "Another core concept",
+      "visual": "🔧",
+      "explanation": "Explanation building on previous card.",
+      "codeExample": "// Example code",
+      "microQuestion": {
+        "question": "Understanding check?",
+        "type": "understanding",
+        "options": ["Option A", "Option B", "Option C"],
+        "correctIndex": 0,
+        "explanation": "Explanation"
+      },
+      "order": 3
     }
-  },
-
-  "conceptCheck": {
-    "description": "REQUIRED - Generate 3 actual multiple-choice questions about today's topic",
-    "questions": [
-      {
-        "level": 1,
-        "question": "Basic understanding question about ${params.dayTitle}?",
-        "options": ["Correct answer", "Plausible wrong 1", "Plausible wrong 2", "Plausible wrong 3"],
-        "correctIndex": 0,
-        "explanation": "Why correct and why others wrong"
-      },
-      {
-        "level": 2,
-        "question": "Application question - when/how to use this concept?",
-        "options": ["Correct scenario", "Wrong scenario 1", "Wrong scenario 2", "Wrong scenario 3"],
-        "correctIndex": 0,
-        "explanation": "Context and common misconceptions"
-      },
-      {
-        "level": 3,
-        "question": "Deep understanding - why does this work this way?",
-        "options": ["Correct principle", "Misconception 1", "Misconception 2", "Misconception 3"],
-        "correctIndex": 0,
-        "explanation": "Deeper mechanism understanding"
-      }
-    ]
-  },
+  ],
 
   "task1": {
     "id": "day${params.dayNumber}-task1",

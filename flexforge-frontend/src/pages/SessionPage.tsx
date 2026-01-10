@@ -12,6 +12,7 @@ import type { CurriculumDay } from '@/types';
 // Import step components
 import { PrePromptStep } from '@/components/session/PrePromptStep';
 import { VideoStep } from '@/components/session/VideoStep';
+import { FoundationCardsStep } from '@/components/session/FoundationCardsStep';
 import { ActiveRecallStep } from '@/components/session/ActiveRecallStep';
 import { MemoryBridgeStep } from '@/components/session/MemoryBridgeStep';
 import { ConceptCheckStep } from '@/components/session/ConceptCheckStep';
@@ -210,6 +211,7 @@ function SkipTestModal({
 const STEP_COMPONENTS: Record<SessionStepType, React.ComponentType<any>> = {
   prePrompt: PrePromptStep,
   video: VideoStep,
+  foundationCards: FoundationCardsStep,
   activeRecall: ActiveRecallStep,
   memoryBridge: MemoryBridgeStep,
   conceptCheck: ConceptCheckStep,
@@ -218,7 +220,18 @@ const STEP_COMPONENTS: Record<SessionStepType, React.ComponentType<any>> = {
   reflection: ReflectionStep,
 };
 
-const STEP_ORDER: SessionStepType[] = [
+// New flow with foundation cards (replaces activeRecall + memoryBridge + conceptCheck)
+const STEP_ORDER_NEW: SessionStepType[] = [
+  'prePrompt',
+  'video',
+  'foundationCards',
+  'task1',
+  'bossMilestone',
+  'reflection',
+];
+
+// Legacy flow for backward compatibility
+const STEP_ORDER_LEGACY: SessionStepType[] = [
   'prePrompt',
   'video',
   'activeRecall',
@@ -262,10 +275,31 @@ export function SessionPage() {
     }
   }, [activeSession, currentDay, startDay]);
 
+  // Determine which flow to use based on content
+  const useNewFlow = !!(currentDay?.foundationCards && currentDay.foundationCards.length > 0);
+  const baseStepOrder = useNewFlow ? STEP_ORDER_NEW : STEP_ORDER_LEGACY;
+
+  // Debug logging
+  console.log('[SessionPage] Flow detection:', {
+    useNewFlow,
+    hasFoundationCards: !!currentDay?.foundationCards,
+    foundationCardsCount: currentDay?.foundationCards?.length ?? 0,
+    hasActiveRecall: !!currentDay?.activeRecall,
+    hasConceptCheck: !!currentDay?.conceptCheck,
+    currentStep,
+    availableSteps: baseStepOrder,
+  });
+
   // Get available steps (filter out skipped ones)
-  const availableSteps = STEP_ORDER.filter(step => {
+  const availableSteps = baseStepOrder.filter(step => {
+    // Skip memoryBridge on day 1 (only in legacy flow)
     if (step === 'memoryBridge' && currentDay?.day === 1) return false;
+    // Skip bossMilestone if not present
     if (step === 'bossMilestone' && !currentDay?.bossMilestone) return false;
+    // Skip foundationCards if not present (fallback to legacy)
+    if (step === 'foundationCards' && (!currentDay?.foundationCards || currentDay.foundationCards.length === 0)) return false;
+    // Skip legacy steps if using new flow
+    if (useNewFlow && (step === 'activeRecall' || step === 'conceptCheck' || step === 'memoryBridge')) return false;
     return true;
   });
 
