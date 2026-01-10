@@ -494,6 +494,9 @@ export class CurriculumService {
         .replace(/```\n?/g, '')
         .trim();
 
+      // Debug: Log first 500 chars of AI response
+      this.logger.log(`🤖 Day ${dayNumber} AI response preview: ${cleanedContent.substring(0, 500)}...`);
+
       const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         cleanedContent = jsonMatch[0];
@@ -507,6 +510,9 @@ export class CurriculumService {
       }
 
       this.logger.log(`✅ Day ${dayNumber} details parsed successfully`);
+
+      // Debug: Log what keys are in the response
+      this.logger.log(`📦 Day ${dayNumber} content keys: ${Object.keys(dayContent).join(', ')}`);
     } catch (error) {
       this.logger.error(`❌ Failed to parse Day ${dayNumber} details:`, error.message);
       throw new BadRequestException('Failed to generate day details. Please try again.');

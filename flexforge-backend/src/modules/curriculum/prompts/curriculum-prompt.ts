@@ -78,90 +78,33 @@ function getTimeStructure(hoursPerDay: number): {
   };
 }
 
-// Content layer and strategy guidance for AI
+// Compact content strategy guidance for AI (token-optimized)
 function getContentStrategyGuidance(): string {
   return `
-CONTENT STRATEGY (decide per day):
+CONTENT STRATEGY - decide per day:
 
-═══ CONTENT LAYER ═══
-Classify each day's primary learning type:
+contentLayer:
+  foundation    = core CS concepts (algorithms, data structures, Big O)
+  language_core = language syntax/features (Python, JS, TS basics)
+  framework     = framework patterns (React, Next.js, Django)
+  tool          = tools/platforms (APIs, IDEs, deployment)
+  project       = building/integrating (end-to-end implementation)
 
-"foundation"     - Core concepts: variables, functions, data structures, algorithms
-                   These are universal programming building blocks.
+videoStrategy:
+  skip        = text is better (simple syntax only, NOT for algorithms/CS theory)
+  optional    = video might help (language basics, simple patterns)
+  helpful     = video aids understanding (framework patterns, visualizations)
+  recommended = video is best (UI tools, algorithms, Big O, debugging)
 
-"language_core"  - Language fundamentals: Python basics, JS syntax, TS types
-                   The core language features before frameworks.
+contentSource:
+  university = MIT/Stanford lectures (algorithms, data structures, CS theory, math)
+  youtube    = tutorials (frameworks, tools, projects)
+  text       = AI explanations (simple syntax when video=skip)
+  docs       = official docs (language features, APIs)
 
-"framework"      - Framework patterns: React hooks, Next.js routing, Django views
-                   Architecture, conventions, idiomatic usage.
+transferability: high (universal) | medium (similar tools) | low (platform-specific)
 
-"tool"           - Tools & platforms: Claude API, Cursor, VSCode, Vercel, Make.com
-                   UI walkthroughs, setup, configuration.
-
-"project"        - Building & integrating: Build a todo app, deploy to production
-                   End-to-end implementation, debugging, decisions.
-
-═══ VIDEO STRATEGY ═══
-Decide if video helps for THIS specific topic:
-
-"skip"        - Video adds NO value. Text + practice is better.
-                Use for: simple syntax, basic variable declarations, trivial concepts.
-                DO NOT use for algorithms, data structures, or CS theory (these benefit from lectures).
-
-"optional"    - Video might help some learners. Not required.
-                Use for: language basics, simple patterns, straightforward API usage.
-
-"helpful"     - Video provides useful mental models or flow.
-                Use for: framework patterns, project walkthroughs, algorithm visualization.
-
-"recommended" - Video is the BEST way to learn this.
-                Use for: UI-heavy tools, visual workflows, debugging, complex algorithms,
-                data structure operations, Big O analysis (visual explanations help greatly).
-
-═══ TRANSFERABILITY ═══
-Does this skill transfer to other tools/contexts?
-
-"high"   - Universal concept. Works everywhere.
-           Examples: "event-driven architecture", "state management patterns"
-
-"medium" - Transfers to similar tools/contexts.
-           Examples: "webhook patterns", "REST API design"
-
-"low"    - Platform-specific. Only works here.
-           Examples: "Make.com scenario UI", "Vercel dashboard settings"
-
-═══ CONTENT SOURCE ═══
-Where to get the primary content:
-
-"university" - MIT OCW, Stanford, Harvard lectures
-              USE FOR: algorithms, data structures, computer science theory,
-              math foundations, system design principles, database theory,
-              networking fundamentals, operating systems concepts.
-              WHEN: contentLayer is "foundation" AND topic is academic/theoretical.
-
-"youtube"    - Curated tutorials from trusted creators
-              USE FOR: framework tutorials, tool demos, project walkthroughs,
-              coding along, visual explanations of practical concepts.
-              WHEN: contentLayer is "framework", "tool", or "project".
-
-"text"       - AI-generated explanations (no external content)
-              USE FOR: simple syntax, basic concepts that don't need video,
-              quick reference material.
-              WHEN: videoStrategy is "skip" AND topic is straightforward.
-
-"docs"       - Official documentation (MDN, React docs, Python docs, etc.)
-              USE FOR: API reference, language features, standard library,
-              official best practices.
-              WHEN: contentLayer is "language_core" AND topic is well-documented.
-
-IMPORTANT: For foundational CS topics like algorithms, data structures, Big O,
-recursion, trees, graphs, sorting - ALWAYS use "university" as contentSource.
-
-For each day, output ALL of:
-- "contentLayer": "foundation" | "language_core" | "framework" | "tool" | "project"
-- "videoStrategy": "skip" | "optional" | "helpful" | "recommended"
-- "transferability": "high" | "medium" | "low"
-- "contentSource": "university" | "youtube" | "text" | "docs"
+For foundational CS topics (algorithms, data structures, Big O, recursion, trees, graphs, sorting) - ALWAYS use contentSource=university.
 `;
 }
 
@@ -251,136 +194,53 @@ export function buildCurriculumPrompt(params: CurriculumPromptParams): {
   const time = getTimeStructure(params.hoursPerDay);
   const bossDays = getBossProjectDays(params.durationDays);
 
-  const systemPrompt = `You are an expert curriculum designer for FlexForge, using evidence-based learning science.
-
-SKILL: ${params.skillName}
-TYPE: ${params.skillType} | LEVEL: ${params.skillLevel} | COMPLEXITY: ${params.complexity}
-DURATION: ${params.durationDays} days × ${time.totalMinutes} min/day (${time.mode} Mode)
-USER TIER: ${params.userTier}
-${params.suggestedLanguage ? `LANGUAGE: ${params.suggestedLanguage}` : ''}
-${params.prerequisiteSkills?.length ? `PREREQUISITES: ${params.prerequisiteSkills.join(', ')}` : ''}
-
-LEARNING SCIENCE PRINCIPLES:
-1. Active Retrieval - Test before feeling ready; explain BEFORE seeing answers
-2. Spaced Repetition - Connect each day to previous concepts; review at intervals
-3. Immediate Application - Apply concepts within same session (3x retention)
-4. Metacognition - Self-assessment improves learning (effect size: 0.69)
-5. Dual Coding - Visual + text = 50-80% improvement
+  const systemPrompt = `Generate ${params.durationDays}-day curriculum skeleton for "${params.skillName}".
+Type: ${params.skillType} | Level: ${params.skillLevel} | ${time.totalMinutes}min/day (${time.mode})
+${params.suggestedLanguage ? `Language: ${params.suggestedLanguage}` : ''}
+Boss project days: ${bossDays.join(', ')}
 
 ${getSkillTypeGuidance(params.skillType, params.complexity, params.safetyLevel)}
 
 ${getContentStrategyGuidance()}
 
-DAILY STRUCTURE OPTIONS (${time.mode} Mode - ${time.totalMinutes} min):
-With video: ${time.structure}
-Without video: ${time.structureNoVideo}
+Per day include: day, title, subtitle, skills[], teaser, estimatedMinutes, hasBossProject, skipTest, contentLayer, videoStrategy, transferability, contentSource.
 
-${time.task2 > 0 ? 'NOTE: Deep Dive mode includes TASK 2 (extended practice in different context).' : ''}
+Output valid JSON only.`;
 
-BOSS PROJECTS: Days ${bossDays.join(', ')} (60-90 min, combines ALL previous concepts)
-
-${getTierInstructions(params.userTier)}
-
-OUTPUT REQUIREMENT:
-Generate SKELETON only for ALL days (including Day 1).
-Full day content will be generated on-demand when user starts each day.
-
-For each day, include:
-- title, subtitle, skills, teaser, estimatedMinutes, hasBossProject, skipTest
-- contentLayer: "foundation" | "language_core" | "framework" | "tool" | "project"
-- videoStrategy: "skip" | "optional" | "helpful" | "recommended"
-- transferability: "high" | "medium" | "low"
-- contentSource: "university" | "youtube" | "text" | "docs"
-
-The AI decides ALL strategy fields based on the specific topic for each day.
-There are no rigid rules — use judgment for what helps learning best.
-
-Output valid JSON only. No markdown formatting.`;
-
-  const userPrompt = `Create ${params.durationDays}-day curriculum for "${params.skillName}".
-
-Generate SKELETON for ALL days (Day 1 through Day ${params.durationDays}).
-
-{
+  const userPrompt = `{
   "title": "Curriculum title",
-  "description": "What student will master by completion",
-  "finalProject": "Capstone project they'll build",
+  "description": "What student will master",
+  "finalProject": "Capstone project",
   "skillType": "${params.skillType}",
-
   "days": [
     {
       "day": 1,
-      "title": "Day 1: [Specific Topic]",
-      "subtitle": "Compelling one-line tagline",
-      "skills": ["Specific skill 1", "Specific skill 2", "Specific skill 3"],
-      "teaser": "You'll learn [exciting thing]!",
-      "estimatedMinutes": ${time.totalMinutes},
-      "hasBossProject": ${bossDays.includes(1)},
-      "contentLayer": "foundation",
-      "videoStrategy": "skip",
-      "transferability": "high",
-      "contentSource": "text",
-      "skipTest": {
-        "description": "Already know this? Prove mastery to skip ahead",
-        "questions": [
-          {"question": "Challenging Q1 that proves understanding?", "answer": "Correct answer"},
-          {"question": "Application Q2 that shows real skill?", "answer": "Correct answer"},
-          {"question": "Edge case Q3 that experts would know?", "answer": "Correct answer"}
-        ],
-        "passThreshold": 2
-      }
-    },
-    {
-      "day": 2,
-      "title": "Day 2: [Topic Name]",
-      "subtitle": "Compelling tagline",
+      "title": "Day 1: [Topic]",
+      "subtitle": "Tagline",
       "skills": ["Skill 1", "Skill 2"],
-      "teaser": "You'll build [exciting thing]!",
+      "teaser": "What they'll learn",
       "estimatedMinutes": ${time.totalMinutes},
-      "hasBossProject": ${bossDays.includes(2)},
-      "contentLayer": "tool",
-      "videoStrategy": "recommended",
-      "transferability": "medium",
-      "contentSource": "youtube",
+      "hasBossProject": false,
+      "contentLayer": "",
+      "videoStrategy": "",
+      "transferability": "",
+      "contentSource": "",
       "skipTest": {
         "description": "Prove mastery to skip",
         "questions": [
-          {"question": "Hard Q1?", "answer": "Answer"},
-          {"question": "Hard Q2?", "answer": "Answer"},
-          {"question": "Hard Q3?", "answer": "Answer"}
+          {"question": "Q1?", "answer": "A1"},
+          {"question": "Q2?", "answer": "A2"},
+          {"question": "Q3?", "answer": "A3"}
         ],
         "passThreshold": 2
       }
     }
   ],
-
-  "bossProjects": [
-    {
-      "day": ${bossDays[0]},
-      "title": "Boss Project: [Epic Name]",
-      "description": "Combines concepts from days 1-${Math.min(bossDays[0], params.durationDays)} to build [impressive thing]",
-      "combinesDays": [${Array.from({ length: Math.min(bossDays[0], 4) }, (_, i) => i + 1).join(', ')}],
-      "estimatedMinutes": 75,
-      "teaser": "Why this project is exciting"
-    }
-  ],
-
-  "metadata": {
-    "recommendedTools": ["Tool 1", "Tool 2"],
-    "prerequisites": ${JSON.stringify(params.prerequisiteSkills || [])},
-    "safetyLevel": "${params.safetyLevel || 'low'}"
-  }
+  "bossProjects": [{"day": ${bossDays[0]}, "title": "Boss Project: Name", "description": "Combines days 1-${Math.min(bossDays[0], params.durationDays)}", "combinesDays": [${Array.from({ length: Math.min(bossDays[0], 4) }, (_, i) => i + 1).join(', ')}], "estimatedMinutes": 75, "teaser": ""}],
+  "metadata": {"recommendedTools": [], "prerequisites": ${JSON.stringify(params.prerequisiteSkills || [])}, "safetyLevel": "${params.safetyLevel || 'low'}"}
 }
 
-Generate ALL ${params.durationDays} days as SKELETONS.
-Each day must include: day, title, subtitle, skills, teaser, estimatedMinutes, hasBossProject, contentLayer, videoStrategy, transferability, contentSource, skipTest.
-Boss projects on days: ${bossDays.join(', ')} (set hasBossProject: true for those days).
-
-DECIDE FOR EACH DAY:
-- contentLayer: What type of learning? (foundation/language_core/framework/tool/project)
-- videoStrategy: Does video help? (skip/optional/helpful/recommended)
-- transferability: Does skill transfer? (high/medium/low)
-- contentSource: Where to get content? (university/youtube/text/docs)`;
+Generate ALL ${params.durationDays} days. hasBossProject=true for days: ${bossDays.join(', ')}.`;
 
   return { systemPrompt, userPrompt };
 }
@@ -389,9 +249,7 @@ DECIDE FOR EACH DAY:
 export const buildOverviewPrompt = buildCurriculumPrompt;
 
 /**
- * PREVIEW PROMPT: Generates SKELETON ONLY for ALL days (fast preview)
- * Used for Phase 1 - user sees timeline before committing to "Start Learning"
- * ~500-1000 tokens output vs ~3000-5000 for full generation
+ * PREVIEW PROMPT: Minimal skeleton for quick preview
  */
 export function buildPreviewPrompt(params: CurriculumPromptParams): {
   systemPrompt: string;
@@ -400,60 +258,25 @@ export function buildPreviewPrompt(params: CurriculumPromptParams): {
   const time = getTimeStructure(params.hoursPerDay);
   const bossDays = getBossProjectDays(params.durationDays);
 
-  const systemPrompt = `You are an expert curriculum designer. Generate a PREVIEW/SKELETON only.
+  const systemPrompt = `Generate ${params.durationDays}-day curriculum skeleton for "${params.skillName}".
+Type: ${params.skillType} | Level: ${params.skillLevel} | ${time.totalMinutes}min/day
+Boss project days: ${bossDays.join(', ')}
 
-SKILL: ${params.skillName}
-TYPE: ${params.skillType} | LEVEL: ${params.skillLevel}
-DURATION: ${params.durationDays} days × ${time.totalMinutes} min/day
+Per day: day, title, subtitle, skills[], teaser, estimatedMinutes, hasBossProject, contentLayer, videoStrategy, transferability, contentSource.
 
-OUTPUT: Generate SKELETON for ALL days. NO full content.
-This is a QUICK PREVIEW for the user to see the learning path before starting.
+${getContentStrategyGuidance()}
+Output valid JSON only.`;
 
-Boss projects on days: ${bossDays.join(', ')}
-
-For each day, decide:
-- contentLayer: foundation | language_core | framework | tool | project
-- videoStrategy: skip | optional | helpful | recommended
-- transferability: high | medium | low
-- contentSource: university | youtube | text | docs
-
-Output valid JSON only. Keep it concise.`;
-
-  const userPrompt = `Create ${params.durationDays}-day curriculum PREVIEW for "${params.skillName}".
-
-SKELETON ONLY for ALL days. Output format:
-
-{
+  const userPrompt = `{
   "title": "Curriculum title",
-  "description": "One sentence on what student will master",
-  "finalProject": "Brief capstone description",
+  "description": "What student will master",
+  "finalProject": "Capstone description",
   "skillType": "${params.skillType}",
-  "days": [
-    {
-      "day": 1,
-      "title": "Day 1: [Topic]",
-      "subtitle": "Compelling tagline",
-      "skills": ["Skill 1", "Skill 2", "Skill 3"],
-      "teaser": "What they'll build/learn today",
-      "estimatedMinutes": ${time.totalMinutes},
-      "hasBossProject": false,
-      "contentLayer": "foundation",
-      "videoStrategy": "skip",
-      "transferability": "high",
-      "contentSource": "text"
-    }
-  ],
-  "metadata": {
-    "skillName": "${params.skillName}",
-    "durationDays": ${params.durationDays},
-    "hoursPerDay": ${params.hoursPerDay},
-    "skillLevel": "${params.skillLevel}",
-    "suggestedLanguage": "${params.suggestedLanguage || 'English'}"
-  }
+  "days": [{"day":1,"title":"Day 1: Topic","subtitle":"","skills":[],"teaser":"","estimatedMinutes":${time.totalMinutes},"hasBossProject":false,"contentLayer":"","videoStrategy":"","transferability":"","contentSource":""}],
+  "metadata": {"skillName":"${params.skillName}","durationDays":${params.durationDays},"hoursPerDay":${params.hoursPerDay},"skillLevel":"${params.skillLevel}","suggestedLanguage":"${params.suggestedLanguage || ''}"}
 }
 
-Generate ALL ${params.durationDays} days. Boss projects on days: ${bossDays.join(', ')}.
-Decide contentLayer, videoStrategy, transferability, contentSource for each day.`;
+Generate ALL ${params.durationDays} days. hasBossProject=true for days: ${bossDays.join(', ')}.`;
 
   return { systemPrompt, userPrompt };
 }
@@ -524,80 +347,19 @@ For non-code skills: Use real-world examples instead of code.
 
 Output valid JSON only.`;
 
-  const userPrompt = `Generate complete Day ${params.dayNumber} content.
-
-Skeleton from overview:
-${JSON.stringify(params.skeleton, null, 2)}
-
-{
+  const userPrompt = `{
   "day": ${params.dayNumber},
   "title": "${params.dayTitle}",
   "subtitle": "${params.skeleton?.subtitle || ''}",
   "skills": ${JSON.stringify(params.skeleton?.skills || params.dayObjectives)},
   "estimatedMinutes": ${time.totalMinutes},
 
-  "prePrompt": {
-    "text": "Today's brain primer connecting to Day ${params.dayNumber - 1}",
-    "primeQuestions": ["Activation Q1?", "Activation Q2?"],
-    "yesterdayRecap": "${params.previousDayTitle ? `Quick recall: What was the key concept from ${params.previousDayTitle}?` : 'N/A'}"
-  },
-
-  "video": {
-    "watchPoints": ["Key concept to look for", "Important technique shown"]
-  },
+  "prePrompt": {"text": "", "primeQuestions": [], "yesterdayRecap": ""},
+  "video": {"watchPoints": []},
 
   "foundationCards": [
-    ${params.dayNumber === 1 ? `{
-      "id": "day${params.dayNumber}-card-1",
-      "concept": "Welcome: Today's Learning Journey",
-      "visual": "🚀",
-      "explanation": "Today we'll learn [main topic]. This is important because [why it matters]. By the end, you'll be able to [outcome].",
-      "microQuestion": {
-        "question": "Ready to dive in?",
-        "type": "gotit"
-      },
-      "order": 1
-    }` : `{
-      "id": "day${params.dayNumber}-card-1",
-      "concept": "Recap: ${params.previousDayTitle || 'Yesterday'}",
-      "visual": "🔄",
-      "explanation": "Yesterday we learned [key concept from ${params.previousDayTitle || 'previous day'}]. Today builds on that by [connection]. Quick mental check: can you recall the main idea?",
-      "microQuestion": {
-        "question": "Do you remember yesterday's key concept?",
-        "type": "gotit"
-      },
-      "order": 1
-    }`},
-    {
-      "id": "day${params.dayNumber}-card-2",
-      "concept": "Core concept title (max 60 chars)",
-      "visual": "💡",
-      "explanation": "2-3 sentence explanation of this atomic concept. Use simple language.",
-      "codeExample": "// Short code example (max 5 lines)\\nconst example = 'value';",
-      "microQuestion": {
-        "question": "Quick check about this concept?",
-        "type": "understanding",
-        "options": ["Correct answer", "Plausible wrong 1", "Plausible wrong 2"],
-        "correctIndex": 0,
-        "explanation": "Why this is correct"
-      },
-      "order": 2
-    },
-    {
-      "id": "day${params.dayNumber}-card-3",
-      "concept": "Another core concept",
-      "visual": "🔧",
-      "explanation": "Explanation building on previous card.",
-      "codeExample": "// Example code",
-      "microQuestion": {
-        "question": "Understanding check?",
-        "type": "understanding",
-        "options": ["Option A", "Option B", "Option C"],
-        "correctIndex": 0,
-        "explanation": "Explanation"
-      },
-      "order": 3
-    }
+    {"id": "day${params.dayNumber}-card-1", "concept": "", "visual": "", "explanation": "", "microQuestion": {"question": "", "type": "gotit"}, "order": 1},
+    {"id": "day${params.dayNumber}-card-2", "concept": "", "visual": "", "explanation": "", "codeExample": "", "microQuestion": {"question": "", "type": "understanding", "options": [], "correctIndex": 0, "explanation": ""}, "order": 2}
   ],
 
   "task1": {

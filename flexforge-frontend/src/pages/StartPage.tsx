@@ -18,7 +18,7 @@ import {
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
-import { Button, Card, GeneratingScreen } from '@/components/common';
+import { Button, Card, GeneratingScreen, QuotaExceededModal } from '@/components/common';
 import { SkillLevel } from '@/types';
 import { sessionService, PreviewResponse } from '@/services/sessionService';
 
@@ -349,6 +349,20 @@ export function StartPage() {
   const [phase, setPhase] = useState<PagePhase>('form');
   const [previewData, setPreviewData] = useState<PreviewResponse['preview'] | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [showQuotaModal, setShowQuotaModal] = useState(false);
+  const [quotaErrorMessage, setQuotaErrorMessage] = useState<string | undefined>();
+
+  // Helper to check if error is a quota error
+  const isQuotaError = (error: any): boolean => {
+    const status = error?.response?.status;
+    const message = error?.response?.data?.message?.toLowerCase() || '';
+    return status === 403 && (
+      message.includes('quota') ||
+      message.includes('exceeded') ||
+      message.includes('limit') ||
+      message.includes('upgrade')
+    );
+  };
 
   // Phase 1: Generate preview (skeleton only)
   const handleGeneratePreview = async (e: React.FormEvent) => {
@@ -375,7 +389,12 @@ export function StartPage() {
       setPhase('preview');
     } catch (err: any) {
       setPhase('form');
-      setPreviewError(err.response?.data?.message || err.message || 'Failed to generate preview');
+      if (isQuotaError(err)) {
+        setQuotaErrorMessage(err.response?.data?.message);
+        setShowQuotaModal(true);
+      } else {
+        setPreviewError(err.response?.data?.message || err.message || 'Failed to generate preview');
+      }
       if (err.response?.data?.warnings) {
         setWarnings(err.response.data.warnings);
       }
@@ -400,7 +419,12 @@ export function StartPage() {
 
       navigate('/today');
     } catch (err: any) {
-      setPreviewError(err.response?.data?.message || err.message || 'Failed to start session');
+      if (isQuotaError(err)) {
+        setQuotaErrorMessage(err.response?.data?.message);
+        setShowQuotaModal(true);
+      } else {
+        setPreviewError(err.response?.data?.message || err.message || 'Failed to start session');
+      }
     }
   };
 
@@ -592,6 +616,13 @@ export function StartPage() {
           </Card>
         </motion.div>
       </div>
+
+      {/* Quota Exceeded Modal */}
+      <QuotaExceededModal
+        isOpen={showQuotaModal}
+        onClose={() => setShowQuotaModal(false)}
+        message={quotaErrorMessage}
+      />
     </div>
   );
 }

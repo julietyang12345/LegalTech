@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
 import { User, QuotaTier } from '../../database/entities/user.entity';
 import { SessionStatus } from '../../database/entities/session.entity';
@@ -7,10 +8,23 @@ import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
 export class UserService {
+  private readonly unlimitedQuotaEmail: string | undefined;
+
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
-  ) {}
+    private configService: ConfigService,
+  ) {
+    this.unlimitedQuotaEmail = this.configService.get<string>('UNLIMITED_QUOTA_EMAIL');
+  }
+
+  /**
+   * Check if email has unlimited quota access
+   */
+  private hasUnlimitedAccess(email: string): boolean {
+    if (!this.unlimitedQuotaEmail) return false;
+    return email.toLowerCase() === this.unlimitedQuotaEmail.toLowerCase();
+  }
 
   /**
    * Create new user
@@ -107,11 +121,11 @@ export class UserService {
     user.quotaTier = newTier;
 
     // Set feature access based on tier
-    if (newTier === QuotaTier.PRO || newTier === QuotaTier.PREMIUM) {
+    if (newTier === QuotaTier.PRO || newTier === QuotaTier.PREMIUM || newTier === QuotaTier.UNLIMITED) {
       user.hasStepByStepAccess = true;
     }
 
-    if (newTier === QuotaTier.PREMIUM) {
+    if (newTier === QuotaTier.PREMIUM || newTier === QuotaTier.UNLIMITED) {
       user.hasCodeReviewAccess = true;
       user.hasCareerPathAccess = true;
     }
@@ -178,6 +192,17 @@ export class UserService {
       user.codeReviewsThisMonth = 0;
       user.quotaResetDate = now;
       await this.usersRepository.save(user);
+    }
+
+    // UNLIMITED tier or env-configured email bypasses all quota checks
+    if (user.quotaTier === QuotaTier.UNLIMITED || this.hasUnlimitedAccess(user.email)) {
+      return {
+        hasQuota: true,
+        tokensRemaining: Infinity,
+        curriculaRemaining: Infinity,
+        codeReviewsRemaining: Infinity,
+        tier: QuotaTier.UNLIMITED,
+      };
     }
 
     // Quota limits based on tier
@@ -385,6 +410,23 @@ export class UserService {
           monthlyQuota: {
             curricula: 100,
             codeReviews: 8,
+          },
+        },
+      },
+      [QuotaTier.UNLIMITED]: {
+        tier: QuotaTier.UNLIMITED,
+        features: {
+          videoTimestamps: 'All days (unlimited)',
+          examplesPerConcept: 10,
+          practiceProjects: 'All unlocked',
+          stepByStepGuides: true,
+          personalizedReviews: true,
+          bossProjectAdaptation: true,
+          codeReview: true,
+          careerPath: true,
+          monthlyQuota: {
+            curricula: Infinity,
+            codeReviews: Infinity,
           },
         },
       },

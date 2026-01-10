@@ -13,6 +13,7 @@ export enum QuotaTier {
   FREE = 'FREE',
   PRO = 'PRO',
   PREMIUM = 'PREMIUM',
+  UNLIMITED = 'UNLIMITED',
 }
 
 @Entity('users')
@@ -118,10 +119,14 @@ export class User {
 
   // Helper methods
   hasTierAccess(requiredTier: QuotaTier): boolean {
+    // UNLIMITED tier has access to everything
+    if (this.quotaTier === QuotaTier.UNLIMITED) return true;
+
     const tierLevels = {
       [QuotaTier.FREE]: 1,
       [QuotaTier.PRO]: 2,
       [QuotaTier.PREMIUM]: 3,
+      [QuotaTier.UNLIMITED]: 4,
     };
 
     return tierLevels[this.quotaTier] >= tierLevels[requiredTier];
@@ -145,6 +150,12 @@ export class User {
         return {
           curricula: 100,
           aiTokens: 2000000,
+          aiTutorQuestions: Infinity,
+        };
+      case QuotaTier.UNLIMITED:
+        return {
+          curricula: Infinity,
+          aiTokens: Infinity,
           aiTutorQuestions: Infinity,
         };
       default:
