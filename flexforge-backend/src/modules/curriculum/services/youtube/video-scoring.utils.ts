@@ -7,6 +7,7 @@ import {
   CONTENT_SIGNALS,
   getChannelPolicy,
 } from './youtube-policy';
+import { extractConceptWords } from '../../utils/shared.utils';
 
 // ============================================
 // UNIFIED PROMOTIONAL SIGNALS
@@ -162,14 +163,6 @@ export const COGNITIVE_SIGNALS = {
 };
 
 // ============================================
-// MINIMUM CONCEPT MATCH THRESHOLD
-// ============================================
-
-// If best video scores below this, use AI explanation instead of showing a poor match
-// 60 = at least 1 word match + some coverage, avoids showing generic videos
-export const MIN_CONCEPT_MATCH_THRESHOLD = 60;
-
-// ============================================
 // ADAPTIVE MODALITY - VIDEO VS AI DECISION
 // ============================================
 
@@ -244,10 +237,10 @@ export function computeVideoConfidence(
 /**
  * Determine adaptive modality - should we show video, AI, or both?
  *
- * Decision logic:
- * - High confidence (70+): Video as default, AI as backup
- * - Medium confidence (50-70): Both options, video default
- * - Low confidence (35-50): Both options, AI default
+ * Decision logic (prefers AI reading slightly):
+ * - High confidence (75+): Video as default, AI as backup
+ * - Medium confidence (60-75): Both options, video default
+ * - Low confidence (35-60): Both options, AI default
  * - Very low (<35): AI only, video hidden unless requested
  */
 export function determineAdaptiveModality(
@@ -285,7 +278,7 @@ export function determineAdaptiveModality(
   }
 
   // High confidence - video is great
-  if (videoConfidence >= 70) {
+  if (videoConfidence >= 75) {
     return {
       defaultMode: 'video',
       videoConfidence,
@@ -299,7 +292,7 @@ export function determineAdaptiveModality(
   }
 
   // Medium-high confidence - video is good
-  if (videoConfidence >= 50) {
+  if (videoConfidence >= 60) {
     const hasWarning = promoVerdict === 'allow_with_warning' || (marketingPenalty && marketingPenalty > 10);
     return {
       defaultMode: 'video',
@@ -783,8 +776,7 @@ export function scoreConceptMatch(video: ScoringVideo, context: ScoringContext):
   }
 
   // Concept words analysis with coverage tracking
-  // Filter only single-letter words, keep 2+ chars (ai, ml, go, etc.)
-  const conceptWords = conceptLower.split(' ').filter(w => w.length > 1);
+  const conceptWords = extractConceptWords(context.concept);
   let wordsFoundInTitle = 0;
 
   for (const word of conceptWords) {

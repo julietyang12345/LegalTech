@@ -17,6 +17,7 @@ import {
   DayDetailParams,
   BossDetailParams,
 } from './prompts/curriculum-prompt';
+import { formatTime, cleanSearchQuery } from './utils/shared.utils';
 
 export interface CurriculumResult {
   curriculum: any; // Overview curriculum (skeleton)
@@ -628,8 +629,8 @@ export class CurriculumService {
         this.logger.log(`📝 Day ${dayNumber}: AI explanation as default (${adaptiveModality?.reasonShort || 'confidence low'})`);
 
         dayContent.video = {
-          // AI explanation as primary
-          useAiExplanation: true,
+          // AI explanation as primary (derived from adaptiveModality)
+          useAiExplanation: defaultMode === 'ai',
           concept: contentBasedConcept,
           title: `Understanding ${contentBasedConcept}`,
           explanation: aiExplanation,
@@ -669,10 +670,10 @@ export class CurriculumService {
           channelName: alt.video.channelName,
           duration: alt.video.duration,
           startTime: alt.watchPlan?.primarySegment
-            ? this.secondsToTime(alt.watchPlan.primarySegment.startSeconds)
+            ? formatTime(alt.watchPlan.primarySegment.startSeconds)
             : undefined,
           endTime: alt.watchPlan?.primarySegment
-            ? this.secondsToTime(alt.watchPlan.primarySegment.endSeconds)
+            ? formatTime(alt.watchPlan.primarySegment.endSeconds)
             : undefined,
           estimatedMinutes: alt.watchPlan?.primarySegment
             ? Math.ceil((alt.watchPlan.primarySegment.endSeconds - alt.watchPlan.primarySegment.startSeconds) / 60)
@@ -688,13 +689,14 @@ export class CurriculumService {
 
         dayContent.video = {
           ...dayContent.video,
+          useAiExplanation: false, // Video is primary mode
           url: `https://www.youtube.com/watch?v=${video.videoId}`,
           videoId: video.videoId,
           title: video.title,
           channelName: video.channelName,
           duration: video.duration,
-          startTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.startSeconds) : undefined,
-          endTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.endSeconds) : undefined,
+          startTime: watchPlan?.primarySegment ? formatTime(watchPlan.primarySegment.startSeconds) : undefined,
+          endTime: watchPlan?.primarySegment ? formatTime(watchPlan.primarySegment.endSeconds) : undefined,
           watchInstructions: watchPlan?.primarySegment?.description || `Watch this video to learn about ${dayContent.title}`,
           // Only use keyTopics from actual video (chapters/AI analysis), NOT fallback to generic watchPoints
           keyTopics: watchPlan?.keyTopics?.length ? watchPlan.keyTopics : undefined,
@@ -727,7 +729,7 @@ export class CurriculumService {
 
       // No video found - default to AI explanation
       dayContent.video = {
-        useAiExplanation: true,
+        useAiExplanation: true, // No video available, always AI
         concept: contentBasedConcept,
         title: `Understanding ${contentBasedConcept}`,
         explanation: aiExplanation,
@@ -744,7 +746,7 @@ export class CurriculumService {
     } else if (dayContent.video && !videoResult) {
       // Video search was skipped (e.g., text/docs content source)
       dayContent.video = {
-        useAiExplanation: true,
+        useAiExplanation: true, // No video searched, always AI
         concept: contentBasedConcept,
         title: `Understanding ${contentBasedConcept}`,
         explanation: aiExplanation,
@@ -995,15 +997,6 @@ export class CurriculumService {
     return fallbackSections.length > 0
       ? fallbackSections.join('\n\n')
       : `Learn about ${concept} through the practice exercises below.`;
-  }
-
-  /**
-   * Convert seconds to MM:SS format
-   */
-  private secondsToTime(seconds: number): string {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
   }
 
   /**

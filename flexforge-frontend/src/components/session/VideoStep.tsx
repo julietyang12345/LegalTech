@@ -152,12 +152,6 @@ function VideoCard({
           </div>
         )}
 
-        {/* Watch instructions (main video only) */}
-        {!isAlternative && video?.watchInstructions && (
-          <div className="p-3 bg-blue-50 rounded-lg mt-4">
-            <p className="text-sm text-blue-800">{video.watchInstructions}</p>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -278,11 +272,6 @@ function AIExplanation({
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <Video className="w-4 h-4" />
               <span>Video available: {video.backupVideo.title}</span>
-              {video.backupVideo.matchPercent && (
-                <span className="text-xs text-gray-400">
-                  ({video.backupVideo.matchPercent}% match)
-                </span>
-              )}
             </div>
             {onSwitchToVideo && (
               <button
@@ -305,13 +294,11 @@ function ModeToggle({
   onModeChange,
   showVideoOption,
   showAiOption,
-  videoConfidence,
 }: {
   currentMode: ContentMode;
   onModeChange: (mode: ContentMode) => void;
   showVideoOption: boolean;
   showAiOption: boolean;
-  videoConfidence?: number;
 }) {
   // Don't show toggle if only one option available
   if (!showVideoOption && !showAiOption) return null;
@@ -319,31 +306,31 @@ function ModeToggle({
   if (currentMode === 'ai' && !showVideoOption) return null;
 
   return (
-    <div className="flex items-center justify-center gap-4 py-2">
-      <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-lg">
+    <div className="flex items-center justify-center mb-6">
+      <div className="flex items-center gap-2 p-1.5 bg-gray-100 rounded-2xl shadow-sm">
         <button
           onClick={() => onModeChange('video')}
           disabled={!showVideoOption && currentMode !== 'video'}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+          className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
             currentMode === 'video'
-              ? 'bg-white text-gray-900 shadow-sm'
-              : 'text-gray-500 hover:text-gray-700'
+              ? 'bg-white text-gray-900 shadow-md'
+              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
           } ${!showVideoOption && currentMode !== 'video' ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
-          <Video className="w-4 h-4" />
-          Video
+          <Video className="w-5 h-5" />
+          Watch video
         </button>
         <button
           onClick={() => onModeChange('ai')}
           disabled={!showAiOption && currentMode !== 'ai'}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+          className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
             currentMode === 'ai'
-              ? 'bg-white text-gray-900 shadow-sm'
-              : 'text-gray-500 hover:text-gray-700'
+              ? 'bg-white text-gray-900 shadow-md'
+              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
           } ${!showAiOption && currentMode !== 'ai' ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
-          <BookOpen className="w-4 h-4" />
-          Reading
+          <BookOpen className="w-5 h-5" />
+          Read AI summary
         </button>
       </div>
     </div>
@@ -370,7 +357,6 @@ export function VideoStep({ day, session }: VideoStepProps) {
   // Determine what options are available
   const showVideoOption = video?.videoAvailable !== false && (video?.showVideoOption || video?.videoId || video?.backupVideo);
   const showAiOption = video?.showAiOption !== false && (video?.aiExplanation || video?.explanation);
-  const videoConfidence = adaptiveModality?.videoConfidence ?? video?.matchPercent;
 
   // Support both single alternative and array of alternatives
   const alternatives: VideoAlternative[] = video?.alternatives || (video?.alternative ? [video.alternative] : []);
@@ -461,9 +447,9 @@ export function VideoStep({ day, session }: VideoStepProps) {
 
   // Get button text based on remaining options
   const getTryDifferentText = (): string => {
-    if (isSearchingNew) return 'Searching for new video...';
-    if (remainingPreScreened > 0) return 'Not quite right? Try a different one';
-    return 'Find another video (AI search)';
+    if (isSearchingNew) return 'Searching...';
+    if (remainingPreScreened > 0) return 'Try another video';
+    return 'Search for another';
   };
 
   // Dynamic title/subtitle based on mode
@@ -498,7 +484,6 @@ export function VideoStep({ day, session }: VideoStepProps) {
           onModeChange={handleModeChange}
           showVideoOption={!!showVideoOption}
           showAiOption={!!showAiOption}
-          videoConfidence={videoConfidence}
         />
       )}
 
@@ -516,24 +501,6 @@ export function VideoStep({ day, session }: VideoStepProps) {
         <>
           {/* Main Video Card */}
           <Card className="overflow-hidden">
-            {/* Recommendation badge */}
-            {(video?.matchPercent || currentVideo?.matchPercent) && (
-              <div className="px-6 py-3 bg-gradient-to-r from-brand-50 to-brand-100 border-b border-brand-200 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Star className="w-4 h-4 text-brand-500 fill-current" />
-                  <span className="text-sm font-medium text-brand-700">
-                    {isOnMainVideo ? 'Recommended' :
-                     activeVideoIndex <= alternatives.length
-                       ? ((alternatives[activeVideoIndex - 1] as VideoAlternative)?.differentiator || 'Alternative')
-                       : 'AI Selected'}
-                  </span>
-                </div>
-                <span className="text-xs text-brand-600 bg-brand-200 px-2 py-0.5 rounded-full">
-                  {currentVideo?.matchPercent || video?.matchPercent}% match
-                </span>
-              </div>
-            )}
-
             <VideoCard
               video={currentVideo}
               fallbackTitle={day.title}
@@ -583,44 +550,34 @@ export function VideoStep({ day, session }: VideoStepProps) {
               </div>
             )}
 
-            {/* AI explanation available hint */}
-            {showAiOption && video?.aiExplanation && (
-              <div className="px-6 pb-4 border-t border-gray-100 pt-4">
+            {/* Actions footer */}
+            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+              <button
+                onClick={handleTryDifferent}
+                disabled={isSearchingNew}
+                className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700
+                           transition-colors disabled:opacity-50"
+              >
+                {isSearchingNew ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+                Try different video
+              </button>
+
+              {showAiOption && (
                 <button
-                  onClick={() => setCurrentMode('ai')}
-                  className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700"
+                  onClick={() => handleModeChange('ai')}
+                  className="flex items-center gap-2 text-sm text-purple-600 hover:text-purple-700 transition-colors"
                 >
                   <BookOpen className="w-4 h-4" />
-                  Prefer reading? Switch to AI explanation
+                  Read AI summary instead
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </Card>
         </>
-      )}
-
-      {/* Try a different one - only in video mode */}
-      {currentMode === 'video' && (
-        <div className="flex justify-center">
-          <button
-            onClick={handleTryDifferent}
-            disabled={isSearchingNew}
-            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-500 hover:text-gray-700
-                       hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSearchingNew ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Searching for new video...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="w-4 h-4" />
-                {getTryDifferentText()}
-              </>
-            )}
-          </button>
-        </div>
       )}
 
       {/* Mark as completed */}

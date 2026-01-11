@@ -14,7 +14,7 @@ import {
 import {
   SCORING_WEIGHTS,
   MARKETING_WEIGHTS,
-  MIN_CONCEPT_MATCH_THRESHOLD,
+  PROMO_SIGNALS,
   scoreMarketingPenalty,
   scoreChannelTrust,
   scoreConceptMatch,
@@ -30,6 +30,13 @@ import {
   type PromoAnalysisResult,
   type AdaptiveModalityResult,
 } from './video-scoring.utils';
+import {
+  parseAiJson,
+  formatTime,
+  parseDurationString,
+  extractConceptWords,
+  LRUCache,
+} from '../../utils/shared.utils';
 
 // ============================================
 // TYPES
@@ -387,7 +394,7 @@ export class VideoMatchingService {
             watchPlan.primarySegment.endSeconds = skipStart;
             watchPlan.watchInstructions = watchPlan.watchInstructions.replace(
               /→ \d+:\d+/,
-              `→ ${this.formatTime(skipStart)}`,
+              `→ ${formatTime(skipStart)}`,
             );
           }
         }
@@ -523,7 +530,7 @@ export class VideoMatchingService {
           description: '', // Will be enriched
           channelId: item.channelId || '',
           channelName: item.channelTitle || '',
-          duration: this.parseDurationString(item.length?.simpleText || '0:00'),
+          duration: parseDurationString(item.length?.simpleText || '0:00'),
           thumbnailUrl: item.thumbnail?.thumbnails?.[0]?.url,
           hasChapters: false, // Will be enriched
           hasRepository: false, // Will be enriched
@@ -582,8 +589,7 @@ export class VideoMatchingService {
     }
 
     // Check concept words with variations (js/javascript, etc.)
-    const conceptWords = conceptLower.split(' ').filter(w => w.length > 1);
-    for (const word of conceptWords) {
+    for (const word of extractConceptWords(context.concept)) {
       if (textContainsWord(titleLower, word)) {
         score += 8;
       }
@@ -688,7 +694,7 @@ export class VideoMatchingService {
       let chapterMatch;
       while ((chapterMatch = chapterRegex.exec(candidate.description)) !== null) {
         descChapters.push({
-          startSeconds: this.parseDurationString(chapterMatch[1]),
+          startSeconds: parseDurationString(chapterMatch[1]),
           title: chapterMatch[2].trim(),
         });
       }
@@ -1078,12 +1084,9 @@ export class VideoMatchingService {
    * Prevents salesy long videos from reaching top candidates
    */
   private estimateUsableRatio(video: VideoCandidate, concept: string): number {
-    const promoWords = [
-      'course', 'community', 'cohort', 'accelerator', 'sponsor', 'discount',
-      'trial', 'sign up', 'newsletter', 'enroll', 'membership', 'premium',
-      'patreon', 'subscribe', 'outro', 'conclusion',
-    ];
-    const conceptWords = concept.toLowerCase().split(' ').filter(w => w.length > 2);
+    // Use centralized promo signals (monetization + selfPromo)
+    const promoWords = [...PROMO_SIGNALS.monetization, ...PROMO_SIGNALS.selfPromo, 'outro', 'conclusion'];
+    const conceptWords = extractConceptWords(concept);
 
     // If chapters exist, count chapters that match concept AND aren't promo
     if (video.chapters && video.chapters.length >= 3) {
@@ -1222,7 +1225,7 @@ export class VideoMatchingService {
             .join(' ');
           if (windowTranscript.length > 50) {
             transcriptSamples.push(
-              `[${this.formatTime(window.start)}-${this.formatTime(window.end)}]: ${windowTranscript.slice(0, 500)}`,
+              `[${formatTime(window.start)}-${formatTime(window.end)}]: ${windowTranscript.slice(0, 500)}`,
             );
           }
         }
@@ -1270,7 +1273,7 @@ Answer with JSON only:
         const outputTokens = Math.ceil(text.length / 4);
         totalTokens += inputTokens + outputTokens;
 
-        const analysis = this.parseGeminiJson(text);
+        const analysis = parseAiJson(text);
         if (!analysis || !this.isValidVerificationResponse(analysis)) {
           continue; // Skip if JSON parsing or validation fails
         }
@@ -1426,7 +1429,7 @@ Answer with JSON only:
       },
       skipSections,
       watchUrl: `https://www.youtube.com/watch?v=${video.videoId}&t=${startSeconds}`,
-      watchInstructions: `Watch ${this.formatTime(startSeconds)} → ${this.formatTime(endSeconds)} (${Math.round((endSeconds - startSeconds) / 60)} min). ${description}`,
+      watchInstructions: `Watch ${formatTime(startSeconds)} → ${formatTime(endSeconds)} (${Math.round((endSeconds - startSeconds) / 60)} min). ${description}`,
       keyTopics,
     };
   }
@@ -1455,7 +1458,7 @@ Answer with JSON only:
     const sampledTranscript = transcript
       .filter((_, i) => i % step === 0)
       .slice(0, sampleSize)
-      .map(t => `[${this.formatTime(t.start)}] ${t.text}`)
+      .map(t => `[${formatTime(t.start)}] ${t.text}`)
       .join('\n');
 
     const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
@@ -1484,7 +1487,7 @@ Return JSON only:
     const response = await result.response;
     const text = response.text();
 
-    const analysis = this.parseGeminiJson(text);
+    const analysis = parseAiJson(text);
     if (!analysis || !this.isValidWatchPlanResponse(analysis)) {
       return this.generateSimpleWatchPlan(video, userSlotSeconds);
     }
@@ -1506,7 +1509,7 @@ Return JSON only:
       },
       skipSections,
       watchUrl: `https://www.youtube.com/watch?v=${video.videoId}&t=${analysis.start_seconds}`,
-      watchInstructions: `Watch ${this.formatTime(analysis.start_seconds)} → ${this.formatTime(analysis.end_seconds)} (${Math.round((analysis.end_seconds - analysis.start_seconds) / 60)} min). ${analysis.description}`,
+      watchInstructions: `Watch ${formatTime(analysis.start_seconds)} → ${formatTime(analysis.end_seconds)} (${Math.round((analysis.end_seconds - analysis.start_seconds) / 60)} min). ${analysis.description}`,
       keyTopics: analysis.key_topics || [],
       summary: analysis.summary || '',
     };
@@ -1533,7 +1536,7 @@ Return JSON only:
         ? [{ start: 0, end: startSeconds, reason: 'Introduction' }]
         : [],
       watchUrl: `https://www.youtube.com/watch?v=${video.videoId}${startSeconds > 0 ? `&t=${startSeconds}` : ''}`,
-      watchInstructions: `Watch ${this.formatTime(startSeconds)} → ${this.formatTime(endSeconds)} (${Math.round((endSeconds - startSeconds) / 60)} min)`,
+      watchInstructions: `Watch ${formatTime(startSeconds)} → ${formatTime(endSeconds)} (${Math.round((endSeconds - startSeconds) / 60)} min)`,
       keyTopics: [],  // No AI/chapters available to extract topics
     };
   }
@@ -2013,48 +2016,6 @@ Return JSON only:
     return transcript;
   }
 
-  /**
-   * Parse JSON from Gemini response with repair fallback
-   * Handles code fences, trailing commas, and text around JSON
-   */
-  private parseGeminiJson(text: string): any {
-    try {
-      // Step 1: Strip code fences
-      let cleaned = text.replace(/```json\n?/g, '').replace(/```\n?$/g, '').trim();
-
-      // Step 2: Try direct parse
-      let parsed: any;
-      try {
-        parsed = JSON.parse(cleaned);
-      } catch {
-        // Step 3: Extract JSON object (find first { to last })
-        const firstBrace = cleaned.indexOf('{');
-        const lastBrace = cleaned.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace > firstBrace) {
-          cleaned = cleaned.slice(firstBrace, lastBrace + 1);
-        }
-
-        // Step 4: Fix trailing commas
-        cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
-
-        // Step 5: Try parse again
-        try {
-          parsed = JSON.parse(cleaned);
-        } catch {
-          return null;
-        }
-      }
-
-      // Must be an object
-      if (!parsed || typeof parsed !== 'object') {
-        return null;
-      }
-
-      return parsed;
-    } catch {
-      return null;
-    }
-  }
 
   /**
    * Validate verification response schema
@@ -2134,25 +2095,4 @@ Return JSON only:
     }
   }
 
-  /**
-   * Parse duration string like "10:30" to seconds
-   */
-  private parseDurationString(duration: string): number {
-    const parts = duration.split(':').map(Number);
-    if (parts.length === 2) {
-      return parts[0] * 60 + parts[1];
-    } else if (parts.length === 3) {
-      return parts[0] * 3600 + parts[1] * 60 + parts[2];
-    }
-    return 0;
-  }
-
-  /**
-   * Format seconds to MM:SS
-   */
-  private formatTime(seconds: number): string {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  }
 }
