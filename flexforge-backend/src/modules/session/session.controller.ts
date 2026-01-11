@@ -163,6 +163,56 @@ export class SessionController {
   }
 
   /**
+   * POST /api/v1/sessions/:id/days/:dayNumber/start-core
+   * Start a day - CORE content only (fast initial load)
+   * Returns: prePrompt, video, foundationCards, task1
+   */
+  @Post(':id/days/:dayNumber/start-core')
+  async startDayCore(
+    @Request() req,
+    @Param('id') id: string,
+    @Param('dayNumber') dayNumber: string,
+  ) {
+    const result = await this.sessionService.startDayCore(
+      id,
+      req.user.id,
+      parseInt(dayNumber, 10),
+    );
+
+    return {
+      message: `Day ${dayNumber} core content loaded`,
+      coreContent: result.coreContent,
+      tokensUsed: result.tokensUsed,
+      fromCache: result.fromCache,
+    };
+  }
+
+  /**
+   * POST /api/v1/sessions/:id/days/:dayNumber/load-deferred
+   * Load deferred content in background
+   * Returns: task2, practiceProject, reflection, skipTest
+   */
+  @Post(':id/days/:dayNumber/load-deferred')
+  async loadDayDeferred(
+    @Request() req,
+    @Param('id') id: string,
+    @Param('dayNumber') dayNumber: string,
+  ) {
+    const result = await this.sessionService.loadDayDeferred(
+      id,
+      req.user.id,
+      parseInt(dayNumber, 10),
+    );
+
+    return {
+      message: `Day ${dayNumber} deferred content loaded`,
+      deferredContent: result.deferredContent,
+      tokensUsed: result.tokensUsed,
+      fromCache: result.fromCache,
+    };
+  }
+
+  /**
    * POST /api/v1/sessions/:id/days/:dayNumber/skip-test
    * Submit skip test answers to skip a day
    * Multiple choice - must get all correct to skip

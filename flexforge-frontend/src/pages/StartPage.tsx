@@ -22,12 +22,12 @@ import { Button, Card, GeneratingScreen, QuotaExceededModal } from '@/components
 import { SkillLevel } from '@/types';
 import { sessionService, PreviewResponse } from '@/services/sessionService';
 
-// Loading steps for PREVIEW generation (~15-20 seconds)
+// Loading steps for PREVIEW generation (~20-25 seconds)
 const PREVIEW_LOADING_STEPS = [
-  { icon: Search, text: 'Analyzing your skill...', duration: 4000 },
-  { icon: Brain, text: 'Designing learning path...', duration: 6000 },
-  { icon: BookOpen, text: 'Planning curriculum...', duration: 5000 },
-  { icon: CheckCircle, text: 'Creating your preview...', duration: 3000 },
+  { icon: Search, text: 'Analyzing your skill...', duration: 5000 },
+  { icon: Brain, text: 'Designing learning path...', duration: 7500 },
+  { icon: BookOpen, text: 'Planning curriculum...', duration: 6500 },
+  { icon: CheckCircle, text: 'Creating your preview...', duration: 4000 },
 ];
 
 // Preview Screen Component - shows curriculum timeline before user commits

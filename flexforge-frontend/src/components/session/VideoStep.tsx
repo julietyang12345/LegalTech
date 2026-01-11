@@ -162,12 +162,30 @@ function AIExplanation({
   video,
   onSwitchToVideo,
   showVideoOption,
+  foundationCards,
 }: {
   video: VideoMatch;
   onSwitchToVideo?: () => void;
   showVideoOption: boolean;
+  foundationCards?: Array<{ concept: string; explanation: string }>;
 }) {
-  const explanation = video.explanation || video.aiExplanation || '';
+  // Generate explanation from foundationCards if not available in video
+  const getExplanation = (): string => {
+    if (video.explanation) return video.explanation;
+    if (video.aiExplanation) return video.aiExplanation;
+
+    // Fallback: generate from foundationCards
+    if (foundationCards && foundationCards.length > 0) {
+      return foundationCards
+        .filter(card => card.concept && card.explanation)
+        .map(card => `**${card.concept}**\n${card.explanation}`)
+        .join('\n\n');
+    }
+
+    return '';
+  };
+
+  const explanation = getExplanation();
   const concept = video.concept || video.title || 'this concept';
   const adaptiveInfo = video.adaptiveModality;
 
@@ -349,14 +367,19 @@ export function VideoStep({ day, session }: VideoStepProps) {
 
   const video = day.video;
 
-  // Adaptive modality state
-  const adaptiveModality = video?.adaptiveModality;
-  const defaultMode = adaptiveModality?.defaultMode || (video?.useAiExplanation ? 'ai' : 'video');
-  const [currentMode, setCurrentMode] = useState<ContentMode>(defaultMode);
-
   // Determine what options are available
-  const showVideoOption = video?.videoAvailable !== false && (video?.showVideoOption || video?.videoId || video?.backupVideo);
-  const showAiOption = video?.showAiOption !== false && (video?.aiExplanation || video?.explanation);
+  const hasActualVideo = !!(video?.videoId || video?.backupVideo?.videoId);
+  const showVideoOption = hasActualVideo && video?.videoAvailable !== false;
+
+  // Check for AI explanation from multiple sources (for backwards compatibility)
+  const hasAiContent = !!(video?.aiExplanation || video?.explanation ||
+    (day.foundationCards && day.foundationCards.length > 0));
+  const showAiOption = hasAiContent;
+
+  // Adaptive modality state - default to AI if no video found
+  const adaptiveModality = video?.adaptiveModality;
+  const defaultMode = !hasActualVideo ? 'ai' : (adaptiveModality?.defaultMode || (video?.useAiExplanation ? 'ai' : 'video'));
+  const [currentMode, setCurrentMode] = useState<ContentMode>(defaultMode);
 
   // Support both single alternative and array of alternatives
   const alternatives: VideoAlternative[] = video?.alternatives || (video?.alternative ? [video.alternative] : []);
@@ -488,12 +511,37 @@ export function VideoStep({ day, session }: VideoStepProps) {
       )}
 
       {/* AI Explanation Mode */}
-      {currentMode === 'ai' && video && (
-        <AIExplanation
-          video={video}
-          onSwitchToVideo={showVideoOption ? handleSwitchToVideo : undefined}
-          showVideoOption={!!showVideoOption}
-        />
+      {currentMode === 'ai' && (
+        showAiOption && video ? (
+          <AIExplanation
+            video={video}
+            onSwitchToVideo={showVideoOption ? handleSwitchToVideo : undefined}
+            showVideoOption={!!showVideoOption}
+            foundationCards={day.foundationCards}
+          />
+        ) : (
+          // Fallback when no AI explanation available
+          <Card className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-purple-100 rounded-xl">
+                <BookOpen className="w-6 h-6 text-purple-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  {day.title}
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  Today you'll learn about {day.objectives?.join(', ') || 'the key concepts'}.
+                  Dive into the foundation cards below to master these concepts step by step.
+                </p>
+                <div className="flex items-center gap-2 text-sm text-purple-600">
+                  <Sparkles className="w-4 h-4" />
+                  <span>Continue to the interactive learning cards</span>
+                </div>
+              </div>
+            </div>
+          </Card>
+        )
       )}
 
       {/* Video Mode */}

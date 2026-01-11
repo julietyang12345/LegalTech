@@ -17,8 +17,7 @@ import { ActiveRecallStep } from '@/components/session/ActiveRecallStep';
 import { MemoryBridgeStep } from '@/components/session/MemoryBridgeStep';
 import { ConceptCheckStep } from '@/components/session/ConceptCheckStep';
 import { TaskStep } from '@/components/session/TaskStep';
-import { QuizTaskStep } from '@/components/session/QuizTaskStep';
-import { FillBlankTaskStep } from '@/components/session/FillBlankTaskStep';
+import { QuizTaskStep, FillBlankTaskStep } from '@/components/session/AlternativeTaskSteps';
 import { BossMilestoneStep } from '@/components/session/BossMilestoneStep';
 import { ReflectionStep } from '@/components/session/ReflectionStep';
 
@@ -309,6 +308,7 @@ export function SessionPage() {
     startDay,
     setCurrentStep,
     completeStep,
+    isDeferredLoading,
   } = useSessionStore();
 
   const { celebrate, addSystemMessage } = useCompanionStore();
@@ -396,6 +396,21 @@ export function SessionPage() {
             <div className="h-64 bg-gray-200 rounded-xl" />
             <div className="h-12 bg-gray-200 rounded-lg" />
           </div>
+        </div>
+      </FocusModeLayout>
+    );
+  }
+
+  // Check if deferred content needed but still loading
+  const needsDeferredContent = currentStep === 'reflection';
+  const deferredContentMissing = needsDeferredContent && !currentDay.reflection;
+
+  if (deferredContentMissing && isDeferredLoading) {
+    return (
+      <FocusModeLayout>
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
+          <p className="text-gray-600">Loading reflection questions...</p>
         </div>
       </FocusModeLayout>
     );

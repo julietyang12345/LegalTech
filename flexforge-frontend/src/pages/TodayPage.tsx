@@ -155,7 +155,7 @@ export function TodayPage() {
   const {
     activeSession,
     fetchActiveSession,
-    loadDayContent,
+    loadDayContentSplit,
     deleteSession,
     isLoading,
     isDayLoading,
@@ -210,8 +210,8 @@ export function TodayPage() {
     if (!activeSession) return;
 
     try {
-      // Load day content (Phase 2) before navigating
-      await loadDayContent(activeSession.currentDay);
+      // Load core content first (fast), deferred loads in background
+      await loadDayContentSplit(activeSession.currentDay);
       navigate(`/session/${activeSession.id}`);
     } catch (err) {
       console.error('Failed to start session:', err);

@@ -334,36 +334,9 @@ ${getTierInstructions(params.userTier)}
 REQUIREMENTS:
 1. Connect to previous day's concept (spaced repetition)
 2. Provide COMPLETE working solutions (not pseudocode)
-3. Include 3 levels of hints (gentle → specific → approach)
-4. Include stuck detection triggers
-5. ALWAYS generate foundationCards (6-10 cards) - this is REQUIRED for all days
-6. Choose appropriate TASK FORMAT based on learner level (see below)
-
-TASK FORMAT SELECTION (taskFormat field):
-Choose ONE format for task1 based on learner needs:
-
-- "code": Full coding challenge with editor, hints, solution
-  → Default for INTERMEDIATE/ADVANCED levels
-  → Use when practicing implementation skills
-
-- "quiz": Multiple choice questions (5-8 questions)
-  → Best for: BEGINNERS, knowledge validation, concept understanding
-  → Use when testing comprehension, not implementation
-  → Each question needs: question, 4 options, correctIndex, explanation
-
-- "fillBlank": Fill-in-the-blank code completion (5-8 items)
-  → Best for: BEGINNERS learning syntax, pattern recognition
-  → Use for: variable names, function calls, operators, keywords
-  → Code template uses ___BLANK___ markers for blanks
-  → Each blank can have multiple correct answers
-
-LEVEL: ${params.skillLevel}
-FORMAT GUIDELINES for ${params.skillLevel}:
-${params.skillLevel === 'BEGINNER' ? `- Day 1-2: Prefer "quiz" (ease into learning)
-- Days 3+: Mix "fillBlank" (60%) and "quiz" (30%), "code" (10%)
-- Focus on understanding before implementation` : params.skillLevel === 'INTERMEDIATE' ? `- Prefer "code" (70%) with occasional "quiz" (20%) for review
-- Use "fillBlank" (10%) for new syntax/patterns` : `- Almost always "code" (90%)
-- Occasional "quiz" (10%) for quick knowledge checks`}
+3. Include 3 hints (gentle → specific → approach) + stuck detection
+4. Generate 6-10 foundationCards (REQUIRED)
+5. Choose taskFormat: ${params.skillLevel === 'BEGINNER' ? '"quiz" or "fillBlank" (avoid "code" for Day 1-2)' : params.skillLevel === 'INTERMEDIATE' ? '"code" (default), "quiz" for review' : '"code" (default)'}
 
 FOUNDATION CARDS GUIDELINES:
 Generate 6-10 swipeable concept cards that progressively build understanding.
@@ -514,6 +487,138 @@ Output valid JSON only.`;
     ],
     "currentSetIndex": 0,
     "passThreshold": 3
+  }
+}`;
+
+  return { systemPrompt, userPrompt };
+}
+
+/**
+ * DAY DETAIL CORE PROMPT: Fast essential content only
+ * Generates: prePrompt, video, foundationCards (5-6), task1
+ * Called first for quick initial load
+ */
+export function buildDayDetailCorePrompt(params: DayDetailParams): {
+  systemPrompt: string;
+  userPrompt: string;
+} {
+  const time = getTimeStructure(params.hoursPerDay);
+
+  const systemPrompt = `Generate CORE learning content for Day ${params.dayNumber} of "${params.skillName}".
+
+DAY: ${params.dayTitle}
+SKILLS: ${params.skeleton?.skills?.join(', ') || params.dayObjectives?.join(', ')}
+PREVIOUS: ${params.previousDayTitle || 'N/A'}
+TYPE: ${params.skillType} | ${time.totalMinutes} min/day
+${params.suggestedLanguage ? `LANGUAGE: ${params.suggestedLanguage}` : ''}
+
+${getSkillTypeGuidance(params.skillType, params.complexity)}
+
+Generate ONLY: prePrompt, video info, foundationCards (5-6 cards), task1, skipTest.
+Keep foundationCards concise - 5-6 cards max.
+Provide COMPLETE working solution for task1.
+skipTest: 3 hard MCQs testing day's concepts - user can skip day if they pass.
+
+Output valid JSON only.`;
+
+  const userPrompt = `{
+  "day": ${params.dayNumber},
+  "title": "${params.dayTitle}",
+  "subtitle": "${params.skeleton?.subtitle || ''}",
+  "skills": ${JSON.stringify(params.skeleton?.skills || params.dayObjectives)},
+
+  "prePrompt": {"text": "Brief intro connecting to previous learning", "primeQuestions": ["Q1?", "Q2?"], "yesterdayRecap": "${params.previousDayTitle ? 'Yesterday: ' + params.previousDayTitle : ''}"},
+  "video": {"watchPoints": ["Point 1", "Point 2"]},
+
+  "foundationCards": [
+    {"id": "day${params.dayNumber}-card-1", "concept": "", "visual": "", "explanation": "", "realWorldContext": "", "microQuestion": {"question": "", "type": "gotit"}, "order": 1},
+    {"id": "day${params.dayNumber}-card-2", "concept": "", "visual": "", "explanation": "", "realWorldContext": "", "codeExample": "", "microQuestion": {"question": "", "type": "understanding", "options": [], "correctIndex": 0, "explanation": ""}, "order": 2}
+  ],
+
+  "task1": {
+    "id": "day${params.dayNumber}-task1",
+    "title": "",
+    "description": "",
+    "estimatedMinutes": ${time.task1},
+    "challenge": "",
+    "expectedOutput": "",
+    "starterCode": "",
+    "hints": [{"level": 1, "hint": ""}, {"level": 2, "hint": ""}, {"level": 3, "hint": ""}],
+    "solution": "// COMPLETE working solution",
+    "stuckDetection": {"triggerAfterMinutes": 7, "suggestions": []}
+  },
+
+  "skipTest": {
+    "questionSets": [[
+      {"question": "Hard question 1 testing day's concept?", "options": ["A", "B", "C", "D"], "correctIndex": 0},
+      {"question": "Hard question 2 testing day's concept?", "options": ["A", "B", "C", "D"], "correctIndex": 1},
+      {"question": "Hard question 3 testing day's concept?", "options": ["A", "B", "C", "D"], "correctIndex": 2}
+    ]],
+    "passThreshold": 3
+  }
+}`;
+
+  return { systemPrompt, userPrompt };
+}
+
+/**
+ * DAY DETAIL DEFERRED PROMPT: Secondary content loaded in background
+ * Generates: task2, practiceProject, reflection, skipTest
+ * Called after core loads, while user watches video
+ */
+export function buildDayDetailDeferredPrompt(params: DayDetailParams): {
+  systemPrompt: string;
+  userPrompt: string;
+} {
+  const time = getTimeStructure(params.hoursPerDay);
+
+  // Skip if no deferred content needed for short sessions
+  const hasTask2 = time.task2 > 0;
+  const hasPractice = time.practice > 0;
+
+  const systemPrompt = `Generate DEFERRED learning content for Day ${params.dayNumber} of "${params.skillName}".
+
+DAY: ${params.dayTitle}
+SKILLS: ${params.skeleton?.skills?.join(', ') || params.dayObjectives?.join(', ')}
+TYPE: ${params.skillType}
+${params.suggestedLanguage ? `LANGUAGE: ${params.suggestedLanguage}` : ''}
+
+Generate ONLY: ${hasTask2 ? 'task2, ' : ''}${hasPractice ? 'practiceProject, ' : ''}reflection.
+Provide COMPLETE working solutions.
+
+Output valid JSON only.`;
+
+  const userPrompt = `{
+  "day": ${params.dayNumber},
+  ${hasTask2 ? `"task2": {
+    "id": "day${params.dayNumber}-task2",
+    "title": "Extended Practice",
+    "description": "",
+    "estimatedMinutes": ${time.task2},
+    "challenge": "",
+    "expectedOutput": "",
+    "hints": [{"level": 1, "hint": ""}, {"level": 2, "hint": ""}, {"level": 3, "hint": ""}],
+    "solution": "",
+    "connectionToTask1": ""
+  },` : ''}
+
+  ${hasPractice ? `"practiceProject": {
+    "id": "day${params.dayNumber}-practice",
+    "title": "",
+    "description": "",
+    "estimatedMinutes": ${time.practice},
+    "coreChallenge": "",
+    "requirements": [],
+    "hints": [],
+    "solution": ""
+  },` : ''}
+
+  "reflection": {
+    "questions": [
+      {"id": "confidence", "question": "Rate your confidence (1-5)?", "type": "scale"},
+      {"id": "clicked", "question": "What clicked today?", "type": "text"},
+      {"id": "foggy", "question": "What's still unclear?", "type": "text"}
+    ]
   }
 }`;
 

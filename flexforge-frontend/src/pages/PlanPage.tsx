@@ -502,7 +502,7 @@ export function PlanPage() {
     activeSession,
     updateSession,
     fetchActiveSession,
-    loadDayContent,
+    loadDayContentSplit,
     submitSkipTest,
     forceSkipDay,
     isDayLoading,
@@ -530,7 +530,8 @@ export function PlanPage() {
 
   const handleStartDay = async (dayNumber: number) => {
     try {
-      await loadDayContent(dayNumber);
+      // Load core content first (fast), deferred loads in background
+      await loadDayContentSplit(dayNumber);
       navigate(`/session/${activeSession?.id}`);
     } catch (err) {
       console.error('Failed to start day:', err);

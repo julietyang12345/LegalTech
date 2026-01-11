@@ -71,6 +71,8 @@ export class CurriculumCacheService implements OnModuleInit {
   private readonly logger = new Logger(CurriculumCacheService.name);
   private aliasMap: Map<string, string> = new Map();
   private normalizedSkillCache: Map<string, string> = new Map(); // AI-normalized skill cache
+  private dayContentCache: Map<string, { content: any; expiresAt: number }> = new Map(); // Day content cache
+  private readonly DAY_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
   constructor(
     @InjectRepository(CurriculumCacheKey)
@@ -590,6 +592,43 @@ export class CurriculumCacheService implements OnModuleInit {
     ].join('|');
 
     return crypto.createHash('sha256').update(components).digest('hex');
+  }
+
+  // ==========================================================================
+  // DAY CONTENT CACHE (Simple in-memory for fast access)
+  // ==========================================================================
+
+  async getDayContent(cacheKey: string): Promise<any | null> {
+    const cached = this.dayContentCache.get(cacheKey);
+    if (!cached) return null;
+
+    // Check expiry
+    if (Date.now() > cached.expiresAt) {
+      this.dayContentCache.delete(cacheKey);
+      return null;
+    }
+
+    this.logger.debug(`Day content cache HIT: ${cacheKey}`);
+    return cached.content;
+  }
+
+  async setDayContent(cacheKey: string, content: any): Promise<void> {
+    // LRU eviction if cache is too large (max 500 entries)
+    if (this.dayContentCache.size >= 500) {
+      const firstKey = this.dayContentCache.keys().next().value;
+      if (firstKey) this.dayContentCache.delete(firstKey);
+    }
+
+    this.dayContentCache.set(cacheKey, {
+      content,
+      expiresAt: Date.now() + this.DAY_CACHE_TTL_MS,
+    });
+    this.logger.debug(`Day content cached: ${cacheKey}`);
+  }
+
+  clearDayContentCache(): void {
+    this.dayContentCache.clear();
+    this.logger.log('Day content cache cleared');
   }
 
   // ==========================================================================

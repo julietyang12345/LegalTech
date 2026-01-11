@@ -543,6 +543,129 @@ export class SessionService {
   }
 
   /**
+   * Start a day - CORE content only (fast initial load)
+   * Returns: prePrompt, video, foundationCards, task1
+   */
+  async startDayCore(
+    sessionId: string,
+    userId: string,
+    dayNumber: number,
+  ): Promise<{ coreContent: any; tokensUsed: number; fromCache: boolean }> {
+    const session = await this.findOne(sessionId, userId);
+    const user = await this.userService.findById(userId);
+    const tierString = user.quotaTier.toUpperCase();
+
+    // Check if day is unlockable
+    const dayOverview = session.curriculum.days.find((d: any) => d.day === dayNumber);
+    if (!dayOverview) {
+      throw new NotFoundException(`Day ${dayNumber} not found`);
+    }
+
+    // Day 1 is always unlockable
+    if (dayNumber > 1) {
+      const previousDay = session.curriculum.days.find((d: any) => d.day === dayNumber - 1);
+      if (previousDay?.status !== 'completed' && previousDay?.status !== 'skipped') {
+        throw new ForbiddenException(
+          `Complete Day ${dayNumber - 1} practice project first to unlock Day ${dayNumber}`,
+        );
+      }
+    }
+
+    // Check if core content already loaded
+    if (dayOverview.coreLoaded && dayOverview.coreContent) {
+      return {
+        coreContent: dayOverview.coreContent,
+        tokensUsed: 0,
+        fromCache: true,
+      };
+    }
+
+    // Generate core content (fast)
+    const result = await this.curriculumService.generateDayCoreDetails(
+      session.curriculum,
+      dayNumber,
+      tierString,
+      sessionId,
+    );
+
+    // Update session with core content
+    const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
+    session.curriculum.days[dayIndex] = {
+      ...session.curriculum.days[dayIndex],
+      coreContent: result.coreContent,
+      coreLoaded: true,
+      status: 'in_progress',
+    };
+
+    // Increment usage
+    await this.userService.incrementUsage(userId, result.tokensUsed, 0);
+    await this.sessionsRepository.save(session);
+
+    this.logger.log(`🚀 Day ${dayNumber} CORE loaded for session ${sessionId}`);
+
+    return {
+      coreContent: result.coreContent,
+      tokensUsed: result.tokensUsed,
+      fromCache: result.fromCache || false,
+    };
+  }
+
+  /**
+   * Load DEFERRED day content (background)
+   * Returns: task2, practiceProject, reflection, skipTest
+   */
+  async loadDayDeferred(
+    sessionId: string,
+    userId: string,
+    dayNumber: number,
+  ): Promise<{ deferredContent: any; tokensUsed: number; fromCache: boolean }> {
+    const session = await this.findOne(sessionId, userId);
+    const user = await this.userService.findById(userId);
+    const tierString = user.quotaTier.toUpperCase();
+
+    const dayOverview = session.curriculum.days.find((d: any) => d.day === dayNumber);
+    if (!dayOverview) {
+      throw new NotFoundException(`Day ${dayNumber} not found`);
+    }
+
+    // Check if deferred already loaded
+    if (dayOverview.deferredLoaded && dayOverview.deferredContent) {
+      return {
+        deferredContent: dayOverview.deferredContent,
+        tokensUsed: 0,
+        fromCache: true,
+      };
+    }
+
+    // Generate deferred content
+    const result = await this.curriculumService.generateDayDeferredDetails(
+      session.curriculum,
+      dayNumber,
+      tierString,
+    );
+
+    // Update session with deferred content
+    const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
+    session.curriculum.days[dayIndex] = {
+      ...session.curriculum.days[dayIndex],
+      deferredContent: result.deferredContent,
+      deferredLoaded: true,
+    };
+
+    // Increment usage
+    await this.userService.incrementUsage(userId, result.tokensUsed, 0);
+    await this.sessionsRepository.save(session);
+
+    this.logger.log(`⏳ Day ${dayNumber} DEFERRED loaded for session ${sessionId}`);
+
+    return {
+      deferredContent: result.deferredContent,
+      tokensUsed: result.tokensUsed,
+      fromCache: result.fromCache || false,
+    };
+  }
+
+  /**
    * Submit skip test answers to skip a day (multiple choice)
    * Uses pre-generated question sets, then suggests completing the course
    */

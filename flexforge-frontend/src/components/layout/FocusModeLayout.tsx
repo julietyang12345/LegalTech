@@ -186,15 +186,15 @@ function PresenceBar() {
 }
 
 export function FocusModeLayout({ children, showSidebar = true }: FocusModeLayoutProps) {
-  const { startDay, activeSession, loadDayContent, canStartDay } = useSessionStore();
+  const { startDay, activeSession, loadDayContentSplit, canStartDay } = useSessionStore();
 
   const handleDayClick = async (dayNumber: number) => {
     if (!activeSession || !canStartDay(dayNumber)) return;
 
-    // Load day content if not loaded
+    // Load core content first (fast), deferred loads in background
     const day = activeSession.curriculum.days.find(d => d.day === dayNumber);
     if (day && !day.detailsLoaded) {
-      await loadDayContent(dayNumber);
+      await loadDayContentSplit(dayNumber);
     }
     startDay(dayNumber);
   };

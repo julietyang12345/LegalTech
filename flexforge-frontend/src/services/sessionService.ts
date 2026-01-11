@@ -6,6 +6,8 @@ import type {
   SessionResponse,
   ProgressStats,
   StartDayResponse,
+  StartDayCoreResponse,
+  LoadDayDeferredResponse,
   SkipTestResponse,
   PracticeSubmitResponse,
   DayDetailsResponse,
@@ -148,6 +150,28 @@ export const sessionService = {
   async startDay(sessionId: string, dayNumber: number): Promise<StartDayResponse> {
     const { data } = await api.post<StartDayResponse>(
       `/sessions/${sessionId}/days/${dayNumber}/start`
+    );
+    return data;
+  },
+
+  /**
+   * Start a day - CORE content only (fast initial load)
+   * Returns: prePrompt, video, foundationCards, task1
+   */
+  async startDayCore(sessionId: string, dayNumber: number): Promise<StartDayCoreResponse> {
+    const { data } = await api.post<StartDayCoreResponse>(
+      `/sessions/${sessionId}/days/${dayNumber}/start-core`
+    );
+    return data;
+  },
+
+  /**
+   * Load deferred content in background
+   * Returns: task2, practiceProject, reflection, skipTest
+   */
+  async loadDayDeferred(sessionId: string, dayNumber: number): Promise<LoadDayDeferredResponse> {
+    const { data } = await api.post<LoadDayDeferredResponse>(
+      `/sessions/${sessionId}/days/${dayNumber}/load-deferred`
     );
     return data;
   },

@@ -13,6 +13,8 @@ import {
   buildOverviewPrompt,
   buildPreviewPrompt,
   buildDayDetailPrompt,
+  buildDayDetailCorePrompt,
+  buildDayDetailDeferredPrompt,
   buildBossDetailPrompt,
   DayDetailParams,
   BossDetailParams,
@@ -45,6 +47,20 @@ export interface PreviewResult {
   cost: number;
   skillDetection: any;
   warnings?: string[];
+  fromCache?: boolean;
+}
+
+export interface DayCoreResult {
+  coreContent: any;
+  tokensUsed: number;
+  cost: number;
+  fromCache?: boolean;
+}
+
+export interface DayDeferredResult {
+  deferredContent: any;
+  tokensUsed: number;
+  cost: number;
   fromCache?: boolean;
 }
 
@@ -841,6 +857,209 @@ export class CurriculumService {
       tokensUsed: aiResponse.tokensUsed,
       cost: aiResponse.cost,
     };
+  }
+
+  /**
+   * Generate CORE day content (fast initial load)
+   * Returns: prePrompt, video, foundationCards, task1
+   * Includes caching for instant loads on repeat views
+   */
+  async generateDayCoreDetails(
+    curriculum: any,
+    dayNumber: number,
+    userTier: string = 'FREE',
+    sessionId?: string,
+  ): Promise<DayCoreResult> {
+    this.logger.log(`🚀 Generating Day ${dayNumber} CORE content...`);
+
+    const dayOverview = curriculum.days.find((d: any) => d.day === dayNumber);
+    if (!dayOverview) {
+      throw new BadRequestException(`Day ${dayNumber} not found in curriculum`);
+    }
+
+    // Check cache first
+    const cacheKey = this.buildDayCacheKey(curriculum.metadata, dayNumber, 'core');
+    const cached = await this.cacheService.getDayContent(cacheKey);
+    if (cached) {
+      this.logger.log(`📦 Day ${dayNumber} CORE cache HIT`);
+      return { coreContent: cached, tokensUsed: 0, cost: 0, fromCache: true };
+    }
+
+    const previousDay = curriculum.days.find((d: any) => d.day === dayNumber - 1);
+
+    const params: DayDetailParams = {
+      skillName: curriculum.metadata.skillName,
+      dayNumber,
+      dayTitle: dayOverview.title,
+      dayObjectives: dayOverview.skills,
+      skeleton: dayOverview,
+      previousDayTitle: previousDay?.title,
+      skillType: curriculum.metadata.skillType,
+      skillLevel: curriculum.metadata.skillLevel,
+      complexity: curriculum.metadata.complexity,
+      userTier,
+      hoursPerDay: curriculum.metadata.hoursPerDay,
+      suggestedLanguage: curriculum.metadata.suggestedLanguage,
+    };
+
+    const { systemPrompt, userPrompt } = buildDayDetailCorePrompt(params);
+
+    const aiResponse = await this.aiService.routeRequest(
+      AITask.CURRICULUM_GENERATION,
+      userPrompt,
+      systemPrompt,
+    );
+
+    let coreContent: any;
+    try {
+      let cleanedContent = aiResponse.content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
+
+      const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanedContent = jsonMatch[0];
+      }
+
+      try {
+        coreContent = JSON.parse(cleanedContent);
+      } catch {
+        const fixedContent = cleanedContent.replace(/,(\s*[}\]])/g, '$1');
+        coreContent = JSON.parse(fixedContent);
+      }
+
+      // Normalize foundationCards
+      if (coreContent.foundationCards && Array.isArray(coreContent.foundationCards)) {
+        coreContent.foundationCards = coreContent.foundationCards.map((card: any, index: number) => ({
+          ...card,
+          id: card.id || `day${dayNumber}-card-${index + 1}`,
+          order: card.order ?? index + 1,
+        }));
+      }
+
+      this.logger.log(`✅ Day ${dayNumber} CORE parsed: ${coreContent.foundationCards?.length || 0} cards`);
+    } catch (error) {
+      this.logger.error(`❌ Failed to parse Day ${dayNumber} CORE:`, error.message);
+      throw new BadRequestException('Failed to generate core day content. Please try again.');
+    }
+
+    // Add metadata
+    coreContent.contentLayer = dayOverview.contentLayer || 'framework';
+    coreContent.videoStrategy = dayOverview.videoStrategy || 'helpful';
+    coreContent.contentSource = dayOverview.contentSource || 'youtube';
+
+    // Cache the result
+    await this.cacheService.setDayContent(cacheKey, coreContent);
+
+    this.logger.log(`✅ Day ${dayNumber} CORE generated. Tokens: ${aiResponse.tokensUsed}`);
+
+    return {
+      coreContent,
+      tokensUsed: aiResponse.tokensUsed,
+      cost: aiResponse.cost,
+      fromCache: false,
+    };
+  }
+
+  /**
+   * Generate DEFERRED day content (background load)
+   * Returns: task2, practiceProject, reflection, skipTest
+   * Called after core loads, while user watches video
+   */
+  async generateDayDeferredDetails(
+    curriculum: any,
+    dayNumber: number,
+    userTier: string = 'FREE',
+  ): Promise<DayDeferredResult> {
+    this.logger.log(`⏳ Generating Day ${dayNumber} DEFERRED content...`);
+
+    const dayOverview = curriculum.days.find((d: any) => d.day === dayNumber);
+    if (!dayOverview) {
+      throw new BadRequestException(`Day ${dayNumber} not found in curriculum`);
+    }
+
+    // Check cache first
+    const cacheKey = this.buildDayCacheKey(curriculum.metadata, dayNumber, 'deferred');
+    const cached = await this.cacheService.getDayContent(cacheKey);
+    if (cached) {
+      this.logger.log(`📦 Day ${dayNumber} DEFERRED cache HIT`);
+      return { deferredContent: cached, tokensUsed: 0, cost: 0, fromCache: true };
+    }
+
+    const params: DayDetailParams = {
+      skillName: curriculum.metadata.skillName,
+      dayNumber,
+      dayTitle: dayOverview.title,
+      dayObjectives: dayOverview.skills,
+      skeleton: dayOverview,
+      skillType: curriculum.metadata.skillType,
+      skillLevel: curriculum.metadata.skillLevel,
+      complexity: curriculum.metadata.complexity,
+      userTier,
+      hoursPerDay: curriculum.metadata.hoursPerDay,
+      suggestedLanguage: curriculum.metadata.suggestedLanguage,
+    };
+
+    const { systemPrompt, userPrompt } = buildDayDetailDeferredPrompt(params);
+
+    const aiResponse = await this.aiService.routeRequest(
+      AITask.CURRICULUM_GENERATION,
+      userPrompt,
+      systemPrompt,
+    );
+
+    let deferredContent: any;
+    try {
+      let cleanedContent = aiResponse.content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
+
+      const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanedContent = jsonMatch[0];
+      }
+
+      try {
+        deferredContent = JSON.parse(cleanedContent);
+      } catch {
+        const fixedContent = cleanedContent.replace(/,(\s*[}\]])/g, '$1');
+        deferredContent = JSON.parse(fixedContent);
+      }
+
+      this.logger.log(`✅ Day ${dayNumber} DEFERRED parsed`);
+    } catch (error) {
+      this.logger.error(`❌ Failed to parse Day ${dayNumber} DEFERRED:`, error.message);
+      throw new BadRequestException('Failed to generate deferred day content. Please try again.');
+    }
+
+    // Cache the result
+    await this.cacheService.setDayContent(cacheKey, deferredContent);
+
+    this.logger.log(`✅ Day ${dayNumber} DEFERRED generated. Tokens: ${aiResponse.tokensUsed}`);
+
+    return {
+      deferredContent,
+      tokensUsed: aiResponse.tokensUsed,
+      cost: aiResponse.cost,
+      fromCache: false,
+    };
+  }
+
+  /**
+   * Build cache key for day content
+   */
+  private buildDayCacheKey(metadata: any, dayNumber: number, type: 'core' | 'deferred'): string {
+    const parts = [
+      metadata.skillName?.toLowerCase().replace(/\s+/g, '-'),
+      `d${metadata.durationDays}`,
+      `h${metadata.hoursPerDay}`,
+      metadata.skillLevel?.toLowerCase(),
+      `day${dayNumber}`,
+      type,
+    ];
+    return `day-content:${parts.join(':')}`;
   }
 
   /**

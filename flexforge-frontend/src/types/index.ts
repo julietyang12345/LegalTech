@@ -625,6 +625,40 @@ export interface StartDayResponse {
   tokensUsed: number;
 }
 
+// Split loading responses (Core + Deferred)
+export interface DayCoreContent {
+  prePrompt: {
+    text: string;
+    primeQuestions: string[];
+  };
+  video: VideoMatch;
+  foundationCards: FoundationCard[];
+  task1: Task | QuizTask | FillBlankTask;
+  skipTest: SkipTest;
+}
+
+export interface DayDeferredContent {
+  task2?: Task;
+  practiceProject: PracticeProject;
+  reflection: {
+    questions: ReflectionQuestion[];
+  };
+}
+
+export interface StartDayCoreResponse {
+  message: string;
+  coreContent: DayCoreContent;
+  tokensUsed: number;
+  fromCache: boolean;
+}
+
+export interface LoadDayDeferredResponse {
+  message: string;
+  deferredContent: DayDeferredContent;
+  tokensUsed: number;
+  fromCache: boolean;
+}
+
 export interface SkipTestResponse {
   passed: boolean;
   correctCount: number;

@@ -11,4 +11,5 @@ export { Toast, QuotaExceededModal } from './Toast';
 export type { ToastType } from './Toast';
 export { MultipleChoiceQuestion } from './MultipleChoiceQuestion';
 export type { MultipleChoiceQuestionProps } from './MultipleChoiceQuestion';
-export { RevealableContent } from './RevealableContent';
+export { AnimatedReveal, RevealableContent, QuickPick, SentenceComplete } from './InteractiveInputs';
+export type { QuickPickOption } from './InteractiveInputs';

@@ -10,6 +10,8 @@ import {
   type SessionStep,
   type SkipTestResponse,
   type PracticeSubmitResponse,
+  type DayCoreContent,
+  type DayDeferredContent,
 } from '@/types';
 import { sessionService } from '@/services/sessionService';
 import { progressService } from '@/services/progressService';
@@ -32,6 +34,12 @@ interface SessionState {
   isDayLoading: boolean;
   dayLoadingNumber: number | null;
 
+  // Split loading state (core + deferred)
+  isCoreLoaded: boolean;
+  isDeferredLoading: boolean;
+  isDeferredLoaded: boolean;
+  deferredContent: DayDeferredContent | null;
+
   // Actions
   createSession: (dto: CreateSessionDto) => Promise<Session>;
   fetchSessions: () => Promise<void>;
@@ -53,6 +61,13 @@ interface SessionState {
   submitPracticeProject: (dayNumber: number, answer: string, confidence?: number) => Promise<PracticeSubmitResponse>;
   getDayStatus: (dayNumber: number) => DayStatus;
   canStartDay: (dayNumber: number) => boolean;
+
+  // Split loading actions (core + deferred)
+  loadDayCoreContent: (dayNumber: number) => Promise<DayCoreContent>;
+  loadDayDeferredContent: (dayNumber: number) => Promise<DayDeferredContent>;
+  loadDayContentSplit: (dayNumber: number) => Promise<CurriculumDay>;
+  getDeferredContent: () => DayDeferredContent | null;
+  resetSplitLoadingState: () => void;
 
   // Progress actions
   fetchProgress: (sessionId: string) => Promise<void>;
@@ -118,6 +133,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   // Two-phase curriculum state
   isDayLoading: false,
   dayLoadingNumber: null,
+
+  // Split loading state (core + deferred)
+  isCoreLoaded: false,
+  isDeferredLoading: false,
+  isDeferredLoaded: false,
+  deferredContent: null,
 
   createSession: async (dto: CreateSessionDto) => {
     set({ isLoading: true, error: null });
@@ -351,6 +372,152 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       });
       throw error;
     }
+  },
+
+  // ═══════════════════════════════════════════════════
+  // SPLIT LOADING ACTIONS (Core + Deferred)
+  // ═══════════════════════════════════════════════════
+
+  loadDayCoreContent: async (dayNumber: number) => {
+    const { activeSession } = get();
+    if (!activeSession) throw new Error('No active session');
+
+    set({
+      isDayLoading: true,
+      dayLoadingNumber: dayNumber,
+      isCoreLoaded: false,
+      isDeferredLoaded: false,
+      deferredContent: null,
+      error: null,
+    });
+
+    try {
+      const response = await sessionService.startDayCore(activeSession.id, dayNumber);
+      const coreContent = response.coreContent;
+
+      // Update the curriculum day with core content
+      set((state) => {
+        if (!state.activeSession) return state;
+
+        const updatedDays = state.activeSession.curriculum.days.map((d) =>
+          d.day === dayNumber
+            ? {
+                ...d,
+                ...coreContent,
+                detailsLoaded: false, // Not fully loaded yet
+                status: DayStatus.IN_PROGRESS,
+              }
+            : d
+        );
+
+        return {
+          activeSession: {
+            ...state.activeSession,
+            curriculum: {
+              ...state.activeSession.curriculum,
+              days: updatedDays,
+            },
+          },
+          currentDay: { ...updatedDays.find((d) => d.day === dayNumber)! },
+          isDayLoading: false,
+          dayLoadingNumber: null,
+          isCoreLoaded: true,
+        };
+      });
+
+      return coreContent;
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || 'Failed to load core content',
+        isDayLoading: false,
+        dayLoadingNumber: null,
+        isCoreLoaded: false,
+      });
+      throw error;
+    }
+  },
+
+  loadDayDeferredContent: async (dayNumber: number) => {
+    const { activeSession } = get();
+    if (!activeSession) throw new Error('No active session');
+
+    set({ isDeferredLoading: true });
+
+    try {
+      const response = await sessionService.loadDayDeferred(activeSession.id, dayNumber);
+      const deferredContent = response.deferredContent;
+
+      // Update the curriculum day with deferred content
+      set((state) => {
+        if (!state.activeSession) return state;
+
+        const updatedDays = state.activeSession.curriculum.days.map((d) =>
+          d.day === dayNumber
+            ? {
+                ...d,
+                ...deferredContent,
+                detailsLoaded: true, // Now fully loaded
+              }
+            : d
+        );
+
+        const updatedCurrentDay = updatedDays.find((d) => d.day === dayNumber);
+
+        return {
+          activeSession: {
+            ...state.activeSession,
+            curriculum: {
+              ...state.activeSession.curriculum,
+              days: updatedDays,
+            },
+          },
+          currentDay: state.currentDay?.day === dayNumber
+            ? { ...state.currentDay, ...deferredContent, detailsLoaded: true }
+            : state.currentDay,
+          deferredContent,
+          isDeferredLoading: false,
+          isDeferredLoaded: true,
+        };
+      });
+
+      return deferredContent;
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || 'Failed to load deferred content',
+        isDeferredLoading: false,
+      });
+      throw error;
+    }
+  },
+
+  loadDayContentSplit: async (dayNumber: number) => {
+    const { loadDayCoreContent, loadDayDeferredContent, activeSession } = get();
+    if (!activeSession) throw new Error('No active session');
+
+    // Load core content first (fast)
+    await loadDayCoreContent(dayNumber);
+
+    // Start deferred loading in background (don't await - let it run)
+    loadDayDeferredContent(dayNumber).catch((err) => {
+      console.error('Deferred content loading failed:', err);
+    });
+
+    // Return the day with core content loaded
+    const { currentDay } = get();
+    return currentDay as CurriculumDay;
+  },
+
+  getDeferredContent: () => {
+    return get().deferredContent;
+  },
+
+  resetSplitLoadingState: () => {
+    set({
+      isCoreLoaded: false,
+      isDeferredLoading: false,
+      isDeferredLoaded: false,
+      deferredContent: null,
+    });
   },
 
   submitSkipTest: async (dayNumber: number, answers: number[]) => {
