@@ -75,11 +75,25 @@ export function parseDurationString(duration: string): number {
 // ============================================
 
 /**
+ * Stopwords that don't carry meaning for video matching.
+ */
+const CONCEPT_STOPWORDS = new Set([
+  'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+  'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'be',
+  'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
+  'would', 'could', 'should', 'may', 'might', 'must', 'shall', 'can',
+  'this', 'that', 'these', 'those', 'it', 'its',
+]);
+
+/**
  * Extract concept words from a search query.
- * Filters out single-letter words only.
+ * Filters out single-letter words and common stopwords.
  */
 export function extractConceptWords(concept: string): string[] {
-  return concept.toLowerCase().split(' ').filter(w => w.length > 1);
+  return concept
+    .toLowerCase()
+    .split(' ')
+    .filter(w => w.length > 1 && !CONCEPT_STOPWORDS.has(w));
 }
 
 /**

@@ -236,15 +236,22 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
     const dayData = activeSession.curriculum.days.find(d => d.day === dayNumber);
 
-    // Merge day.content into top level if present (for refresh after content was loaded)
-    // Backend saves as day.content = {...}, but frontend expects day.video, day.foundationCards etc.
-    let mergedDay = dayData;
-    if (dayData?.content && typeof dayData.content === 'object') {
-      mergedDay = { ...dayData, ...dayData.content };
+    // Merge saved day content into top level for refresh
+    // Backend saves to: coreContent (video, foundationCards, task1) + deferredContent (task2, practiceProject, etc.)
+    // Frontend expects flat structure: day.video, day.foundationCards, etc.
+    if (!dayData) {
+      set({ currentDay: null, currentStep: 'prePrompt', completedSteps: [], stepStartTime: new Date() });
+      return;
     }
 
+    const mergedDay: CurriculumDay = {
+      ...dayData,
+      ...(dayData.coreContent as object),
+      ...(dayData.deferredContent as object),
+    };
+
     set({
-      currentDay: mergedDay || null,
+      currentDay: mergedDay,
       currentStep: 'prePrompt',
       completedSteps: [],
       stepStartTime: new Date(),

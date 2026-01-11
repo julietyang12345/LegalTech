@@ -248,8 +248,11 @@ export interface CurriculumDay {
   skeleton?: DaySkeleton;
   skipTest?: SkipTest;
 
-  // Nested content object (backend saves day content here, merged on load)
-  content?: Record<string, unknown>;
+  // Split loading: backend saves content in these nested objects, merged on load
+  coreContent?: Record<string, unknown>;      // video, foundationCards, task1, prePrompt
+  deferredContent?: Record<string, unknown>;  // task2, practiceProject, reflection, skipTest
+  coreLoaded?: boolean;
+  deferredLoaded?: boolean;
 
   // Full content (loaded in Phase 2)
   prePrompt?: {

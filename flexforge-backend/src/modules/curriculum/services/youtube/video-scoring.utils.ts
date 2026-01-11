@@ -378,7 +378,43 @@ const ABBREVIATIONS: Record<string, string> = {
 };
 
 /**
- * Generate variations of a word (framework.js patterns, abbreviations, plurals)
+ * Generate verb/noun stem variations (automate <-> automation, deploy <-> deployment, etc.)
+ */
+function getStemVariations(word: string): string[] {
+  const variations: string[] = [];
+  const lower = word.toLowerCase();
+
+  // -ation/-tion suffix (automation -> automate, integration -> integrate)
+  if (lower.endsWith('ation')) {
+    const base = lower.slice(0, -5); // remove 'ation'
+    variations.push(base + 'e', base); // automate, integrat -> integrate
+  } else if (lower.endsWith('tion')) {
+    const base = lower.slice(0, -4);
+    variations.push(base + 'e', base);
+  }
+  // -ment suffix (deployment -> deploy)
+  else if (lower.endsWith('ment')) {
+    variations.push(lower.slice(0, -4));
+  }
+  // -ing suffix (testing -> test)
+  else if (lower.endsWith('ing') && lower.length > 4) {
+    const base = lower.slice(0, -3);
+    variations.push(base, base.slice(0, -1)); // testing -> test, building -> build
+  }
+  // Verb forms: try adding common suffixes
+  else if (lower.length >= 4) {
+    if (lower.endsWith('e')) {
+      variations.push(lower.slice(0, -1) + 'ation', lower.slice(0, -1) + 'ing');
+    } else {
+      variations.push(lower + 'ation', lower + 'ment', lower + 'ing');
+    }
+  }
+
+  return variations;
+}
+
+/**
+ * Generate variations of a word (framework.js patterns, abbreviations, plurals, stems)
  */
 function getWordVariations(word: string): string[] {
   const variations = [word];
@@ -398,6 +434,9 @@ function getWordVariations(word: string): string[] {
 
   // Plurals
   if (!lower.endsWith('s')) variations.push(lower + 's');
+
+  // Verb/noun stem variations
+  variations.push(...getStemVariations(lower));
 
   return variations;
 }
@@ -502,6 +541,23 @@ export function scoreMarketingPenalty(video: ScoringVideo): number {
 // ============================================
 // COMPREHENSIVE PROMOTIONAL ANALYSIS
 // ============================================
+
+/**
+ * Check if a topic inherently involves tools/platforms.
+ * Returns true if the concept contains any platform tools from our detection list,
+ * or contains words indicating tool/integration usage patterns.
+ * When true, tool mentions in videos are expected and shouldn't be penalized.
+ */
+export function isToolRelatedTopic(concept: string): boolean {
+  const conceptLower = concept.toLowerCase();
+  // Check if concept mentions any specific tools
+  if (PROMO_SIGNALS.platformTools.some(tool => conceptLower.includes(tool.toLowerCase()))) {
+    return true;
+  }
+  // Check for generic tool-usage patterns via stems
+  const toolPatterns = ['api', 'automat', 'integrat', 'workflow', 'pipeline', 'webhook', 'endpoint'];
+  return toolPatterns.some(pattern => conceptLower.includes(pattern));
+}
 
 export interface PromoAnalysisResult {
   // Overall verdict
@@ -787,16 +843,20 @@ export function scoreConceptMatch(video: ScoringVideo, context: ScoringContext):
   }
 
   // Word coverage penalty/bonus for multi-word concepts
-  // Penalize videos that only match some words (too generic)
+  // Scale threshold based on concept complexity - compound topics are harder to match
   if (conceptWords.length >= 2) {
     const coverageRatio = wordsFoundInTitle / conceptWords.length;
+    // Minimum required coverage scales down for longer concepts
+    // 2 words: 50%, 3 words: 33%, 4+ words: 25%
+    const minCoverage = Math.max(0.25, 1 / conceptWords.length);
 
     if (coverageRatio >= 0.75) {
-      // High coverage: bonus
       score += 10;
-    } else if (coverageRatio < 0.5) {
-      // Low coverage: video is too generic, penalize
-      score -= 20;
+    } else if (coverageRatio >= 0.5) {
+      score += 5;
+    } else if (coverageRatio < minCoverage) {
+      // Only penalize if below minimum threshold
+      score -= 10;
     }
   }
 
