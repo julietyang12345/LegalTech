@@ -305,6 +305,7 @@ export interface DayDetailParams {
   previousDayTitle?: string;
   previousDayConcept?: string;
   skillType: SkillType;
+  skillLevel: SkillLevel;  // BEGINNER, INTERMEDIATE, ADVANCED
   complexity: SkillComplexity;
   userTier: string;
   hoursPerDay: number;
@@ -336,6 +337,33 @@ REQUIREMENTS:
 3. Include 3 levels of hints (gentle → specific → approach)
 4. Include stuck detection triggers
 5. ALWAYS generate foundationCards (6-10 cards) - this is REQUIRED for all days
+6. Choose appropriate TASK FORMAT based on learner level (see below)
+
+TASK FORMAT SELECTION (taskFormat field):
+Choose ONE format for task1 based on learner needs:
+
+- "code": Full coding challenge with editor, hints, solution
+  → Default for INTERMEDIATE/ADVANCED levels
+  → Use when practicing implementation skills
+
+- "quiz": Multiple choice questions (5-8 questions)
+  → Best for: BEGINNERS, knowledge validation, concept understanding
+  → Use when testing comprehension, not implementation
+  → Each question needs: question, 4 options, correctIndex, explanation
+
+- "fillBlank": Fill-in-the-blank code completion (5-8 items)
+  → Best for: BEGINNERS learning syntax, pattern recognition
+  → Use for: variable names, function calls, operators, keywords
+  → Code template uses ___BLANK___ markers for blanks
+  → Each blank can have multiple correct answers
+
+LEVEL: ${params.skillLevel}
+FORMAT GUIDELINES for ${params.skillLevel}:
+${params.skillLevel === 'BEGINNER' ? `- Day 1-2: Prefer "quiz" (ease into learning)
+- Days 3+: Mix "fillBlank" (60%) and "quiz" (30%), "code" (10%)
+- Focus on understanding before implementation` : params.skillLevel === 'INTERMEDIATE' ? `- Prefer "code" (70%) with occasional "quiz" (20%) for review
+- Use "fillBlank" (10%) for new syntax/patterns` : `- Almost always "code" (90%)
+- Occasional "quiz" (10%) for quick knowledge checks`}
 
 FOUNDATION CARDS GUIDELINES:
 Generate 6-10 swipeable concept cards that progressively build understanding.
@@ -381,11 +409,15 @@ Output valid JSON only.`;
     {"id": "day${params.dayNumber}-card-2", "concept": "", "visual": "", "explanation": "", "realWorldContext": "", "videoTimestampRef": "Remember at X:XX when...", "codeExample": "", "microQuestion": {"question": "", "type": "understanding", "options": [], "correctIndex": 0, "explanation": ""}, "order": 2}
   ],
 
-  "task1": {
+  "taskFormat": "code|quiz|fillBlank",
+  "task1": "USE ONE OF THE FORMATS BELOW based on taskFormat chosen",
+
+  "_task1_code_format": {
     "id": "day${params.dayNumber}-task1",
     "title": "Task title",
     "description": "Full description",
     "estimatedMinutes": ${time.task1},
+    "format": "code",
     "challenge": "Challenge statement",
     "expectedOutput": "Success criteria",
     "starterCode": "// Starter",
@@ -396,10 +428,33 @@ Output valid JSON only.`;
     ],
     "solution": "// COMPLETE working solution",
     "solutionAnnotations": ["// WHY: Key decision explanation"],
-    "stuckDetection": {
-      "triggerAfterMinutes": 7,
-      "suggestions": ["Re-watch X", "Check hint", "Try simpler"]
-    }
+    "stuckDetection": {"triggerAfterMinutes": 7, "suggestions": ["Re-watch X", "Check hint"]}
+  },
+
+  "_task1_quiz_format": {
+    "id": "day${params.dayNumber}-task1",
+    "title": "Knowledge Check",
+    "description": "Test your understanding",
+    "estimatedMinutes": ${time.task1},
+    "format": "quiz",
+    "passingScore": 0.7,
+    "questions": [
+      {"id": "q1", "question": "Question about concept?", "options": ["Wrong A", "Correct B", "Wrong C", "Wrong D"], "correctIndex": 1, "explanation": "Why B is correct"},
+      {"id": "q2", "question": "Another question?", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "Why A is correct"}
+    ]
+  },
+
+  "_task1_fillBlank_format": {
+    "id": "day${params.dayNumber}-task1",
+    "title": "Complete the Code",
+    "description": "Fill in the blanks",
+    "estimatedMinutes": ${time.task1},
+    "format": "fillBlank",
+    "passingScore": 0.7,
+    "items": [
+      {"id": "fb1", "codeTemplate": "const ___BLANK___ = 'Hello';", "blanks": [{"id": "b1", "correctAnswers": ["greeting", "message", "text"], "hint": "Name the variable"}], "explanation": "Variables store values"},
+      {"id": "fb2", "codeTemplate": "console.___BLANK___('Hi');", "blanks": [{"id": "b1", "correctAnswers": ["log"], "hint": "Output method"}], "explanation": "console.log prints to console"}
+    ]
   },
 
   ${time.task2 > 0 ? `"task2": {

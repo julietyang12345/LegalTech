@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { BookOpen, Sparkles, Lock, ChevronDown, Check } from 'lucide-react';
-import { Card, Button, ConfidenceSlider } from '@/components/common';
+import { motion } from 'framer-motion';
+import { BookOpen, Sparkles, Lock, ChevronDown } from 'lucide-react';
+import { Card, Button, ConfidenceSlider, QuickPick, SentenceComplete, AnimatedReveal } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
@@ -13,116 +13,6 @@ interface ReflectionStepProps {
   day: CurriculumDay;
   session: Session;
   onComplete: () => void;
-}
-
-// Quick-pick option component
-interface QuickPickProps {
-  options: Array<{ emoji: string; label: string; value: string }>;
-  selected: string | null;
-  onSelect: (value: string) => void;
-  columns?: 2 | 4;
-}
-
-function QuickPick({ options, selected, onSelect, columns = 2 }: QuickPickProps) {
-  return (
-    <div className={clsx(
-      'grid gap-2',
-      columns === 2 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4'
-    )}>
-      {options.map((option) => (
-        <button
-          key={option.value}
-          onClick={() => onSelect(option.value)}
-          className={clsx(
-            'p-3 rounded-xl border-2 text-left transition-all flex items-center gap-2',
-            selected === option.value
-              ? 'border-brand-500 bg-brand-50 ring-2 ring-brand-200'
-              : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-          )}
-        >
-          <span className="text-xl">{option.emoji}</span>
-          <span className={clsx(
-            'text-sm font-medium',
-            selected === option.value ? 'text-brand-700' : 'text-gray-700'
-          )}>
-            {option.label}
-          </span>
-          {selected === option.value && (
-            <Check className="w-4 h-4 text-brand-500 ml-auto" />
-          )}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// Sentence completion component
-interface SentenceCompleteProps {
-  suggestions: string[];
-  value: string;
-  onChange: (value: string) => void;
-  prefix: string;
-}
-
-function SentenceComplete({ suggestions, value, onChange, prefix }: SentenceCompleteProps) {
-  const [showCustom, setShowCustom] = useState(false);
-  const isCustom = value && !suggestions.includes(value);
-
-  return (
-    <div className="space-y-2">
-      <p className="text-sm text-gray-600 mb-3">{prefix}</p>
-      <div className="flex flex-wrap gap-2">
-        {suggestions.map((suggestion) => (
-          <button
-            key={suggestion}
-            onClick={() => {
-              onChange(suggestion);
-              setShowCustom(false);
-            }}
-            className={clsx(
-              'px-3 py-2 rounded-lg text-sm transition-all',
-              value === suggestion
-                ? 'bg-brand-500 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            )}
-          >
-            {suggestion}
-          </button>
-        ))}
-        <button
-          onClick={() => setShowCustom(true)}
-          className={clsx(
-            'px-3 py-2 rounded-lg text-sm transition-all',
-            isCustom
-              ? 'bg-brand-500 text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          )}
-        >
-          ✏️ Custom...
-        </button>
-      </div>
-
-      <AnimatePresence>
-        {(showCustom || isCustom) && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-          >
-            <input
-              type="text"
-              value={isCustom ? value : ''}
-              onChange={(e) => onChange(e.target.value)}
-              placeholder="Type your own..."
-              className="w-full mt-2 px-3 py-2 border border-gray-200 rounded-lg text-sm
-                        focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
-              autoFocus
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
 }
 
 export function ReflectionStep({ day, onComplete }: ReflectionStepProps) {
@@ -246,35 +136,26 @@ export function ReflectionStep({ day, onComplete }: ReflectionStepProps) {
           />
 
           {/* Optional expand */}
-          <AnimatePresence>
-            {showClickedDetails && whatClicked && whatClicked !== 'nothing' && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mt-4"
-              >
-                <button
-                  onClick={() => setShowClickedDetails(!showClickedDetails)}
-                  className="text-sm text-gray-500 flex items-center gap-1 mb-2"
-                >
-                  <ChevronDown className={clsx(
-                    'w-4 h-4 transition-transform',
-                    whatClickedDetails && 'rotate-180'
-                  )} />
-                  Add details (optional)
-                </button>
-                <input
-                  type="text"
-                  value={whatClickedDetails}
-                  onChange={(e) => setWhatClickedDetails(e.target.value)}
-                  placeholder="What specifically made sense?"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm
-                            focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <AnimatedReveal show={showClickedDetails && !!whatClicked && whatClicked !== 'nothing'} className="mt-4">
+            <button
+              onClick={() => setShowClickedDetails(!showClickedDetails)}
+              className="text-sm text-gray-500 flex items-center gap-1 mb-2"
+            >
+              <ChevronDown className={clsx(
+                'w-4 h-4 transition-transform',
+                whatClickedDetails && 'rotate-180'
+              )} />
+              Add details (optional)
+            </button>
+            <input
+              type="text"
+              value={whatClickedDetails}
+              onChange={(e) => setWhatClickedDetails(e.target.value)}
+              placeholder="What specifically made sense?"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm
+                        focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+            />
+          </AnimatedReveal>
         </div>
       </Card>
 
@@ -294,25 +175,16 @@ export function ReflectionStep({ day, onComplete }: ReflectionStepProps) {
           />
 
           {/* Optional details */}
-          <AnimatePresence>
-            {showFoggyDetails && whatsFoggy && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mt-4"
-              >
-                <input
-                  type="text"
-                  value={foggyDetails}
-                  onChange={(e) => setFoggyDetails(e.target.value)}
-                  placeholder="Any specific part? (optional)"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm
-                            focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <AnimatedReveal show={showFoggyDetails && !!whatsFoggy} className="mt-4">
+            <input
+              type="text"
+              value={foggyDetails}
+              onChange={(e) => setFoggyDetails(e.target.value)}
+              placeholder="Any specific part? (optional)"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm
+                        focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+            />
+          </AnimatedReveal>
         </div>
       </Card>
 
@@ -350,25 +222,16 @@ export function ReflectionStep({ day, onComplete }: ReflectionStepProps) {
           />
 
           {/* Optional customize */}
-          <AnimatePresence>
-            {warmupPlan && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mt-4"
-              >
-                <input
-                  type="text"
-                  value={warmupCustom}
-                  onChange={(e) => setWarmupCustom(e.target.value)}
-                  placeholder="Customize your plan (optional)"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm
-                            focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <AnimatedReveal show={!!warmupPlan} className="mt-4">
+            <input
+              type="text"
+              value={warmupCustom}
+              onChange={(e) => setWarmupCustom(e.target.value)}
+              placeholder="Customize your plan (optional)"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm
+                        focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+            />
+          </AnimatedReveal>
         </div>
       </Card>
 

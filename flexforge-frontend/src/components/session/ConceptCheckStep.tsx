@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { CheckSquare, ChevronDown, ChevronUp } from 'lucide-react';
-import { Card, MultipleChoiceQuestion } from '@/components/common';
+import { Card, MultipleChoiceQuestion, AnimatedReveal } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { clsx } from 'clsx';
 import type { CurriculumDay, Session, ConceptQuestion } from '@/types';
@@ -108,32 +107,23 @@ export function ConceptCheckStep({ day }: ConceptCheckStepProps) {
               </button>
 
               {/* Questions */}
-              <AnimatePresence>
-                {isExpanded && levelQuestions.length > 0 && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="px-4 pb-4 space-y-4">
-                      {levelQuestions.map((q, index) => (
-                        <MultipleChoiceQuestion
-                          key={q.id}
-                          question={q.question}
-                          options={q.options || []}
-                          correctIndex={q.correctIndex}
-                          explanation={q.explanation}
-                          selectedIndex={selectedAnswers[q.id] ?? null}
-                          onSelect={(optionIndex) => handleSelectOption(q.id, optionIndex, q.correctIndex)}
-                          showResult={selectedAnswers[q.id] !== undefined}
-                          questionNumber={index + 1}
-                        />
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              <AnimatedReveal show={isExpanded && levelQuestions.length > 0} className="overflow-hidden">
+                <div className="px-4 pb-4 space-y-4">
+                  {levelQuestions.map((q, index) => (
+                    <MultipleChoiceQuestion
+                      key={q.id}
+                      question={q.question}
+                      options={q.options || []}
+                      correctIndex={q.correctIndex}
+                      explanation={q.explanation}
+                      selectedIndex={selectedAnswers[q.id] ?? null}
+                      onSelect={(optionIndex) => handleSelectOption(q.id, optionIndex, q.correctIndex)}
+                      showResult={selectedAnswers[q.id] !== undefined}
+                      questionNumber={index + 1}
+                    />
+                  ))}
+                </div>
+              </AnimatedReveal>
             </Card>
           );
         })}

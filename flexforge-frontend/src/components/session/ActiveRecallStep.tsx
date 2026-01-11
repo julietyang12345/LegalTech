@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Brain, Eye, EyeOff, CheckCircle2, Sparkles, Lock } from 'lucide-react';
-import { Card, Button, TextArea } from '@/components/common';
+import { Card, Button, TextArea, AnimatedReveal } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { useAuthStore } from '@/stores/authStore';
 import { QuotaTier } from '@/types';
@@ -104,62 +104,48 @@ export function ActiveRecallStep({ day }: ActiveRecallStepProps) {
       </Card>
 
       {/* Key points reveal */}
-      <AnimatePresence>
-        {showKeyPoints && (videoSummary || keyPoints.length > 0) && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-          >
-            <Card className="bg-focus-50 border border-focus-200">
-              <div className="p-6">
-                <h3 className="font-semibold text-focus-800 mb-4 flex items-center gap-2">
-                  <CheckCircle2 className="w-5 h-5" />
-                  {videoSummary ? 'Video Summary' : 'Key points to include:'}
-                </h3>
+      <AnimatedReveal show={showKeyPoints && (!!videoSummary || keyPoints.length > 0)}>
+        <Card className="bg-focus-50 border border-focus-200">
+          <div className="p-6">
+            <h3 className="font-semibold text-focus-800 mb-4 flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5" />
+              {videoSummary ? 'Video Summary' : 'Key points to include:'}
+            </h3>
 
-                {/* AI Video Summary (preferred) */}
-                {videoSummary ? (
-                  <motion.p
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="text-focus-800 leading-relaxed"
+            {/* AI Video Summary (preferred) */}
+            {videoSummary ? (
+              <p className="text-focus-800 leading-relaxed">{videoSummary}</p>
+            ) : (
+              /* Fallback to key points list */
+              <ul className="space-y-3">
+                {keyPoints.map((point, index) => (
+                  <motion.li
+                    key={index}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className="flex items-start gap-3"
                   >
-                    {videoSummary}
-                  </motion.p>
-                ) : (
-                  /* Fallback to key points list */
-                  <ul className="space-y-3">
-                    {keyPoints.map((point, index) => (
-                      <motion.li
-                        key={index}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.1 }}
-                        className="flex items-start gap-3"
-                      >
-                        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-focus-200
-                                       flex items-center justify-center text-sm font-medium text-focus-700">
-                          {index + 1}
-                        </span>
-                        <p className="text-focus-800">{point}</p>
-                      </motion.li>
-                    ))}
-                  </ul>
-                )}
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-focus-200
+                                   flex items-center justify-center text-sm font-medium text-focus-700">
+                      {index + 1}
+                    </span>
+                    <p className="text-focus-800">{point}</p>
+                  </motion.li>
+                ))}
+              </ul>
+            )}
 
-                {/* Self-check */}
-                <div className="mt-6 p-4 bg-white rounded-lg">
-                  <p className="text-sm text-gray-600">
-                    <strong>Self-check:</strong> Did your explanation cover these points?
-                    It's okay if you missed some - that's what we're here to learn!
-                  </p>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            {/* Self-check */}
+            <div className="mt-6 p-4 bg-white rounded-lg">
+              <p className="text-sm text-gray-600">
+                <strong>Self-check:</strong> Did your explanation cover these points?
+                It's okay if you missed some - that's what we're here to learn!
+              </p>
+            </div>
+          </div>
+        </Card>
+      </AnimatedReveal>
 
       {/* Encouragement */}
       {userExplanation.length >= 50 && !showKeyPoints && (

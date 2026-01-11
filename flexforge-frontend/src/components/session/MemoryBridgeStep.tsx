@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Link2, Eye, EyeOff, Lightbulb } from 'lucide-react';
-import { Card, Button, TextArea } from '@/components/common';
+import { Card, Button, TextArea, AnimatedReveal } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import type { CurriculumDay, Session } from '@/types';
 
@@ -72,18 +71,11 @@ export function MemoryBridgeStep({ day, session }: MemoryBridgeStepProps) {
             </Button>
           </div>
 
-          <AnimatePresence>
-            {showYesterdayAnswer && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mt-4 p-4 bg-cyan-50 rounded-lg border border-cyan-200"
-              >
-                <p className="text-cyan-800">{yesterdayAnswer}</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <AnimatedReveal show={showYesterdayAnswer}>
+            <div className="mt-4 p-4 bg-cyan-50 rounded-lg border border-cyan-200">
+              <p className="text-cyan-800">{yesterdayAnswer}</p>
+            </div>
+          </AnimatedReveal>
         </div>
       </Card>
 
@@ -125,19 +117,12 @@ export function MemoryBridgeStep({ day, session }: MemoryBridgeStepProps) {
             </Button>
           </div>
 
-          <AnimatePresence>
-            {showConnectionExample && exampleConnection && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mt-4 p-4 bg-purple-50 rounded-lg border border-purple-200"
-              >
-                <p className="text-sm text-purple-600 font-medium mb-2">Example connection:</p>
-                <p className="text-purple-800">{exampleConnection}</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <AnimatedReveal show={showConnectionExample && !!exampleConnection}>
+            <div className="mt-4 p-4 bg-purple-50 rounded-lg border border-purple-200">
+              <p className="text-sm text-purple-600 font-medium mb-2">Example connection:</p>
+              <p className="text-purple-800">{exampleConnection}</p>
+            </div>
+          </AnimatedReveal>
         </div>
       </Card>
 

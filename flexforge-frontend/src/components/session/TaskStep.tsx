@@ -7,7 +7,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useCompanionStore } from '@/stores/companionStore';
 import { QuotaTier } from '@/types';
 import { clsx } from 'clsx';
-import type { CurriculumDay, Session } from '@/types';
+import type { CurriculumDay, Session, Task } from '@/types';
 
 interface TaskStepProps {
   day: CurriculumDay;
@@ -22,14 +22,15 @@ export function TaskStep({ day, onComplete }: TaskStepProps) {
   const [showSolution, setShowSolution] = useState(false);
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
   const [isStuck, setIsStuck] = useState(false);
-  
+
   const { hasTierAccess } = useAuthStore();
   const { encourage } = useCompanionStore();
-  
+
   const canUseAITutor = hasTierAccess(QuotaTier.PRO);
   const isPremium = hasTierAccess(QuotaTier.PREMIUM);
-  
-  const task = day.task1;
+
+  // TaskStep only receives code format tasks (TaskRouter handles routing)
+  const task = day.task1 as Task | undefined;
   const stuckThreshold = task?.stuckDetection?.triggerAfterMinutes || 7;
   // Use actual hints array length if available
   const totalHints = task?.hints?.length || 3;

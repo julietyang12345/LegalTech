@@ -502,6 +502,7 @@ export class CurriculumService {
       skeleton: dayOverview, // pass the entire day overview as skeleton
       previousDayTitle: previousDay?.title,
       skillType: curriculum.metadata.skillType,
+      skillLevel: curriculum.metadata.skillLevel,  // BEGINNER, INTERMEDIATE, ADVANCED
       complexity: curriculum.metadata.complexity,
       userTier,
       hoursPerDay: curriculum.metadata.hoursPerDay,

@@ -281,7 +281,8 @@ export interface CurriculumDay {
     questions: ConceptQuestion[];
   };
 
-  task1?: Task;
+  task1?: Task | QuizTask | FillBlankTask;  // Supports code, quiz, or fill-blank
+  taskFormat?: TaskFormat;                   // 'code' | 'quiz' | 'fillBlank'
   practiceProject?: PracticeProject;
 
   reflection?: {
@@ -361,6 +362,54 @@ export interface Task {
     solution: string;
   };
 }
+
+// ============================================
+// Alternative Task Formats (Quiz & Fill-in-the-Blank)
+// ============================================
+
+export type TaskFormat = 'code' | 'quiz' | 'fillBlank';
+
+export interface QuizQuestion {
+  id: string;
+  question: string;
+  options: string[];      // 4 options
+  correctIndex: number;
+  explanation: string;
+}
+
+export interface QuizTask {
+  id: string;
+  title: string;
+  description: string;
+  estimatedMinutes: number;
+  format: 'quiz';
+  questions: QuizQuestion[];  // 5-8 questions
+  passingScore: number;       // e.g., 0.7 = 70%
+}
+
+export interface FillBlankItem {
+  id: string;
+  codeTemplate: string;       // Code with ___BLANK___ markers
+  blanks: {
+    id: string;
+    correctAnswers: string[]; // Multiple accepted answers
+    hint?: string;
+  }[];
+  explanation: string;
+}
+
+export interface FillBlankTask {
+  id: string;
+  title: string;
+  description: string;
+  estimatedMinutes: number;
+  format: 'fillBlank';
+  items: FillBlankItem[];     // 5-8 items
+  passingScore: number;
+}
+
+// Union type for all task formats
+export type TaskContent = Task | QuizTask | FillBlankTask;
 
 export interface PracticeProject {
   id: string;
@@ -442,7 +491,7 @@ export interface Progress {
   sessionId: string;
   taskId: string;
   dayNumber: number;
-  taskType: 'task1' | 'practice' | 'boss' | 'reflection';
+  taskType: 'task1' | 'practice' | 'boss' | 'reflection' | 'quiz' | 'fillBlank';
   completed: boolean;
   completedAt?: string;
   confidenceScore?: number;

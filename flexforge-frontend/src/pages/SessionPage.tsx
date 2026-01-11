@@ -17,8 +17,12 @@ import { ActiveRecallStep } from '@/components/session/ActiveRecallStep';
 import { MemoryBridgeStep } from '@/components/session/MemoryBridgeStep';
 import { ConceptCheckStep } from '@/components/session/ConceptCheckStep';
 import { TaskStep } from '@/components/session/TaskStep';
+import { QuizTaskStep } from '@/components/session/QuizTaskStep';
+import { FillBlankTaskStep } from '@/components/session/FillBlankTaskStep';
 import { BossMilestoneStep } from '@/components/session/BossMilestoneStep';
 import { ReflectionStep } from '@/components/session/ReflectionStep';
+
+import type { QuizTask, FillBlankTask } from '@/types';
 
 import type { SessionStep as SessionStepType } from '@/types';
 
@@ -237,6 +241,25 @@ function SkipTestModal({
   );
 }
 
+// Task Router: Renders the appropriate task component based on task format
+function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session: any; onComplete: () => void }) {
+  const task = day.task1;
+  if (!task) return null;
+
+  // Check if it's a quiz task
+  if ('format' in task && (task as QuizTask).format === 'quiz') {
+    return <QuizTaskStep day={day} session={session} onComplete={onComplete} />;
+  }
+
+  // Check if it's a fill-blank task
+  if ('format' in task && (task as FillBlankTask).format === 'fillBlank') {
+    return <FillBlankTaskStep day={day} session={session} onComplete={onComplete} />;
+  }
+
+  // Default: coding task
+  return <TaskStep day={day} session={session} onComplete={onComplete} />;
+}
+
 const STEP_COMPONENTS: Record<SessionStepType, React.ComponentType<any>> = {
   prePrompt: PrePromptStep,
   video: VideoStep,
@@ -244,7 +267,7 @@ const STEP_COMPONENTS: Record<SessionStepType, React.ComponentType<any>> = {
   activeRecall: ActiveRecallStep,
   memoryBridge: MemoryBridgeStep,
   conceptCheck: ConceptCheckStep,
-  task1: TaskStep,
+  task1: TaskRouter,
   bossMilestone: BossMilestoneStep,
   reflection: ReflectionStep,
 };
