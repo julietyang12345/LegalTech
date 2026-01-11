@@ -695,13 +695,16 @@ function analyzeSegments(
 /**
  * Comprehensive promotional analysis
  * Combines all detection methods for a complete picture
+ * @param concept - Optional topic to check if tools are expected (e.g., automation topics)
  */
 export function analyzePromoContent(
   transcript: Array<{ text: string; start: number }>,
   videoDurationSec: number,
+  concept?: string,
 ): PromoAnalysisResult {
   const fullText = transcript.map(t => t.text).join(' ');
   const videoMinutes = videoDurationSec / 60;
+  const toolsExpected = concept ? isToolRelatedTopic(concept) : false;
 
   // A: CTA & Funnel Detection using shared signals
   const ctaHits = countPhraseMatches(fullText, PROMO_SIGNALS.cta);
@@ -714,8 +717,10 @@ export function analyzePromoContent(
   else if (ctaDensity > 0.1 || monetizationHits > 0) promoLevel = 'soft';
 
   // B: Platform-Heavy Detection
+  // If tools are expected for this topic, raise threshold significantly
   const toolAnalysis = countToolMentions(fullText);
-  const isPlatformHeavy = toolAnalysis.total > 15;
+  const platformThreshold = toolsExpected ? 50 : 15;
+  const isPlatformHeavy = toolAnalysis.total > platformThreshold;
   const dominantTools = Object.entries(toolAnalysis.breakdown)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
@@ -728,8 +733,9 @@ export function analyzePromoContent(
                      segmentAnalysis.lastQuarterDensity > 1.5;
 
   // D: Teaching vs Tool-Demo
+  // For tool-related topics, being a "tool demo" is expected and not penalized
   const teachingRatio = analyzeTeachingRatio(fullText);
-  const isToolDemo = teachingRatio < 0.3;
+  const isToolDemo = teachingRatio < 0.3 && !toolsExpected;
 
   // Calculate total penalty
   let totalPenalty = 0;
@@ -739,7 +745,7 @@ export function analyzePromoContent(
 
   if (isHardSell) totalPenalty += 15;
   if (isToolDemo && isPlatformHeavy) totalPenalty += 10;
-  if (isPlatformHeavy && promoLevel !== 'none') totalPenalty += 5;
+  if (isPlatformHeavy && promoLevel !== 'none' && !toolsExpected) totalPenalty += 5;
 
   // Determine verdict
   let verdict: 'reject' | 'allow_with_warning' | 'allow_tagged' | 'ideal';
@@ -752,8 +758,10 @@ export function analyzePromoContent(
     verdict = 'allow_with_warning';
     verdictReason = 'High promo but good teaching - trim marketing segments';
   } else if (isPlatformHeavy && promoLevel === 'none') {
-    verdict = 'allow_tagged';
-    verdictReason = 'Tool-based tutorial with minimal promo';
+    verdict = toolsExpected ? 'ideal' : 'allow_tagged';
+    verdictReason = toolsExpected
+      ? 'Tool-focused content matching topic'
+      : 'Tool-based tutorial with minimal promo';
   } else if (promoLevel === 'moderate') {
     verdict = 'allow_with_warning';
     verdictReason = 'Moderate promotional signals';

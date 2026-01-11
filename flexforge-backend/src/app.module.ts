@@ -14,6 +14,7 @@ import {
   CurriculumCacheVariant,
   CurriculumServe,
   SkillAlias,
+  DayContentCache,
 } from './database/entities/curriculum-cache.entity';
 
 // Modules
@@ -53,6 +54,7 @@ import { CompanionModule } from './modules/companion/companion.module';
           CurriculumCacheVariant,
           CurriculumServe,
           SkillAlias,
+          DayContentCache,
         ],
         synchronize: configService.get('nodeEnv') === 'development',
         logging: configService.get('nodeEnv') === 'development',

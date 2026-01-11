@@ -221,3 +221,39 @@ export class SkillAlias {
   @Column({ length: 500 })
   canonical: string;
 }
+
+// ============================================================================
+// DAY CONTENT CACHE - Cached day details shared across users
+// ============================================================================
+
+@Entity('day_content_cache')
+@Index('idx_day_content_lookup', ['cacheKey'], { where: '"is_active" = true' })
+export class DayContentCache {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  // Unique cache key: day-content:{skill}:d{days}:h{hours}:{level}:day{n}:{core|deferred}
+  @Column({ name: 'cache_key', unique: true, length: 512 })
+  cacheKey: string;
+
+  // Cached content (foundationCards, video, tasks, etc.)
+  @Column({ type: 'jsonb' })
+  content: Record<string, any>;
+
+  // Stats
+  @Column({ name: 'cache_hits', default: 0 })
+  cacheHits: number;
+
+  @Column({ name: 'is_active', default: true })
+  isActive: boolean;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+
+  @Column({
+    name: 'expires_at',
+    type: 'timestamptz',
+    default: () => "NOW() + INTERVAL '90 days'",
+  })
+  expiresAt: Date;
+}

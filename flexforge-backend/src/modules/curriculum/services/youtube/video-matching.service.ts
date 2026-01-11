@@ -1138,8 +1138,9 @@ export class VideoMatchingService {
         // ═══════════════════════════════════════════
         // FREE: Comprehensive promotional content analysis
         // Detects CTA patterns, platform-heavy content, hard-sell endings, tool demos
+        // Pass concept so tool-related topics (automation, API, etc.) aren't penalized for tool mentions
         // ═══════════════════════════════════════════
-        const promoAnalysis = analyzePromoContent(transcript, candidate.video.duration);
+        const promoAnalysis = analyzePromoContent(transcript, candidate.video.duration, context.concept);
         selectedPromoAnalysis = promoAnalysis; // Store for return
 
         // Hard reject if verdict is 'reject'

@@ -7,6 +7,7 @@ import {
   CurriculumCacheVariant,
   CurriculumServe,
   SkillAlias,
+  DayContentCache,
   QualityStatus,
   RegenCategory,
 } from '../../../database/entities/curriculum-cache.entity';
@@ -86,6 +87,9 @@ export class CurriculumCacheService implements OnModuleInit {
 
     @InjectRepository(SkillAlias)
     private readonly aliasRepo: Repository<SkillAlias>,
+
+    @InjectRepository(DayContentCache)
+    private readonly dayContentRepo: Repository<DayContentCache>,
 
     private readonly dataSource: DataSource,
 
@@ -595,40 +599,78 @@ export class CurriculumCacheService implements OnModuleInit {
   }
 
   // ==========================================================================
-  // DAY CONTENT CACHE (Simple in-memory for fast access)
+  // DAY CONTENT CACHE (Database-backed with in-memory L1 cache)
   // ==========================================================================
 
   async getDayContent(cacheKey: string): Promise<any | null> {
-    const cached = this.dayContentCache.get(cacheKey);
-    if (!cached) return null;
-
-    // Check expiry
-    if (Date.now() > cached.expiresAt) {
-      this.dayContentCache.delete(cacheKey);
-      return null;
+    // L1: Check in-memory cache first (fast)
+    const memCached = this.dayContentCache.get(cacheKey);
+    if (memCached && Date.now() <= memCached.expiresAt) {
+      this.logger.debug(`Day content L1 cache HIT: ${cacheKey}`);
+      return memCached.content;
     }
 
-    this.logger.debug(`Day content cache HIT: ${cacheKey}`);
-    return cached.content;
+    // L2: Check database
+    try {
+      const dbCached = await this.dayContentRepo.findOne({
+        where: {
+          cacheKey,
+          isActive: true,
+          expiresAt: MoreThan(new Date()),
+        },
+      });
+
+      if (dbCached) {
+        // Populate L1 cache for next access
+        this.dayContentCache.set(cacheKey, {
+          content: dbCached.content,
+          expiresAt: Date.now() + this.DAY_CACHE_TTL_MS,
+        });
+
+        // Increment hit counter (fire and forget)
+        this.dayContentRepo.increment({ id: dbCached.id }, 'cacheHits', 1).catch(() => {});
+
+        this.logger.debug(`Day content L2 cache HIT: ${cacheKey}`);
+        return dbCached.content;
+      }
+    } catch (error) {
+      this.logger.warn(`Day content cache lookup failed: ${error.message}`);
+    }
+
+    return null;
   }
 
   async setDayContent(cacheKey: string, content: any): Promise<void> {
-    // LRU eviction if cache is too large (max 500 entries)
+    // L1: Update in-memory cache
     if (this.dayContentCache.size >= 500) {
       const firstKey = this.dayContentCache.keys().next().value;
       if (firstKey) this.dayContentCache.delete(firstKey);
     }
-
     this.dayContentCache.set(cacheKey, {
       content,
       expiresAt: Date.now() + this.DAY_CACHE_TTL_MS,
     });
-    this.logger.debug(`Day content cached: ${cacheKey}`);
+
+    // L2: Persist to database (upsert)
+    try {
+      await this.dayContentRepo.upsert(
+        {
+          cacheKey,
+          content,
+          isActive: true,
+          expiresAt: new Date(Date.now() + CACHE_CONFIG.cacheExpiryDays * 24 * 60 * 60 * 1000),
+        },
+        ['cacheKey'],
+      );
+      this.logger.debug(`Day content cached to DB: ${cacheKey}`);
+    } catch (error) {
+      this.logger.warn(`Day content cache save failed: ${error.message}`);
+    }
   }
 
   clearDayContentCache(): void {
     this.dayContentCache.clear();
-    this.logger.log('Day content cache cleared');
+    this.logger.log('Day content in-memory cache cleared');
   }
 
   // ==========================================================================
