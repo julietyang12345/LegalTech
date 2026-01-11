@@ -890,4 +890,85 @@ export class SessionService {
       content: dayOverview.content,
     };
   }
+
+  /**
+   * Get task in alternative format (on-demand generation with caching)
+   * Converts between code, quiz, and fillBlank formats
+   */
+  async getAlternativeTaskFormat(
+    sessionId: string,
+    userId: string,
+    dayNumber: number,
+    targetFormat: 'code' | 'quiz' | 'fillBlank',
+  ): Promise<{ task: any; tokensUsed: number; fromCache: boolean }> {
+    const session = await this.findOne(sessionId, userId);
+    const user = await this.userService.findById(userId);
+
+    const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
+    const dayOverview = session.curriculum.days[dayIndex];
+
+    if (!dayOverview) {
+      throw new NotFoundException(`Day ${dayNumber} not found`);
+    }
+
+    // Get the original task (from coreContent or directly on day)
+    const originalTask = dayOverview.coreContent?.task1 || dayOverview.task1;
+    if (!originalTask) {
+      throw new NotFoundException(`Task not found for Day ${dayNumber}. Start the day first.`);
+    }
+
+    // Check if we already have this format cached
+    const cacheKey = `alternativeFormats`;
+    const cachedFormats = dayOverview[cacheKey] || {};
+    if (cachedFormats[targetFormat]) {
+      this.logger.log(`📦 Alternative format ${targetFormat} cache HIT for Day ${dayNumber}`);
+      return {
+        task: cachedFormats[targetFormat],
+        tokensUsed: 0,
+        fromCache: true,
+      };
+    }
+
+    // Check if original task is already in the target format
+    const originalFormat = originalTask.format || 'code';
+    if (originalFormat === targetFormat) {
+      return {
+        task: originalTask,
+        tokensUsed: 0,
+        fromCache: true,
+      };
+    }
+
+    // Generate the alternative format
+    const result = await this.curriculumService.generateAlternativeTaskFormat(
+      originalTask,
+      targetFormat,
+      {
+        dayNumber,
+        dayTitle: dayOverview.title,
+        skillName: session.curriculum.metadata.skillName,
+      },
+    );
+
+    // Cache the result in the session
+    session.curriculum.days[dayIndex] = {
+      ...session.curriculum.days[dayIndex],
+      alternativeFormats: {
+        ...cachedFormats,
+        [targetFormat]: result.task,
+      },
+    };
+
+    // Increment usage
+    await this.userService.incrementUsage(userId, result.tokensUsed, 0);
+    await this.sessionsRepository.save(session);
+
+    this.logger.log(`🔄 Alternative format ${targetFormat} generated for Day ${dayNumber}`);
+
+    return {
+      task: result.task,
+      tokensUsed: result.tokensUsed,
+      fromCache: false,
+    };
+  }
 }

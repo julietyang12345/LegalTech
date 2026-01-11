@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Zap, X, CheckCircle, XCircle, Loader2, HelpCircle, FileText } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Zap, X, CheckCircle, XCircle, Loader2, Shuffle, Code2, HelpCircle, FileText } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
@@ -244,42 +244,132 @@ function SkipTestModal({
 type TaskFormat = 'code' | 'quiz' | 'fillBlank';
 
 // Task Router: Renders the appropriate task component based on task format
+// Fetches alternative formats on-demand when user switches
 function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session: any; onComplete: () => void }) {
   const task = day.task1;
-  const [selectedFormat, setSelectedFormat] = useState<TaskFormat>('code');
+  const originalFormat = (task as any)?.format || 'code';
+  const [selectedFormat, setSelectedFormat] = useState<TaskFormat>(originalFormat);
+  const [alternativeTask, setAlternativeTask] = useState<any>(null);
+  const [isLoadingFormat, setIsLoadingFormat] = useState(false);
+  const [loadingFormatType, setLoadingFormatType] = useState<TaskFormat | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const { getAlternativeTaskFormat } = useSessionStore();
 
   if (!task) return null;
 
-  // If user switched to an alternative format
-  if (selectedFormat === 'quiz') {
-    return <QuizTaskStep day={day} session={session} onComplete={onComplete} />;
-  }
-  if (selectedFormat === 'fillBlank') {
-    return <FillBlankTaskStep day={day} session={session} onComplete={onComplete} />;
-  }
+  const handleFormatSwitch = async (format: TaskFormat) => {
+    // If switching back to original format, just use the original task
+    if (format === originalFormat) {
+      setSelectedFormat(format);
+      setAlternativeTask(null);
+      setLoadError(null);
+      return;
+    }
 
-  // Default: code task with format alternatives
+    // Fetch alternative format
+    setIsLoadingFormat(true);
+    setLoadingFormatType(format);
+    setLoadError(null);
+    try {
+      const altTask = await getAlternativeTaskFormat(day.day, format);
+      setAlternativeTask(altTask);
+      setSelectedFormat(format);
+    } catch (error: any) {
+      setLoadError(error.message || 'Failed to load alternative format');
+    } finally {
+      setIsLoadingFormat(false);
+      setLoadingFormatType(null);
+    }
+  };
+
+  // Create a modified day object with the alternative task if loaded
+  const modifiedDay = alternativeTask && selectedFormat !== originalFormat
+    ? { ...day, task1: alternativeTask }
+    : day;
+
+  // Render the appropriate component based on selected format
+  const renderTaskComponent = () => {
+    if (isLoadingFormat) {
+      const formatLabel = loadingFormatType === 'quiz' ? 'quiz' : loadingFormatType === 'fillBlank' ? 'fill-in-the-blank' : 'code';
+      return (
+        <div className="flex flex-col items-center justify-center py-12 gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
+          <p className="text-gray-600">Generating {formatLabel} version...</p>
+        </div>
+      );
+    }
+
+    if (loadError) {
+      return (
+        <div className="text-center py-8">
+          <p className="text-red-500 mb-4">{loadError}</p>
+          <button
+            onClick={() => handleFormatSwitch(originalFormat)}
+            className="text-brand-500 hover:text-brand-600"
+          >
+            Back to original task
+          </button>
+        </div>
+      );
+    }
+
+    switch (selectedFormat) {
+      case 'quiz':
+        return <QuizTaskStep day={modifiedDay} session={session} onComplete={onComplete} />;
+      case 'fillBlank':
+        return <FillBlankTaskStep day={modifiedDay} session={session} onComplete={onComplete} />;
+      case 'code':
+      default:
+        return <TaskStep day={modifiedDay} session={session} onComplete={onComplete} />;
+    }
+  };
+
   return (
     <div className="space-y-4">
-      {/* Alternative formats banner - styled like AI summary option */}
+      {/* Alternative formats banner */}
       <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-100 rounded-xl p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2 text-sm text-gray-600">
-            <span>🤔</span>
-            <span>Prefer a different challenge style?</span>
+            <Shuffle className="w-4 h-4" />
+            <span>Try a different style:</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <button
-              onClick={() => setSelectedFormat('quiz')}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-purple-600 hover:text-purple-700 hover:bg-purple-100 rounded-lg transition-colors"
+              onClick={() => handleFormatSwitch('code')}
+              disabled={isLoadingFormat}
+              className={clsx(
+                'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors',
+                selectedFormat === 'code'
+                  ? 'bg-white text-gray-900 shadow-sm font-medium'
+                  : 'text-gray-600 hover:text-gray-700 hover:bg-gray-100'
+              )}
+            >
+              <Code2 className="w-4 h-4" />
+              Code
+            </button>
+            <button
+              onClick={() => handleFormatSwitch('quiz')}
+              disabled={isLoadingFormat}
+              className={clsx(
+                'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors',
+                selectedFormat === 'quiz'
+                  ? 'bg-white text-purple-700 shadow-sm font-medium'
+                  : 'text-purple-600 hover:text-purple-700 hover:bg-purple-100'
+              )}
             >
               <HelpCircle className="w-4 h-4" />
-              Multiple Choice
+              Quiz
             </button>
-            <span className="text-gray-300">|</span>
             <button
-              onClick={() => setSelectedFormat('fillBlank')}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-100 rounded-lg transition-colors"
+              onClick={() => handleFormatSwitch('fillBlank')}
+              disabled={isLoadingFormat}
+              className={clsx(
+                'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors',
+                selectedFormat === 'fillBlank'
+                  ? 'bg-white text-blue-700 shadow-sm font-medium'
+                  : 'text-blue-600 hover:text-blue-700 hover:bg-blue-100'
+              )}
             >
               <FileText className="w-4 h-4" />
               Fill Blanks
@@ -288,7 +378,7 @@ function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session:
         </div>
       </div>
 
-      <TaskStep day={day} session={session} onComplete={onComplete} />
+      {renderTaskComponent()}
     </div>
   );
 }

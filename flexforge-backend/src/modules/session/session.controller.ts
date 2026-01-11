@@ -318,4 +318,31 @@ export class SessionController {
       content: result.content,
     };
   }
+
+  /**
+   * POST /api/v1/sessions/:id/days/:dayNumber/task-format
+   * Get task in alternative format (quiz, fillBlank, or code)
+   * Generates on-demand and caches for future use
+   */
+  @Post(':id/days/:dayNumber/task-format')
+  async getAlternativeTaskFormat(
+    @Request() req,
+    @Param('id') id: string,
+    @Param('dayNumber') dayNumber: string,
+    @Body() body: { format: 'code' | 'quiz' | 'fillBlank' },
+  ) {
+    const result = await this.sessionService.getAlternativeTaskFormat(
+      id,
+      req.user.id,
+      parseInt(dayNumber, 10),
+      body.format,
+    );
+
+    return {
+      message: `Task converted to ${body.format} format`,
+      task: result.task,
+      tokensUsed: result.tokensUsed,
+      fromCache: result.fromCache,
+    };
+  }
 }

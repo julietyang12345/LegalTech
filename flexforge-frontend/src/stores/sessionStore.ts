@@ -69,6 +69,11 @@ interface SessionState {
   getDeferredContent: () => DayDeferredContent | null;
   resetSplitLoadingState: () => void;
 
+  // Alternative task format actions
+  getAlternativeTaskFormat: (dayNumber: number, format: 'code' | 'quiz' | 'fillBlank') => Promise<any>;
+  alternativeTaskLoading: boolean;
+  alternativeTaskCache: Record<string, any>; // key: "day-format", value: task
+
   // Progress actions
   fetchProgress: (sessionId: string) => Promise<void>;
   updateTaskProgress: (taskId: string, updates: { completed?: boolean; confidenceScore?: number; timeSpentMinutes?: number }) => Promise<void>;
@@ -139,6 +144,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   isDeferredLoading: false,
   isDeferredLoaded: false,
   deferredContent: null,
+
+  // Alternative task format state
+  alternativeTaskLoading: false,
+  alternativeTaskCache: {},
 
   createSession: async (dto: CreateSessionDto) => {
     set({ isLoading: true, error: null });
@@ -525,6 +534,55 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       isDeferredLoaded: false,
       deferredContent: null,
     });
+  },
+
+  // ═══════════════════════════════════════════════════
+  // ALTERNATIVE TASK FORMAT ACTIONS
+  // ═══════════════════════════════════════════════════
+
+  getAlternativeTaskFormat: async (dayNumber: number, format: 'code' | 'quiz' | 'fillBlank') => {
+    const { activeSession, alternativeTaskCache, currentDay } = get();
+    if (!activeSession) throw new Error('No active session');
+
+    // Check local cache first
+    const cacheKey = `${dayNumber}-${format}`;
+    if (alternativeTaskCache[cacheKey]) {
+      return alternativeTaskCache[cacheKey];
+    }
+
+    // Check if original task is already in this format
+    const originalTask = currentDay?.task1;
+    const originalFormat = (originalTask as any)?.format || 'code';
+    if (originalFormat === format && originalTask) {
+      return originalTask;
+    }
+
+    set({ alternativeTaskLoading: true });
+
+    try {
+      const response = await sessionService.getAlternativeTaskFormat(
+        activeSession.id,
+        dayNumber,
+        format,
+      );
+
+      // Cache the result locally
+      set((state) => ({
+        alternativeTaskLoading: false,
+        alternativeTaskCache: {
+          ...state.alternativeTaskCache,
+          [cacheKey]: response.task,
+        },
+      }));
+
+      return response.task;
+    } catch (error: any) {
+      set({
+        alternativeTaskLoading: false,
+        error: error.response?.data?.message || 'Failed to load alternative format',
+      });
+      throw error;
+    }
   },
 
   submitSkipTest: async (dayNumber: number, answers: number[]) => {
