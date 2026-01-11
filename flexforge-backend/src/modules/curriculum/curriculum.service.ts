@@ -584,14 +584,14 @@ export class CurriculumService {
     // NOW search for video using concepts from generated content
     // This ensures video matches what foundationCards and tasks actually teach
     let videoResult: any = null;
-    if (shouldSearchVideo && dayContent.video) {
-      // Extract key concepts from generated content, include skill name for context
-      const contentBasedConcept = this.extractSearchConceptsFromContent(
-        dayContent,
-        searchConcept,
-        curriculum.metadata.skillName,
-      );
+    // Extract concept outside the if block so it's available for AI explanation fallback
+    const contentBasedConcept = this.extractSearchConceptsFromContent(
+      dayContent,
+      searchConcept,
+      curriculum.metadata.skillName,
+    );
 
+    if (shouldSearchVideo && dayContent.video) {
       this.logger.log(`🎥 Searching video for content-based concept: "${contentBasedConcept}" (${videoSlot}min slot)`);
 
       try {
@@ -614,62 +614,150 @@ export class CurriculumService {
     dayContent.transferability = transferability;
     dayContent.contentSource = contentSource;
 
-    if (dayContent.video && videoResult?.success && videoResult.video) {
-      const video = videoResult.video;
-      const watchPlan = videoResult.watchPlan;
+    // Get adaptive modality decision (video vs AI vs both)
+    const adaptiveModality = videoResult?.adaptiveModality;
+    const defaultMode = adaptiveModality?.defaultMode || 'ai';
 
-      // Build ALL alternative videos from buildAlternatives() result (up to 2)
-      // These are the next-best ranked videos for progressive "try different" UX
-      const alternatives = videoResult.alternatives?.map(alt => ({
-        videoId: alt.video.videoId,
-        title: alt.video.title,
-        channelName: alt.video.channelName,
-        duration: alt.video.duration,
-        startTime: alt.watchPlan?.primarySegment
-          ? this.secondsToTime(alt.watchPlan.primarySegment.startSeconds)
-          : undefined,
-        endTime: alt.watchPlan?.primarySegment
-          ? this.secondsToTime(alt.watchPlan.primarySegment.endSeconds)
-          : undefined,
-        estimatedMinutes: alt.watchPlan?.primarySegment
-          ? Math.ceil((alt.watchPlan.primarySegment.endSeconds - alt.watchPlan.primarySegment.startSeconds) / 60)
-          : 6,
-        differentiator: alt.differentiator,
-        matchPercent: alt.matchPercent,
-      })) || [];
+    // Always generate AI explanation for backup/alternative
+    const aiExplanation = this.generateAiExplanation(dayContent, contentBasedConcept);
 
-      // Check if this is a university channel (MIT OCW, CS50, etc.)
-      const universityChannels = ['MIT OpenCourseWare', 'Harvard CS50', 'freeCodeCamp', 'Khan Academy', 'Stanford Online'];
-      const isUniversityVideo = contentSource === 'university' ||
-        universityChannels.some(ch => video.channelName?.toLowerCase().includes(ch.toLowerCase()));
+    // Handle content based on adaptive modality
+    if (dayContent.video && videoResult?.success) {
+      // AI is default mode - show AI explanation first, video as option
+      if (defaultMode === 'ai') {
+        this.logger.log(`📝 Day ${dayNumber}: AI explanation as default (${adaptiveModality?.reasonShort || 'confidence low'})`);
 
-      dayContent.video = {
-        ...dayContent.video,
-        url: `https://www.youtube.com/watch?v=${video.videoId}`,
-        videoId: video.videoId,
-        title: video.title,
-        channelName: video.channelName,
-        duration: video.duration,
-        startTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.startSeconds) : undefined,
-        endTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.endSeconds) : undefined,
-        watchInstructions: watchPlan?.primarySegment?.description || `Watch this video to learn about ${dayContent.title}`,
-        // Only use keyTopics from actual video (chapters/AI analysis), NOT fallback to generic watchPoints
-        keyTopics: watchPlan?.keyTopics?.length ? watchPlan.keyTopics : undefined,
-        summary: watchPlan?.summary, // AI-generated video summary for Active Recall
-        estimatedMinutes: watchPlan?.primarySegment
-          ? Math.ceil((watchPlan.primarySegment.endSeconds - watchPlan.primarySegment.startSeconds) / 60)
-          : 6,
-        verified: true,
-        matchPercent: videoResult.matchPercent,
-        whyThisVideo: videoResult.whyThisVideo,
-        alternatives,
-        // New: Tag for frontend display
-        isUniversityLecture: isUniversityVideo,
-        sourceType: contentSource, // 'university' | 'youtube'
-      };
-      this.logger.log(`✅ Day ${dayNumber} video found: ${video.title} (${videoResult.matchPercent}% match)${alternatives.length > 0 ? ` + ${alternatives.length} alternatives` : ''}`);
+        dayContent.video = {
+          // AI explanation as primary
+          useAiExplanation: true,
+          concept: contentBasedConcept,
+          title: `Understanding ${contentBasedConcept}`,
+          explanation: aiExplanation,
+          reason: adaptiveModality?.reason || `AI explanation recommended for "${contentBasedConcept}".`,
+
+          // Video still available as backup if user wants
+          videoAvailable: adaptiveModality?.videoAvailable ?? false,
+          showVideoOption: adaptiveModality?.showVideoOption ?? false,
+          ...(adaptiveModality?.videoAvailable && videoResult.video ? {
+            backupVideo: {
+              videoId: videoResult.video.videoId,
+              title: videoResult.video.title,
+              channelName: videoResult.video.channelName,
+              url: `https://www.youtube.com/watch?v=${videoResult.video.videoId}`,
+              matchPercent: videoResult.matchPercent,
+            },
+          } : {}),
+
+          // Adaptive modality metadata for frontend
+          adaptiveModality: {
+            defaultMode,
+            videoConfidence: adaptiveModality?.videoConfidence ?? 0,
+            reason: adaptiveModality?.reason || '',
+            reasonShort: adaptiveModality?.reasonShort || '',
+          },
+        };
+      } else if (videoResult.video) {
+        // Video is default mode - show video first, AI as option
+        const video = videoResult.video;
+        const watchPlan = videoResult.watchPlan;
+
+        // Build ALL alternative videos from buildAlternatives() result (up to 2)
+        // These are the next-best ranked videos for progressive "try different" UX
+        const alternatives = videoResult.alternatives?.map(alt => ({
+          videoId: alt.video.videoId,
+          title: alt.video.title,
+          channelName: alt.video.channelName,
+          duration: alt.video.duration,
+          startTime: alt.watchPlan?.primarySegment
+            ? this.secondsToTime(alt.watchPlan.primarySegment.startSeconds)
+            : undefined,
+          endTime: alt.watchPlan?.primarySegment
+            ? this.secondsToTime(alt.watchPlan.primarySegment.endSeconds)
+            : undefined,
+          estimatedMinutes: alt.watchPlan?.primarySegment
+            ? Math.ceil((alt.watchPlan.primarySegment.endSeconds - alt.watchPlan.primarySegment.startSeconds) / 60)
+            : 6,
+          differentiator: alt.differentiator,
+          matchPercent: alt.matchPercent,
+        })) || [];
+
+        // Check if this is a university channel (MIT OCW, CS50, etc.)
+        const universityChannels = ['MIT OpenCourseWare', 'Harvard CS50', 'freeCodeCamp', 'Khan Academy', 'Stanford Online'];
+        const isUniversityVideo = contentSource === 'university' ||
+          universityChannels.some(ch => video.channelName?.toLowerCase().includes(ch.toLowerCase()));
+
+        dayContent.video = {
+          ...dayContent.video,
+          url: `https://www.youtube.com/watch?v=${video.videoId}`,
+          videoId: video.videoId,
+          title: video.title,
+          channelName: video.channelName,
+          duration: video.duration,
+          startTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.startSeconds) : undefined,
+          endTime: watchPlan?.primarySegment ? this.secondsToTime(watchPlan.primarySegment.endSeconds) : undefined,
+          watchInstructions: watchPlan?.primarySegment?.description || `Watch this video to learn about ${dayContent.title}`,
+          // Only use keyTopics from actual video (chapters/AI analysis), NOT fallback to generic watchPoints
+          keyTopics: watchPlan?.keyTopics?.length ? watchPlan.keyTopics : undefined,
+          summary: watchPlan?.summary, // AI-generated video summary for Active Recall
+          estimatedMinutes: watchPlan?.primarySegment
+            ? Math.ceil((watchPlan.primarySegment.endSeconds - watchPlan.primarySegment.startSeconds) / 60)
+            : 6,
+          verified: true,
+          matchPercent: videoResult.matchPercent,
+          whyThisVideo: videoResult.whyThisVideo,
+          alternatives,
+          // New: Tag for frontend display
+          isUniversityLecture: isUniversityVideo,
+          sourceType: contentSource, // 'university' | 'youtube'
+
+          // Adaptive modality: AI explanation available as backup
+          showAiOption: adaptiveModality?.showAiOption ?? true,
+          aiExplanation: aiExplanation, // Pre-generated for instant switch
+          adaptiveModality: {
+            defaultMode: 'video',
+            videoConfidence: adaptiveModality?.videoConfidence ?? 70,
+            reason: adaptiveModality?.reason || 'Good video match found.',
+            reasonShort: adaptiveModality?.reasonShort || 'Good match',
+          },
+        };
+        this.logger.log(`✅ Day ${dayNumber} video found: ${video.title} (${videoResult.matchPercent}% match)${alternatives.length > 0 ? ` + ${alternatives.length} alternatives` : ''}`);
+      }
     } else if (dayContent.video && videoResult && !videoResult.success) {
       this.logger.warn(`⚠️ Day ${dayNumber} video not found: ${videoResult.error}`);
+
+      // No video found - default to AI explanation
+      dayContent.video = {
+        useAiExplanation: true,
+        concept: contentBasedConcept,
+        title: `Understanding ${contentBasedConcept}`,
+        explanation: aiExplanation,
+        reason: `No suitable video found for "${contentBasedConcept}". Here's a focused explanation.`,
+        videoAvailable: false,
+        showVideoOption: false,
+        adaptiveModality: {
+          defaultMode: 'ai',
+          videoConfidence: 0,
+          reason: videoResult.error || 'No video found',
+          reasonShort: 'No video',
+        },
+      };
+    } else if (dayContent.video && !videoResult) {
+      // Video search was skipped (e.g., text/docs content source)
+      dayContent.video = {
+        useAiExplanation: true,
+        concept: contentBasedConcept,
+        title: `Understanding ${contentBasedConcept}`,
+        explanation: aiExplanation,
+        reason: 'AI explanation provided for this topic.',
+        videoAvailable: false,
+        showVideoOption: false,
+        adaptiveModality: {
+          defaultMode: 'ai',
+          videoConfidence: 0,
+          reason: 'Video search skipped for this content type',
+          reasonShort: 'Text content',
+        },
+      };
     }
 
     // FALLBACK: If video failed/skipped AND contentLayer is 'foundation', try university resources
@@ -863,6 +951,50 @@ export class CurriculumService {
     }
 
     return dayContent;
+  }
+
+  /**
+   * Generate AI explanation from day content when no good video match is found.
+   * Uses foundationCards if available, otherwise creates a structured summary.
+   */
+  private generateAiExplanation(dayContent: any, concept: string): string {
+    const sections: string[] = [];
+
+    // Use foundationCards content if available
+    if (dayContent.foundationCards && Array.isArray(dayContent.foundationCards)) {
+      for (const card of dayContent.foundationCards) {
+        if (card.concept && card.explanation) {
+          sections.push(`**${card.concept}**\n${card.explanation}`);
+        }
+      }
+    }
+
+    // If we have foundation content, return it
+    if (sections.length > 0) {
+      return sections.join('\n\n');
+    }
+
+    // Fallback: Generate from day title and task descriptions
+    const fallbackSections: string[] = [];
+
+    if (dayContent.title) {
+      fallbackSections.push(`## ${dayContent.title}`);
+    }
+
+    if (dayContent.task1?.description) {
+      fallbackSections.push(`### What You'll Learn\n${dayContent.task1.description}`);
+    }
+
+    if (dayContent.task1?.steps && Array.isArray(dayContent.task1.steps)) {
+      const steps = dayContent.task1.steps.slice(0, 5).map((s: any, i: number) =>
+        `${i + 1}. ${typeof s === 'string' ? s : s.instruction || s.title || ''}`
+      ).join('\n');
+      fallbackSections.push(`### Key Steps\n${steps}`);
+    }
+
+    return fallbackSections.length > 0
+      ? fallbackSections.join('\n\n')
+      : `Learn about ${concept} through the practice exercises below.`;
   }
 
   /**

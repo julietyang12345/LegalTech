@@ -14,7 +14,7 @@ import {
 import {
   SCORING_WEIGHTS,
   MARKETING_WEIGHTS,
-  CONCEPT_SYNONYMS,
+  MIN_CONCEPT_MATCH_THRESHOLD,
   scoreMarketingPenalty,
   scoreChannelTrust,
   scoreConceptMatch,
@@ -22,9 +22,13 @@ import {
   scoreCognitiveLoad,
   scoreEngagement,
   analyzePromoContent,
+  textContainsWord,
+  computeVideoConfidence,
+  determineAdaptiveModality,
   type ScoringVideo,
   type ScoringContext,
   type PromoAnalysisResult,
+  type AdaptiveModalityResult,
 } from './video-scoring.utils';
 
 // ============================================
@@ -121,6 +125,9 @@ export interface VideoMatchResult {
   matchPercent?: number;      // 0-100 for UI confidence display
   alternatives?: VideoAlternative[];  // Other good options (personalization UX)
   platformDependency?: PlatformDependencyInfo;  // Tool/platform dependency info
+  useAiExplanation?: boolean; // True if no good video match - use AI summary instead (deprecated, use adaptiveModality)
+  /** Adaptive modality decision - whether to show video, AI, or both */
+  adaptiveModality?: AdaptiveModalityResult;
   error?: string;
 }
 
@@ -418,6 +425,26 @@ export class VideoMatchingService {
         };
       }
 
+      // Compute adaptive modality - whether to show video, AI, or both
+      const videoConfidence = computeVideoConfidence(
+        selectedCandidate.scores,
+        promoAnalysis?.verdict,
+      );
+
+      const adaptiveModality = determineAdaptiveModality(
+        videoConfidence,
+        true, // hasVideo = true since we have selectedCandidate
+        promoAnalysis?.verdict,
+        selectedCandidate.scores.marketingPenalty,
+      );
+
+      // Legacy: useAiExplanation for backwards compatibility
+      const useAiExplanation = adaptiveModality.defaultMode === 'ai';
+
+      this.logger.log(
+        `Adaptive modality: ${adaptiveModality.defaultMode} (confidence=${videoConfidence}, reason="${adaptiveModality.reasonShort}")`,
+      );
+
       return {
         success: true,
         video: selectedCandidate.video,
@@ -430,6 +457,8 @@ export class VideoMatchingService {
         matchPercent,
         alternatives,
         platformDependency,
+        useAiExplanation,
+        adaptiveModality,
       };
     } catch (error) {
       this.logger.error('Video matching failed:', error.message);
@@ -552,24 +581,11 @@ export class VideoMatchingService {
       score += 25;
     }
 
-    // Check concept words
-    const conceptWords = conceptLower.split(' ').filter(w => w.length > 2);
+    // Check concept words with variations (js/javascript, etc.)
+    const conceptWords = conceptLower.split(' ').filter(w => w.length > 1);
     for (const word of conceptWords) {
-      if (titleLower.includes(word)) {
+      if (textContainsWord(titleLower, word)) {
         score += 8;
-      }
-    }
-
-    // Check synonyms by extracting core tokens from concept
-    for (const [token, synonyms] of Object.entries(CONCEPT_SYNONYMS)) {
-      // If concept contains this token (e.g., "useState" in "useState hook")
-      if (conceptLower.includes(token)) {
-        for (const synonym of synonyms) {
-          if (titleLower.includes(synonym)) {
-            score += 5;
-            break; // Only count once per token
-          }
-        }
       }
     }
 

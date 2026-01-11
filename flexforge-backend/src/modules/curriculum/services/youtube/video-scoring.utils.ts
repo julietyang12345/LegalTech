@@ -162,40 +162,263 @@ export const COGNITIVE_SIGNALS = {
 };
 
 // ============================================
-// CONCEPT SYNONYMS
+// MINIMUM CONCEPT MATCH THRESHOLD
 // ============================================
 
-export const CONCEPT_SYNONYMS: Record<string, string[]> = {
-  usestate: ['state', 'react state', 'state hook', 'state management', 'usestate'],
-  useeffect: ['effect', 'side effect', 'lifecycle', 'effect hook', 'useeffect'],
-  props: ['properties', 'component props', 'passing data', 'props'],
-  component: ['components', 'react component', 'functional component'],
-  api: ['rest api', 'fetch', 'http', 'endpoints', 'backend', 'api'],
-  async: ['asynchronous', 'promises', 'await', 'async/await', 'async'],
-  hook: ['hooks', 'react hook', 'custom hook'],
-  reducer: ['usereducer', 'reducer', 'state reducer'],
-  context: ['usecontext', 'context api', 'react context'],
-  typescript: ['ts', 'type script', 'types', 'typescript'],
-  javascript: ['js', 'java script', 'javascript'],
-  python: ['py', 'python'],
-  node: ['nodejs', 'node.js', 'node'],
-  react: ['reactjs', 'react.js', 'react'],
-  vue: ['vuejs', 'vue.js', 'vue'],
-  angular: ['angularjs', 'angular.js', 'angular'],
-  next: ['nextjs', 'next.js', 'next'],
-  express: ['expressjs', 'express.js', 'express'],
-  mongo: ['mongodb', 'mongo db', 'mongo'],
-  sql: ['mysql', 'postgresql', 'database', 'sql'],
-  css: ['styling', 'styles', 'stylesheet', 'css'],
-  html: ['markup', 'html5', 'html'],
-  git: ['github', 'version control', 'git'],
-  docker: ['containers', 'containerization', 'docker'],
-  kubernetes: ['k8s', 'container orchestration', 'kubernetes'],
-  aws: ['amazon web services', 'cloud', 'aws'],
-  testing: ['tests', 'unit test', 'jest', 'testing'],
-  automation: ['automate', 'workflow', 'zapier', 'automation'],
-  ai: ['artificial intelligence', 'machine learning', 'ml', 'ai'],
+// If best video scores below this, use AI explanation instead of showing a poor match
+// 60 = at least 1 word match + some coverage, avoids showing generic videos
+export const MIN_CONCEPT_MATCH_THRESHOLD = 60;
+
+// ============================================
+// ADAPTIVE MODALITY - VIDEO VS AI DECISION
+// ============================================
+
+export type ContentMode = 'video' | 'ai' | 'both';
+
+export interface AdaptiveModalityResult {
+  /** Recommended default content mode */
+  defaultMode: ContentMode;
+  /** Confidence in video quality (0-100) */
+  videoConfidence: number;
+  /** Why this mode was recommended */
+  reason: string;
+  /** Short UI-friendly reason */
+  reasonShort: string;
+  /** Is video available (even if not default) */
+  videoAvailable: boolean;
+  /** Is AI explanation available */
+  aiAvailable: boolean;
+  /** Should show "prefer AI" toggle in UI */
+  showAiOption: boolean;
+  /** Should show "try video anyway" option */
+  showVideoOption: boolean;
+}
+
+/**
+ * Compute video confidence score (0-100) using multiple signals.
+ * Higher = more confident this video will provide good learning experience.
+ *
+ * Factors:
+ * - Concept match: Does video actually teach the topic?
+ * - Marketing penalty: Is it promotional content?
+ * - Promo analysis verdict: Deep promotional analysis
+ * - Duration fit: Is length appropriate?
+ * - Segmentability: Can we extract good segments?
+ */
+export function computeVideoConfidence(
+  scores: {
+    conceptMatch: number;
+    marketingPenalty: number;
+    durationFit: number;
+    segmentability: number;
+    channelTrust: number;
+  },
+  promoVerdict?: 'reject' | 'allow_with_warning' | 'allow_tagged' | 'ideal',
+): number {
+  // Base confidence from concept match (most important)
+  let confidence = scores.conceptMatch * 0.6;
+
+  // Marketing penalty reduces confidence significantly
+  // marketingPenalty is 0-50, convert to confidence penalty
+  const marketingImpact = Math.min(30, scores.marketingPenalty * 0.6);
+  confidence -= marketingImpact;
+
+  // Segmentability adds confidence (can we watch the right parts?)
+  confidence += scores.segmentability * 0.1;
+
+  // Channel trust adds confidence
+  confidence += scores.channelTrust * 0.1;
+
+  // Promo verdict adjustments
+  if (promoVerdict === 'reject') {
+    confidence -= 25;
+  } else if (promoVerdict === 'allow_with_warning') {
+    confidence -= 10;
+  } else if (promoVerdict === 'ideal') {
+    confidence += 5;
+  }
+
+  return Math.max(0, Math.min(100, Math.round(confidence)));
+}
+
+/**
+ * Determine adaptive modality - should we show video, AI, or both?
+ *
+ * Decision logic:
+ * - High confidence (70+): Video as default, AI as backup
+ * - Medium confidence (50-70): Both options, video default
+ * - Low confidence (35-50): Both options, AI default
+ * - Very low (<35): AI only, video hidden unless requested
+ */
+export function determineAdaptiveModality(
+  videoConfidence: number,
+  hasVideo: boolean,
+  promoVerdict?: 'reject' | 'allow_with_warning' | 'allow_tagged' | 'ideal',
+  marketingPenalty?: number,
+): AdaptiveModalityResult {
+  // No video found at all
+  if (!hasVideo) {
+    return {
+      defaultMode: 'ai',
+      videoConfidence: 0,
+      reason: 'No suitable video found for this topic. AI explanation will help you understand the concepts.',
+      reasonShort: 'No video match',
+      videoAvailable: false,
+      aiAvailable: true,
+      showAiOption: false,  // AI is the only option
+      showVideoOption: false,
+    };
+  }
+
+  // Rejected by promotional analysis
+  if (promoVerdict === 'reject') {
+    return {
+      defaultMode: 'ai',
+      videoConfidence,
+      reason: 'Available videos are too promotional. AI explanation focuses on teaching without sales pitches.',
+      reasonShort: 'Videos too promotional',
+      videoAvailable: true,
+      aiAvailable: true,
+      showAiOption: false,
+      showVideoOption: true,  // Let user try anyway if curious
+    };
+  }
+
+  // High confidence - video is great
+  if (videoConfidence >= 70) {
+    return {
+      defaultMode: 'video',
+      videoConfidence,
+      reason: 'Found a high-quality video that matches this topic well.',
+      reasonShort: 'Great video match',
+      videoAvailable: true,
+      aiAvailable: true,
+      showAiOption: true,  // User can switch to AI if they prefer reading
+      showVideoOption: false,
+    };
+  }
+
+  // Medium-high confidence - video is good
+  if (videoConfidence >= 50) {
+    const hasWarning = promoVerdict === 'allow_with_warning' || (marketingPenalty && marketingPenalty > 10);
+    return {
+      defaultMode: 'video',
+      videoConfidence,
+      reason: hasWarning
+        ? 'Found a relevant video. Contains some promotional content but has good teaching value.'
+        : 'Found a relevant video that covers this topic.',
+      reasonShort: hasWarning ? 'Good with some promo' : 'Good video match',
+      videoAvailable: true,
+      aiAvailable: true,
+      showAiOption: true,
+      showVideoOption: false,
+    };
+  }
+
+  // Low-medium confidence - AI preferred but video available
+  if (videoConfidence >= 35) {
+    return {
+      defaultMode: 'ai',
+      videoConfidence,
+      reason: 'AI explanation recommended for this topic. A video is available but may not be the best fit.',
+      reasonShort: 'AI recommended',
+      videoAvailable: true,
+      aiAvailable: true,
+      showAiOption: false,
+      showVideoOption: true,
+    };
+  }
+
+  // Very low confidence - AI strongly preferred
+  return {
+    defaultMode: 'ai',
+    videoConfidence,
+    reason: 'AI explanation is better for this topic. Available videos don\'t closely match what you need to learn.',
+    reasonShort: 'AI is better here',
+    videoAvailable: true,
+    aiAvailable: true,
+    showAiOption: false,
+    showVideoOption: true,
+  };
+}
+
+// ============================================
+// CONCEPT SYNONYMS - Generated dynamically
+// ============================================
+
+// Common abbreviations (bidirectional: full <-> short)
+const ABBREVIATIONS: Record<string, string> = {
+  // Languages
+  javascript: 'js', typescript: 'ts', python: 'py', golang: 'go',
+  // Infra & databases
+  kubernetes: 'k8s', database: 'db', postgresql: 'postgres', mongodb: 'mongo',
+  elasticsearch: 'es', dynamodb: 'dynamo', redis: 'rd',
+  // AI/ML
+  'artificial intelligence': 'ai', 'machine learning': 'ml',
+  'large language model': 'llm', 'generative pre-trained': 'gpt',
+  'natural language processing': 'nlp', 'computer vision': 'cv',
+  'retrieval augmented generation': 'rag', 'neural network': 'nn',
+  // Cloud & DevOps
+  'amazon web services': 'aws', 'google cloud': 'gcp', 'microsoft azure': 'azure',
+  'continuous integration': 'ci', 'continuous deployment': 'cd',
+  'infrastructure as code': 'iac', serverless: 'sls',
+  // Web & API
+  'user interface': 'ui', 'user experience': 'ux',
+  'application programming interface': 'api', 'rest api': 'restful',
+  'graphql': 'gql', 'software development kit': 'sdk',
+  // Auth & security
+  application: 'app', authentication: 'auth', authorization: 'authz',
+  'json web token': 'jwt', 'single sign-on': 'sso', 'two-factor': '2fa',
+  // Frontend
+  'cascading style sheets': 'css', 'hypertext markup': 'html',
+  'document object model': 'dom', 'server side rendering': 'ssr',
+  'static site generation': 'ssg', 'single page application': 'spa',
+  // Data formats
+  'javascript object notation': 'json', 'extensible markup': 'xml',
+  // Testing & quality
+  'test driven development': 'tdd', 'behavior driven': 'bdd',
+  'quality assurance': 'qa', 'end to end': 'e2e',
+  // Tools & environments
+  'command line interface': 'cli', 'integrated development environment': 'ide',
+  'version control system': 'vcs', repository: 'repo', configuration: 'config',
+  environment: 'env', development: 'dev', production: 'prod',
 };
+
+/**
+ * Generate variations of a word (framework.js patterns, abbreviations, plurals)
+ */
+function getWordVariations(word: string): string[] {
+  const variations = [word];
+  const lower = word.toLowerCase();
+
+  // Framework patterns: react -> reactjs, react.js
+  if (/^[a-z]+$/.test(lower) && lower.length >= 3) {
+    variations.push(lower + 'js', lower + '.js');
+  }
+
+  // Abbreviations (both directions)
+  if (ABBREVIATIONS[lower]) {
+    variations.push(ABBREVIATIONS[lower]);
+  }
+  const fullForm = Object.entries(ABBREVIATIONS).find(([, abbr]) => abbr === lower)?.[0];
+  if (fullForm) variations.push(fullForm);
+
+  // Plurals
+  if (!lower.endsWith('s')) variations.push(lower + 's');
+
+  return variations;
+}
+
+/**
+ * Check if text contains any variation of the word
+ */
+export function textContainsWord(text: string, word: string): boolean {
+  const variations = getWordVariations(word);
+  return variations.some(v => text.includes(v));
+}
+
+// Legacy export for backward compatibility (empty - use textContainsWord instead)
+export const CONCEPT_SYNONYMS: Record<string, string[]> = {};
 
 // ============================================
 // SCORING FUNCTIONS
@@ -544,6 +767,9 @@ export function scoreChannelTrust(video: ScoringVideo): number {
 
 /**
  * Score concept match (0-100)
+ *
+ * Uses word coverage ratio to penalize videos that only match some concept words.
+ * e.g., searching "AI API" but video only has "API" = low coverage = penalty
  */
 export function scoreConceptMatch(video: ScoringVideo, context: ScoringContext): number {
   let score = 50;
@@ -556,23 +782,29 @@ export function scoreConceptMatch(video: ScoringVideo, context: ScoringContext):
     score += 30;
   }
 
-  // Concept words in title: +10 per word
-  const conceptWords = conceptLower.split(' ').filter(w => w.length > 2);
+  // Concept words analysis with coverage tracking
+  // Filter only single-letter words, keep 2+ chars (ai, ml, go, etc.)
+  const conceptWords = conceptLower.split(' ').filter(w => w.length > 1);
+  let wordsFoundInTitle = 0;
+
   for (const word of conceptWords) {
-    if (titleLower.includes(word)) {
+    if (textContainsWord(titleLower, word)) {
       score += 10;
+      wordsFoundInTitle++;
     }
   }
 
-  // Check synonyms
-  for (const [token, synonyms] of Object.entries(CONCEPT_SYNONYMS)) {
-    if (conceptLower.includes(token)) {
-      for (const synonym of synonyms) {
-        if (titleLower.includes(synonym) || descLower.includes(synonym)) {
-          score += 5;
-          break;
-        }
-      }
+  // Word coverage penalty/bonus for multi-word concepts
+  // Penalize videos that only match some words (too generic)
+  if (conceptWords.length >= 2) {
+    const coverageRatio = wordsFoundInTitle / conceptWords.length;
+
+    if (coverageRatio >= 0.75) {
+      // High coverage: bonus
+      score += 10;
+    } else if (coverageRatio < 0.5) {
+      // Low coverage: video is too generic, penalize
+      score -= 20;
     }
   }
 
@@ -585,14 +817,14 @@ export function scoreConceptMatch(video: ScoringVideo, context: ScoringContext):
   if (video.chapters) {
     const chapterContainsConcept = video.chapters.some(ch =>
       ch.title.toLowerCase().includes(conceptLower) ||
-      conceptWords.some(word => ch.title.toLowerCase().includes(word)),
+      conceptWords.some(word => textContainsWord(ch.title.toLowerCase(), word)),
     );
     if (chapterContainsConcept) {
       score += 12;
     }
   }
 
-  return Math.max(30, Math.min(100, score));
+  return Math.max(20, Math.min(100, score));
 }
 
 /**

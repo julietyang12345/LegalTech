@@ -163,6 +163,25 @@ export interface DaySkeleton {
   estimatedMinutes: number;
 }
 
+// Adaptive modality - video vs AI decision
+export type ContentMode = 'video' | 'ai' | 'both';
+
+export interface AdaptiveModalityInfo {
+  defaultMode: ContentMode;
+  videoConfidence: number;      // 0-100
+  reason: string;               // Full explanation
+  reasonShort: string;          // UI-friendly short version
+}
+
+// Backup video info when AI is default mode
+export interface BackupVideo {
+  videoId: string;
+  title: string;
+  channelName?: string;
+  url: string;
+  matchPercent?: number;
+}
+
 // Video matching types (from backend VideoMatchResult)
 export interface VideoMatch {
   title: string;
@@ -187,6 +206,18 @@ export interface VideoMatch {
   preferredChannels?: string[];
   topicFocus?: string;
   watchPoints?: string[];
+
+  // Adaptive modality fields (video vs AI)
+  useAiExplanation?: boolean;   // True when AI is default mode
+  concept?: string;             // The concept being explained
+  explanation?: string;         // AI-generated explanation (markdown)
+  reason?: string;              // Why this mode was chosen
+  videoAvailable?: boolean;     // Is video available as backup?
+  showVideoOption?: boolean;    // Should show "try video" button?
+  showAiOption?: boolean;       // Should show "prefer AI" button?
+  backupVideo?: BackupVideo;    // Video info when AI is default
+  aiExplanation?: string;       // Pre-generated AI explanation when video is default
+  adaptiveModality?: AdaptiveModalityInfo;
 }
 
 export interface VideoAlternative {

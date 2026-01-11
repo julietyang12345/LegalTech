@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Clock, CheckCircle2, MessageCircle, Lock, Star, Youtube, ExternalLink, RefreshCw, Loader2 } from 'lucide-react';
+import { Play, Clock, CheckCircle2, MessageCircle, Lock, Star, Youtube, ExternalLink, RefreshCw, Loader2, BookOpen, Video, Sparkles, Info } from 'lucide-react';
 import { Card, Button } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { sessionService } from '@/services/sessionService';
-import { QuotaTier } from '@/types';
+import { QuotaTier, ContentMode } from '@/types';
 import type { CurriculumDay, Session, VideoMatch, VideoAlternative } from '@/types';
 
 interface VideoStepProps {
@@ -163,6 +163,193 @@ function VideoCard({
   );
 }
 
+// AI Explanation component - shown when AI mode is selected
+function AIExplanation({
+  video,
+  onSwitchToVideo,
+  showVideoOption,
+}: {
+  video: VideoMatch;
+  onSwitchToVideo?: () => void;
+  showVideoOption: boolean;
+}) {
+  const explanation = video.explanation || video.aiExplanation || '';
+  const concept = video.concept || video.title || 'this concept';
+  const adaptiveInfo = video.adaptiveModality;
+
+  // Simple markdown to HTML (handles basic formatting)
+  const renderMarkdown = (text: string) => {
+    return text
+      .split('\n\n')
+      .map((para, idx) => {
+        // Handle headers
+        if (para.startsWith('## ')) {
+          return (
+            <h3 key={idx} className="text-lg font-semibold text-gray-900 mt-4 mb-2">
+              {para.replace('## ', '')}
+            </h3>
+          );
+        }
+        if (para.startsWith('### ')) {
+          return (
+            <h4 key={idx} className="text-base font-medium text-gray-800 mt-3 mb-1">
+              {para.replace('### ', '')}
+            </h4>
+          );
+        }
+
+        // Handle bold text
+        const withBold = para.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+        // Handle lists
+        if (para.match(/^\d+\./m) || para.match(/^-/m)) {
+          const items = para.split('\n').filter(Boolean);
+          return (
+            <ul key={idx} className="list-disc list-inside space-y-1 my-2">
+              {items.map((item, i) => (
+                <li
+                  key={i}
+                  className="text-gray-700"
+                  dangerouslySetInnerHTML={{
+                    __html: item.replace(/^[\d]+\.\s*|-\s*/, ''),
+                  }}
+                />
+              ))}
+            </ul>
+          );
+        }
+
+        return (
+          <p
+            key={idx}
+            className="text-gray-700 leading-relaxed"
+            dangerouslySetInnerHTML={{ __html: withBold }}
+          />
+        );
+      });
+  };
+
+  return (
+    <Card className="overflow-hidden">
+      {/* Header badge */}
+      <div className="px-6 py-3 bg-gradient-to-r from-purple-50 to-indigo-100 border-b border-purple-200 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-purple-500" />
+          <span className="text-sm font-medium text-purple-700">AI Explanation</span>
+        </div>
+        {adaptiveInfo && (
+          <span className="text-xs text-purple-600 bg-purple-200 px-2 py-0.5 rounded-full">
+            {adaptiveInfo.reasonShort}
+          </span>
+        )}
+      </div>
+
+      {/* Explanation content */}
+      <div className="p-6">
+        <h3 className="text-xl font-semibold text-gray-900 mb-4">
+          {video.title || `Understanding ${concept}`}
+        </h3>
+
+        {/* Why AI explanation */}
+        {video.reason && (
+          <div className="flex items-start gap-2 p-3 bg-blue-50 rounded-lg mb-4">
+            <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+            <p className="text-sm text-blue-800">{video.reason}</p>
+          </div>
+        )}
+
+        {/* Main explanation */}
+        <div className="prose prose-sm max-w-none space-y-3">
+          {explanation ? (
+            renderMarkdown(explanation)
+          ) : (
+            <p className="text-gray-600">
+              This topic will be covered through the foundation cards and practice exercises below.
+              Dive into the concepts step by step!
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Video backup option */}
+      {showVideoOption && video.backupVideo && (
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Video className="w-4 h-4" />
+              <span>Video available: {video.backupVideo.title}</span>
+              {video.backupVideo.matchPercent && (
+                <span className="text-xs text-gray-400">
+                  ({video.backupVideo.matchPercent}% match)
+                </span>
+              )}
+            </div>
+            {onSwitchToVideo && (
+              <button
+                onClick={onSwitchToVideo}
+                className="text-sm text-brand-600 hover:text-brand-700 font-medium hover:underline"
+              >
+                Watch video instead →
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// Mode toggle component
+function ModeToggle({
+  currentMode,
+  onModeChange,
+  showVideoOption,
+  showAiOption,
+  videoConfidence,
+}: {
+  currentMode: ContentMode;
+  onModeChange: (mode: ContentMode) => void;
+  showVideoOption: boolean;
+  showAiOption: boolean;
+  videoConfidence?: number;
+}) {
+  // Don't show toggle if only one option available
+  if (!showVideoOption && !showAiOption) return null;
+  if (currentMode === 'video' && !showAiOption) return null;
+  if (currentMode === 'ai' && !showVideoOption) return null;
+
+  return (
+    <div className="flex items-center justify-center gap-4 py-2">
+      <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-lg">
+        <button
+          onClick={() => onModeChange('video')}
+          disabled={!showVideoOption && currentMode !== 'video'}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+            currentMode === 'video'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          } ${!showVideoOption && currentMode !== 'video' ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          <Video className="w-4 h-4" />
+          Video
+        </button>
+        <button
+          onClick={() => onModeChange('ai')}
+          disabled={!showAiOption && currentMode !== 'ai'}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+            currentMode === 'ai'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          } ${!showAiOption && currentMode !== 'ai' ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          <BookOpen className="w-4 h-4" />
+          Reading
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function VideoStep({ day, session }: VideoStepProps) {
   const [hasWatched, setHasWatched] = useState(false);
   const [activeVideoIndex, setActiveVideoIndex] = useState(0); // 0=main, 1=alt1, 2=alt2, 3+=AI generated
@@ -174,6 +361,16 @@ export function VideoStep({ day, session }: VideoStepProps) {
   const canAskAI = hasTierAccess(QuotaTier.PRO);
 
   const video = day.video;
+
+  // Adaptive modality state
+  const adaptiveModality = video?.adaptiveModality;
+  const defaultMode = adaptiveModality?.defaultMode || (video?.useAiExplanation ? 'ai' : 'video');
+  const [currentMode, setCurrentMode] = useState<ContentMode>(defaultMode);
+
+  // Determine what options are available
+  const showVideoOption = video?.videoAvailable !== false && (video?.showVideoOption || video?.videoId || video?.backupVideo);
+  const showAiOption = video?.showAiOption !== false && (video?.aiExplanation || video?.explanation);
+  const videoConfidence = adaptiveModality?.videoConfidence ?? video?.matchPercent;
 
   // Support both single alternative and array of alternatives
   const alternatives: VideoAlternative[] = video?.alternatives || (video?.alternative ? [video.alternative] : []);
@@ -269,106 +466,164 @@ export function VideoStep({ day, session }: VideoStepProps) {
     return 'Find another video (AI search)';
   };
 
+  // Dynamic title/subtitle based on mode
+  const stepTitle = currentMode === 'ai' ? 'Learn & Understand 📚' : 'Watch & Learn 📺';
+  const stepSubtitle = currentMode === 'ai'
+    ? 'AI-curated explanation for focused learning'
+    : `${currentVideo?.estimatedMinutes || video?.estimatedMinutes || 6} minute focused video`;
+  const stepIcon = currentMode === 'ai' ? BookOpen : Play;
+  const stepGradient = currentMode === 'ai' ? 'from-purple-400 to-indigo-500' : 'from-red-400 to-red-500';
+
+  // Handle mode switching
+  const handleModeChange = (mode: ContentMode) => {
+    setCurrentMode(mode);
+  };
+
+  // Switch to video from AI explanation
+  const handleSwitchToVideo = () => {
+    setCurrentMode('video');
+  };
+
   return (
     <StepLayout
-      icon={Play}
-      iconGradient="from-red-400 to-red-500"
-      title="Watch & Learn 📺"
-      subtitle={`${currentVideo?.estimatedMinutes || video?.estimatedMinutes || 6} minute focused video`}
+      icon={stepIcon}
+      iconGradient={stepGradient}
+      title={stepTitle}
+      subtitle={stepSubtitle}
     >
-      {/* Main Video Card */}
-      <Card className="overflow-hidden">
-        {/* Recommendation badge */}
-        {(video?.matchPercent || currentVideo?.matchPercent) && (
-          <div className="px-6 py-3 bg-gradient-to-r from-brand-50 to-brand-100 border-b border-brand-200 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Star className="w-4 h-4 text-brand-500 fill-current" />
-              <span className="text-sm font-medium text-brand-700">
-                {isOnMainVideo ? 'Recommended' :
-                 activeVideoIndex <= alternatives.length
-                   ? ((alternatives[activeVideoIndex - 1] as VideoAlternative)?.differentiator || 'Alternative')
-                   : 'AI Selected'}
-              </span>
-            </div>
-            <span className="text-xs text-brand-600 bg-brand-200 px-2 py-0.5 rounded-full">
-              {currentVideo?.matchPercent || video?.matchPercent}% match
-            </span>
-          </div>
-        )}
-
-        <VideoCard
-          video={currentVideo}
-          fallbackTitle={day.title}
+      {/* Mode toggle - only show if both options available */}
+      {(showVideoOption || showAiOption) && (showVideoOption !== showAiOption || (showVideoOption && showAiOption)) && (
+        <ModeToggle
+          currentMode={currentMode}
+          onModeChange={handleModeChange}
+          showVideoOption={!!showVideoOption}
+          showAiOption={!!showAiOption}
+          videoConfidence={videoConfidence}
         />
+      )}
 
-        {/* Why this video */}
-        {isOnMainVideo && video?.whyThisVideo && video.whyThisVideo.length > 0 && (
-          <div className="px-6 pb-6">
-            <div className="flex flex-wrap gap-2">
-              {video.whyThisVideo.map((reason, idx) => (
-                <span key={idx} className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded-full">
-                  ✓ {reason}
+      {/* AI Explanation Mode */}
+      {currentMode === 'ai' && video && (
+        <AIExplanation
+          video={video}
+          onSwitchToVideo={showVideoOption ? handleSwitchToVideo : undefined}
+          showVideoOption={!!showVideoOption}
+        />
+      )}
+
+      {/* Video Mode */}
+      {currentMode === 'video' && (
+        <>
+          {/* Main Video Card */}
+          <Card className="overflow-hidden">
+            {/* Recommendation badge */}
+            {(video?.matchPercent || currentVideo?.matchPercent) && (
+              <div className="px-6 py-3 bg-gradient-to-r from-brand-50 to-brand-100 border-b border-brand-200 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Star className="w-4 h-4 text-brand-500 fill-current" />
+                  <span className="text-sm font-medium text-brand-700">
+                    {isOnMainVideo ? 'Recommended' :
+                     activeVideoIndex <= alternatives.length
+                       ? ((alternatives[activeVideoIndex - 1] as VideoAlternative)?.differentiator || 'Alternative')
+                       : 'AI Selected'}
+                  </span>
+                </div>
+                <span className="text-xs text-brand-600 bg-brand-200 px-2 py-0.5 rounded-full">
+                  {currentVideo?.matchPercent || video?.matchPercent}% match
                 </span>
-              ))}
-            </div>
-          </div>
-        )}
+              </div>
+            )}
 
-        {/* Switch back link when not viewing main */}
-        {!isOnMainVideo && (
-          <div className="px-6 pb-4">
-            <button
-              onClick={handleUseMain}
-              className="text-sm text-gray-500 hover:text-gray-700 underline"
-            >
-              ← Back to recommended video
-            </button>
-          </div>
-        )}
+            <VideoCard
+              video={currentVideo}
+              fallbackTitle={day.title}
+            />
 
-        {/* Key topics */}
-        {video?.keyTopics && video.keyTopics.length > 0 && (
-          <div className="px-6 pb-6 space-y-2">
-            <h3 className="text-sm font-medium text-gray-700">Key topics to focus on:</h3>
-            <ul className="space-y-1">
-              {video.keyTopics.map((topic, index) => {
-                const topicText = typeof topic === 'string' ? topic : (topic as any)?.note || (topic as any)?.title || '';
-                if (!topicText) return null;
-                return (
-                  <li key={index} className="flex items-center gap-2 text-sm text-gray-600">
-                    <span className="w-1.5 h-1.5 rounded-full bg-brand-500" />
-                    {topicText}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
-      </Card>
+            {/* Why this video */}
+            {isOnMainVideo && video?.whyThisVideo && video.whyThisVideo.length > 0 && (
+              <div className="px-6 pb-6">
+                <div className="flex flex-wrap gap-2">
+                  {video.whyThisVideo.map((reason, idx) => (
+                    <span key={idx} className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded-full">
+                      ✓ {reason}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
-      {/* Try a different one - subtle link (progressive fallback) */}
-      <div className="flex justify-center">
-        <button
-          onClick={handleTryDifferent}
-          disabled={isSearchingNew}
-          className="flex items-center gap-2 px-4 py-2 text-sm text-gray-500 hover:text-gray-700
-                     hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isSearchingNew ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Searching for new video...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="w-4 h-4" />
-              {getTryDifferentText()}
-            </>
-          )}
-        </button>
-      </div>
+            {/* Switch back link when not viewing main */}
+            {!isOnMainVideo && (
+              <div className="px-6 pb-4">
+                <button
+                  onClick={handleUseMain}
+                  className="text-sm text-gray-500 hover:text-gray-700 underline"
+                >
+                  ← Back to recommended video
+                </button>
+              </div>
+            )}
 
-      {/* Mark as watched */}
+            {/* Key topics */}
+            {video?.keyTopics && video.keyTopics.length > 0 && (
+              <div className="px-6 pb-6 space-y-2">
+                <h3 className="text-sm font-medium text-gray-700">Key topics to focus on:</h3>
+                <ul className="space-y-1">
+                  {video.keyTopics.map((topic, index) => {
+                    const topicText = typeof topic === 'string' ? topic : (topic as any)?.note || (topic as any)?.title || '';
+                    if (!topicText) return null;
+                    return (
+                      <li key={index} className="flex items-center gap-2 text-sm text-gray-600">
+                        <span className="w-1.5 h-1.5 rounded-full bg-brand-500" />
+                        {topicText}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {/* AI explanation available hint */}
+            {showAiOption && video?.aiExplanation && (
+              <div className="px-6 pb-4 border-t border-gray-100 pt-4">
+                <button
+                  onClick={() => setCurrentMode('ai')}
+                  className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  Prefer reading? Switch to AI explanation
+                </button>
+              </div>
+            )}
+          </Card>
+        </>
+      )}
+
+      {/* Try a different one - only in video mode */}
+      {currentMode === 'video' && (
+        <div className="flex justify-center">
+          <button
+            onClick={handleTryDifferent}
+            disabled={isSearchingNew}
+            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-500 hover:text-gray-700
+                       hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSearchingNew ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Searching for new video...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-4 h-4" />
+                {getTryDifferentText()}
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Mark as completed */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -384,19 +639,24 @@ export function VideoStep({ day, session }: VideoStepProps) {
           }`}
         >
           <CheckCircle2 className={`w-5 h-5 ${hasWatched ? 'text-focus-500' : ''}`} />
-          {hasWatched ? 'Watched!' : 'Mark as watched'}
+          {hasWatched
+            ? (currentMode === 'ai' ? 'Read!' : 'Watched!')
+            : (currentMode === 'ai' ? 'Mark as read' : 'Mark as watched')
+          }
         </button>
 
-        {/* Ask AI (PRO feature) */}
-        {canAskAI ? (
-          <Button variant="secondary" size="sm" leftIcon={<MessageCircle className="w-4 h-4" />}>
-            Ask AI about this video
-          </Button>
-        ) : (
-          <div className="flex items-center gap-2 text-sm text-gray-400">
-            <Lock className="w-4 h-4" />
-            <span>Ask AI (PRO feature)</span>
-          </div>
+        {/* Ask AI (PRO feature) - only show in video mode */}
+        {currentMode === 'video' && (
+          canAskAI ? (
+            <Button variant="secondary" size="sm" leftIcon={<MessageCircle className="w-4 h-4" />}>
+              Ask AI about this video
+            </Button>
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-gray-400">
+              <Lock className="w-4 h-4" />
+              <span>Ask AI (PRO feature)</span>
+            </div>
+          )
         )}
       </motion.div>
     </StepLayout>
