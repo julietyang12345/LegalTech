@@ -1,6 +1,16 @@
 import { SkillLevel } from '../../../database/entities/session.entity';
 import { SkillType, SkillComplexity } from '../services/skill-detector.service';
 
+// Learner preferences from onboarding (optional - may not exist for users who skipped onboarding)
+export interface LearnerPrefsForPrompt {
+  originalGoal?: string;           // User's free-text goal from onboarding
+  selectedDirection?: string;      // The direction they picked (more specific than skillName)
+  directionKeywords?: string[];    // Keywords for the selected direction
+  outputType?: 'working_code' | 'understand_concept' | 'fix_bug' | 'ship_project';
+  usageContext?: 'work' | 'personal' | 'interview' | 'school';
+  contentDepth?: 'fast' | 'medium' | 'deep';
+}
+
 export interface CurriculumPromptParams {
   skillName: string;
   durationDays: number;
@@ -12,6 +22,8 @@ export interface CurriculumPromptParams {
   suggestedLanguage?: string;
   safetyLevel?: 'low' | 'medium' | 'high';
   prerequisiteSkills?: string[];
+  // Learner preferences from onboarding
+  learnerPrefs?: LearnerPrefsForPrompt;
 }
 
 // ============================================
@@ -112,6 +124,70 @@ For foundational CS topics (algorithms, data structures, Big O, recursion, trees
 function getTopicRelevanceGuidance(): string {
   return `
 TOPIC FILTER: Only include what blocks progress toward the goal. MEANS (tools/setup) → minimum to use. ENDS (goal itself) → full depth. No history, theory, or comparisons for things they just use.
+`;
+}
+
+// Generate learner context guidance from onboarding preferences
+function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
+  if (!prefs) return '';
+
+  const parts: string[] = [];
+
+  // Original goal provides the most context
+  if (prefs.originalGoal) {
+    parts.push(`USER'S ORIGINAL GOAL: "${prefs.originalGoal}"`);
+  }
+
+  // Selected direction is more specific than skillName
+  if (prefs.selectedDirection) {
+    parts.push(`SPECIFIC FOCUS: "${prefs.selectedDirection}"`);
+  }
+
+  // Direction keywords help with search and content focus
+  if (prefs.directionKeywords?.length) {
+    parts.push(`KEY TOPICS: ${prefs.directionKeywords.join(', ')}`);
+  }
+
+  // Output type affects curriculum structure
+  if (prefs.outputType) {
+    const outputGuidance: Record<string, string> = {
+      working_code: 'User wants WORKING CODE as output. Focus on practical implementation, real runnable examples.',
+      understand_concept: 'User wants to UNDERSTAND CONCEPTS. Include more theory, explanations, and mental models.',
+      fix_bug: 'User wants to FIX BUGS. Focus on debugging techniques, common issues, troubleshooting patterns.',
+      ship_project: 'User wants to SHIP A PROJECT. Focus on end-to-end implementation, deployment, best practices.',
+    };
+    parts.push(outputGuidance[prefs.outputType] || '');
+  }
+
+  // Usage context affects examples and focus
+  if (prefs.usageContext) {
+    const contextGuidance: Record<string, string> = {
+      work: 'FOR WORK: Use professional examples, enterprise patterns, team collaboration scenarios.',
+      personal: 'FOR PERSONAL PROJECT: Use hobbyist-friendly examples, fun projects, creative applications.',
+      interview: 'FOR INTERVIEW PREP: Include common interview questions, algorithmic thinking, optimization.',
+      school: 'FOR LEARNING: Include foundational concepts, academic rigor, theoretical understanding.',
+    };
+    parts.push(contextGuidance[prefs.usageContext] || '');
+  }
+
+  // Content depth affects how much detail to include
+  if (prefs.contentDepth) {
+    const depthGuidance: Record<string, string> = {
+      fast: 'DEPTH: FAST - Minimal theory, quick practical tasks, essential concepts only.',
+      medium: 'DEPTH: BALANCED - Core concepts with practical application, standard complexity.',
+      deep: 'DEPTH: COMPREHENSIVE - Include edge cases, advanced patterns, thorough explanations.',
+    };
+    parts.push(depthGuidance[prefs.contentDepth] || '');
+  }
+
+  if (parts.length === 0) return '';
+
+  return `
+LEARNER CONTEXT (from onboarding):
+${parts.join('\n')}
+
+IMPORTANT: Tailor day titles, examples, and tasks to match the user's specific goal and context above.
+If user has a specific project goal, day titles should reference building toward that goal (e.g., "Day 1: Setting Up Your Bot" not "Day 1: Python Basics").
 `;
 }
 

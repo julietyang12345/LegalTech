@@ -26,6 +26,7 @@ import { SessionModule } from './modules/session/session.module';
 import { ProgressModule } from './modules/progress/progress.module';
 import { ProjectModule } from './modules/project/project.module';
 import { CompanionModule } from './modules/companion/companion.module';
+import { OnboardingModule } from './modules/onboarding/onboarding.module';
 
 @Module({
   imports: [
@@ -77,10 +78,11 @@ import { CompanionModule } from './modules/companion/companion.module';
     UserModule,
     AiModule,
     CurriculumModule,
-    CompanionModule, 
+    CompanionModule,
     SessionModule,
     ProgressModule,
     ProjectModule,
+    OnboardingModule,
   ],
 })
 export class AppModule {}

@@ -13,6 +13,7 @@ import {
   LandingPage,
   LoginPage,
   RegisterPage,
+  OnboardingPage,
   StartPage,
   TodayPage,
   SessionPage,
@@ -41,7 +42,17 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
 
-          {/* Protected routes - require login */}
+          {/* Onboarding - protected but skip onboarding check to avoid redirect loop */}
+          <Route
+            path="/onboarding"
+            element={
+              <ProtectedRoute skipOnboardingCheck>
+                <OnboardingPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Protected routes - require login + onboarding */}
           <Route
             path="/start"
             element={

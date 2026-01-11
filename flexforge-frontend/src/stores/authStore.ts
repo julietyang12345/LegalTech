@@ -10,16 +10,18 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
-  
+
   // Actions
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name?: string) => Promise<void>;
   logout: () => void;
   fetchProfile: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   clearError: () => void;
-  
+
   // Helpers
   hasTierAccess: (tier: QuotaTier) => boolean;
+  needsOnboarding: () => boolean;
 }
 
 const tierHierarchy: Record<QuotaTier, number> = {
@@ -87,7 +89,7 @@ export const useAuthStore = create<AuthState>()(
       fetchProfile: async () => {
         const { token } = get();
         if (!token) return;
-        
+
         set({ isLoading: true });
         try {
           const response = await authService.getProfile();
@@ -98,12 +100,24 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      // Alias for fetchProfile - used after onboarding to refresh user preferences
+      refreshUser: async () => {
+        await get().fetchProfile();
+      },
+
       clearError: () => set({ error: null }),
 
       hasTierAccess: (requiredTier: QuotaTier) => {
         const { user } = get();
         if (!user) return false;
         return tierHierarchy[user.quotaTier] >= tierHierarchy[requiredTier];
+      },
+
+      // Check if user needs to complete onboarding
+      needsOnboarding: () => {
+        const { user } = get();
+        if (!user) return false;
+        return !user.preferences?.learner?.completedOnboarding;
       },
     }),
     {

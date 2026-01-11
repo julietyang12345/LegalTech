@@ -41,10 +41,10 @@ export const PROMO_SIGNALS = {
     'affiliate', 'aff=', 'ref=', 'utm_', 'partner=', 'coupon', 'discount',
   ],
 
-  // Self-promo phrases in description
+  // Self-promo phrases in description (excluding duplicates from monetization)
   selfPromo: [
-    'join', 'enroll', 'my course', 'bootcamp', 'cohort', 'community',
-    'mentorship', 'patreon', 'newsletter',
+    'join', 'my course', 'bootcamp', 'cohort', 'community',
+    'mentorship', 'patreon',
   ],
 
   // Platform/vendor tool names for tool-heavy detection
@@ -60,12 +60,10 @@ export const PROMO_SIGNALS = {
     'eleven labs', 'heygen', 'synthesia', 'd-id', 'runway',
   ],
 
-  // Brands that often create promotional tutorials
+  // Brands that often create promotional tutorials (excluding those already in platformTools)
   promoBrands: [
-    'notion', 'zapier', 'airtable', 'webflow', 'clickup', 'hubspot', 'make.com',
-    'jasper', 'semrush', 'canva', 'figma', 'slack', 'asana', 'monday', 'trello',
-    'mailchimp', 'salesforce', 'shopify', 'wix', 'squarespace', 'wordpress',
-    'stripe', 'twilio', 'sendgrid', 'intercom', 'zendesk', 'freshdesk',
+    'jasper', 'semrush', 'salesforce', 'shopify', 'wix', 'squarespace',
+    'wordpress', 'twilio', 'sendgrid', 'intercom', 'zendesk', 'freshdesk',
   ],
 
   // Vendor self-identification patterns
@@ -449,9 +447,6 @@ export function textContainsWord(text: string, word: string): boolean {
   return variations.some(v => text.includes(v));
 }
 
-// Legacy export for backward compatibility (empty - use textContainsWord instead)
-export const CONCEPT_SYNONYMS: Record<string, string[]> = {};
-
 // ============================================
 // SCORING FUNCTIONS
 // ============================================
@@ -557,6 +552,112 @@ export function isToolRelatedTopic(concept: string): boolean {
   // Check for generic tool-usage patterns via stems
   const toolPatterns = ['api', 'automat', 'integrat', 'workflow', 'pipeline', 'webhook', 'endpoint'];
   return toolPatterns.some(pattern => conceptLower.includes(pattern));
+}
+
+// ============================================
+// VIDEO CONTENT TYPE CLASSIFICATION
+// ============================================
+
+export type VideoContentType = 'CONCEPT' | 'TOOL_SPECIFIC' | 'MIXED';
+
+export interface ContentTypeResult {
+  type: VideoContentType;
+  toolsMentioned: string[];
+  reason: string;
+}
+
+/**
+ * Classify video as CONCEPT (teaches principles) vs TOOL_SPECIFIC (teaches a specific tool).
+ * CONCEPT videos are preferred for learning, TOOL_SPECIFIC offered as optional "see it in action".
+ *
+ * @param title - Video title
+ * @param concept - Search concept to check if tool is explicitly requested
+ * @returns Classification with detected tools
+ */
+export function classifyVideoContentType(
+  title: string,
+  concept: string,
+): ContentTypeResult {
+  const titleLower = title.toLowerCase();
+  const conceptLower = concept.toLowerCase();
+
+  // Check which platform tools appear in the title
+  const toolsInTitle = PROMO_SIGNALS.platformTools.filter(tool =>
+    titleLower.includes(tool.toLowerCase()),
+  );
+
+  // Check if concept explicitly mentions these tools (user wants tool-specific content)
+  const toolsRequestedInConcept = toolsInTitle.filter(tool =>
+    conceptLower.includes(tool.toLowerCase()),
+  );
+
+  // Strong tool-specific signals in title
+  const toolSpecificPatterns = [
+    /\b(using|with|in|for)\s+(zapier|make|n8n|airtable|notion|retool|bubble)/i,
+    /\b(zapier|make|n8n|airtable|notion)\s+(tutorial|guide|course|beginner)/i,
+    /\bhow to\b.*\b(zapier|make|n8n|airtable|notion)\b/i,
+  ];
+  const hasToolSpecificPattern = toolSpecificPatterns.some(p => p.test(title));
+
+  // If tools in title but NOT in concept = video is too specific for this search
+  if (toolsInTitle.length > 0 && toolsRequestedInConcept.length === 0) {
+    if (hasToolSpecificPattern || toolsInTitle.length >= 1) {
+      return {
+        type: 'TOOL_SPECIFIC',
+        toolsMentioned: toolsInTitle,
+        reason: `Video focuses on ${toolsInTitle.join(', ')} but concept doesn't mention these tools`,
+      };
+    }
+  }
+
+  // If concept mentions the tool, tool-specific is acceptable
+  if (toolsInTitle.length > 0 && toolsRequestedInConcept.length > 0) {
+    return {
+      type: 'MIXED',
+      toolsMentioned: toolsInTitle,
+      reason: `Tool-specific but matches concept request for ${toolsRequestedInConcept.join(', ')}`,
+    };
+  }
+
+  // No specific tools = concept-focused
+  return {
+    type: 'CONCEPT',
+    toolsMentioned: [],
+    reason: 'Tool-agnostic, teaches general principles',
+  };
+}
+
+/**
+ * Calculate penalty for tool-specific videos based on user's platform tolerance.
+ * KEY for solving the "Zapier problem" - prevents tool-specific content from
+ * dominating results when user wants vendor-neutral learning.
+ *
+ * @param contentType - Result from classifyVideoContentType
+ * @param platformTolerance - User's preference (from learnerPrefs)
+ * @returns Penalty points to subtract from video score (0-35)
+ */
+export function getPlatformTolerancePenalty(
+  contentType: ContentTypeResult,
+  platformTolerance: 'any' | 'preferGeneric' | 'genericOnly' = 'preferGeneric',
+): number {
+  // No penalty for concept-focused content
+  if (contentType.type === 'CONCEPT') {
+    return 0;
+  }
+
+  // Mixed content (user asked for tool) gets minimal penalty
+  if (contentType.type === 'MIXED') {
+    return platformTolerance === 'genericOnly' ? 10 : 0;
+  }
+
+  // TOOL_SPECIFIC content penalty based on user tolerance
+  const penalties = {
+    any: 0, // User is fine with tool-specific content
+    preferGeneric: 15, // Moderate penalty - prefer concept but tools okay
+    genericOnly: 35, // Heavy penalty - strongly prefer vendor-neutral
+  };
+
+  return penalties[platformTolerance];
 }
 
 export interface PromoAnalysisResult {

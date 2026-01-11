@@ -408,6 +408,7 @@ export class CurriculumController {
         ),
         differentiator: alt.differentiator,
         matchPercent: alt.matchPercent,
+        contentType: alt.contentType,
       }));
 
       return {
@@ -434,6 +435,7 @@ export class CurriculumController {
           matchPercent: videoResult.matchPercent,
           keyTopics: video.chapters?.slice(0, 5).map((c) => c.title),
           whyThisVideo: videoResult.whyThisVideo,
+          contentType: videoResult.contentType,
           alternatives,
         },
       };

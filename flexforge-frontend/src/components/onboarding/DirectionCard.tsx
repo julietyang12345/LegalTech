@@ -1,0 +1,88 @@
+import { clsx } from 'clsx';
+import { Clock, Target, Wrench } from 'lucide-react';
+import type { LearningDirection } from '@/types';
+
+interface DirectionCardProps {
+  direction: LearningDirection;
+  isSelected?: boolean;
+  onClick: () => void;
+}
+
+export function DirectionCard({ direction, isSelected, onClick }: DirectionCardProps) {
+  return (
+    <button
+      onClick={onClick}
+      className={clsx(
+        'w-full text-left p-5 rounded-xl border-2 transition-all duration-200',
+        'hover:shadow-md hover:-translate-y-0.5',
+        isSelected
+          ? 'border-brand-500 bg-brand-50 shadow-md'
+          : 'border-gray-200 bg-white hover:border-brand-300'
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className={clsx(
+            'flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center',
+            direction.isToolSpecific
+              ? 'bg-amber-100 text-amber-600'
+              : 'bg-brand-100 text-brand-600'
+          )}
+        >
+          {direction.isToolSpecific ? (
+            <Wrench className="w-5 h-5" />
+          ) : (
+            <Target className="w-5 h-5" />
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="font-semibold text-gray-900">{direction.title}</h3>
+            <span
+              className={clsx(
+                'text-xs px-2 py-0.5 rounded-full',
+                direction.isToolSpecific
+                  ? 'bg-amber-100 text-amber-700'
+                  : 'bg-brand-100 text-brand-700'
+              )}
+            >
+              {direction.isToolSpecific ? 'Tool-specific' : 'Concept'}
+            </span>
+          </div>
+
+          <p className="text-sm text-gray-600 mb-3">{direction.outcome}</p>
+
+          <div className="flex items-center gap-4 text-xs text-gray-500">
+            <span className="flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5" />
+              ~{direction.estimatedMinutes} min
+            </span>
+            <span className="flex items-center gap-1 flex-wrap">
+              {direction.keywords.slice(0, 3).map((keyword) => (
+                <span
+                  key={keyword}
+                  className="bg-gray-100 px-2 py-0.5 rounded text-gray-600"
+                >
+                  {keyword}
+                </span>
+              ))}
+            </span>
+          </div>
+        </div>
+
+        {isSelected && (
+          <div className="flex-shrink-0 w-6 h-6 bg-brand-500 rounded-full flex items-center justify-center">
+            <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fillRule="evenodd"
+                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}

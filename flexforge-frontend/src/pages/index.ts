@@ -1,6 +1,7 @@
 export { LandingPage } from './LandingPage';
 export { LoginPage } from './LoginPage';
 export { RegisterPage } from './RegisterPage';
+export { default as OnboardingPage } from './OnboardingPage';
 export { StartPage } from './StartPage';
 export { TodayPage } from './TodayPage';
 export { SessionPage } from './SessionPage';

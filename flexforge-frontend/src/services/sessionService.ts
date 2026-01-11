@@ -339,6 +339,11 @@ export const sessionService = {
       matchPercent?: number;
       keyTopics?: string[];
       whyThisVideo?: string[];
+      contentType?: {
+        type: 'CONCEPT' | 'TOOL_SPECIFIC' | 'MIXED';
+        toolsMentioned?: string[];
+        reason?: string;
+      };
       alternatives?: Array<{
         videoId: string;
         title: string;
@@ -348,6 +353,10 @@ export const sessionService = {
         estimatedMinutes?: number;
         differentiator: string;
         matchPercent: number;
+        contentType?: {
+          type: 'CONCEPT' | 'TOOL_SPECIFIC' | 'MIXED';
+          toolsMentioned?: string[];
+        };
       }>;
     };
   }> {

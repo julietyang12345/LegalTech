@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '@/stores/authStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles,
@@ -340,6 +341,7 @@ export function StartPage() {
   const navigate = useNavigate();
   const { createSession, isLoading, error, clearError } = useSessionStore();
   const { addSystemMessage } = useCompanionStore();
+  const { user } = useAuthStore();
 
   const [skillName, setSkillName] = useState('');
   const [durationDays, setDurationDays] = useState(7);
@@ -351,6 +353,39 @@ export function StartPage() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [showQuotaModal, setShowQuotaModal] = useState(false);
   const [quotaErrorMessage, setQuotaErrorMessage] = useState<string | undefined>();
+
+  // Pre-fill from onboarding preferences
+  useEffect(() => {
+    const prefs = user?.preferences?.learner;
+    if (prefs?.selectedDirection && !skillName) {
+      // Use the selected direction as skill name
+      setSkillName(prefs.selectedDirection);
+    }
+    // Also pre-fill skill level if available
+    if (prefs?.skillLevel && !skillName) {
+      const levelMap: Record<string, SkillLevel> = {
+        beginner: SkillLevel.BEGINNER,
+        intermediate: SkillLevel.INTERMEDIATE,
+        advanced: SkillLevel.ADVANCED,
+      };
+      if (levelMap[prefs.skillLevel]) {
+        setSkillLevel(levelMap[prefs.skillLevel]);
+      }
+    }
+    // Pre-fill daily minutes if available
+    if (prefs?.dailyMinutes && !skillName) {
+      const hoursMap: Record<number, number> = {
+        15: 0.25,
+        30: 0.5,
+        45: 0.75,
+        60: 1,
+        90: 1.5,
+      };
+      if (hoursMap[prefs.dailyMinutes]) {
+        setHoursPerDay(hoursMap[prefs.dailyMinutes]);
+      }
+    }
+  }, [user]);
 
   // Helper to check if error is a quota error
   const isQuotaError = (error: any): boolean => {

@@ -25,10 +25,13 @@ import {
   textContainsWord,
   computeVideoConfidence,
   determineAdaptiveModality,
+  classifyVideoContentType,
+  getPlatformTolerancePenalty,
   type ScoringVideo,
   type ScoringContext,
   type PromoAnalysisResult,
   type AdaptiveModalityResult,
+  type ContentTypeResult,
 } from './video-scoring.utils';
 import {
   parseAiJson,
@@ -48,6 +51,13 @@ export interface VideoMatchContext {
   userLevel: 'beginner' | 'intermediate' | 'advanced';
   skillType?: string;           // e.g., 'CODE', 'AI_AGENT', 'DESIGN'
   contentSource?: 'university' | 'youtube' | 'text' | 'docs';  // Content source type
+
+  // Learner preferences from onboarding (affects video selection)
+  learnerPrefs?: {
+    platformTolerance: 'any' | 'preferGeneric' | 'genericOnly';
+    contentDepth: 'fast' | 'medium' | 'deep';
+    directionKeywords?: string[];  // Keywords from selected direction (hints for search)
+  };
 }
 
 export interface WatchPlan {
@@ -103,6 +113,7 @@ export interface ScoredVideo {
   totalScore: number;
   cheapScore: number;           // Quick score before enrichment (for debugging)
   validationResult: VideoValidationResult;
+  contentType: ContentTypeResult;  // CONCEPT vs TOOL_SPECIFIC classification
 }
 
 export interface VideoAlternative {
@@ -111,6 +122,7 @@ export interface VideoAlternative {
   scores: ScoredVideo['scores'];
   differentiator: string;     // e.g., "⚡ Shorter", "🎨 Different style"
   matchPercent: number;       // 0-100 for UI display
+  contentType: ContentTypeResult;  // CONCEPT vs TOOL_SPECIFIC classification
 }
 
 export interface PlatformDependencyInfo {
@@ -135,6 +147,8 @@ export interface VideoMatchResult {
   useAiExplanation?: boolean; // True if no good video match - use AI summary instead (deprecated, use adaptiveModality)
   /** Adaptive modality decision - whether to show video, AI, or both */
   adaptiveModality?: AdaptiveModalityResult;
+  /** Content type classification - CONCEPT (teaches principles) vs TOOL_SPECIFIC (teaches a specific tool) */
+  contentType?: ContentTypeResult;
   error?: string;
 }
 
@@ -466,6 +480,7 @@ export class VideoMatchingService {
         platformDependency,
         useAiExplanation,
         adaptiveModality,
+        contentType: selectedCandidate.contentType,
       };
     } catch (error) {
       this.logger.error('Video matching failed:', error.message);
@@ -976,12 +991,26 @@ export class VideoMatchingService {
         const usablePenalty = (1 - usableRatio) * 15;
         totalScore = totalScore - usablePenalty;
 
+        // Classify content type: CONCEPT vs TOOL_SPECIFIC
+        // TOOL_SPECIFIC videos (e.g., "Zapier Tutorial") are penalized based on user's preference
+        // Users with platformTolerance='any' get no penalty, 'genericOnly' gets heavy penalty
+        const contentType = classifyVideoContentType(video.title, context.concept);
+        const platformTolerance = context.learnerPrefs?.platformTolerance ?? 'preferGeneric';
+        const toolPenalty = getPlatformTolerancePenalty(contentType, platformTolerance);
+        if (toolPenalty > 0) {
+          totalScore -= toolPenalty;
+          this.logger.debug(
+            `Tool-specific penalty (-${toolPenalty}, tolerance=${platformTolerance}): "${video.title}" [${contentType.toolsMentioned.join(', ')}]`,
+          );
+        }
+
         return {
           video,
           scores,
           totalScore: Math.max(0, totalScore),
           cheapScore: cheapScoreMap.get(video.videoId) ?? 0,
           validationResult,
+          contentType, // Include for UI labeling
         };
       })
       .filter((v): v is ScoredVideo => v !== null)
@@ -1644,6 +1673,7 @@ Return JSON only:
           scores: other.scores,
           differentiator,
           matchPercent: Math.min(100, Math.round(other.totalScore)),
+          contentType: other.contentType,
         });
 
         this.logger.log(`Alternative ${alternatives.length} found: "${other.video.title}" (${differentiator})`);

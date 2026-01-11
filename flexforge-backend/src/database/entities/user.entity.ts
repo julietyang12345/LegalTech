@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { Session } from './session.entity';
 import { Project } from './project.entity';
+import { LearnerPrefs } from '../../modules/curriculum/types/learner-prefs.interface';
 
 export enum QuotaTier {
   FREE = 'FREE',
@@ -96,12 +97,13 @@ export class User {
   @Column({ default: false })
   emailVerified: boolean;
 
-  // Settings
+  // Settings & Learner Preferences
   @Column({ type: 'json', nullable: true })
   preferences: {
     notifications?: boolean;
     dailyReminders?: boolean;
     weeklyDigest?: boolean;
+    learner?: LearnerPrefs; // AI-assisted onboarding preferences
   };
 
   // Relations
