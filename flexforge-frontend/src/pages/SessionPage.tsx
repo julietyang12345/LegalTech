@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Zap, X, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Zap, X, CheckCircle, XCircle, Loader2, HelpCircle, FileText } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
@@ -240,23 +240,57 @@ function SkipTestModal({
   );
 }
 
+// Task format types for switching
+type TaskFormat = 'code' | 'quiz' | 'fillBlank';
+
 // Task Router: Renders the appropriate task component based on task format
 function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session: any; onComplete: () => void }) {
   const task = day.task1;
+  const [selectedFormat, setSelectedFormat] = useState<TaskFormat>('code');
+
   if (!task) return null;
 
-  // Check if it's a quiz task
-  if ('format' in task && (task as QuizTask).format === 'quiz') {
+  // If user switched to an alternative format
+  if (selectedFormat === 'quiz') {
     return <QuizTaskStep day={day} session={session} onComplete={onComplete} />;
   }
-
-  // Check if it's a fill-blank task
-  if ('format' in task && (task as FillBlankTask).format === 'fillBlank') {
+  if (selectedFormat === 'fillBlank') {
     return <FillBlankTaskStep day={day} session={session} onComplete={onComplete} />;
   }
 
-  // Default: coding task
-  return <TaskStep day={day} session={session} onComplete={onComplete} />;
+  // Default: code task with format alternatives
+  return (
+    <div className="space-y-4">
+      {/* Alternative formats banner - styled like AI summary option */}
+      <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-100 rounded-xl p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <span>🤔</span>
+            <span>Prefer a different challenge style?</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelectedFormat('quiz')}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-purple-600 hover:text-purple-700 hover:bg-purple-100 rounded-lg transition-colors"
+            >
+              <HelpCircle className="w-4 h-4" />
+              Multiple Choice
+            </button>
+            <span className="text-gray-300">|</span>
+            <button
+              onClick={() => setSelectedFormat('fillBlank')}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-100 rounded-lg transition-colors"
+            >
+              <FileText className="w-4 h-4" />
+              Fill Blanks
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <TaskStep day={day} session={session} onComplete={onComplete} />
+    </div>
+  );
 }
 
 const STEP_COMPONENTS: Record<SessionStepType, React.ComponentType<any>> = {

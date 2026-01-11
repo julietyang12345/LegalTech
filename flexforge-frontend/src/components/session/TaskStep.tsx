@@ -283,22 +283,6 @@ export function TaskStep({ day, onComplete }: TaskStepProps) {
         )}
       </AnimatePresence>
 
-      {/* Complete task button */}
-      <div className="pt-4">
-        <Button
-          size="lg"
-          className="w-full"
-          onClick={onComplete}
-          disabled={!code.trim() && !showSolution}
-        >
-          {code.trim() ? "Done — let's move on!" : showSolution ? 'Got it, continue' : 'Try something first'}
-        </Button>
-        {!code.trim() && !showSolution && (
-          <p className="text-center text-sm text-gray-500 mt-2">
-            Give it a shot, or check the solution if you're stuck
-          </p>
-        )}
-      </div>
     </StepLayout>
   );
 }
