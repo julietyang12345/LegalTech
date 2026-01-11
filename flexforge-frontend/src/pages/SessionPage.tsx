@@ -1,12 +1,12 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Zap, X, CheckCircle, XCircle, Loader2, Shuffle, Code2, HelpCircle, FileText } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Zap, X, CheckCircle, XCircle, Loader2, Shuffle, Code2, HelpCircle, FileText, Sparkles, Target, BookOpen, Trophy } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
 import { FocusModeLayout } from '@/components/layout';
-import { Button } from '@/components/common';
+import { Button, GeneratingScreen } from '@/components/common';
 import type { CurriculumDay } from '@/types';
 
 // Import step components
@@ -240,6 +240,83 @@ function SkipTestModal({
   );
 }
 
+// Incomplete Work Warning Modal
+function IncompleteWorkModal({
+  isOpen,
+  onClose,
+  onTakeSkipTest,
+  incompleteItems,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onTakeSkipTest: () => void;
+  incompleteItems: { step: string; label: string; icon: string }[];
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden"
+      >
+        {/* Header */}
+        <div className="p-6 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+              <span className="text-xl">⚠️</span>
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Hold on!</h3>
+              <p className="text-sm text-gray-500">You haven't completed some activities</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-6">
+          <p className="text-gray-600 mb-4">
+            To get the most out of your learning, please complete:
+          </p>
+          <div className="space-y-3">
+            {incompleteItems.map((item) => (
+              <div
+                key={item.step}
+                className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg"
+              >
+                <span className="text-xl">{item.icon}</span>
+                <span className="text-amber-800 font-medium">{item.label}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-sm text-gray-500 mt-4">
+            Completing these activities helps reinforce your learning and improves retention by up to 40%.
+          </p>
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-gray-100 flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 px-4 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-medium transition-colors"
+          >
+            Go Back & Complete
+          </button>
+          <button
+            onClick={onTakeSkipTest}
+            className="flex items-center gap-2 py-2.5 px-4 text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded-xl font-medium transition-colors"
+          >
+            <Zap className="w-4 h-4" />
+            Take Skip Test
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 // Task format types for switching
 type TaskFormat = 'code' | 'quiz' | 'fillBlank';
 
@@ -417,10 +494,30 @@ const STEP_ORDER_LEGACY: SessionStepType[] = [
   'reflection',
 ];
 
+// Step engagement tracking - what user has actually done
+interface StepEngagement {
+  foundationCards: boolean;  // Clicked through all cards
+  task1: boolean;            // Typed code OR completed quiz/fill-blank
+  reflection: boolean;       // Filled reflection
+}
+
 export function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const [showSkipTest, setShowSkipTest] = useState(false);
+  const [showIncompleteModal, setShowIncompleteModal] = useState(false);
+  const [incompleteItems, setIncompleteItems] = useState<{ step: string; label: string; icon: string }[]>([]);
+
+  // Track what user has actually engaged with
+  const [stepEngagement, setStepEngagement] = useState<StepEngagement>({
+    foundationCards: false,
+    task1: false,
+    reflection: false,
+  });
+
+  const markStepEngaged = (step: keyof StepEngagement) => {
+    setStepEngagement(prev => ({ ...prev, [step]: true }));
+  };
 
   const {
     activeSession,
@@ -489,26 +586,112 @@ export function SessionPage() {
     setCurrentStep(prevStep);
   };
 
-  const handleContinue = () => {
-    if (isLastStep) {
-      // Session complete!
-      celebrate('dayComplete');
+  const {
+    submitPracticeProject,
+    loadDayCoreContent,
+    loadDayDeferredContent,
+    resetSteps,
+  } = useSessionStore();
+
+  const [isAdvancingDay, setIsAdvancingDay] = useState(false);
+
+  // Check what work is incomplete
+  const checkIncompleteWork = (): { step: string; label: string; icon: string }[] => {
+    const incomplete: { step: string; label: string; icon: string }[] = [];
+
+    // Check foundation cards (if they exist in this flow)
+    if (currentDay?.foundationCards && currentDay.foundationCards.length > 0 && !stepEngagement.foundationCards) {
+      incomplete.push({
+        step: 'foundationCards',
+        label: 'Review Foundation Cards',
+        icon: '📚',
+      });
+    }
+
+    // Check task completion
+    if (currentDay?.task1 && !stepEngagement.task1) {
+      const taskFormat = (currentDay.task1 as any)?.format || 'code';
+      incomplete.push({
+        step: 'task1',
+        label: taskFormat === 'quiz' ? 'Complete the Quiz' :
+               taskFormat === 'fillBlank' ? 'Complete Fill-in-the-Blanks' :
+               'Try the Coding Challenge',
+        icon: taskFormat === 'quiz' ? '❓' : taskFormat === 'fillBlank' ? '✍️' : '💻',
+      });
+    }
+
+    return incomplete;
+  };
+
+  // Proceed with day completion (after validation or skip)
+  const proceedWithCompletion = async () => {
+    celebrate('dayComplete');
+    const hasNextDay = activeSession && currentDay && currentDay.day < activeSession.durationDays;
+
+    if (hasNextDay) {
+      setIsAdvancingDay(true);
+      try {
+        // 1. Mark current day as complete (unlocks next day)
+        await submitPracticeProject(currentDay.day, 'Day completed via reflection', 4);
+
+        // 2. Load next day content
+        const nextDayNumber = currentDay.day + 1;
+        await loadDayCoreContent(nextDayNumber);
+
+        // Start deferred loading in background
+        loadDayDeferredContent(nextDayNumber).catch(console.error);
+
+        // 3. Reset steps and engagement for new day
+        resetSteps();
+        setStepEngagement({ foundationCards: false, task1: false, reflection: false });
+
+        addSystemMessage(
+          `🎉 Day ${currentDay.day} complete! Let's start Day ${nextDayNumber}!`,
+          'celebratory'
+        );
+
+        // Stay on session page - it will now show next day
+        setIsAdvancingDay(false);
+      } catch (error) {
+        console.error('Failed to advance day:', error);
+        setIsAdvancingDay(false);
+        // Fallback to today page
+        navigate('/today');
+      }
+    } else {
+      // No more days - course complete!
       addSystemMessage(
-        "🎉 Incredible! You finished the whole day! Take a moment to feel proud!",
+        "🎉 Incredible! You finished the entire course! Take a moment to feel proud!",
         'celebratory'
       );
       navigate('/today');
+    }
+  };
+
+  const handleContinue = async () => {
+    if (isLastStep) {
+      // Check for incomplete work before completing
+      const incomplete = checkIncompleteWork();
+      if (incomplete.length > 0) {
+        setIncompleteItems(incomplete);
+        setShowIncompleteModal(true);
+        return;
+      }
+
+      // All work done, proceed
+      await proceedWithCompletion();
       return;
     }
 
     // Mark current step complete and move to next
     completeStep(currentStep);
-    
+
     // Celebrate based on step
     if (currentStep === 'task1') {
       celebrate('taskComplete');
     }
   };
+
 
   // Loading state
   if (!activeSession || !currentDay) {
@@ -540,7 +723,40 @@ export function SessionPage() {
     );
   }
 
+  // Loading next day content
+  if (isAdvancingDay) {
+    const nextDayNumber = currentDay.day + 1;
+    const nextDayData = activeSession.curriculum.days.find(d => d.day === nextDayNumber);
+    return (
+      <GeneratingScreen
+        steps={[
+          { icon: CheckCircle, text: `Saving Day ${currentDay.day} progress...`, duration: 2000 },
+          { icon: Sparkles, text: 'Generating next lesson...', duration: 30000 },
+          { icon: Target, text: 'Creating practice exercises...', duration: 30000 },
+          { icon: BookOpen, text: 'Finding the perfect video...', duration: 30000 },
+          { icon: Trophy, text: 'Preparing your session...', duration: 10000 },
+        ]}
+        title={`Preparing Day ${nextDayNumber}`}
+        subtitle={nextDayData?.title || `Your next ${activeSession.skillName} lesson`}
+        timeEstimate="This usually takes 1-2 minutes"
+      />
+    );
+  }
+
   const StepComponent = STEP_COMPONENTS[currentStep];
+
+  // Wrap onComplete to track engagement for specific steps
+  const handleStepComplete = () => {
+    // Mark engagement based on current step
+    if (currentStep === 'foundationCards') {
+      markStepEngaged('foundationCards');
+    } else if (currentStep === 'task1') {
+      markStepEngaged('task1');
+    } else if (currentStep === 'reflection') {
+      markStepEngaged('reflection');
+    }
+    handleContinue();
+  };
 
   return (
     <FocusModeLayout>
@@ -556,7 +772,7 @@ export function SessionPage() {
           <StepComponent
             day={currentDay}
             session={activeSession}
-            onComplete={handleContinue}
+            onComplete={handleStepComplete}
           />
         </motion.div>
       </AnimatePresence>
@@ -612,6 +828,17 @@ export function SessionPage() {
           }}
         />
       )}
+
+      {/* Incomplete Work Warning Modal */}
+      <IncompleteWorkModal
+        isOpen={showIncompleteModal}
+        onClose={() => setShowIncompleteModal(false)}
+        onTakeSkipTest={() => {
+          setShowIncompleteModal(false);
+          setShowSkipTest(true);
+        }}
+        incompleteItems={incompleteItems}
+      />
     </FocusModeLayout>
   );
 }

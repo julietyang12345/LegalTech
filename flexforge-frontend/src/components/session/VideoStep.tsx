@@ -7,7 +7,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { sessionService } from '@/services/sessionService';
 import { QuotaTier, ContentMode } from '@/types';
-import type { CurriculumDay, Session, VideoMatch, VideoAlternative } from '@/types';
+import type { CurriculumDay, Session, VideoMatch, VideoAlternative, VideoContentType } from '@/types';
 
 interface VideoStepProps {
   day: CurriculumDay;
@@ -43,6 +43,40 @@ function buildEmbedUrl(video: VideoMatch | VideoAlternative | null): string {
   if (startSeconds > 0) params.set('start', String(startSeconds));
 
   return `https://www.youtube.com/embed/${video.videoId}?${params.toString()}`;
+}
+
+// Content type badge component
+function ContentTypeBadge({ contentType }: { contentType?: VideoContentType }) {
+  if (!contentType) return null;
+
+  const { type, toolsMentioned } = contentType;
+
+  if (type === 'CONCEPT') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
+        <span>🎯</span>
+        <span>Concept-focused</span>
+      </span>
+    );
+  }
+
+  if (type === 'TOOL_SPECIFIC') {
+    const toolName = toolsMentioned?.[0] || 'Tool';
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 rounded-full border border-amber-200">
+        <span>🔧</span>
+        <span>Tool walkthrough ({toolName})</span>
+      </span>
+    );
+  }
+
+  // MIXED type
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded-full border border-blue-200">
+      <span>📚</span>
+      <span>Mixed approach</span>
+    </span>
+  );
 }
 
 // Video card component - reused for main and alternative
@@ -127,6 +161,12 @@ function VideoCard({
             </h3>
             {video?.channelName && (
               <p className="text-xs text-gray-500 mt-1">{video.channelName}</p>
+            )}
+            {/* Content type badge */}
+            {video?.contentType && (
+              <div className="mt-2">
+                <ContentTypeBadge contentType={video.contentType} />
+              </div>
             )}
           </div>
           {isAlternative && onSelect && !isActive && (
@@ -447,6 +487,7 @@ export function VideoStep({ day, session }: VideoStepProps) {
         keyTopics: result.video.keyTopics,
         whyThisVideo: result.video.whyThisVideo,
         alternatives: result.video.alternatives,
+        contentType: result.video.contentType,
       };
 
       setAiGeneratedVideos(prev => [...prev, fetchedVideo]);
