@@ -243,6 +243,38 @@ function getTierInstructions(userTier: string): string {
   }
 }
 
+// Helper to build common day header for all day detail prompts
+function getDayHeader(params: {
+  dayTitle: string;
+  skeleton?: any;
+  dayObjectives?: string[];
+  previousDayTitle?: string;
+  skillType: SkillType;
+  hoursPerDay: number;
+  suggestedLanguage?: string;
+  userTier?: string;
+  includeMode?: boolean;
+  includePrevious?: boolean;
+}): string {
+  const time = getTimeStructure(params.hoursPerDay);
+  const skills = params.skeleton?.skills?.join(', ') || params.dayObjectives?.join(', ') || '';
+  const lines = [
+    `DAY: ${params.dayTitle}`,
+    `SKILLS: ${skills}`,
+  ];
+  if (params.includePrevious !== false) {
+    lines.push(`PREVIOUS: ${params.previousDayTitle || 'N/A'}`);
+  }
+  lines.push(`TYPE: ${params.skillType}${params.includeMode ? ` | MODE: ${time.mode} (${time.totalMinutes} min)` : ` | ${time.totalMinutes} min/day`}`);
+  if (params.userTier) {
+    lines.push(`TIER: ${params.userTier}`);
+  }
+  if (params.suggestedLanguage) {
+    lines.push(`LANGUAGE: ${params.suggestedLanguage}`);
+  }
+  return lines.join('\n');
+}
+
 function getSkillTypeGuidance(skillType: SkillType, complexity: SkillComplexity, safetyLevel?: string): string {
   switch (skillType) {
     case SkillType.CODE:
@@ -266,9 +298,9 @@ function getSkillTypeGuidance(skillType: SkillType, complexity: SkillComplexity,
 }
 
 /**
- * PRIMARY PROMPT: Generates SKELETON for ALL days (including Day 1)
- * Day content is generated on-demand when user clicks "Start Learning" via buildDayDetailPrompt
- * Optimized for token efficiency - full content generated only when needed
+ * PRIMARY PROMPT: Generates SKELETON for ALL days
+ * Day content is generated on-demand via buildDayDetailPrompt
+ * Automatically includes learner context when learnerPrefs is provided
  */
 export function buildCurriculumPrompt(params: CurriculumPromptParams): {
   systemPrompt: string;
@@ -276,19 +308,20 @@ export function buildCurriculumPrompt(params: CurriculumPromptParams): {
 } {
   const time = getTimeStructure(params.hoursPerDay);
   const bossDays = getBossProjectDays(params.durationDays);
+  const learnerContext = getLearnerContextGuidance(params.learnerPrefs);
 
   const systemPrompt = `Generate ${params.durationDays}-day curriculum skeleton for "${params.skillName}".
 Type: ${params.skillType} | Level: ${params.skillLevel} | ${time.totalMinutes}min/day (${time.mode})
 ${params.suggestedLanguage ? `Language: ${params.suggestedLanguage}` : ''}
 Boss project days: ${bossDays.join(', ')}
-
+${learnerContext}
 ${getSkillTypeGuidance(params.skillType, params.complexity, params.safetyLevel)}
 
 ${getContentStrategyGuidance()}
 
 ${getTopicRelevanceGuidance()}
 
-Per day include: day, title, subtitle, skills[], teaser, estimatedMinutes, hasBossProject, skipTest, contentLayer, videoStrategy, transferability, contentSource.
+Per day: day, title, subtitle, skills[], teaser, estimatedMinutes, hasBossProject, contentLayer, videoStrategy, transferability, contentSource, skipTest.
 
 Output valid JSON only.`;
 
@@ -330,43 +363,8 @@ Generate ALL ${params.durationDays} days. hasBossProject=true for days: ${bossDa
   return { systemPrompt, userPrompt };
 }
 
-// Alias for backward compatibility
+// Alias for backward compatibility (buildPreviewPrompt removed - use buildCurriculumPrompt)
 export const buildOverviewPrompt = buildCurriculumPrompt;
-
-/**
- * PREVIEW PROMPT: Minimal skeleton for quick preview
- */
-export function buildPreviewPrompt(params: CurriculumPromptParams): {
-  systemPrompt: string;
-  userPrompt: string;
-} {
-  const time = getTimeStructure(params.hoursPerDay);
-  const bossDays = getBossProjectDays(params.durationDays);
-
-  const systemPrompt = `Generate ${params.durationDays}-day curriculum skeleton for "${params.skillName}".
-Type: ${params.skillType} | Level: ${params.skillLevel} | ${time.totalMinutes}min/day
-Boss project days: ${bossDays.join(', ')}
-
-Per day: day, title, subtitle, skills[], teaser, estimatedMinutes, hasBossProject, contentLayer, videoStrategy, transferability, contentSource.
-
-${getContentStrategyGuidance()}
-
-${getTopicRelevanceGuidance()}
-Output valid JSON only.`;
-
-  const userPrompt = `{
-  "title": "Curriculum title",
-  "description": "What student will master",
-  "finalProject": "Capstone description",
-  "skillType": "${params.skillType}",
-  "days": [{"day":1,"title":"Day 1: Topic","subtitle":"","skills":[],"teaser":"","estimatedMinutes":${time.totalMinutes},"hasBossProject":false,"contentLayer":"","videoStrategy":"","transferability":"","contentSource":""}],
-  "metadata": {"skillName":"${params.skillName}","durationDays":${params.durationDays},"hoursPerDay":${params.hoursPerDay},"skillLevel":"${params.skillLevel}","suggestedLanguage":"${params.suggestedLanguage || ''}"}
-}
-
-Generate ALL ${params.durationDays} days. hasBossProject=true for days: ${bossDays.join(', ')}.`;
-
-  return { systemPrompt, userPrompt };
-}
 
 /**
  * DAY DETAIL PROMPT: Generates full content for a specific day (Day 2+)
@@ -393,15 +391,29 @@ export function buildDayDetailPrompt(params: DayDetailParams): {
   userPrompt: string;
 } {
   const time = getTimeStructure(params.hoursPerDay);
+  const dayHeader = getDayHeader({
+    dayTitle: params.dayTitle,
+    skeleton: params.skeleton,
+    dayObjectives: params.dayObjectives,
+    previousDayTitle: params.previousDayTitle,
+    skillType: params.skillType,
+    hoursPerDay: params.hoursPerDay,
+    suggestedLanguage: params.suggestedLanguage,
+    userTier: params.userTier,
+    includeMode: true,
+  });
+
+  // Task format guidance moved to systemPrompt (was bloating userPrompt with 3 full templates)
+  const taskFormatGuidance = `
+TASK FORMATS (choose one for task1.format):
+- "code": challenge, expectedOutput, starterCode, hints[3], solution, solutionAnnotations, stuckDetection
+- "quiz": passingScore, questions[{question, options[4], correctIndex, explanation}]
+- "fillBlank": passingScore, items[{codeTemplate with ___BLANK___, blanks[{correctAnswers[], hint}], explanation}]
+Recommended: ${params.skillLevel === 'BEGINNER' ? '"quiz" or "fillBlank" (avoid "code" for Day 1-2)' : '"code" (default)'}`;
 
   const systemPrompt = `Generate COMPLETE learning content for Day ${params.dayNumber} of "${params.skillName}".
 
-DAY: ${params.dayTitle}
-SKILLS: ${params.skeleton?.skills?.join(', ') || params.dayObjectives?.join(', ')}
-PREVIOUS DAY: ${params.previousDayTitle || 'N/A (early curriculum)'}
-TYPE: ${params.skillType} | MODE: ${time.mode} (${time.totalMinutes} min)
-TIER: ${params.userTier}
-${params.suggestedLanguage ? `LANGUAGE: ${params.suggestedLanguage}` : ''}
+${dayHeader}
 
 ${getSkillTypeGuidance(params.skillType, params.complexity)}
 
@@ -412,34 +424,12 @@ REQUIREMENTS:
 2. Provide COMPLETE working solutions (not pseudocode)
 3. Include 3 hints (gentle → specific → approach) + stuck detection
 4. Generate 6-10 foundationCards (REQUIRED)
-5. Choose taskFormat: ${params.skillLevel === 'BEGINNER' ? '"quiz" or "fillBlank" (avoid "code" for Day 1-2)' : params.skillLevel === 'INTERMEDIATE' ? '"code" (default), "quiz" for review' : '"code" (default)'}
+${taskFormatGuidance}
 
-FOUNDATION CARDS GUIDELINES:
-Generate 6-10 swipeable concept cards that progressively build understanding.
-Each card = ONE atomic concept (can be grasped in 30-60 seconds).
-
-Card structure:
-${params.dayNumber === 1 ? `- Card 1: INTRO CARD - "Today we'll learn [X]. Here's why it matters..."` : `- Card 1: RECAP CARD - "Yesterday we learned [X]. Today builds on that by..."`}
-- Cards 2-3: Core definitions (what is X?)
-- Cards 4-5: How/when to use
-- Cards 6-7: Common patterns/examples
-- Cards 8-9: Gotchas/edge cases
-- Card 10: Preview of next topic (optional)
-
-REQUIRED FIELDS for each card:
-- realWorldContext: 1 sentence explaining WHERE/WHY this is used in real work
-  Example: "In production React apps, this prevents unnecessary re-renders that slow your UI."
-  Example: "Senior developers use this pattern in code reviews to catch bugs early."
-- videoTimestampRef (optional): Reference to video moment that shows this concept
-  Example: "Remember at 2:15 when the instructor showed the console output? That's this."
-  Only include if there's a relevant video moment to reference.
-
-MicroQuestion types:
-- "gotit": Simple "Got it! / Still confused" - use for recap/intro cards
-- "understanding": Multiple choice (3-4 options) - use for concept cards
-
-Code examples: Keep under 5 lines, use real runnable syntax.
-For non-code skills: Use real-world examples instead of code.
+FOUNDATION CARDS (6-10 cards):
+${params.dayNumber === 1 ? `Card 1: INTRO - "Today we'll learn [X]..."` : `Card 1: RECAP - "Yesterday: [X]. Today builds on..."`}
+Cards 2-7: Core concepts, patterns, gotchas. Each card needs realWorldContext (1 sentence: where/why used).
+MicroQuestion types: "gotit" (intro/recap), "understanding" (MCQ for concepts).
 
 Output valid JSON only.`;
 
@@ -454,88 +444,49 @@ Output valid JSON only.`;
   "video": {"watchPoints": []},
 
   "foundationCards": [
-    {"id": "day${params.dayNumber}-card-1", "concept": "", "visual": "", "explanation": "", "realWorldContext": "Where/why this matters in real work", "microQuestion": {"question": "", "type": "gotit"}, "order": 1},
-    {"id": "day${params.dayNumber}-card-2", "concept": "", "visual": "", "explanation": "", "realWorldContext": "", "videoTimestampRef": "Remember at X:XX when...", "codeExample": "", "microQuestion": {"question": "", "type": "understanding", "options": [], "correctIndex": 0, "explanation": ""}, "order": 2}
+    {"id": "day${params.dayNumber}-card-1", "concept": "", "visual": "", "explanation": "", "realWorldContext": "", "microQuestion": {"question": "", "type": "gotit"}, "order": 1},
+    {"id": "day${params.dayNumber}-card-2", "concept": "", "visual": "", "explanation": "", "realWorldContext": "", "codeExample": "", "microQuestion": {"question": "", "type": "understanding", "options": [], "correctIndex": 0, "explanation": ""}, "order": 2}
   ],
 
-  "taskFormat": "code|quiz|fillBlank",
-  "task1": "USE ONE OF THE FORMATS BELOW based on taskFormat chosen",
-
-  "_task1_code_format": {
+  "taskFormat": "code",
+  "task1": {
     "id": "day${params.dayNumber}-task1",
-    "title": "Task title",
-    "description": "Full description",
+    "title": "",
+    "description": "",
     "estimatedMinutes": ${time.task1},
     "format": "code",
-    "challenge": "Challenge statement",
-    "expectedOutput": "Success criteria",
-    "starterCode": "// Starter",
-    "hints": [
-      {"level": 1, "hint": "Gentle nudge"},
-      {"level": 2, "hint": "More specific"},
-      {"level": 3, "hint": "Near-answer approach"}
-    ],
+    "challenge": "",
+    "expectedOutput": "",
+    "starterCode": "",
+    "hints": [{"level": 1, "hint": ""}, {"level": 2, "hint": ""}, {"level": 3, "hint": ""}],
     "solution": "// COMPLETE working solution",
-    "solutionAnnotations": ["// WHY: Key decision explanation"],
-    "stuckDetection": {"triggerAfterMinutes": 7, "suggestions": ["Re-watch X", "Check hint"]}
-  },
-
-  "_task1_quiz_format": {
-    "id": "day${params.dayNumber}-task1",
-    "title": "Knowledge Check",
-    "description": "Test your understanding",
-    "estimatedMinutes": ${time.task1},
-    "format": "quiz",
-    "passingScore": 0.7,
-    "questions": [
-      {"id": "q1", "question": "Question about concept?", "options": ["Wrong A", "Correct B", "Wrong C", "Wrong D"], "correctIndex": 1, "explanation": "Why B is correct"},
-      {"id": "q2", "question": "Another question?", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "Why A is correct"}
-    ]
-  },
-
-  "_task1_fillBlank_format": {
-    "id": "day${params.dayNumber}-task1",
-    "title": "Complete the Code",
-    "description": "Fill in the blanks",
-    "estimatedMinutes": ${time.task1},
-    "format": "fillBlank",
-    "passingScore": 0.7,
-    "items": [
-      {"id": "fb1", "codeTemplate": "const ___BLANK___ = 'Hello';", "blanks": [{"id": "b1", "correctAnswers": ["greeting", "message", "text"], "hint": "Name the variable"}], "explanation": "Variables store values"},
-      {"id": "fb2", "codeTemplate": "console.___BLANK___('Hi');", "blanks": [{"id": "b1", "correctAnswers": ["log"], "hint": "Output method"}], "explanation": "console.log prints to console"}
-    ]
+    "solutionAnnotations": [],
+    "stuckDetection": {"triggerAfterMinutes": 7, "suggestions": []}
   },
 
   ${time.task2 > 0 ? `"task2": {
     "id": "day${params.dayNumber}-task2",
     "title": "Extended Practice",
-    "description": "Same concept, different context",
+    "description": "",
     "estimatedMinutes": ${time.task2},
-    "challenge": "Variation challenge",
-    "expectedOutput": "Success criteria",
-    "hints": [{"level": 1, "hint": "H1"}, {"level": 2, "hint": "H2"}, {"level": 3, "hint": "H3"}],
-    "solution": "// Complete solution",
-    "connectionToTask1": "How this reinforces Task 1"
+    "challenge": "",
+    "expectedOutput": "",
+    "hints": [{"level": 1, "hint": ""}, {"level": 2, "hint": ""}, {"level": 3, "hint": ""}],
+    "solution": "",
+    "connectionToTask1": ""
   },` : ''}
 
   ${time.practice > 0 ? `"practiceProject": {
     "id": "day${params.dayNumber}-practice",
-    "title": "Project title",
-    "description": "Project description",
+    "title": "",
+    "description": "",
     "estimatedMinutes": ${time.practice},
-    "coreChallenge": "Core challenge",
-    "requirements": ["R1", "R2"],
-    "hints": ["H1", "H2", "H3"],
-    "solution": "// Complete solution",
-    "stretchGoals": [
-      {"condition": "Finished early", "goal": "Add yesterday's concept"},
-      {"condition": "Struggling", "goal": "Use guided mode", "tier": "PREMIUM"}
-    ],
-    "tierResources": {
-      "free": {"hints": 1, "solution": true},
-      "pro": {"hints": 3, "stepByStep": true, "aiTutor": true},
-      "premium": {"adaptiveDifficulty": {"high": "Challenge", "medium": "Standard", "low": "Guided"}}
-    }
+    "coreChallenge": "",
+    "requirements": [],
+    "hints": [],
+    "solution": "",
+    "stretchGoals": [],
+    "tierResources": {"free": {"hints": 1, "solution": true}, "pro": {"hints": 3, "stepByStep": true, "aiTutor": true}, "premium": {"adaptiveDifficulty": {"high": "Challenge", "medium": "Standard", "low": "Guided"}}}
   },` : ''}
 
   "reflection": {
@@ -543,25 +494,16 @@ Output valid JSON only.`;
       {"id": "confidence", "question": "Confidence 1-5?", "type": "scale"},
       {"id": "clicked", "question": "What clicked?", "type": "text"},
       {"id": "foggy", "question": "What's unclear?", "type": "text"},
-      {"id": "connection", "question": "How does today connect to Day ${params.dayNumber - 1}?", "type": "text"},
-      {"id": "warmup", "question": "Tomorrow's warmup plan?", "type": "text"}
+      {"id": "connection", "question": "How does today connect to Day ${params.dayNumber - 1}?", "type": "text"}
     ]
   },
 
   "skipTest": {
-    "questionSets": [
-      [
-        {"question": "Hard edge case question testing deep understanding?", "options": ["Plausible wrong A", "Plausible wrong B", "Correct answer", "Plausible wrong C"], "correctIndex": 2},
-        {"question": "Tricky question about common misconception?", "options": ["Correct answer", "Common mistake", "Sounds right but wrong", "Another trap"], "correctIndex": 0},
-        {"question": "Applied scenario requiring nuanced knowledge?", "options": ["Wrong approach A", "Wrong approach B", "Wrong approach C", "Correct approach"], "correctIndex": 3}
-      ],
-      [
-        {"question": "Different hard question on same concept?", "options": ["Trap A", "Correct answer", "Trap B", "Trap C"], "correctIndex": 1},
-        {"question": "Another tricky misconception question?", "options": ["Wrong", "Wrong", "Correct answer", "Wrong"], "correctIndex": 2},
-        {"question": "Different applied scenario?", "options": ["Correct approach", "Plausible wrong", "Plausible wrong", "Plausible wrong"], "correctIndex": 0}
-      ]
-    ],
-    "currentSetIndex": 0,
+    "questionSets": [[
+      {"question": "Hard question 1?", "options": ["A", "B", "C", "D"], "correctIndex": 0},
+      {"question": "Hard question 2?", "options": ["A", "B", "C", "D"], "correctIndex": 1},
+      {"question": "Hard question 3?", "options": ["A", "B", "C", "D"], "correctIndex": 2}
+    ]],
     "passThreshold": 3
   }
 }`;
@@ -579,14 +521,19 @@ export function buildDayDetailCorePrompt(params: DayDetailParams): {
   userPrompt: string;
 } {
   const time = getTimeStructure(params.hoursPerDay);
+  const dayHeader = getDayHeader({
+    dayTitle: params.dayTitle,
+    skeleton: params.skeleton,
+    dayObjectives: params.dayObjectives,
+    previousDayTitle: params.previousDayTitle,
+    skillType: params.skillType,
+    hoursPerDay: params.hoursPerDay,
+    suggestedLanguage: params.suggestedLanguage,
+  });
 
   const systemPrompt = `Generate CORE learning content for Day ${params.dayNumber} of "${params.skillName}".
 
-DAY: ${params.dayTitle}
-SKILLS: ${params.skeleton?.skills?.join(', ') || params.dayObjectives?.join(', ')}
-PREVIOUS: ${params.previousDayTitle || 'N/A'}
-TYPE: ${params.skillType} | ${time.totalMinutes} min/day
-${params.suggestedLanguage ? `LANGUAGE: ${params.suggestedLanguage}` : ''}
+${dayHeader}
 
 ${getSkillTypeGuidance(params.skillType, params.complexity)}
 
@@ -647,6 +594,15 @@ export function buildDayDetailDeferredPrompt(params: DayDetailParams): {
   userPrompt: string;
 } {
   const time = getTimeStructure(params.hoursPerDay);
+  const dayHeader = getDayHeader({
+    dayTitle: params.dayTitle,
+    skeleton: params.skeleton,
+    dayObjectives: params.dayObjectives,
+    skillType: params.skillType,
+    hoursPerDay: params.hoursPerDay,
+    suggestedLanguage: params.suggestedLanguage,
+    includePrevious: false,
+  });
 
   // Skip if no deferred content needed for short sessions
   const hasTask2 = time.task2 > 0;
@@ -654,10 +610,7 @@ export function buildDayDetailDeferredPrompt(params: DayDetailParams): {
 
   const systemPrompt = `Generate DEFERRED learning content for Day ${params.dayNumber} of "${params.skillName}".
 
-DAY: ${params.dayTitle}
-SKILLS: ${params.skeleton?.skills?.join(', ') || params.dayObjectives?.join(', ')}
-TYPE: ${params.skillType}
-${params.suggestedLanguage ? `LANGUAGE: ${params.suggestedLanguage}` : ''}
+${dayHeader}
 
 Generate ONLY: ${hasTask2 ? 'task2, ' : ''}${hasPractice ? 'practiceProject, ' : ''}reflection.
 Provide COMPLETE working solutions.

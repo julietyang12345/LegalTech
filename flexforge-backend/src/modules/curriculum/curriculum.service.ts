@@ -10,8 +10,7 @@ import { CurriculumCacheService } from './services/curriculum-cache.service';
 import { UniversityResourceService } from './services/university/university-resource.service';
 import { DocumentationFetchService, DocFetchResult } from './services/docs/documentation-fetch.service';
 import {
-  buildOverviewPrompt,
-  buildPreviewPrompt,
+  buildCurriculumPrompt,
   buildDayDetailPrompt,
   buildDayDetailCorePrompt,
   buildDayDetailDeferredPrompt,
@@ -183,8 +182,8 @@ export class CurriculumService {
       );
     }
 
-    // Step 3: Build OVERVIEW prompt (Phase 1 - skeleton only)
-    const { systemPrompt, userPrompt } = buildOverviewPrompt({
+    // Step 3: Build curriculum prompt (skeleton only)
+    const { systemPrompt, userPrompt } = buildCurriculumPrompt({
       skillName: dto.skillName,
       durationDays: dto.durationDays,
       hoursPerDay: dto.hoursPerDay,
@@ -274,10 +273,16 @@ export class CurriculumService {
    * Fast generation (~500-1000 tokens) for user to see timeline before committing
    * NO video search - that happens in Phase 2 when user clicks "Start Learning"
    */
-  async generatePreview(dto: GenerateCurriculumDto): Promise<PreviewResult> {
+  async generatePreview(dto: GenerateCurriculumDto, user?: any): Promise<PreviewResult> {
     this.logger.log(
       `🎯 Generating curriculum PREVIEW: ${dto.skillName} (${dto.durationDays} days)`,
     );
+
+    // Extract learner preferences from user if available
+    const learnerPrefs = user?.preferences?.learner;
+    if (learnerPrefs) {
+      this.logger.log(`📋 Using learner preferences: goal="${learnerPrefs.originalGoal}", direction="${learnerPrefs.selectedDirection}"`);
+    }
 
     // Step 0: Check cache first - return cached preview if available
     const tempSessionId = crypto.randomUUID();
@@ -333,16 +338,24 @@ export class CurriculumService {
       );
     }
 
-    // Step 3: Build PREVIEW prompt (skeleton only for ALL days)
-    const { systemPrompt, userPrompt } = buildPreviewPrompt({
+    // Step 3: Build curriculum prompt (skeleton only for ALL days)
+    const { systemPrompt, userPrompt } = buildCurriculumPrompt({
       skillName: dto.skillName,
       durationDays: dto.durationDays,
       hoursPerDay: dto.hoursPerDay,
       skillLevel: dto.skillLevel,
       skillType: skillDetection.skillType,
       complexity: skillDetection.complexity,
-      userTier: 'FREE', // Preview doesn't need tier-specific content
+      userTier: 'FREE', // Preview uses FREE tier
       suggestedLanguage: skillDetection.suggestedLanguage,
+      learnerPrefs: learnerPrefs ? {
+        originalGoal: learnerPrefs.originalGoal,
+        selectedDirection: learnerPrefs.selectedDirection,
+        directionKeywords: learnerPrefs.directionKeywords,
+        outputType: learnerPrefs.outputType,
+        usageContext: learnerPrefs.usageContext,
+        contentDepth: learnerPrefs.contentDepth,
+      } : undefined,
     });
 
     // Step 4: Generate preview with AI (fast, skeleton only)

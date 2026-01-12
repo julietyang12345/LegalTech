@@ -40,9 +40,12 @@ export class CurriculumController {
    * Phase 1 of two-phase generation
    */
   @Post('preview')
-  async generatePreview(@Body() dto: GenerateCurriculumDto) {
+  async generatePreview(
+    @Body() dto: GenerateCurriculumDto,
+    @CurrentUser() user: User,
+  ) {
     try {
-      const result = await this.curriculumService.generatePreview(dto);
+      const result = await this.curriculumService.generatePreview(dto, user);
 
       return {
         message: 'Curriculum preview generated successfully',

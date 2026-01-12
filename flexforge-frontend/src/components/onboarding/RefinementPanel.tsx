@@ -11,8 +11,8 @@ interface RefinementPanelProps {
   isLoading?: boolean;
 }
 
-type OutputType = RefinementContext['outputType'];
-type UsageContext = RefinementContext['usageContext'];
+type OutputType = NonNullable<RefinementContext['outputType']>;
+type UsageContext = NonNullable<RefinementContext['usageContext']>;
 type PlatformTolerance = NonNullable<RefinementContext['platformTolerance']>;
 type SkillLevel = NonNullable<RefinementContext['skillLevel']>;
 

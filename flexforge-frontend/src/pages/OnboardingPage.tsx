@@ -177,7 +177,10 @@ export default function OnboardingPage() {
 
             {step === 'generating' && (
               <StepWrapper key="generating">
-                <GeneratingState />
+                <LoadingState
+                  title="Finding your learning path..."
+                  subtitle="AI is analyzing your goal and generating personalized directions"
+                />
               </StepWrapper>
             )}
 
@@ -213,7 +216,11 @@ export default function OnboardingPage() {
 
             {step === 'completing' && (
               <StepWrapper key="completing">
-                <CompletingState />
+                <LoadingState
+                  title="Setting up your experience..."
+                  subtitle="Personalizing your learning journey"
+                  variant="green"
+                />
               </StepWrapper>
             )}
           </AnimatePresence>
@@ -237,43 +244,33 @@ function StepWrapper({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Loading state while AI generates directions
-function GeneratingState() {
-  return (
-    <div className="text-center py-12">
-      <div className="inline-flex items-center justify-center w-16 h-16 bg-brand-100 rounded-full mb-6">
-        <Sparkles className="w-8 h-8 text-brand-600 animate-pulse" />
-      </div>
-      <h2 className="text-xl font-semibold text-gray-900 mb-2">
-        Finding your learning path...
-      </h2>
-      <p className="text-gray-600 mb-6">
-        AI is analyzing your goal and generating personalized directions
-      </p>
-      <Loader2 className="w-6 h-6 text-brand-500 animate-spin mx-auto" />
-    </div>
-  );
-}
+// Reusable loading state component
+function LoadingState({
+  title,
+  subtitle,
+  variant = 'brand'
+}: {
+  title: string;
+  subtitle: string;
+  variant?: 'brand' | 'green';
+}) {
+  const colors = variant === 'green'
+    ? { bg: 'bg-green-100', icon: 'text-green-600', spinner: 'text-green-500' }
+    : { bg: 'bg-brand-100', icon: 'text-brand-600', spinner: 'text-brand-500' };
 
-// Loading state while completing onboarding
-function CompletingState() {
   return (
     <div className="text-center py-12">
-      <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-6">
+      <div className={`inline-flex items-center justify-center w-16 h-16 ${colors.bg} rounded-full mb-6`}>
         <motion.div
-          animate={{ scale: [1, 1.2, 1] }}
-          transition={{ repeat: Infinity, duration: 1.5 }}
+          animate={variant === 'green' ? { scale: [1, 1.2, 1] } : undefined}
+          transition={variant === 'green' ? { repeat: Infinity, duration: 1.5 } : undefined}
         >
-          <Sparkles className="w-8 h-8 text-green-600" />
+          <Sparkles className={`w-8 h-8 ${colors.icon} ${variant === 'brand' ? 'animate-pulse' : ''}`} />
         </motion.div>
       </div>
-      <h2 className="text-xl font-semibold text-gray-900 mb-2">
-        Setting up your experience...
-      </h2>
-      <p className="text-gray-600 mb-6">
-        Personalizing your learning journey
-      </p>
-      <Loader2 className="w-6 h-6 text-green-500 animate-spin mx-auto" />
+      <h2 className="text-xl font-semibold text-gray-900 mb-2">{title}</h2>
+      <p className="text-gray-600 mb-6">{subtitle}</p>
+      <Loader2 className={`w-6 h-6 ${colors.spinner} animate-spin mx-auto`} />
     </div>
   );
 }
