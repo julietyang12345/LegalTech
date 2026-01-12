@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Clock, CheckCircle2, MessageCircle, Lock, Star, Youtube, ExternalLink, RefreshCw, Loader2, BookOpen, Video, Sparkles, Info } from 'lucide-react';
+import { Play, Clock, CheckCircle2, MessageCircle, Lock, Star, Youtube, ExternalLink, RefreshCw, Loader2, BookOpen, Video, Sparkles, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import { Card, Button } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { useAuthStore } from '@/stores/authStore';
@@ -197,7 +197,11 @@ function VideoCard({
   );
 }
 
+// Concept card emojis based on index
+const CONCEPT_EMOJIS = ['💡', '🎯', '⚡', '🔑', '✨', '🧩', '📌', '🌟'];
+
 // AI Explanation component - shown when AI mode is selected
+// Uses expandable card format similar to ConceptCheck
 function AIExplanation({
   video,
   onSwitchToVideo,
@@ -209,140 +213,149 @@ function AIExplanation({
   showVideoOption: boolean;
   foundationCards?: Array<{ concept: string; explanation: string }>;
 }) {
-  // Generate explanation from foundationCards if not available in video
-  const getExplanation = (): string => {
-    if (video.explanation) return video.explanation;
-    if (video.aiExplanation) return video.aiExplanation;
+  const [expandedCard, setExpandedCard] = useState<number | null>(0);
 
-    // Fallback: generate from foundationCards
-    if (foundationCards && foundationCards.length > 0) {
-      return foundationCards
-        .filter(card => card.concept && card.explanation)
-        .map(card => `**${card.concept}**\n${card.explanation}`)
-        .join('\n\n');
-    }
-
-    return '';
-  };
-
-  const explanation = getExplanation();
   const concept = video.concept || video.title || 'this concept';
   const adaptiveInfo = video.adaptiveModality;
 
-  // Simple markdown to HTML (handles basic formatting)
-  const renderMarkdown = (text: string) => {
-    return text
-      .split('\n\n')
-      .map((para, idx) => {
-        // Handle headers
-        if (para.startsWith('## ')) {
-          return (
-            <h3 key={idx} className="text-lg font-semibold text-gray-900 mt-4 mb-2">
-              {para.replace('## ', '')}
-            </h3>
-          );
-        }
-        if (para.startsWith('### ')) {
-          return (
-            <h4 key={idx} className="text-base font-medium text-gray-800 mt-3 mb-1">
-              {para.replace('### ', '')}
-            </h4>
-          );
-        }
-
-        // Handle bold text
-        const withBold = para.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-
-        // Handle lists
-        if (para.match(/^\d+\./m) || para.match(/^-/m)) {
-          const items = para.split('\n').filter(Boolean);
-          return (
-            <ul key={idx} className="list-disc list-inside space-y-1 my-2">
-              {items.map((item, i) => (
-                <li
-                  key={i}
-                  className="text-gray-700"
-                  dangerouslySetInnerHTML={{
-                    __html: item.replace(/^[\d]+\.\s*|-\s*/, ''),
-                  }}
-                />
-              ))}
-            </ul>
-          );
-        }
-
-        return (
-          <p
-            key={idx}
-            className="text-gray-700 leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: withBold }}
-          />
-        );
-      });
-  };
+  // Get cards to display
+  const conceptCards = foundationCards && foundationCards.length > 0
+    ? foundationCards.filter(card => card.concept && card.explanation)
+    : [];
 
   return (
-    <Card className="overflow-hidden">
-      {/* Header badge */}
-      <div className="px-6 py-3 bg-gradient-to-r from-purple-50 to-indigo-100 border-b border-purple-200 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-purple-500" />
-          <span className="text-sm font-medium text-purple-700">AI Explanation</span>
-        </div>
-        {adaptiveInfo && (
-          <span className="text-xs text-purple-600 bg-purple-200 px-2 py-0.5 rounded-full">
-            {adaptiveInfo.reasonShort}
-          </span>
-        )}
-      </div>
-
-      {/* Explanation content */}
-      <div className="p-6">
-        <h3 className="text-xl font-semibold text-gray-900 mb-4">
-          {video.title || `Understanding ${concept}`}
-        </h3>
-
-        {/* Why AI explanation */}
-        {video.reason && (
-          <div className="flex items-start gap-2 p-3 bg-blue-50 rounded-lg mb-4">
-            <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
-            <p className="text-sm text-blue-800">{video.reason}</p>
+    <div className="space-y-3">
+      {/* Header info card */}
+      {(video.reason || adaptiveInfo) && (
+        <Card className="overflow-hidden">
+          <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 flex items-start gap-3">
+            <div className="p-2 bg-purple-100 rounded-lg shrink-0">
+              <Sparkles className="w-5 h-5 text-purple-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="font-semibold text-gray-900">AI-Curated Learning</h3>
+                {adaptiveInfo?.reasonShort && (
+                  <span className="text-xs text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full">
+                    {adaptiveInfo.reasonShort}
+                  </span>
+                )}
+              </div>
+              {video.reason && (
+                <p className="text-sm text-gray-600">{video.reason}</p>
+              )}
+            </div>
           </div>
-        )}
+        </Card>
+      )}
 
-        {/* Main explanation */}
-        <div className="prose prose-sm max-w-none space-y-3">
-          {explanation ? (
-            renderMarkdown(explanation)
-          ) : (
-            <p className="text-gray-600">
-              This topic will be covered through the foundation cards and practice exercises below.
-              Dive into the concepts step by step!
-            </p>
-          )}
-        </div>
-      </div>
+      {/* Concept cards - expandable like ConceptCheck */}
+      {conceptCards.length > 0 ? (
+        conceptCards.map((card, index) => {
+          const isExpanded = expandedCard === index;
+          const emoji = CONCEPT_EMOJIS[index % CONCEPT_EMOJIS.length];
+
+          return (
+            <Card
+              key={index}
+              className={`transition-all duration-200 ${
+                isExpanded ? 'ring-2 ring-purple-400' : ''
+              }`}
+            >
+              {/* Card header */}
+              <button
+                onClick={() => setExpandedCard(isExpanded ? null : index)}
+                className="w-full p-4 flex items-center justify-between text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{emoji}</span>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">{card.concept}</h3>
+                    <p className="text-sm text-gray-500">
+                      {isExpanded ? 'Click to collapse' : 'Click to expand'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {!isExpanded && (
+                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-50 text-purple-600">
+                      {index + 1} of {conceptCards.length}
+                    </span>
+                  )}
+                  {isExpanded ? (
+                    <ChevronUp className="w-5 h-5 text-gray-400" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-gray-400" />
+                  )}
+                </div>
+              </button>
+
+              {/* Expanded content */}
+              {isExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="px-4 pb-4 pt-0">
+                    <div className="p-4 bg-gray-50 rounded-xl">
+                      <p className="text-gray-700 leading-relaxed">{card.explanation}</p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </Card>
+          );
+        })
+      ) : (
+        // Fallback when no foundation cards available
+        <Card className="p-6">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-purple-100 rounded-xl">
+              <BookOpen className="w-6 h-6 text-purple-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                {video.title || `Understanding ${concept}`}
+              </h3>
+              <p className="text-gray-600">
+                {video.explanation || video.aiExplanation ||
+                  'Continue to the interactive exercises below to learn the key concepts step by step.'}
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Video backup option */}
       {showVideoOption && video.backupVideo && (
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <Video className="w-4 h-4" />
-              <span>Video available: {video.backupVideo.title}</span>
+        <Card className="overflow-hidden">
+          <div className="p-4 flex items-center justify-between bg-gray-50">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-100 rounded-lg">
+                <Video className="w-4 h-4 text-red-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">Video Available</p>
+                <p className="text-xs text-gray-500 truncate max-w-[200px]">
+                  {video.backupVideo.title}
+                </p>
+              </div>
             </div>
             {onSwitchToVideo && (
               <button
                 onClick={onSwitchToVideo}
-                className="text-sm text-brand-600 hover:text-brand-700 font-medium hover:underline"
+                className="px-3 py-1.5 text-sm bg-brand-50 text-brand-600 rounded-lg hover:bg-brand-100 transition-colors font-medium"
               >
-                Watch video instead →
+                Watch instead
               </button>
             )}
           </div>
-        </div>
+        </Card>
       )}
-    </Card>
+    </div>
   );
 }
 

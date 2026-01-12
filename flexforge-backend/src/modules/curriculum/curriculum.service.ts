@@ -1,6 +1,5 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as crypto from 'crypto';
 import { AiService, AITask } from '../ai/ai.service';
 import { GenerateCurriculumDto } from './dto/generate-curriculum.dto';
 import { SkillDetectorService, SkillType } from './services/skill-detector.service';
@@ -38,15 +37,6 @@ export interface BossDetailResult {
   bossContent: any;
   tokensUsed: number;
   cost: number;
-}
-
-export interface PreviewResult {
-  preview: any; // Skeleton curriculum for all days
-  tokensUsed: number;
-  cost: number;
-  skillDetection: any;
-  warnings?: string[];
-  fromCache?: boolean;
 }
 
 export interface DayCoreResult {
@@ -269,176 +259,7 @@ export class CurriculumService {
   }
 
   /**
-   * PHASE 1: Generate PREVIEW (skeleton only for all days)
-   * Fast generation (~500-1000 tokens) for user to see timeline before committing
-   * NO video search - that happens in Phase 2 when user clicks "Start Learning"
-   */
-  async generatePreview(dto: GenerateCurriculumDto, user?: any): Promise<PreviewResult> {
-    this.logger.log(
-      `🎯 Generating curriculum PREVIEW: ${dto.skillName} (${dto.durationDays} days)`,
-    );
-
-    // Extract learner preferences from user if available
-    const learnerPrefs = user?.preferences?.learner;
-    if (learnerPrefs) {
-      this.logger.log(`📋 Using learner preferences: goal="${learnerPrefs.originalGoal}", direction="${learnerPrefs.selectedDirection}"`);
-    }
-
-    // Step 0: Check cache first - return cached preview if available
-    const tempSessionId = crypto.randomUUID();
-    const userId = user?.id || null; // Use actual user ID, or null for anonymous
-    const cachedResult = userId
-      ? await this.cacheService.tryGetFromCache(dto, userId, tempSessionId)
-      : null; // Skip cache lookup for anonymous users
-
-    if (cachedResult) {
-      this.logger.log(`📦 Preview cache HIT for "${dto.skillName}" - returning cached preview`);
-
-      // Extract skill detection from cached metadata
-      const skillDetection = {
-        skillType: cachedResult.curriculum.metadata?.skillType,
-        complexity: cachedResult.curriculum.metadata?.complexity,
-        suggestedLanguage: cachedResult.curriculum.metadata?.suggestedLanguage,
-      };
-
-      return {
-        preview: cachedResult.curriculum,
-        tokensUsed: 0,
-        cost: 0,
-        skillDetection,
-        warnings: [],
-        fromCache: true,
-      };
-    }
-
-    this.logger.log(`🆕 Preview cache MISS for "${dto.skillName}" - generating fresh`);
-
-    // Step 1: Detect skill type and complexity
-    const skillDetection = await this.skillDetector.detectSkillType(dto.skillName);
-
-    this.logger.log(
-      `✅ Skill detected: ${skillDetection.skillType} (${skillDetection.complexity})`,
-    );
-
-    // Step 2: Validate timeframe
-    const timeframeValidation = this.skillDetector.validateTimeframe(
-      skillDetection.estimatedDaysNeeded,
-      dto.durationDays,
-      skillDetection.complexity,
-    );
-
-    const warnings: string[] = [];
-    if (timeframeValidation.warning) {
-      warnings.push(timeframeValidation.warning);
-    }
-    if (timeframeValidation.recommendation) {
-      warnings.push(timeframeValidation.recommendation);
-    }
-
-    if (!timeframeValidation.feasible) {
-      throw new BadRequestException(
-        `This skill cannot be taught in ${dto.durationDays} days. ${timeframeValidation.recommendation}`,
-      );
-    }
-
-    // Step 3: Build curriculum prompt (skeleton only for ALL days)
-    const { systemPrompt, userPrompt } = buildCurriculumPrompt({
-      skillName: dto.skillName,
-      durationDays: dto.durationDays,
-      hoursPerDay: dto.hoursPerDay,
-      skillLevel: dto.skillLevel,
-      skillType: skillDetection.skillType,
-      complexity: skillDetection.complexity,
-      userTier: 'FREE', // Preview uses FREE tier
-      suggestedLanguage: skillDetection.suggestedLanguage,
-      learnerPrefs: learnerPrefs ? {
-        originalGoal: learnerPrefs.originalGoal,
-        selectedDirection: learnerPrefs.selectedDirection,
-        directionKeywords: learnerPrefs.directionKeywords,
-        outputType: learnerPrefs.outputType,
-        usageContext: learnerPrefs.usageContext,
-        contentDepth: learnerPrefs.contentDepth,
-      } : undefined,
-    });
-
-    // Step 4: Generate preview with AI (skeleton only)
-    this.logger.log('🤖 Generating curriculum preview (skeleton only)...');
-    const aiResponse = await this.aiService.routeRequest(
-      AITask.CURRICULUM_GENERATION,
-      userPrompt,
-      systemPrompt,
-    );
-
-    // Step 5: Parse preview response
-    let preview: any;
-    try {
-      let cleanedContent = aiResponse.content
-        .replace(/```json\n?/g, '')
-        .replace(/```\n?/g, '')
-        .trim();
-
-      const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        cleanedContent = jsonMatch[0];
-      }
-
-      try {
-        preview = JSON.parse(cleanedContent);
-      } catch (parseError) {
-        this.logger.warn('First parse failed, attempting to fix JSON...');
-        const fixedContent = cleanedContent.replace(/,(\s*[}\]])/g, '$1');
-        preview = JSON.parse(fixedContent);
-        this.logger.log('✅ JSON fixed and parsed successfully');
-      }
-
-      this.logger.log('✅ Curriculum preview parsed successfully');
-    } catch (error) {
-      this.logger.error('❌ Failed to parse preview JSON:', error.message);
-      throw new BadRequestException('Failed to generate curriculum preview. Please try again.');
-    }
-
-    // Step 6: Add metadata and status to all days
-    preview.metadata = {
-      skillName: dto.skillName,
-      durationDays: dto.durationDays,
-      hoursPerDay: dto.hoursPerDay,
-      skillLevel: dto.skillLevel,
-      skillType: skillDetection.skillType,
-      complexity: skillDetection.complexity,
-      suggestedLanguage: skillDetection.suggestedLanguage,
-    };
-
-    // Mark all days as skeletons (not yet loaded)
-    if (preview.days) {
-      preview.days = preview.days.map((day: any, index: number) => ({
-        ...day,
-        status: index === 0 ? 'unlockable' : 'locked',
-        detailsLoaded: false,
-      }));
-    }
-
-    this.logger.log(
-      `✅ Preview generated. Tokens: ${aiResponse.tokensUsed}, Cost: $${aiResponse.cost.toFixed(4)}`,
-    );
-
-    // Cache the new preview for future users (only if we have a valid user ID)
-    if (userId) {
-      await this.cacheService.cacheNewContent(dto, preview, userId, tempSessionId);
-      this.logger.log(`📦 Preview cached for "${dto.skillName}"`);
-    }
-
-    return {
-      preview,
-      tokensUsed: aiResponse.tokensUsed,
-      cost: aiResponse.cost,
-      skillDetection,
-      warnings: warnings.length > 0 ? warnings : undefined,
-      fromCache: false,
-    };
-  }
-
-  /**
-   * PHASE 2: Generate full content for a specific day
+   * Generate full content for a specific day
    * Called when student starts a day (clicks "Start Day")
    *
    * OPTIMIZATION: Video search runs in parallel with AI content generation
