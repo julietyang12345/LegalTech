@@ -25,7 +25,7 @@ import type { QuizTask, FillBlankTask } from '@/types';
 
 import type { SessionStep as SessionStepType } from '@/types';
 
-// Skip Test Modal (Multiple Choice)
+// Skip Test Modal (Multiple Choice) - Enhanced UI
 function SkipTestModal({
   day,
   isOpen,
@@ -37,9 +37,11 @@ function SkipTestModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
-  const { submitSkipTest } = useSessionStore();
+  const { submitSkipTest, forceSkipDay } = useSessionStore();
+  const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<(number | null)[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isForceSkipping, setIsForceSkipping] = useState(false);
   const [result, setResult] = useState<{
     passed: boolean;
     correctCount: number;
@@ -52,7 +54,6 @@ function SkipTestModal({
     if (!day.skipTest?.questionSets || day.skipTest.questionSets.length === 0) return [];
     const setIndex = day.skipTest.currentSetIndex ?? 0;
     const questionSet = day.skipTest.questionSets[setIndex] || [];
-    // Only include questions with valid options array (for multiple choice format)
     return questionSet.filter(q => q.options && Array.isArray(q.options) && q.options.length > 0);
   }, [day.skipTest]);
 
@@ -61,6 +62,7 @@ function SkipTestModal({
   useEffect(() => {
     if (isOpen && questions.length > 0) {
       setSelectedAnswers(new Array(questions.length).fill(null));
+      setCurrentQuestion(0);
       setResult(null);
     }
   }, [isOpen, questions.length]);
@@ -70,22 +72,25 @@ function SkipTestModal({
   // If skipTest not loaded or no questions, show message
   if (!day.skipTest || questions.length === 0) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl text-center"
+          initial={{ opacity: 0, scale: 0.9, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+          className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl text-center"
         >
-          <Zap className="w-12 h-12 text-brand-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-amber-100 to-orange-100 flex items-center justify-center">
+            <Zap className="w-8 h-8 text-amber-500" />
+          </div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">
             Skip Test Not Available
           </h3>
-          <p className="text-gray-500 mb-6">
-            The skip test for Day {day.day} hasn't been generated yet. Complete the lesson to progress, or check back later.
+          <p className="text-gray-500 mb-6 leading-relaxed">
+            The skip test for Day {day.day} hasn't been generated yet. Complete the lesson to progress.
           </p>
           <button
             onClick={onClose}
-            className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors"
+            className="w-full py-3 bg-gray-900 hover:bg-gray-800 text-white rounded-xl font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
           >
             Continue with lesson
           </button>
@@ -95,6 +100,26 @@ function SkipTestModal({
   }
 
   const allAnswered = selectedAnswers.every(a => a !== null);
+  const currentQ = questions[currentQuestion];
+  const isLastQuestion = currentQuestion === questions.length - 1;
+
+  const handleAnswerSelect = (optIndex: number) => {
+    const newAnswers = [...selectedAnswers];
+    newAnswers[currentQuestion] = optIndex;
+    setSelectedAnswers(newAnswers);
+  };
+
+  const handleNext = () => {
+    if (currentQuestion < questions.length - 1) {
+      setCurrentQuestion(prev => prev + 1);
+    }
+  };
+
+  const handlePrev = () => {
+    if (currentQuestion > 0) {
+      setCurrentQuestion(prev => prev - 1);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!allAnswered) return;
@@ -106,10 +131,17 @@ function SkipTestModal({
       if (submitResult.passed) {
         setTimeout(() => {
           onSuccess();
-        }, 2000);
+        }, 2500);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Skip test error:', error);
+      const errorMessage = error?.response?.data?.message || 'Failed to submit skip test. Please try again.';
+      setResult({
+        passed: false,
+        correctCount: 0,
+        totalQuestions: questions.length,
+        message: errorMessage,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -117,122 +149,327 @@ function SkipTestModal({
 
   const handleClose = () => {
     setSelectedAnswers([]);
+    setCurrentQuestion(0);
     setResult(null);
     onClose();
   };
 
+  const handleForceSkip = async () => {
+    setIsForceSkipping(true);
+    try {
+      await forceSkipDay(day.day);
+      onSuccess();
+    } catch (error: any) {
+      console.error('Force skip error:', error);
+      setResult({
+        passed: false,
+        correctCount: 0,
+        totalQuestions: questions.length,
+        message: error?.response?.data?.message || 'Failed to skip day. Please try again.',
+      });
+    } finally {
+      setIsForceSkipping(false);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl max-w-lg w-full max-h-[80vh] overflow-hidden shadow-xl flex flex-col"
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+        className="bg-white rounded-3xl max-w-lg w-full max-h-[85vh] overflow-hidden shadow-2xl flex flex-col"
       >
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">
-              Skip Test: Day {day.day}
-            </h3>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Answer all {passThreshold} questions correctly to skip
-            </p>
-          </div>
-          <button
-            onClick={handleClose}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+        {/* Header with gradient */}
+        <div className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-violet-500 via-purple-500 to-fuchsia-500" />
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAxOGMzLjMxNCAwIDYgMi42ODYgNiA2cy0yLjY4NiA2LTYgNi02LTIuNjg2LTYtNiAyLjY4Ni02IDYtNiIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMSkiIHN0cm9rZS13aWR0aD0iMiIvPjwvZz48L3N2Zz4=')] opacity-30" />
 
-        {/* Questions */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
-          {result ? (
-            <div className={clsx(
-              'p-6 rounded-xl text-center',
-              result.passed ? 'bg-green-50' : 'bg-amber-50'
-            )}>
-              {result.passed ? (
-                <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
-              ) : (
-                <XCircle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
-              )}
-              <h4 className={clsx(
-                'text-lg font-semibold mb-2',
-                result.passed ? 'text-green-700' : 'text-amber-700'
-              )}>
-                {result.passed ? 'Congratulations!' : 'Not quite there'}
-              </h4>
-              <p className={result.passed ? 'text-green-600' : 'text-amber-600'}>
-                {result.message}
-              </p>
-              <p className="text-sm text-gray-500 mt-2">
-                Score: {result.correctCount}/{result.totalQuestions}
-              </p>
-              {!result.passed && (
-                <button
-                  onClick={handleClose}
-                  className="mt-4 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
-                >
-                  Continue with lesson
-                </button>
-              )}
-            </div>
-          ) : (
-            questions.map((q, qIndex) => (
-              <div key={qIndex} className="space-y-3">
-                <p className="text-sm font-medium text-gray-700">
-                  {qIndex + 1}. {q.question}
-                </p>
-                <div className="space-y-2">
-                  {q.options.map((option, optIndex) => (
-                    <button
-                      key={optIndex}
-                      onClick={() => {
-                        const newAnswers = [...selectedAnswers];
-                        newAnswers[qIndex] = optIndex;
-                        setSelectedAnswers(newAnswers);
-                      }}
-                      className={clsx(
-                        'w-full text-left px-4 py-3 rounded-lg border-2 transition-all text-sm',
-                        selectedAnswers[qIndex] === optIndex
-                          ? 'border-brand-500 bg-brand-50 text-brand-700'
-                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                      )}
-                    >
-                      <span className="font-medium mr-2">{String.fromCharCode(65 + optIndex)}.</span>
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* Footer */}
-        {!result && (
-          <div className="p-4 border-t border-gray-200">
+          <div className="relative p-6 pb-8">
             <button
-              onClick={handleSubmit}
-              disabled={!allAnswered || isSubmitting}
-              className={clsx(
-                'w-full py-2.5 rounded-xl font-medium transition-colors flex items-center justify-center gap-2',
-                allAnswered && !isSubmitting
-                  ? 'bg-brand-500 hover:bg-brand-600 text-white'
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              )}
+              onClick={handleClose}
+              className="absolute top-4 right-4 p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
             >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Submitting...
-                </>
-              ) : (
-                'Submit Answers'
-              )}
+              <X className="w-5 h-5" />
             </button>
+
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
+                <Zap className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">
+                  Skip Test
+                </h3>
+                <p className="text-sm text-white/70">
+                  Day {day.day} • {day.title?.split(':')[1]?.trim() || 'Knowledge Check'}
+                </p>
+              </div>
+            </div>
+
+            {/* Progress dots */}
+            {!result && (
+              <div className="flex items-center gap-2 mt-4">
+                {questions.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setCurrentQuestion(idx)}
+                    className={clsx(
+                      'h-2 rounded-full transition-all duration-300',
+                      idx === currentQuestion
+                        ? 'w-8 bg-white'
+                        : selectedAnswers[idx] !== null
+                          ? 'w-2 bg-white/80'
+                          : 'w-2 bg-white/30'
+                    )}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto">
+          <AnimatePresence mode="wait">
+            {result ? (
+              <motion.div
+                key="result"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="p-6"
+              >
+                {result.passed ? (
+                  /* Success State */
+                  <div className="text-center py-6">
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: 'spring', damping: 15, stiffness: 300, delay: 0.1 }}
+                      className="relative inline-block mb-6"
+                    >
+                      <div className="w-24 h-24 rounded-full bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center shadow-lg shadow-green-200">
+                        <CheckCircle className="w-12 h-12 text-white" />
+                      </div>
+                      {/* Celebration particles */}
+                      {[...Array(8)].map((_, i) => (
+                        <motion.div
+                          key={i}
+                          initial={{ scale: 0, x: 0, y: 0 }}
+                          animate={{
+                            scale: [0, 1, 0],
+                            x: Math.cos(i * 45 * Math.PI / 180) * 60,
+                            y: Math.sin(i * 45 * Math.PI / 180) * 60,
+                          }}
+                          transition={{ duration: 0.8, delay: 0.2 + i * 0.05 }}
+                          className="absolute top-1/2 left-1/2 w-3 h-3 -ml-1.5 -mt-1.5 rounded-full"
+                          style={{
+                            background: ['#10b981', '#8b5cf6', '#f59e0b', '#ec4899'][i % 4],
+                          }}
+                        />
+                      ))}
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.3 }}
+                    >
+                      <h4 className="text-2xl font-bold text-gray-900 mb-2">
+                        You nailed it! 🎉
+                      </h4>
+                      <p className="text-gray-600 mb-4">
+                        {result.message}
+                      </p>
+                      <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 rounded-full text-sm font-medium">
+                        <CheckCircle className="w-4 h-4" />
+                        {result.correctCount}/{result.totalQuestions} correct
+                      </div>
+                      <p className="text-sm text-gray-400 mt-6">
+                        Advancing to the next day...
+                      </p>
+                    </motion.div>
+                  </div>
+                ) : (
+                  /* Failed State */
+                  <div className="text-center py-6">
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: 'spring', damping: 15, stiffness: 300 }}
+                      className="w-20 h-20 mx-auto mb-5 rounded-full bg-gradient-to-br from-amber-100 to-orange-100 flex items-center justify-center"
+                    >
+                      <span className="text-4xl">🤔</span>
+                    </motion.div>
+
+                    <h4 className="text-xl font-bold text-gray-900 mb-2">
+                      Almost there!
+                    </h4>
+                    <p className="text-gray-600 mb-2">
+                      {result.message}
+                    </p>
+                    <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-700 rounded-full text-sm font-medium mb-6">
+                      <Target className="w-4 h-4" />
+                      {result.correctCount}/{result.totalQuestions} correct • Need {passThreshold}
+                    </div>
+
+                    <div className="space-y-3">
+                      <button
+                        onClick={handleClose}
+                        className="w-full py-3.5 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white rounded-xl font-semibold transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-purple-200"
+                      >
+                        Learn the material first
+                      </button>
+                      <button
+                        onClick={handleForceSkip}
+                        disabled={isForceSkipping}
+                        className="w-full py-3 text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {isForceSkipping ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Skipping...
+                          </>
+                        ) : (
+                          <>
+                            <Shuffle className="w-4 h-4" />
+                            Skip anyway → Day {day.day + 1}
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            ) : (
+              <motion.div
+                key={`question-${currentQuestion}`}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2 }}
+                className="p-6"
+              >
+                {/* Question number badge */}
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-violet-50 text-violet-700 rounded-full text-sm font-medium mb-4">
+                  <span>Question {currentQuestion + 1}</span>
+                  <span className="text-violet-400">of {questions.length}</span>
+                </div>
+
+                {/* Question text */}
+                <h4 className="text-lg font-semibold text-gray-900 mb-6 leading-relaxed">
+                  {currentQ.question}
+                </h4>
+
+                {/* Options */}
+                <div className="space-y-3">
+                  {currentQ.options.map((option, optIndex) => {
+                    const isSelected = selectedAnswers[currentQuestion] === optIndex;
+                    const letters = ['A', 'B', 'C', 'D'];
+
+                    return (
+                      <motion.button
+                        key={optIndex}
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.99 }}
+                        onClick={() => handleAnswerSelect(optIndex)}
+                        className={clsx(
+                          'w-full text-left p-4 rounded-xl border-2 transition-all duration-200 flex items-start gap-3',
+                          isSelected
+                            ? 'border-violet-500 bg-violet-50 shadow-md shadow-violet-100'
+                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                        )}
+                      >
+                        <span className={clsx(
+                          'flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm transition-colors',
+                          isSelected
+                            ? 'bg-violet-500 text-white'
+                            : 'bg-gray-100 text-gray-500'
+                        )}>
+                          {letters[optIndex]}
+                        </span>
+                        <span className={clsx(
+                          'pt-1 text-sm leading-relaxed',
+                          isSelected ? 'text-violet-900 font-medium' : 'text-gray-700'
+                        )}>
+                          {option}
+                        </span>
+                      </motion.button>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Footer Navigation */}
+        {!result && (
+          <div className="p-4 border-t border-gray-100 bg-gray-50/50">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handlePrev}
+                disabled={currentQuestion === 0}
+                className={clsx(
+                  'p-3 rounded-xl transition-colors',
+                  currentQuestion === 0
+                    ? 'text-gray-300 cursor-not-allowed'
+                    : 'text-gray-600 hover:bg-gray-200'
+                )}
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+
+              <div className="flex-1">
+                {isLastQuestion && allAnswered ? (
+                  <button
+                    onClick={handleSubmit}
+                    disabled={isSubmitting}
+                    className="w-full py-3 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white rounded-xl font-semibold transition-all hover:scale-[1.01] active:scale-[0.99] shadow-lg shadow-purple-200 disabled:opacity-70 flex items-center justify-center gap-2"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Checking...
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-5 h-5" />
+                        Submit & Check
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleNext}
+                    disabled={selectedAnswers[currentQuestion] === null}
+                    className={clsx(
+                      'w-full py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2',
+                      selectedAnswers[currentQuestion] !== null
+                        ? 'bg-gray-900 hover:bg-gray-800 text-white'
+                        : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    )}
+                  >
+                    Next Question
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+
+              <button
+                onClick={handleNext}
+                disabled={isLastQuestion || selectedAnswers[currentQuestion] === null}
+                className={clsx(
+                  'p-3 rounded-xl transition-colors',
+                  isLastQuestion || selectedAnswers[currentQuestion] === null
+                    ? 'text-gray-300 cursor-not-allowed'
+                    : 'text-gray-600 hover:bg-gray-200'
+                )}
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         )}
       </motion.div>

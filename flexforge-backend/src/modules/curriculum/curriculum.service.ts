@@ -286,7 +286,10 @@ export class CurriculumService {
 
     // Step 0: Check cache first - return cached preview if available
     const tempSessionId = crypto.randomUUID();
-    const cachedResult = await this.cacheService.tryGetFromCache(dto, 'preview', tempSessionId);
+    const userId = user?.id || null; // Use actual user ID, or null for anonymous
+    const cachedResult = userId
+      ? await this.cacheService.tryGetFromCache(dto, userId, tempSessionId)
+      : null; // Skip cache lookup for anonymous users
 
     if (cachedResult) {
       this.logger.log(`📦 Preview cache HIT for "${dto.skillName}" - returning cached preview`);
@@ -358,7 +361,7 @@ export class CurriculumService {
       } : undefined,
     });
 
-    // Step 4: Generate preview with AI (fast, skeleton only)
+    // Step 4: Generate preview with AI (skeleton only)
     this.logger.log('🤖 Generating curriculum preview (skeleton only)...');
     const aiResponse = await this.aiService.routeRequest(
       AITask.CURRICULUM_GENERATION,
@@ -418,9 +421,11 @@ export class CurriculumService {
       `✅ Preview generated. Tokens: ${aiResponse.tokensUsed}, Cost: $${aiResponse.cost.toFixed(4)}`,
     );
 
-    // Cache the new preview for future users
-    await this.cacheService.cacheNewContent(dto, preview, 'preview', tempSessionId);
-    this.logger.log(`📦 Preview cached for "${dto.skillName}"`);
+    // Cache the new preview for future users (only if we have a valid user ID)
+    if (userId) {
+      await this.cacheService.cacheNewContent(dto, preview, userId, tempSessionId);
+      this.logger.log(`📦 Preview cached for "${dto.skillName}"`);
+    }
 
     return {
       preview,

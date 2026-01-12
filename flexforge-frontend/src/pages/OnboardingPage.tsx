@@ -179,7 +179,7 @@ export default function OnboardingPage() {
               <StepWrapper key="generating">
                 <LoadingState
                   title="Finding your learning path..."
-                  subtitle="AI is analyzing your goal"
+                  subtitle="Flexi is analyzing your goal"
                   steps={[
                     'Understanding your goal',
                     'Identifying key concepts',

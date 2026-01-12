@@ -11,6 +11,9 @@ export enum AITask {
   CURRICULUM_GENERATION = 'CURRICULUM_GENERATION',
   CODE_GENERATION = 'CODE_GENERATION',
 
+  // Fast structured output for previews (Haiku - faster than Sonnet)
+  CURRICULUM_PREVIEW = 'CURRICULUM_PREVIEW',
+
   // Interactive (Claude Haiku 3.5)
   TUTOR_CHAT = 'TUTOR_CHAT',
   ALTERNATIVE_EXPLANATION = 'ALTERNATIVE_EXPLANATION',
@@ -148,6 +151,13 @@ export class AiService {
       [AITask.CODE_GENERATION]: [
         { provider: 'anthropic', model: 'claude-sonnet-4-20250514' },
         { provider: 'openai', model: 'gpt-4o' },
+      ],
+
+      // Fast preview generation (Haiku is 3-5x faster than Sonnet)
+      [AITask.CURRICULUM_PREVIEW]: [
+        { provider: 'anthropic', model: 'claude-haiku-3-5-20241022' },
+        { provider: 'openai', model: 'gpt-4o-mini' },
+        { provider: 'anthropic', model: 'claude-sonnet-4-20250514' }, // fallback
       ],
 
       // Interactive

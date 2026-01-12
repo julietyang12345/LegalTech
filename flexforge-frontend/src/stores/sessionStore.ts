@@ -672,6 +672,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           return {
             activeSession: {
               ...state.activeSession,
+              // Advance currentDay if next day was unlocked
+              currentDay: result.nextDayUnlocked ? dayNumber + 1 : state.activeSession.currentDay,
               curriculum: {
                 ...state.activeSession.curriculum,
                 days: updatedDays,
@@ -701,7 +703,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       );
 
       if (result.nextDayUnlocked) {
-        // Update day status to completed and unlock next day
+        // Update day status to completed, unlock next day, and advance currentDay
         set((state) => {
           if (!state.activeSession) return state;
 
@@ -713,6 +715,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           return {
             activeSession: {
               ...state.activeSession,
+              // Advance currentDay to next day (matches backend behavior)
+              currentDay: dayNumber + 1,
               curriculum: {
                 ...state.activeSession.curriculum,
                 days: updatedDays,

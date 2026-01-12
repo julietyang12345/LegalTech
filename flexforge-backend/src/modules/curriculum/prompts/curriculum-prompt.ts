@@ -344,12 +344,12 @@ Output valid JSON only.`;
       "transferability": "",
       "contentSource": "",
       "skipTest": {
-        "description": "Prove mastery to skip",
-        "questions": [
-          {"question": "Q1?", "answer": "A1"},
-          {"question": "Q2?", "answer": "A2"},
-          {"question": "Q3?", "answer": "A3"}
-        ],
+        "description": "Prove mastery to skip this day",
+        "questionSets": [[
+          {"question": "MCQ testing concept?", "options": ["Wrong", "Wrong", "Correct", "Wrong"], "correctIndex": 2},
+          {"question": "Another MCQ?", "options": ["Correct", "Wrong", "Wrong", "Wrong"], "correctIndex": 0},
+          {"question": "Third MCQ?", "options": ["Wrong", "Correct", "Wrong", "Wrong"], "correctIndex": 1}
+        ]],
         "passThreshold": 2
       }
     }

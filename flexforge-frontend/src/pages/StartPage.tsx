@@ -7,174 +7,25 @@ import {
   Clock,
   Calendar,
   AlertTriangle,
-  Loader2,
   Search,
   BookOpen,
   CheckCircle,
   Brain,
-  Trophy,
   Play,
-  RefreshCw,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
 import { Button, Card, GeneratingScreen, QuotaExceededModal } from '@/components/common';
 import { SkillLevel } from '@/types';
-import { sessionService, PreviewResponse } from '@/services/sessionService';
 
-// Loading steps for PREVIEW generation (~20-25 seconds)
-const PREVIEW_LOADING_STEPS = [
+// Loading steps for curriculum generation (~20-30 seconds)
+const GENERATION_LOADING_STEPS = [
   { icon: Search, text: 'Analyzing your skill...', duration: 5000 },
-  { icon: Brain, text: 'Designing learning path...', duration: 7500 },
-  { icon: BookOpen, text: 'Planning curriculum...', duration: 6500 },
-  { icon: CheckCircle, text: 'Creating your preview...', duration: 4000 },
+  { icon: Brain, text: 'Designing learning path...', duration: 8000 },
+  { icon: BookOpen, text: 'Building curriculum...', duration: 10000 },
+  { icon: CheckCircle, text: 'Finalizing your plan...', duration: 5000 },
 ];
-
-// Preview Screen Component - shows curriculum timeline before user commits
-function PreviewScreen({
-  preview,
-  skillName,
-  onStartLearning,
-  onRegenerate,
-  isStarting,
-}: {
-  preview: PreviewResponse['preview'];
-  skillName: string;
-  onStartLearning: () => void;
-  onRegenerate: () => void;
-  isStarting: boolean;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="min-h-screen bg-gradient-to-br from-brand-50 to-gray-50 py-12 px-4"
-    >
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-8"
-        >
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full
-                         bg-gradient-to-br from-brand-400 to-brand-500 mb-4">
-            <span className="text-3xl">🦊</span>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            {preview.title}
-          </h1>
-          <p className="text-gray-600 max-w-lg mx-auto">
-            {preview.description}
-          </p>
-        </motion.div>
-
-        {/* Final Project Card */}
-        <Card className="p-5 mb-6 bg-gradient-to-r from-brand-50 to-focus-50 border-brand-200">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center flex-shrink-0">
-              <Trophy className="w-5 h-5 text-brand-600" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-900 mb-1">Final Project</h3>
-              <p className="text-sm text-gray-600">{preview.finalProject}</p>
-            </div>
-          </div>
-        </Card>
-
-        {/* Timeline */}
-        <Card className="p-6 mb-6">
-          <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-brand-500" />
-            Your {preview.days.length}-Day Learning Path
-          </h3>
-
-          <div className="space-y-3">
-            {preview.days.map((day, index) => (
-              <motion.div
-                key={day.day}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.05 }}
-                className={clsx(
-                  'p-4 rounded-xl border-2 transition-all',
-                  day.hasBossProject
-                    ? 'border-amber-200 bg-amber-50'
-                    : 'border-gray-100 bg-white hover:border-gray-200'
-                )}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={clsx(
-                    'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0',
-                    day.hasBossProject
-                      ? 'bg-amber-100 text-amber-700'
-                      : 'bg-brand-100 text-brand-700'
-                  )}>
-                    {day.day}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="font-medium text-gray-900">{day.title}</h4>
-                      {day.hasBossProject && (
-                        <span className="px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded-full">
-                          Boss Project
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-500 mt-0.5">{day.subtitle}</p>
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {day.skills.slice(0, 3).map((skill, i) => (
-                        <span
-                          key={i}
-                          className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded-full"
-                        >
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                    <p className="text-sm text-brand-600 mt-2 font-medium">{day.teaser}</p>
-                  </div>
-                  <div className="text-xs text-gray-400 flex items-center gap-1 flex-shrink-0">
-                    <Clock className="w-3 h-3" />
-                    {day.estimatedMinutes}m
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </Card>
-
-        {/* Actions */}
-        <div className="flex gap-3">
-          <Button
-            variant="secondary"
-            size="lg"
-            onClick={onRegenerate}
-            disabled={isStarting}
-            leftIcon={<RefreshCw className="w-4 h-4" />}
-            className="flex-shrink-0"
-          >
-            Generate New
-          </Button>
-          <Button
-            size="lg"
-            className="flex-1"
-            onClick={onStartLearning}
-            disabled={isStarting}
-            rightIcon={isStarting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
-          >
-            {isStarting ? 'Starting...' : 'Start Learning'}
-          </Button>
-        </div>
-
-        <p className="text-center text-sm text-gray-500 mt-4">
-          Day 1 content will be generated when you start your first lesson
-        </p>
-      </div>
-    </motion.div>
-  );
-}
 
 // Skill level selection cards
 function SkillLevelSelector({
@@ -305,9 +156,6 @@ function HoursSelector({
   );
 }
 
-
-type PagePhase = 'form' | 'generating-preview' | 'preview';
-
 export function StartPage() {
   const navigate = useNavigate();
   const { createSession, isLoading, error, clearError } = useSessionStore();
@@ -319,9 +167,7 @@ export function StartPage() {
   const [hoursPerDay, setHoursPerDay] = useState(1);
   const [skillLevel, setSkillLevel] = useState<SkillLevel>(SkillLevel.BEGINNER);
   const [warnings, setWarnings] = useState<string[]>([]);
-  const [phase, setPhase] = useState<PagePhase>('form');
-  const [previewData, setPreviewData] = useState<PreviewResponse['preview'] | null>(null);
-  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [showQuotaModal, setShowQuotaModal] = useState(false);
   const [quotaErrorMessage, setQuotaErrorMessage] = useState<string | undefined>();
 
@@ -329,10 +175,8 @@ export function StartPage() {
   useEffect(() => {
     const prefs = user?.preferences?.learner;
     if (prefs?.selectedDirection && !skillName) {
-      // Use the selected direction as skill name
       setSkillName(prefs.selectedDirection);
     }
-    // Also pre-fill skill level if available
     if (prefs?.skillLevel && !skillName) {
       const levelMap: Record<string, SkillLevel> = {
         beginner: SkillLevel.BEGINNER,
@@ -343,7 +187,6 @@ export function StartPage() {
         setSkillLevel(levelMap[prefs.skillLevel]);
       }
     }
-    // Pre-fill daily minutes if available
     if (prefs?.dailyMinutes && !skillName) {
       const hoursMap: Record<number, number> = {
         15: 0.25,
@@ -370,52 +213,21 @@ export function StartPage() {
     );
   };
 
-  // Phase 1: Generate preview (skeleton only)
-  const handleGeneratePreview = async (e: React.FormEvent) => {
+  // Create session directly (no preview step)
+  const handleStartLearning = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!skillName.trim()) return;
 
     clearError();
     setWarnings([]);
-    setPreviewError(null);
-    setPhase('generating-preview');
+    setIsGenerating(true);
 
-    try {
-      const response = await sessionService.generatePreview({
-        skillName,
-        durationDays,
-        hoursPerDay,
-        skillLevel,
-      });
-
-      setPreviewData(response.preview);
-      if (response.warnings) {
-        setWarnings(response.warnings);
-      }
-      setPhase('preview');
-    } catch (err: any) {
-      setPhase('form');
-      if (isQuotaError(err)) {
-        setQuotaErrorMessage(err.response?.data?.message);
-        setShowQuotaModal(true);
-      } else {
-        setPreviewError(err.response?.data?.message || err.message || 'Failed to generate preview');
-      }
-      if (err.response?.data?.warnings) {
-        setWarnings(err.response.data.warnings);
-      }
-    }
-  };
-
-  // Phase 2: Create full session after user confirms preview (instant - uses preview curriculum)
-  const handleStartLearning = async () => {
     try {
       await createSession({
         skillName,
         durationDays,
         hoursPerDay,
         skillLevel,
-        previewCurriculum: previewData, // Pass preview to avoid regeneration
       });
 
       addSystemMessage(
@@ -425,43 +237,25 @@ export function StartPage() {
 
       navigate('/today');
     } catch (err: any) {
+      setIsGenerating(false);
       if (isQuotaError(err)) {
         setQuotaErrorMessage(err.response?.data?.message);
         setShowQuotaModal(true);
-      } else {
-        setPreviewError(err.response?.data?.message || err.message || 'Failed to start session');
+      }
+      if (err.response?.data?.warnings) {
+        setWarnings(err.response.data.warnings);
       }
     }
   };
 
-  // Regenerate: go back to form
-  const handleRegenerate = () => {
-    setPreviewData(null);
-    setPhase('form');
-  };
-
-  // Show preview loading screen
-  if (phase === 'generating-preview') {
+  // Show loading screen while generating
+  if (isGenerating) {
     return (
       <GeneratingScreen
-        steps={PREVIEW_LOADING_STEPS}
-        title="Generating your preview"
-        subtitle="Creating a learning path outline..."
-        timeEstimate="This takes about 10-15 seconds"
-      />
-    );
-  }
-
-
-  // Show preview screen
-  if (phase === 'preview' && previewData) {
-    return (
-      <PreviewScreen
-        preview={previewData}
-        skillName={skillName}
-        onStartLearning={handleStartLearning}
-        onRegenerate={handleRegenerate}
-        isStarting={isLoading}
+        steps={GENERATION_LOADING_STEPS}
+        title="Creating your curriculum"
+        subtitle={`Building a personalized ${skillName} learning path...`}
+        timeEstimate="This takes about 20-30 seconds"
       />
     );
   }
@@ -475,7 +269,7 @@ export function StartPage() {
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-8"
         >
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full 
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full
                          bg-gradient-to-br from-brand-400 to-brand-500 mb-4">
             <span className="text-4xl">🦊</span>
           </div>
@@ -488,7 +282,7 @@ export function StartPage() {
         </motion.div>
 
         <Card className="p-8">
-          <form onSubmit={handleGeneratePreview} className="space-y-8">
+          <form onSubmit={handleStartLearning} className="space-y-8">
             {/* Skill name input */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -502,7 +296,7 @@ export function StartPage() {
                   onChange={(e) => setSkillName(e.target.value)}
                   placeholder="e.g., Build AI agents with Python"
                   required
-                  className="w-full pl-12 pr-4 py-4 text-lg border border-gray-300 rounded-xl 
+                  className="w-full pl-12 pr-4 py-4 text-lg border border-gray-300 rounded-xl
                            focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                            transition-colors"
                 />
@@ -530,7 +324,7 @@ export function StartPage() {
             <div>
               <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-3">
                 <Clock className="w-4 h-4" />
-                Hours per day 
+                Hours per day
               </label>
               <HoursSelector value={hoursPerDay} onChange={setHoursPerDay} />
             </div>
@@ -561,14 +355,14 @@ export function StartPage() {
 
             {/* Error */}
             <AnimatePresence>
-              {(error || previewError) && (
+              {error && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
                   className="p-4 bg-red-50 border border-red-200 rounded-lg"
                 >
-                  <p className="text-red-700 text-sm">{error || previewError}</p>
+                  <p className="text-red-700 text-sm">{error}</p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -578,15 +372,15 @@ export function StartPage() {
               type="submit"
               size="xl"
               className="w-full"
-              disabled={!skillName.trim() || phase !== 'form'}
-              rightIcon={<Sparkles className="w-5 h-5" />}
+              disabled={!skillName.trim() || isLoading}
+              rightIcon={<Play className="w-5 h-5" />}
             >
-              Preview Curriculum
+              Start Learning
             </Button>
 
             {/* Info */}
             <p className="text-center text-sm text-gray-500">
-              See your learning path in ~10 seconds, then decide to start
+              Your curriculum will be ready in ~30 seconds
             </p>
           </form>
         </Card>

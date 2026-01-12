@@ -696,10 +696,26 @@ export class SessionService {
       throw new NotFoundException(`Skip test not found for Day ${dayNumber}`);
     }
 
-    // Get current questions from questionSets
-    const questionSets = skipTest.questionSets || [];
+    // Get current questions from questionSets (new format) or questions (legacy format)
+    let questionSets = skipTest.questionSets || [];
     const currentSetIndex = skipTest.currentSetIndex ?? 0;
-    const questions = questionSets[currentSetIndex] || [];
+    let questions = questionSets[currentSetIndex] || [];
+
+    // Handle legacy format: if no questionSets but has questions array with text answers
+    // Convert to multiple choice format if possible, or return early
+    if (questions.length === 0 && skipTest.questions && Array.isArray(skipTest.questions)) {
+      // Legacy format doesn't have options/correctIndex - can't do MCQ
+      // Return a helpful message
+      this.logger.warn(`Skip test for Day ${dayNumber} uses legacy format without MCQ options`);
+      throw new NotFoundException(
+        `Skip test not available - please start the day to load the updated test format.`
+      );
+    }
+
+    // Validate questions have required MCQ fields
+    questions = questions.filter((q: any) =>
+      q.question && q.options && Array.isArray(q.options) && typeof q.correctIndex === 'number'
+    );
 
     // Check answers by comparing selected index to correctIndex
     let correctCount = 0;
@@ -796,18 +812,19 @@ export class SessionService {
     session.curriculum.days[dayIndex].status = 'skipped';
     session.curriculum.days[dayIndex].forceSkipped = true;
 
-    // Unlock next day
+    // Unlock next day and advance currentDay
     let nextDayUnlocked = false;
     if (dayNumber < session.curriculum.days.length) {
       const nextDayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber + 1);
       if (nextDayIndex !== -1) {
         session.curriculum.days[nextDayIndex].status = 'unlockable';
+        session.currentDay = dayNumber + 1;
         nextDayUnlocked = true;
       }
     }
 
     await this.sessionsRepository.save(session);
-    this.logger.log(`⏭️ Day ${dayNumber} force-skipped for session ${sessionId}`);
+    this.logger.log(`⏭️ Day ${dayNumber} force-skipped, advanced to day ${session.currentDay} for session ${sessionId}`);
 
     return { success: true, nextDayUnlocked };
   }
