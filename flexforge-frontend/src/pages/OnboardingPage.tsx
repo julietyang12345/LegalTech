@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import {
   GoalInputStep,
   DirectionsStep,
@@ -179,7 +179,12 @@ export default function OnboardingPage() {
               <StepWrapper key="generating">
                 <LoadingState
                   title="Finding your learning path..."
-                  subtitle="AI is analyzing your goal and generating personalized directions"
+                  subtitle="AI is analyzing your goal"
+                  steps={[
+                    'Understanding your goal',
+                    'Identifying key concepts',
+                    'Creating learning directions',
+                  ]}
                 />
               </StepWrapper>
             )}
@@ -220,6 +225,10 @@ export default function OnboardingPage() {
                   title="Setting up your experience..."
                   subtitle="Personalizing your learning journey"
                   variant="green"
+                  steps={[
+                    'Saving your preferences',
+                    'Preparing your dashboard',
+                  ]}
                 />
               </StepWrapper>
             )}
@@ -244,33 +253,120 @@ function StepWrapper({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Reusable loading state component
+// Reusable loading state component with elegant animations
 function LoadingState({
   title,
   subtitle,
-  variant = 'brand'
+  variant = 'brand',
+  steps,
 }: {
   title: string;
   subtitle: string;
   variant?: 'brand' | 'green';
+  steps?: string[];
 }) {
   const colors = variant === 'green'
-    ? { bg: 'bg-green-100', icon: 'text-green-600', spinner: 'text-green-500' }
-    : { bg: 'bg-brand-100', icon: 'text-brand-600', spinner: 'text-brand-500' };
+    ? {
+        ring: 'stroke-green-500',
+        ringBg: 'stroke-green-100',
+        bg: 'bg-green-50',
+        icon: 'text-green-600',
+        check: 'text-green-500',
+        text: 'text-green-600',
+      }
+    : {
+        ring: 'stroke-brand-500',
+        ringBg: 'stroke-brand-100',
+        bg: 'bg-brand-50',
+        icon: 'text-brand-600',
+        check: 'text-brand-500',
+        text: 'text-brand-600',
+      };
 
   return (
     <div className="text-center py-12">
-      <div className={`inline-flex items-center justify-center w-16 h-16 ${colors.bg} rounded-full mb-6`}>
-        <motion.div
-          animate={variant === 'green' ? { scale: [1, 1.2, 1] } : undefined}
-          transition={variant === 'green' ? { repeat: Infinity, duration: 1.5 } : undefined}
+      {/* Animated ring with icon */}
+      <div className="relative inline-flex items-center justify-center mb-8">
+        {/* Spinning ring */}
+        <motion.svg
+          className="w-24 h-24"
+          viewBox="0 0 100 100"
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 3, ease: 'linear' }}
         >
-          <Sparkles className={`w-8 h-8 ${colors.icon} ${variant === 'brand' ? 'animate-pulse' : ''}`} />
-        </motion.div>
+          {/* Background ring */}
+          <circle
+            cx="50"
+            cy="50"
+            r="42"
+            fill="none"
+            strokeWidth="4"
+            className={colors.ringBg}
+          />
+          {/* Animated arc */}
+          <circle
+            cx="50"
+            cy="50"
+            r="42"
+            fill="none"
+            strokeWidth="4"
+            strokeLinecap="round"
+            className={colors.ring}
+            strokeDasharray="80 200"
+          />
+        </motion.svg>
+
+        {/* Center icon */}
+        <div className={`absolute w-14 h-14 ${colors.bg} rounded-full flex items-center justify-center`}>
+          <motion.div
+            animate={{ scale: [1, 1.1, 1] }}
+            transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
+          >
+            <Sparkles className={`w-7 h-7 ${colors.icon}`} />
+          </motion.div>
+        </div>
       </div>
+
       <h2 className="text-xl font-semibold text-gray-900 mb-2">{title}</h2>
-      <p className="text-gray-600 mb-6">{subtitle}</p>
-      <Loader2 className={`w-6 h-6 ${colors.spinner} animate-spin mx-auto`} />
+      <p className="text-gray-600 mb-8">{subtitle}</p>
+
+      {/* Animated steps with checkmarks */}
+      {steps && steps.length > 0 && (
+        <div className="inline-flex flex-col items-start gap-3 text-left">
+          {steps.map((step, i) => (
+            <motion.div
+              key={step}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 1.5, duration: 0.4 }}
+              className="flex items-center gap-3"
+            >
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: i * 1.5 + 0.2, type: 'spring', stiffness: 300 }}
+                className={`w-5 h-5 rounded-full ${colors.bg} flex items-center justify-center`}
+              >
+                <motion.svg
+                  className={`w-3 h-3 ${colors.check}`}
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  initial={{ pathLength: 0, opacity: 0 }}
+                  animate={{ pathLength: 1, opacity: 1 }}
+                  transition={{ delay: i * 1.5 + 0.3, duration: 0.3 }}
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                    clipRule="evenodd"
+                  />
+                </motion.svg>
+              </motion.div>
+              <span className={`text-sm ${colors.text}`}>{step}</span>
+            </motion.div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

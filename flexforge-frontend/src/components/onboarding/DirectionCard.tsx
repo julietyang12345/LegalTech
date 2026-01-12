@@ -1,5 +1,5 @@
 import { clsx } from 'clsx';
-import { Clock, Target, Wrench } from 'lucide-react';
+import { Clock, Target, Wrench, DollarSign } from 'lucide-react';
 import type { LearningDirection } from '@/types';
 
 interface DirectionCardProps {
@@ -37,7 +37,7 @@ export function DirectionCard({ direction, isSelected, onClick }: DirectionCardP
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <h3 className="font-semibold text-gray-900">{direction.title}</h3>
             <span
               className={clsx(
@@ -49,7 +49,21 @@ export function DirectionCard({ direction, isSelected, onClick }: DirectionCardP
             >
               {direction.isToolSpecific ? 'Tool-specific' : 'Concept'}
             </span>
+            {direction.isFree === false && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 flex items-center gap-1">
+                <DollarSign className="w-3 h-3" />
+                Paid tool
+              </span>
+            )}
           </div>
+
+          {/* Payment note for paid tools */}
+          {direction.paymentNote && (
+            <p className="text-xs text-amber-600 mb-2 flex items-center gap-1">
+              <DollarSign className="w-3 h-3" />
+              {direction.paymentNote}
+            </p>
+          )}
 
           <p className="text-sm text-gray-600 mb-3">{direction.outcome}</p>
 

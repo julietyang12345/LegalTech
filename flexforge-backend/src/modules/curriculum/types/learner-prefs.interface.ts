@@ -16,6 +16,8 @@ export interface LearningDirection {
   keywords: string[]; // ["webhooks", "API", "requests", "auth"] - for video search
   isToolSpecific: boolean; // true for Zapier/Make specific, false for concept
   estimatedMinutes: number; // 30, 45, 60, or 90
+  paymentNote?: string; // e.g., "May require paid subscription" for non-free tools
+  isFree?: boolean; // true for free tools like Python, false for paid tools like Zapier
 }
 
 /**

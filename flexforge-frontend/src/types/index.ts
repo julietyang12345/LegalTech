@@ -750,6 +750,8 @@ export interface LearningDirection {
   keywords: string[];            // ["webhooks", "API", "requests", "auth"]
   isToolSpecific: boolean;       // false for concept, true for Zapier/Make
   estimatedMinutes: number;      // 60
+  paymentNote?: string;          // "May require paid subscription" for paid tools
+  isFree?: boolean;              // true for free tools, false for paid
 }
 
 // Refinement context (from Step 3b if user selects "Not quite")

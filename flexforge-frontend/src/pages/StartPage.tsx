@@ -305,35 +305,6 @@ function HoursSelector({
   );
 }
 
-// Suggested skills
-function SuggestedSkills({ onSelect }: { onSelect: (skill: string) => void }) {
-  const suggestions = [
-    'Python Basics',
-    'Automate tasks with AI',
-    'AI-powered productivity workflows',
-    'Web Development',
-    'Data Analysis',
-    'Machine Learning',
-    'JavaScript',
-    'React',
-    'SQL',
-  ];
-
-  return (
-    <div className="flex flex-wrap gap-2">
-      {suggestions.map((skill) => (
-        <button
-          key={skill}
-          type="button"
-          onClick={() => onSelect(skill)}
-          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full text-sm transition-colors"
-        >
-          {skill}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 type PagePhase = 'form' | 'generating-preview' | 'preview';
 
@@ -535,10 +506,6 @@ export function StartPage() {
                            focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                            transition-colors"
                 />
-              </div>
-              <div className="mt-3">
-                <p className="text-sm text-gray-500 mb-2">Popular choices:</p>
-                <SuggestedSkills onSelect={setSkillName} />
               </div>
             </div>
 

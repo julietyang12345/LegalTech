@@ -52,8 +52,8 @@ export class OnboardingService {
     }
 
     // Validate and normalize directions
-    const directions = parsed.directions
-      .slice(0, 6) // Max 6 directions
+    let allDirections = parsed.directions
+      .slice(0, 8) // Get more initially, we'll filter
       .map((d: any, index: number) => ({
         id: `dir-${index + 1}`,
         title: String(d.title || `Direction ${index + 1}`).slice(0, 60),
@@ -62,10 +62,29 @@ export class OnboardingService {
           ? d.keywords.slice(0, 5).map(String)
           : [],
         isToolSpecific: Boolean(d.isToolSpecific),
+        isFree: d.isFree !== false, // Default to free if not specified
+        paymentNote: d.isToolSpecific && !d.isFree ? String(d.paymentNote || 'May require payment') : undefined,
         estimatedMinutes: Number(d.estimatedMinutes) || 60,
       })) as LearningDirection[];
 
-    this.logger.log(`Generated ${directions.length} directions`);
+    // Separate concept vs tool-specific
+    // Allow up to 3 tool directions, but at least 2 must be free
+    const conceptDirections = allDirections.filter(d => !d.isToolSpecific);
+    const freeToolDirections = allDirections.filter(d => d.isToolSpecific && d.isFree);
+    const paidToolDirections = allDirections.filter(d => d.isToolSpecific && !d.isFree);
+
+    // Take up to 2 free tools first, then at most 1 paid tool (total max 3)
+    const toolDirections = [
+      ...freeToolDirections.slice(0, 2),
+      ...paidToolDirections.slice(0, Math.min(1, 3 - freeToolDirections.slice(0, 2).length)),
+    ].slice(0, 3);
+
+    // Combine: concepts first, then tools (max 6 total)
+    const directions = [...conceptDirections, ...toolDirections]
+      .slice(0, 6)
+      .map((d, i) => ({ ...d, id: `dir-${i + 1}` }));
+
+    this.logger.log(`Generated ${directions.length} directions (${toolDirections.length} tool-specific)`);
 
     return {
       directions,
@@ -153,8 +172,16 @@ GRANULARITY RULES (CRITICAL):
 
 Keep directions broad enough that video search will find good matches.
 
-At least one direction should be tool-specific (Zapier, Make, etc.) if relevant to the goal.
-Label tool-specific directions clearly with isToolSpecific: true.
+TOOL-SPECIFIC DIRECTIONS:
+- Include UP TO 3 tool-specific directions (isToolSpecific: true)
+- AT LEAST 2 must be FREE tools (isFree: true) - e.g., Python, Node.js, VS Code, Git
+- AT MOST 1 can be a paid/freemium tool (isFree: false) - e.g., Zapier, Make, AWS
+- For paid tools, set isFree: false and add paymentNote
+- paymentNote examples: "May require paid subscription", "Free tier available with limits", "Paid service"
+
+COMMON TOOLS REFERENCE:
+- FREE: Python, JavaScript, Node.js, VS Code, Git, Docker (free tier), PostgreSQL, MongoDB (free tier)
+- PAID/FREEMIUM: Zapier, Make, AWS, GCP, Azure, Notion API, Airtable, Slack (advanced features)
 
 Return JSON in this exact format:
 {
@@ -165,7 +192,18 @@ Return JSON in this exact format:
       "outcome": "You'll be able to... (one sentence)",
       "keywords": ["keyword1", "keyword2", "keyword3"],
       "isToolSpecific": false,
+      "isFree": true,
+      "paymentNote": null,
       "estimatedMinutes": 60
+    },
+    {
+      "title": "Build automations with Zapier",
+      "outcome": "You'll create no-code automations",
+      "keywords": ["Zapier", "automation"],
+      "isToolSpecific": true,
+      "isFree": false,
+      "paymentNote": "Free tier available, paid plans for advanced features",
+      "estimatedMinutes": 45
     }
   ]
 }`;
