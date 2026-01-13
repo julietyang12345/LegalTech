@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Code2, Lightbulb, Eye, Clock, MessageCircle, Lock, AlertTriangle } from 'lucide-react';
+import { Code2, Lightbulb, Eye, Clock, AlertTriangle } from 'lucide-react';
 import { Card, Button, ProgressBar } from '@/components/common';
 import { StepLayout } from './StepLayout';
-import { useAuthStore } from '@/stores/authStore';
 import { useCompanionStore } from '@/stores/companionStore';
-import { QuotaTier } from '@/types';
 import { clsx } from 'clsx';
 import type { CurriculumDay, Session, Task } from '@/types';
 
@@ -28,17 +26,11 @@ export function TaskStep({ day, onComplete }: TaskStepProps) {
   const [isStuck, setIsStuck] = useState(false);
   const [hasModifiedCode, setHasModifiedCode] = useState(false);
 
-  const { hasTierAccess } = useAuthStore();
   const { encourage } = useCompanionStore();
-
-  const canUseAITutor = hasTierAccess(QuotaTier.PRO);
-  const isPremium = hasTierAccess(QuotaTier.PREMIUM);
 
   const stuckThreshold = task?.stuckDetection?.triggerAfterMinutes || 7;
   // Use actual hints array length if available
   const totalHints = task?.hints?.length || 3;
-  const maxFreeHints = Math.min(totalHints, 1);
-  const maxProHints = totalHints;
 
   // Timer effect
   useEffect(() => {
@@ -57,8 +49,7 @@ export function TaskStep({ day, onComplete }: TaskStepProps) {
   }, [stuckThreshold, isStuck, encourage]);
 
   const handleRevealHint = () => {
-    const maxHints = canUseAITutor ? maxProHints : maxFreeHints;
-    if (hintsUsed < maxHints) {
+    if (hintsUsed < totalHints) {
       setHintsUsed(prev => prev + 1);
       setShowHint(true);
     }
@@ -71,7 +62,7 @@ export function TaskStep({ day, onComplete }: TaskStepProps) {
       return typeof hint === 'string' ? hint : hint?.hint;
     }
     // Fallback to legacy structure
-    if (canUseAITutor && task?.pro?.hints && task.pro.hints[index]) {
+    if (task?.pro?.hints && task.pro.hints[index]) {
       return task.pro.hints[index];
     }
     return task?.free?.hint1;
@@ -122,25 +113,14 @@ export function TaskStep({ day, onComplete }: TaskStepProps) {
                         <li key={i}>• {suggestion}</li>
                       ))}
                     </ul>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={handleRevealHint}
-                        leftIcon={<Lightbulb className="w-4 h-4" />}
-                      >
-                        Get a hint
-                      </Button>
-                      {canUseAITutor && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          leftIcon={<MessageCircle className="w-4 h-4" />}
-                        >
-                          Ask AI Tutor
-                        </Button>
-                      )}
-                    </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleRevealHint}
+                      leftIcon={<Lightbulb className="w-4 h-4" />}
+                    >
+                      Get a hint
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -229,28 +209,15 @@ export function TaskStep({ day, onComplete }: TaskStepProps) {
 
       {/* Hints section */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleRevealHint}
-            disabled={hintsUsed >= (canUseAITutor ? maxProHints : maxFreeHints)}
-            leftIcon={<Lightbulb className="w-4 h-4" />}
-          >
-            Hint ({hintsUsed}/{canUseAITutor ? maxProHints : maxFreeHints})
-          </Button>
-
-          {canUseAITutor ? (
-            <Button variant="ghost" size="sm" leftIcon={<MessageCircle className="w-4 h-4" />}>
-              Ask AI Tutor
-            </Button>
-          ) : (
-            <div className="flex items-center gap-1 text-sm text-gray-400">
-              <Lock className="w-3 h-3" />
-              AI Tutor (PRO)
-            </div>
-          )}
-        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleRevealHint}
+          disabled={hintsUsed >= totalHints}
+          leftIcon={<Lightbulb className="w-4 h-4" />}
+        >
+          Hint ({hintsUsed}/{totalHints})
+        </Button>
 
         <Button
           variant="secondary"

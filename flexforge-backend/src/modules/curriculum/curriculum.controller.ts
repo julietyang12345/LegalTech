@@ -114,6 +114,42 @@ export class CurriculumController {
     };
   }
 
+  /**
+   * POST /api/v1/curriculum/ai-tutor
+   * Ask the AI tutor for help with a task
+   */
+  @Post('ai-tutor')
+  async askAiTutor(
+    @Body()
+    body: {
+      message: string;
+      dayNumber: number;
+      context: {
+        taskTitle?: string;
+        taskDescription?: string;
+        currentCode?: string;
+        concept?: string;
+      };
+      conversationHistory?: Array<{ role: string; content: string }>;
+    },
+  ) {
+    try {
+      const result = await this.curriculumService.askAiTutor(body);
+
+      return {
+        reply: result.reply,
+        metadata: {
+          tokensUsed: result.tokensUsed,
+          cost: result.cost,
+        },
+      };
+    } catch (error) {
+      throw new BadRequestException(
+        error.message || 'Failed to get AI tutor response',
+      );
+    }
+  }
+
   // ==========================================================================
   // CACHED CURRICULUM ENDPOINTS
   // ==========================================================================

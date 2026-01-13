@@ -1,12 +1,15 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Zap, X, CheckCircle, XCircle, Loader2, Shuffle, Code2, HelpCircle, FileText, Sparkles, Target, BookOpen, Trophy } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Zap, X, CheckCircle, XCircle, Loader2, Shuffle, Code2, HelpCircle, FileText, Sparkles, Target, BookOpen, Trophy, MessageCircle, Lock } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
+import { useAuthStore } from '@/stores/authStore';
 import { FocusModeLayout } from '@/components/layout';
 import { Button, GeneratingScreen } from '@/components/common';
+import { AiTutorPanel } from '@/components/session/AiTutorPanel';
+import { QuotaTier } from '@/types';
 import type { CurriculumDay } from '@/types';
 
 // Import step components
@@ -744,6 +747,10 @@ export function SessionPage() {
   const [showSkipTest, setShowSkipTest] = useState(false);
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
   const [incompleteItems, setIncompleteItems] = useState<{ step: string; label: string; icon: string }[]>([]);
+  const [showAiTutor, setShowAiTutor] = useState(false);
+
+  const { hasTierAccess } = useAuthStore();
+  const canUseAITutor = hasTierAccess(QuotaTier.PRO);
 
   // Track what user has actually engaged with
   const [stepEngagement, setStepEngagement] = useState<StepEngagement>({
@@ -1039,6 +1046,22 @@ export function SessionPage() {
               Previous
             </Button>
 
+            {/* AI Tutor Button - Center */}
+            {canUseAITutor ? (
+              <button
+                onClick={() => setShowAiTutor(true)}
+                className="group flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 bg-white hover:bg-gray-50 border border-gray-200 hover:border-purple-300 hover:shadow-md hover:shadow-purple-100"
+              >
+                <Sparkles className="w-4 h-4 text-purple-500 group-hover:text-purple-600" />
+                <span className="text-gray-700 group-hover:text-gray-900">Ask AI Tutor</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2 px-4 py-2 text-sm text-gray-400 bg-gray-50 rounded-xl border border-gray-100">
+                <Lock className="w-3.5 h-3.5" />
+                Ask AI Tutor (PRO)
+              </div>
+            )}
+
             <Button
               variant={isLastStep ? 'accent' : 'primary'}
               onClick={handleContinue}
@@ -1076,6 +1099,21 @@ export function SessionPage() {
         }}
         incompleteItems={incompleteItems}
       />
+
+      {/* AI Tutor Panel */}
+      {activeSession && currentDay && (
+        <AiTutorPanel
+          isOpen={showAiTutor}
+          onClose={() => setShowAiTutor(false)}
+          sessionId={activeSession.id}
+          dayNumber={currentDay.day}
+          context={{
+            taskTitle: (currentDay.task1 as any)?.title || currentDay.title,
+            taskDescription: (currentDay.task1 as any)?.description,
+            concept: currentDay.title,
+          }}
+        />
+      )}
     </FocusModeLayout>
   );
 }

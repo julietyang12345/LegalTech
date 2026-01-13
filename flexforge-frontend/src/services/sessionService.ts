@@ -264,6 +264,38 @@ export const sessionService = {
     return data;
   },
 
+  // ═══════════════════════════════════════════════════
+  // AI TUTOR
+  // ═══════════════════════════════════════════════════
+
+  /**
+   * Ask the AI tutor for help with a task
+   * The tutor guides without giving away answers
+   */
+  async askAiTutor(
+    sessionId: string,
+    params: {
+      message: string;
+      dayNumber: number;
+      context: {
+        taskTitle?: string;
+        taskDescription?: string;
+        currentCode?: string;
+        concept?: string;
+      };
+      conversationHistory?: Array<{ role: string; content: string }>;
+    }
+  ): Promise<{ reply: string; tokensUsed?: number }> {
+    const { data } = await api.post<{
+      reply: string;
+      metadata?: { tokensUsed: number; cost: number };
+    }>('/curriculum/ai-tutor', params);
+    return {
+      reply: data.reply,
+      tokensUsed: data.metadata?.tokensUsed,
+    };
+  },
+
   /**
    * Find a new video for a day using Layer 3 deep verification
    * Called when user exhausts the alternative and clicks "Find New Video" again

@@ -30,9 +30,10 @@ export enum DayStatus {
 }
 
 export enum QuotaTier {
-  FREE = 'free',
-  PRO = 'pro',
-  PREMIUM = 'premium',
+  FREE = 'FREE',
+  PRO = 'PRO',
+  PREMIUM = 'PREMIUM',
+  UNLIMITED = 'UNLIMITED',
 }
 
 export enum SkillType {

@@ -28,6 +28,7 @@ const tierHierarchy: Record<QuotaTier, number> = {
   [QuotaTier.FREE]: 0,
   [QuotaTier.PRO]: 1,
   [QuotaTier.PREMIUM]: 2,
+  [QuotaTier.UNLIMITED]: 3,
 };
 
 export const useAuthStore = create<AuthState>()(

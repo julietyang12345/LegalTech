@@ -1263,6 +1263,73 @@ Create a coding challenge that tests the same concepts. Output JSON:
   }
 
   /**
+   * AI Tutor chat - helps students understand concepts without giving away answers
+   */
+  async askAiTutor(params: {
+    message: string;
+    dayNumber: number;
+    context: {
+      taskTitle?: string;
+      taskDescription?: string;
+      currentCode?: string;
+      concept?: string;
+    };
+    conversationHistory?: Array<{ role: string; content: string }>;
+  }): Promise<{ reply: string; tokensUsed: number; cost: number }> {
+    this.logger.log(`🎓 AI Tutor request for Day ${params.dayNumber}`);
+
+    const systemPrompt = `You are a supportive AI tutor helping a student learn programming. Your role is to GUIDE, not to solve.
+
+IMPORTANT RULES:
+1. Start by guiding - don't give the complete answer immediately
+2. Use the Socratic method - ask questions that lead the student to discover the answer
+3. If they're stuck, give gentle hints that point them in the right direction
+4. Celebrate small wins and progress
+5. Be encouraging but not condescending
+6. Keep responses concise (2-4 sentences usually)
+7. If after 2 exchanges they still ask for the answer directly, you can give it to them - but ALWAYS explain:
+   - WHY each part works (the underlying concept)
+   - How they can apply this pattern to similar problems
+
+Current context:
+- Task: ${params.context.taskTitle || 'Learning task'}
+- Description: ${params.context.taskDescription || 'No description provided'}
+- Concept being learned: ${params.context.concept || 'Programming concept'}
+${params.context.currentCode ? `- Their current code:\n\`\`\`\n${params.context.currentCode.slice(0, 500)}\n\`\`\`` : ''}
+
+Remember: You're teaching them to fish, not giving them fish.`;
+
+    // Build conversation for context
+    let conversationContext = '';
+    if (params.conversationHistory && params.conversationHistory.length > 0) {
+      // Only include last 6 messages for context
+      const recentHistory = params.conversationHistory.slice(-6);
+      conversationContext = '\n\nRecent conversation:\n' +
+        recentHistory.map(m => `${m.role === 'user' ? 'Student' : 'Tutor'}: ${m.content}`).join('\n');
+    }
+
+    const userPrompt = `${conversationContext}
+
+Student's question: ${params.message}
+
+Respond helpfully as their tutor, guiding them without giving the answer directly.`;
+
+    const response = await this.aiService.routeRequest(
+      AITask.TUTOR_CHAT,
+      userPrompt,
+      systemPrompt,
+    );
+
+    this.logger.log(`✅ AI Tutor responded. Tokens: ${response.tokensUsed}`);
+
+    return {
+      reply: response.content,
+      tokensUsed: response.tokensUsed,
+      cost: response.cost,
+    };
+  }
+
+  /**
    * Generate starter code template
    */
   async generateStarterCode(params: {
