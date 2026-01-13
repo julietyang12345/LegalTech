@@ -557,14 +557,15 @@ function IncompleteWorkModal({
   );
 }
 
-// Task format types for switching
-type TaskFormat = 'code' | 'quiz' | 'fillBlank';
+// Task format types for switching (quiz and fillBlank only - code moved to bossMilestone)
+type TaskFormat = 'quiz' | 'fillBlank';
 
 // Task Router: Renders the appropriate task component based on task format
-// Fetches alternative formats on-demand when user switches
+// task1 is now ONLY quiz or fillBlank for concept reinforcement
+// Code practice is handled by bossMilestone step
 function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session: any; onComplete: () => void }) {
   const task = day.task1;
-  const originalFormat = (task as any)?.format || 'code';
+  const originalFormat = ((task as any)?.format || 'quiz') as TaskFormat;
   const [selectedFormat, setSelectedFormat] = useState<TaskFormat>(originalFormat);
   const [alternativeTask, setAlternativeTask] = useState<any>(null);
   const [isLoadingFormat, setIsLoadingFormat] = useState(false);
@@ -608,7 +609,7 @@ function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session:
   // Render the appropriate component based on selected format
   const renderTaskComponent = () => {
     if (isLoadingFormat) {
-      const formatLabel = loadingFormatType === 'quiz' ? 'quiz' : loadingFormatType === 'fillBlank' ? 'fill-in-the-blank' : 'code';
+      const formatLabel = loadingFormatType === 'quiz' ? 'quiz' : 'fill-in-the-blank';
       return (
         <div className="flex flex-col items-center justify-center py-12 gap-3">
           <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
@@ -636,15 +637,14 @@ function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session:
         return <QuizTaskStep day={modifiedDay} session={session} onComplete={onComplete} />;
       case 'fillBlank':
         return <FillBlankTaskStep day={modifiedDay} session={session} onComplete={onComplete} />;
-      case 'code':
       default:
-        return <TaskStep day={modifiedDay} session={session} onComplete={onComplete} />;
+        return <QuizTaskStep day={modifiedDay} session={session} onComplete={onComplete} />;
     }
   };
 
   return (
     <div className="space-y-4">
-      {/* Alternative formats banner */}
+      {/* Alternative formats banner (quiz and fillBlank only) */}
       <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-100 rounded-xl p-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -652,19 +652,6 @@ function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session:
             <span>Try a different style:</span>
           </div>
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => handleFormatSwitch('code')}
-              disabled={isLoadingFormat}
-              className={clsx(
-                'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors',
-                selectedFormat === 'code'
-                  ? 'bg-white text-gray-900 shadow-sm font-medium'
-                  : 'text-gray-600 hover:text-gray-700 hover:bg-gray-100'
-              )}
-            >
-              <Code2 className="w-4 h-4" />
-              Code
-            </button>
             <button
               onClick={() => handleFormatSwitch('quiz')}
               disabled={isLoadingFormat}
@@ -737,7 +724,8 @@ const STEP_ORDER_LEGACY: SessionStepType[] = [
 // Step engagement tracking - what user has actually done
 interface StepEngagement {
   foundationCards: boolean;  // Clicked through all cards
-  task1: boolean;            // Typed code OR completed quiz/fill-blank
+  task1: boolean;            // Completed quiz/fill-blank
+  bossMilestone: boolean;    // Submitted boss milestone code
   reflection: boolean;       // Filled reflection
 }
 
@@ -756,6 +744,7 @@ export function SessionPage() {
   const [stepEngagement, setStepEngagement] = useState<StepEngagement>({
     foundationCards: false,
     task1: false,
+    bossMilestone: false,
     reflection: false,
   });
 
@@ -811,8 +800,9 @@ export function SessionPage() {
   const availableSteps = baseStepOrder.filter(step => {
     // Skip memoryBridge on day 1 (only in legacy flow)
     if (step === 'memoryBridge' && currentDay?.day === 1) return false;
-    // Skip bossMilestone if not present
-    if (step === 'bossMilestone' && !currentDay?.bossMilestone) return false;
+    // Boss milestone is now shown for ALL days (every day contributes to boss project)
+    // Only skip if explicitly not present in day content
+    if (step === 'bossMilestone' && !currentDay?.bossMilestone && !currentDay?.hasBossProject) return false;
     // Skip foundationCards if not present (fallback to legacy)
     if (step === 'foundationCards' && (!currentDay?.foundationCards || currentDay.foundationCards.length === 0)) return false;
     // Skip legacy steps if using new flow
@@ -852,15 +842,22 @@ export function SessionPage() {
       });
     }
 
-    // Check task completion
+    // Check task completion (quiz or fillBlank for concept reinforcement)
     if (currentDay?.task1 && !stepEngagement.task1) {
-      const taskFormat = (currentDay.task1 as any)?.format || 'code';
+      const taskFormat = (currentDay.task1 as any)?.format || 'quiz';
       incomplete.push({
         step: 'task1',
-        label: taskFormat === 'quiz' ? 'Complete the Quiz' :
-               taskFormat === 'fillBlank' ? 'Complete Fill-in-the-Blanks' :
-               'Try the Coding Challenge',
-        icon: taskFormat === 'quiz' ? '❓' : taskFormat === 'fillBlank' ? '✍️' : '💻',
+        label: taskFormat === 'quiz' ? 'Complete the Quiz' : 'Complete Fill-in-the-Blanks',
+        icon: taskFormat === 'quiz' ? '❓' : '✍️',
+      });
+    }
+
+    // Check boss milestone (coding practice)
+    if ((currentDay?.bossMilestone || currentDay?.hasBossProject) && !stepEngagement.bossMilestone) {
+      incomplete.push({
+        step: 'bossMilestone',
+        label: 'Complete Boss Milestone Code',
+        icon: '🏆',
       });
     }
 
@@ -887,7 +884,7 @@ export function SessionPage() {
 
         // 3. Reset steps and engagement for new day
         resetSteps();
-        setStepEngagement({ foundationCards: false, task1: false, reflection: false });
+        setStepEngagement({ foundationCards: false, task1: false, bossMilestone: false, reflection: false });
 
         addSystemMessage(
           `🎉 Day ${currentDay.day} complete! Let's start Day ${nextDayNumber}!`,
@@ -996,6 +993,8 @@ export function SessionPage() {
       markStepEngaged('foundationCards');
     } else if (currentStep === 'task1') {
       markStepEngaged('task1');
+    } else if (currentStep === 'bossMilestone') {
+      markStepEngaged('bossMilestone');
     } else if (currentStep === 'reflection') {
       markStepEngaged('reflection');
     }

@@ -302,8 +302,10 @@ export interface CurriculumDay {
     questions: ConceptQuestion[];
   };
 
-  task1?: Task | QuizTask | FillBlankTask;  // Supports code, quiz, or fill-blank
-  taskFormat?: TaskFormat;                   // 'code' | 'quiz' | 'fillBlank'
+  // Task section: Quiz or Fill-in-the-Blank for concept reinforcement
+  // (Coding practice moved to bossMilestone micro-steps)
+  task1?: QuizTask | FillBlankTask;
+  taskFormat?: 'quiz' | 'fillBlank';
   practiceProject?: PracticeProject;
 
   reflection?: {
@@ -388,7 +390,8 @@ export interface Task {
 // Alternative Task Formats (Quiz & Fill-in-the-Blank)
 // ============================================
 
-export type TaskFormat = 'code' | 'quiz' | 'fillBlank';
+// Task formats for concept reinforcement (code tasks moved to bossMilestone)
+export type TaskFormat = 'quiz' | 'fillBlank';
 
 export interface QuizQuestion {
   id: string;
@@ -462,19 +465,65 @@ export interface StretchGoal {
   tier?: string;
 }
 
+// Boss micro-step for daily coding contribution (enhanced BossMilestone)
 export interface BossMilestone {
-  description: string;
-  microTask: string;
-  dayContribution: string;
-  starterCode?: string;
+  day: number;                    // Which day this micro-step is for
+  title: string;                  // "Set up project structure"
+  description: string;            // Overview of what we're building today
+  microTask: string;              // Specific task description
+  dayContribution: string;        // How this helps the final project
+  conceptConnection: string;      // Links to today's concept from quiz/cards
+  estimatedMinutes: number;       // 10-15 minutes
+
+  // Code content
+  starterCode: string;            // Code to start with (cumulative from previous days)
+  expectedOutput?: string;        // What the result should look like
+  hints?: Array<{ level: number; hint: string } | string>;
+  solution?: string;              // Full solution for this micro-step
+  solutionAnnotations?: string[]; // Explanation of the solution
+
+  // Validation
+  validationType: 'run' | 'visual' | 'test';  // How user validates their work
+  validationInstructions?: string;             // "Run the code and check console"
 }
 
 export interface BossProject {
-  day: number;
-  title: string;
+  day: number;                    // Final boss day number
+  title: string;                  // "Interactive Todo App"
+  description: string;            // Overall project description
   estimatedMinutes: number;
-  combinesDays: number[];
-  free: {
+  combinesDays: number[];         // Days that contribute to this project
+
+  // Micro-steps: one per day in combinesDays (indexed by day number)
+  microSteps: Record<number, BossMilestone>;
+
+  // Requirements for final project (AI generates {requirement, fromDay, concept})
+  requirements: Array<string | { requirement: string; fromDay?: number; concept?: string }>;
+
+  // Hints for final project (AI generates {level, hint, phase})
+  hints?: Array<string | { level?: number; hint: string; phase?: string }>;
+
+  // Step-by-step phases for boss day
+  phases?: Array<{
+    phase: number;
+    title: string;
+    minutes: number;
+    objectives: string[];
+    deliverable: string;
+  }>;
+
+  // Final project starter code (combined from all micro-steps)
+  starterCode?: string;
+
+  // Files for the complete project
+  files?: {
+    starter: string;
+    hints: string;
+    solution: string;
+  };
+
+  // Legacy fields (kept for backward compatibility)
+  free?: {
     projectDescription: string;
     requirements: string[];
     hint1: string;
@@ -492,11 +541,6 @@ export interface BossProject {
       guided: string;
     };
   };
-  files?: {
-    starter: string;
-    hints: string;
-    solution: string;
-  };
 }
 
 export interface ReflectionQuestion {
@@ -513,7 +557,7 @@ export interface Progress {
   sessionId: string;
   taskId: string;
   dayNumber: number;
-  taskType: 'task1' | 'practice' | 'boss' | 'reflection' | 'quiz' | 'fillBlank';
+  taskType: 'task1' | 'practice' | 'boss' | 'bossMicroStep' | 'reflection' | 'quiz' | 'fillBlank';
   completed: boolean;
   completedAt?: string;
   confidenceScore?: number;
@@ -655,7 +699,8 @@ export interface DayCoreContent {
   };
   video: VideoMatch;
   foundationCards: FoundationCard[];
-  task1: Task | QuizTask | FillBlankTask;
+  task1: QuizTask | FillBlankTask;  // Quiz or fill-blank for concept reinforcement
+  bossMilestone?: BossMilestone;    // Daily micro-step for boss project coding
   skipTest: SkipTest;
 }
 

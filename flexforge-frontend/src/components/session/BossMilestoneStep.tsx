@@ -42,6 +42,7 @@ export function BossMilestoneStep({ day, session }: BossMilestoneStepProps) {
   const [code, setCode] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [showHints, setShowHints] = useState(false);
+  const [showSolution, setShowSolution] = useState(false);
   const { addSystemMessage } = useCompanionStore();
 
   const milestone = day.bossMilestone;
@@ -86,23 +87,30 @@ export function BossMilestoneStep({ day, session }: BossMilestoneStepProps) {
 
   const progressPercent = calculateProgress();
 
-  // Get requirements from boss project (AI generates {requirement, fromDay, concept} objects)
+  // Get hints from milestone (new structure) or fall back to boss project hints
+  const milestoneHints = milestone?.hints || [];
+  const hintsData = milestoneHints.length > 0
+    ? milestoneHints
+    : (activeBoss?.hints || activeBoss?.pro?.hints || (activeBoss?.free?.hint1 ? [activeBoss.free.hint1] : []));
+  const hints = (hintsData as Array<string | { hint?: string; level?: number }>).map(
+    (h): string => (typeof h === 'string' ? h : h.hint || String(h))
+  );
+
+  // Get requirements from boss project (for context)
   const requirementsData = activeBoss?.requirements || activeBoss?.free?.requirements || [];
   const requirements = (requirementsData as Array<string | { requirement?: string }>).map(
     (r): string => (typeof r === 'string' ? r : r.requirement || String(r))
   );
 
-  // Get hints from boss project (AI generates {level, hint, phase} objects)
-  const hintsData = activeBoss?.hints || activeBoss?.pro?.hints || (activeBoss?.free?.hint1 ? [activeBoss.free.hint1] : []);
-  const hints = (hintsData as Array<string | { hint?: string }>).map(
-    (h): string => (typeof h === 'string' ? h : h.hint || String(h))
-  );
-
   // Get phases for step-by-step guidance
   const phases = activeBoss?.phases || [];
 
-  // Get starter code from boss project
-  const starterCode = activeBoss?.starterCode || activeBoss?.files?.starter || milestone?.starterCode || `// ${milestone?.microTask || 'Start coding here...'}\n\n`;
+  // Get starter code from milestone (new structure) or fall back to boss project
+  const starterCode = milestone?.starterCode || activeBoss?.starterCode || activeBoss?.files?.starter || `// ${milestone?.microTask || 'Start coding here...'}\n\n`;
+
+  // Get solution from milestone
+  const solution = milestone?.solution;
+  const solutionAnnotations = milestone?.solutionAnnotations || [];
 
   const handleSubmit = () => {
     // Save this day's milestone to localStorage
@@ -196,7 +204,9 @@ export function BossMilestoneStep({ day, session }: BossMilestoneStepProps) {
               <Code2 className="w-5 h-5 text-purple-600" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Today's Contribution</h3>
+              <h3 className="font-semibold text-gray-900">
+                {milestone?.title || "Today's Contribution"}
+              </h3>
               <p className="text-sm text-gray-500">
                 {milestone?.description || 'Build a component for your boss project'}
               </p>
@@ -210,10 +220,37 @@ export function BossMilestoneStep({ day, session }: BossMilestoneStepProps) {
             </div>
           )}
 
+          {/* Expected output */}
+          {milestone?.expectedOutput && (
+            <div className="p-3 bg-green-50 border border-green-100 rounded-lg mb-4">
+              <p className="text-sm text-green-700">
+                <span className="font-medium">Expected output:</span> {milestone.expectedOutput}
+              </p>
+            </div>
+          )}
+
+          {/* Concept connection */}
+          {milestone?.conceptConnection && (
+            <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg mb-4">
+              <p className="text-sm text-blue-700">
+                <span className="font-medium">Today's concept:</span> {milestone.conceptConnection}
+              </p>
+            </div>
+          )}
+
           {milestone?.dayContribution && (
             <div className="p-3 bg-gray-100 rounded-lg mb-4">
               <p className="text-sm text-gray-600">
                 <span className="font-medium">How this helps:</span> {milestone.dayContribution}
+              </p>
+            </div>
+          )}
+
+          {/* Validation instructions */}
+          {milestone?.validationInstructions && (
+            <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg">
+              <p className="text-sm text-amber-700">
+                <span className="font-medium">To verify:</span> {milestone.validationInstructions}
               </p>
             </div>
           )}
@@ -320,6 +357,48 @@ export function BossMilestoneStep({ day, session }: BossMilestoneStepProps) {
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Solution (collapsible - only show after submission or if stuck) */}
+      {solution && (
+        <Card>
+          <button
+            onClick={() => setShowSolution(!showSolution)}
+            className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Code2 className="w-5 h-5 text-green-600" />
+              <span className="font-medium text-gray-900">
+                {isSubmitted ? 'Compare with solution' : 'Stuck? View solution'}
+              </span>
+            </div>
+            {showSolution ? (
+              <ChevronUp className="w-5 h-5 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-gray-400" />
+            )}
+          </button>
+          {showSolution && (
+            <div className="px-4 pb-4 border-t border-gray-100 pt-4">
+              <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg overflow-x-auto text-sm font-mono">
+                {solution}
+              </pre>
+              {solutionAnnotations.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  <p className="text-sm font-medium text-gray-700">Key points:</p>
+                  <ul className="space-y-1">
+                    {solutionAnnotations.map((annotation, index) => (
+                      <li key={index} className="flex items-start gap-2 text-sm text-gray-600">
+                        <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+                        {annotation}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
         </Card>

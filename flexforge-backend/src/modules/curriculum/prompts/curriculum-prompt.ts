@@ -43,50 +43,43 @@ export type Transferability = 'high' | 'medium' | 'low';
 export type ContentSource = 'university' | 'youtube' | 'text' | 'docs';
 
 // Consolidated time structure with all activities
-// NOTE: Video slot is now OPTIONAL - AI decides if video is needed per day
+// New flow: Video → FoundationCards → Quiz/FillBlank → BossMilestone → Reflection
 function getTimeStructure(hoursPerDay: number): {
   totalMinutes: number;
   mode: string;
-  maxVideo: number;          // Max video time IF video is used (0 = no video)
-  recall: number;
-  check: number;
-  task1: number;
-  task2: number;
-  practice: number;
+  maxVideo: number;
+  task1: number;      // Quiz/FillBlank time (concept reinforcement)
+  task2: number;      // Extended practice (deep dive only)
+  practice: number;   // Practice project time
   reflect: number;
   structure: string;
-  structureNoVideo: string;  // Alternative structure when no video
 } {
   const total = Math.round(hoursPerDay * 60);
 
   if (total <= 30) {
     return {
       totalMinutes: total, mode: 'Quick',
-      maxVideo: 5, recall: 5, check: 0, task1: 15, task2: 0, practice: 0, reflect: 3,
-      structure: 'PrePrompt(30s) → Video(5m) → ActiveRecall(5m) → Task(15m) → Reflect(3m)',
-      structureNoVideo: 'PrePrompt(30s) → Explanation(5m) → ActiveRecall(5m) → Task(15m) → Reflect(3m)'
+      maxVideo: 5, task1: 15, task2: 0, practice: 0, reflect: 3,
+      structure: 'Video(5m) → Cards(5m) → Quiz(6m) → BossMilestone(9m) → Reflect(3m)'
     };
   } else if (total <= 45) {
     return {
       totalMinutes: total, mode: 'Standard',
-      maxVideo: 6, recall: 6, check: 4, task1: 12, task2: 0, practice: 12, reflect: 4,
-      structure: 'PrePrompt(30s) → Video(6m) → ActiveRecall(6m) → ConceptCheck(4m) → Task(12m) → Practice(12m) → Reflect(4m)',
-      structureNoVideo: 'PrePrompt(30s) → Explanation(6m) → ActiveRecall(6m) → ConceptCheck(4m) → Task(12m) → Practice(12m) → Reflect(4m)'
+      maxVideo: 6, task1: 12, task2: 0, practice: 12, reflect: 4,
+      structure: 'Video(6m) → Cards(8m) → Quiz(5m) → BossMilestone(7m) → Practice(12m) → Reflect(4m)'
     };
   } else if (total <= 60) {
     return {
       totalMinutes: total, mode: 'Focused',
-      maxVideo: 7, recall: 8, check: 5, task1: 15, task2: 0, practice: 18, reflect: 5,
-      structure: 'PrePrompt(1m) → Video(7m) → ActiveRecall(8m) → ConceptCheck(5m) → Task(15m) → Practice(18m) → Reflect(5m)',
-      structureNoVideo: 'PrePrompt(1m) → Explanation(7m) → ActiveRecall(8m) → ConceptCheck(5m) → Task(15m) → Practice(18m) → Reflect(5m)'
+      maxVideo: 7, task1: 15, task2: 0, practice: 18, reflect: 5,
+      structure: 'Video(7m) → Cards(10m) → Quiz(6m) → BossMilestone(9m) → Practice(18m) → Reflect(5m)'
     };
   }
-  // Deep Dive: 90+ min - includes Task 2
+  // Deep Dive: 90+ min
   return {
     totalMinutes: total, mode: 'DeepDive',
-    maxVideo: 10, recall: 12, check: 8, task1: 15, task2: 15, practice: 25, reflect: 8,
-    structure: 'PrePrompt(2m) → Video(10m) → ActiveRecall(12m) → ConceptCheck(8m) → Task1(15m) → Task2(15m) → Practice(25m) → Reflect(8m)',
-    structureNoVideo: 'PrePrompt(2m) → Explanation(10m) → ActiveRecall(12m) → ConceptCheck(8m) → Task1(15m) → Task2(15m) → Practice(25m) → Reflect(8m)'
+    maxVideo: 10, task1: 15, task2: 15, practice: 25, reflect: 8,
+    structure: 'Video(10m) → Cards(15m) → Quiz(6m) → BossMilestone(9m) → ExtendedPractice(15m) → Practice(25m) → Reflect(8m)'
   };
 }
 
@@ -191,17 +184,53 @@ If user has a specific project goal, day titles should reference building toward
 `;
 }
 
-function getBossProjectDays(totalDays: number): number[] {
-  if (totalDays <= 3) return [totalDays];
-  if (totalDays === 4) return [4];
-  const days: number[] = [];
-  let current = 4;
-  while (current < totalDays) {
-    days.push(current);
-    current += 4;
-  }
-  if (!days.includes(totalDays)) days.push(totalDays);
-  return days;
+// Helper to generate task1 JSON template (quiz or fillBlank)
+function getTask1Template(dayNumber: number, skillLevel: string, questionCount: number, estimatedMinutes: number): string {
+  const isQuiz = skillLevel === 'BEGINNER';
+  const format = isQuiz ? 'quiz' : 'fillBlank';
+
+  const questions = Array.from({ length: questionCount }, (_, i) =>
+    `{"id": "q${i + 1}", "question": "", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": ""}`
+  ).join(',\n      ');
+
+  const items = Array.from({ length: questionCount }, (_, i) =>
+    `{"id": "fb${i + 1}", "codeTemplate": "___BLANK___", "blanks": [{"id": "b1", "correctAnswers": [], "hint": ""}], "explanation": ""}`
+  ).join(',\n      ');
+
+  return `"taskFormat": "${format}",
+  "task1": {
+    "id": "day${dayNumber}-task1",
+    "title": "Concept Check",
+    "description": "Reinforce today's concepts",
+    "estimatedMinutes": ${estimatedMinutes},
+    "format": "${format}",
+    "passingScore": 0.7,
+    ${isQuiz ? `"questions": [\n      ${questions}\n    ]` : `"items": [\n      ${items}\n    ]`}
+  }`;
+}
+
+// Helper to generate bossMilestone JSON template
+function getBossMilestoneTemplate(dayNumber: number, estimatedMinutes: number): string {
+  const starterCode = dayNumber === 1
+    ? '// Start your project here\\n\\n'
+    : '// Code from previous days...\\n\\n// Today: Add your new code below\\n';
+
+  return `"bossMilestone": {
+    "day": ${dayNumber},
+    "title": "Day ${dayNumber} Contribution",
+    "description": "Build a piece of your boss project",
+    "microTask": "What specific code to write today (5-15 lines)",
+    "dayContribution": "How this helps the final project",
+    "conceptConnection": "Which foundationCard concept this applies",
+    "estimatedMinutes": ${estimatedMinutes},
+    "starterCode": "${starterCode}",
+    "expectedOutput": "What user should see when they run the code",
+    "hints": [{"level": 1, "hint": ""}, {"level": 2, "hint": ""}, {"level": 3, "hint": ""}],
+    "solution": "// COMPLETE working solution",
+    "solutionAnnotations": ["Explanation of each key line"],
+    "validationType": "run",
+    "validationInstructions": "Run the code and verify the output"
+  }`;
 }
 
 function getTierInstructions(userTier: string): string {
@@ -301,19 +330,33 @@ function getSkillTypeGuidance(skillType: SkillType, complexity: SkillComplexity,
  * PRIMARY PROMPT: Generates SKELETON for ALL days
  * Day content is generated on-demand via buildDayDetailPrompt
  * Automatically includes learner context when learnerPrefs is provided
+ *
+ * Boss project spans entire session
+ * - Every day contributes a micro-step to the boss project
+ * - Final day is the "Boss Day" where the complete project is assembled
+ * - task1 = quiz/fillBlank for concept reinforcement
+ * - bossMilestone = daily coding contribution to boss project
  */
 export function buildCurriculumPrompt(params: CurriculumPromptParams): {
   systemPrompt: string;
   userPrompt: string;
 } {
   const time = getTimeStructure(params.hoursPerDay);
-  const bossDays = getBossProjectDays(params.durationDays);
   const learnerContext = getLearnerContextGuidance(params.learnerPrefs);
+  const allDays = Array.from({ length: params.durationDays }, (_, i) => i + 1);
+  // Boss project spans entire session - final day is the boss day
+  const bossDay = params.durationDays;
 
   const systemPrompt = `Generate ${params.durationDays}-day curriculum skeleton for "${params.skillName}".
 Type: ${params.skillType} | Level: ${params.skillLevel} | ${time.totalMinutes}min/day (${time.mode})
 ${params.suggestedLanguage ? `Language: ${params.suggestedLanguage}` : ''}
-Boss project days: ${bossDays.join(', ')}
+
+IMPORTANT - NEW STRUCTURE:
+- ONE boss project spans the ENTIRE ${params.durationDays}-day session
+- EVERY day includes a bossMilestonePreview (what code they'll build that day)
+- Final day (Day ${params.durationDays}) is "Boss Day" - complete project assembly
+- Daily flow: Video → Cards → Quiz/FillBlank → Boss Micro-Step → Reflection
+
 ${learnerContext}
 ${getSkillTypeGuidance(params.skillType, params.complexity, params.safetyLevel)}
 
@@ -321,14 +364,14 @@ ${getContentStrategyGuidance()}
 
 ${getTopicRelevanceGuidance()}
 
-Per day: day, title, subtitle, skills[], teaser, estimatedMinutes, hasBossProject, contentLayer, videoStrategy, transferability, contentSource, skipTest.
+Per day: day, title, subtitle, skills[], teaser, estimatedMinutes, hasBossProject (true for all), bossMilestonePreview, contentLayer, videoStrategy, transferability, contentSource, skipTest.
 
 Output valid JSON only.`;
 
   const userPrompt = `{
   "title": "Curriculum title",
   "description": "What student will master",
-  "finalProject": "Capstone project",
+  "finalProject": "Capstone project built across all ${params.durationDays} days",
   "skillType": "${params.skillType}",
   "days": [
     {
@@ -338,7 +381,8 @@ Output valid JSON only.`;
       "skills": ["Skill 1", "Skill 2"],
       "teaser": "What they'll learn",
       "estimatedMinutes": ${time.totalMinutes},
-      "hasBossProject": false,
+      "hasBossProject": true,
+      "bossMilestonePreview": "What code they'll add to the boss project today",
       "contentLayer": "",
       "videoStrategy": "",
       "transferability": "",
@@ -354,11 +398,18 @@ Output valid JSON only.`;
       }
     }
   ],
-  "bossProjects": [{"day": ${bossDays[0]}, "title": "Boss Project: Name", "description": "Combines days 1-${Math.min(bossDays[0], params.durationDays)}", "combinesDays": [${Array.from({ length: Math.min(bossDays[0], 4) }, (_, i) => i + 1).join(', ')}], "estimatedMinutes": 75, "teaser": ""}],
+  "bossProjects": [{
+    "day": ${bossDay},
+    "title": "Boss Project: [Name]",
+    "description": "Complete project built across all ${params.durationDays} days",
+    "combinesDays": [${allDays.join(', ')}],
+    "estimatedMinutes": 75,
+    "teaser": "Final assembly and polish of your working project"
+  }],
   "metadata": {"recommendedTools": [], "prerequisites": ${JSON.stringify(params.prerequisiteSkills || [])}, "safetyLevel": "${params.safetyLevel || 'low'}"}
 }
 
-Generate ALL ${params.durationDays} days. hasBossProject=true for days: ${bossDays.join(', ')}.`;
+Generate ALL ${params.durationDays} days. hasBossProject=true for ALL days (each day contributes to the boss project). Include bossMilestonePreview for each day showing what code they'll build.`;
 
   return { systemPrompt, userPrompt };
 }
@@ -403,13 +454,17 @@ export function buildDayDetailPrompt(params: DayDetailParams): {
     includeMode: true,
   });
 
-  // Task format guidance moved to systemPrompt (was bloating userPrompt with 3 full templates)
+  // Task formats: Quiz or FillBlank for concept reinforcement (code moved to bossMilestone)
   const taskFormatGuidance = `
-TASK FORMATS (choose one for task1.format):
-- "code": challenge, expectedOutput, starterCode, hints[3], solution, solutionAnnotations, stuckDetection
-- "quiz": passingScore, questions[{question, options[4], correctIndex, explanation}]
+TASK FORMATS (choose one for task1.format - concept reinforcement only):
+- "quiz": passingScore, questions[{question, options[4], correctIndex, explanation}] - 5-8 MCQs
 - "fillBlank": passingScore, items[{codeTemplate with ___BLANK___, blanks[{correctAnswers[], hint}], explanation}]
-Recommended: ${params.skillLevel === 'BEGINNER' ? '"quiz" or "fillBlank" (avoid "code" for Day 1-2)' : '"code" (default)'}`;
+Recommended: ${params.skillLevel === 'BEGINNER' ? '"quiz" for conceptual understanding' : '"fillBlank" for code patterns'}
+
+BOSS MILESTONE (daily coding micro-step):
+- bossMilestone builds toward the boss project - small daily contribution (5-15 lines)
+- Each day adds working code that connects to today's foundationCards concepts
+- Validation: user runs code and sees output (validationType: "run")`;
 
   const systemPrompt = `Generate COMPLETE learning content for Day ${params.dayNumber} of "${params.skillName}".
 
@@ -421,9 +476,12 @@ ${getTierInstructions(params.userTier)}
 
 REQUIREMENTS:
 1. Connect to previous day's concept (spaced repetition)
-2. Provide COMPLETE working solutions (not pseudocode)
-3. Include 3 hints (gentle → specific → approach) + stuck detection
-4. Generate 6-10 foundationCards (REQUIRED)
+2. Generate 6-10 foundationCards (REQUIRED)
+3. task1 = quiz OR fillBlank for CONCEPT REINFORCEMENT (not coding)
+4. bossMilestone = CODING practice (daily micro-step toward boss project)
+   - Starter code builds on previous days (cumulative)
+   - Small task (5-15 lines of new code)
+   - User validates by running and seeing output
 ${taskFormatGuidance}
 
 FOUNDATION CARDS (6-10 cards):
@@ -432,6 +490,9 @@ Cards 2-7: Core concepts, patterns, gotchas. Each card needs realWorldContext (1
 MicroQuestion types: "gotit" (intro/recap), "understanding" (MCQ for concepts).
 
 Output valid JSON only.`;
+
+  const task1Minutes = Math.round(time.task1 * 0.4);
+  const bossMilestoneMinutes = Math.round(time.task1 * 0.6);
 
   const userPrompt = `{
   "day": ${params.dayNumber},
@@ -448,33 +509,9 @@ Output valid JSON only.`;
     {"id": "day${params.dayNumber}-card-2", "concept": "", "visual": "", "explanation": "", "realWorldContext": "", "codeExample": "", "microQuestion": {"question": "", "type": "understanding", "options": [], "correctIndex": 0, "explanation": ""}, "order": 2}
   ],
 
-  "taskFormat": "code",
-  "task1": {
-    "id": "day${params.dayNumber}-task1",
-    "title": "",
-    "description": "",
-    "estimatedMinutes": ${time.task1},
-    "format": "code",
-    "challenge": "",
-    "expectedOutput": "",
-    "starterCode": "",
-    "hints": [{"level": 1, "hint": ""}, {"level": 2, "hint": ""}, {"level": 3, "hint": ""}],
-    "solution": "// COMPLETE working solution",
-    "solutionAnnotations": [],
-    "stuckDetection": {"triggerAfterMinutes": 7, "suggestions": []}
-  },
+  ${getTask1Template(params.dayNumber, params.skillLevel, 5, task1Minutes)},
 
-  ${time.task2 > 0 ? `"task2": {
-    "id": "day${params.dayNumber}-task2",
-    "title": "Extended Practice",
-    "description": "",
-    "estimatedMinutes": ${time.task2},
-    "challenge": "",
-    "expectedOutput": "",
-    "hints": [{"level": 1, "hint": ""}, {"level": 2, "hint": ""}, {"level": 3, "hint": ""}],
-    "solution": "",
-    "connectionToTask1": ""
-  },` : ''}
+  ${getBossMilestoneTemplate(params.dayNumber, bossMilestoneMinutes)},
 
   ${time.practice > 0 ? `"practiceProject": {
     "id": "day${params.dayNumber}-practice",
@@ -513,7 +550,7 @@ Output valid JSON only.`;
 
 /**
  * DAY DETAIL CORE PROMPT: Fast essential content only
- * Generates: prePrompt, video, foundationCards (5-6), task1
+ * Generates: prePrompt, video, foundationCards (5-6), task1 (quiz/fillBlank), bossMilestone
  * Called first for quick initial load
  */
 export function buildDayDetailCorePrompt(params: DayDetailParams): {
@@ -531,15 +568,18 @@ export function buildDayDetailCorePrompt(params: DayDetailParams): {
     suggestedLanguage: params.suggestedLanguage,
   });
 
+  const task1Minutes = Math.round(time.task1 * 0.4);
+  const bossMilestoneMinutes = Math.round(time.task1 * 0.6);
+
   const systemPrompt = `Generate CORE learning content for Day ${params.dayNumber} of "${params.skillName}".
 
 ${dayHeader}
 
 ${getSkillTypeGuidance(params.skillType, params.complexity)}
 
-Generate ONLY: prePrompt, video info, foundationCards (5-6 cards), task1, skipTest.
-Keep foundationCards concise - 5-6 cards max.
-Provide COMPLETE working solution for task1.
+Generate ONLY: prePrompt, video info, foundationCards (5-6 cards), task1 (quiz or fillBlank), bossMilestone, skipTest.
+- task1 = concept reinforcement (quiz or fillBlank ONLY, no coding)
+- bossMilestone = daily coding micro-step toward boss project (5-15 lines new code)
 skipTest: 3 hard MCQs testing day's concepts - user can skip day if they pass.
 
 Output valid JSON only.`;
@@ -558,18 +598,9 @@ Output valid JSON only.`;
     {"id": "day${params.dayNumber}-card-2", "concept": "", "visual": "", "explanation": "", "realWorldContext": "", "codeExample": "", "microQuestion": {"question": "", "type": "understanding", "options": [], "correctIndex": 0, "explanation": ""}, "order": 2}
   ],
 
-  "task1": {
-    "id": "day${params.dayNumber}-task1",
-    "title": "",
-    "description": "",
-    "estimatedMinutes": ${time.task1},
-    "challenge": "",
-    "expectedOutput": "",
-    "starterCode": "",
-    "hints": [{"level": 1, "hint": ""}, {"level": 2, "hint": ""}, {"level": 3, "hint": ""}],
-    "solution": "// COMPLETE working solution",
-    "stuckDetection": {"triggerAfterMinutes": 7, "suggestions": []}
-  },
+  ${getTask1Template(params.dayNumber, params.skillLevel, 3, task1Minutes)},
+
+  ${getBossMilestoneTemplate(params.dayNumber, bossMilestoneMinutes)},
 
   "skipTest": {
     "questionSets": [[
