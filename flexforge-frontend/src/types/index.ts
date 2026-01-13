@@ -466,6 +466,7 @@ export interface BossMilestone {
   description: string;
   microTask: string;
   dayContribution: string;
+  starterCode?: string;
 }
 
 export interface BossProject {

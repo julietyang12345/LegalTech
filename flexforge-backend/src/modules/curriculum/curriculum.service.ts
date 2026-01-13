@@ -1287,7 +1287,7 @@ IMPORTANT RULES:
 4. Celebrate small wins and progress
 5. Be encouraging but not condescending
 6. Keep responses concise (2-4 sentences usually)
-7. If after 2 exchanges they still ask for the answer directly, you can give it to them - but ALWAYS explain:
+7. If after 1 exchanges they still ask for the answer directly, you can give it to them - but ALWAYS explain:
    - WHY each part works (the underlying concept)
    - How they can apply this pattern to similar problems
 

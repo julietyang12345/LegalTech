@@ -691,7 +691,8 @@ export class SessionService {
       throw new NotFoundException(`Day ${dayNumber} not found`);
     }
 
-    const skipTest = dayOverview.skipTest;
+    // Check coreContent first (phase 2 core has the real skip test questions)
+    const skipTest = dayOverview.coreContent?.skipTest || dayOverview.skipTest;
     if (!skipTest) {
       throw new NotFoundException(`Skip test not found for Day ${dayNumber}`);
     }

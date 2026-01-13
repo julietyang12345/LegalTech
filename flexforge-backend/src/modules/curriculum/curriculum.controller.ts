@@ -361,12 +361,6 @@ export class CurriculumController {
   @Post('refresh-video')
   async refreshVideo(@Body() dto: RefreshVideoDto) {
     try {
-      console.log('[refresh-video] Request:', {
-        concept: dto.concept,
-        skillLevel: dto.skillLevel,
-        excludeCount: dto.excludeVideoIds?.length || 0,
-      });
-
       const levelMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
         BEGINNER: 'beginner',
         INTERMEDIATE: 'intermediate',
@@ -384,13 +378,6 @@ export class CurriculumController {
           excludeVideoIds: dto.excludeVideoIds || [],
         },
       );
-
-      console.log('[refresh-video] Result:', {
-        success: videoResult.success,
-        hasVideo: !!videoResult.video,
-        error: videoResult.error,
-        layer: videoResult.layer,
-      });
 
       if (!videoResult.success || !videoResult.video) {
         throw new BadRequestException(

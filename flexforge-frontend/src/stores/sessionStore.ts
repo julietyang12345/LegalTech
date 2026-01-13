@@ -359,11 +359,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       set((state) => {
         if (!state.activeSession) return state;
 
-        const updatedDays = state.activeSession.curriculum.days.map((d) =>
-          d.day === dayNumber
-            ? { ...d, ...dayContent, detailsLoaded: true, status: DayStatus.IN_PROGRESS }
-            : d
-        );
+        const updatedDays = state.activeSession.curriculum.days.map((d) => {
+          if (d.day !== dayNumber) return d;
+          // Preserve COMPLETED/SKIPPED status when revisiting - only set IN_PROGRESS if UNLOCKABLE
+          const newStatus = (d.status === DayStatus.COMPLETED || d.status === DayStatus.SKIPPED)
+            ? d.status
+            : DayStatus.IN_PROGRESS;
+          return { ...d, ...dayContent, detailsLoaded: true, status: newStatus };
+        });
 
         return {
           activeSession: {
@@ -415,16 +418,19 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       set((state) => {
         if (!state.activeSession) return state;
 
-        const updatedDays = state.activeSession.curriculum.days.map((d) =>
-          d.day === dayNumber
-            ? {
-                ...d,
-                ...coreContent,
-                detailsLoaded: false, // Not fully loaded yet
-                status: DayStatus.IN_PROGRESS,
-              }
-            : d
-        );
+        const updatedDays = state.activeSession.curriculum.days.map((d) => {
+          if (d.day !== dayNumber) return d;
+          // Preserve COMPLETED/SKIPPED status when revisiting - only set IN_PROGRESS if UNLOCKABLE
+          const newStatus = (d.status === DayStatus.COMPLETED || d.status === DayStatus.SKIPPED)
+            ? d.status
+            : DayStatus.IN_PROGRESS;
+          return {
+            ...d,
+            ...coreContent,
+            detailsLoaded: false, // Not fully loaded yet
+            status: newStatus,
+          };
+        });
 
         return {
           activeSession: {
@@ -748,8 +754,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const day = activeSession.curriculum.days.find((d) => d.day === dayNumber);
     if (!day) return false;
 
-    // Can start if status is 'unlockable' or 'in_progress'
-    return day.status === DayStatus.UNLOCKABLE || day.status === DayStatus.IN_PROGRESS;
+    // Can start if status is 'unlockable', 'in_progress', 'completed', or 'skipped'
+    // This allows navigating back to previously completed days
+    return (
+      day.status === DayStatus.UNLOCKABLE ||
+      day.status === DayStatus.IN_PROGRESS ||
+      day.status === DayStatus.COMPLETED ||
+      day.status === DayStatus.SKIPPED
+    );
   },
 
   // Helpers

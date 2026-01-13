@@ -24,16 +24,6 @@ export function FoundationCardsStep({ day, onComplete }: FoundationCardsStepProp
   const [direction, setDirection] = useState(0);
 
   const cards = day.foundationCards || [];
-
-  // Debug logging
-  console.log('[FoundationCardsStep] Day data:', {
-    dayNumber: day.day,
-    hasFoundationCards: !!day.foundationCards,
-    foundationCardsCount: day.foundationCards?.length ?? 0,
-    hasActiveRecall: !!day.activeRecall,
-    hasConceptCheck: !!day.conceptCheck,
-    cardIds: cards.map(c => c.id),
-  });
   const currentCard = cards[currentCardIndex];
   const progress = cards.length > 0 ? ((currentCardIndex + 1) / cards.length) * 100 : 0;
   const allAnswered = cards.length > 0 && Object.keys(answeredCards).length >= cards.length;
