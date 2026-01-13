@@ -796,16 +796,16 @@ export function SessionPage() {
   const useNewFlow = !!(currentDay?.foundationCards && currentDay.foundationCards.length > 0);
   const baseStepOrder = useNewFlow ? STEP_ORDER_NEW : STEP_ORDER_LEGACY;
 
-  // Debug logging
-  console.log('[SessionPage] Flow detection:', {
-    useNewFlow,
-    hasFoundationCards: !!currentDay?.foundationCards,
-    foundationCardsCount: currentDay?.foundationCards?.length ?? 0,
-    hasActiveRecall: !!currentDay?.activeRecall,
-    hasConceptCheck: !!currentDay?.conceptCheck,
-    currentStep,
-    availableSteps: baseStepOrder,
-  });
+  // // Debug logging
+  // console.log('[SessionPage] Flow detection:', {
+  //   useNewFlow,
+  //   hasFoundationCards: !!currentDay?.foundationCards,
+  //   foundationCardsCount: currentDay?.foundationCards?.length ?? 0,
+  //   hasActiveRecall: !!currentDay?.activeRecall,
+  //   hasConceptCheck: !!currentDay?.conceptCheck,
+  //   currentStep,
+  //   availableSteps: baseStepOrder,
+  // });
 
   // Get available steps (filter out skipped ones)
   const availableSteps = baseStepOrder.filter(step => {

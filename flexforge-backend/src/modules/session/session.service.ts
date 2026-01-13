@@ -588,6 +588,42 @@ export class SessionService {
       sessionId,
     );
 
+    // Check if this day is part of a boss project and load boss details if needed
+    const bossProject = session.curriculum.bossProjects?.find(
+      (bp: any) => bp.combinesDays?.includes(dayNumber)
+    );
+
+    let bossDetails = null;
+    if (bossProject && !bossProject.detailsLoaded) {
+      try {
+        this.logger.log(`🎯 Loading boss project details for day ${dayNumber}...`);
+        const bossResult = await this.curriculumService.generateBossDetails(
+          session.curriculum,
+          bossProject.day,
+          tierString,
+        );
+        bossDetails = bossResult.bossContent;
+
+        this.logger.log(`✅ Boss project details loaded: phases=${bossDetails.phases?.length || 0}, requirements=${bossDetails.requirements?.length || 0}, hints=${bossDetails.hints?.length || 0}`);
+
+        // Update the boss project in the curriculum
+        const bossIndex = session.curriculum.bossProjects.findIndex(
+          (bp: any) => bp.day === bossProject.day
+        );
+        if (bossIndex !== -1) {
+          session.curriculum.bossProjects[bossIndex] = {
+            ...session.curriculum.bossProjects[bossIndex],
+            ...bossDetails,
+            detailsLoaded: true,
+          };
+        }
+
+        await this.userService.incrementUsage(userId, bossResult.tokensUsed, 0);
+      } catch (error) {
+        this.logger.warn(`Failed to load boss details: ${error.message}`);
+      }
+    }
+
     // Update session with core content
     const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
     session.curriculum.days[dayIndex] = {
@@ -603,10 +639,16 @@ export class SessionService {
 
     this.logger.log(`🚀 Day ${dayNumber} CORE loaded for session ${sessionId}`);
 
+    // Always return the boss project if this day is part of one (whether details were just loaded or already existed)
+    const activeBossProject = bossProject
+      ? session.curriculum.bossProjects.find((bp: any) => bp.day === bossProject.day)
+      : null;
+
     return {
       coreContent: result.coreContent,
       tokensUsed: result.tokensUsed,
       fromCache: result.fromCache || false,
+      bossProject: activeBossProject,
     };
   }
 

@@ -253,10 +253,29 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       return;
     }
 
+    // Derive bossMilestone from bossProjects if this day is part of a boss project
+    let bossMilestone = dayData.bossMilestone;
+    if (!bossMilestone) {
+      const bossProject = activeSession.curriculum.bossProjects?.find(
+        bp => bp.combinesDays?.includes(dayNumber)
+      );
+      if (bossProject) {
+        const dayIndex = bossProject.combinesDays?.indexOf(dayNumber) ?? 0;
+        const totalDays = bossProject.combinesDays?.length ?? 1;
+        bossMilestone = {
+          description: bossProject.free?.projectDescription || bossProject.title,
+          microTask: `Day ${dayIndex + 1} of ${totalDays}: ${bossProject.title}`,
+          dayContribution: `Building towards ${bossProject.title}`,
+          starterCode: bossProject.files?.starter,
+        };
+      }
+    }
+
     const mergedDay: CurriculumDay = {
       ...dayData,
       ...(dayData.coreContent as object),
       ...(dayData.deferredContent as object),
+      bossMilestone,
     };
 
     set({
@@ -413,8 +432,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     try {
       const response = await sessionService.startDayCore(activeSession.id, dayNumber);
       const coreContent = response.coreContent;
+      const bossProject = response.bossProject;
 
-      // Update the curriculum day with core content
+      // Update the curriculum day with core content and boss project if available
       set((state) => {
         if (!state.activeSession) return state;
 
@@ -432,12 +452,21 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           };
         });
 
+        // Update boss projects if we received updated boss project data
+        let updatedBossProjects = state.activeSession.curriculum.bossProjects;
+        if (bossProject) {
+          updatedBossProjects = state.activeSession.curriculum.bossProjects.map((bp) =>
+            bp.day === bossProject.day ? bossProject : bp
+          );
+        }
+
         return {
           activeSession: {
             ...state.activeSession,
             curriculum: {
               ...state.activeSession.curriculum,
               days: updatedDays,
+              bossProjects: updatedBossProjects,
             },
           },
           currentDay: { ...updatedDays.find((d) => d.day === dayNumber)! },

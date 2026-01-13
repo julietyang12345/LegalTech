@@ -1,0 +1,295 @@
+import { useState, useEffect, useRef } from 'react';
+import { motion } from 'framer-motion';
+import { Play, RotateCcw, Maximize2, Minimize2, ExternalLink, Code2, Eye } from 'lucide-react';
+import { clsx } from 'clsx';
+
+interface CodeSandboxProps {
+  code: string;
+  language: string;
+  onCodeChange?: (code: string) => void;
+  title?: string;
+  readOnly?: boolean;
+}
+
+// Simple in-browser JavaScript/HTML execution
+export function CodeSandbox({
+  code: initialCode,
+  language,
+  onCodeChange,
+  title = 'Live Preview',
+  readOnly = false
+}: CodeSandboxProps) {
+  const [code, setCode] = useState(initialCode);
+  const [output, setOutput] = useState<string>('');
+  const [isRunning, setIsRunning] = useState(false);
+  const [activeTab, setActiveTab] = useState<'code' | 'preview'>('code');
+  const [isExpanded, setIsExpanded] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    setCode(initialCode);
+  }, [initialCode]);
+
+  const handleCodeChange = (newCode: string) => {
+    setCode(newCode);
+    onCodeChange?.(newCode);
+  };
+
+  const runCode = () => {
+    setIsRunning(true);
+    setActiveTab('preview');
+
+    const lang = language.toLowerCase();
+
+    if (lang === 'javascript' || lang === 'js' || lang === 'typescript' || lang === 'ts') {
+      runJavaScript();
+    } else if (lang === 'html' || lang === 'html/css' || lang === 'web') {
+      runHTML();
+    } else if (lang === 'python') {
+      // For Python, we'd need a backend or Pyodide - show message for now
+      setOutput('Python execution requires server. Output will appear here after submission.');
+      setIsRunning(false);
+    } else {
+      setOutput(`Running ${language} code...\n\nNote: Live preview for ${language} may require compilation.`);
+      setIsRunning(false);
+    }
+  };
+
+  const runJavaScript = () => {
+    try {
+      // Capture console.log output
+      const logs: string[] = [];
+      const originalLog = console.log;
+
+      // Create a sandboxed execution environment
+      const sandboxCode = `
+        (function() {
+          const logs = [];
+          const console = {
+            log: (...args) => logs.push(args.map(a =>
+              typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
+            ).join(' ')),
+            error: (...args) => logs.push('Error: ' + args.join(' ')),
+            warn: (...args) => logs.push('Warning: ' + args.join(' ')),
+          };
+          try {
+            ${code}
+          } catch (e) {
+            logs.push('Error: ' + e.message);
+          }
+          return logs.join('\\n');
+        })()
+      `;
+
+      const result = eval(sandboxCode);
+      setOutput(result || 'Code executed successfully (no output)');
+    } catch (error: any) {
+      setOutput(`Error: ${error.message}`);
+    }
+    setIsRunning(false);
+  };
+
+  const runHTML = () => {
+    if (iframeRef.current) {
+      const iframe = iframeRef.current;
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+
+      if (doc) {
+        // Wrap code in basic HTML if it's not a full document
+        let htmlContent = code;
+        if (!code.toLowerCase().includes('<!doctype') && !code.toLowerCase().includes('<html')) {
+          htmlContent = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <style>
+                body { font-family: system-ui, -apple-system, sans-serif; padding: 16px; margin: 0; }
+              </style>
+            </head>
+            <body>
+              ${code}
+            </body>
+            </html>
+          `;
+        }
+
+        doc.open();
+        doc.write(htmlContent);
+        doc.close();
+        setOutput('');
+      }
+    }
+    setIsRunning(false);
+  };
+
+  const resetCode = () => {
+    setCode(initialCode);
+    setOutput('');
+    onCodeChange?.(initialCode);
+  };
+
+  const isWebLanguage = ['html', 'html/css', 'web', 'css'].includes(language.toLowerCase());
+
+  return (
+    <motion.div
+      layout
+      className={clsx(
+        'rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm',
+        isExpanded && 'fixed inset-4 z-50'
+      )}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-200">
+        <div className="flex items-center gap-2">
+          <Code2 className="w-4 h-4 text-gray-500" />
+          <span className="text-sm font-medium text-gray-700">{title}</span>
+          <span className="px-2 py-0.5 bg-gray-200 rounded text-xs text-gray-600 uppercase">
+            {language}
+          </span>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={resetCode}
+            className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
+            title="Reset code"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
+            title={isExpanded ? 'Minimize' : 'Expand'}
+          >
+            {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200">
+        <button
+          onClick={() => setActiveTab('code')}
+          className={clsx(
+            'flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors',
+            activeTab === 'code'
+              ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+          )}
+        >
+          <Code2 className="w-4 h-4" />
+          Code
+        </button>
+        <button
+          onClick={() => setActiveTab('preview')}
+          className={clsx(
+            'flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors',
+            activeTab === 'preview'
+              ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+          )}
+        >
+          <Eye className="w-4 h-4" />
+          Preview
+        </button>
+      </div>
+
+      {/* Content */}
+      <div className={clsx('relative', isExpanded ? 'h-[calc(100%-88px)]' : 'h-80')}>
+        {activeTab === 'code' ? (
+          <textarea
+            value={code}
+            onChange={(e) => handleCodeChange(e.target.value)}
+            readOnly={readOnly}
+            className={clsx(
+              'w-full h-full p-4 font-mono text-sm resize-none',
+              'bg-gray-900 text-gray-100',
+              'focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-inset',
+              readOnly && 'cursor-not-allowed opacity-75'
+            )}
+            spellCheck={false}
+            placeholder="// Write your code here..."
+          />
+        ) : (
+          <div className="h-full">
+            {isWebLanguage ? (
+              <iframe
+                ref={iframeRef}
+                className="w-full h-full bg-white"
+                title="Code Preview"
+                sandbox="allow-scripts"
+              />
+            ) : (
+              <div className="w-full h-full p-4 bg-gray-900 text-gray-100 font-mono text-sm overflow-auto whitespace-pre-wrap">
+                {output || 'Click "Run" to see output...'}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Run Button */}
+      <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
+        <button
+          onClick={runCode}
+          disabled={isRunning || !code.trim()}
+          className={clsx(
+            'flex items-center justify-center gap-2 w-full py-2.5 rounded-lg font-medium text-sm transition-all',
+            'bg-gradient-to-r from-green-500 to-emerald-600 text-white',
+            'hover:from-green-600 hover:to-emerald-700',
+            'disabled:opacity-50 disabled:cursor-not-allowed',
+            'shadow-sm hover:shadow-md'
+          )}
+        >
+          {isRunning ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Running...
+            </>
+          ) : (
+            <>
+              <Play className="w-4 h-4" />
+              Run Code
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Expanded backdrop */}
+      {isExpanded && (
+        <div
+          className="fixed inset-0 bg-black/50 -z-10"
+          onClick={() => setIsExpanded(false)}
+        />
+      )}
+    </motion.div>
+  );
+}
+
+// For embedding external sandboxes (CodeSandbox, StackBlitz)
+export function ExternalSandbox({
+  sandboxId,
+  provider = 'codesandbox',
+  height = 500
+}: {
+  sandboxId: string;
+  provider?: 'codesandbox' | 'stackblitz';
+  height?: number;
+}) {
+  const src = provider === 'codesandbox'
+    ? `https://codesandbox.io/embed/${sandboxId}?fontsize=14&hidenavigation=1&theme=dark`
+    : `https://stackblitz.com/edit/${sandboxId}?embed=1&file=index.js`;
+
+  return (
+    <div className="rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+      <iframe
+        src={src}
+        style={{ width: '100%', height: `${height}px`, border: 0 }}
+        title="Code Sandbox"
+        allow="accelerometer; ambient-light-sensor; camera; encrypted-media; geolocation; gyroscope; hid; microphone; midi; payment; usb; vr; xr-spatial-tracking"
+        sandbox="allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts"
+      />
+    </div>
+  );
+}
