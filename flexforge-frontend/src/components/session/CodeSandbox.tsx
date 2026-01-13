@@ -1,7 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Play, RotateCcw, Maximize2, Minimize2, ExternalLink, Code2, Eye } from 'lucide-react';
+import { Play, RotateCcw, Maximize2, Minimize2, ExternalLink, Code2, Eye, Loader2, Terminal, Package } from 'lucide-react';
 import { clsx } from 'clsx';
+
+// Sandbox execution modes
+type SandboxMode = 'simple' | 'codesandbox' | 'python';
 
 interface CodeSandboxProps {
   code: string;
@@ -9,59 +12,49 @@ interface CodeSandboxProps {
   onCodeChange?: (code: string) => void;
   title?: string;
   readOnly?: boolean;
+  // For complex projects with npm dependencies
+  template?: 'vanilla' | 'react' | 'vue' | 'node' | 'python';
+  dependencies?: Record<string, string>;
+}
+
+// Detect which sandbox mode to use based on language and dependencies
+function detectSandboxMode(language: string, dependencies?: Record<string, string>): SandboxMode {
+  const lang = language.toLowerCase();
+
+  // Python always uses Pyodide
+  if (lang === 'python' || lang === 'py') {
+    return 'python';
+  }
+
+  // If there are npm dependencies, use CodeSandbox
+  if (dependencies && Object.keys(dependencies).length > 0) {
+    return 'codesandbox';
+  }
+
+  // React/Vue/Node templates need CodeSandbox
+  if (['react', 'vue', 'node', 'nodejs'].includes(lang)) {
+    return 'codesandbox';
+  }
+
+  // Simple JS/HTML/CSS can run in browser
+  return 'simple';
 }
 
 // Simple in-browser JavaScript/HTML execution
-export function CodeSandbox({
-  code: initialCode,
+function SimpleExecutor({
+  code,
   language,
-  onCodeChange,
-  title = 'Live Preview',
-  readOnly = false
-}: CodeSandboxProps) {
-  const [code, setCode] = useState(initialCode);
-  const [output, setOutput] = useState<string>('');
-  const [isRunning, setIsRunning] = useState(false);
-  const [activeTab, setActiveTab] = useState<'code' | 'preview'>('code');
-  const [isExpanded, setIsExpanded] = useState(false);
+  onResult,
+}: {
+  code: string;
+  language: string;
+  onResult: (output: string, isError?: boolean) => void;
+}) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const isWebLanguage = ['html', 'html/css', 'web', 'css'].includes(language.toLowerCase());
 
-  useEffect(() => {
-    setCode(initialCode);
-  }, [initialCode]);
-
-  const handleCodeChange = (newCode: string) => {
-    setCode(newCode);
-    onCodeChange?.(newCode);
-  };
-
-  const runCode = () => {
-    setIsRunning(true);
-    setActiveTab('preview');
-
-    const lang = language.toLowerCase();
-
-    if (lang === 'javascript' || lang === 'js' || lang === 'typescript' || lang === 'ts') {
-      runJavaScript();
-    } else if (lang === 'html' || lang === 'html/css' || lang === 'web') {
-      runHTML();
-    } else if (lang === 'python') {
-      // For Python, we'd need a backend or Pyodide - show message for now
-      setOutput('Python execution requires server. Output will appear here after submission.');
-      setIsRunning(false);
-    } else {
-      setOutput(`Running ${language} code...\n\nNote: Live preview for ${language} may require compilation.`);
-      setIsRunning(false);
-    }
-  };
-
-  const runJavaScript = () => {
+  const runJavaScript = useCallback(() => {
     try {
-      // Capture console.log output
-      const logs: string[] = [];
-      const originalLog = console.log;
-
-      // Create a sandboxed execution environment
       const sandboxCode = `
         (function() {
           const logs = [];
@@ -69,33 +62,31 @@ export function CodeSandbox({
             log: (...args) => logs.push(args.map(a =>
               typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
             ).join(' ')),
-            error: (...args) => logs.push('Error: ' + args.join(' ')),
-            warn: (...args) => logs.push('Warning: ' + args.join(' ')),
+            error: (...args) => logs.push('❌ Error: ' + args.join(' ')),
+            warn: (...args) => logs.push('⚠️ Warning: ' + args.join(' ')),
+            info: (...args) => logs.push('ℹ️ ' + args.join(' ')),
           };
           try {
             ${code}
           } catch (e) {
-            logs.push('Error: ' + e.message);
+            logs.push('❌ Error: ' + e.message);
           }
           return logs.join('\\n');
         })()
       `;
-
       const result = eval(sandboxCode);
-      setOutput(result || 'Code executed successfully (no output)');
+      onResult(result || '✅ Code executed successfully (no output)');
     } catch (error: any) {
-      setOutput(`Error: ${error.message}`);
+      onResult(`❌ Error: ${error.message}`, true);
     }
-    setIsRunning(false);
-  };
+  }, [code, onResult]);
 
-  const runHTML = () => {
+  const runHTML = useCallback(() => {
     if (iframeRef.current) {
       const iframe = iframeRef.current;
       const doc = iframe.contentDocument || iframe.contentWindow?.document;
 
       if (doc) {
-        // Wrap code in basic HTML if it's not a full document
         let htmlContent = code;
         if (!code.toLowerCase().includes('<!doctype') && !code.toLowerCase().includes('<html')) {
           htmlContent = `
@@ -114,23 +105,317 @@ export function CodeSandbox({
             </html>
           `;
         }
-
         doc.open();
         doc.write(htmlContent);
         doc.close();
-        setOutput('');
+        onResult('');
       }
     }
+  }, [code, onResult]);
+
+  const run = useCallback(() => {
+    const lang = language.toLowerCase();
+    if (lang === 'javascript' || lang === 'js' || lang === 'typescript' || lang === 'ts') {
+      runJavaScript();
+    } else if (isWebLanguage) {
+      runHTML();
+    } else {
+      onResult(`⚠️ Language "${language}" is not supported in simple mode.`);
+    }
+  }, [language, isWebLanguage, runJavaScript, runHTML, onResult]);
+
+  return { run, iframeRef, isWebLanguage };
+}
+
+// Pyodide Python executor (loads Python runtime in browser)
+let pyodideInstance: any = null;
+let pyodideLoading = false;
+let pyodideLoadPromise: Promise<any> | null = null;
+
+async function loadPyodide(): Promise<any> {
+  if (pyodideInstance) return pyodideInstance;
+
+  if (pyodideLoading && pyodideLoadPromise) {
+    return pyodideLoadPromise;
+  }
+
+  pyodideLoading = true;
+
+  // Load Pyodide from CDN
+  pyodideLoadPromise = new Promise(async (resolve, reject) => {
+    try {
+      // Check if already loaded
+      if ((window as any).loadPyodide) {
+        pyodideInstance = await (window as any).loadPyodide({
+          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/',
+        });
+        resolve(pyodideInstance);
+        return;
+      }
+
+      // Load script
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js';
+      script.async = true;
+
+      script.onload = async () => {
+        try {
+          pyodideInstance = await (window as any).loadPyodide({
+            indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/',
+          });
+          resolve(pyodideInstance);
+        } catch (err) {
+          reject(err);
+        }
+      };
+
+      script.onerror = () => reject(new Error('Failed to load Pyodide'));
+      document.head.appendChild(script);
+    } catch (err) {
+      reject(err);
+    }
+  });
+
+  return pyodideLoadPromise;
+}
+
+async function runPython(code: string): Promise<string> {
+  const pyodide = await loadPyodide();
+
+  // Capture stdout
+  let output = '';
+  pyodide.setStdout({
+    batched: (text: string) => {
+      output += text + '\n';
+    },
+  });
+
+  try {
+    // Run the code
+    const result = await pyodide.runPythonAsync(code);
+
+    // If there's a return value and no stdout, show it
+    if (result !== undefined && result !== null && !output.trim()) {
+      output = String(result);
+    }
+
+    return output.trim() || '✅ Code executed successfully (no output)';
+  } catch (error: any) {
+    return `❌ Python Error: ${error.message}`;
+  }
+}
+
+// CodeSandbox API integration for complex projects
+const CODESANDBOX_TEMPLATES: Record<string, { files: Record<string, { content: string }> }> = {
+  vanilla: {
+    files: {
+      'index.js': { content: '' },
+      'index.html': { content: '<!DOCTYPE html>\n<html>\n<head>\n  <script src="index.js"></script>\n</head>\n<body></body>\n</html>' },
+      'package.json': { content: JSON.stringify({ dependencies: {} }, null, 2) },
+    },
+  },
+  react: {
+    files: {
+      'src/App.js': { content: '' },
+      'src/index.js': { content: 'import React from "react";\nimport ReactDOM from "react-dom";\nimport App from "./App";\nReactDOM.render(<App />, document.getElementById("root"));' },
+      'public/index.html': { content: '<!DOCTYPE html>\n<html>\n<head><title>React App</title></head>\n<body><div id="root"></div></body>\n</html>' },
+      'package.json': { content: JSON.stringify({ dependencies: { react: '^18.2.0', 'react-dom': '^18.2.0' } }, null, 2) },
+    },
+  },
+  node: {
+    files: {
+      'index.js': { content: '' },
+      'package.json': { content: JSON.stringify({ dependencies: {} }, null, 2) },
+    },
+  },
+};
+
+async function createCodeSandbox(
+  code: string,
+  template: string = 'vanilla',
+  dependencies?: Record<string, string>
+): Promise<string> {
+  const templateFiles = CODESANDBOX_TEMPLATES[template] || CODESANDBOX_TEMPLATES.vanilla;
+
+  // Determine main file based on template
+  const mainFile = template === 'react' ? 'src/App.js' : 'index.js';
+
+  // Build files object
+  const files: Record<string, { content: string }> = {
+    ...templateFiles.files,
+    [mainFile]: { content: code },
+  };
+
+  // Update package.json with dependencies
+  if (dependencies) {
+    const pkgJson = JSON.parse(files['package.json'].content);
+    pkgJson.dependencies = { ...pkgJson.dependencies, ...dependencies };
+    files['package.json'] = { content: JSON.stringify(pkgJson, null, 2) };
+  }
+
+  // Create sandbox via CodeSandbox Define API
+  const response = await fetch('https://codesandbox.io/api/v1/sandboxes/define?json=1', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ files }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to create CodeSandbox');
+  }
+
+  const data = await response.json();
+  return data.sandbox_id;
+}
+
+// Main CodeSandbox component
+export function CodeSandbox({
+  code: initialCode,
+  language,
+  onCodeChange,
+  title = 'Live Preview',
+  readOnly = false,
+  template = 'vanilla',
+  dependencies,
+}: CodeSandboxProps) {
+  const [code, setCode] = useState(initialCode);
+  const [output, setOutput] = useState<string>('');
+  const [isRunning, setIsRunning] = useState(false);
+  const [activeTab, setActiveTab] = useState<'code' | 'preview'>('code');
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [sandboxId, setSandboxId] = useState<string | null>(null);
+  const [isPyodideLoading, setIsPyodideLoading] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const sandboxMode = detectSandboxMode(language, dependencies);
+
+  useEffect(() => {
+    setCode(initialCode);
+  }, [initialCode]);
+
+  const handleCodeChange = (newCode: string) => {
+    setCode(newCode);
+    onCodeChange?.(newCode);
+    // Reset sandbox when code changes (for CodeSandbox mode)
+    if (sandboxMode === 'codesandbox') {
+      setSandboxId(null);
+    }
+  };
+
+  const handleResult = useCallback((result: string, isError?: boolean) => {
+    setOutput(result);
+    setIsRunning(false);
+  }, []);
+
+  const simpleExecutor = SimpleExecutor({ code, language, onResult: handleResult });
+
+  const runCode = async () => {
+    setIsRunning(true);
+    setActiveTab('preview');
+
+    try {
+      switch (sandboxMode) {
+        case 'python':
+          setIsPyodideLoading(true);
+          const pythonResult = await runPython(code);
+          setOutput(pythonResult);
+          setIsPyodideLoading(false);
+          break;
+
+        case 'codesandbox':
+          if (!sandboxId) {
+            const id = await createCodeSandbox(code, template, dependencies);
+            setSandboxId(id);
+          }
+          setOutput(''); // Sandbox shows its own output
+          break;
+
+        case 'simple':
+        default:
+          simpleExecutor.run();
+          return; // run() handles setIsRunning
+      }
+    } catch (error: any) {
+      setOutput(`❌ Error: ${error.message}`);
+    }
+
     setIsRunning(false);
   };
 
   const resetCode = () => {
     setCode(initialCode);
     setOutput('');
+    setSandboxId(null);
     onCodeChange?.(initialCode);
   };
 
+  const openInCodeSandbox = () => {
+    if (sandboxId) {
+      window.open(`https://codesandbox.io/s/${sandboxId}`, '_blank');
+    }
+  };
+
   const isWebLanguage = ['html', 'html/css', 'web', 'css'].includes(language.toLowerCase());
+
+  // Render preview content based on mode
+  const renderPreview = () => {
+    if (isRunning || isPyodideLoading) {
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900 text-gray-100">
+          <Loader2 className="w-8 h-8 animate-spin text-purple-500 mb-3" />
+          <p className="text-sm text-gray-400">
+            {isPyodideLoading ? 'Loading Python runtime...' : 'Running...'}
+          </p>
+        </div>
+      );
+    }
+
+    // CodeSandbox embed
+    if (sandboxMode === 'codesandbox' && sandboxId) {
+      return (
+        <iframe
+          src={`https://codesandbox.io/embed/${sandboxId}?fontsize=14&hidenavigation=1&theme=dark&view=preview`}
+          className="w-full h-full"
+          title="CodeSandbox Preview"
+          allow="accelerometer; ambient-light-sensor; camera; encrypted-media; geolocation; gyroscope; hid; microphone; midi; payment; usb; vr; xr-spatial-tracking"
+          sandbox="allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts"
+        />
+      );
+    }
+
+    // HTML iframe preview
+    if (sandboxMode === 'simple' && isWebLanguage) {
+      return (
+        <iframe
+          ref={iframeRef}
+          className="w-full h-full bg-white"
+          title="Code Preview"
+          sandbox="allow-scripts"
+        />
+      );
+    }
+
+    // Console output
+    return (
+      <div className="w-full h-full p-4 bg-gray-900 text-gray-100 font-mono text-sm overflow-auto whitespace-pre-wrap">
+        {output || 'Click "Run" to see output...'}
+      </div>
+    );
+  };
+
+  // Get mode badge info
+  const getModeInfo = () => {
+    switch (sandboxMode) {
+      case 'python':
+        return { label: 'Pyodide', icon: Terminal, color: 'bg-yellow-100 text-yellow-700' };
+      case 'codesandbox':
+        return { label: 'CodeSandbox', icon: Package, color: 'bg-blue-100 text-blue-700' };
+      default:
+        return { label: language.toUpperCase(), icon: Code2, color: 'bg-gray-200 text-gray-600' };
+    }
+  };
+
+  const modeInfo = getModeInfo();
 
   return (
     <motion.div
@@ -145,11 +430,21 @@ export function CodeSandbox({
         <div className="flex items-center gap-2">
           <Code2 className="w-4 h-4 text-gray-500" />
           <span className="text-sm font-medium text-gray-700">{title}</span>
-          <span className="px-2 py-0.5 bg-gray-200 rounded text-xs text-gray-600 uppercase">
-            {language}
+          <span className={clsx('flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium', modeInfo.color)}>
+            <modeInfo.icon className="w-3 h-3" />
+            {modeInfo.label}
           </span>
         </div>
         <div className="flex items-center gap-1">
+          {sandboxMode === 'codesandbox' && sandboxId && (
+            <button
+              onClick={openInCodeSandbox}
+              className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
+              title="Open in CodeSandbox"
+            >
+              <ExternalLink className="w-4 h-4" />
+            </button>
+          )}
           <button
             onClick={resetCode}
             className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
@@ -213,18 +508,7 @@ export function CodeSandbox({
           />
         ) : (
           <div className="h-full">
-            {isWebLanguage ? (
-              <iframe
-                ref={iframeRef}
-                className="w-full h-full bg-white"
-                title="Code Preview"
-                sandbox="allow-scripts"
-              />
-            ) : (
-              <div className="w-full h-full p-4 bg-gray-900 text-gray-100 font-mono text-sm overflow-auto whitespace-pre-wrap">
-                {output || 'Click "Run" to see output...'}
-              </div>
-            )}
+            {renderPreview()}
           </div>
         )}
       </div>
@@ -244,8 +528,8 @@ export function CodeSandbox({
         >
           {isRunning ? (
             <>
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Running...
+              <Loader2 className="w-4 h-4 animate-spin" />
+              {sandboxMode === 'codesandbox' ? 'Creating Sandbox...' : 'Running...'}
             </>
           ) : (
             <>
@@ -267,7 +551,7 @@ export function CodeSandbox({
   );
 }
 
-// For embedding external sandboxes (CodeSandbox, StackBlitz)
+// For embedding existing external sandboxes
 export function ExternalSandbox({
   sandboxId,
   provider = 'codesandbox',

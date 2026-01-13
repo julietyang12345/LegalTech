@@ -550,7 +550,7 @@ export class SessionService {
     sessionId: string,
     userId: string,
     dayNumber: number,
-  ): Promise<{ coreContent: any; tokensUsed: number; fromCache: boolean }> {
+  ): Promise<{ coreContent: any; tokensUsed: number; fromCache: boolean; bossProject?: any }> {
     const session = await this.findOne(sessionId, userId);
     const user = await this.userService.findById(userId);
     const tierString = user.quotaTier.toUpperCase();

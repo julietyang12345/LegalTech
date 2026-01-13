@@ -263,10 +263,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         const dayIndex = bossProject.combinesDays?.indexOf(dayNumber) ?? 0;
         const totalDays = bossProject.combinesDays?.length ?? 1;
         bossMilestone = {
-          description: bossProject.free?.projectDescription || bossProject.title,
+          day: dayNumber,
+          title: `Day ${dayIndex + 1} Contribution`,
+          description: bossProject.free?.projectDescription || bossProject.description || bossProject.title,
           microTask: `Day ${dayIndex + 1} of ${totalDays}: ${bossProject.title}`,
           dayContribution: `Building towards ${bossProject.title}`,
-          starterCode: bossProject.files?.starter,
+          conceptConnection: `This builds your ${bossProject.title} project`,
+          estimatedMinutes: 15,
+          starterCode: bossProject.files?.starter || '// Start your project code here\n\n',
+          validationType: 'run',
         };
       }
     }

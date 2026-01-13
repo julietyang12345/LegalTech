@@ -16,6 +16,16 @@ interface BossMilestoneStepProps {
 // Coding languages that support live preview
 const CODING_LANGUAGES = ['javascript', 'js', 'typescript', 'ts', 'html', 'css', 'html/css', 'web', 'python', 'react', 'vue', 'node'];
 
+// Map language to CodeSandbox template
+function getTemplateForLanguage(language: string): 'vanilla' | 'react' | 'vue' | 'node' | 'python' {
+  const lang = language.toLowerCase();
+  if (lang.includes('react')) return 'react';
+  if (lang.includes('vue')) return 'vue';
+  if (lang.includes('node') || lang === 'nodejs') return 'node';
+  if (lang === 'python' || lang === 'py') return 'python';
+  return 'vanilla';
+}
+
 // Track saved milestones in localStorage
 const getMilestoneKey = (sessionId: string, bossDay: number) =>
   `boss-milestone-${sessionId}-${bossDay}`;
@@ -411,6 +421,8 @@ export function BossMilestoneStep({ day, session }: BossMilestoneStepProps) {
           language={language}
           onCodeChange={setCode}
           title={`${activeBoss?.title || 'Boss Project'} - Day ${day.day}`}
+          template={getTemplateForLanguage(language)}
+          dependencies={activeBoss?.dependencies as Record<string, string> | undefined}
         />
       ) : (
         <Card>

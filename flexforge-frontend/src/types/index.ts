@@ -313,6 +313,10 @@ export interface CurriculumDay {
   };
 
   bossMilestone?: BossMilestone;
+
+  // Boss project flag (from curriculum skeleton - indicates this day contributes to boss project)
+  hasBossProject?: boolean;
+  bossMilestonePreview?: string;
 }
 
 export interface ConceptQuestion {
@@ -514,6 +518,9 @@ export interface BossProject {
 
   // Final project starter code (combined from all micro-steps)
   starterCode?: string;
+
+  // npm dependencies for complex projects (React, Node, etc.)
+  dependencies?: Record<string, string>;
 
   // Files for the complete project
   files?: {
@@ -717,6 +724,7 @@ export interface StartDayCoreResponse {
   coreContent: DayCoreContent;
   tokensUsed: number;
   fromCache: boolean;
+  bossProject?: BossProject;  // Updated boss project data if micro-step was generated
 }
 
 export interface LoadDayDeferredResponse {
