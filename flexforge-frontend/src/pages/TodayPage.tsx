@@ -167,9 +167,9 @@ export function TodayPage() {
     fetchActiveSession();
   }, [fetchActiveSession]);
 
-  // Handle regeneration - only available on Day 1
+  // Handle regeneration - start a new course
   const handleRegenerateCurriculum = async () => {
-    if (!activeSession || activeSession.currentDay !== 1) return;
+    if (!activeSession) return;
 
     setIsRegenerating(true);
     try {
@@ -376,24 +376,22 @@ export function TodayPage() {
               </p>
             )}
 
-            {/* Generate New option - only on Day 1 */}
-            {activeSession.currentDay === 1 && (
-              <div className="mt-6 pt-4 border-t border-gray-100">
-                <button
-                  onClick={handleRegenerateCurriculum}
-                  disabled={isRegenerating || isDayLoading}
-                  className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1.5 mx-auto
-                           disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {isRegenerating ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-4 h-4" />
-                  )}
-                  {isRegenerating ? 'Generating new curriculum...' : 'Not what you expected? Generate new'}
-                </button>
-              </div>
-            )}
+            {/* Generate New Course option */}
+            <div className="mt-6 pt-4 border-t border-gray-100">
+              <button
+                onClick={handleRegenerateCurriculum}
+                disabled={isRegenerating || isDayLoading}
+                className="text-sm text-gray-400 hover:text-gray-600 flex items-center gap-1.5 mx-auto
+                         disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isRegenerating ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+                {isRegenerating ? 'Generating new curriculum...' : 'Not satisfied? Start a new course'}
+              </button>
+            </div>
           </div>
         </Card>
       </motion.div>

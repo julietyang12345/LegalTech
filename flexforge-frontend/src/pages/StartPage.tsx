@@ -12,6 +12,7 @@ import {
   CheckCircle,
   Brain,
   Play,
+  RotateCcw,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
@@ -170,6 +171,16 @@ export function StartPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showQuotaModal, setShowQuotaModal] = useState(false);
   const [quotaErrorMessage, setQuotaErrorMessage] = useState<string | undefined>();
+
+  // Reset form to defaults
+  const handleReset = () => {
+    setSkillName('');
+    setDurationDays(7);
+    setHoursPerDay(1);
+    setSkillLevel(SkillLevel.BEGINNER);
+    setWarnings([]);
+    clearError();
+  };
 
   // Pre-fill from onboarding preferences
   useEffect(() => {
@@ -378,10 +389,17 @@ export function StartPage() {
               Start Learning
             </Button>
 
-            {/* Info */}
-            <p className="text-center text-sm text-gray-500">
-              Your curriculum will be ready in ~30 seconds
-            </p>
+            {/* Start Over */}
+            <div className="pt-4 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={handleReset}
+                className="text-sm text-gray-400 hover:text-gray-600 flex items-center gap-1.5 mx-auto transition-colors"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Start over from the beginning
+              </button>
+            </div>
           </form>
         </Card>
 
