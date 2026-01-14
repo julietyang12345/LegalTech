@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Play, RotateCcw, Maximize2, Minimize2, ExternalLink, Code2, Eye, Loader2, Terminal, Package } from 'lucide-react';
+import { Play, RotateCcw, Maximize2, Minimize2, ExternalLink, Code2, Eye, Loader2, Terminal, Package, Copy, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
 
-// Sandbox execution modes
-type SandboxMode = 'simple' | 'codesandbox' | 'python';
+// Sandbox execution modes (no server-side execution - all browser or external services)
+type SandboxMode = 'simple' | 'stackblitz' | 'iframe_preview' | 'codesandbox' | 'python' | 'copy_only';
 
 interface CodeSandboxProps {
   code: string;
@@ -15,6 +15,59 @@ interface CodeSandboxProps {
   // For complex projects with npm dependencies
   template?: 'vanilla' | 'react' | 'vue' | 'node' | 'python';
   dependencies?: Record<string, string>;
+}
+
+// Complex architecture patterns that require copy-only mode
+const COMPLEX_ARCHITECTURE_PATTERNS = [
+  /dockerfile/i,
+  /docker-compose/i,
+  /FROM\s+\w+:\w+/,
+  /EXPOSE\s+\d+/,
+  /app\.listen\s*\(/i,
+  /http\.createServer/i,
+  /express\(\)/,
+  /fastify\(\)/,
+  /Flask\s*\(/,
+  /django/i,
+  /new\s+Worker\s*\(/,
+  /worker_threads/,
+  /cluster\.fork/,
+  /redis\.createClient/i,
+  /mongoose\.connect/i,
+  /prisma\.\$connect/i,
+  /apiVersion:\s*apps\/v1/,
+  /kind:\s*Deployment/i,
+];
+
+function hasComplexArchitecture(code: string): boolean {
+  return COMPLEX_ARCHITECTURE_PATTERNS.some(pattern => pattern.test(code));
+}
+
+function needsStackBlitz(code: string, language: string): boolean {
+  const lang = language.toLowerCase();
+  if (['node', 'react', 'vue'].includes(lang)) return true;
+
+  if (['javascript', 'typescript', 'js', 'ts'].includes(lang)) {
+    const nodePatterns = [
+      /require\s*\(['"][\w@/-]+['"]\)/,
+      /import\s+.*from\s+['"][\w@/-]+['"]/,
+      /process\.env/,
+      /module\.exports/,
+      /import\s+React/i,
+      /from\s+['"]react['"]/,
+      /from\s+['"]vue['"]/,
+      /from\s+['"]express['"]/,
+    ];
+    return nodePatterns.some(pattern => pattern.test(code));
+  }
+  return false;
+}
+
+function needsIframePreview(code: string, language: string): boolean {
+  const lang = language.toLowerCase();
+  if (['html', 'css', 'html_css', 'html/css', 'web'].includes(lang)) return true;
+  if (!lang) return /<(!DOCTYPE|html|head|body|div)/i.test(code);
+  return false;
 }
 
 // Detect if code is Python based on content patterns
@@ -34,22 +87,38 @@ function isPythonCode(code: string): boolean {
 function detectSandboxMode(language: string, code: string, dependencies?: Record<string, string>): SandboxMode {
   const lang = language.toLowerCase();
 
-  // Python - check language OR detect from code content
+  // Step 1: Check for complex architecture → copy_only
+  if (hasComplexArchitecture(code)) {
+    return 'copy_only';
+  }
+
+  // Step 2: Check for HTML/CSS → iframe_preview
+  if (needsIframePreview(code, language)) {
+    return 'iframe_preview';
+  }
+
+  // Step 3: Check for Node/React/Vue → stackblitz
+  if (needsStackBlitz(code, language)) {
+    return 'stackblitz';
+  }
+
+  // Step 4: Python → pyodide (browser)
   if (lang === 'python' || lang === 'py' || isPythonCode(code)) {
     return 'python';
   }
 
-  // If there are npm dependencies, use CodeSandbox
+  // Step 5: If there are npm dependencies, use StackBlitz
   if (dependencies && Object.keys(dependencies).length > 0) {
-    return 'codesandbox';
+    return 'stackblitz';
   }
 
-  // React/Vue/Node templates need CodeSandbox
-  if (['react', 'vue', 'node', 'nodejs'].includes(lang)) {
-    return 'codesandbox';
+  // Step 6: Languages that need external tools (Replit/local) - no server execution
+  const externalOnlyLanguages = ['go', 'rust', 'java', 'c', 'cpp', 'ruby', 'php', 'kotlin', 'swift', 'csharp'];
+  if (externalOnlyLanguages.includes(lang)) {
+    return 'copy_only';
   }
 
-  // Simple JS/HTML/CSS can run in browser
+  // Step 7: Simple JS/TS can run in browser
   return 'simple';
 }
 
@@ -192,47 +261,8 @@ async function loadPyodide(): Promise<any> {
   return pyodideLoadPromise;
 }
 
-// Packages that need local run (can't run in browser)
-const LOCAL_RUN_PACKAGES = [
-  'requests', 'urllib3', 'httpx', 'aiohttp',  // Network
-  'selenium', 'scrapy', 'beautifulsoup4',      // Web scraping
-  'flask', 'django', 'fastapi',                // Server frameworks
-  'pandas', 'numpy', 'scipy',                  // Data science
-  'tensorflow', 'torch', 'sklearn',            // ML
-];
-
-function getLocalRunPackages(code: string): string[] {
-  const found: string[] = [];
-  for (const pkg of LOCAL_RUN_PACKAGES) {
-    // Handle bs4 -> beautifulsoup4 mapping
-    const importName = pkg === 'beautifulsoup4' ? 'bs4' : pkg;
-    const importPattern = new RegExp(`(?:^|\\n)\\s*(?:import\\s+${importName}|from\\s+${importName}\\s+import)`, 'm');
-    if (importPattern.test(code)) {
-      found.push(pkg);
-    }
-  }
-  return found;
-}
-
 async function runPython(code: string): Promise<string> {
-  // Check for packages that need local run
-  const localPackages = getLocalRunPackages(code);
-  if (localPackages.length > 0) {
-    const pkgList = localPackages.join(' ');
-    return `🖥️ LOCAL RUN REQUIRED\n\n` +
-      `This code uses packages that need local Python.\n\n` +
-      `━━━ Quick Setup ━━━\n\n` +
-      `1. Copy code (click "Code" tab → select all → copy)\n\n` +
-      `2. Save as: main.py\n\n` +
-      `3. Run these commands:\n` +
-      `   pip install ${pkgList}\n` +
-      `   python main.py\n\n` +
-      `━━━ VS Code Users ━━━\n` +
-      `• Open folder → New file → Paste → Save as main.py\n` +
-      `• Open terminal (Ctrl+\`) → Run commands above\n\n` +
-      `✅ Paste your output below to verify!`;
-  }
-
+  // For Python, use Pyodide (browser-based) for simple code
   const pyodide = await loadPyodide();
 
   // Capture stdout
@@ -321,6 +351,110 @@ async function createCodeSandbox(
   return data.sandbox_id;
 }
 
+// StackBlitz project templates
+const STACKBLITZ_TEMPLATES: Record<string, { template: string; files: Record<string, string> }> = {
+  node: {
+    template: 'node',
+    files: {
+      'index.js': '',
+      'package.json': JSON.stringify({ name: 'node-project', main: 'index.js', scripts: { start: 'node index.js' } }, null, 2),
+    },
+  },
+  react: {
+    template: 'create-react-app',
+    files: {
+      'src/App.js': '',
+      'src/index.js': 'import React from "react";\nimport { createRoot } from "react-dom/client";\nimport App from "./App";\nconst root = createRoot(document.getElementById("root"));\nroot.render(<App />);',
+      'public/index.html': '<!DOCTYPE html><html><head><title>React App</title></head><body><div id="root"></div></body></html>',
+    },
+  },
+  vue: {
+    template: 'vue',
+    files: {
+      'src/App.vue': '',
+      'src/main.js': 'import { createApp } from "vue";\nimport App from "./App.vue";\ncreateApp(App).mount("#app");',
+    },
+  },
+  vanilla: {
+    template: 'node',
+    files: {
+      'index.js': '',
+      'package.json': JSON.stringify({ name: 'project', main: 'index.js', scripts: { start: 'node index.js' } }, null, 2),
+    },
+  },
+};
+
+async function createStackBlitzProject(
+  code: string,
+  template: string = 'node',
+  dependencies?: Record<string, string>
+): Promise<string> {
+  const templateConfig = STACKBLITZ_TEMPLATES[template] || STACKBLITZ_TEMPLATES.node;
+  const mainFile = template === 'react' ? 'src/App.js' : template === 'vue' ? 'src/App.vue' : 'index.js';
+
+  // Build files
+  const files: Record<string, string> = {
+    ...templateConfig.files,
+    [mainFile]: code,
+  };
+
+  // Add dependencies to package.json
+  if (dependencies) {
+    const pkgJson = JSON.parse(files['package.json'] || '{}');
+    pkgJson.dependencies = { ...pkgJson.dependencies, ...dependencies };
+    files['package.json'] = JSON.stringify(pkgJson, null, 2);
+  }
+
+  // Use StackBlitz SDK to create project
+  // Note: For actual production, you'd use @stackblitz/sdk
+  // For now, we create via the URL API
+  const projectData = {
+    title: 'FlexForge Project',
+    description: 'Created from FlexForge',
+    template: templateConfig.template,
+    files,
+  };
+
+  // Encode for URL
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(projectData))));
+
+  // Return a pseudo-ID that we'll use to construct the embed URL
+  // In production, you'd call the StackBlitz API
+  return `data:${encoded}`;
+}
+
+// Open code in StackBlitz (new tab)
+function openInStackBlitz(code: string, language: string, dependencies?: Record<string, string>) {
+  const template = language === 'react' ? 'react' : language === 'vue' ? 'vue' : 'node';
+  const files: Record<string, string> = {};
+
+  if (template === 'react') {
+    files['src/App.js'] = code;
+    files['src/index.js'] = 'import React from "react";\nimport { createRoot } from "react-dom/client";\nimport App from "./App";\nconst root = createRoot(document.getElementById("root"));\nroot.render(<App />);';
+  } else if (template === 'vue') {
+    files['src/App.vue'] = code;
+    files['src/main.js'] = 'import { createApp } from "vue";\nimport App from "./App.vue";\ncreateApp(App).mount("#app");';
+  } else {
+    files['index.js'] = code;
+  }
+
+  const pkgJson: any = {
+    name: 'flexforge-project',
+    version: '1.0.0',
+    scripts: { start: template === 'node' ? 'node index.js' : undefined },
+    dependencies: dependencies || {},
+  };
+
+  files['package.json'] = JSON.stringify(pkgJson, null, 2);
+
+  // Create StackBlitz URL with files encoded
+  const encodedFiles = encodeURIComponent(JSON.stringify(files));
+  window.open(`https://stackblitz.com/fork/node?file=index.js`, '_blank');
+
+  // Copy code to clipboard as fallback
+  navigator.clipboard.writeText(code);
+}
+
 // Main CodeSandbox component
 export function CodeSandbox({
   code: initialCode,
@@ -341,8 +475,9 @@ export function CodeSandbox({
   const [copied, setCopied] = useState<'code' | 'cmd' | null>(null);
 
   const sandboxMode = detectSandboxMode(language, code, dependencies);
-  const localRunPackages = sandboxMode === 'python' ? getLocalRunPackages(code) : [];
-  const needsLocalRun = localRunPackages.length > 0;
+
+  // Show cloud options for Python (Replit for beginners, Codespaces for advanced)
+  const showCloudOptions = sandboxMode === 'python';
 
   const copyToClipboard = async (text: string, type: 'code' | 'cmd') => {
     await navigator.clipboard.writeText(text);
@@ -350,7 +485,7 @@ export function CodeSandbox({
     setTimeout(() => setCopied(null), 2000);
   };
 
-  // Open code in Replit (works for Python, Node, etc.)
+  // Open code in Replit - beginner friendly, auto-installs packages
   const openInReplit = () => {
     const langMap: Record<string, string> = {
       'python': 'python3',
@@ -360,14 +495,25 @@ export function CodeSandbox({
       'typescript': 'nodejs',
       'ts': 'nodejs',
       'node': 'nodejs',
+      'go': 'go',
+      'java': 'java',
+      'rust': 'rust',
     };
     const replitLang = langMap[language.toLowerCase()] || 'python3';
-
-    // Replit URL format: https://replit.com/new/{language}#code
-    // Code is base64 encoded in the hash
     const encodedCode = btoa(unescape(encodeURIComponent(code)));
-    const replitUrl = `https://replit.com/new/${replitLang}?code=${encodedCode}`;
-    window.open(replitUrl, '_blank');
+    window.open(`https://replit.com/new/${replitLang}?code=${encodedCode}`, '_blank');
+  };
+
+  // Open in GitHub Codespaces - for serious systems work
+  const openInCodespaces = () => {
+    // Create a GitHub gist-like experience via codespaces
+    // Uses github.dev which opens VS Code in browser
+    const encodedCode = encodeURIComponent(code);
+    // Open github.dev with the code (user can create repo from there)
+    window.open(`https://vscode.dev`, '_blank');
+    // Copy code to clipboard so user can paste
+    navigator.clipboard.writeText(code);
+    alert('Code copied! Paste it in VS Code that just opened.');
   };
 
   useEffect(() => {
@@ -396,6 +542,32 @@ export function CodeSandbox({
 
     try {
       switch (sandboxMode) {
+        // Copy-only: just show the copy UI, no execution
+        case 'copy_only':
+          setOutput('');
+          setIsRunning(false);
+          return;
+
+        // iframe preview for HTML/CSS
+        case 'iframe_preview':
+          simpleExecutor.run();
+          return;
+
+        // StackBlitz for Node/React/Vue
+        case 'stackblitz':
+          if (!sandboxId) {
+            openInStackBlitz(code, language, dependencies);
+            setOutput('Opening in StackBlitz... Code copied to clipboard.');
+          }
+          setIsRunning(false);
+          return;
+
+        // Simple JS/TS in browser
+        case 'simple':
+          simpleExecutor.run();
+          return;
+
+        // Python: use Pyodide (browser-based)
         case 'python':
           setIsPyodideLoading(true);
           const pythonResult = await runPython(code);
@@ -403,18 +575,14 @@ export function CodeSandbox({
           setIsPyodideLoading(false);
           break;
 
+        // CodeSandbox for complex npm projects
         case 'codesandbox':
           if (!sandboxId) {
             const id = await createCodeSandbox(code, template, dependencies);
             setSandboxId(id);
           }
-          setOutput(''); // Sandbox shows its own output
+          setOutput('');
           break;
-
-        case 'simple':
-        default:
-          simpleExecutor.run();
-          return; // run() handles setIsRunning
       }
     } catch (error: any) {
       setOutput(`❌ Error: ${error.message}`);
@@ -451,6 +619,44 @@ export function CodeSandbox({
       );
     }
 
+    // Copy-only mode: show instructions
+    if (sandboxMode === 'copy_only') {
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 p-6 text-center">
+          <AlertTriangle className="w-12 h-12 text-amber-500 mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Local Environment Required</h3>
+          <p className="text-sm text-gray-600 mb-4 max-w-md">
+            This code requires Docker, servers, or multi-service architecture that can't run in the browser.
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => copyToClipboard(code, 'code')}
+              className="flex items-center gap-2 px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors"
+            >
+              <Copy className="w-4 h-4" />
+              {copied === 'code' ? 'Copied!' : 'Copy Code'}
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mt-4">
+            Run this code locally with Docker, VS Code, or your preferred IDE
+          </p>
+        </div>
+      );
+    }
+
+    // StackBlitz embed
+    if (sandboxMode === 'stackblitz' && sandboxId) {
+      return (
+        <iframe
+          src={`https://stackblitz.com/edit/${sandboxId}?embed=1&file=index.js&theme=dark`}
+          className="w-full h-full"
+          title="StackBlitz Preview"
+          allow="accelerometer; ambient-light-sensor; camera; encrypted-media; geolocation; gyroscope; hid; microphone; midi; payment; usb; vr; xr-spatial-tracking"
+          sandbox="allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts"
+        />
+      );
+    }
+
     // CodeSandbox embed
     if (sandboxMode === 'codesandbox' && sandboxId) {
       return (
@@ -465,7 +671,7 @@ export function CodeSandbox({
     }
 
     // HTML iframe preview
-    if (sandboxMode === 'simple' && isWebLanguage) {
+    if (sandboxMode === 'iframe_preview' || (sandboxMode === 'simple' && isWebLanguage)) {
       return (
         <iframe
           ref={simpleExecutor.iframeRef}
@@ -476,7 +682,7 @@ export function CodeSandbox({
       );
     }
 
-    // Console output
+    // Console output for Judge0 and other modes
     return (
       <div className="w-full h-full p-4 bg-gray-900 text-gray-100 font-mono text-sm overflow-auto whitespace-pre-wrap">
         {output || 'Click "Run" to see output...'}
@@ -487,10 +693,16 @@ export function CodeSandbox({
   // Get mode badge info
   const getModeInfo = () => {
     switch (sandboxMode) {
+      case 'stackblitz':
+        return { label: 'StackBlitz', icon: Package, color: 'bg-blue-100 text-blue-700' };
+      case 'iframe_preview':
+        return { label: 'Preview', icon: Eye, color: 'bg-green-100 text-green-700' };
       case 'python':
-        return { label: 'Pyodide', icon: Terminal, color: 'bg-yellow-100 text-yellow-700' };
+        return { label: 'Python', icon: Terminal, color: 'bg-yellow-100 text-yellow-700' };
       case 'codesandbox':
         return { label: 'CodeSandbox', icon: Package, color: 'bg-blue-100 text-blue-700' };
+      case 'copy_only':
+        return { label: 'Local Only', icon: Copy, color: 'bg-amber-100 text-amber-700' };
       default:
         return { label: language.toUpperCase(), icon: Code2, color: 'bg-gray-200 text-gray-600' };
     }
@@ -594,63 +806,124 @@ export function CodeSandbox({
         )}
       </div>
 
-      {/* Run Button / Local Run UI */}
-      <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
-        {needsLocalRun ? (
+      {/* Run Button + Cloud Options */}
+      <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 space-y-2">
+        {/* Copy-only mode: just show copy button */}
+        {sandboxMode === 'copy_only' ? (
           <div className="space-y-2">
-            {/* Primary: Open in Replit */}
-            <button
-              onClick={openInReplit}
-              className={clsx(
-                'flex items-center justify-center gap-2 w-full py-2.5 rounded-lg font-medium text-sm transition-all',
-                'bg-gradient-to-r from-orange-500 to-amber-500 text-white',
-                'hover:from-orange-600 hover:to-amber-600',
-                'shadow-sm hover:shadow-md'
-              )}
-            >
-              <ExternalLink className="w-4 h-4" />
-              Open in Replit (Run instantly)
-            </button>
-            {/* Secondary: Copy options */}
+            <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <span className="text-sm text-amber-800">
+                This code requires Docker/servers. Copy and run locally.
+              </span>
+            </div>
             <div className="flex gap-2">
               <button
                 onClick={() => copyToClipboard(code, 'code')}
-                className="flex-1 py-1.5 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors font-medium"
               >
-                {copied === 'code' ? '✓ Copied!' : '📋 Copy Code'}
+                <Copy className="w-4 h-4" />
+                {copied === 'code' ? 'Copied!' : 'Copy Code'}
               </button>
               <button
-                onClick={() => copyToClipboard(`pip install ${localRunPackages.join(' ')}\npython main.py`, 'cmd')}
-                className="flex-1 py-1.5 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
+                onClick={openInCodespaces}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium text-gray-700"
               >
-                {copied === 'cmd' ? '✓ Copied!' : '⌨️ Copy Commands'}
+                <Code2 className="w-4 h-4" />
+                Open VS Code
+              </button>
+            </div>
+          </div>
+        ) : sandboxMode === 'stackblitz' ? (
+          /* StackBlitz mode: Run in browser or open in new tab */
+          <div className="space-y-2">
+            <button
+              onClick={runCode}
+              disabled={isRunning || !code.trim()}
+              className={clsx(
+                'flex items-center justify-center gap-2 w-full py-2.5 rounded-lg font-medium text-sm transition-all',
+                'bg-gradient-to-r from-blue-500 to-indigo-600 text-white',
+                'hover:from-blue-600 hover:to-indigo-700',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                'shadow-sm hover:shadow-md'
+              )}
+            >
+              {isRunning ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Opening StackBlitz...
+                </>
+              ) : (
+                <>
+                  <Package className="w-4 h-4" />
+                  Run in StackBlitz
+                </>
+              )}
+            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => copyToClipboard(code, 'code')}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+              >
+                {copied === 'code' ? '✓ Copied' : 'Copy Code'}
               </button>
             </div>
           </div>
         ) : (
-          <button
-            onClick={runCode}
-            disabled={isRunning || !code.trim()}
-            className={clsx(
-              'flex items-center justify-center gap-2 w-full py-2.5 rounded-lg font-medium text-sm transition-all',
-              'bg-gradient-to-r from-green-500 to-emerald-600 text-white',
-              'hover:from-green-600 hover:to-emerald-700',
-              'disabled:opacity-50 disabled:cursor-not-allowed',
-              'shadow-sm hover:shadow-md'
+          /* Default: Run in browser */
+          <>
+            <button
+              onClick={runCode}
+              disabled={isRunning || !code.trim()}
+              className={clsx(
+                'flex items-center justify-center gap-2 w-full py-2.5 rounded-lg font-medium text-sm transition-all',
+                'bg-gradient-to-r from-green-500 to-emerald-600 text-white',
+                'hover:from-green-600 hover:to-emerald-700',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                'shadow-sm hover:shadow-md'
+              )}
+            >
+              {isRunning ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {sandboxMode === 'codesandbox' ? 'Creating Sandbox...' : 'Running...'}
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4" />
+                  Run Code
+                </>
+              )}
+            </button>
+
+            {/* Cloud options for Python/complex code */}
+            {showCloudOptions && (
+              <div className="flex gap-2">
+                <button
+                  onClick={openInReplit}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-green-600 hover:bg-green-50 rounded-lg transition-colors border border-green-200"
+                  title="Opens in Replit"
+                >
+                  <Play className="w-3 h-3" />
+                  Replit
+                </button>
+                <button
+                  onClick={openInCodespaces}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-purple-600 hover:bg-purple-50 rounded-lg transition-colors border border-purple-200"
+                  title="Opens VS Code"
+                >
+                  <Code2 className="w-3 h-3" />
+                  VS Code
+                </button>
+                <button
+                  onClick={() => copyToClipboard(code, 'code')}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+                >
+                  {copied === 'code' ? '✓' : '📋'} Copy
+                </button>
+              </div>
             )}
-          >
-            {isRunning ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                {sandboxMode === 'codesandbox' ? 'Creating Sandbox...' : 'Running...'}
-              </>
-            ) : (
-              <>
-                <Play className="w-4 h-4" />
-                Run Code
-              </>
-            )}
-          </button>
+          </>
         )}
       </div>
 
@@ -661,6 +934,7 @@ export function CodeSandbox({
           onClick={() => setIsExpanded(false)}
         />
       )}
+
     </motion.div>
   );
 }

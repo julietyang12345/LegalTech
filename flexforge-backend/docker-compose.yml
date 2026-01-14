@@ -1,6 +1,9 @@
 version: '3.8'
 
 services:
+  # ============================================
+  # FlexForge Core Services
+  # ============================================
   postgres:
     image: postgres:15-alpine
     container_name: flexforge-db
@@ -17,6 +20,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - flexforge-network
 
   redis:
     image: redis:7-alpine
@@ -30,7 +35,13 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    networks:
+      - flexforge-network
 
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  flexforge-network:
+    driver: bridge

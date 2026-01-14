@@ -136,6 +136,8 @@ export interface CurriculumMetadata {
   skillType: SkillType;
   complexity: SkillComplexity;
   suggestedLanguage?: string;
+  isProjectBased?: boolean;
+  outputType?: 'working_code' | 'understand_concept' | 'fix_bug' | 'ship_project';
 }
 
 export interface Curriculum {
