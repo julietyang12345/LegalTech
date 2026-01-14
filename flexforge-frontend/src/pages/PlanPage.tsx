@@ -24,23 +24,23 @@ import { useAuthStore } from '@/stores/authStore';
 import { Button, Card, ProgressBar } from '@/components/common';
 import { SessionMode, QuotaTier, DayStatus, CurriculumDay } from '@/types';
 
-// Day card in timeline with two-phase support
-function DayCard({
+// Timeline Day Item - clean timeline format
+function TimelineDayItem({
   day,
   dayData,
-  onExpand,
-  isExpanded,
+  isLast,
   onStartDay,
   onSkipTest,
   isLoading,
+  isCurrentDay,
 }: {
   day: number;
   dayData: CurriculumDay;
-  onExpand: () => void;
-  isExpanded: boolean;
+  isLast: boolean;
   onStartDay: () => void;
   onSkipTest: () => void;
   isLoading: boolean;
+  isCurrentDay: boolean;
 }) {
   const status = dayData?.status || DayStatus.LOCKED;
   const isLocked = status === DayStatus.LOCKED;
@@ -49,277 +49,161 @@ function DayCard({
   const isCompleted = status === DayStatus.COMPLETED;
   const isSkipped = status === DayStatus.SKIPPED;
 
-  const getStatusIcon = () => {
-    if (isCompleted) return <CheckCircle className="w-5 h-5" />;
-    if (isSkipped) return <SkipForward className="w-5 h-5" />;
-    if (isLoading) return <Loader2 className="w-5 h-5 animate-spin" />;
-    if (isLocked) return <Lock className="w-4 h-4" />;
-    return <span className="font-semibold">{day}</span>;
+  // Get data from dayData
+  const title = dayData?.title?.includes(':')
+    ? dayData.title.split(':')[1]?.trim()
+    : dayData?.title || 'Loading...';
+
+  const teaser = (dayData as any)?.teaser ||
+                 (dayData as any)?.subtitle ||
+                 dayData?.objectives?.[0] ||
+                 '';
+
+  const skills = (dayData as any)?.skills || [];
+  const estimatedMinutes = dayData?.estimatedMinutes || 45;
+
+  const getCircleStyles = () => {
+    if (isCompleted || isSkipped) return 'bg-green-500 text-white border-green-500';
+    if (isInProgress || isCurrentDay) return 'bg-brand-500 text-white border-brand-500';
+    if (isUnlockable) return 'bg-white text-brand-600 border-brand-500 border-2';
+    return 'bg-gray-100 text-gray-400 border-gray-200';
   };
 
-  const getStatusStyles = () => {
-    if (isCompleted || isSkipped) return 'bg-focus-500 text-white';
-    if (isInProgress) return 'bg-brand-500 text-white';
-    if (isUnlockable) return 'bg-brand-100 text-brand-700 ring-2 ring-brand-300';
-    return 'bg-gray-200 text-gray-400';
+  const getLineStyles = () => {
+    if (isCompleted || isSkipped) return 'bg-green-300';
+    return 'bg-gray-200';
   };
 
   return (
-    <Card
-      variant={isInProgress || isUnlockable ? 'active' : 'default'}
-      className={clsx(
-        'transition-all duration-200',
-        isLocked && 'opacity-60',
-        (isInProgress || isUnlockable) && 'ring-2 ring-brand-200',
-        !isLocked && 'cursor-pointer'
-      )}
-      onClick={isLocked ? undefined : onExpand}
-    >
-      <div className="p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {/* Status icon */}
-            <div
-              className={clsx(
-                'w-10 h-10 rounded-full flex items-center justify-center',
-                getStatusStyles()
-              )}
-            >
-              {getStatusIcon()}
-            </div>
+    <div className="relative flex gap-4">
+      {/* Timeline connector */}
+      <div className="flex flex-col items-center">
+        {/* Circle with number */}
+        <div
+          className={clsx(
+            'w-10 h-10 rounded-full flex items-center justify-center font-semibold text-sm border-2 z-10 flex-shrink-0',
+            getCircleStyles()
+          )}
+        >
+          {isCompleted ? (
+            <Check className="w-5 h-5" />
+          ) : isSkipped ? (
+            <SkipForward className="w-4 h-4" />
+          ) : isLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : isLocked ? (
+            <Lock className="w-4 h-4" />
+          ) : (
+            day
+          )}
+        </div>
+        {/* Vertical line */}
+        {!isLast && (
+          <div className={clsx('w-0.5 flex-1 min-h-[20px]', getLineStyles())} />
+        )}
+      </div>
 
-            {/* Day info */}
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-medium text-gray-900">
-                  Day {day}: {dayData?.title?.split(':')[1]?.trim() || dayData?.title || 'Loading...'}
-                </h3>
+      {/* Content card */}
+      <div
+        className={clsx(
+          'flex-1 pb-6 transition-all',
+          isLocked && 'opacity-50'
+        )}
+      >
+        <div
+          className={clsx(
+            'p-4 rounded-xl border transition-all',
+            (isInProgress || isCurrentDay) && 'bg-brand-50 border-brand-200 shadow-sm',
+            isCompleted && 'bg-green-50 border-green-200',
+            isSkipped && 'bg-purple-50 border-purple-200',
+            !isInProgress && !isCurrentDay && !isCompleted && !isSkipped && 'bg-white border-gray-200 hover:border-gray-300'
+          )}
+        >
+          {/* Header row */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
+              {/* Day label */}
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  Day {day}
+                </span>
                 {isSkipped && (
                   <span className="px-2 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-full">
                     Mastered
                   </span>
                 )}
               </div>
-              <p className="text-sm text-gray-500">
-                ~{dayData?.skeleton?.estimatedMinutes || dayData?.estimatedMinutes || 45} min
-              </p>
+
+              {/* Title */}
+              <h3 className="font-semibold text-gray-900 text-lg">
+                {title}
+              </h3>
+
+              {/* Teaser / Learning objective */}
+              {teaser && (
+                <p className="text-gray-600 mt-1 text-sm">
+                  {teaser}
+                </p>
+              )}
+            </div>
+
+            {/* Time */}
+            <div className="flex items-center gap-1.5 text-gray-500 flex-shrink-0">
+              <Clock className="w-4 h-4" />
+              <span className="text-sm font-medium">{estimatedMinutes}m</span>
             </div>
           </div>
 
-          {/* Expand chevron or action buttons */}
-          {!isLocked && (
-            <motion.div
-              animate={{ rotate: isExpanded ? 180 : 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              <ChevronDown className="w-5 h-5 text-gray-400" />
-            </motion.div>
+          {/* Skills tags */}
+          {skills.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              {skills.map((skill: string, i: number) => (
+                <span
+                  key={i}
+                  className="px-2.5 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full"
+                >
+                  {skill}
+                </span>
+              ))}
+            </div>
           )}
-        </div>
 
-        {/* Expanded content - skeleton preview */}
-        <AnimatePresence>
-          {isExpanded && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="overflow-hidden"
-            >
-              <div className="pt-4 mt-4 border-t border-gray-100 space-y-4">
-                {/* Objectives */}
-                {dayData?.objectives && dayData.objectives.length > 0 && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-600 mb-2">Learning objectives:</p>
-                    <ul className="space-y-1">
-                      {dayData.objectives.map((obj: string, i: number) => (
-                        <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-brand-500 mt-1.5 flex-shrink-0" />
-                          {obj}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Skeleton preview (Phase 1 content) */}
-                {dayData?.skeleton && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-gray-600">What you'll learn:</p>
-                    <div className="grid grid-cols-1 gap-2">
-                      <div className="p-2 bg-gray-50 rounded text-sm">
-                        <span className="text-gray-500">Video:</span>{' '}
-                        <span className="text-gray-700">{dayData.skeleton.videoTitle}</span>
-                      </div>
-                      <div className="p-2 bg-gray-50 rounded text-sm">
-                        <span className="text-gray-500">Task:</span>{' '}
-                        <span className="text-gray-700">{dayData.skeleton.task1Preview}</span>
-                      </div>
-                      <div className="p-2 bg-gray-50 rounded text-sm">
-                        <span className="text-gray-500">Practice:</span>{' '}
-                        <span className="text-gray-700">{dayData.skeleton.practicePreview}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Full content preview if loaded */}
-                {dayData?.detailsLoaded && dayData.video && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-600 mb-2">Today's content:</p>
-                    <ul className="space-y-1">
-                      <li className="text-sm text-gray-700 flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-brand-500" />
-                        {dayData.video.title}
-                      </li>
-                      {dayData.task1 && (
-                        <li className="text-sm text-gray-700 flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-brand-500" />
-                          {dayData.task1.title}
-                        </li>
-                      )}
-                      {dayData.practiceProject && (
-                        <li className="text-sm text-gray-700 flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-brand-500" />
-                          {dayData.practiceProject.title}
-                        </li>
-                      )}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Boss milestone if present */}
-                {dayData?.bossMilestone && (
-                  <div className="p-3 bg-purple-50 rounded-lg">
-                    <p className="text-sm font-medium text-purple-700 flex items-center gap-2">
-                      <Zap className="w-4 h-4" />
-                      Boss Milestone: {dayData.bossMilestone.description}
-                    </p>
-                  </div>
-                )}
-
-                {/* Action buttons */}
-                {(isUnlockable || isInProgress) && !isCompleted && !isSkipped && (
-                  <div className="flex gap-2 pt-2">
-                    <Button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onStartDay();
-                      }}
-                      disabled={isLoading}
-                      leftIcon={isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                    >
-                      {isLoading ? 'Generating...' : dayData?.detailsLoaded ? 'Continue Day' : 'Start Day'}
-                    </Button>
-                    {dayData?.skipTest && isInProgress && (
-                      <Button
-                        variant="secondary"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSkipTest();
-                        }}
-                        leftIcon={<FastForward className="w-4 h-4" />}
-                      >
-                        Skip Test
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </Card>
-  );
-}
-
-// Life Happens Modal
-function LifeHappensModal({
-  isOpen,
-  onClose,
-  onSelectMode,
-  currentMode,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  onSelectMode: (mode: SessionMode) => void;
-  currentMode: SessionMode;
-}) {
-  if (!isOpen) return null;
-
-  const modes = [
-    {
-      mode: SessionMode.SPRINT,
-      icon: Zap,
-      title: 'Sprint Mode',
-      description: 'Condense the remaining days. Core concepts only, practice tasks go to Backlog.',
-      color: 'from-alert-500 to-orange-500',
-    },
-    {
-      mode: SessionMode.EXTENDED,
-      icon: Clock,
-      title: 'Extend Mode',
-      description: 'Add extra days for more practice. Take your time to master each concept.',
-      color: 'from-blue-500 to-cyan-500',
-    },
-  ];
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-xl"
-      >
-        <h2 className="text-xl font-bold text-gray-900 mb-2">Life Happens 💙</h2>
-        <p className="text-gray-600 mb-6">
-          No guilt here. Choose how you'd like to adjust your learning pace.
-        </p>
-
-        <div className="space-y-3">
-          {modes.map(({ mode, icon: Icon, title, description, color }) => (
-            <button
-              key={mode}
-              onClick={() => {
-                onSelectMode(mode);
-                onClose();
-              }}
-              className={clsx(
-                'w-full p-4 rounded-xl border-2 text-left transition-all',
-                currentMode === mode
-                  ? 'border-brand-500 bg-brand-50'
-                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+          {/* Action buttons */}
+          {(isUnlockable || isInProgress || isCurrentDay) && !isCompleted && !isSkipped && (
+            <div className="flex gap-2 mt-4">
+              <Button
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStartDay();
+                }}
+                disabled={isLoading}
+                leftIcon={isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+              >
+                {isLoading ? 'Loading...' : 'Start Day'}
+              </Button>
+              {dayData?.skipTest && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSkipTest();
+                  }}
+                  leftIcon={<FastForward className="w-4 h-4" />}
+                >
+                  Skip Test
+                </Button>
               )}
-            >
-              <div className="flex items-start gap-3">
-                <div className={clsx('w-10 h-10 rounded-lg bg-gradient-to-br flex items-center justify-center', color)}>
-                  <Icon className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900">{title}</h3>
-                  <p className="text-sm text-gray-600">{description}</p>
-                </div>
-              </div>
-            </button>
-          ))}
+            </div>
+          )}
         </div>
-
-        <div className="flex justify-end gap-3 mt-6">
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="secondary" onClick={() => onSelectMode(SessionMode.NORMAL)}>
-            Back to Normal
-          </Button>
-        </div>
-      </motion.div>
+      </div>
     </div>
   );
 }
 
-// Skip Test Modal (Multiple Choice)
+// Skip Test Modal
 function SkipTestModal({
   isOpen,
   onClose,
@@ -340,7 +224,6 @@ function SkipTestModal({
   const [selectedAnswers, setSelectedAnswers] = useState<(number | null)[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Get current questions from questionSets
   const questions = useMemo(() => {
     if (!skipTest?.questionSets || skipTest.questionSets.length === 0) return [];
     const setIndex = skipTest.currentSetIndex ?? 0;
@@ -442,60 +325,6 @@ function SkipTestModal({
   );
 }
 
-// Backlog drawer
-function BacklogDrawer({ isOpen, onClose, tasks }: {
-  isOpen: boolean;
-  onClose: () => void;
-  tasks: string[];
-}) {
-  return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/30 z-40"
-            onClick={onClose}
-          />
-          <motion.div
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'spring', damping: 25 }}
-            className="fixed right-0 top-0 bottom-0 w-80 bg-white shadow-xl z-50 p-6"
-          >
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
-                <Archive className="w-5 h-5 text-gray-600" />
-                <h2 className="font-semibold text-gray-900">Backlog</h2>
-              </div>
-              <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
-                ×
-              </button>
-            </div>
-
-            {tasks.length === 0 ? (
-              <p className="text-gray-500 text-sm">
-                No tasks in backlog. Tasks moved here during Sprint Mode will appear here.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {tasks.map((task, i) => (
-                  <li key={i} className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700">
-                    {task}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
-  );
-}
-
 export function PlanPage() {
   const navigate = useNavigate();
   const {
@@ -511,11 +340,8 @@ export function PlanPage() {
     clearError,
   } = useSessionStore();
   const { hasTierAccess } = useAuthStore();
-  const [expandedDay, setExpandedDay] = useState<number | null>(null);
-  const [showLifeHappens, setShowLifeHappens] = useState(false);
-  const [showBacklog, setShowBacklog] = useState(false);
   const [skipTestDay, setSkipTestDay] = useState<number | null>(null);
-  const [skipTestResult, setSkipTestResult] = useState<{ passed: boolean; message: string; suggestion?: string; allSetsExhausted?: boolean } | null>(null);
+  const [skipTestResult, setSkipTestResult] = useState<{ passed: boolean; message: string } | null>(null);
 
   useEffect(() => {
     if (!activeSession) {
@@ -523,14 +349,8 @@ export function PlanPage() {
     }
   }, [activeSession, fetchActiveSession]);
 
-  const handleModeChange = async (mode: SessionMode) => {
-    if (!activeSession) return;
-    await updateSession(activeSession.id, { mode });
-  };
-
   const handleStartDay = async (dayNumber: number) => {
     try {
-      // Load core content first (fast), deferred loads in background
       await loadDayContentSplit(dayNumber);
       navigate(`/session/${activeSession?.id}`);
     } catch (err) {
@@ -553,12 +373,9 @@ export function PlanPage() {
         message: result.passed
           ? `Day ${skipTestDay} skipped! You demonstrated mastery.`
           : `${result.correctCount}/${result.totalQuestions} correct. Need ${result.passThreshold} to pass.`,
-        suggestion: result.suggestion,
-        allSetsExhausted: result.allSetsExhausted,
       });
 
       if (result.passed) {
-        // Close modal after a delay to show success
         setTimeout(() => {
           setSkipTestDay(null);
           setSkipTestResult(null);
@@ -566,18 +383,6 @@ export function PlanPage() {
       }
     } catch (err) {
       console.error('Failed to submit skip test:', err);
-    }
-  };
-
-  const handleForceSkip = async () => {
-    if (skipTestDay === null) return;
-
-    try {
-      await forceSkipDay(skipTestDay);
-      setSkipTestDay(null);
-      setSkipTestResult(null);
-    } catch (err) {
-      console.error('Failed to force skip:', err);
     }
   };
 
@@ -606,53 +411,29 @@ export function PlanPage() {
   const { curriculum, currentDay } = activeSession;
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Your Learning Plan</h1>
-          <p className="text-gray-600">{activeSession.skillName}</p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setShowBacklog(true)}
-            leftIcon={<Archive className="w-4 h-4" />}
-          >
-            Backlog
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setShowLifeHappens(true)}
-          >
-            Life Happens
-          </Button>
-        </div>
+    <div className="max-w-2xl mx-auto px-4 py-8">
+      {/* Learning Path Header */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900 mb-1">
+          Your {activeSession.durationDays}-Day Learning Path
+        </h1>
+        <p className="text-gray-600">
+          {activeSession.skillName} • Day {currentDay} of {activeSession.durationDays}
+        </p>
       </div>
 
-      {/* Progress overview */}
-      <Card className="mb-6">
-        <div className="p-4">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm font-medium text-gray-700">Overall Progress</span>
-            <span className="text-sm text-gray-500">
-              Day {currentDay} of {activeSession.durationDays}
-            </span>
-          </div>
-          <ProgressBar value={currentDay} max={activeSession.durationDays} />
-          {activeSession.mode !== SessionMode.NORMAL && (
-            <p className="mt-2 text-sm text-alert-600">
-              📍 Currently in {activeSession.mode} mode
-            </p>
-          )}
+      {/* Progress bar */}
+      <div className="mb-8">
+        <div className="flex justify-between text-sm text-gray-600 mb-2">
+          <span>Progress</span>
+          <span>{Math.round(((currentDay - 1) / activeSession.durationDays) * 100)}% complete</span>
         </div>
-      </Card>
+        <ProgressBar value={currentDay - 1} max={activeSession.durationDays} />
+      </div>
 
       {/* Error display */}
       {error && (
-        <Card className="mb-4 p-4 bg-red-50 border-red-200">
+        <Card className="mb-6 p-4 bg-red-50 border-red-200">
           <div className="flex items-center justify-between">
             <p className="text-red-700 text-sm">{error}</p>
             <button onClick={clearError} className="text-red-500 hover:text-red-700">
@@ -663,145 +444,67 @@ export function PlanPage() {
       )}
 
       {/* Timeline */}
-      <div className="space-y-3">
-        {curriculum.days.map((dayData) => {
-          const day = dayData.day;
-
-          return (
-            <DayCard
-              key={day}
-              day={day}
-              dayData={dayData}
-              isExpanded={expandedDay === day}
-              onExpand={() => setExpandedDay(expandedDay === day ? null : day)}
-              onStartDay={() => handleStartDay(day)}
-              onSkipTest={() => handleOpenSkipTest(day)}
-              isLoading={isDayLoading && dayLoadingNumber === day}
-            />
-          );
-        })}
-
-        {/* Boss Projects */}
-        {curriculum.bossProjects.map((boss) => (
-          <Card
-            key={`boss-${boss.day}`}
-            className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200"
-          >
-            <div className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 
-                               flex items-center justify-center text-white">
-                  🏆
-                </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900">Boss Project: {boss.title}</h3>
-                  <p className="text-sm text-gray-600">
-                    Day {boss.day} • Combines days {boss.combinesDays.join(', ')}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </Card>
+      <div className="relative">
+        {curriculum.days.map((dayData, index) => (
+          <TimelineDayItem
+            key={dayData.day}
+            day={dayData.day}
+            dayData={dayData}
+            isLast={index === curriculum.days.length - 1}
+            onStartDay={() => handleStartDay(dayData.day)}
+            onSkipTest={() => handleOpenSkipTest(dayData.day)}
+            isLoading={isDayLoading && dayLoadingNumber === dayData.day}
+            isCurrentDay={dayData.day === currentDay}
+          />
         ))}
       </div>
 
-      {/* Create new curriculum button (if PRO+) */}
+      {/* Start Learning CTA for current day */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="mt-8 p-6 bg-gradient-to-r from-brand-50 to-focus-50 rounded-2xl border border-brand-200"
+      >
+        <div className="text-center">
+          <p className="text-gray-600 mb-3">Ready to continue?</p>
+          <Button
+            size="lg"
+            onClick={() => handleStartDay(currentDay)}
+            disabled={isDayLoading}
+            leftIcon={isDayLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
+          >
+            {isDayLoading ? 'Loading...' : `Start Day ${currentDay}`}
+          </Button>
+        </div>
+      </motion.div>
+
+      {/* Create new curriculum button */}
       {hasTierAccess(QuotaTier.PRO) && (
-        <div className="mt-8 pt-8 border-t border-gray-200">
+        <div className="mt-8 pt-6 border-t border-gray-200 text-center">
           <Button
             variant="ghost"
             onClick={() => navigate('/start')}
             leftIcon={<Plus className="w-4 h-4" />}
           >
-            Create Another Curriculum
+            Create another curriculum
           </Button>
         </div>
       )}
 
-      {/* Modals */}
-      <LifeHappensModal
-        isOpen={showLifeHappens}
-        onClose={() => setShowLifeHappens(false)}
-        onSelectMode={handleModeChange}
-        currentMode={activeSession.mode}
-      />
-
-      <BacklogDrawer
-        isOpen={showBacklog}
-        onClose={() => setShowBacklog(false)}
-        tasks={[]} // Would come from session state
-      />
-
-      <SkipTestModal
-        isOpen={skipTestDay !== null}
-        onClose={() => setSkipTestDay(null)}
-        dayNumber={skipTestDay || 1}
-        skipTest={skipTestDay ? getSkipTestForDay(skipTestDay) : undefined}
-        onSubmit={handleSubmitSkipTest}
-      />
-
-      {/* Skip test result toast */}
-      <AnimatePresence>
-        {skipTestResult && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className={clsx(
-              'fixed bottom-4 right-4 p-4 rounded-lg shadow-lg z-50 max-w-md',
-              skipTestResult.passed ? 'bg-green-500 text-white' : 'bg-amber-500 text-white'
-            )}
-          >
-            <p className="font-medium">{skipTestResult.message}</p>
-            {skipTestResult.suggestion && (
-              <p className="text-sm mt-2 opacity-90">{skipTestResult.suggestion}</p>
-            )}
-            {!skipTestResult.passed && (
-              <div className="flex gap-2 mt-3">
-                {skipTestResult.allSetsExhausted ? (
-                  <>
-                    <button
-                      onClick={() => {
-                        setSkipTestDay(null);
-                        setSkipTestResult(null);
-                        if (skipTestDay) handleStartDay(skipTestDay);
-                      }}
-                      className="px-3 py-1 bg-white hover:bg-white/90 text-amber-600 rounded text-sm font-medium transition-colors"
-                    >
-                      Complete Day
-                    </button>
-                    <button
-                      onClick={handleForceSkip}
-                      className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-sm font-medium transition-colors"
-                    >
-                      Skip Anyway
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      onClick={() => setSkipTestResult(null)}
-                      className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-sm font-medium transition-colors"
-                    >
-                      Try Again
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSkipTestDay(null);
-                        setSkipTestResult(null);
-                        if (skipTestDay) handleStartDay(skipTestDay);
-                      }}
-                      className="px-3 py-1 bg-white hover:bg-white/90 text-amber-600 rounded text-sm font-medium transition-colors"
-                    >
-                      Continue Day
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Skip Test Modal */}
+      {skipTestDay !== null && (
+        <SkipTestModal
+          isOpen={skipTestDay !== null}
+          onClose={() => {
+            setSkipTestDay(null);
+            setSkipTestResult(null);
+          }}
+          dayNumber={skipTestDay}
+          skipTest={getSkipTestForDay(skipTestDay)}
+          onSubmit={handleSubmitSkipTest}
+        />
+      )}
     </div>
   );
 }

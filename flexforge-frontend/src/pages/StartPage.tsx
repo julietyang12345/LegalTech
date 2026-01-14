@@ -20,11 +20,11 @@ import { useCompanionStore } from '@/stores/companionStore';
 import { Button, Card, GeneratingScreen, QuotaExceededModal } from '@/components/common';
 import { SkillLevel } from '@/types';
 
-// Loading steps for curriculum generation (~20-30 seconds)
+// Loading steps for curriculum generation (~30-40 seconds)
 const GENERATION_LOADING_STEPS = [
   { icon: Search, text: 'Analyzing your skill...', duration: 5000 },
   { icon: Brain, text: 'Designing learning path...', duration: 8000 },
-  { icon: BookOpen, text: 'Building curriculum...', duration: 10000 },
+  { icon: BookOpen, text: 'Building curriculum...', duration: 20000 },
   { icon: CheckCircle, text: 'Finalizing your plan...', duration: 5000 },
 ];
 
@@ -224,7 +224,7 @@ export function StartPage() {
     );
   };
 
-  // Create session directly (no preview step)
+  // Create session and show curriculum overview
   const handleStartLearning = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!skillName.trim()) return;
@@ -242,11 +242,12 @@ export function StartPage() {
       });
 
       addSystemMessage(
-        `🎉 Your ${skillName} curriculum is ready! Let's start learning!`,
+        `🎉 Your ${skillName} curriculum is ready! Here's your learning plan.`,
         'celebratory'
       );
 
-      navigate('/today');
+      // Navigate to plan page to show curriculum overview
+      navigate('/plan');
     } catch (err: any) {
       setIsGenerating(false);
       if (isQuotaError(err)) {
@@ -266,7 +267,7 @@ export function StartPage() {
         steps={GENERATION_LOADING_STEPS}
         title="Creating your curriculum"
         subtitle={`Building a personalized ${skillName} learning path...`}
-        timeEstimate="This takes about 20-30 seconds"
+        timeEstimate="This takes about 30-40 seconds"
       />
     );
   }
@@ -384,9 +385,9 @@ export function StartPage() {
               size="xl"
               className="w-full"
               disabled={!skillName.trim() || isLoading}
-              rightIcon={<Play className="w-5 h-5" />}
+              rightIcon={<Sparkles className="w-5 h-5" />}
             >
-              Start Learning
+              Build My Learning Path
             </Button>
 
             {/* Start Over */}
