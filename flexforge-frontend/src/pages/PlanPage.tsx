@@ -1,45 +1,33 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   Calendar,
-  ChevronDown,
-  ChevronRight,
   Play,
   Check,
   Lock,
-  Pause,
-  Zap,
   Clock,
-  Archive,
   Plus,
   FastForward,
   Loader2,
-  CheckCircle,
   SkipForward,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useAuthStore } from '@/stores/authStore';
 import { Button, Card, ProgressBar } from '@/components/common';
-import { SessionMode, QuotaTier, DayStatus, CurriculumDay } from '@/types';
+import { QuotaTier, DayStatus, CurriculumDay } from '@/types';
 
 // Timeline Day Item - clean timeline format
 function TimelineDayItem({
   day,
   dayData,
   isLast,
-  onStartDay,
-  onSkipTest,
-  isLoading,
   isCurrentDay,
 }: {
   day: number;
   dayData: CurriculumDay;
   isLast: boolean;
-  onStartDay: () => void;
-  onSkipTest: () => void;
-  isLoading: boolean;
   isCurrentDay: boolean;
 }) {
   const status = dayData?.status || DayStatus.LOCKED;
@@ -89,8 +77,6 @@ function TimelineDayItem({
             <Check className="w-5 h-5" />
           ) : isSkipped ? (
             <SkipForward className="w-4 h-4" />
-          ) : isLoading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
           ) : isLocked ? (
             <Lock className="w-4 h-4" />
           ) : (
@@ -168,35 +154,6 @@ function TimelineDayItem({
             </div>
           )}
 
-          {/* Action buttons */}
-          {(isUnlockable || isInProgress || isCurrentDay) && !isCompleted && !isSkipped && (
-            <div className="flex gap-2 mt-4">
-              <Button
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onStartDay();
-                }}
-                disabled={isLoading}
-                leftIcon={isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-              >
-                {isLoading ? 'Loading...' : 'Start Day'}
-              </Button>
-              {dayData?.skipTest && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSkipTest();
-                  }}
-                  leftIcon={<FastForward className="w-4 h-4" />}
-                >
-                  Skip Test
-                </Button>
-              )}
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -329,13 +286,8 @@ export function PlanPage() {
   const navigate = useNavigate();
   const {
     activeSession,
-    updateSession,
     fetchActiveSession,
-    loadDayContentSplit,
     submitSkipTest,
-    forceSkipDay,
-    isDayLoading,
-    dayLoadingNumber,
     error,
     clearError,
   } = useSessionStore();
@@ -349,13 +301,9 @@ export function PlanPage() {
     }
   }, [activeSession, fetchActiveSession]);
 
-  const handleStartDay = async (dayNumber: number) => {
-    try {
-      await loadDayContentSplit(dayNumber);
-      navigate(`/session/${activeSession?.id}`);
-    } catch (err) {
-      console.error('Failed to start day:', err);
-    }
+  const handleStartLearning = () => {
+    // Navigate to today page which shows day preview
+    navigate('/today');
   };
 
   const handleOpenSkipTest = (dayNumber: number) => {
@@ -451,15 +399,12 @@ export function PlanPage() {
             day={dayData.day}
             dayData={dayData}
             isLast={index === curriculum.days.length - 1}
-            onStartDay={() => handleStartDay(dayData.day)}
-            onSkipTest={() => handleOpenSkipTest(dayData.day)}
-            isLoading={isDayLoading && dayLoadingNumber === dayData.day}
             isCurrentDay={dayData.day === currentDay}
           />
         ))}
       </div>
 
-      {/* Start Learning CTA for current day */}
+      {/* Start Learning CTA */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -467,14 +412,13 @@ export function PlanPage() {
         className="mt-8 p-6 bg-gradient-to-r from-brand-50 to-focus-50 rounded-2xl border border-brand-200"
       >
         <div className="text-center">
-          <p className="text-gray-600 mb-3">Ready to continue?</p>
+          <p className="text-gray-600 mb-3">Ready to begin your journey?</p>
           <Button
             size="lg"
-            onClick={() => handleStartDay(currentDay)}
-            disabled={isDayLoading}
-            leftIcon={isDayLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
+            onClick={handleStartLearning}
+            leftIcon={<Play className="w-5 h-5" />}
           >
-            {isDayLoading ? 'Loading...' : `Start Day ${currentDay}`}
+            Start Session
           </Button>
         </div>
       </motion.div>

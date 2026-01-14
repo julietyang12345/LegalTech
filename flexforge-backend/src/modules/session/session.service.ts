@@ -50,10 +50,6 @@ export class SessionService {
       throw new NotFoundException('User not found');
     }
 
-  
-
-  
-
     const quota = await this.userService.checkQuota(userId);
     if (!quota.hasQuota) {
       throw new ForbiddenException(
@@ -550,7 +546,7 @@ export class SessionService {
     sessionId: string,
     userId: string,
     dayNumber: number,
-  ): Promise<{ coreContent: any; tokensUsed: number; fromCache: boolean; bossProject?: any }> {
+  ): Promise<{ coreContent: any; tokensUsed: number; fromCache: boolean }> {
     const session = await this.findOne(sessionId, userId);
     const user = await this.userService.findById(userId);
     const tierString = user.quotaTier.toUpperCase();
@@ -588,42 +584,6 @@ export class SessionService {
       sessionId,
     );
 
-    // Check if this day is part of a boss project and load boss details if needed
-    const bossProject = session.curriculum.bossProjects?.find(
-      (bp: any) => bp.combinesDays?.includes(dayNumber)
-    );
-
-    let bossDetails = null;
-    if (bossProject && !bossProject.detailsLoaded) {
-      try {
-        this.logger.log(`🎯 Loading boss project details for day ${dayNumber}...`);
-        const bossResult = await this.curriculumService.generateBossDetails(
-          session.curriculum,
-          bossProject.day,
-          tierString,
-        );
-        bossDetails = bossResult.bossContent;
-
-        this.logger.log(`✅ Boss project details loaded: phases=${bossDetails.phases?.length || 0}, requirements=${bossDetails.requirements?.length || 0}, hints=${bossDetails.hints?.length || 0}`);
-
-        // Update the boss project in the curriculum
-        const bossIndex = session.curriculum.bossProjects.findIndex(
-          (bp: any) => bp.day === bossProject.day
-        );
-        if (bossIndex !== -1) {
-          session.curriculum.bossProjects[bossIndex] = {
-            ...session.curriculum.bossProjects[bossIndex],
-            ...bossDetails,
-            detailsLoaded: true,
-          };
-        }
-
-        await this.userService.incrementUsage(userId, bossResult.tokensUsed, 0);
-      } catch (error) {
-        this.logger.warn(`Failed to load boss details: ${error.message}`);
-      }
-    }
-
     // Update session with core content
     const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
     session.curriculum.days[dayIndex] = {
@@ -639,28 +599,22 @@ export class SessionService {
 
     this.logger.log(`🚀 Day ${dayNumber} CORE loaded for session ${sessionId}`);
 
-    // Always return the boss project if this day is part of one (whether details were just loaded or already existed)
-    const activeBossProject = bossProject
-      ? session.curriculum.bossProjects.find((bp: any) => bp.day === bossProject.day)
-      : null;
-
     return {
       coreContent: result.coreContent,
       tokensUsed: result.tokensUsed,
       fromCache: result.fromCache || false,
-      bossProject: activeBossProject,
     };
   }
 
   /**
    * Load DEFERRED day content (background)
-   * Returns: task2, practiceProject, reflection, skipTest
+   * Returns: practiceProject, reflection
    */
   async loadDayDeferred(
     sessionId: string,
     userId: string,
     dayNumber: number,
-  ): Promise<{ deferredContent: any; tokensUsed: number; fromCache: boolean }> {
+  ): Promise<{ deferredContent: any; tokensUsed: number; fromCache: boolean; bossProject?: any }> {
     const session = await this.findOne(sessionId, userId);
     const user = await this.userService.findById(userId);
     const tierString = user.quotaTier.toUpperCase();
@@ -670,12 +624,22 @@ export class SessionService {
       throw new NotFoundException(`Day ${dayNumber} not found`);
     }
 
+    // Check if this day is part of a boss project
+    const bossProject = session.curriculum.bossProjects?.find(
+      (bp: any) => bp.combinesDays?.includes(dayNumber)
+    );
+
     // Check if deferred already loaded
     if (dayOverview.deferredLoaded && dayOverview.deferredContent) {
+      // Return cached boss project if applicable
+      const cachedBossProject = bossProject
+        ? session.curriculum.bossProjects.find((bp: any) => bp.day === bossProject.day)
+        : null;
       return {
         deferredContent: dayOverview.deferredContent,
         tokensUsed: 0,
         fromCache: true,
+        bossProject: cachedBossProject,
       };
     }
 
@@ -686,6 +650,39 @@ export class SessionService {
       tierString,
     );
 
+    let totalTokensUsed = result.tokensUsed;
+
+    // Load boss project details if needed
+    if (bossProject && !bossProject.detailsLoaded) {
+      try {
+        this.logger.log(`🎯 Loading boss project details for day ${dayNumber}...`);
+        const bossResult = await this.curriculumService.generateBossDetails(
+          session.curriculum,
+          bossProject.day,
+          tierString,
+        );
+        const bossDetails = bossResult.bossContent;
+
+        this.logger.log(`✅ Boss project details loaded: phases=${bossDetails.phases?.length || 0}, requirements=${bossDetails.requirements?.length || 0}, hints=${bossDetails.hints?.length || 0}`);
+
+        // Update the boss project in the curriculum
+        const bossIndex = session.curriculum.bossProjects.findIndex(
+          (bp: any) => bp.day === bossProject.day
+        );
+        if (bossIndex !== -1) {
+          session.curriculum.bossProjects[bossIndex] = {
+            ...session.curriculum.bossProjects[bossIndex],
+            ...bossDetails,
+            detailsLoaded: true,
+          };
+        }
+
+        totalTokensUsed += bossResult.tokensUsed;
+      } catch (error) {
+        this.logger.warn(`Failed to load boss details: ${error.message}`);
+      }
+    }
+
     // Update session with deferred content
     const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
     session.curriculum.days[dayIndex] = {
@@ -695,15 +692,21 @@ export class SessionService {
     };
 
     // Increment usage
-    await this.userService.incrementUsage(userId, result.tokensUsed, 0);
+    await this.userService.incrementUsage(userId, totalTokensUsed, 0);
     await this.sessionsRepository.save(session);
 
     this.logger.log(`⏳ Day ${dayNumber} DEFERRED loaded for session ${sessionId}`);
 
+    // Return the boss project if this day is part of one
+    const activeBossProject = bossProject
+      ? session.curriculum.bossProjects.find((bp: any) => bp.day === bossProject.day)
+      : null;
+
     return {
       deferredContent: result.deferredContent,
-      tokensUsed: result.tokensUsed,
+      tokensUsed: totalTokensUsed,
       fromCache: result.fromCache || false,
+      bossProject: activeBossProject,
     };
   }
 

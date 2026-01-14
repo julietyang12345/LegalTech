@@ -49,7 +49,6 @@ function getTimeStructure(hoursPerDay: number): {
   mode: string;
   maxVideo: number;
   task1: number;      // Quiz/FillBlank time (concept reinforcement)
-  task2: number;      // Extended practice (deep dive only)
   practice: number;   // Practice project time
   reflect: number;
   structure: string;
@@ -59,27 +58,27 @@ function getTimeStructure(hoursPerDay: number): {
   if (total <= 30) {
     return {
       totalMinutes: total, mode: 'Quick',
-      maxVideo: 5, task1: 15, task2: 0, practice: 0, reflect: 3,
+      maxVideo: 5, task1: 15, practice: 0, reflect: 3,
       structure: 'Video(5m) → Cards(5m) → Quiz(6m) → BossMilestone(9m) → Reflect(3m)'
     };
   } else if (total <= 45) {
     return {
       totalMinutes: total, mode: 'Standard',
-      maxVideo: 6, task1: 12, task2: 0, practice: 12, reflect: 4,
+      maxVideo: 6, task1: 12, practice: 12, reflect: 4,
       structure: 'Video(6m) → Cards(8m) → Quiz(5m) → BossMilestone(7m) → Practice(12m) → Reflect(4m)'
     };
   } else if (total <= 60) {
     return {
       totalMinutes: total, mode: 'Focused',
-      maxVideo: 7, task1: 15, task2: 0, practice: 18, reflect: 5,
+      maxVideo: 7, task1: 15, practice: 18, reflect: 5,
       structure: 'Video(7m) → Cards(10m) → Quiz(6m) → BossMilestone(9m) → Practice(18m) → Reflect(5m)'
     };
   }
   // Deep Dive: 90+ min
   return {
     totalMinutes: total, mode: 'DeepDive',
-    maxVideo: 10, task1: 15, task2: 15, practice: 25, reflect: 8,
-    structure: 'Video(10m) → Cards(15m) → Quiz(6m) → BossMilestone(9m) → ExtendedPractice(15m) → Practice(25m) → Reflect(8m)'
+    maxVideo: 10, task1: 15, practice: 25, reflect: 8,
+    structure: 'Video(10m) → Cards(15m) → Quiz(6m) → BossMilestone(9m) → Practice(25m) → Reflect(8m)'
   };
 }
 
@@ -304,6 +303,41 @@ function getDayHeader(params: {
   return lines.join('\n');
 }
 
+/**
+ * Determines if learning should be project-based (boss projects) or practice-based (practice projects)
+ *
+ * Decision factors:
+ * 1. Skill type: KNOWLEDGE/PHYSICAL are always practice-based
+ * 2. User's goal (outputType from questionnaire):
+ *    - ship_project, working_code → project-based
+ *    - understand_concept, fix_bug → practice-based
+ * 3. Default: CODE/AI_AGENT/DESIGN without preference → project-based
+ */
+function usesProjectBasedLearning(
+  skillType: SkillType,
+  outputType?: 'working_code' | 'understand_concept' | 'fix_bug' | 'ship_project'
+): boolean {
+  // KNOWLEDGE and PHYSICAL are always practice-based (languages, theory, physical skills)
+  if (skillType === SkillType.KNOWLEDGE || skillType === SkillType.PHYSICAL) {
+    return false;
+  }
+
+  // If user specified their goal, use that
+  if (outputType) {
+    switch (outputType) {
+      case 'ship_project':
+      case 'working_code':
+        return true;
+      case 'understand_concept':
+      case 'fix_bug':
+        return false;
+    }
+  }
+
+  // Default: CODE/AI_AGENT/DESIGN without preference → project-based
+  return true;
+}
+
 function getSkillTypeGuidance(skillType: SkillType, complexity: SkillComplexity, safetyLevel?: string): string {
   switch (skillType) {
     case SkillType.CODE:
@@ -331,11 +365,14 @@ function getSkillTypeGuidance(skillType: SkillType, complexity: SkillComplexity,
  * Day content is generated on-demand via buildDayDetailPrompt
  * Automatically includes learner context when learnerPrefs is provided
  *
- * Boss project spans entire session
+ * Project-based skills (CODE, AI_AGENT, DESIGN):
+ * - Boss project spans entire session
  * - Every day contributes a micro-step to the boss project
  * - Final day is the "Boss Day" where the complete project is assembled
- * - task1 = quiz/fillBlank for concept reinforcement
- * - bossMilestone = daily coding contribution to boss project
+ *
+ * Practice-based skills (KNOWLEDGE, PHYSICAL):
+ * - No boss projects, each day has standalone practice projects
+ * - Better for language learning, theory, physical skills
  */
 export function buildCurriculumPrompt(params: CurriculumPromptParams): {
   systemPrompt: string;
@@ -343,19 +380,26 @@ export function buildCurriculumPrompt(params: CurriculumPromptParams): {
 } {
   const time = getTimeStructure(params.hoursPerDay);
   const learnerContext = getLearnerContextGuidance(params.learnerPrefs);
+  const isProjectBased = usesProjectBasedLearning(params.skillType, params.learnerPrefs?.outputType);
   const allDays = Array.from({ length: params.durationDays }, (_, i) => i + 1);
-  // Boss project spans entire session - final day is the boss day
   const bossDay = params.durationDays;
+
+  const projectBasedInstructions = `IMPORTANT - PROJECT-BASED STRUCTURE:
+- ONE boss project spans the ENTIRE ${params.durationDays}-day session
+- EVERY day includes a bossMilestonePreview (what code they'll build that day)
+- Final day (Day ${params.durationDays}) is "Boss Day" - complete project assembly
+- Daily flow: Video → Cards → Quiz/FillBlank → Boss Micro-Step → Reflection`;
+
+  const practiceBasedInstructions = `IMPORTANT - PRACTICE-BASED STRUCTURE:
+- Each day is self-contained with standalone practice exercises
+- No multi-day projects - focus on mastering daily concepts
+- Daily flow: Video → Cards → Quiz/FillBlank → Practice Project → Reflection`;
 
   const systemPrompt = `Generate ${params.durationDays}-day curriculum skeleton for "${params.skillName}".
 Type: ${params.skillType} | Level: ${params.skillLevel} | ${time.totalMinutes}min/day (${time.mode})
 ${params.suggestedLanguage ? `Language: ${params.suggestedLanguage}` : ''}
 
-IMPORTANT - NEW STRUCTURE:
-- ONE boss project spans the ENTIRE ${params.durationDays}-day session
-- EVERY day includes a bossMilestonePreview (what code they'll build that day)
-- Final day (Day ${params.durationDays}) is "Boss Day" - complete project assembly
-- Daily flow: Video → Cards → Quiz/FillBlank → Boss Micro-Step → Reflection
+${isProjectBased ? projectBasedInstructions : practiceBasedInstructions}
 
 ${learnerContext}
 ${getSkillTypeGuidance(params.skillType, params.complexity, params.safetyLevel)}
@@ -364,17 +408,11 @@ ${getContentStrategyGuidance()}
 
 ${getTopicRelevanceGuidance()}
 
-Per day: day, title, subtitle, skills[], teaser, estimatedMinutes, hasBossProject (true for all), bossMilestonePreview, contentLayer, videoStrategy, transferability, contentSource, skipTest.
+Per day: day, title, subtitle, skills[], teaser, estimatedMinutes, ${isProjectBased ? 'hasBossProject (true for all), bossMilestonePreview,' : ''} contentLayer, videoStrategy, transferability, contentSource, skipTest.
 
 Output valid JSON only.`;
 
-  const userPrompt = `{
-  "title": "Curriculum title",
-  "description": "What student will master",
-  "finalProject": "Capstone project built across all ${params.durationDays} days",
-  "skillType": "${params.skillType}",
-  "days": [
-    {
+  const dayTemplate = isProjectBased ? `{
       "day": 1,
       "title": "Day 1: [Topic]",
       "subtitle": "Tagline",
@@ -396,20 +434,50 @@ Output valid JSON only.`;
         ]],
         "passThreshold": 2
       }
-    }
-  ],
-  "bossProjects": [{
+    }` : `{
+      "day": 1,
+      "title": "Day 1: [Topic]",
+      "subtitle": "Tagline",
+      "skills": ["Skill 1", "Skill 2"],
+      "teaser": "What they'll learn",
+      "estimatedMinutes": ${time.totalMinutes},
+      "contentLayer": "",
+      "videoStrategy": "",
+      "transferability": "",
+      "contentSource": "",
+      "skipTest": {
+        "description": "Prove mastery to skip this day",
+        "questionSets": [[
+          {"question": "MCQ testing concept?", "options": ["Wrong", "Wrong", "Correct", "Wrong"], "correctIndex": 2},
+          {"question": "Another MCQ?", "options": ["Correct", "Wrong", "Wrong", "Wrong"], "correctIndex": 0},
+          {"question": "Third MCQ?", "options": ["Wrong", "Correct", "Wrong", "Wrong"], "correctIndex": 1}
+        ]],
+        "passThreshold": 2
+      }
+    }`;
+
+  const bossProjectsSection = isProjectBased ? `"bossProjects": [{
     "day": ${bossDay},
     "title": "Boss Project: [Name]",
     "description": "Complete project built across all ${params.durationDays} days",
     "combinesDays": [${allDays.join(', ')}],
     "estimatedMinutes": 75,
     "teaser": "Final assembly and polish of your working project"
-  }],
-  "metadata": {"recommendedTools": [], "prerequisites": ${JSON.stringify(params.prerequisiteSkills || [])}, "safetyLevel": "${params.safetyLevel || 'low'}"}
+  }],` : `"bossProjects": [],`;
+
+  const userPrompt = `{
+  "title": "Curriculum title",
+  "description": "What student will master",
+  "finalProject": "${isProjectBased ? `Capstone project built across all ${params.durationDays} days` : 'Mastery of all daily concepts and exercises'}",
+  "skillType": "${params.skillType}",
+  "days": [
+    ${dayTemplate}
+  ],
+  ${bossProjectsSection}
+  "metadata": {"recommendedTools": [], "prerequisites": ${JSON.stringify(params.prerequisiteSkills || [])}, "safetyLevel": "${params.safetyLevel || 'low'}", "isProjectBased": ${isProjectBased}${params.learnerPrefs?.outputType ? `, "outputType": "${params.learnerPrefs.outputType}"` : ''}}
 }
 
-Generate ALL ${params.durationDays} days. hasBossProject=true for ALL days (each day contributes to the boss project). Include bossMilestonePreview for each day showing what code they'll build.`;
+Generate ALL ${params.durationDays} days. ${isProjectBased ? 'hasBossProject=true for ALL days (each day contributes to the boss project). Include bossMilestonePreview for each day showing what code they\'ll build.' : 'Each day should have self-contained learning objectives.'}`;
 
   return { systemPrompt, userPrompt };
 }
@@ -435,6 +503,7 @@ export interface DayDetailParams {
   userTier: string;
   hoursPerDay: number;
   suggestedLanguage?: string;
+  outputType?: 'working_code' | 'understand_concept' | 'fix_bug' | 'ship_project';
 }
 
 export function buildDayDetailPrompt(params: DayDetailParams): {
@@ -550,14 +619,18 @@ Output valid JSON only.`;
 
 /**
  * DAY DETAIL CORE PROMPT: Fast essential content only
- * Generates: prePrompt, video, foundationCards (5-6), task1 (quiz/fillBlank), bossMilestone
+ * Generates: prePrompt, video, foundationCards (5-6), task1 (quiz/fillBlank), bossMilestone (project-based only), skipTest
  * Called first for quick initial load
+ *
+ * Project-based skills include bossMilestone (daily coding toward boss project)
+ * Practice-based skills skip bossMilestone (use practice projects in deferred instead)
  */
 export function buildDayDetailCorePrompt(params: DayDetailParams): {
   systemPrompt: string;
   userPrompt: string;
 } {
   const time = getTimeStructure(params.hoursPerDay);
+  const isProjectBased = usesProjectBasedLearning(params.skillType, params.outputType);
   const dayHeader = getDayHeader({
     dayTitle: params.dayTitle,
     skeleton: params.skeleton,
@@ -568,8 +641,16 @@ export function buildDayDetailCorePrompt(params: DayDetailParams): {
     suggestedLanguage: params.suggestedLanguage,
   });
 
-  const task1Minutes = Math.round(time.task1 * 0.4);
+  const task1Minutes = isProjectBased ? Math.round(time.task1 * 0.4) : time.task1;
   const bossMilestoneMinutes = Math.round(time.task1 * 0.6);
+
+  const coreItems = isProjectBased
+    ? 'prePrompt, video info, foundationCards (5-6 cards), task1 (quiz or fillBlank), bossMilestone, skipTest'
+    : 'prePrompt, video info, foundationCards (5-6 cards), task1 (quiz or fillBlank), skipTest';
+
+  const bossInstructions = isProjectBased
+    ? '- bossMilestone = daily coding micro-step toward boss project (5-15 lines new code)\n'
+    : '';
 
   const systemPrompt = `Generate CORE learning content for Day ${params.dayNumber} of "${params.skillName}".
 
@@ -577,12 +658,15 @@ ${dayHeader}
 
 ${getSkillTypeGuidance(params.skillType, params.complexity)}
 
-Generate ONLY: prePrompt, video info, foundationCards (5-6 cards), task1 (quiz or fillBlank), bossMilestone, skipTest.
+Generate ONLY: ${coreItems}.
 - task1 = concept reinforcement (quiz or fillBlank ONLY, no coding)
-- bossMilestone = daily coding micro-step toward boss project (5-15 lines new code)
-skipTest: 3 hard MCQs testing day's concepts - user can skip day if they pass.
+${bossInstructions}skipTest: 3 hard MCQs testing day's concepts - user can skip day if they pass.
 
 Output valid JSON only.`;
+
+  const bossMilestoneSection = isProjectBased
+    ? `${getBossMilestoneTemplate(params.dayNumber, bossMilestoneMinutes)},`
+    : '';
 
   const userPrompt = `{
   "day": ${params.dayNumber},
@@ -600,7 +684,7 @@ Output valid JSON only.`;
 
   ${getTask1Template(params.dayNumber, params.skillLevel, 3, task1Minutes)},
 
-  ${getBossMilestoneTemplate(params.dayNumber, bossMilestoneMinutes)},
+  ${bossMilestoneSection}
 
   "skipTest": {
     "questionSets": [[
@@ -617,8 +701,11 @@ Output valid JSON only.`;
 
 /**
  * DAY DETAIL DEFERRED PROMPT: Secondary content loaded in background
- * Generates: task2, practiceProject, reflection, skipTest
+ * Generates: practiceProject (only for practice-based skills), reflection
  * Called after core loads, while user watches video
+ *
+ * Practice projects are only generated for practice-based skills (KNOWLEDGE, PHYSICAL)
+ * Project-based skills (CODE, AI_AGENT, DESIGN) use boss projects instead
  */
 export function buildDayDetailDeferredPrompt(params: DayDetailParams): {
   systemPrompt: string;
@@ -635,33 +722,21 @@ export function buildDayDetailDeferredPrompt(params: DayDetailParams): {
     includePrevious: false,
   });
 
-  // Skip if no deferred content needed for short sessions
-  const hasTask2 = time.task2 > 0;
-  const hasPractice = time.practice > 0;
+  // Only include practice project for practice-based skills (no boss projects)
+  const isProjectBased = usesProjectBasedLearning(params.skillType, params.outputType);
+  const hasPractice = !isProjectBased && time.practice > 0;
 
   const systemPrompt = `Generate DEFERRED learning content for Day ${params.dayNumber} of "${params.skillName}".
 
 ${dayHeader}
 
-Generate ONLY: ${hasTask2 ? 'task2, ' : ''}${hasPractice ? 'practiceProject, ' : ''}reflection.
-Provide COMPLETE working solutions.
+Generate ONLY: ${hasPractice ? 'practiceProject, ' : ''}reflection.
+${hasPractice ? 'Provide COMPLETE working solutions.' : ''}
 
 Output valid JSON only.`;
 
   const userPrompt = `{
   "day": ${params.dayNumber},
-  ${hasTask2 ? `"task2": {
-    "id": "day${params.dayNumber}-task2",
-    "title": "Extended Practice",
-    "description": "",
-    "estimatedMinutes": ${time.task2},
-    "challenge": "",
-    "expectedOutput": "",
-    "hints": [{"level": 1, "hint": ""}, {"level": 2, "hint": ""}, {"level": 3, "hint": ""}],
-    "solution": "",
-    "connectionToTask1": ""
-  },` : ''}
-
   ${hasPractice ? `"practiceProject": {
     "id": "day${params.dayNumber}-practice",
     "title": "",

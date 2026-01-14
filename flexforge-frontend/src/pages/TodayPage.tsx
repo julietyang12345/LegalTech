@@ -8,12 +8,12 @@ import { useCompanionStore } from '@/stores/companionStore';
 import { Button, Card, StreakBadge, ProgressBar, GeneratingScreen } from '@/components/common';
 import { sessionService } from '@/services/sessionService';
 
-// Loading steps for day content generation (~1 minute total)
+// Loading steps for day content generation (~1.5 minutes total)
 const DAY_LOADING_STEPS = [
-  { icon: Sparkles, text: 'Generating day content...', duration: 15000 },
-  { icon: Target, text: 'Creating practice exercises...', duration: 15000 },
-  { icon: BookOpen, text: 'Finding perfect video...', duration: 15000 },
-  { icon: CheckCircle, text: 'Finalizing your lesson...', duration: 10000 },
+  { icon: Sparkles, text: 'Generating day content...', duration: 20000 },
+  { icon: Target, text: 'Creating practice exercises...', duration: 20000 },
+  { icon: BookOpen, text: 'Curating learning resources...', duration: 25000 },
+  { icon: CheckCircle, text: 'Finalizing your lesson...', duration: 20000 },
 ];
 
 
@@ -213,7 +213,7 @@ export function TodayPage() {
       await loadDayContentSplit(activeSession.currentDay);
       navigate(`/session/${activeSession.id}`);
     } catch (err) {
-      console.error('Failed to start session:', err);
+      console.error('Failed to start learning:', err);
     }
   };
 
@@ -240,7 +240,7 @@ export function TodayPage() {
         steps={DAY_LOADING_STEPS}
         title={`Preparing Day ${activeSession.currentDay}`}
         subtitle={`Creating your ${activeSession.skillName} lesson`}
-        timeEstimate="This usually takes about a minute"
+        timeEstimate="This usually takes about 1-2 minutes"
       />
     );
   }
@@ -361,7 +361,7 @@ export function TodayPage() {
               leftIcon={isDayLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
               className="w-full sm:w-auto"
             >
-              {isDayLoading ? 'Generating Content...' : 'Start Session'}
+              {isDayLoading ? 'Generating Content...' : 'Start Learning'}
             </Button>
 
             {!canStart && activeSession.currentDay > 1 && (

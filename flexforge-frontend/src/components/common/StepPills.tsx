@@ -8,9 +8,10 @@ interface StepPillsProps {
   completedSteps: SessionStep[];
   onStepClick?: (step: SessionStep) => void;
   className?: string;
+  isProjectBased?: boolean;
 }
 
-const STEP_LABELS: Record<SessionStep, string> = {
+const getStepLabels = (isProjectBased: boolean): Record<SessionStep, string> => ({
   prePrompt: 'Prep',
   video: 'Watch',
   foundationCards: 'Learn',
@@ -18,9 +19,9 @@ const STEP_LABELS: Record<SessionStep, string> = {
   memoryBridge: 'Connect',
   conceptCheck: 'Check',
   task1: 'Code',
-  bossMilestone: 'Boss',
+  bossMilestone: isProjectBased ? 'Boss' : 'Practice',
   reflection: 'Reflect',
-};
+});
 
 export function StepPills({
   steps,
@@ -28,7 +29,9 @@ export function StepPills({
   completedSteps,
   onStepClick,
   className,
+  isProjectBased = true,
 }: StepPillsProps) {
+  const stepLabels = getStepLabels(isProjectBased);
   return (
     <div className={clsx('flex items-center gap-1', className)}>
       {steps.map((step, index) => {
@@ -50,7 +53,7 @@ export function StepPills({
                 isUpcoming && 'bg-gray-200 text-gray-500',
                 !isUpcoming && 'cursor-pointer hover:scale-110'
               )}
-              title={STEP_LABELS[step]}
+              title={stepLabels[step]}
             >
               {isComplete ? (
                 <Check className="w-4 h-4" />
@@ -86,7 +89,9 @@ export function StepPillsExpanded({
   onStepClick,
   showLabels = true,
   className,
+  isProjectBased = true,
 }: StepPillsExpandedProps) {
+  const stepLabels = getStepLabels(isProjectBased);
   return (
     <div className={clsx('flex items-center gap-2 overflow-x-auto no-scrollbar', className)}>
       {steps.map((step, index) => {
@@ -116,7 +121,7 @@ export function StepPillsExpanded({
                 {index + 1}
               </span>
             )}
-            {showLabels && <span>{STEP_LABELS[step]}</span>}
+            {showLabels && <span>{stepLabels[step]}</span>}
           </button>
         );
       })}

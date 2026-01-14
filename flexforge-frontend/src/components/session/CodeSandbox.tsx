@@ -17,12 +17,25 @@ interface CodeSandboxProps {
   dependencies?: Record<string, string>;
 }
 
-// Detect which sandbox mode to use based on language and dependencies
-function detectSandboxMode(language: string, dependencies?: Record<string, string>): SandboxMode {
+// Detect if code is Python based on content patterns
+function isPythonCode(code: string): boolean {
+  const pythonPatterns = [
+    /^import\s+\w+/m,                    // import requests
+    /^from\s+\w+\s+import/m,             // from bs4 import
+    /def\s+\w+\s*\([^)]*\)\s*:/,         // def function():
+    /print\s*\(/,                         // print()
+    /:\s*$/m,                             // lines ending with :
+    /\bTrue\b|\bFalse\b|\bNone\b/,       // Python keywords
+  ];
+  return pythonPatterns.some(pattern => pattern.test(code));
+}
+
+// Detect which sandbox mode to use based on language, code content, and dependencies
+function detectSandboxMode(language: string, code: string, dependencies?: Record<string, string>): SandboxMode {
   const lang = language.toLowerCase();
 
-  // Python always uses Pyodide
-  if (lang === 'python' || lang === 'py') {
+  // Python - check language OR detect from code content
+  if (lang === 'python' || lang === 'py' || isPythonCode(code)) {
     return 'python';
   }
 
@@ -179,7 +192,47 @@ async function loadPyodide(): Promise<any> {
   return pyodideLoadPromise;
 }
 
+// Packages that need local run (can't run in browser)
+const LOCAL_RUN_PACKAGES = [
+  'requests', 'urllib3', 'httpx', 'aiohttp',  // Network
+  'selenium', 'scrapy', 'beautifulsoup4',      // Web scraping
+  'flask', 'django', 'fastapi',                // Server frameworks
+  'pandas', 'numpy', 'scipy',                  // Data science
+  'tensorflow', 'torch', 'sklearn',            // ML
+];
+
+function getLocalRunPackages(code: string): string[] {
+  const found: string[] = [];
+  for (const pkg of LOCAL_RUN_PACKAGES) {
+    // Handle bs4 -> beautifulsoup4 mapping
+    const importName = pkg === 'beautifulsoup4' ? 'bs4' : pkg;
+    const importPattern = new RegExp(`(?:^|\\n)\\s*(?:import\\s+${importName}|from\\s+${importName}\\s+import)`, 'm');
+    if (importPattern.test(code)) {
+      found.push(pkg);
+    }
+  }
+  return found;
+}
+
 async function runPython(code: string): Promise<string> {
+  // Check for packages that need local run
+  const localPackages = getLocalRunPackages(code);
+  if (localPackages.length > 0) {
+    const pkgList = localPackages.join(' ');
+    return `🖥️ LOCAL RUN REQUIRED\n\n` +
+      `This code uses packages that need local Python.\n\n` +
+      `━━━ Quick Setup ━━━\n\n` +
+      `1. Copy code (click "Code" tab → select all → copy)\n\n` +
+      `2. Save as: main.py\n\n` +
+      `3. Run these commands:\n` +
+      `   pip install ${pkgList}\n` +
+      `   python main.py\n\n` +
+      `━━━ VS Code Users ━━━\n` +
+      `• Open folder → New file → Paste → Save as main.py\n` +
+      `• Open terminal (Ctrl+\`) → Run commands above\n\n` +
+      `✅ Paste your output below to verify!`;
+  }
+
   const pyodide = await loadPyodide();
 
   // Capture stdout
@@ -285,9 +338,37 @@ export function CodeSandbox({
   const [isExpanded, setIsExpanded] = useState(false);
   const [sandboxId, setSandboxId] = useState<string | null>(null);
   const [isPyodideLoading, setIsPyodideLoading] = useState(false);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [copied, setCopied] = useState<'code' | 'cmd' | null>(null);
 
-  const sandboxMode = detectSandboxMode(language, dependencies);
+  const sandboxMode = detectSandboxMode(language, code, dependencies);
+  const localRunPackages = sandboxMode === 'python' ? getLocalRunPackages(code) : [];
+  const needsLocalRun = localRunPackages.length > 0;
+
+  const copyToClipboard = async (text: string, type: 'code' | 'cmd') => {
+    await navigator.clipboard.writeText(text);
+    setCopied(type);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  // Open code in Replit (works for Python, Node, etc.)
+  const openInReplit = () => {
+    const langMap: Record<string, string> = {
+      'python': 'python3',
+      'py': 'python3',
+      'javascript': 'nodejs',
+      'js': 'nodejs',
+      'typescript': 'nodejs',
+      'ts': 'nodejs',
+      'node': 'nodejs',
+    };
+    const replitLang = langMap[language.toLowerCase()] || 'python3';
+
+    // Replit URL format: https://replit.com/new/{language}#code
+    // Code is base64 encoded in the hash
+    const encodedCode = btoa(unescape(encodeURIComponent(code)));
+    const replitUrl = `https://replit.com/new/${replitLang}?code=${encodedCode}`;
+    window.open(replitUrl, '_blank');
+  };
 
   useEffect(() => {
     setCode(initialCode);
@@ -387,7 +468,7 @@ export function CodeSandbox({
     if (sandboxMode === 'simple' && isWebLanguage) {
       return (
         <iframe
-          ref={iframeRef}
+          ref={simpleExecutor.iframeRef}
           className="w-full h-full bg-white"
           title="Code Preview"
           sandbox="allow-scripts"
@@ -513,31 +594,64 @@ export function CodeSandbox({
         )}
       </div>
 
-      {/* Run Button */}
+      {/* Run Button / Local Run UI */}
       <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
-        <button
-          onClick={runCode}
-          disabled={isRunning || !code.trim()}
-          className={clsx(
-            'flex items-center justify-center gap-2 w-full py-2.5 rounded-lg font-medium text-sm transition-all',
-            'bg-gradient-to-r from-green-500 to-emerald-600 text-white',
-            'hover:from-green-600 hover:to-emerald-700',
-            'disabled:opacity-50 disabled:cursor-not-allowed',
-            'shadow-sm hover:shadow-md'
-          )}
-        >
-          {isRunning ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              {sandboxMode === 'codesandbox' ? 'Creating Sandbox...' : 'Running...'}
-            </>
-          ) : (
-            <>
-              <Play className="w-4 h-4" />
-              Run Code
-            </>
-          )}
-        </button>
+        {needsLocalRun ? (
+          <div className="space-y-2">
+            {/* Primary: Open in Replit */}
+            <button
+              onClick={openInReplit}
+              className={clsx(
+                'flex items-center justify-center gap-2 w-full py-2.5 rounded-lg font-medium text-sm transition-all',
+                'bg-gradient-to-r from-orange-500 to-amber-500 text-white',
+                'hover:from-orange-600 hover:to-amber-600',
+                'shadow-sm hover:shadow-md'
+              )}
+            >
+              <ExternalLink className="w-4 h-4" />
+              Open in Replit (Run instantly)
+            </button>
+            {/* Secondary: Copy options */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => copyToClipboard(code, 'code')}
+                className="flex-1 py-1.5 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
+              >
+                {copied === 'code' ? '✓ Copied!' : '📋 Copy Code'}
+              </button>
+              <button
+                onClick={() => copyToClipboard(`pip install ${localRunPackages.join(' ')}\npython main.py`, 'cmd')}
+                className="flex-1 py-1.5 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
+              >
+                {copied === 'cmd' ? '✓ Copied!' : '⌨️ Copy Commands'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={runCode}
+            disabled={isRunning || !code.trim()}
+            className={clsx(
+              'flex items-center justify-center gap-2 w-full py-2.5 rounded-lg font-medium text-sm transition-all',
+              'bg-gradient-to-r from-green-500 to-emerald-600 text-white',
+              'hover:from-green-600 hover:to-emerald-700',
+              'disabled:opacity-50 disabled:cursor-not-allowed',
+              'shadow-sm hover:shadow-md'
+            )}
+          >
+            {isRunning ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {sandboxMode === 'codesandbox' ? 'Creating Sandbox...' : 'Running...'}
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4" />
+                Run Code
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       {/* Expanded backdrop */}

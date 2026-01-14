@@ -739,6 +739,7 @@ export class CurriculumService {
       userTier,
       hoursPerDay: curriculum.metadata.hoursPerDay,
       suggestedLanguage: curriculum.metadata.suggestedLanguage,
+      outputType: curriculum.metadata.outputType,
     };
 
     const { systemPrompt, userPrompt } = buildDayDetailCorePrompt(params);
@@ -803,7 +804,7 @@ export class CurriculumService {
 
   /**
    * Generate DEFERRED day content (background load)
-   * Returns: task2, practiceProject, reflection, skipTest
+   * Returns: practiceProject, reflection
    * Called after core loads, while user watches video
    */
   async generateDayDeferredDetails(
@@ -838,6 +839,7 @@ export class CurriculumService {
       userTier,
       hoursPerDay: curriculum.metadata.hoursPerDay,
       suggestedLanguage: curriculum.metadata.suggestedLanguage,
+      outputType: curriculum.metadata.outputType,
     };
 
     const { systemPrompt, userPrompt } = buildDayDetailDeferredPrompt(params);

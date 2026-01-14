@@ -94,10 +94,18 @@ function PresenceBar() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Check if curriculum is project-based
+  const isProjectBased = activeSession?.curriculum?.metadata?.isProjectBased !== false &&
+    (activeSession?.curriculum?.bossProjects?.length ?? 0) > 0;
+
   // Filter steps based on current day
   const availableSteps = STEPS.filter(step => {
     if (step === 'memoryBridge' && currentDay?.day === 1) return false;
-    if (step === 'bossMilestone' && !currentDay?.bossMilestone) return false;
+    // Show bossMilestone step if project-based (with milestone) or practice-based (with practice project)
+    if (step === 'bossMilestone') {
+      if (isProjectBased) return !!currentDay?.bossMilestone;
+      return !!currentDay?.deferredContent?.practiceProject;
+    }
     return true;
   });
 
@@ -128,6 +136,7 @@ function PresenceBar() {
                   setCurrentStep(step);
                 }
               }}
+              isProjectBased={isProjectBased}
             />
 
             {/* Right side: topic, timer, companion */}

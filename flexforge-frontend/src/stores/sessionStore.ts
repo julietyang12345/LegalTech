@@ -253,16 +253,22 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       return;
     }
 
-    // Derive bossMilestone from bossProjects if this day is part of a boss project
-    let bossMilestone = dayData.bossMilestone;
-    if (!bossMilestone) {
+    // Merge coreContent and deferredContent first
+    const mergedDay: CurriculumDay = {
+      ...dayData,
+      ...(dayData.coreContent as object),
+      ...(dayData.deferredContent as object),
+    };
+
+    // Use bossMilestone from coreContent (AI-generated) or dayData, with fallback
+    if (!mergedDay.bossMilestone) {
       const bossProject = activeSession.curriculum.bossProjects?.find(
         bp => bp.combinesDays?.includes(dayNumber)
       );
       if (bossProject) {
         const dayIndex = bossProject.combinesDays?.indexOf(dayNumber) ?? 0;
         const totalDays = bossProject.combinesDays?.length ?? 1;
-        bossMilestone = {
+        mergedDay.bossMilestone = {
           day: dayNumber,
           title: `Day ${dayIndex + 1} Contribution`,
           description: bossProject.free?.projectDescription || bossProject.description || bossProject.title,
@@ -275,13 +281,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         };
       }
     }
-
-    const mergedDay: CurriculumDay = {
-      ...dayData,
-      ...(dayData.coreContent as object),
-      ...(dayData.deferredContent as object),
-      bossMilestone,
-    };
 
     set({
       currentDay: mergedDay,

@@ -190,7 +190,7 @@ export class SessionController {
   /**
    * POST /api/v1/sessions/:id/days/:dayNumber/load-deferred
    * Load deferred content in background
-   * Returns: task2, practiceProject, reflection, skipTest
+   * Returns: practiceProject, reflection
    */
   @Post(':id/days/:dayNumber/load-deferred')
   async loadDayDeferred(
