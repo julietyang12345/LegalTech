@@ -44,6 +44,12 @@ export interface AIResponse {
   cost: number;
   provider: string;
   model: string;
+  cacheHit?: boolean;
+}
+
+export interface CacheablePrompt {
+  staticPart: string;    // Cacheable instructions (>1024 tokens)
+  dynamicPart: string;   // User-specific context
 }
 
 @Injectable()
@@ -276,6 +282,91 @@ export class AiService {
       provider: 'anthropic',
       model,
     };
+  }
+
+  /**
+   * Call Anthropic with prompt caching enabled
+   * Static parts are cached for 5 minutes, saving up to 90% on repeated calls
+   */
+  async callAnthropicWithCache(
+    model: string,
+    prompt: string,
+    cacheableSystem: CacheablePrompt,
+  ): Promise<AIResponse> {
+    // Build system with cache_control for static parts
+    const systemBlocks: Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }> = [];
+
+    // Static part gets cached (must be >1024 tokens to be effective)
+    if (cacheableSystem.staticPart) {
+      systemBlocks.push({
+        type: 'text',
+        text: cacheableSystem.staticPart,
+        cache_control: { type: 'ephemeral' },
+      });
+    }
+
+    // Dynamic part is not cached
+    if (cacheableSystem.dynamicPart) {
+      systemBlocks.push({
+        type: 'text',
+        text: cacheableSystem.dynamicPart,
+      });
+    }
+
+    const response = await this.anthropic.messages.create({
+      model,
+      max_tokens: 16384,
+      system: systemBlocks,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const content = response.content[0];
+    const text = content.type === 'text' ? content.text : '';
+
+    // Check if cache was used
+    const cacheHit = (response as any).usage?.cache_read_input_tokens > 0;
+
+    if (cacheHit) {
+      this.logger.log(`🎯 Cache HIT - saved ${(response as any).usage.cache_read_input_tokens} tokens`);
+    }
+
+    return {
+      content: text,
+      tokensUsed: response.usage.input_tokens + response.usage.output_tokens,
+      cost: this.calculateCostWithCache(
+        model,
+        response.usage.input_tokens,
+        response.usage.output_tokens,
+        (response as any).usage?.cache_creation_input_tokens || 0,
+        (response as any).usage?.cache_read_input_tokens || 0,
+      ),
+      provider: 'anthropic',
+      model,
+      cacheHit,
+    };
+  }
+
+  private calculateCostWithCache(
+    model: string,
+    inputTokens: number,
+    outputTokens: number,
+    cacheWriteTokens: number,
+    cacheReadTokens: number,
+  ): number {
+    // Pricing per 1M tokens (Claude Sonnet 4)
+    const inputCost = 3.0;    // $3/1M input
+    const outputCost = 15.0;  // $15/1M output
+    const cacheWriteCost = 3.75;  // $3.75/1M (25% more)
+    const cacheReadCost = 0.30;   // $0.30/1M (90% less!)
+
+    const normalInputTokens = inputTokens - cacheWriteTokens - cacheReadTokens;
+
+    return (
+      (normalInputTokens / 1_000_000) * inputCost +
+      (outputTokens / 1_000_000) * outputCost +
+      (cacheWriteTokens / 1_000_000) * cacheWriteCost +
+      (cacheReadTokens / 1_000_000) * cacheReadCost
+    );
   }
 
   private async callOpenAI(

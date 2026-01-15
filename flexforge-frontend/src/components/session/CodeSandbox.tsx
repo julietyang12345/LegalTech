@@ -1,7 +1,178 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Play, RotateCcw, Maximize2, Minimize2, ExternalLink, Code2, Eye, Loader2, Terminal, Package, Copy, AlertTriangle } from 'lucide-react';
+import { Play, RotateCcw, Maximize2, Minimize2, ExternalLink, Code2, Eye, Loader2, Terminal, Package, Copy, AlertTriangle, Info, Lightbulb } from 'lucide-react';
 import { clsx } from 'clsx';
+
+// ============================================
+// ENVIRONMENT BOUNDARY DETECTION
+// ============================================
+
+/**
+ * Three-layer model for error classification:
+ * Layer 1: LOGIC - code bugs, syntax errors
+ * Layer 2: ENVIRONMENT - module not available in sandbox
+ * Layer 3: REALITY - external service blocks/fails
+ */
+type ErrorLayer = 'logic' | 'environment' | 'reality';
+
+interface BoundaryInfo {
+  layer: ErrorLayer;
+  title: string;
+  description: string;
+  suggestions: string[];
+  showPaidOptions: boolean;
+}
+
+// Modules that aren't available in Pyodide (browser Python)
+const ENVIRONMENT_BLOCKED_MODULES = [
+  'requests', 'httpx', 'aiohttp', 'urllib3',
+  'selenium', 'playwright', 'scrapy',
+  'psycopg2', 'pymongo', 'redis', 'sqlalchemy',
+  'flask', 'django', 'fastapi',
+  'subprocess', 'multiprocessing', 'socket',
+];
+
+// Patterns indicating reality layer issues (external service problems)
+const REALITY_ERROR_PATTERNS = [
+  /403.*forbidden/i,
+  /captcha/i,
+  /rate.?limit/i,
+  /blocked/i,
+  /access.?denied/i,
+  /bot.?detection/i,
+  /cloudflare/i,
+];
+
+/**
+ * Detect which layer an error belongs to
+ */
+function detectErrorBoundary(error: string, code: string): BoundaryInfo | null {
+  const lowerError = error.toLowerCase();
+
+  // Check for environment layer (module not available)
+  if (lowerError.includes('no module named') || lowerError.includes('modulenotfounderror')) {
+    const moduleMatch = error.match(/no module named ['"]?(\w+)['"]?/i);
+    const moduleName = moduleMatch?.[1] || 'unknown';
+
+    if (ENVIRONMENT_BLOCKED_MODULES.some(m => lowerError.includes(m))) {
+      return {
+        layer: 'environment',
+        title: "Environment Boundary",
+        description: `The '${moduleName}' module isn't available in the browser sandbox. This is an environment limitation, not a bug in your code.`,
+        suggestions: [
+          "Use fixture data to practice the parsing logic",
+          "Run this code locally with Python installed",
+          "Use a cloud IDE like Replit or Google Colab",
+        ],
+        showPaidOptions: true,
+      };
+    }
+  }
+
+  // Check for reality layer (external service issues)
+  if (REALITY_ERROR_PATTERNS.some(pattern => pattern.test(error))) {
+    return {
+      layer: 'reality',
+      title: "Real-World Boundary",
+      description: "The site actively blocks automated access. This isn't a bug—it's how production systems protect themselves.",
+      suggestions: [
+        "Practice parsing with the provided fixture data",
+        "Learn to detect and handle block responses",
+        "Understand this is expected behavior, not failure",
+      ],
+      showPaidOptions: true,
+    };
+  }
+
+  // Check if code uses blocked modules but hasn't errored yet (preemptive)
+  for (const module of ENVIRONMENT_BLOCKED_MODULES) {
+    if (code.includes(`import ${module}`) || code.includes(`from ${module}`)) {
+      if (lowerError.includes('error')) {
+        return {
+          layer: 'environment',
+          title: "Environment Boundary",
+          description: `This code uses '${module}' which requires server-side Python, not browser sandbox.`,
+          suggestions: [
+            "Modify code to use fixture data instead",
+            "Run locally or in cloud IDE",
+          ],
+          showPaidOptions: true,
+        };
+      }
+    }
+  }
+
+  return null; // Regular error, not a boundary issue
+}
+
+/**
+ * Boundary notification component
+ * Educates users about the three-layer model instead of just showing errors
+ */
+function BoundaryNotification({
+  boundary,
+  onDismiss
+}: {
+  boundary: BoundaryInfo;
+  onDismiss?: () => void;
+}) {
+  const layerColors = {
+    logic: 'border-red-200 bg-red-50',
+    environment: 'border-amber-200 bg-amber-50',
+    reality: 'border-blue-200 bg-blue-50',
+  };
+
+  const layerIcons = {
+    logic: AlertTriangle,
+    environment: Info,
+    reality: Lightbulb,
+  };
+
+  const Icon = layerIcons[boundary.layer];
+
+  return (
+    <div className={clsx(
+      'rounded-lg border p-4 mb-3',
+      layerColors[boundary.layer]
+    )}>
+      <div className="flex items-start gap-3">
+        <Icon className={clsx(
+          'w-5 h-5 flex-shrink-0 mt-0.5',
+          boundary.layer === 'logic' ? 'text-red-600' :
+          boundary.layer === 'environment' ? 'text-amber-600' : 'text-blue-600'
+        )} />
+        <div className="flex-1">
+          <h4 className="font-semibold text-gray-900 mb-1">{boundary.title}</h4>
+          <p className="text-sm text-gray-700 mb-3">{boundary.description}</p>
+
+          <div className="text-sm text-gray-600 mb-3">
+            <p className="font-medium mb-1">What you can do:</p>
+            <ul className="list-disc list-inside space-y-0.5">
+              {boundary.suggestions.map((s, i) => (
+                <li key={i}>{s}</li>
+              ))}
+            </ul>
+          </div>
+
+          {boundary.showPaidOptions && (
+            <div className="text-xs text-gray-500 bg-white/50 rounded p-2 border border-gray-200">
+              <p className="font-medium mb-1 flex items-center gap-1">
+                <Lightbulb className="w-3 h-3" />
+                Going Further (Production Solutions):
+              </p>
+              <ul className="list-disc list-inside space-y-0.5">
+                <li>Backend proxy (Cloudflare Workers, AWS Lambda)</li>
+                <li>Managed APIs (ScraperAPI, Bright Data)</li>
+                <li>Headless browser services</li>
+              </ul>
+              <p className="mt-1 italic">This lesson focuses on the logic that works everywhere.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Sandbox execution modes (no server-side execution - all browser or external services)
 type SandboxMode = 'simple' | 'stackblitz' | 'iframe_preview' | 'codesandbox' | 'python' | 'copy_only';
@@ -112,7 +283,7 @@ function detectSandboxMode(language: string, code: string, dependencies?: Record
     return 'stackblitz';
   }
 
-  // Step 6: Languages that need external tools (Replit/local) - no server execution
+  // Step 6: Languages that need external tools (local) - no server execution
   const externalOnlyLanguages = ['go', 'rust', 'java', 'c', 'cpp', 'ruby', 'php', 'kotlin', 'swift', 'csharp'];
   if (externalOnlyLanguages.includes(lang)) {
     return 'copy_only';
@@ -473,35 +644,17 @@ export function CodeSandbox({
   const [sandboxId, setSandboxId] = useState<string | null>(null);
   const [isPyodideLoading, setIsPyodideLoading] = useState(false);
   const [copied, setCopied] = useState<'code' | 'cmd' | null>(null);
+  const [boundary, setBoundary] = useState<BoundaryInfo | null>(null);
 
   const sandboxMode = detectSandboxMode(language, code, dependencies);
 
-  // Show cloud options for Python (Replit for beginners, Codespaces for advanced)
+  // Show cloud options for Python
   const showCloudOptions = sandboxMode === 'python';
 
   const copyToClipboard = async (text: string, type: 'code' | 'cmd') => {
     await navigator.clipboard.writeText(text);
     setCopied(type);
     setTimeout(() => setCopied(null), 2000);
-  };
-
-  // Open code in Replit - beginner friendly, auto-installs packages
-  const openInReplit = () => {
-    const langMap: Record<string, string> = {
-      'python': 'python3',
-      'py': 'python3',
-      'javascript': 'nodejs',
-      'js': 'nodejs',
-      'typescript': 'nodejs',
-      'ts': 'nodejs',
-      'node': 'nodejs',
-      'go': 'go',
-      'java': 'java',
-      'rust': 'rust',
-    };
-    const replitLang = langMap[language.toLowerCase()] || 'python3';
-    const encodedCode = btoa(unescape(encodeURIComponent(code)));
-    window.open(`https://replit.com/new/${replitLang}?code=${encodedCode}`, '_blank');
   };
 
   // Open in GitHub Codespaces - for serious systems work
@@ -532,7 +685,15 @@ export function CodeSandbox({
   const handleResult = useCallback((result: string, isError?: boolean) => {
     setOutput(result);
     setIsRunning(false);
-  }, []);
+
+    // Check if this is a boundary error (environment or reality layer)
+    if (isError || result.includes('❌')) {
+      const detectedBoundary = detectErrorBoundary(result, code);
+      setBoundary(detectedBoundary);
+    } else {
+      setBoundary(null);
+    }
+  }, [code]);
 
   const simpleExecutor = SimpleExecutor({ code, language, onResult: handleResult });
 
@@ -595,6 +756,7 @@ export function CodeSandbox({
     setCode(initialCode);
     setOutput('');
     setSandboxId(null);
+    setBoundary(null);
     onCodeChange?.(initialCode);
   };
 
@@ -684,8 +846,19 @@ export function CodeSandbox({
 
     // Console output for Judge0 and other modes
     return (
-      <div className="w-full h-full p-4 bg-gray-900 text-gray-100 font-mono text-sm overflow-auto whitespace-pre-wrap">
-        {output || 'Click "Run" to see output...'}
+      <div className="w-full h-full p-4 bg-gray-900 text-gray-100 font-mono text-sm overflow-auto">
+        {/* Show boundary notification if detected */}
+        {boundary && (
+          <div className="mb-3">
+            <BoundaryNotification
+              boundary={boundary}
+              onDismiss={() => setBoundary(null)}
+            />
+          </div>
+        )}
+        <pre className="whitespace-pre-wrap">
+          {output || 'Click "Run" to see output...'}
+        </pre>
       </div>
     );
   };
@@ -899,14 +1072,6 @@ export function CodeSandbox({
             {/* Cloud options for Python/complex code */}
             {showCloudOptions && (
               <div className="flex gap-2">
-                <button
-                  onClick={openInReplit}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-green-600 hover:bg-green-50 rounded-lg transition-colors border border-green-200"
-                  title="Opens in Replit"
-                >
-                  <Play className="w-3 h-3" />
-                  Replit
-                </button>
                 <button
                   onClick={openInCodespaces}
                   className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-purple-600 hover:bg-purple-50 rounded-lg transition-colors border border-purple-200"

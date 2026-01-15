@@ -10,8 +10,10 @@ import { UniversityResourceService } from './services/university/university-reso
 import { DocumentationFetchService, DocFetchResult } from './services/docs/documentation-fetch.service';
 import {
   buildCurriculumPrompt,
+  buildCacheableCurriculumPrompt,
   buildDayDetailPrompt,
   buildDayDetailCorePrompt,
+  buildCacheableDayDetailCorePrompt,
   buildDayDetailDeferredPrompt,
   buildBossDetailPrompt,
   DayDetailParams,
@@ -172,8 +174,8 @@ export class CurriculumService {
       );
     }
 
-    // Step 3: Build curriculum prompt (skeleton only)
-    const { systemPrompt, userPrompt } = buildCurriculumPrompt({
+    // Step 3: Build curriculum prompt with caching support (skeleton only)
+    const { staticPart, dynamicPart, userPrompt } = buildCacheableCurriculumPrompt({
       skillName: dto.skillName,
       durationDays: dto.durationDays,
       hoursPerDay: dto.hoursPerDay,
@@ -185,12 +187,12 @@ export class CurriculumService {
       prerequisiteSkills: skillDetection.prerequisiteSkills,
     });
 
-    // Step 4: Generate curriculum OVERVIEW with AI (Phase 1)
-    this.logger.log('🤖 Generating curriculum overview (Phase 1)...');
-    const aiResponse = await this.aiService.routeRequest(
-      AITask.CURRICULUM_GENERATION,
+    // Step 4: Generate curriculum OVERVIEW with AI (Phase 1) - with prompt caching
+    this.logger.log('🤖 Generating curriculum overview (Phase 1) with prompt caching...');
+    const aiResponse = await this.aiService.callAnthropicWithCache(
+      'claude-sonnet-4-20250514',
       userPrompt,
-      systemPrompt,
+      { staticPart, dynamicPart },
     );
 
     // Step 5: Parse and validate curriculum
@@ -742,12 +744,12 @@ export class CurriculumService {
       outputType: curriculum.metadata.outputType,
     };
 
-    const { systemPrompt, userPrompt } = buildDayDetailCorePrompt(params);
+    const { staticPart, dynamicPart, userPrompt } = buildCacheableDayDetailCorePrompt(params);
 
-    const aiResponse = await this.aiService.routeRequest(
-      AITask.CURRICULUM_GENERATION,
+    const aiResponse = await this.aiService.callAnthropicWithCache(
+      'claude-sonnet-4-20250514',
       userPrompt,
-      systemPrompt,
+      { staticPart, dynamicPart },
     );
 
     let coreContent: any;

@@ -119,6 +119,8 @@ TOPIC FILTER: Only include what blocks progress toward the goal. MEANS (tools/se
 `;
 }
 
+// Sandbox/environment rules are in CURRICULUM_STATIC_INSTRUCTIONS and DAY_DETAIL_STATIC_INSTRUCTIONS (cached)
+
 // Generate learner context guidance from onboarding preferences
 function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
   if (!prefs) return '';
@@ -882,4 +884,122 @@ Output valid JSON only.`;
 }`;
 
   return { systemPrompt, userPrompt };
+}
+
+// ============================================
+// CACHEABLE PROMPT BUILDERS (Token Optimization)
+// ============================================
+
+/**
+ * Static instructions that can be cached across all curriculum generations
+ * These don't change based on user input - cache for 5 min
+ */
+const CURRICULUM_STATIC_INSTRUCTIONS = `You generate curriculum skeletons.
+
+CONTENT STRATEGY (per day):
+contentLayer: foundation|language_core|framework|tool|project
+videoStrategy: skip|optional|helpful|recommended
+contentSource: university|youtube|text|docs
+transferability: high|medium|low
+
+RULES:
+- foundation = core CS (algorithms, Big O) → contentSource=university
+- skip video only for simple syntax, never for algorithms/theory
+- Each day: title, subtitle, skills[], teaser, estimatedMinutes, contentLayer, videoStrategy, transferability, contentSource, skipTest
+
+TOPIC FILTER: Only include what blocks progress. MEANS→minimum. ENDS→full depth.
+
+CODE ENVIRONMENT:
+Browser-safe: json, csv, re, math, datetime, collections, itertools, pandas, numpy, beautifulsoup4
+Needs local: requests, selenium, playwright, psycopg2, flask, django, fastapi
+→ If using local-only modules, provide fixture data as fallback
+
+AVOID: scraping amazon/google/twitter/linkedin, Docker in Days 1-7, live APIs without fixtures
+→ Use mock data or SQLite instead
+
+skipTest format: {questionSets: [[{question, options[4], correctIndex}]], passThreshold: 2}
+
+Output valid JSON only.`;
+
+/**
+ * Static instructions for day detail generation - cacheable
+ */
+const DAY_DETAIL_STATIC_INSTRUCTIONS = `You generate day learning content.
+
+TASK FORMATS (task1 - concept reinforcement):
+- quiz: {passingScore, questions[{question, options[4], correctIndex, explanation}]} - 5-8 MCQs
+- fillBlank: {passingScore, items[{codeTemplate with ___BLANK___, blanks[{correctAnswers[], hint}]}]}
+
+BOSS MILESTONE (for project-based skills):
+- Daily coding micro-step (5-15 lines new code)
+- Validation: user runs code, sees output
+
+FOUNDATION CARDS (5-6):
+- Card 1: INTRO/RECAP connecting to previous
+- Cards 2-5: Core concepts with realWorldContext
+- microQuestion types: gotit, understanding (MCQ)
+
+CODE EXERCISES:
+- Browser-safe: json, csv, re, math, pandas, numpy, beautifulsoup4
+- Needs local: requests, selenium, flask, django → provide fixture fallback
+- Include error handling, use mock data for external APIs
+- Add note "For production: use backend/local" when needed
+
+Output valid JSON only.`;
+
+/**
+ * Cacheable curriculum prompt - splits static/dynamic for Anthropic prompt caching
+ * Use with AiService.callAnthropicWithCache()
+ */
+export function buildCacheableCurriculumPrompt(params: CurriculumPromptParams): {
+  staticPart: string;
+  dynamicPart: string;
+  userPrompt: string;
+} {
+  const time = getTimeStructure(params.hoursPerDay);
+  const isProjectBased = usesProjectBasedLearning(params.skillType, params.learnerPrefs?.outputType);
+
+  // Static part - cacheable across all users
+  const staticPart = CURRICULUM_STATIC_INSTRUCTIONS;
+
+  // Dynamic part - user-specific context
+  const dynamicPart = `Generate ${params.durationDays}-day curriculum for "${params.skillName}".
+Type: ${params.skillType} | Level: ${params.skillLevel} | ${time.totalMinutes}min/day
+${params.suggestedLanguage ? `Lang: ${params.suggestedLanguage}` : ''}
+${isProjectBased ? 'PROJECT-BASED: Boss project spans all days. Include hasBossProject:true, bossMilestonePreview per day.' : 'PRACTICE-BASED: Standalone daily exercises.'}
+${params.learnerPrefs?.originalGoal ? `Goal: "${params.learnerPrefs.originalGoal}"` : ''}
+${params.learnerPrefs?.outputType ? `Output: ${params.learnerPrefs.outputType}` : ''}`;
+
+  // Compressed user prompt template
+  const userPrompt = `{"title":"","description":"","finalProject":"","skillType":"${params.skillType}","days":[${Array.from({ length: params.durationDays }, (_, i) => `{"day":${i + 1},"title":"Day ${i + 1}:","subtitle":"","skills":[],"teaser":"","estimatedMinutes":${time.totalMinutes}${isProjectBased ? ',"hasBossProject":true,"bossMilestonePreview":""' : ''},"contentLayer":"","videoStrategy":"","transferability":"","contentSource":"","skipTest":{"questionSets":[[{"question":"","options":["","","",""],"correctIndex":0},{"question":"","options":["","","",""],"correctIndex":0},{"question":"","options":["","","",""],"correctIndex":0}]],"passThreshold":2}}`).join(',')}],${isProjectBased ? `"bossProjects":[{"day":${params.durationDays},"title":"Boss Project:","description":"","combinesDays":[${Array.from({ length: params.durationDays }, (_, i) => i + 1).join(',')}],"estimatedMinutes":75}],` : '"bossProjects":[],'}"metadata":{"isProjectBased":${isProjectBased}}}`;
+
+  return { staticPart, dynamicPart, userPrompt };
+}
+
+/**
+ * Cacheable day detail core prompt
+ */
+export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
+  staticPart: string;
+  dynamicPart: string;
+  userPrompt: string;
+} {
+  const time = getTimeStructure(params.hoursPerDay);
+  const isProjectBased = usesProjectBasedLearning(params.skillType, params.outputType);
+
+  // Static part - cacheable
+  const staticPart = DAY_DETAIL_STATIC_INSTRUCTIONS;
+
+  // Dynamic part - day-specific
+  const dynamicPart = `Day ${params.dayNumber} of "${params.skillName}" (${params.skillType})
+Title: ${params.dayTitle}
+${params.previousDayTitle ? `Previous: ${params.previousDayTitle}` : ''}
+${params.suggestedLanguage ? `Lang: ${params.suggestedLanguage}` : ''}
+${isProjectBased ? 'Include bossMilestone.' : 'No bossMilestone (practice-based).'}
+Generate: prePrompt, video, foundationCards(5-6), task1, ${isProjectBased ? 'bossMilestone, ' : ''}skipTest.`;
+
+  // Compressed template
+  const userPrompt = `{"day":${params.dayNumber},"title":"${params.dayTitle}","prePrompt":{"text":"","primeQuestions":[],"yesterdayRecap":""},"video":{"watchPoints":[]},"foundationCards":[{"id":"c1","concept":"","explanation":"","realWorldContext":"","microQuestion":{"question":"","type":"gotit"},"order":1}],"task1":{"format":"quiz","passingScore":80,"questions":[{"question":"","options":["","","",""],"correctIndex":0,"explanation":""}]}${isProjectBased ? ',"bossMilestone":{"title":"","description":"","microTask":{"instruction":"","starterCode":"","expectedOutput":"","hints":[],"solution":""},"validationType":"run","estimatedMinutes":10}' : ''},"skipTest":{"questionSets":[[{"question":"","options":["","","",""],"correctIndex":0}]],"passThreshold":3}}`;
+
+  return { staticPart, dynamicPart, userPrompt };
 }
