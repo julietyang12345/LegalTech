@@ -763,6 +763,7 @@ export function SessionPage() {
     setCurrentStep,
     completeStep,
     isDeferredLoading,
+    isRegenerating,
   } = useSessionStore();
 
   const { celebrate, addSystemMessage } = useCompanionStore();
@@ -961,6 +962,23 @@ export function SessionPage() {
           <p className="text-gray-600">Loading reflection questions...</p>
         </div>
       </FocusModeLayout>
+    );
+  }
+
+  // Regenerating day content
+  if (isRegenerating) {
+    return (
+      <GeneratingScreen
+        steps={[
+          { icon: Sparkles, text: 'Generating fresh content...', duration: 30000 },
+          { icon: Target, text: 'Creating new exercises...', duration: 30000 },
+          { icon: BookOpen, text: 'Finding a new video...', duration: 30000 },
+          { icon: Trophy, text: 'Preparing your refreshed session...', duration: 10000 },
+        ]}
+        title={`Regenerating Day ${currentDay.day}`}
+        subtitle={`Creating fresh ${activeSession.skillName} content just for you`}
+        timeEstimate="This usually takes 1-2 minutes"
+      />
     );
   }
 

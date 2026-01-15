@@ -546,6 +546,7 @@ export class SessionService {
     sessionId: string,
     userId: string,
     dayNumber: number,
+    forceRegenerate?: boolean,
   ): Promise<{ coreContent: any; tokensUsed: number; fromCache: boolean }> {
     const session = await this.findOne(sessionId, userId);
     const user = await this.userService.findById(userId);
@@ -567,13 +568,17 @@ export class SessionService {
       }
     }
 
-    // Check if core content already loaded
-    if (dayOverview.coreLoaded && dayOverview.coreContent) {
+    // Check if core content already loaded (skip if forceRegenerate)
+    if (!forceRegenerate && dayOverview.coreLoaded && dayOverview.coreContent) {
       return {
         coreContent: dayOverview.coreContent,
         tokensUsed: 0,
         fromCache: true,
       };
+    }
+
+    if (forceRegenerate) {
+      this.logger.log(`🔄 Force regenerating Day ${dayNumber} for session ${sessionId}`);
     }
 
     // Generate core content (fast)
@@ -582,6 +587,7 @@ export class SessionService {
       dayNumber,
       tierString,
       sessionId,
+      forceRegenerate,
     );
 
     // Update session with core content

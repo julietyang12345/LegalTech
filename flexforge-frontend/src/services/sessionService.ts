@@ -106,10 +106,12 @@ export const sessionService = {
   /**
    * Start a day - CORE content only (fast initial load)
    * Returns: prePrompt, video, foundationCards, task1
+   * @param forceRegenerate - If true, regenerates content even if already cached
    */
-  async startDayCore(sessionId: string, dayNumber: number): Promise<StartDayCoreResponse> {
+  async startDayCore(sessionId: string, dayNumber: number, forceRegenerate?: boolean): Promise<StartDayCoreResponse> {
     const { data } = await api.post<StartDayCoreResponse>(
-      `/sessions/${sessionId}/days/${dayNumber}/start-core`
+      `/sessions/${sessionId}/days/${dayNumber}/start-core`,
+      { forceRegenerate }
     );
     return data;
   },

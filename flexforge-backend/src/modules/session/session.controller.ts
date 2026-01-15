@@ -173,11 +173,13 @@ export class SessionController {
     @Request() req,
     @Param('id') id: string,
     @Param('dayNumber') dayNumber: string,
+    @Body() body?: { forceRegenerate?: boolean },
   ) {
     const result = await this.sessionService.startDayCore(
       id,
       req.user.id,
       parseInt(dayNumber, 10),
+      body?.forceRegenerate,
     );
 
     return {

@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Lightbulb, RotateCcw, Loader2 } from 'lucide-react';
+import { Lightbulb, RotateCcw } from 'lucide-react';
 import { Card } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { useSessionStore } from '@/stores/sessionStore';
@@ -14,15 +13,13 @@ interface PrePromptStepProps {
 }
 
 export function PrePromptStep({ day }: PrePromptStepProps) {
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  const { loadDayCoreContent, setCurrentStep } = useSessionStore();
+  const { regenerateDayContent } = useSessionStore();
   const { addSystemMessage } = useCompanionStore();
 
   const handleRegenerateDay = async () => {
-    setIsRegenerating(true);
     try {
-      await loadDayCoreContent(day.day);
-      setCurrentStep('prePrompt');
+      // This sets isRegenerating: true in the store, triggering full loading screen in SessionPage
+      await regenerateDayContent(day.day);
       addSystemMessage(
         '✨ Fresh content generated! Ready to learn something new.',
         'encouraging'
@@ -33,8 +30,6 @@ export function PrePromptStep({ day }: PrePromptStepProps) {
         'Failed to regenerate content. Please try again.',
         'supportive'
       );
-    } finally {
-      setIsRegenerating(false);
     }
   };
 
@@ -85,16 +80,10 @@ export function PrePromptStep({ day }: PrePromptStepProps) {
       <div className="pt-4 border-t border-gray-100">
         <button
           onClick={handleRegenerateDay}
-          disabled={isRegenerating}
-          className="text-sm text-gray-400 hover:text-gray-600 flex items-center gap-1.5 mx-auto
-                   disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="text-sm text-gray-400 hover:text-gray-600 flex items-center gap-1.5 mx-auto transition-colors"
         >
-          {isRegenerating ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <RotateCcw className="w-4 h-4" />
-          )}
-          {isRegenerating ? 'Regenerating content...' : "Not satisfied? Regenerate today's content"}
+          <RotateCcw className="w-4 h-4" />
+          Not satisfied? Regenerate today's content
         </button>
       </div>
     </StepLayout>

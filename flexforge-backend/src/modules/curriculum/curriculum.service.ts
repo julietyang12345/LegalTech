@@ -710,6 +710,7 @@ export class CurriculumService {
     dayNumber: number,
     userTier: string = 'FREE',
     sessionId?: string,
+    forceRegenerate?: boolean,
   ): Promise<DayCoreResult> {
     this.logger.log(`🚀 Generating Day ${dayNumber} CORE content...`);
 
@@ -718,12 +719,16 @@ export class CurriculumService {
       throw new BadRequestException(`Day ${dayNumber} not found in curriculum`);
     }
 
-    // Check cache first
+    // Check cache first (skip if forceRegenerate)
     const cacheKey = this.buildDayCacheKey(curriculum.metadata, dayNumber, 'core');
-    const cached = await this.cacheService.getDayContent(cacheKey);
-    if (cached) {
-      this.logger.log(`📦 Day ${dayNumber} CORE cache HIT`);
-      return { coreContent: cached, tokensUsed: 0, cost: 0, fromCache: true };
+    if (!forceRegenerate) {
+      const cached = await this.cacheService.getDayContent(cacheKey);
+      if (cached) {
+        this.logger.log(`📦 Day ${dayNumber} CORE cache HIT`);
+        return { coreContent: cached, tokensUsed: 0, cost: 0, fromCache: true };
+      }
+    } else {
+      this.logger.log(`🔄 Force regenerating Day ${dayNumber} CORE (bypassing L2 cache)`);
     }
 
     const previousDay = curriculum.days.find((d: any) => d.day === dayNumber - 1);

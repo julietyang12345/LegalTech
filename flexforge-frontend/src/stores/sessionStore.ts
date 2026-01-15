@@ -40,6 +40,9 @@ interface SessionState {
   isDeferredLoaded: boolean;
   deferredContent: DayDeferredContent | null;
 
+  // Regeneration state (for showing full loading screen during regenerate)
+  isRegenerating: boolean;
+
   // Actions
   createSession: (dto: CreateSessionDto) => Promise<Session>;
   fetchSessions: () => Promise<void>;
@@ -63,11 +66,12 @@ interface SessionState {
   canStartDay: (dayNumber: number) => boolean;
 
   // Split loading actions (core + deferred)
-  loadDayCoreContent: (dayNumber: number) => Promise<DayCoreContent>;
+  loadDayCoreContent: (dayNumber: number, forceRegenerate?: boolean) => Promise<DayCoreContent>;
   loadDayDeferredContent: (dayNumber: number) => Promise<DayDeferredContent>;
   loadDayContentSplit: (dayNumber: number) => Promise<CurriculumDay>;
   getDeferredContent: () => DayDeferredContent | null;
   resetSplitLoadingState: () => void;
+  regenerateDayContent: (dayNumber: number) => Promise<void>;
 
   // Alternative task format actions
   getAlternativeTaskFormat: (dayNumber: number, format: 'code' | 'quiz' | 'fillBlank') => Promise<any>;
@@ -144,6 +148,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   isDeferredLoading: false,
   isDeferredLoaded: false,
   deferredContent: null,
+
+  // Regeneration state
+  isRegenerating: false,
 
   // Alternative task format state
   alternativeTaskLoading: false,
@@ -420,7 +427,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   // SPLIT LOADING ACTIONS (Core + Deferred)
   // ═══════════════════════════════════════════════════
 
-  loadDayCoreContent: async (dayNumber: number) => {
+  loadDayCoreContent: async (dayNumber: number, forceRegenerate?: boolean) => {
     const { activeSession } = get();
     if (!activeSession) throw new Error('No active session');
 
@@ -434,7 +441,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     });
 
     try {
-      const response = await sessionService.startDayCore(activeSession.id, dayNumber);
+      const response = await sessionService.startDayCore(activeSession.id, dayNumber, forceRegenerate);
       const coreContent = response.coreContent;
       const bossProject = response.bossProject;
 
@@ -573,6 +580,29 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       isDeferredLoaded: false,
       deferredContent: null,
     });
+  },
+
+  regenerateDayContent: async (dayNumber: number) => {
+    const { activeSession, loadDayCoreContent, loadDayDeferredContent, setCurrentStep } = get();
+    if (!activeSession) throw new Error('No active session');
+
+    // Set regenerating state to show full loading screen
+    set({ isRegenerating: true, error: null });
+
+    try {
+      // Force regenerate core content (bypasses all caches)
+      await loadDayCoreContent(dayNumber, true);
+
+      // Start deferred loading in background
+      loadDayDeferredContent(dayNumber).catch((err) => {
+        console.error('Deferred content loading failed:', err);
+      });
+
+      // Reset to prePrompt step
+      setCurrentStep('prePrompt');
+    } finally {
+      set({ isRegenerating: false });
+    }
   },
 
   // ═══════════════════════════════════════════════════
