@@ -380,42 +380,48 @@ export function BossMilestoneStep({ day, session, onComplete }: BossMilestoneSte
       )}
 
       {/* Solution (subtle link below save button) */}
-      {solution && (
-        <div className="text-center">
-          <button
-            onClick={() => setShowSolution(!showSolution)}
-            className="text-xs text-gray-400 hover:text-gray-500 transition-colors inline-flex items-center gap-1"
-          >
-            {showSolution ? (
-              <>Hide solution <ChevronUp className="w-3 h-3" /></>
-            ) : (
-              <>{isSubmitted ? 'Compare with solution' : 'Stuck? View solution'} <ChevronDown className="w-3 h-3" /></>
-            )}
-          </button>
-          {showSolution && (
-            <Card className="mt-3 text-left">
-              <div className="p-4">
-                <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg overflow-x-auto text-sm font-mono">
-                  {solution}
-                </pre>
-                {solutionAnnotations.length > 0 && (
-                  <div className="mt-4 space-y-2">
-                    <p className="text-sm font-medium text-gray-700">Key points:</p>
-                    <ul className="space-y-1">
-                      {solutionAnnotations.map((annotation: string, index: number) => (
-                        <li key={index} className="flex items-start gap-2 text-sm text-gray-600">
-                          <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                          {annotation}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </Card>
+      <div className="text-center">
+        <button
+          onClick={() => setShowSolution(!showSolution)}
+          className="text-xs text-gray-400 hover:text-gray-500 transition-colors inline-flex items-center gap-1"
+        >
+          {showSolution ? (
+            <>Hide solution <ChevronUp className="w-3 h-3" /></>
+          ) : (
+            <>{isSubmitted ? 'Compare with solution' : 'Stuck? View solution'} <ChevronDown className="w-3 h-3" /></>
           )}
-        </div>
-      )}
+        </button>
+        {showSolution && (
+          <Card className="mt-3 text-left">
+            <div className="p-4">
+              {solution ? (
+                <>
+                  <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg overflow-x-auto text-sm font-mono whitespace-pre-wrap">
+                    {solution}
+                  </pre>
+                  {solutionAnnotations.length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      <p className="text-sm font-medium text-gray-700">Key points:</p>
+                      <ul className="space-y-1">
+                        {solutionAnnotations.map((annotation: string, index: number) => (
+                          <li key={index} className="flex items-start gap-2 text-sm text-gray-600">
+                            <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+                            {annotation}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-gray-500 text-sm">
+                  Solution not available for this milestone. Try completing the task on your own, or check the hints above!
+                </p>
+              )}
+            </div>
+          </Card>
+        )}
+      </div>
     </StepLayout>
   );
 }
@@ -571,31 +577,6 @@ function PracticeProjectStep({
         </Card>
       )}
 
-      {/* Solution */}
-      {solution && (
-        <div className="text-center">
-          <button
-            onClick={() => setShowSolution(!showSolution)}
-            className="text-xs text-gray-400 hover:text-gray-500 transition-colors inline-flex items-center gap-1"
-          >
-            {showSolution ? (
-              <>Hide solution <ChevronUp className="w-3 h-3" /></>
-            ) : (
-              <>{isSubmitted ? 'Compare with solution' : 'Stuck? View solution'} <ChevronDown className="w-3 h-3" /></>
-            )}
-          </button>
-          {showSolution && (
-            <Card className="mt-3 text-left">
-              <div className="p-4">
-                <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg overflow-x-auto text-sm font-mono">
-                  {solution}
-                </pre>
-              </div>
-            </Card>
-          )}
-        </div>
-      )}
-
       {/* Code area or text area */}
       {isCodingProject ? (
         <CodeSandbox
@@ -655,6 +636,35 @@ function PracticeProjectStep({
           </Card>
         </motion.div>
       )}
+
+      {/* Solution (below submit button for easy access) */}
+      <div className="text-center">
+        <button
+          onClick={() => setShowSolution(!showSolution)}
+          className="text-xs text-gray-400 hover:text-gray-500 transition-colors inline-flex items-center gap-1"
+        >
+          {showSolution ? (
+            <>Hide solution <ChevronUp className="w-3 h-3" /></>
+          ) : (
+            <>{isSubmitted ? 'Compare with solution' : 'Stuck? View solution'} <ChevronDown className="w-3 h-3" /></>
+          )}
+        </button>
+        {showSolution && (
+          <Card className="mt-3 text-left">
+            <div className="p-4">
+              {solution ? (
+                <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg overflow-x-auto text-sm font-mono whitespace-pre-wrap">
+                  {solution}
+                </pre>
+              ) : (
+                <p className="text-gray-500 text-sm">
+                  Solution not available for this practice project. Try completing it on your own, or check the hints above!
+                </p>
+              )}
+            </div>
+          </Card>
+        )}
+      </div>
 
       {/* Motivation */}
       <div className="text-center text-sm text-gray-500">

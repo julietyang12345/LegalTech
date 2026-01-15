@@ -932,6 +932,10 @@ TASK FORMATS (task1 - concept reinforcement):
 
 BOSS MILESTONE (for project-based skills):
 - Daily coding micro-step (5-15 lines new code)
+- starterCode: Initial code the user starts with
+- solution: COMPLETE working solution (REQUIRED - full code that solves the microTask)
+- solutionAnnotations: Array of strings explaining key parts of the solution
+- hints: Array of progressive hints to help stuck users
 - Validation: user runs code, sees output
 
 FOUNDATION CARDS (5-6):
@@ -999,7 +1003,7 @@ ${isProjectBased ? 'Include bossMilestone.' : 'No bossMilestone (practice-based)
 Generate: prePrompt, video, foundationCards(5-6), task1, ${isProjectBased ? 'bossMilestone, ' : ''}skipTest.`;
 
   // Compressed template
-  const userPrompt = `{"day":${params.dayNumber},"title":"${params.dayTitle}","prePrompt":{"text":"","primeQuestions":[],"yesterdayRecap":""},"video":{"watchPoints":[]},"foundationCards":[{"id":"c1","concept":"","explanation":"","realWorldContext":"","microQuestion":{"question":"","type":"gotit"},"order":1}],"task1":{"format":"quiz","passingScore":80,"questions":[{"question":"","options":["","","",""],"correctIndex":0,"explanation":""}]}${isProjectBased ? ',"bossMilestone":{"title":"","description":"","microTask":{"instruction":"","starterCode":"","expectedOutput":"","hints":[],"solution":""},"validationType":"run","estimatedMinutes":10}' : ''},"skipTest":{"questionSets":[[{"question":"","options":["","","",""],"correctIndex":0}]],"passThreshold":3}}`;
+  const userPrompt = `{"day":${params.dayNumber},"title":"${params.dayTitle}","prePrompt":{"text":"","primeQuestions":[],"yesterdayRecap":""},"video":{"watchPoints":[]},"foundationCards":[{"id":"c1","concept":"","explanation":"","realWorldContext":"","microQuestion":{"question":"","type":"gotit"},"order":1}],"task1":{"format":"quiz","passingScore":80,"questions":[{"question":"","options":["","","",""],"correctIndex":0,"explanation":""}]}${isProjectBased ? ',"bossMilestone":{"title":"","description":"","microTask":"","starterCode":"","expectedOutput":"","hints":[],"solution":"// COMPLETE working solution code","solutionAnnotations":[],"validationType":"run","estimatedMinutes":10}' : ''},"skipTest":{"questionSets":[[{"question":"","options":["","","",""],"correctIndex":0}]],"passThreshold":3}}`;
 
   return { staticPart, dynamicPart, userPrompt };
 }

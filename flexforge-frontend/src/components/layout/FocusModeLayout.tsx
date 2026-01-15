@@ -10,7 +10,18 @@ import { CompanionChat, CompanionBubble } from '@/components/companion';
 import { CourseSidebar } from '@/components/session/CourseSidebar';
 import type { SessionStep } from '@/types';
 
-const STEPS: SessionStep[] = [
+// New flow with foundation cards
+const STEPS_NEW: SessionStep[] = [
+  'prePrompt',
+  'video',
+  'foundationCards',
+  'task1',
+  'bossMilestone',
+  'reflection',
+];
+
+// Legacy flow for backward compatibility
+const STEPS_LEGACY: SessionStep[] = [
   'prePrompt',
   'video',
   'activeRecall',
@@ -98,12 +109,16 @@ function PresenceBar() {
   const isProjectBased = activeSession?.curriculum?.metadata?.isProjectBased !== false &&
     (activeSession?.curriculum?.bossProjects?.length ?? 0) > 0;
 
+  // Select step order based on whether foundationCards exist
+  const hasFoundationCards = currentDay?.foundationCards && currentDay.foundationCards.length > 0;
+  const baseSteps = hasFoundationCards ? STEPS_NEW : STEPS_LEGACY;
+
   // Filter steps based on current day
-  const availableSteps = STEPS.filter(step => {
+  const availableSteps = baseSteps.filter(step => {
     if (step === 'memoryBridge' && currentDay?.day === 1) return false;
-    // Show bossMilestone step if project-based (with milestone) or practice-based (with practice project)
+    // Show bossMilestone step if project-based (with milestone or hasBossProject) or practice-based (with practice project)
     if (step === 'bossMilestone') {
-      if (isProjectBased) return !!currentDay?.bossMilestone;
+      if (isProjectBased) return !!currentDay?.bossMilestone || !!currentDay?.hasBossProject;
       return !!currentDay?.deferredContent?.practiceProject;
     }
     return true;
@@ -131,11 +146,7 @@ function PresenceBar() {
               steps={availableSteps}
               currentStep={currentStep}
               completedSteps={completedSteps}
-              onStepClick={(step) => {
-                if (completedSteps.includes(step)) {
-                  setCurrentStep(step);
-                }
-              }}
+              onStepClick={(step) => setCurrentStep(step)}
               isProjectBased={isProjectBased}
             />
 

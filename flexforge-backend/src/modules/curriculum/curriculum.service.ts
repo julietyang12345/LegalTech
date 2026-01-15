@@ -9,17 +9,15 @@ import { CurriculumCacheService } from './services/curriculum-cache.service';
 import { UniversityResourceService } from './services/university/university-resource.service';
 import { DocumentationFetchService, DocFetchResult } from './services/docs/documentation-fetch.service';
 import {
-  buildCurriculumPrompt,
   buildCacheableCurriculumPrompt,
   buildDayDetailPrompt,
-  buildDayDetailCorePrompt,
   buildCacheableDayDetailCorePrompt,
   buildDayDetailDeferredPrompt,
   buildBossDetailPrompt,
   DayDetailParams,
   BossDetailParams,
 } from './prompts/curriculum-prompt';
-import { formatTime, cleanSearchQuery } from './utils/shared.utils';
+import { formatTime } from './utils/shared.utils';
 
 export interface CurriculumResult {
   curriculum: any; // Overview curriculum (skeleton)
@@ -709,7 +707,6 @@ export class CurriculumService {
     curriculum: any,
     dayNumber: number,
     userTier: string = 'FREE',
-    sessionId?: string,
     forceRegenerate?: boolean,
   ): Promise<DayCoreResult> {
     this.logger.log(`🚀 Generating Day ${dayNumber} CORE content...`);
@@ -1065,79 +1062,6 @@ export class CurriculumService {
     return fallbackSections.length > 0
       ? fallbackSections.join('\n\n')
       : `Learn about ${concept} through the practice exercises below.`;
-  }
-
-  /**
-   * Generate starter code, hints, and solution files
-   */
-  private async generateFileResources(
-    curriculum: any,
-    language?: string,
-  ): Promise<any> {
-    this.logger.log('📦 Generating file resources...');
-
-    for (const day of curriculum.days) {
-      // Generate files for task1
-      if (day.task1?.answer) {
-        try {
-          const files = await this.fileGenerator.generateTaskFiles({
-            taskId: day.task1.id,
-            taskTitle: day.task1.title,
-            taskDescription: day.task1.description,
-            answer: day.task1.answer,
-            language,
-          });
-
-          day.task1.files = files;
-          this.logger.log(`  ✅ Day ${day.day} Task 1: Files generated`);
-        } catch (error) {
-          this.logger.warn(`  ⚠️ Day ${day.day} Task 1: File generation failed`);
-        }
-      }
-
-      // Generate files for practice project
-      if (day.practiceProject?.answer) {
-        try {
-          const files = await this.fileGenerator.generateTaskFiles({
-            taskId: day.practiceProject.id,
-            taskTitle: day.practiceProject.title,
-            taskDescription: day.practiceProject.coreChallenge,
-            answer: day.practiceProject.answer,
-            language,
-          });
-
-          day.practiceProject.files = files;
-          this.logger.log(`  ✅ Day ${day.day} Practice: Files generated`);
-        } catch (error) {
-          this.logger.warn(`  ⚠️ Day ${day.day} Practice: File generation failed`);
-        }
-      }
-    }
-
-    // Generate files for boss projects
-    if (curriculum.bossProjects) {
-      for (const boss of curriculum.bossProjects) {
-        if (boss.answer) {
-          try {
-            const files = await this.fileGenerator.generateBossProjectFiles({
-              projectId: `boss-day${boss.day}`,
-              title: boss.title,
-              requirements: boss.free.requirements || [],
-              answer: boss.answer,
-              dayNumber: boss.day,
-              language,
-            });
-
-            boss.files = files;
-            this.logger.log(`  ✅ Boss Project Day ${boss.day}: Files generated`);
-          } catch (error) {
-            this.logger.warn(`  ⚠️ Boss Project Day ${boss.day}: File generation failed`);
-          }
-        }
-      }
-    }
-
-    return curriculum;
   }
 
   /**

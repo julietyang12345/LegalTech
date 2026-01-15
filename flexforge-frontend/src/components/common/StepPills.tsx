@@ -44,14 +44,12 @@ export function StepPills({
             <button
               type="button"
               onClick={() => onStepClick?.(step)}
-              disabled={isUpcoming}
               className={clsx(
                 'w-8 h-8 rounded-full flex items-center justify-center',
-                'text-sm font-medium transition-all duration-200',
+                'text-sm font-medium transition-all duration-200 cursor-pointer hover:scale-110',
                 isComplete && 'bg-focus-500 text-white',
                 isCurrent && 'bg-brand-500 text-white ring-4 ring-brand-200',
-                isUpcoming && 'bg-gray-200 text-gray-500',
-                !isUpcoming && 'cursor-pointer hover:scale-110'
+                isUpcoming && 'bg-gray-200 text-gray-500 hover:bg-gray-300',
               )}
               title={stepLabels[step]}
             >
@@ -104,14 +102,12 @@ export function StepPillsExpanded({
             key={step}
             type="button"
             onClick={() => onStepClick?.(step)}
-            disabled={isUpcoming}
             className={clsx(
               'flex items-center gap-2 px-3 py-2 rounded-full',
-              'text-sm font-medium transition-all duration-200 whitespace-nowrap',
+              'text-sm font-medium transition-all duration-200 whitespace-nowrap cursor-pointer hover:scale-105',
               isComplete && 'bg-focus-100 text-focus-700',
               isCurrent && 'bg-brand-500 text-white shadow-md',
-              isUpcoming && 'bg-gray-100 text-gray-400',
-              !isUpcoming && 'cursor-pointer hover:scale-105'
+              isUpcoming && 'bg-gray-100 text-gray-400 hover:bg-gray-200',
             )}
           >
             {isComplete ? (

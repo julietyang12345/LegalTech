@@ -318,8 +318,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       nextStep = STEP_ORDER[currentIndex + 2];
     }
 
-    // Skip bossMilestone if not present
-    if (nextStep === 'bossMilestone' && !currentDay?.bossMilestone) {
+    // Skip bossMilestone if not present (check both bossMilestone and hasBossProject)
+    if (nextStep === 'bossMilestone' && !currentDay?.bossMilestone && !currentDay?.hasBossProject) {
       nextStep = STEP_ORDER[currentIndex + 2];
     }
 
