@@ -209,6 +209,62 @@ export const sessionService = {
     return data;
   },
 
+  /**
+   * Save reflection data including confused concepts
+   */
+  async saveReflection(
+    sessionId: string,
+    dayNumber: number,
+    reflectionData: {
+      confidence: number;
+      whatClicked?: string;
+      whatsFoggy?: string;
+      confusedConcepts?: string[];
+      lockInSentence?: string;
+      warmupPlan?: string;
+      boostCompleted?: boolean;
+      boostConcept?: string;
+    }
+  ): Promise<{ message: string; saved: boolean }> {
+    const { data } = await api.post(
+      `/sessions/${sessionId}/days/${dayNumber}/reflection`,
+      reflectionData
+    );
+    return data;
+  },
+
+  /**
+   * Generate a concept boost for a confused student
+   * Returns a quick remediation with a different explanation angle
+   */
+  async generateConceptBoost(
+    sessionId: string,
+    dayNumber: number,
+    concept: string,
+    originalExplanation: string
+  ): Promise<{
+    message: string;
+    boost: {
+      concept: string;
+      explanation: string;
+      analogy?: string;
+      codeExample?: string;
+      quickCheck: {
+        question: string;
+        options: string[];
+        correctIndex: number;
+        explanation: string;
+      };
+    };
+    tokensUsed: number;
+  }> {
+    const { data } = await api.post(
+      `/sessions/${sessionId}/days/${dayNumber}/concept-boost`,
+      { concept, originalExplanation }
+    );
+    return data;
+  },
+
   // ═══════════════════════════════════════════════════
   // CURRICULUM CACHE TRACKING
   // ═══════════════════════════════════════════════════

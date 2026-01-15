@@ -212,23 +212,19 @@ function getTask1Template(dayNumber: number, skillLevel: string, questionCount: 
 
 // Helper to generate bossMilestone JSON template
 function getBossMilestoneTemplate(dayNumber: number, estimatedMinutes: number): string {
-  const starterCode = dayNumber === 1
-    ? '// Start your project here\\n\\n'
-    : '// Code from previous days...\\n\\n// Today: Add your new code below\\n';
-
   return `"bossMilestone": {
     "day": ${dayNumber},
     "title": "Day ${dayNumber} Contribution",
     "description": "Build a piece of your boss project",
-    "microTask": "What specific code to write today (5-15 lines)",
+    "microTask": "REQUIRED: Specific task description (5-15 lines of code)",
     "dayContribution": "How this helps the final project",
     "conceptConnection": "Which foundationCard concept this applies",
     "estimatedMinutes": ${estimatedMinutes},
-    "starterCode": "${starterCode}",
+    "starterCode": "REQUIRED: Generate 5-20 lines of ACTUAL starter code with TODOs marking where the user should add code. ${dayNumber === 1 ? 'Start fresh.' : 'Build on previous days - include relevant code from day ' + (dayNumber - 1) + '.'}",
     "expectedOutput": "What user should see when they run the code",
-    "hints": [{"level": 1, "hint": ""}, {"level": 2, "hint": ""}, {"level": 3, "hint": ""}],
-    "solution": "// COMPLETE working solution",
-    "solutionAnnotations": ["Explanation of each key line"],
+    "hints": [{"level": 1, "hint": "REQUIRED: Gentle conceptual hint"}, {"level": 2, "hint": "REQUIRED: More specific approach"}, {"level": 3, "hint": "REQUIRED: Detailed guidance"}],
+    "solution": "REQUIRED: Generate the COMPLETE working solution code (15-40 lines). This must be real, runnable code that solves the microTask.",
+    "solutionAnnotations": ["REQUIRED: 2-4 explanations of key lines in the solution"],
     "validationType": "run",
     "validationInstructions": "Run the code and verify the output"
   }`;
@@ -506,6 +502,12 @@ export interface DayDetailParams {
   hoursPerDay: number;
   suggestedLanguage?: string;
   outputType?: 'working_code' | 'understand_concept' | 'fix_bug' | 'ship_project';
+  // Reflection data from previous day (for personalized prePrompt)
+  previousDayReflection?: {
+    confusedConcepts?: string[];
+    confidence?: number;
+    boostCompleted?: boolean;
+  };
 }
 
 export function buildDayDetailPrompt(params: DayDetailParams): {
@@ -651,15 +653,31 @@ export function buildDayDetailCorePrompt(params: DayDetailParams): {
     : 'prePrompt, video info, foundationCards (5-6 cards), task1 (quiz or fillBlank), skipTest';
 
   const bossInstructions = isProjectBased
-    ? '- bossMilestone = daily coding micro-step toward boss project (5-15 lines new code)\n'
+    ? `- bossMilestone = daily coding micro-step toward boss project
+  - starterCode: MUST be real code (10-25 lines) with TODOs marking where user adds code
+  - solution: MUST be complete working code (15-40 lines) that solves the microTask
+  - hints: 3 progressive hints (conceptual → specific → detailed)
+  - solutionAnnotations: 2-4 explanations of key lines
+`
     : '';
+
+  // Build personalized prePrompt instructions based on previous day's reflection
+  let reflectionContext = '';
+  if (params.previousDayReflection?.confusedConcepts?.length) {
+    reflectionContext = `
+IMPORTANT - Previous Day Reflection:
+The student found these concepts confusing yesterday: ${params.previousDayReflection.confusedConcepts.join(', ')}
+${params.previousDayReflection.boostCompleted ? 'They completed a quick boost to review.' : ''}
+In the prePrompt.yesterdayRecap, briefly reconnect to these concepts and show how today's material builds on or clarifies them.
+`;
+  }
 
   const systemPrompt = `Generate CORE learning content for Day ${params.dayNumber} of "${params.skillName}".
 
 ${dayHeader}
 
 ${getSkillTypeGuidance(params.skillType, params.complexity)}
-
+${reflectionContext}
 Generate ONLY: ${coreItems}.
 - task1 = concept reinforcement (quiz or fillBlank ONLY, no coding)
 ${bossInstructions}skipTest: 3 hard MCQs testing day's concepts - user can skip day if they pass.
@@ -930,12 +948,13 @@ TASK FORMATS (task1 - concept reinforcement):
 - quiz: {passingScore, questions[{question, options[4], correctIndex, explanation}]} - 5-8 MCQs
 - fillBlank: {passingScore, items[{codeTemplate with ___BLANK___, blanks[{correctAnswers[], hint}]}]}
 
-BOSS MILESTONE (for project-based skills):
+BOSS MILESTONE (for project-based skills) - CRITICAL REQUIREMENTS:
 - Daily coding micro-step (5-15 lines new code)
-- starterCode: Initial code the user starts with
-- solution: COMPLETE working solution (REQUIRED - full code that solves the microTask)
-- solutionAnnotations: Array of strings explaining key parts of the solution
-- hints: Array of progressive hints to help stuck users
+- starterCode: MUST be 10-25 lines of REAL, RUNNABLE code with TODO comments marking where user adds code
+- solution: MUST be 15-40 lines of COMPLETE, WORKING code that solves the microTask (NOT a placeholder!)
+- solutionAnnotations: 2-4 strings explaining key lines in the solution
+- hints: 3 progressive hints (level 1: conceptual, level 2: specific approach, level 3: detailed guidance)
+- DO NOT use placeholder text like "// COMPLETE working solution" - generate ACTUAL code
 - Validation: user runs code, sees output
 
 FOUNDATION CARDS (5-6):
@@ -999,11 +1018,11 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
 Title: ${params.dayTitle}
 ${params.previousDayTitle ? `Previous: ${params.previousDayTitle}` : ''}
 ${params.suggestedLanguage ? `Lang: ${params.suggestedLanguage}` : ''}
-${isProjectBased ? 'Include bossMilestone.' : 'No bossMilestone (practice-based).'}
+${isProjectBased ? 'Include bossMilestone with REAL starterCode (10-25 lines) and COMPLETE solution code (15-40 lines).' : 'No bossMilestone (practice-based).'}
 Generate: prePrompt, video, foundationCards(5-6), task1, ${isProjectBased ? 'bossMilestone, ' : ''}skipTest.`;
 
-  // Compressed template
-  const userPrompt = `{"day":${params.dayNumber},"title":"${params.dayTitle}","prePrompt":{"text":"","primeQuestions":[],"yesterdayRecap":""},"video":{"watchPoints":[]},"foundationCards":[{"id":"c1","concept":"","explanation":"","realWorldContext":"","microQuestion":{"question":"","type":"gotit"},"order":1}],"task1":{"format":"quiz","passingScore":80,"questions":[{"question":"","options":["","","",""],"correctIndex":0,"explanation":""}]}${isProjectBased ? ',"bossMilestone":{"title":"","description":"","microTask":"","starterCode":"","expectedOutput":"","hints":[],"solution":"// COMPLETE working solution code","solutionAnnotations":[],"validationType":"run","estimatedMinutes":10}' : ''},"skipTest":{"questionSets":[[{"question":"","options":["","","",""],"correctIndex":0}]],"passThreshold":3}}`;
+  // Compressed template - bossMilestone fields indicate REAL code is required
+  const userPrompt = `{"day":${params.dayNumber},"title":"${params.dayTitle}","prePrompt":{"text":"","primeQuestions":[],"yesterdayRecap":""},"video":{"watchPoints":[]},"foundationCards":[{"id":"c1","concept":"","explanation":"","realWorldContext":"","microQuestion":{"question":"","type":"gotit"},"order":1}],"task1":{"format":"quiz","passingScore":80,"questions":[{"id":"q1","question":"","options":["","","",""],"correctIndex":0,"explanation":""}]}${isProjectBased ? ',"bossMilestone":{"title":"","description":"","microTask":"SPECIFIC TASK","starterCode":"// GENERATE 10-25 LINES OF REAL STARTER CODE WITH TODOs","expectedOutput":"","hints":[{"level":1,"hint":""},{"level":2,"hint":""},{"level":3,"hint":""}],"solution":"// GENERATE 15-40 LINES OF COMPLETE WORKING SOLUTION CODE","solutionAnnotations":[""],"validationType":"run","estimatedMinutes":10}' : ''},"skipTest":{"questionSets":[[{"question":"","options":["","","",""],"correctIndex":0}]],"passThreshold":3}}`;
 
   return { staticPart, dynamicPart, userPrompt };
 }

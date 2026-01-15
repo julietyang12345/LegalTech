@@ -762,6 +762,42 @@ export interface DayDetailsResponse {
 }
 
 // ============================================
+// Concept Boost Types (Quick remediation)
+// ============================================
+
+export interface ConceptBoost {
+  concept: string;
+  explanation: string;      // 2-3 sentences, different angle than foundation card
+  analogy?: string;         // Real-world analogy to make it click
+  codeExample?: string;     // Optional small code example
+  quickCheck: {
+    question: string;
+    options: string[];
+    correctIndex: number;
+    explanation: string;
+  };
+}
+
+export interface ConceptBoostResponse {
+  message: string;
+  boost: ConceptBoost;
+  tokensUsed: number;
+}
+
+export interface ReflectionData {
+  confidence: number;
+  whatClicked?: string;
+  whatClickedDetails?: string;
+  whatsFoggy?: string;
+  foggyDetails?: string;
+  lockInSentence?: string;
+  warmupPlan?: string;
+  confusedConcepts?: string[];  // Foundation card concepts user found confusing
+  boostCompleted?: boolean;     // Whether user took the quick boost
+  boostConcept?: string;        // Which concept they got boosted on
+}
+
+// ============================================
 // Focus Mode Types
 // ============================================
 

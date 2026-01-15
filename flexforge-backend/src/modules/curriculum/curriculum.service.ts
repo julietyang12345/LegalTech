@@ -730,6 +730,13 @@ export class CurriculumService {
 
     const previousDay = curriculum.days.find((d: any) => d.day === dayNumber - 1);
 
+    // Get reflection data from previous day (if any)
+    const previousDayReflection = previousDay?.reflectionData ? {
+      confusedConcepts: previousDay.reflectionData.confusedConcepts,
+      confidence: previousDay.reflectionData.confidence,
+      boostCompleted: previousDay.reflectionData.boostCompleted,
+    } : undefined;
+
     const params: DayDetailParams = {
       skillName: curriculum.metadata.skillName,
       dayNumber,
@@ -737,6 +744,7 @@ export class CurriculumService {
       dayObjectives: dayOverview.skills,
       skeleton: dayOverview,
       previousDayTitle: previousDay?.title,
+      previousDayReflection,
       skillType: curriculum.metadata.skillType,
       skillLevel: curriculum.metadata.skillLevel,
       complexity: curriculum.metadata.complexity,
@@ -780,6 +788,45 @@ export class CurriculumService {
           id: card.id || `day${dayNumber}-card-${index + 1}`,
           order: card.order ?? index + 1,
         }));
+      }
+
+      // Validate and normalize bossMilestone (for project-based curricula)
+      if (coreContent.bossMilestone) {
+        const bm = coreContent.bossMilestone;
+
+        // Check if starterCode is a placeholder or missing
+        const isStarterCodePlaceholder = !bm.starterCode ||
+          bm.starterCode.includes('REQUIRED:') ||
+          bm.starterCode === '// Start your project here\n\n' ||
+          bm.starterCode.length < 20;
+
+        // Check if solution is a placeholder or missing
+        const isSolutionPlaceholder = !bm.solution ||
+          bm.solution.includes('REQUIRED:') ||
+          bm.solution === '// COMPLETE working solution' ||
+          bm.solution.length < 30;
+
+        if (isStarterCodePlaceholder || isSolutionPlaceholder) {
+          this.logger.warn(`⚠️ Day ${dayNumber} bossMilestone has placeholder content - starterCode: ${!isStarterCodePlaceholder}, solution: ${!isSolutionPlaceholder}`);
+        }
+
+        // Ensure hints are properly formatted
+        if (bm.hints && Array.isArray(bm.hints)) {
+          coreContent.bossMilestone.hints = bm.hints
+            .filter((h: any) => h.hint && !h.hint.includes('REQUIRED:'))
+            .map((h: any, index: number) => ({
+              level: h.level || index + 1,
+              hint: typeof h === 'string' ? h : h.hint,
+            }));
+        }
+
+        // Ensure solutionAnnotations are strings
+        if (bm.solutionAnnotations && Array.isArray(bm.solutionAnnotations)) {
+          coreContent.bossMilestone.solutionAnnotations = bm.solutionAnnotations
+            .filter((a: any) => a && !String(a).includes('REQUIRED:'));
+        }
+
+        this.logger.log(`✅ Day ${dayNumber} bossMilestone: starterCode=${bm.starterCode?.length || 0} chars, solution=${bm.solution?.length || 0} chars`);
       }
 
       this.logger.log(`✅ Day ${dayNumber} CORE parsed: ${coreContent.foundationCards?.length || 0} cards`);
@@ -1181,6 +1228,26 @@ Create a coding challenge that tests the same concepts. Output JSON:
       }
 
       task = JSON.parse(cleanedContent);
+
+      // Ensure quiz questions have unique IDs
+      if (targetFormat === 'quiz' && task.questions && Array.isArray(task.questions)) {
+        task.questions = task.questions.map((q: any, index: number) => ({
+          ...q,
+          id: q.id && q.id !== 'q1' ? q.id : `q-${dayContext.dayNumber}-${index}-${Date.now()}`,
+        }));
+      }
+
+      // Ensure fill-blank items have unique IDs
+      if (targetFormat === 'fillBlank' && task.items && Array.isArray(task.items)) {
+        task.items = task.items.map((item: any, index: number) => ({
+          ...item,
+          id: item.id && item.id !== 'fb1' ? item.id : `fb-${dayContext.dayNumber}-${index}-${Date.now()}`,
+          blanks: item.blanks?.map((blank: any, blankIndex: number) => ({
+            ...blank,
+            id: blank.id && blank.id !== 'b1' ? blank.id : `b-${index}-${blankIndex}`,
+          })),
+        }));
+      }
     } catch (error) {
       this.logger.error(`❌ Failed to parse alternative task format:`, error.message);
       throw new BadRequestException('Failed to generate alternative task format');
@@ -1293,6 +1360,84 @@ Return ONLY the code, no markdown blocks:`;
 
     return {
       code: response.content,
+      tokensUsed: response.tokensUsed,
+      cost: response.cost,
+    };
+  }
+
+  /**
+   * Generate a quick concept boost for confused students
+   * Provides a different angle on a concept they found confusing
+   */
+  async generateConceptBoost(params: {
+    concept: string;
+    originalExplanation: string;
+    skillLevel: string;
+    skillName: string;
+    dayNumber: number;
+  }): Promise<{ boost: any; tokensUsed: number; cost: number }> {
+    this.logger.log(`💡 Generating concept boost for: ${params.concept}`);
+
+    const systemPrompt = `You are a learning assistant helping a student who is confused about a concept.
+Your job is to explain it from a DIFFERENT ANGLE than what they already saw.
+
+Rules:
+1. Don't repeat the original explanation - find a fresh perspective
+2. Use a real-world analogy they can relate to
+3. Keep it SHORT (2-3 sentences for explanation)
+4. Include ONE quick practice question to verify understanding
+5. Match the student's level: ${params.skillLevel}`;
+
+    const userPrompt = `The student is learning ${params.skillName} (Day ${params.dayNumber}).
+
+They found this concept confusing:
+- Concept: ${params.concept}
+- Original explanation they saw: ${params.originalExplanation}
+
+Generate a "concept boost" - a quick 2-minute remediation.
+
+Return JSON only:
+{
+  "concept": "${params.concept}",
+  "explanation": "2-3 sentence explanation from a DIFFERENT angle",
+  "analogy": "A relatable real-world analogy (1-2 sentences)",
+  "codeExample": "Optional: tiny code snippet if helpful (max 3 lines), or null",
+  "quickCheck": {
+    "question": "One verification question",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "correctIndex": 0,
+    "explanation": "Why the correct answer is right"
+  }
+}`;
+
+    const response = await this.aiService.routeRequest(
+      AITask.CURRICULUM_GENERATION,
+      userPrompt,
+      systemPrompt,
+    );
+
+    let boost: any;
+    try {
+      let cleanedContent = response.content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
+
+      const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanedContent = jsonMatch[0];
+      }
+
+      boost = JSON.parse(cleanedContent);
+    } catch (error) {
+      this.logger.error(`❌ Failed to parse concept boost:`, error.message);
+      throw new BadRequestException('Failed to generate concept boost');
+    }
+
+    this.logger.log(`✅ Concept boost generated. Tokens: ${response.tokensUsed}`);
+
+    return {
+      boost,
       tokensUsed: response.tokensUsed,
       cost: response.cost,
     };

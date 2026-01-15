@@ -353,4 +353,66 @@ export class SessionController {
       fromCache: result.fromCache,
     };
   }
+
+  /**
+   * POST /api/v1/sessions/:id/days/:dayNumber/reflection
+   * Save reflection data including confused concepts
+   */
+  @Post(':id/days/:dayNumber/reflection')
+  async saveReflection(
+    @Request() req,
+    @Param('id') id: string,
+    @Param('dayNumber') dayNumber: string,
+    @Body() body: {
+      confidence: number;
+      whatClicked?: string;
+      whatsFoggy?: string;
+      confusedConcepts?: string[];
+      lockInSentence?: string;
+      warmupPlan?: string;
+      boostCompleted?: boolean;
+      boostConcept?: string;
+    },
+  ) {
+    const result = await this.sessionService.saveReflection(
+      id,
+      req.user.id,
+      parseInt(dayNumber, 10),
+      body,
+    );
+
+    return {
+      message: 'Reflection saved successfully',
+      saved: result.saved,
+    };
+  }
+
+  /**
+   * POST /api/v1/sessions/:id/days/:dayNumber/concept-boost
+   * Generate a quick concept boost for a confused student
+   */
+  @Post(':id/days/:dayNumber/concept-boost')
+  async generateConceptBoost(
+    @Request() req,
+    @Param('id') id: string,
+    @Param('dayNumber') dayNumber: string,
+    @Body() body: {
+      concept: string;
+      originalExplanation: string;
+    },
+  ) {
+    const result = await this.sessionService.generateConceptBoost(
+      id,
+      req.user.id,
+      parseInt(dayNumber, 10),
+      body.concept,
+      body.originalExplanation,
+    );
+
+    return {
+      message: 'Concept boost generated',
+      boost: result.boost,
+      tokensUsed: result.tokensUsed,
+    };
+  }
 }

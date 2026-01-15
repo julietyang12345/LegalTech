@@ -1080,4 +1080,75 @@ export class SessionService {
       fromCache: false,
     };
   }
+
+  /**
+   * Save reflection data including confused concepts
+   * This is used to personalize the next day's prePrompt
+   */
+  async saveReflection(
+    sessionId: string,
+    userId: string,
+    dayNumber: number,
+    reflectionData: {
+      confidence: number;
+      whatClicked?: string;
+      whatsFoggy?: string;
+      confusedConcepts?: string[];
+      lockInSentence?: string;
+      warmupPlan?: string;
+      boostCompleted?: boolean;
+      boostConcept?: string;
+    },
+  ): Promise<{ saved: boolean }> {
+    const session = await this.findOne(sessionId, userId);
+
+    const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
+    if (dayIndex === -1) {
+      throw new NotFoundException(`Day ${dayNumber} not found`);
+    }
+
+    // Store reflection data on the day
+    session.curriculum.days[dayIndex].reflectionData = {
+      ...reflectionData,
+      savedAt: new Date().toISOString(),
+    };
+
+    await this.sessionsRepository.save(session);
+
+    this.logger.log(`📝 Reflection saved for Day ${dayNumber}, session ${sessionId}. Confused concepts: ${reflectionData.confusedConcepts?.join(', ') || 'none'}`);
+
+    return { saved: true };
+  }
+
+  /**
+   * Generate a concept boost for a confused student
+   */
+  async generateConceptBoost(
+    sessionId: string,
+    userId: string,
+    dayNumber: number,
+    concept: string,
+    originalExplanation: string,
+  ): Promise<{ boost: any; tokensUsed: number }> {
+    const session = await this.findOne(sessionId, userId);
+    const user = await this.userService.findById(userId);
+
+    const result = await this.curriculumService.generateConceptBoost({
+      concept,
+      originalExplanation,
+      skillLevel: session.skillLevel,
+      skillName: session.skillName,
+      dayNumber,
+    });
+
+    // Increment usage
+    await this.userService.incrementUsage(userId, result.tokensUsed, 0);
+
+    this.logger.log(`💡 Concept boost generated for "${concept}" in session ${sessionId}`);
+
+    return {
+      boost: result.boost,
+      tokensUsed: result.tokensUsed,
+    };
+  }
 }
