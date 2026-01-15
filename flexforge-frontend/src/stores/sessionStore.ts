@@ -618,7 +618,7 @@ export const useSessionStore = create<SessionState>()(
   },
 
   regenerateDayContent: async (dayNumber: number) => {
-    const { activeSession, loadDayCoreContent, loadDayDeferredContent, setCurrentStep } = get();
+    const { activeSession, loadDayCoreContent, loadDayDeferredContent } = get();
     if (!activeSession) throw new Error('No active session');
 
     // Set regenerating state to show full loading screen
@@ -633,8 +633,34 @@ export const useSessionStore = create<SessionState>()(
         console.error('Deferred content loading failed:', err);
       });
 
-      // Reset to prePrompt step
-      setCurrentStep('prePrompt');
+      // Clear all local progress for this day
+      const sessionId = activeSession.id;
+      set((state) => {
+        // Remove all taskProgress entries for this day
+        const newTaskProgress = { ...state.taskProgress };
+        Object.keys(newTaskProgress).forEach((key) => {
+          if (key.startsWith(`${sessionId}-day${dayNumber}-`)) {
+            delete newTaskProgress[key];
+          }
+        });
+
+        // Remove all alternativeTaskCache entries for this day
+        const newAlternativeTaskCache = { ...state.alternativeTaskCache };
+        Object.keys(newAlternativeTaskCache).forEach((key) => {
+          if (key.startsWith(`${dayNumber}-`)) {
+            delete newAlternativeTaskCache[key];
+          }
+        });
+
+        return {
+          taskProgress: newTaskProgress,
+          alternativeTaskCache: newAlternativeTaskCache,
+          // Reset step progress
+          currentStep: 'prePrompt',
+          completedSteps: [],
+          stepStartTime: new Date(),
+        };
+      });
     } finally {
       set({ isRegenerating: false });
     }

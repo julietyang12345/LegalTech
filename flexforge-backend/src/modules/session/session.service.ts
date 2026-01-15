@@ -607,6 +607,28 @@ export class SessionService {
 
     if (forceRegenerate) {
       this.logger.log(`🔄 Force regenerating Day ${dayNumber} for session ${sessionId}`);
+
+      // Clear all progress for this day when regenerating
+      const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
+      if (dayIndex !== -1) {
+        const dayData = session.curriculum.days[dayIndex];
+        // Clear practice submission
+        delete dayData.practiceSubmitted;
+        delete dayData.practiceAnswer;
+        delete dayData.practiceConfidence;
+        // Clear reflection data
+        delete dayData.reflectionData;
+        // Clear deferred content (needs to reload with new core)
+        delete dayData.deferredLoaded;
+        delete dayData.deferredContent;
+        // Clear alternative formats (new task = new alternatives)
+        delete dayData.alternativeFormats;
+        // Clear force skip flag
+        delete dayData.forceSkipped;
+        // Reset status to in_progress (not completed/skipped)
+        dayData.status = 'in_progress';
+        this.logger.log(`🧹 Cleared all progress for Day ${dayNumber}`);
+      }
     }
 
     // Generate core content (fast)
