@@ -425,7 +425,7 @@ export function TodayPage() {
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm font-medium text-gray-700">Sprint Progress</span>
               <span className="text-sm text-gray-500">
-                {Math.round((activeSession.currentDay / activeSession.durationDays) * 100)}%
+                {activeSession.durationDays ? Math.round((activeSession.currentDay / activeSession.durationDays) * 100) : 0}%
               </span>
             </div>
             <ProgressBar

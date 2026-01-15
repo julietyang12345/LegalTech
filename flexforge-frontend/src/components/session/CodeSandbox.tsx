@@ -62,7 +62,7 @@ function detectErrorBoundary(error: string, code: string): BoundaryInfo | null {
         suggestions: [
           "Use fixture data to practice the parsing logic",
           "Run this code locally with Python installed",
-          "Use a cloud IDE like Replit or Google Colab",
+          "Use a cloud IDE like Google Colab",
         ],
         showPaidOptions: true,
       };

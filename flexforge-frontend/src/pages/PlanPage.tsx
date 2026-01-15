@@ -374,7 +374,7 @@ export function PlanPage() {
       <div className="mb-8">
         <div className="flex justify-between text-sm text-gray-600 mb-2">
           <span>Progress</span>
-          <span>{Math.round(((currentDay - 1) / activeSession.durationDays) * 100)}% complete</span>
+          <span>{activeSession.durationDays ? Math.round(((currentDay - 1) / activeSession.durationDays) * 100) : 0}% complete</span>
         </div>
         <ProgressBar value={currentDay - 1} max={activeSession.durationDays} />
       </div>

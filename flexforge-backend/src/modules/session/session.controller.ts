@@ -36,6 +36,7 @@ export class SessionController {
         id: result.session.id,
         skillName: result.session.skillName,
         durationDays: result.session.durationDays,
+        currentDay: result.session.currentDay,
         curriculum: result.session.curriculum,
         status: result.session.status,
         startedAt: result.session.startedAt,
