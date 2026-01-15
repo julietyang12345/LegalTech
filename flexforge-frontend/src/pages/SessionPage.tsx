@@ -764,6 +764,7 @@ export function SessionPage() {
     completeStep,
     isDeferredLoading,
     isRegenerating,
+    hasStepEngagement,
   } = useSessionStore();
 
   const { celebrate, addSystemMessage } = useCompanionStore();
@@ -830,11 +831,12 @@ export function SessionPage() {
 
   const [isAdvancingDay, setIsAdvancingDay] = useState(false);
 
-  // Check what work is incomplete
+  // Check what work is incomplete (uses store's persisted progress)
   const checkIncompleteWork = (): { step: string; label: string; icon: string }[] => {
+    if (!currentDay) return [];
     const incomplete: { step: string; label: string; icon: string }[] = [];
 
-    // Check foundation cards (if they exist in this flow)
+    // Check foundation cards (if they exist in this flow) - uses local state
     if (currentDay?.foundationCards && currentDay.foundationCards.length > 0 && !stepEngagement.foundationCards) {
       incomplete.push({
         step: 'foundationCards',
@@ -843,8 +845,8 @@ export function SessionPage() {
       });
     }
 
-    // Check task completion (quiz or fillBlank for concept reinforcement)
-    if (currentDay?.task1 && !stepEngagement.task1) {
+    // Check task completion (quiz or fillBlank) - uses store's persisted progress
+    if (currentDay?.task1 && !hasStepEngagement(currentDay.day, 'task1')) {
       const taskFormat = (currentDay.task1 as any)?.format || 'quiz';
       incomplete.push({
         step: 'task1',
@@ -853,8 +855,8 @@ export function SessionPage() {
       });
     }
 
-    // Check boss milestone (coding practice)
-    if ((currentDay?.bossMilestone || currentDay?.hasBossProject) && !stepEngagement.bossMilestone) {
+    // Check boss milestone (coding practice) - uses store's persisted progress
+    if ((currentDay?.bossMilestone || currentDay?.hasBossProject) && !hasStepEngagement(currentDay.day, 'bossMilestone')) {
       incomplete.push({
         step: 'bossMilestone',
         label: 'Complete Boss Milestone Code',
@@ -910,6 +912,21 @@ export function SessionPage() {
     }
   };
 
+  // Check if current step should be marked as completed
+  // Uses store's persisted progress for all engagement-required steps
+  const isStepEngaged = (step: SessionStepType): boolean => {
+    if (!currentDay) return false;
+
+    // Steps that require explicit engagement - check store for persisted progress
+    if (step === 'foundationCards') return hasStepEngagement(currentDay.day, 'foundationCards');
+    if (step === 'task1') return hasStepEngagement(currentDay.day, 'task1');
+    if (step === 'conceptCheck') return hasStepEngagement(currentDay.day, 'conceptCheck');
+    if (step === 'bossMilestone') return hasStepEngagement(currentDay.day, 'bossMilestone');
+    if (step === 'reflection') return stepEngagement.reflection;
+    // Other steps (prePrompt, video, etc.) are considered complete when viewed
+    return true;
+  };
+
   const handleContinue = async () => {
     if (isLastStep) {
       // Check for incomplete work before completing
@@ -925,8 +942,24 @@ export function SessionPage() {
       return;
     }
 
-    // Mark current step complete and move to next
-    completeStep(currentStep);
+    // Only mark step as complete if user has engaged with it
+    if (isStepEngaged(currentStep)) {
+      completeStep(currentStep);
+    } else {
+      // Just move to next step without marking complete
+      const STEP_ORDER = currentDay?.foundationCards?.length ?
+        ['prePrompt', 'video', 'foundationCards', 'task1', 'bossMilestone', 'reflection'] :
+        ['prePrompt', 'video', 'activeRecall', 'memoryBridge', 'conceptCheck', 'task1', 'bossMilestone', 'reflection'];
+      const currentIndex = STEP_ORDER.indexOf(currentStep);
+      let nextStep = STEP_ORDER[currentIndex + 1] as SessionStepType;
+
+      // Skip bossMilestone if not present
+      if (nextStep === 'bossMilestone' && !currentDay?.bossMilestone && !currentDay?.hasBossProject) {
+        nextStep = STEP_ORDER[currentIndex + 2] as SessionStepType;
+      }
+
+      setCurrentStep(nextStep || 'reflection');
+    }
 
     // Celebrate based on step
     if (currentStep === 'task1') {
@@ -1007,15 +1040,15 @@ export function SessionPage() {
   // Wrap onComplete to track engagement for specific steps
   const handleStepComplete = () => {
     // Mark engagement based on current step
+    // task1, conceptCheck, bossMilestone are tracked in the store (persisted progress)
+    // foundationCards and reflection still use local state
     if (currentStep === 'foundationCards') {
       markStepEngaged('foundationCards');
-    } else if (currentStep === 'task1') {
-      markStepEngaged('task1');
-    } else if (currentStep === 'bossMilestone') {
-      markStepEngaged('bossMilestone');
     } else if (currentStep === 'reflection') {
       markStepEngaged('reflection');
     }
+    // task1, conceptCheck, bossMilestone engagement is automatically tracked
+    // when user answers questions or types code
     handleContinue();
   };
 

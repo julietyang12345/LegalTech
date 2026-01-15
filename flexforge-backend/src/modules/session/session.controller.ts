@@ -8,6 +8,8 @@ import {
   Param,
   UseGuards,
   Request,
+  Header,
+  Res,
 } from '@nestjs/common';
 import { SessionService } from './session.service';
 import { CreateSessionDto } from './dto/create-session.dto';
@@ -73,13 +75,16 @@ export class SessionController {
    * Get current active session
    */
   @Get('active')
-  async getActive(@Request() req) {
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate')
+  @Header('Pragma', 'no-cache')
+  async getActive(@Request() req, @Res({ passthrough: true }) res) {
     const session = await this.sessionService.getActiveSession(req.user.id);
 
     if (!session) {
       return { message: 'No active session', session: null };
     }
 
+    console.log(`[getActive] Returning session ${session.id} with currentDay=${session.currentDay}`);
     return { session };
   }
 

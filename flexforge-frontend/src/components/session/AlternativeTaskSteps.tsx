@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { HelpCircle, Code2, Lightbulb } from 'lucide-react';
 import { Card, Button, MultipleChoiceQuestion } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { TaskResultsScreen, TaskProgress, TaskNavigation } from './TaskShared';
+import { useSessionStore } from '@/stores/sessionStore';
 import { clsx } from 'clsx';
 import type { CurriculumDay, Session, QuizTask, FillBlankTask, FillBlankItem } from '@/types';
 
@@ -19,11 +20,25 @@ interface QuizTaskStepProps {
 
 export function QuizTaskStep({ day, onComplete }: QuizTaskStepProps) {
   const quiz = day.task1 as QuizTask;
-  const questions = quiz?.questions || [];
+  // Use consistent index-based IDs to ensure saved progress matches
+  const questions = (quiz?.questions || []).map((q, index) => ({
+    ...q,
+    id: `q${index + 1}`,
+  }));
 
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, number | null>>({});
-  const [showResults, setShowResults] = useState(false);
+  const { saveTaskProgress, getTaskProgress, clearTaskProgress } = useSessionStore();
+
+  // Load saved progress on mount
+  const savedProgress = getTaskProgress(day.day, 'task1');
+
+  const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
+  const [answers, setAnswers] = useState<Record<string, number | null>>(savedProgress?.answers ?? {});
+  const [showResults, setShowResults] = useState(savedProgress?.showResults ?? false);
+
+  // Save progress whenever it changes
+  useEffect(() => {
+    saveTaskProgress(day.day, 'task1', { answers, currentIndex, showResults });
+  }, [answers, currentIndex, showResults, day.day, saveTaskProgress]);
 
   const currentQuestion = questions[currentIndex];
   const totalQuestions = questions.length;
@@ -52,6 +67,7 @@ export function QuizTaskStep({ day, onComplete }: QuizTaskStepProps) {
     setAnswers({});
     setCurrentIndex(0);
     setShowResults(false);
+    clearTaskProgress(day.day, 'task1');
   };
 
   if (!quiz || questions.length === 0) {
@@ -143,6 +159,22 @@ export function QuizTaskStep({ day, onComplete }: QuizTaskStepProps) {
         isLastItem={currentIndex === totalQuestions - 1}
         allCompleted={allAnswered}
       />
+
+      {/* Clear current answer */}
+      {answers[currentQuestion.id] !== undefined && (
+        <div className="flex justify-center">
+          <button
+            onClick={() => setAnswers(prev => {
+              const updated = { ...prev };
+              delete updated[currentQuestion.id];
+              return updated;
+            })}
+            className="text-sm text-gray-500 hover:text-gray-700 underline underline-offset-2"
+          >
+            Try again
+          </button>
+        </div>
+      )}
     </StepLayout>
   );
 }

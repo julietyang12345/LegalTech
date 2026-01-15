@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import {
   DayStatus,
   type Session,
@@ -25,6 +26,7 @@ interface SessionState {
 
   // Focus mode state
   currentDay: CurriculumDay | null;
+  currentDayNumber: number | null;
   currentStep: SessionStep;
   completedSteps: SessionStep[];
   stepStartTime: Date | null;
@@ -42,6 +44,13 @@ interface SessionState {
 
   // Regeneration state (for showing full loading screen during regenerate)
   isRegenerating: boolean;
+
+  // Task/Quiz progress state (persists during session)
+  taskProgress: Record<string, {
+    answers: Record<string, number | null>;
+    currentIndex: number;
+    showResults: boolean;
+  }>;
 
   // Actions
   createSession: (dto: CreateSessionDto) => Promise<Session>;
@@ -77,6 +86,12 @@ interface SessionState {
   getAlternativeTaskFormat: (dayNumber: number, format: 'code' | 'quiz' | 'fillBlank') => Promise<any>;
   alternativeTaskLoading: boolean;
   alternativeTaskCache: Record<string, any>; // key: "day-format", value: task
+
+  // Task progress actions (stepKey differentiates between quiz, conceptCheck, etc.)
+  saveTaskProgress: (dayNumber: number, stepKey: string, progress: { answers: Record<string, number | null>; currentIndex: number; showResults: boolean }) => void;
+  getTaskProgress: (dayNumber: number, stepKey: string) => { answers: Record<string, number | null>; currentIndex: number; showResults: boolean } | null;
+  clearTaskProgress: (dayNumber: number, stepKey: string) => void;
+  hasStepEngagement: (dayNumber: number, stepKey: string) => boolean;
 
   // Progress actions
   fetchProgress: (sessionId: string) => Promise<void>;
@@ -127,13 +142,16 @@ const updateDayStatuses = (
   });
 };
 
-export const useSessionStore = create<SessionState>((set, get) => ({
+export const useSessionStore = create<SessionState>()(
+  persist(
+    (set, get) => ({
   activeSession: null,
   sessions: [],
   isLoading: false,
   error: null,
 
   currentDay: null,
+  currentDayNumber: null as number | null,
   currentStep: 'prePrompt',
   completedSteps: [],
   stepStartTime: null,
@@ -151,6 +169,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   // Regeneration state
   isRegenerating: false,
+
+  // Task progress state
+  taskProgress: {},
 
   // Alternative task format state
   alternativeTaskLoading: false,
@@ -192,8 +213,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ isLoading: true });
     try {
       const response = await sessionService.getActive();
+      console.log('[fetchActiveSession] Fetched session:', {
+        id: response.session?.id,
+        currentDay: response.session?.currentDay,
+        skillName: response.session?.skillName,
+      });
       set({ activeSession: response.session, isLoading: false });
     } catch (error: any) {
+      console.error('[fetchActiveSession] Error:', error);
       set({
         error: error.response?.data?.message || 'Failed to fetch active session',
         isLoading: false,
@@ -247,7 +274,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   // Focus mode actions
   startDay: (dayNumber) => {
-    const { activeSession } = get();
+    const { activeSession, currentDayNumber, completedSteps, currentStep } = get();
     if (!activeSession) return;
 
     const dayData = activeSession.curriculum.days.find(d => d.day === dayNumber);
@@ -289,10 +316,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       }
     }
 
+    // Preserve step progress if resuming the same day (e.g., page refresh)
+    const isResumingSameDay = currentDayNumber === dayNumber;
+
     set({
       currentDay: mergedDay,
-      currentStep: 'prePrompt',
-      completedSteps: [],
+      currentDayNumber: dayNumber,
+      currentStep: isResumingSameDay ? currentStep : 'prePrompt',
+      completedSteps: isResumingSameDay ? completedSteps : [],
       stepStartTime: new Date(),
     });
   },
@@ -471,9 +502,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           );
         }
 
+        // Update activeSession.currentDay if loading a new day (sync with backend)
+        const newCurrentDay = dayNumber > state.activeSession.currentDay
+          ? dayNumber
+          : state.activeSession.currentDay;
+
         return {
           activeSession: {
             ...state.activeSession,
+            currentDay: newCurrentDay,
             curriculum: {
               ...state.activeSession.curriculum,
               days: updatedDays,
@@ -522,8 +559,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
               }
             : d
         );
-
-        const updatedCurrentDay = updatedDays.find((d) => d.day === dayNumber);
 
         return {
           activeSession: {
@@ -654,6 +689,55 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
 
+  // ═══════════════════════════════════════════════════
+  // TASK PROGRESS ACTIONS
+  // ═══════════════════════════════════════════════════
+
+  saveTaskProgress: (dayNumber: number, stepKey: string, progress) => {
+    const { activeSession } = get();
+    if (!activeSession) return;
+
+    const key = `${activeSession.id}-day${dayNumber}-${stepKey}`;
+    set((state) => ({
+      taskProgress: {
+        ...state.taskProgress,
+        [key]: progress,
+      },
+    }));
+  },
+
+  getTaskProgress: (dayNumber: number, stepKey: string) => {
+    const { activeSession, taskProgress } = get();
+    if (!activeSession) return null;
+
+    const key = `${activeSession.id}-day${dayNumber}-${stepKey}`;
+    return taskProgress[key] || null;
+  },
+
+  clearTaskProgress: (dayNumber: number, stepKey: string) => {
+    const { activeSession } = get();
+    if (!activeSession) return;
+
+    const key = `${activeSession.id}-day${dayNumber}-${stepKey}`;
+    set((state) => {
+      const { [key]: _, ...rest } = state.taskProgress;
+      return { taskProgress: rest };
+    });
+  },
+
+  // Check if user has engaged with a step (answered at least one question, typed code, etc.)
+  hasStepEngagement: (dayNumber: number, stepKey: string) => {
+    const { activeSession, taskProgress } = get();
+    if (!activeSession) return false;
+
+    const key = `${activeSession.id}-day${dayNumber}-${stepKey}`;
+    const progress = taskProgress[key];
+    if (!progress) return false;
+
+    // Has engagement if any answers exist
+    return Object.keys(progress.answers).length > 0;
+  },
+
   submitSkipTest: async (dayNumber: number, answers: number[]) => {
     const { activeSession } = get();
     if (!activeSession) throw new Error('No active session');
@@ -662,18 +746,31 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       const result = await sessionService.submitSkipTest(activeSession.id, dayNumber, answers);
 
       if (result.passed) {
-        // Update day status to skipped and unlock next day
+        // Update day status to skipped, unlock next day, and advance currentDay
         set((state) => {
           if (!state.activeSession) return state;
 
-          const updatedDays = updateDayStatuses(state.activeSession.curriculum.days, [
+          const totalDays = state.activeSession.curriculum.days.length;
+          const hasNextDay = dayNumber < totalDays;
+
+          const statusUpdates: Array<{ dayNumber: number; status: DayStatus }> = [
             { dayNumber, status: DayStatus.SKIPPED },
-            { dayNumber: dayNumber + 1, status: DayStatus.UNLOCKABLE },
-          ]);
+          ];
+          if (hasNextDay) {
+            statusUpdates.push({ dayNumber: dayNumber + 1, status: DayStatus.UNLOCKABLE });
+          }
+
+          const updatedDays = updateDayStatuses(state.activeSession.curriculum.days, statusUpdates);
+
+          // Advance currentDay only if there's a next day (matches backend behavior)
+          const newCurrentDay = hasNextDay && dayNumber >= state.activeSession.currentDay
+            ? dayNumber + 1
+            : state.activeSession.currentDay;
 
           return {
             activeSession: {
               ...state.activeSession,
+              currentDay: newCurrentDay,
               curriculum: {
                 ...state.activeSession.curriculum,
                 days: updatedDays,
@@ -731,18 +828,24 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         set((state) => {
           if (!state.activeSession) return state;
 
-          const updates = [{ dayNumber, status: DayStatus.SKIPPED }];
+          const updates: Array<{ dayNumber: number; status: DayStatus }> = [
+            { dayNumber, status: DayStatus.SKIPPED },
+          ];
           if (result.nextDayUnlocked) {
             updates.push({ dayNumber: dayNumber + 1, status: DayStatus.UNLOCKABLE });
           }
 
           const updatedDays = updateDayStatuses(state.activeSession.curriculum.days, updates);
 
+          // Advance currentDay only if next day was unlocked (matches backend behavior)
+          const newCurrentDay = result.nextDayUnlocked && dayNumber >= state.activeSession.currentDay
+            ? dayNumber + 1
+            : state.activeSession.currentDay;
+
           return {
             activeSession: {
               ...state.activeSession,
-              // Advance currentDay if next day was unlocked
-              currentDay: result.nextDayUnlocked ? dayNumber + 1 : state.activeSession.currentDay,
+              currentDay: newCurrentDay,
               curriculum: {
                 ...state.activeSession.curriculum,
                 days: updatedDays,
@@ -771,29 +874,38 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         confidence
       );
 
-      if (result.nextDayUnlocked) {
-        // Update day status to completed, unlock next day, and advance currentDay
-        set((state) => {
-          if (!state.activeSession) return state;
+      // Always update day status to completed and advance currentDay
+      // (matches backend behavior which always advances currentDay on success)
+      set((state) => {
+        if (!state.activeSession) return state;
 
-          const updatedDays = updateDayStatuses(state.activeSession.curriculum.days, [
-            { dayNumber, status: DayStatus.COMPLETED },
-            { dayNumber: dayNumber + 1, status: DayStatus.UNLOCKABLE },
-          ]);
+        const statusUpdates: Array<{ dayNumber: number; status: DayStatus }> = [
+          { dayNumber, status: DayStatus.COMPLETED },
+        ];
 
-          return {
-            activeSession: {
-              ...state.activeSession,
-              // Advance currentDay to next day (matches backend behavior)
-              currentDay: dayNumber + 1,
-              curriculum: {
-                ...state.activeSession.curriculum,
-                days: updatedDays,
-              },
+        // Also unlock next day if applicable
+        if (result.nextDayUnlocked) {
+          statusUpdates.push({ dayNumber: dayNumber + 1, status: DayStatus.UNLOCKABLE });
+        }
+
+        const updatedDays = updateDayStatuses(state.activeSession.curriculum.days, statusUpdates);
+
+        // Always advance currentDay to match backend behavior
+        const newCurrentDay = dayNumber >= state.activeSession.currentDay
+          ? dayNumber + 1
+          : state.activeSession.currentDay;
+
+        return {
+          activeSession: {
+            ...state.activeSession,
+            currentDay: newCurrentDay,
+            curriculum: {
+              ...state.activeSession.curriculum,
+              days: updatedDays,
             },
-          };
-        });
-      }
+          },
+        };
+      });
 
       return result;
     } catch (error: any) {
@@ -850,4 +962,16 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
-}));
+    }),
+    {
+      name: 'flexforge-task-progress',
+      // Persist taskProgress and step completion state to localStorage
+      partialize: (state) => ({
+        taskProgress: state.taskProgress,
+        currentDayNumber: state.currentDayNumber,
+        completedSteps: state.completedSteps,
+        currentStep: state.currentStep,
+      }),
+    }
+  )
+);

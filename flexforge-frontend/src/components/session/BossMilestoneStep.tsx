@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Trophy, ArrowRight, CheckCircle2, ListChecks, Lightbulb, ChevronDown, ChevronUp, Target, BookOpen } from 'lucide-react';
 import { Card, Button, ProgressBar } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { CodeSandbox } from './CodeSandbox';
 import { useCompanionStore } from '@/stores/companionStore';
+import { useSessionStore } from '@/stores/sessionStore';
 import type { CurriculumDay, Session } from '@/types';
 
 interface BossMilestoneStepProps {
@@ -55,11 +56,27 @@ const saveMilestoneDay = (sessionId: string, bossDay: number, dayNumber: number)
 };
 
 export function BossMilestoneStep({ day, session, onComplete }: BossMilestoneStepProps) {
-  const [code, setCode] = useState('');
-  const [isSubmitted, setIsSubmitted] = useState(false);
+  const { saveTaskProgress, getTaskProgress } = useSessionStore();
+  const { addSystemMessage } = useCompanionStore();
+
+  // Load saved progress for boss milestone
+  const savedProgress = getTaskProgress(day.day, 'bossMilestone');
+
+  const [code, setCode] = useState(savedProgress?.answers?.code as unknown as string || '');
+  const [isSubmitted, setIsSubmitted] = useState(savedProgress?.showResults ?? false);
   const [showHints, setShowHints] = useState(false);
   const [showSolution, setShowSolution] = useState(false);
-  const { addSystemMessage } = useCompanionStore();
+
+  // Save progress when code changes (for engagement tracking)
+  useEffect(() => {
+    if (code.length > 0) {
+      saveTaskProgress(day.day, 'bossMilestone', {
+        answers: { code } as unknown as Record<string, number | null>,
+        currentIndex: 0,
+        showResults: isSubmitted,
+      });
+    }
+  }, [code, isSubmitted, day.day, saveTaskProgress]);
 
   const isProjectBased = isProjectBasedCurriculum(session);
   const practiceProject = day.deferredContent?.practiceProject;

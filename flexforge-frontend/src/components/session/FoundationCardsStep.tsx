@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { Layers, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, MultipleChoiceQuestion } from '@/components/common';
 import { StepLayout } from './StepLayout';
+import { useSessionStore } from '@/stores/sessionStore';
 import { clsx } from 'clsx';
 import type { CurriculumDay, Session, FoundationCard, MicroQuestion } from '@/types';
 
@@ -19,11 +20,42 @@ const swipePower = (offset: number, velocity: number) => {
 };
 
 export function FoundationCardsStep({ day, onComplete }: FoundationCardsStepProps) {
+  const { saveTaskProgress, getTaskProgress } = useSessionStore();
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [answeredCards, setAnsweredCards] = useState<Record<string, boolean>>({});
   const [direction, setDirection] = useState(0);
 
   const cards = day.foundationCards || [];
+
+  // Restore progress on mount
+  useEffect(() => {
+    const saved = getTaskProgress(day.day, 'foundationCards');
+    if (saved?.answers) {
+      // Convert stored number answers to boolean
+      const restored: Record<string, boolean> = {};
+      Object.entries(saved.answers).forEach(([key, val]) => {
+        if (val !== null) restored[key] = val === 1;
+      });
+      setAnsweredCards(restored);
+      setCurrentCardIndex(saved.currentIndex || 0);
+    }
+  }, [day.day, getTaskProgress]);
+
+  // Save progress when answers change
+  useEffect(() => {
+    if (Object.keys(answeredCards).length > 0) {
+      // Convert boolean to number for storage
+      const answers: Record<string, number | null> = {};
+      Object.entries(answeredCards).forEach(([key, val]) => {
+        answers[key] = val ? 1 : 0;
+      });
+      saveTaskProgress(day.day, 'foundationCards', {
+        answers,
+        currentIndex: currentCardIndex,
+        showResults: false,
+      });
+    }
+  }, [answeredCards, currentCardIndex, day.day, saveTaskProgress]);
   const currentCard = cards[currentCardIndex];
   const progress = cards.length > 0 ? ((currentCardIndex + 1) / cards.length) * 100 : 0;
   const allAnswered = cards.length > 0 && Object.keys(answeredCards).length >= cards.length;

@@ -280,15 +280,43 @@ export class SessionService {
 
   /**
    * Get active session for user
+   * Also syncs currentDay with actual day progress if out of sync
    */
   async getActiveSession(userId: string): Promise<Session | null> {
-    return this.sessionsRepository.findOne({
+    const session = await this.sessionsRepository.findOne({
       where: {
         userId,
         status: SessionStatus.ACTIVE,
       },
       relations: ['progress'],
     });
+
+    if (!session) return null;
+
+    // Calculate the correct currentDay based on day statuses
+    // currentDay should be the first non-completed/non-skipped day, or the last day + 1 if all complete
+    const days = session.curriculum?.days || [];
+    let calculatedCurrentDay = 1;
+    for (const day of days) {
+      if (day.status === 'completed' || day.status === 'skipped') {
+        calculatedCurrentDay = day.day + 1;
+      } else {
+        break;
+      }
+    }
+    // Cap at total days + 1
+    calculatedCurrentDay = Math.min(calculatedCurrentDay, days.length + 1);
+
+    // If currentDay is out of sync, fix it
+    if (session.currentDay !== calculatedCurrentDay) {
+      this.logger.warn(
+        `⚠️ currentDay out of sync for session ${session.id}: stored=${session.currentDay}, calculated=${calculatedCurrentDay}. Fixing...`
+      );
+      session.currentDay = calculatedCurrentDay;
+      await this.sessionsRepository.save(session);
+    }
+
+    return session;
   }
 
   /**
@@ -586,7 +614,6 @@ export class SessionService {
       session.curriculum,
       dayNumber,
       tierString,
-      sessionId,
       forceRegenerate,
     );
 
@@ -598,6 +625,13 @@ export class SessionService {
       coreLoaded: true,
       status: 'in_progress',
     };
+
+    // Update currentDay if user is starting a new day
+    // This ensures currentDay is always synced with actual progress
+    if (dayNumber > session.currentDay) {
+      session.currentDay = dayNumber;
+      this.logger.log(`📍 Updated currentDay to ${dayNumber} for session ${sessionId}`);
+    }
 
     // Increment usage
     await this.userService.incrementUsage(userId, result.tokensUsed, 0);
@@ -786,16 +820,20 @@ export class SessionService {
       // Mark day as skipped/mastered
       session.curriculum.days[dayIndex].status = 'skipped';
 
-      // Unlock next day
+      // Unlock next day and advance currentDay
       if (dayNumber < session.curriculum.days.length) {
         const nextDayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber + 1);
         if (nextDayIndex !== -1) {
           session.curriculum.days[nextDayIndex].status = 'unlockable';
+          // Advance currentDay to match other skip/complete actions
+          if (dayNumber >= session.currentDay) {
+            session.currentDay = dayNumber + 1;
+          }
         }
       }
 
       await this.sessionsRepository.save(session);
-      this.logger.log(`✅ Day ${dayNumber} skipped (mastered) for session ${sessionId}`);
+      this.logger.log(`✅ Day ${dayNumber} skipped (mastered), advanced to day ${session.currentDay} for session ${sessionId}`);
 
       return {
         passed: true,
@@ -918,13 +956,15 @@ export class SessionService {
     }
 
     // Update current day
+    const previousCurrentDay = session.currentDay;
     if (dayNumber >= session.currentDay) {
       session.currentDay = dayNumber + 1;
+      this.logger.log(`📍 Advancing currentDay from ${previousCurrentDay} to ${session.currentDay} for session ${sessionId}`);
     }
 
     await this.sessionsRepository.save(session);
 
-    this.logger.log(`✅ Day ${dayNumber} practice submitted for session ${sessionId}`);
+    this.logger.log(`✅ Day ${dayNumber} practice submitted for session ${sessionId}. currentDay is now ${session.currentDay}`);
 
     return {
       nextDayUnlocked,

@@ -32,9 +32,12 @@ export const sessionService = {
 
   /**
    * Get current active session
+   * Includes cache-busting timestamp to ensure fresh data
    */
   async getActive(): Promise<{ session: Session | null; message?: string }> {
-    const { data } = await api.get<{ session: Session | null; message?: string }>('/sessions/active');
+    const { data } = await api.get<{ session: Session | null; message?: string }>(
+      `/sessions/active?_t=${Date.now()}`
+    );
     return data;
   },
 

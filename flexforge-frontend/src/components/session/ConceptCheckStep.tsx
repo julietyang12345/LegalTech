@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CheckSquare, ChevronDown, ChevronUp } from 'lucide-react';
 import { Card, MultipleChoiceQuestion, AnimatedReveal } from '@/components/common';
 import { StepLayout } from './StepLayout';
+import { useSessionStore } from '@/stores/sessionStore';
 import { clsx } from 'clsx';
 import type { CurriculumDay, Session, ConceptQuestion } from '@/types';
 
@@ -18,9 +19,21 @@ const LEVEL_INFO = {
 };
 
 export function ConceptCheckStep({ day }: ConceptCheckStepProps) {
+  const { saveTaskProgress, getTaskProgress } = useSessionStore();
+
+  // Load saved progress
+  const savedProgress = getTaskProgress(day.day, 'conceptCheck');
+
   const [expandedLevel, setExpandedLevel] = useState<number | null>(1);
-  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number | null>>({});
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number | null>>(
+    savedProgress?.answers ?? {}
+  );
   const [showExplanations, setShowExplanations] = useState<Record<string, boolean>>({});
+
+  // Save progress whenever answers change
+  useEffect(() => {
+    saveTaskProgress(day.day, 'conceptCheck', { answers: selectedAnswers, currentIndex: 0, showResults: false });
+  }, [selectedAnswers, day.day, saveTaskProgress]);
 
   const questions = day.conceptCheck?.questions || [];
 
@@ -40,10 +53,23 @@ export function ConceptCheckStep({ day }: ConceptCheckStepProps) {
     return selectedAnswers[questionId] === correctIndex;
   };
 
+  const handleClearAnswer = (questionId: string) => {
+    setSelectedAnswers(prev => {
+      const updated = { ...prev };
+      delete updated[questionId];
+      return updated;
+    });
+    setShowExplanations(prev => {
+      const updated = { ...prev };
+      delete updated[questionId];
+      return updated;
+    });
+  };
+
   const questionsByLevel = questions.reduce((acc, q, index) => {
     const level = q.level || 1;
     if (!acc[level]) acc[level] = [];
-    acc[level].push({ ...q, id: `q-${index}` });
+    acc[level].push({ ...q, id: `q${index + 1}` });
     return acc;
   }, {} as Record<number, (ConceptQuestion & { id: string })[]>);
 
@@ -110,17 +136,28 @@ export function ConceptCheckStep({ day }: ConceptCheckStepProps) {
               <AnimatedReveal show={isExpanded && levelQuestions.length > 0} className="overflow-hidden">
                 <div className="px-4 pb-4 space-y-4">
                   {levelQuestions.map((q, index) => (
-                    <MultipleChoiceQuestion
-                      key={q.id}
-                      question={q.question}
-                      options={q.options || []}
-                      correctIndex={q.correctIndex}
-                      explanation={q.explanation}
-                      selectedIndex={selectedAnswers[q.id] ?? null}
-                      onSelect={(optionIndex) => handleSelectOption(q.id, optionIndex, q.correctIndex)}
-                      showResult={selectedAnswers[q.id] !== undefined}
-                      questionNumber={index + 1}
-                    />
+                    <div key={q.id}>
+                      <MultipleChoiceQuestion
+                        question={q.question}
+                        options={q.options || []}
+                        correctIndex={q.correctIndex}
+                        explanation={q.explanation}
+                        selectedIndex={selectedAnswers[q.id] ?? null}
+                        onSelect={(optionIndex) => handleSelectOption(q.id, optionIndex, q.correctIndex)}
+                        showResult={selectedAnswers[q.id] !== undefined}
+                        questionNumber={index + 1}
+                      />
+                      {selectedAnswers[q.id] !== undefined && (
+                        <div className="flex justify-end mt-1">
+                          <button
+                            onClick={() => handleClearAnswer(q.id)}
+                            className="text-sm text-gray-500 hover:text-gray-700 underline underline-offset-2"
+                          >
+                            Try again
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               </AnimatedReveal>
@@ -137,6 +174,7 @@ export function ConceptCheckStep({ day }: ConceptCheckStepProps) {
           ).length} of {questions.length} correct
         </div>
       )}
+
     </StepLayout>
   );
 }
