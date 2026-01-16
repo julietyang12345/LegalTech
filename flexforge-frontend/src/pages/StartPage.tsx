@@ -19,6 +19,7 @@ import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
 import { Button, Card, GeneratingScreen, QuotaExceededModal } from '@/components/common';
 import { SkillLevel } from '@/types';
+import { onboardingService } from '@/services/onboardingService';
 
 // Loading steps for curriculum generation (~30-40 seconds)
 const GENERATION_LOADING_STEPS = [
@@ -172,14 +173,16 @@ export function StartPage() {
   const [showQuotaModal, setShowQuotaModal] = useState(false);
   const [quotaErrorMessage, setQuotaErrorMessage] = useState<string | undefined>();
 
-  // Reset form to defaults
-  const handleReset = () => {
-    setSkillName('');
-    setDurationDays(7);
-    setHoursPerDay(1);
-    setSkillLevel(SkillLevel.BEGINNER);
-    setWarnings([]);
-    clearError();
+  // Reset and go back to onboarding
+  const handleReset = async () => {
+    try {
+      await onboardingService.reset();
+      navigate('/onboarding');
+    } catch (error) {
+      console.error('Failed to reset onboarding:', error);
+      // Still navigate even if reset fails
+      navigate('/onboarding');
+    }
   };
 
   // Pre-fill from onboarding preferences

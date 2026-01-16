@@ -47,4 +47,12 @@ export const onboardingService = {
     }>('/onboarding/status');
     return data;
   },
+
+  /**
+   * Reset onboarding - clears preferences so user can start over
+   */
+  async reset(): Promise<{ message: string }> {
+    const { data } = await api.post<{ message: string }>('/onboarding/reset');
+    return data;
+  },
 };

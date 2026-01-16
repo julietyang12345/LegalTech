@@ -58,4 +58,16 @@ export class OnboardingController {
   ): Promise<{ completedOnboarding: boolean; needsOnboarding: boolean }> {
     return this.onboardingService.getOnboardingStatus(user.id);
   }
+
+  /**
+   * Reset onboarding - clears learner preferences so user can start over.
+   */
+  @Post('reset')
+  @HttpCode(HttpStatus.OK)
+  async resetOnboarding(
+    @CurrentUser() user: User,
+  ): Promise<{ message: string }> {
+    await this.onboardingService.resetOnboarding(user.id);
+    return { message: 'Onboarding reset successfully' };
+  }
 }

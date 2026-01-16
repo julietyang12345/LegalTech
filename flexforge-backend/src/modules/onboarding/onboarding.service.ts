@@ -153,6 +153,24 @@ export class OnboardingService {
     };
   }
 
+  /**
+   * Reset onboarding - clears learner preferences so user can start over.
+   */
+  async resetOnboarding(userId: string): Promise<void> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    // Clear learner preferences
+    if (user.preferences) {
+      delete user.preferences.learner;
+    }
+
+    await this.userRepository.save(user);
+    this.logger.log(`Reset onboarding for user ${userId}`);
+  }
+
   // ============================================
   // PRIVATE METHODS
   // ============================================
