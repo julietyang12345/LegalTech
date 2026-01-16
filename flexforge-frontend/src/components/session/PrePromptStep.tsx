@@ -1,6 +1,7 @@
-import { motion } from 'framer-motion';
-import { Lightbulb, RotateCcw } from 'lucide-react';
-import { Card } from '@/components/common';
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Lightbulb, RotateCcw, AlertTriangle, X } from 'lucide-react';
+import { Card, Button } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
@@ -15,8 +16,12 @@ interface PrePromptStepProps {
 export function PrePromptStep({ day }: PrePromptStepProps) {
   const { regenerateDayContent } = useSessionStore();
   const { addSystemMessage } = useCompanionStore();
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
 
   const handleRegenerateDay = async () => {
+    setIsRegenerating(true);
+    setShowConfirmModal(false);
     try {
       // This sets isRegenerating: true in the store, triggering full loading screen in SessionPage
       await regenerateDayContent(day.day);
@@ -30,6 +35,8 @@ export function PrePromptStep({ day }: PrePromptStepProps) {
         'Failed to regenerate content. Please try again.',
         'supportive'
       );
+    } finally {
+      setIsRegenerating(false);
     }
   };
 
@@ -79,13 +86,96 @@ export function PrePromptStep({ day }: PrePromptStepProps) {
       {/* Regenerate Day Content */}
       <div className="pt-4 border-t border-gray-100">
         <button
-          onClick={handleRegenerateDay}
-          className="text-sm text-gray-400 hover:text-gray-600 flex items-center gap-1.5 mx-auto transition-colors"
+          onClick={() => setShowConfirmModal(true)}
+          disabled={isRegenerating}
+          className="text-sm text-gray-400 hover:text-gray-600 flex items-center gap-1.5 mx-auto transition-colors disabled:opacity-50"
         >
           <RotateCcw className="w-4 h-4" />
           Not satisfied? Regenerate today's content
         </button>
       </div>
+
+      {/* Confirmation Modal */}
+      <AnimatePresence>
+        {showConfirmModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowConfirmModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl max-w-md w-full shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <h2 className="font-semibold text-gray-900">Regenerate Content?</h2>
+                </div>
+                <button
+                  onClick={() => setShowConfirmModal(false)}
+                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="p-6">
+                <p className="text-gray-700 mb-4">
+                  Are you sure you want to regenerate today's content? This will:
+                </p>
+                <ul className="space-y-2 text-sm text-gray-600 mb-6">
+                  <li className="flex items-start gap-2">
+                    <span className="text-amber-500 mt-0.5">•</span>
+                    Clear all quiz and task progress
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-amber-500 mt-0.5">•</span>
+                    Reset your step completion
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-amber-500 mt-0.5">•</span>
+                    Generate completely new learning content
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-amber-500 mt-0.5">•</span>
+                    Clear any practice project submissions
+                  </li>
+                </ul>
+                <p className="text-sm text-gray-500">
+                  This action cannot be undone.
+                </p>
+              </div>
+
+              {/* Footer */}
+              <div className="flex gap-3 p-4 border-t border-gray-100">
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowConfirmModal(false)}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleRegenerateDay}
+                  className="flex-1 bg-amber-500 hover:bg-amber-600"
+                >
+                  Yes, Regenerate
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </StepLayout>
   );
 }

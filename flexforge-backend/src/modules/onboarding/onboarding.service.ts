@@ -10,6 +10,7 @@ import {
   DirectionsResponse,
   CompleteOnboardingDto,
 } from '../curriculum/types/learner-prefs.interface';
+import { SkillType } from '../curriculum/services/skill-detector.service';
 import { parseAiJson } from '../curriculum/utils/shared.utils';
 
 @Injectable()
@@ -65,6 +66,7 @@ export class OnboardingService {
         isFree: d.isFree !== false, // Default to free if not specified
         paymentNote: d.isToolSpecific && !d.isFree ? String(d.paymentNote || 'May require payment') : undefined,
         estimatedMinutes: Number(d.estimatedMinutes) || 60,
+        skillType: this.parseSkillType(d.skillType),
       })) as LearningDirection[];
 
     // Separate concept vs tool-specific
@@ -172,6 +174,14 @@ GRANULARITY RULES (CRITICAL):
 
 Keep directions broad enough that video search will find good matches.
 
+SKILL TYPE DETECTION (REQUIRED for each direction):
+Classify each direction into one of these skill types:
+- CODE: Programming, software development, coding tutorials (Python, JavaScript, APIs, etc.)
+- AI_AGENT: AI agents, automation with AI, LLM integrations
+- DESIGN: UI/UX design, graphic design, visual design tools
+- KNOWLEDGE: Academic learning, languages, theory, concepts (French, history, math, etc.)
+- PHYSICAL: Sports, music, dance, physical activities, hands-on crafts
+
 TOOL-SPECIFIC DIRECTIONS:
 - Include UP TO 3 tool-specific directions (isToolSpecific: true)
 - AT LEAST 2 must be FREE tools (isFree: true) - e.g., Python, Node.js, VS Code, Git
@@ -191,18 +201,20 @@ Return JSON in this exact format:
       "title": "Short title (max 8 words)",
       "outcome": "You'll be able to... (one sentence)",
       "keywords": ["keyword1", "keyword2", "keyword3"],
+      "skillType": "CODE",
       "isToolSpecific": false,
       "isFree": true,
       "paymentNote": null,
       "estimatedMinutes": 60
     },
     {
-      "title": "Build automations with Zapier",
-      "outcome": "You'll create no-code automations",
-      "keywords": ["Zapier", "automation"],
-      "isToolSpecific": true,
-      "isFree": false,
-      "paymentNote": "Free tier available, paid plans for advanced features",
+      "title": "Learn French conversation basics",
+      "outcome": "You'll hold basic conversations in French",
+      "keywords": ["French", "conversation", "language learning"],
+      "skillType": "KNOWLEDGE",
+      "isToolSpecific": false,
+      "isFree": true,
+      "paymentNote": null,
       "estimatedMinutes": 45
     }
   ]
@@ -267,6 +279,19 @@ Remember: directions must be searchable (common terms) and bounded (30-90 min).`
   }
 
   /**
+   * Parse and validate skillType from AI response.
+   */
+  private parseSkillType(value: any): SkillType {
+    const validTypes = Object.values(SkillType);
+    const normalized = String(value || '').toUpperCase();
+    if (validTypes.includes(normalized as SkillType)) {
+      return normalized as SkillType;
+    }
+    // Default to CODE if not recognized
+    return SkillType.CODE;
+  }
+
+  /**
    * Fallback directions if AI fails to generate.
    */
   private getFallbackDirections(goal: string): LearningDirection[] {
@@ -294,6 +319,7 @@ Remember: directions must be searchable (common terms) and bounded (30-90 min).`
           keywords: ['AI', 'prompting', 'ChatGPT', 'fundamentals'],
           isToolSpecific: false,
           estimatedMinutes: 60,
+          skillType: SkillType.AI_AGENT,
         },
         {
           id: 'fallback-2',
@@ -302,6 +328,7 @@ Remember: directions must be searchable (common terms) and bounded (30-90 min).`
           keywords: ['automation', 'workflows', 'triggers', 'actions'],
           isToolSpecific: false,
           estimatedMinutes: 45,
+          skillType: SkillType.AI_AGENT,
         },
         {
           id: 'fallback-3',
@@ -310,6 +337,7 @@ Remember: directions must be searchable (common terms) and bounded (30-90 min).`
           keywords: ['Zapier', 'Make', 'automation', 'no-code'],
           isToolSpecific: true,
           estimatedMinutes: 60,
+          skillType: SkillType.AI_AGENT,
         },
       ];
     }
@@ -323,6 +351,7 @@ Remember: directions must be searchable (common terms) and bounded (30-90 min).`
           keywords: ['web development', 'HTML', 'CSS', 'JavaScript'],
           isToolSpecific: false,
           estimatedMinutes: 60,
+          skillType: SkillType.CODE,
         },
         {
           id: 'fallback-2',
@@ -331,6 +360,7 @@ Remember: directions must be searchable (common terms) and bounded (30-90 min).`
           keywords: ['API', 'REST', 'HTTP', 'backend'],
           isToolSpecific: false,
           estimatedMinutes: 60,
+          skillType: SkillType.CODE,
         },
       ];
     }
@@ -344,6 +374,7 @@ Remember: directions must be searchable (common terms) and bounded (30-90 min).`
           keywords: ['Python', 'programming', 'basics', 'syntax'],
           isToolSpecific: false,
           estimatedMinutes: 60,
+          skillType: SkillType.CODE,
         },
         {
           id: 'fallback-2',
@@ -352,6 +383,7 @@ Remember: directions must be searchable (common terms) and bounded (30-90 min).`
           keywords: ['Python', 'Pandas', 'data analysis', 'dataframe'],
           isToolSpecific: false,
           estimatedMinutes: 60,
+          skillType: SkillType.CODE,
         },
       ];
     }
@@ -365,6 +397,7 @@ Remember: directions must be searchable (common terms) and bounded (30-90 min).`
         keywords: ['basics', 'fundamentals', 'tutorial', 'beginner'],
         isToolSpecific: false,
         estimatedMinutes: 60,
+        skillType: SkillType.KNOWLEDGE,
       },
       {
         id: 'fallback-2',
@@ -373,6 +406,7 @@ Remember: directions must be searchable (common terms) and bounded (30-90 min).`
         keywords: ['project', 'hands-on', 'practical', 'build'],
         isToolSpecific: false,
         estimatedMinutes: 60,
+        skillType: SkillType.KNOWLEDGE,
       },
     ];
   }

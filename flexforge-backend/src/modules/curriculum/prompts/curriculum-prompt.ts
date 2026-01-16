@@ -1,12 +1,13 @@
 import { SkillLevel } from '../../../database/entities/session.entity';
 import { SkillType, SkillComplexity } from '../services/skill-detector.service';
+import { OutputType } from '../types/learner-prefs.interface';
 
 // Learner preferences from onboarding (optional - may not exist for users who skipped onboarding)
 export interface LearnerPrefsForPrompt {
   originalGoal?: string;           // User's free-text goal from onboarding
   selectedDirection?: string;      // The direction they picked (more specific than skillName)
   directionKeywords?: string[];    // Keywords for the selected direction
-  outputType?: 'working_code' | 'understand_concept' | 'fix_bug' | 'ship_project';
+  outputType?: OutputType;
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
   contentDepth?: 'fast' | 'medium' | 'deep';
 }
@@ -144,11 +145,21 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
 
   // Output type affects curriculum structure
   if (prefs.outputType) {
-    const outputGuidance: Record<string, string> = {
+    const outputGuidance: Record<OutputType, string> = {
+      // Code/technical skills
       working_code: 'User wants WORKING CODE as output. Focus on practical implementation, real runnable examples.',
-      understand_concept: 'User wants to UNDERSTAND CONCEPTS. Include more theory, explanations, and mental models.',
-      fix_bug: 'User wants to FIX BUGS. Focus on debugging techniques, common issues, troubleshooting patterns.',
       ship_project: 'User wants to SHIP A PROJECT. Focus on end-to-end implementation, deployment, best practices.',
+      fix_bug: 'User wants to FIX BUGS. Focus on debugging techniques, common issues, troubleshooting patterns.',
+      // Universal
+      understand_concept: 'User wants to UNDERSTAND CONCEPTS. Include more theory, explanations, and mental models.',
+      teach_others: 'User wants to TEACH OTHERS. Focus on clear explanations, teaching techniques, common misconceptions.',
+      // Knowledge skills
+      pass_exam: 'User wants to PASS AN EXAM. Focus on testable knowledge, practice questions, exam strategies.',
+      apply_practical: 'User wants to USE KNOWLEDGE PRACTICALLY. Focus on real-world applications, conversational use, practical scenarios.',
+      // Physical skills
+      perform_skill: 'User wants to PERFORM THE SKILL WELL. Focus on proper technique, practice routines, common mistakes to avoid.',
+      compete: 'User wants to COMPETE. Focus on advanced techniques, competitive strategies, performance optimization.',
+      master_basics: 'User wants to MASTER THE BASICS. Focus on foundational movements, core techniques, building muscle memory.',
     };
     parts.push(outputGuidance[prefs.outputType] || '');
   }
@@ -304,32 +315,41 @@ function getDayHeader(params: {
 /**
  * Determines if learning should be project-based (boss projects) or practice-based (practice projects)
  *
- * Decision factors:
- * 1. Skill type: KNOWLEDGE/PHYSICAL are always practice-based
- * 2. User's goal (outputType from questionnaire):
- *    - ship_project, working_code → project-based
- *    - understand_concept, fix_bug → practice-based
- * 3. Default: CODE/AI_AGENT/DESIGN without preference → project-based
+ * Priority (user intent first!):
+ * 1. User's goal from questionnaire (outputType) - TAKES PRIORITY:
+ *    - ship_project, working_code → project-based (even for KNOWLEDGE skills)
+ *    - understand_concept, fix_bug, pass_exam, etc → practice-based
+ * 2. Skill type default (if no user preference):
+ *    - KNOWLEDGE/PHYSICAL → practice-based
+ *    - CODE/AI_AGENT/DESIGN → project-based
  */
 function usesProjectBasedLearning(
   skillType: SkillType,
-  outputType?: 'working_code' | 'understand_concept' | 'fix_bug' | 'ship_project'
+  outputType?: OutputType
 ): boolean {
-  // KNOWLEDGE and PHYSICAL are always practice-based (languages, theory, physical skills)
-  if (skillType === SkillType.KNOWLEDGE || skillType === SkillType.PHYSICAL) {
-    return false;
-  }
-
-  // If user specified their goal, use that
+  // User intent takes priority - if they want to ship/build something, it's project-based
   if (outputType) {
     switch (outputType) {
+      // These output types indicate project-based learning
       case 'ship_project':
       case 'working_code':
         return true;
+      // These output types indicate practice-based learning
       case 'understand_concept':
       case 'fix_bug':
+      case 'teach_others':
+      case 'pass_exam':
+      case 'apply_practical':
+      case 'perform_skill':
+      case 'compete':
+      case 'master_basics':
         return false;
     }
+  }
+
+  // KNOWLEDGE and PHYSICAL default to practice-based (unless user specified otherwise above)
+  if (skillType === SkillType.KNOWLEDGE || skillType === SkillType.PHYSICAL) {
+    return false;
   }
 
   // Default: CODE/AI_AGENT/DESIGN without preference → project-based
@@ -810,7 +830,13 @@ ${params.suggestedLanguage ? `LANGUAGE: ${params.suggestedLanguage}` : ''}
 ${getTierInstructions(params.userTier)}
 
 Boss projects are 60-90 minute capstone challenges integrating ALL previous concepts.
-Challenging but achievable. Complete working solution required.
+Challenging but achievable.
+
+CRITICAL - CODE GENERATION REQUIREMENTS:
+- "starterCode": Generate ACTUAL runnable code with TODO comments marking where user adds code
+- "solution": Generate COMPLETE working code that implements ALL requirements
+- DO NOT copy the placeholder text - generate REAL code
+- The code must be runnable and solve the project requirements
 
 Output valid JSON only.`;
 
@@ -843,7 +869,7 @@ Output valid JSON only.`;
     {"phase": 3, "title": "Polish", "minutes": 25, "objectives": ["Obj 1"], "deliverable": "Final product"}
   ],
 
-  "starterCode": "// Comprehensive starter template with TODOs",
+  "starterCode": "GENERATE: Actual ${params.suggestedLanguage || 'code'} with imports, structure, and TODO comments where user adds code",
 
   "hints": [
     {"level": 1, "hint": "High-level approach", "phase": 1},
@@ -852,7 +878,7 @@ Output valid JSON only.`;
     {"level": 4, "hint": "Integration help", "phase": 3}
   ],
 
-  "solution": "// COMPLETE working solution with detailed comments",
+  "solution": "GENERATE: Complete working ${params.suggestedLanguage || 'code'} solution with comments explaining key logic",
 
   "solutionWalkthrough": [
     {"step": 1, "description": "First...", "code": "snippet"},

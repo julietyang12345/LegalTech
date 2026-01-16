@@ -1,5 +1,6 @@
-import { IsString, IsInt, IsNumber, IsEnum, Min, Max } from 'class-validator';
+import { IsString, IsInt, IsNumber, IsEnum, IsOptional, Min, Max } from 'class-validator';
 import { SkillLevel } from '../../../database/entities/session.entity';
+import { OutputType } from '../types/learner-prefs.interface';
 
 export class GenerateCurriculumDto {
   @IsString()
@@ -17,4 +18,8 @@ export class GenerateCurriculumDto {
 
   @IsEnum(SkillLevel)
   skillLevel: SkillLevel;
+
+  @IsOptional()
+  @IsString()
+  outputType?: OutputType;
 }

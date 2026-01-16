@@ -113,8 +113,12 @@ export class SessionService {
         this.logger.log(`📦 Cache HIT for "${createSessionDto.skillName}" - variant ${variantId}`);
       } else {
         // Cache MISS - generate new curriculum
+        // Include user's outputType from questionnaire preferences
+        const outputType = user.preferences?.learner?.outputType;
+        this.logger.log(`🎯 DEBUG outputType from user.preferences.learner: ${outputType || 'NOT SET'}`);
+        this.logger.log(`🎯 DEBUG user.preferences.learner:`, JSON.stringify(user.preferences?.learner, null, 2));
         const generated = await this.curriculumService.generateCurriculum(
-          createSessionDto,
+          { ...createSessionDto, outputType },
           tierString,
         );
 
@@ -629,6 +633,23 @@ export class SessionService {
         dayData.status = 'in_progress';
         this.logger.log(`🧹 Cleared all progress for Day ${dayNumber}`);
       }
+
+      // Also clear boss project cache if this day is part of one
+      if (session.curriculum.bossProjects) {
+        const bossProject = session.curriculum.bossProjects.find(
+          (bp: any) => bp.combinesDays?.includes(dayNumber)
+        );
+        if (bossProject) {
+          // Clear the boss project's detailsLoaded flag so it regenerates
+          bossProject.detailsLoaded = false;
+          // Clear the generated content
+          delete bossProject.phases;
+          delete bossProject.requirements;
+          delete bossProject.hints;
+          delete bossProject.files;
+          this.logger.log(`🧹 Cleared boss project cache for Day ${bossProject.day}`);
+        }
+      }
     }
 
     // Generate core content (fast)
@@ -641,6 +662,19 @@ export class SessionService {
 
     // Update session with core content
     const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
+
+    // DEBUG: Log bossMilestone solution status
+    const bossMilestone = result.coreContent?.bossMilestone;
+    this.logger.log(`🔍 DEBUG Day ${dayNumber} bossMilestone:`, {
+      hasBossMilestone: !!bossMilestone,
+      hasStarterCode: !!bossMilestone?.starterCode,
+      starterCodeLength: bossMilestone?.starterCode?.length || 0,
+      starterCodePreview: bossMilestone?.starterCode?.substring(0, 100),
+      hasSolution: !!bossMilestone?.solution,
+      solutionLength: bossMilestone?.solution?.length || 0,
+      solutionPreview: bossMilestone?.solution?.substring(0, 100),
+    });
+
     session.curriculum.days[dayIndex] = {
       ...session.curriculum.days[dayIndex],
       coreContent: result.coreContent,

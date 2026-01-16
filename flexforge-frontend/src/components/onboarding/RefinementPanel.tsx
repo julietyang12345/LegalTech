@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { clsx } from 'clsx';
 import { Button } from '../common/Button';
 import { ArrowRight, ArrowLeft } from 'lucide-react';
-import type { RefinementContext } from '@/types';
+import { SkillType, type RefinementContext, type LearningDirection } from '@/types';
 
 interface RefinementPanelProps {
   originalGoal: string;
+  directions?: LearningDirection[];
   onSubmit: (refinement: RefinementContext) => void;
   onBack: () => void;
   isLoading?: boolean;
@@ -24,6 +25,7 @@ interface ChipOption<T> {
 
 export function RefinementPanel({
   originalGoal,
+  directions = [],
   onSubmit,
   onBack,
   isLoading,
@@ -34,12 +36,61 @@ export function RefinementPanel({
   const [skillLevel, setSkillLevel] = useState<SkillLevel>();
   const [timeMinutes, setTimeMinutes] = useState<number>();
 
-  const outputOptions: ChipOption<OutputType>[] = [
-    { value: 'working_code', label: 'Working code', emoji: '💻' },
-    { value: 'understand_concept', label: 'Understand concept', emoji: '💡' },
-    { value: 'fix_bug', label: 'Fix a bug', emoji: '🐛' },
-    { value: 'ship_project', label: 'Ship a project', emoji: '🚀' },
-  ];
+  // Determine the dominant skill type from directions
+  const dominantSkillType = useMemo((): SkillType => {
+    if (directions.length === 0) return SkillType.CODE;
+
+    // Count skill types
+    const counts: Record<string, number> = {};
+    directions.forEach((d) => {
+      const type = d.skillType || SkillType.CODE;
+      counts[type] = (counts[type] || 0) + 1;
+    });
+
+    // Return the most common one
+    let maxCount = 0;
+    let dominant: SkillType = SkillType.CODE;
+    for (const [type, count] of Object.entries(counts)) {
+      if (count > maxCount) {
+        maxCount = count;
+        dominant = type as SkillType;
+      }
+    }
+    return dominant;
+  }, [directions]);
+
+  // Get output options based on skill type
+  const outputOptions = useMemo((): ChipOption<OutputType>[] => {
+    switch (dominantSkillType) {
+      case SkillType.KNOWLEDGE:
+        // Language learning, academic, theory
+        return [
+          { value: 'understand_concept', label: 'Understand deeply', emoji: '💡' },
+          { value: 'pass_exam', label: 'Pass an exam', emoji: '📝' },
+          { value: 'apply_practical', label: 'Use practically', emoji: '🎯' },
+          { value: 'teach_others', label: 'Teach others', emoji: '👥' },
+        ];
+      case SkillType.PHYSICAL:
+        // Sports, music, dance, crafts
+        return [
+          { value: 'master_basics', label: 'Master basics', emoji: '🌱' },
+          { value: 'perform_skill', label: 'Perform well', emoji: '⭐' },
+          { value: 'compete', label: 'Compete', emoji: '🏆' },
+          { value: 'teach_others', label: 'Teach others', emoji: '👥' },
+        ];
+      case SkillType.CODE:
+      case SkillType.AI_AGENT:
+      case SkillType.DESIGN:
+      default:
+        // Technical/coding skills
+        return [
+          { value: 'working_code', label: 'Working code', emoji: '💻' },
+          { value: 'understand_concept', label: 'Understand concept', emoji: '💡' },
+          { value: 'fix_bug', label: 'Fix a bug', emoji: '🐛' },
+          { value: 'ship_project', label: 'Ship a project', emoji: '🚀' },
+        ];
+    }
+  }, [dominantSkillType]);
 
   const usageOptions: ChipOption<UsageContext>[] = [
     { value: 'work', label: 'At work', emoji: '💼' },

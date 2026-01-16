@@ -845,11 +845,34 @@ export interface LearningDirection {
   estimatedMinutes: number;      // 60
   paymentNote?: string;          // "May require paid subscription" for paid tools
   isFree?: boolean;              // true for free tools, false for paid
+  skillType?: SkillType;         // Detected skill type for this direction
 }
+
+/**
+ * Output types for different skill categories.
+ * - Code skills (CODE, AI_AGENT, DESIGN): working_code, ship_project, fix_bug
+ * - Knowledge skills (KNOWLEDGE): understand_concept, pass_exam, teach_others
+ * - Physical skills (PHYSICAL): perform_skill, compete, master_basics
+ */
+export type OutputType =
+  // Code/technical skills
+  | 'working_code'
+  | 'ship_project'
+  | 'fix_bug'
+  // Universal
+  | 'understand_concept'
+  | 'teach_others'
+  // Knowledge skills (languages, academic, etc.)
+  | 'pass_exam'
+  | 'apply_practical'
+  // Physical skills (sports, music, dance, etc.)
+  | 'perform_skill'
+  | 'compete'
+  | 'master_basics';
 
 // Refinement context (from Step 3b if user selects "Not quite")
 export interface RefinementContext {
-  outputType?: 'working_code' | 'understand_concept' | 'fix_bug' | 'ship_project';
+  outputType?: OutputType;
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
   timeMinutes?: number;
   platformTolerance?: 'any' | 'preferGeneric' | 'genericOnly';
@@ -866,7 +889,7 @@ export interface LearnerPrefs {
   directionKeywords: string[];       // Keywords for video matching hints
 
   // From refinement (Step 3b, if used)
-  outputType?: 'working_code' | 'understand_concept' | 'fix_bug' | 'ship_project';
+  outputType?: OutputType;
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
 
   // From depth test (Step 5)
@@ -898,7 +921,7 @@ export interface CompleteOnboardingDto {
   directionKeywords: string[];
   contentDepth: 'fast' | 'medium' | 'deep';
   platformTolerance?: 'any' | 'preferGeneric' | 'genericOnly';
-  outputType?: 'working_code' | 'understand_concept' | 'fix_bug' | 'ship_project';
+  outputType?: OutputType;
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
   dailyMinutes?: number;
   skillLevel?: 'beginner' | 'intermediate' | 'advanced';
