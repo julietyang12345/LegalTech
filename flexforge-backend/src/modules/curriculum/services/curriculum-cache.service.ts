@@ -8,6 +8,8 @@ import {
   CurriculumServe,
   SkillAlias,
   DayContentCache,
+  DayContentCacheVariant,
+  DayContentServe,
   QualityStatus,
   RegenCategory,
 } from '../../../database/entities/curriculum-cache.entity';
@@ -23,7 +25,7 @@ export const CACHE_CONFIG = {
   promptVersion: '1.0.0',
   modelVersion: 'claude-sonnet-4',
 
-  // Regen rate thresholds (consistent values)
+  // Regen rate thresholds (consistent values) - CURRICULUM
   minServesForJudgment: 10,
   goodRegenRate: 0.15,       // <= 15% = good
   badRegenRate: 0.35,        // > 35% = bad, auto-deactivate
@@ -39,6 +41,12 @@ export const CACHE_CONFIG = {
 
   // Expiry
   cacheExpiryDays: 90,
+
+  // DAY CONTENT specific thresholds (slightly more lenient)
+  dayContentMaxRegensPerDay: 3,     // Max 3 regens per day per session
+  dayContentGoodRegenRate: 0.20,    // <= 20% = good (day content may have higher acceptable rate)
+  dayContentBadRegenRate: 0.40,     // > 40% = bad, auto-deactivate
+  dayContentWinnerRegenRate: 0.12,  // <= 12% after 10+ serves = winner
 };
 
 // ============================================================================
@@ -61,6 +69,12 @@ export interface VariantStats {
   timesCompletedDay1: number;
   bounceCount: number;
   regenRate: number;
+}
+
+export interface DayContentCacheResult {
+  content: any;
+  variantId: string;
+  fromCache: boolean;
 }
 
 // ============================================================================
@@ -90,6 +104,12 @@ export class CurriculumCacheService implements OnModuleInit {
 
     @InjectRepository(DayContentCache)
     private readonly dayContentRepo: Repository<DayContentCache>,
+
+    @InjectRepository(DayContentCacheVariant)
+    private readonly dayVariantRepo: Repository<DayContentCacheVariant>,
+
+    @InjectRepository(DayContentServe)
+    private readonly dayServeRepo: Repository<DayContentServe>,
 
     private readonly dataSource: DataSource,
 
@@ -671,6 +691,365 @@ export class CurriculumCacheService implements OnModuleInit {
   clearDayContentCache(): void {
     this.dayContentCache.clear();
     this.logger.log('Day content in-memory cache cleared');
+  }
+
+  // ==========================================================================
+  // DAY CONTENT VARIANT TRACKING (Quality-based caching like curriculum)
+  // ==========================================================================
+
+  /**
+   * Get day content with variant tracking (use this instead of getDayContent for variant support)
+   */
+  async getDayContentWithVariant(
+    cacheKey: string,
+    userId: string,
+    sessionId: string,
+    dayNumber: number,
+  ): Promise<DayContentCacheResult | null> {
+    try {
+      // Find cache entry
+      const cacheEntry = await this.dayContentRepo.findOne({
+        where: {
+          cacheKey,
+          isActive: true,
+          expiresAt: MoreThan(new Date()),
+        },
+      });
+
+      if (!cacheEntry) {
+        return null;
+      }
+
+      // Select best variant
+      const variant = await this.selectDayVariant(cacheEntry.id, cacheEntry.winnerVariantId);
+
+      if (!variant) {
+        // No variants yet - fall back to legacy content field
+        if (cacheEntry.content) {
+          this.logger.debug(`Day content legacy cache HIT (no variants): ${cacheKey}`);
+          return {
+            content: cacheEntry.content,
+            variantId: '',
+            fromCache: true,
+          };
+        }
+        return null;
+      }
+
+      // Record serve
+      await this.recordDayServe(variant.id, userId, sessionId, dayNumber);
+
+      // Increment cache hit counter
+      this.dayContentRepo.increment({ id: cacheEntry.id }, 'cacheHits', 1).catch(() => {});
+
+      this.logger.debug(`Day content variant cache HIT: ${cacheKey} variant=${variant.id}`);
+
+      return {
+        content: variant.content,
+        variantId: variant.id,
+        fromCache: true,
+      };
+    } catch (error) {
+      this.logger.warn(`Day content variant lookup failed: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Cache day content with variant creation (use this instead of setDayContent for variant support)
+   */
+  async cacheDayContentWithVariant(
+    cacheKey: string,
+    content: any,
+    userId: string,
+    sessionId: string,
+    dayNumber: number,
+  ): Promise<DayContentCacheResult> {
+    const contentHash = this.generateContentHash(content);
+
+    try {
+      // Find or create cache entry
+      let cacheEntry = await this.dayContentRepo.findOne({ where: { cacheKey } });
+
+      if (!cacheEntry) {
+        cacheEntry = await this.dayContentRepo.save({
+          cacheKey,
+          content, // Keep legacy content for backward compat
+          isActive: true,
+          expiresAt: new Date(Date.now() + CACHE_CONFIG.cacheExpiryDays * 24 * 60 * 60 * 1000),
+        });
+      }
+
+      // Check if variant with same content hash already exists
+      let variant = await this.dayVariantRepo.findOne({
+        where: { cacheKeyId: cacheEntry.id, contentHash, isActive: true },
+      });
+
+      if (!variant) {
+        // Create new variant
+        variant = await this.dayVariantRepo.save({
+          cacheKeyId: cacheEntry.id,
+          content,
+          contentHash,
+          timesServed: 0,
+          timesRegenerated: 0,
+          qualityStatus: QualityStatus.TESTING,
+          isActive: true,
+        });
+        this.logger.log(`Day content variant created: ${cacheKey} variant=${variant.id}`);
+      }
+
+      // Record first serve
+      await this.recordDayServe(variant.id, userId, sessionId, dayNumber);
+
+      // Update L1 cache
+      this.dayContentCache.set(cacheKey, {
+        content,
+        expiresAt: Date.now() + this.DAY_CACHE_TTL_MS,
+      });
+
+      return {
+        content,
+        variantId: variant.id,
+        fromCache: false,
+      };
+    } catch (error) {
+      this.logger.warn(`Day content variant cache save failed: ${error.message}`);
+      // Return result anyway, just without variantId
+      return { content, variantId: '', fromCache: false };
+    }
+  }
+
+  /**
+   * Mark day content as regenerated (negative signal)
+   */
+  async markDayContentAsRegenerated(
+    previousVariantId: string,
+    userId: string,
+    sessionId: string,
+  ): Promise<void> {
+    if (!previousVariantId) return;
+
+    try {
+      const serve = await this.dayServeRepo.findOne({
+        where: { variantId: previousVariantId, userId, sessionId },
+      });
+
+      if (!serve || serve.regenerated) {
+        return; // Already marked or not found
+      }
+
+      const now = new Date();
+      const secondsBeforeRegen = Math.floor(
+        (now.getTime() - serve.servedAt.getTime()) / 1000
+      );
+
+      // Categorize the regeneration timing
+      let regenCategory: RegenCategory;
+      if (secondsBeforeRegen < CACHE_CONFIG.immediateRegenSeconds) {
+        regenCategory = RegenCategory.IMMEDIATE;
+      } else if (secondsBeforeRegen < CACHE_CONFIG.quickRegenSeconds) {
+        regenCategory = RegenCategory.QUICK;
+      } else {
+        regenCategory = RegenCategory.CONSIDERED;
+      }
+
+      // Update serve record
+      await this.dayServeRepo.update(serve.id, {
+        regenerated: true,
+        regeneratedAt: now,
+        secondsBeforeRegen,
+        regenCategory,
+      });
+
+      // Recompute variant stats
+      await this.updateDayVariantStats(previousVariantId);
+
+      this.logger.log(
+        `Day content regen recorded: variant=${previousVariantId} after=${secondsBeforeRegen}s category=${regenCategory}`
+      );
+    } catch (error) {
+      this.logger.warn(`Day content regen recording failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get day content regen count for rate limiting
+   */
+  async getDayRegenCount(sessionId: string, dayNumber: number): Promise<number> {
+    try {
+      const count = await this.dayServeRepo.count({
+        where: { sessionId, dayNumber, regenerated: true },
+      });
+      return count;
+    } catch (error) {
+      return 0;
+    }
+  }
+
+  /**
+   * Check if day content regen limit reached
+   */
+  async isDayRegenLimitReached(sessionId: string, dayNumber: number): Promise<boolean> {
+    const count = await this.getDayRegenCount(sessionId, dayNumber);
+    return count >= CACHE_CONFIG.dayContentMaxRegensPerDay;
+  }
+
+  // ---- Private Day Variant Methods ----
+
+  private async selectDayVariant(
+    cacheKeyId: string,
+    winnerId: string | null,
+  ): Promise<DayContentCacheVariant | null> {
+    // Priority 1: Serve WINNER (if elected)
+    if (winnerId) {
+      const winner = await this.dayVariantRepo.findOne({
+        where: { id: winnerId, isActive: true },
+      });
+      if (winner) {
+        return winner;
+      }
+    }
+
+    const variants = await this.dayVariantRepo.find({
+      where: { cacheKeyId, isActive: true },
+      order: { timesServed: 'ASC' },
+    });
+
+    if (variants.length === 0) return null;
+
+    // Priority 2: Serve "GOOD" variants (with lowest regen rate first)
+    const goodVariants = variants.filter((v) => v.qualityStatus === QualityStatus.GOOD);
+    if (goodVariants.length > 0) {
+      return goodVariants.sort((a, b) => (a.regenRate ?? 1) - (b.regenRate ?? 1))[0];
+    }
+
+    // Priority 3: Serve "TESTING" variants (for data gathering)
+    const testingVariants = variants.filter((v) => v.qualityStatus === QualityStatus.TESTING);
+    if (testingVariants.length > 0) {
+      return testingVariants.sort((a, b) => {
+        const aHasEnoughData = a.timesServed >= 5;
+        const bHasEnoughData = b.timesServed >= 5;
+
+        if (!aHasEnoughData && !bHasEnoughData) {
+          return a.timesServed - b.timesServed;
+        }
+        if (!aHasEnoughData) return -1;
+        if (!bHasEnoughData) return 1;
+
+        return (a.regenRate ?? 1) - (b.regenRate ?? 1);
+      })[0];
+    }
+
+    return null;
+  }
+
+  private async recordDayServe(
+    variantId: string,
+    userId: string,
+    sessionId: string,
+    dayNumber: number,
+  ): Promise<void> {
+    try {
+      await this.dayServeRepo.upsert(
+        {
+          variantId,
+          userId,
+          sessionId,
+          dayNumber,
+          servedAt: new Date(),
+        },
+        ['userId', 'variantId', 'sessionId', 'dayNumber']
+      );
+
+      await this.dayVariantRepo.update(variantId, { lastServedAt: new Date() });
+    } catch (error) {
+      this.logger.debug(`Day serve recording: ${error.message}`);
+    }
+  }
+
+  private async updateDayVariantStats(variantId: string): Promise<void> {
+    try {
+      const stats = await this.dayServeRepo
+        .createQueryBuilder('s')
+        .select('COUNT(*)', 'served')
+        .addSelect('COUNT(*) FILTER (WHERE s.regenerated = true)', 'regenerated')
+        .addSelect("COUNT(*) FILTER (WHERE s.regen_category = 'immediate')", 'immediate')
+        .addSelect("COUNT(*) FILTER (WHERE s.regen_category = 'quick')", 'quick')
+        .addSelect("COUNT(*) FILTER (WHERE s.regen_category = 'considered')", 'considered')
+        .where('s.variant_id = :variantId', { variantId })
+        .getRawOne();
+
+      const timesServed = parseInt(stats.served) || 0;
+      const timesRegenerated = parseInt(stats.regenerated) || 0;
+      const regenRate = timesServed > 0 ? timesRegenerated / timesServed : 0;
+
+      // Determine quality status based on day content thresholds
+      let qualityStatus: QualityStatus = QualityStatus.TESTING;
+      if (timesServed >= CACHE_CONFIG.minServesForJudgment) {
+        if (regenRate <= CACHE_CONFIG.dayContentGoodRegenRate) {
+          qualityStatus = QualityStatus.GOOD;
+        } else if (regenRate > CACHE_CONFIG.dayContentBadRegenRate) {
+          qualityStatus = QualityStatus.BAD;
+        }
+      }
+
+      // Update variant with computed stats
+      await this.dayVariantRepo.update(variantId, {
+        timesServed,
+        timesRegenerated,
+        immediateRegens: parseInt(stats.immediate) || 0,
+        quickRegens: parseInt(stats.quick) || 0,
+        consideredRegens: parseInt(stats.considered) || 0,
+        regenRate,
+        qualityStatus,
+        isActive: qualityStatus !== QualityStatus.BAD,
+      });
+
+      if (qualityStatus === QualityStatus.BAD) {
+        this.logger.warn(
+          `Day variant auto-deactivated: ${variantId} regenRate=${(regenRate * 100).toFixed(1)}%`
+        );
+      }
+
+      // Try to elect winner if this became "good"
+      if (qualityStatus === QualityStatus.GOOD) {
+        await this.tryElectDayWinner(variantId);
+      }
+    } catch (error) {
+      this.logger.warn(`Day variant stats update failed: ${error.message}`);
+    }
+  }
+
+  private async tryElectDayWinner(variantId: string): Promise<void> {
+    try {
+      const variant = await this.dayVariantRepo.findOne({ where: { id: variantId } });
+      if (!variant) return;
+
+      const cacheEntry = await this.dayContentRepo.findOne({ where: { id: variant.cacheKeyId } });
+      if (!cacheEntry || cacheEntry.winnerVariantId) return; // Already has winner
+
+      // Check if qualifies for winner status
+      if (
+        variant.qualityStatus === QualityStatus.GOOD &&
+        variant.timesServed >= CACHE_CONFIG.minServesForJudgment &&
+        (variant.regenRate ?? 1) <= CACHE_CONFIG.dayContentWinnerRegenRate
+      ) {
+        await this.dayVariantRepo.update(variantId, { qualityStatus: QualityStatus.WINNER });
+        await this.dayContentRepo.update(cacheEntry.id, { winnerVariantId: variantId });
+
+        this.logger.log(
+          `Day winner elected: variant=${variantId} regenRate=${((variant.regenRate ?? 0) * 100).toFixed(1)}%`
+        );
+      }
+    } catch (error) {
+      this.logger.warn(`Day winner election failed: ${error.message}`);
+    }
+  }
+
+  private generateContentHash(content: any): string {
+    const contentStr = JSON.stringify(content);
+    return crypto.createHash('sha256').update(contentStr).digest('hex').substring(0, 64);
   }
 
   // ==========================================================================

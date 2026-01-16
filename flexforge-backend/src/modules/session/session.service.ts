@@ -3,7 +3,10 @@ import {
   NotFoundException,
   ForbiddenException,
   Logger,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
+import { CACHE_CONFIG } from '../curriculum/services/curriculum-cache.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as crypto from 'crypto';
@@ -573,16 +576,25 @@ export class SessionService {
   /**
    * Start a day - CORE content only (fast initial load)
    * Returns: prePrompt, video, foundationCards, task1
+   * With variant tracking and rate limiting for regeneration
    */
   async startDayCore(
     sessionId: string,
     userId: string,
     dayNumber: number,
     forceRegenerate?: boolean,
-  ): Promise<{ coreContent: any; tokensUsed: number; fromCache: boolean }> {
+  ): Promise<{
+    coreContent: any;
+    tokensUsed: number;
+    fromCache: boolean;
+    variantId?: string;
+    regenCount?: number;
+    regenLimit?: number;
+  }> {
     const session = await this.findOne(sessionId, userId);
     const user = await this.userService.findById(userId);
     const tierString = user.quotaTier.toUpperCase();
+    const regenLimit = CACHE_CONFIG.dayContentMaxRegensPerDay;
 
     // Check if day is unlockable
     const dayOverview = session.curriculum.days.find((d: any) => d.day === dayNumber);
@@ -602,14 +614,35 @@ export class SessionService {
 
     // Check if core content already loaded (skip if forceRegenerate)
     if (!forceRegenerate && dayOverview.coreLoaded && dayOverview.coreContent) {
+      // Get current regen count for UI
+      const regenCount = await this.cacheService.getDayRegenCount(sessionId, dayNumber);
       return {
         coreContent: dayOverview.coreContent,
         tokensUsed: 0,
         fromCache: true,
+        variantId: dayOverview.variantId,
+        regenCount,
+        regenLimit,
       };
     }
 
     if (forceRegenerate) {
+      // Check rate limit before allowing regeneration
+      const isLimitReached = await this.cacheService.isDayRegenLimitReached(sessionId, dayNumber);
+      if (isLimitReached) {
+        throw new HttpException(
+          `Day content regeneration limit reached (${regenLimit} per day). Try again tomorrow or continue with current content.`,
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+
+      // Mark previous variant as regenerated (negative signal for quality tracking)
+      const previousVariantId = dayOverview.variantId;
+      if (previousVariantId) {
+        await this.cacheService.markDayContentAsRegenerated(previousVariantId, userId, sessionId);
+        this.logger.log(`📊 Marked variant ${previousVariantId} as regenerated`);
+      }
+
       this.logger.log(`🔄 Force regenerating Day ${dayNumber} for session ${sessionId}`);
 
       // Clear all progress for this day when regenerating
@@ -652,12 +685,14 @@ export class SessionService {
       }
     }
 
-    // Generate core content (fast)
+    // Generate core content (fast) with variant tracking
     const result = await this.curriculumService.generateDayCoreDetails(
       session.curriculum,
       dayNumber,
       tierString,
       forceRegenerate,
+      userId,
+      sessionId,
     );
 
     // Update session with core content
@@ -680,6 +715,7 @@ export class SessionService {
       coreContent: result.coreContent,
       coreLoaded: true,
       status: 'in_progress',
+      variantId: result.variantId, // Store variant ID for regen tracking
     };
 
     // Update currentDay if user is starting a new day
@@ -693,12 +729,18 @@ export class SessionService {
     await this.userService.incrementUsage(userId, result.tokensUsed, 0);
     await this.sessionsRepository.save(session);
 
-    this.logger.log(`🚀 Day ${dayNumber} CORE loaded for session ${sessionId}`);
+    this.logger.log(`🚀 Day ${dayNumber} CORE loaded for session ${sessionId} (variant=${result.variantId})`);
+
+    // Get current regen count for UI
+    const regenCount = await this.cacheService.getDayRegenCount(sessionId, dayNumber);
 
     return {
       coreContent: result.coreContent,
       tokensUsed: result.tokensUsed,
       fromCache: result.fromCache || false,
+      variantId: result.variantId,
+      regenCount,
+      regenLimit,
     };
   }
 

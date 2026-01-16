@@ -45,6 +45,7 @@ export interface DayCoreResult {
   tokensUsed: number;
   cost: number;
   fromCache?: boolean;
+  variantId?: string;
 }
 
 export interface DayDeferredResult {
@@ -723,6 +724,8 @@ export class CurriculumService {
     dayNumber: number,
     userTier: string = 'FREE',
     forceRegenerate?: boolean,
+    userId?: string,
+    sessionId?: string,
   ): Promise<DayCoreResult> {
     this.logger.log(`🚀 Generating Day ${dayNumber} CORE content...`);
 
@@ -734,10 +737,31 @@ export class CurriculumService {
     // Check cache first (skip if forceRegenerate)
     const cacheKey = this.buildDayCacheKey(curriculum.metadata, dayNumber, 'core');
     if (!forceRegenerate) {
-      const cached = await this.cacheService.getDayContent(cacheKey);
-      if (cached) {
-        this.logger.log(`📦 Day ${dayNumber} CORE cache HIT`);
-        return { coreContent: cached, tokensUsed: 0, cost: 0, fromCache: true };
+      // Use variant-aware caching if userId and sessionId provided
+      if (userId && sessionId) {
+        const cachedResult = await this.cacheService.getDayContentWithVariant(
+          cacheKey,
+          userId,
+          sessionId,
+          dayNumber,
+        );
+        if (cachedResult) {
+          this.logger.log(`📦 Day ${dayNumber} CORE variant cache HIT (variant=${cachedResult.variantId})`);
+          return {
+            coreContent: cachedResult.content,
+            tokensUsed: 0,
+            cost: 0,
+            fromCache: true,
+            variantId: cachedResult.variantId,
+          };
+        }
+      } else {
+        // Fallback to legacy cache for backward compatibility
+        const cached = await this.cacheService.getDayContent(cacheKey);
+        if (cached) {
+          this.logger.log(`📦 Day ${dayNumber} CORE cache HIT (legacy)`);
+          return { coreContent: cached, tokensUsed: 0, cost: 0, fromCache: true };
+        }
       }
     } else {
       this.logger.log(`🔄 Force regenerating Day ${dayNumber} CORE (bypassing L2 cache)`);
@@ -877,8 +901,23 @@ export class CurriculumService {
     coreContent.videoStrategy = dayOverview.videoStrategy || 'helpful';
     coreContent.contentSource = dayOverview.contentSource || 'youtube';
 
-    // Cache the result
-    await this.cacheService.setDayContent(cacheKey, coreContent);
+    // Cache the result with variant tracking if userId and sessionId provided
+    let variantId: string | undefined;
+    if (userId && sessionId) {
+      const cacheResult = await this.cacheService.cacheDayContentWithVariant(
+        cacheKey,
+        coreContent,
+        userId,
+        sessionId,
+        dayNumber,
+      );
+      variantId = cacheResult.variantId;
+      this.logger.log(`✅ Day ${dayNumber} CORE generated and cached with variant=${variantId}`);
+    } else {
+      // Fallback to legacy cache
+      await this.cacheService.setDayContent(cacheKey, coreContent);
+      this.logger.log(`✅ Day ${dayNumber} CORE generated (legacy cache)`);
+    }
 
     this.logger.log(`✅ Day ${dayNumber} CORE generated. Tokens: ${aiResponse.tokensUsed}`);
 
@@ -887,6 +926,7 @@ export class CurriculumService {
       tokensUsed: aiResponse.tokensUsed,
       cost: aiResponse.cost,
       fromCache: false,
+      variantId,
     };
   }
 

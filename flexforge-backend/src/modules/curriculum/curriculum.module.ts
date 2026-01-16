@@ -15,6 +15,8 @@ import {
   CurriculumServe,
   SkillAlias,
   DayContentCache,
+  DayContentCacheVariant,
+  DayContentServe,
 } from '../../database/entities/curriculum-cache.entity';
 
 @Module({
@@ -26,6 +28,8 @@ import {
       CurriculumServe,
       SkillAlias,
       DayContentCache,
+      DayContentCacheVariant,
+      DayContentServe,
     ]),
   ],
   controllers: [CurriculumController],

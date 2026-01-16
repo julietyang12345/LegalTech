@@ -256,4 +256,124 @@ export class DayContentCache {
     default: () => "NOW() + INTERVAL '90 days'",
   })
   expiresAt: Date;
+
+  // Winner reference for variant selection
+  @Column({ name: 'winner_variant_id', type: 'uuid', nullable: true })
+  winnerVariantId: string | null;
+
+  // Relations
+  @OneToMany(() => DayContentCacheVariant, (variant) => variant.cacheEntry)
+  variants: DayContentCacheVariant[];
+}
+
+// ============================================================================
+// DAY CONTENT CACHE VARIANT - Different versions for same day content params
+// ============================================================================
+
+@Entity('day_content_variants')
+@Index('idx_day_variant_cache_key', ['cacheKeyId'], { where: '"is_active" = true' })
+export class DayContentCacheVariant {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ name: 'cache_key_id', type: 'uuid' })
+  cacheKeyId: string;
+
+  @ManyToOne(() => DayContentCache, (cache) => cache.variants, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'cache_key_id' })
+  cacheEntry: DayContentCache;
+
+  // Content
+  @Column({ type: 'jsonb' })
+  content: Record<string, any>;
+
+  @Column({ name: 'content_hash', length: 64 })
+  contentHash: string;
+
+  // Core metrics (regen-focused) - computed from serve logs
+  @Column({ name: 'times_served', default: 0 })
+  timesServed: number;
+
+  @Column({ name: 'times_regenerated', default: 0 })
+  timesRegenerated: number;
+
+  @Column({ name: 'immediate_regens', default: 0 })
+  immediateRegens: number;
+
+  @Column({ name: 'quick_regens', default: 0 })
+  quickRegens: number;
+
+  @Column({ name: 'considered_regens', default: 0 })
+  consideredRegens: number;
+
+  // Computed rate
+  @Column({ name: 'regen_rate', type: 'decimal', precision: 5, scale: 4, nullable: true })
+  regenRate: number | null;
+
+  @Column({
+    name: 'quality_status',
+    type: 'enum',
+    enum: QualityStatus,
+    default: QualityStatus.TESTING,
+  })
+  qualityStatus: QualityStatus;
+
+  @Column({ name: 'is_active', default: true })
+  isActive: boolean;
+
+  @CreateDateColumn({ name: 'generated_at' })
+  generatedAt: Date;
+
+  @Column({ name: 'last_served_at', type: 'timestamptz', nullable: true })
+  lastServedAt: Date | null;
+}
+
+// ============================================================================
+// DAY CONTENT SERVE LOG - Track every day content serve for analysis
+// ============================================================================
+
+@Entity('day_content_serves')
+@Index('idx_day_serve_variant', ['variantId'])
+@Index('idx_day_serve_session', ['sessionId'])
+@Index('idx_day_serve_user_variant_session_day', ['userId', 'variantId', 'sessionId', 'dayNumber'], { unique: true })
+export class DayContentServe {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ name: 'user_id', type: 'uuid' })
+  userId: string;
+
+  @Column({ name: 'variant_id', type: 'uuid' })
+  variantId: string;
+
+  @ManyToOne(() => DayContentCacheVariant, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'variant_id' })
+  variant: DayContentCacheVariant;
+
+  @Column({ name: 'session_id', type: 'uuid' })
+  sessionId: string;
+
+  @Column({ name: 'day_number' })
+  dayNumber: number;
+
+  @Column({ name: 'served_at', type: 'timestamptz', default: () => 'NOW()' })
+  servedAt: Date;
+
+  // Outcome tracking
+  @Column({ default: false })
+  regenerated: boolean;
+
+  @Column({ name: 'regenerated_at', type: 'timestamptz', nullable: true })
+  regeneratedAt: Date | null;
+
+  @Column({ name: 'seconds_before_regen', nullable: true })
+  secondsBeforeRegen: number | null;
+
+  @Column({
+    name: 'regen_category',
+    type: 'enum',
+    enum: RegenCategory,
+    nullable: true,
+  })
+  regenCategory: RegenCategory | null;
 }

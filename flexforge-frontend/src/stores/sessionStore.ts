@@ -45,6 +45,11 @@ interface SessionState {
   // Regeneration state (for showing full loading screen during regenerate)
   isRegenerating: boolean;
 
+  // Day content variant tracking (for quality-based caching and rate limiting)
+  currentDayVariantId: string | null;
+  regenCount: number;
+  regenLimit: number;
+
   // Task/Quiz progress state (persists during session)
   taskProgress: Record<string, {
     answers: Record<string, number | null>;
@@ -169,6 +174,11 @@ export const useSessionStore = create<SessionState>()(
 
   // Regeneration state
   isRegenerating: false,
+
+  // Day content variant tracking
+  currentDayVariantId: null as string | null,
+  regenCount: 0,
+  regenLimit: 3, // Default, updated from API response
 
   // Task progress state
   taskProgress: {},
@@ -475,6 +485,9 @@ export const useSessionStore = create<SessionState>()(
       const response = await sessionService.startDayCore(activeSession.id, dayNumber, forceRegenerate);
       const coreContent = response.coreContent;
       const bossProject = response.bossProject;
+      const variantId = response.variantId;
+      const regenCount = response.regenCount ?? 0;
+      const regenLimit = response.regenLimit ?? 3;
 
       // Update the curriculum day with core content and boss project if available
       set((state) => {
@@ -521,13 +534,21 @@ export const useSessionStore = create<SessionState>()(
           isDayLoading: false,
           dayLoadingNumber: null,
           isCoreLoaded: true,
+          // Variant tracking for quality-based caching
+          currentDayVariantId: variantId || null,
+          regenCount,
+          regenLimit,
         };
       });
 
       return coreContent;
     } catch (error: any) {
+      // Check for rate limit error (429)
+      const isRateLimitError = error.response?.status === 429;
       set({
-        error: error.response?.data?.message || 'Failed to load core content',
+        error: isRateLimitError
+          ? error.response?.data?.message || 'Regeneration limit reached. Try again later.'
+          : error.response?.data?.message || 'Failed to load core content',
         isDayLoading: false,
         dayLoadingNumber: null,
         isCoreLoaded: false,
@@ -618,8 +639,16 @@ export const useSessionStore = create<SessionState>()(
   },
 
   regenerateDayContent: async (dayNumber: number) => {
-    const { activeSession, loadDayCoreContent, loadDayDeferredContent } = get();
+    const { activeSession, loadDayCoreContent, loadDayDeferredContent, regenCount, regenLimit } = get();
     if (!activeSession) throw new Error('No active session');
+
+    // Check if rate limit already reached (client-side check)
+    if (regenCount >= regenLimit) {
+      set({
+        error: `Regeneration limit reached (${regenLimit} per day). Continue with current content or try again later.`,
+      });
+      throw new Error('Rate limit reached');
+    }
 
     // Set regenerating state to show full loading screen
     set({ isRegenerating: true, error: null });
@@ -661,6 +690,10 @@ export const useSessionStore = create<SessionState>()(
           stepStartTime: new Date(),
         };
       });
+    } catch (error: any) {
+      // If rate limit error from server, the error is already set by loadDayCoreContent
+      // Just re-throw to propagate to the caller
+      throw error;
     } finally {
       set({ isRegenerating: false });
     }

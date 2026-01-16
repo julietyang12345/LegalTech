@@ -15,6 +15,8 @@ import {
   CurriculumServe,
   SkillAlias,
   DayContentCache,
+  DayContentCacheVariant,
+  DayContentServe,
 } from './database/entities/curriculum-cache.entity';
 
 // Modules
@@ -56,6 +58,8 @@ import { OnboardingModule } from './modules/onboarding/onboarding.module';
           CurriculumServe,
           SkillAlias,
           DayContentCache,
+          DayContentCacheVariant,
+          DayContentServe,
         ],
         synchronize: configService.get('nodeEnv') === 'development',
         logging: configService.get('nodeEnv') === 'development',

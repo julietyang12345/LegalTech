@@ -727,6 +727,9 @@ export interface StartDayCoreResponse {
   tokensUsed: number;
   fromCache: boolean;
   bossProject?: BossProject;  // Updated boss project data if micro-step was generated
+  variantId?: string;         // Variant ID for quality tracking
+  regenCount?: number;        // Current regeneration count for this day
+  regenLimit?: number;        // Maximum allowed regenerations per day
 }
 
 export interface LoadDayDeferredResponse {
