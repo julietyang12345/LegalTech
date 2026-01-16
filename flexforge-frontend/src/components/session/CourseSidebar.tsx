@@ -517,21 +517,23 @@ export function CourseSidebar({ onDayClick }: CourseSidebarProps) {
                     isLast={index === days.length - 1}
                     onClick={() => onDayClick?.(day.day)}
                     onPreviewClick={(e) => handlePreviewClick(day, e)}
-                    hasBoss={bossProjectDays.has(day.day)}
+                    hasBoss={activeSession.curriculum.metadata?.isProjectBased !== false && bossProjectDays.has(day.day)}
                   />
                 </div>
               ))}
             </div>
 
-            {/* Footer */}
-            <div className="p-3 border-t border-gray-100 bg-gray-50/80">
-              <div className="flex items-center gap-2 text-xs text-gray-500">
-                <Trophy className="w-4 h-4 text-amber-500" />
-                <span>
-                  Boss Projects: Days {Array.from(bossProjectDays).join(', ')}
-                </span>
+            {/* Footer - only show boss project info for project-based curricula */}
+            {activeSession.curriculum.metadata?.isProjectBased !== false && bossProjectDays.size > 0 && (
+              <div className="p-3 border-t border-gray-100 bg-gray-50/80">
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <Trophy className="w-4 h-4 text-amber-500" />
+                  <span>
+                    Boss Projects: Days {Array.from(bossProjectDays).join(', ')}
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

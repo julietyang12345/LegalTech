@@ -323,7 +323,7 @@ function getDayHeader(params: {
  *    - KNOWLEDGE/PHYSICAL → practice-based
  *    - CODE/AI_AGENT/DESIGN → project-based
  */
-function usesProjectBasedLearning(
+export function usesProjectBasedLearning(
   skillType: SkillType,
   outputType?: OutputType
 ): boolean {
@@ -521,7 +521,8 @@ export interface DayDetailParams {
   userTier: string;
   hoursPerDay: number;
   suggestedLanguage?: string;
-  outputType?: 'working_code' | 'understand_concept' | 'fix_bug' | 'ship_project';
+  outputType?: OutputType;
+  isProjectBased?: boolean; // Pass directly from metadata - don't re-calculate
   // Reflection data from previous day (for personalized prePrompt)
   previousDayReflection?: {
     confusedConcepts?: string[];
@@ -654,7 +655,8 @@ export function buildDayDetailCorePrompt(params: DayDetailParams): {
   userPrompt: string;
 } {
   const time = getTimeStructure(params.hoursPerDay);
-  const isProjectBased = usesProjectBasedLearning(params.skillType, params.outputType);
+  // Use stored isProjectBased from metadata, fall back to calculation if not provided
+  const isProjectBased = params.isProjectBased ?? usesProjectBasedLearning(params.skillType, params.outputType);
   const dayHeader = getDayHeader({
     dayTitle: params.dayTitle,
     skeleton: params.skeleton,
@@ -763,7 +765,8 @@ export function buildDayDetailDeferredPrompt(params: DayDetailParams): {
   });
 
   // Only include practice project for practice-based skills (no boss projects)
-  const isProjectBased = usesProjectBasedLearning(params.skillType, params.outputType);
+  // Use stored isProjectBased from metadata, fall back to calculation if not provided
+  const isProjectBased = params.isProjectBased ?? usesProjectBasedLearning(params.skillType, params.outputType);
   const hasPractice = !isProjectBased && time.practice > 0;
 
   const systemPrompt = `Generate DEFERRED learning content for Day ${params.dayNumber} of "${params.skillName}".
@@ -1034,7 +1037,8 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
   userPrompt: string;
 } {
   const time = getTimeStructure(params.hoursPerDay);
-  const isProjectBased = usesProjectBasedLearning(params.skillType, params.outputType);
+  // Use stored isProjectBased from metadata, fall back to calculation if not provided
+  const isProjectBased = params.isProjectBased ?? usesProjectBasedLearning(params.skillType, params.outputType);
 
   // Static part - cacheable
   const staticPart = DAY_DETAIL_STATIC_INSTRUCTIONS;

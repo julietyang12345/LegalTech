@@ -14,6 +14,7 @@ import {
   buildCacheableDayDetailCorePrompt,
   buildDayDetailDeferredPrompt,
   buildBossDetailPrompt,
+  usesProjectBasedLearning,
   DayDetailParams,
   BossDetailParams,
 } from './prompts/curriculum-prompt';
@@ -173,6 +174,11 @@ export class CurriculumService {
     }
 
     // Step 3: Build curriculum prompt with caching support (skeleton only)
+    this.logger.log(`🎯 DEBUG dto.outputType: ${dto.outputType || 'NOT SET'}`);
+    this.logger.log(`🎯 DEBUG skillType: ${skillDetection.skillType}`);
+    const learnerPrefs = dto.outputType ? { outputType: dto.outputType } : undefined;
+    this.logger.log(`🎯 DEBUG learnerPrefs passed to prompt:`, JSON.stringify(learnerPrefs));
+
     const { staticPart, dynamicPart, userPrompt } = buildCacheableCurriculumPrompt({
       skillName: dto.skillName,
       durationDays: dto.durationDays,
@@ -183,6 +189,7 @@ export class CurriculumService {
       userTier,
       suggestedLanguage: skillDetection.suggestedLanguage,
       prerequisiteSkills: skillDetection.prerequisiteSkills,
+      learnerPrefs,
     });
 
     // Step 4: Generate curriculum OVERVIEW with AI (Phase 1) - with prompt caching
@@ -225,6 +232,10 @@ export class CurriculumService {
       throw new BadRequestException('Failed to generate curriculum overview. Please try again.');
     }
 
+    // Calculate isProjectBased ONCE and store it - don't re-calculate later
+    const isProjectBased = usesProjectBasedLearning(skillDetection.skillType, dto.outputType);
+    this.logger.log(`🎯 Curriculum type: ${isProjectBased ? 'PROJECT-BASED' : 'PRACTICE-BASED'}`);
+
     // Add metadata to curriculum
     curriculum.metadata = {
       skillName: dto.skillName,
@@ -234,6 +245,8 @@ export class CurriculumService {
       skillType: skillDetection.skillType,
       complexity: skillDetection.complexity,
       suggestedLanguage: skillDetection.suggestedLanguage,
+      isProjectBased, // Store this - use it consistently, don't re-calculate
+      outputType: dto.outputType, // Store user's intent
     };
 
     // All days are skeletons - full content generated on-demand when user starts each day
@@ -362,6 +375,8 @@ export class CurriculumService {
       userTier,
       hoursPerDay: curriculum.metadata.hoursPerDay,
       suggestedLanguage: curriculum.metadata.suggestedLanguage,
+      outputType: curriculum.metadata.outputType,
+      isProjectBased: curriculum.metadata.isProjectBased, // Use stored value, don't re-calculate
     };
 
     const { systemPrompt, userPrompt } = buildDayDetailPrompt(params);
@@ -752,6 +767,7 @@ export class CurriculumService {
       hoursPerDay: curriculum.metadata.hoursPerDay,
       suggestedLanguage: curriculum.metadata.suggestedLanguage,
       outputType: curriculum.metadata.outputType,
+      isProjectBased: curriculum.metadata.isProjectBased, // Use stored value, don't re-calculate
     };
 
     const { staticPart, dynamicPart, userPrompt } = buildCacheableDayDetailCorePrompt(params);
@@ -794,20 +810,39 @@ export class CurriculumService {
       if (coreContent.bossMilestone) {
         const bm = coreContent.bossMilestone;
 
+        // DEBUG: Log raw bossMilestone content
+        this.logger.log(`🔍 Day ${dayNumber} bossMilestone RAW:`, JSON.stringify({
+          title: bm.title,
+          microTask: bm.microTask?.substring(0, 50),
+          starterCodeType: typeof bm.starterCode,
+          starterCodeLength: bm.starterCode?.length || 0,
+          starterCodePreview: bm.starterCode?.substring(0, 150),
+          solutionType: typeof bm.solution,
+          solutionLength: bm.solution?.length || 0,
+          solutionPreview: bm.solution?.substring(0, 150),
+        }, null, 2));
+
         // Check if starterCode is a placeholder or missing
         const isStarterCodePlaceholder = !bm.starterCode ||
           bm.starterCode.includes('REQUIRED:') ||
+          bm.starterCode.includes('GENERATE:') ||
+          bm.starterCode.includes('// Comprehensive starter') ||
           bm.starterCode === '// Start your project here\n\n' ||
           bm.starterCode.length < 20;
 
         // Check if solution is a placeholder or missing
         const isSolutionPlaceholder = !bm.solution ||
           bm.solution.includes('REQUIRED:') ||
-          bm.solution === '// COMPLETE working solution' ||
+          bm.solution.includes('GENERATE:') ||
+          bm.solution.includes('// COMPLETE working solution') ||
           bm.solution.length < 30;
 
         if (isStarterCodePlaceholder || isSolutionPlaceholder) {
-          this.logger.warn(`⚠️ Day ${dayNumber} bossMilestone has placeholder content - starterCode: ${!isStarterCodePlaceholder}, solution: ${!isSolutionPlaceholder}`);
+          this.logger.warn(`⚠️ Day ${dayNumber} bossMilestone has placeholder content:
+  - starterCode valid: ${!isStarterCodePlaceholder}
+  - solution valid: ${!isSolutionPlaceholder}
+  - starterCode preview: "${bm.starterCode?.substring(0, 80)}"
+  - solution preview: "${bm.solution?.substring(0, 80)}"`);
         }
 
         // Ensure hints are properly formatted
@@ -826,7 +861,9 @@ export class CurriculumService {
             .filter((a: any) => a && !String(a).includes('REQUIRED:'));
         }
 
-        this.logger.log(`✅ Day ${dayNumber} bossMilestone: starterCode=${bm.starterCode?.length || 0} chars, solution=${bm.solution?.length || 0} chars`);
+        this.logger.log(`✅ Day ${dayNumber} bossMilestone FINAL: starterCode=${bm.starterCode?.length || 0} chars, solution=${bm.solution?.length || 0} chars`);
+      } else {
+        this.logger.log(`ℹ️ Day ${dayNumber} has no bossMilestone (practice-based curriculum)`);
       }
 
       this.logger.log(`✅ Day ${dayNumber} CORE parsed: ${coreContent.foundationCards?.length || 0} cards`);
@@ -891,6 +928,7 @@ export class CurriculumService {
       hoursPerDay: curriculum.metadata.hoursPerDay,
       suggestedLanguage: curriculum.metadata.suggestedLanguage,
       outputType: curriculum.metadata.outputType,
+      isProjectBased: curriculum.metadata.isProjectBased, // Use stored value, don't re-calculate
     };
 
     const { systemPrompt, userPrompt } = buildDayDetailDeferredPrompt(params);

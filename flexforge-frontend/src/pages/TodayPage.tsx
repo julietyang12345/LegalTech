@@ -396,8 +396,8 @@ export function TodayPage() {
         </Card>
       </motion.div>
 
-      {/* Boss Project Countdown */}
-      {nextBoss && daysUntilBoss <= 4 && (
+      {/* Boss Project Countdown - only show for project-based curricula */}
+      {activeSession.curriculum.metadata?.isProjectBased !== false && nextBoss && daysUntilBoss <= 4 && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -407,7 +407,7 @@ export function TodayPage() {
             daysUntil={daysUntilBoss}
             projectTitle={nextBoss.title}
             todayContribution={
-              currentDayData?.bossMilestone?.description || 
+              currentDayData?.bossMilestone?.description ||
               'Build foundations for your boss project'
             }
           />

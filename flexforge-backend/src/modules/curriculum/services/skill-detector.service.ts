@@ -43,53 +43,60 @@ export class SkillDetectorService {
 
 Skill: "${skillName}"
 
-Categories:
-1. CODE: Traditional programming, web dev, data analysis, software
-   - Examples: Python, React, SQL, Machine Learning
-   - Output: Actual code solutions
+CATEGORIZATION RULES (in order of priority):
 
-2. PHYSICAL: Home improvement, crafts, cooking, mechanical work
-   - Examples: Fix electrical panel, build deck, plumbing, car repair
-   - Output: Checklists, safety warnings, verification criteria
-   - Safety levels: low (painting), medium (carpentry), high (electrical/gas)
+1. CODE - Use when the skill produces EXECUTABLE CODE as output
+   - The learner will write, read, or debug code
+   - Includes: programming languages, frameworks, libraries, APIs, databases, DevOps
+   - Includes: data analysis/science that involves writing code
+   - Output type: runnable code files
+   - KEY TEST: Will the learner produce .js/.py/.ts/.sql/etc files?
 
-3. KNOWLEDGE: Languages, history, theory, concepts, academic
-   - Examples: Learn Spanish, Music theory, Business concepts
-   - Output: Quiz questions, practice exercises, explanations
+2. AI_AGENT - Use when the skill is about USING or BUILDING with AI tools
+   - Working with LLMs, chatbots, AI automation
+   - Prompt engineering, AI workflows
+   - Output type: prompts, AI configurations, or AI-integrated code
 
-4. DESIGN: Graphic design, writing, creative work, video/audio editing
-   - Examples: Photoshop, Creative writing, Video editing
-   - Output: Example outputs, design principles, rubrics
+3. DESIGN - Use when the skill produces VISUAL or CREATIVE output
+   - Graphic design, UI/UX, illustration, video/audio production
+   - Creative writing, content creation
+   - Output type: images, videos, designs, written content
 
-5. AI_AGENT: Using AI tools, prompt engineering, building AI workflows
-   - Examples: ChatGPT mastery, AI automation, prompt engineering
-   - Output: Prompts, workflows, API integration (if advanced)
-   - Complexity levels:
-     * BEGINNER: Pure AI tool usage (no coding) - 2-4 days sufficient
-     * INTERMEDIATE: AI + basic scripting - 7-10 days needed
-     * ADVANCED: Building AI agents - 30+ days needed
+4. PHYSICAL - Use when the skill requires BODILY practice or produces PHYSICAL results
+   - Sports, instruments, dance, cooking, crafts
+   - Home improvement, mechanical work, construction
+   - Output type: physical actions, built objects, prepared items
+   - Safety levels: low/medium/high based on injury risk
 
-Complexity Assessment (CRITICAL):
-- BEGINNER: No prerequisites, can learn in 2-5 days
-- INTERMEDIATE: Requires some background knowledge, 7-14 days
+5. KNOWLEDGE - Use ONLY when NO practical output is produced
+   - Pure academic learning: human languages, history, philosophy, theory
+   - Exam preparation for non-practical subjects
+   - Output type: knowledge recall, written explanations only
+   - KEY TEST: If the learner will CREATE something (code/design/physical), do NOT use KNOWLEDGE
+
+CRITICAL: "Learning" or "understanding" something does NOT make it KNOWLEDGE category.
+- Learning a programming language → CODE (produces code)
+- Learning a human language → KNOWLEDGE (produces speech/writing only)
+- Learning a framework → CODE (produces code)
+- Learning music theory → KNOWLEDGE (theory only)
+- Learning an instrument → PHYSICAL (requires practice)
+
+Complexity Assessment:
+- BEGINNER: No prerequisites, achievable in 2-5 days
+- INTERMEDIATE: Requires background knowledge, 7-14 days
 - ADVANCED: Requires strong foundation, 30+ days
 
-For AI_AGENT skills specifically:
-- "Use ChatGPT" / "Prompt engineering" → BEGINNER (2-4 days ✅)
-- "Build AI workflows" / "AI automation" → INTERMEDIATE (7-10 days, needs basic coding)
-- "Create AI agents" / "Deploy AI systems" → ADVANCED (30+ days, needs strong coding)
-
-Return ONLY valid JSON (no markdown):
+Return ONLY valid JSON:
 {
   "skillType": "CODE" | "PHYSICAL" | "KNOWLEDGE" | "DESIGN" | "AI_AGENT",
   "complexity": "BEGINNER" | "INTERMEDIATE" | "ADVANCED",
   "confidence": "high" | "medium" | "low",
-  "reasoning": "Brief explanation",
-  "suggestedLanguage": "python" (only for CODE/AI_AGENT if coding involved),
+  "reasoning": "Brief explanation of why this category",
+  "suggestedLanguage": "language" (only for CODE/AI_AGENT),
   "safetyLevel": "low" | "medium" | "high" (only for PHYSICAL),
-  "prerequisiteSkills": ["Skill 1", "Skill 2"] (if INTERMEDIATE/ADVANCED),
-  "estimatedDaysNeeded": 4,
-  "cognitiveLoadWarning": "Warning if trying to teach advanced skill in short time"
+  "prerequisiteSkills": ["skill1", "skill2"] (if INTERMEDIATE/ADVANCED),
+  "estimatedDaysNeeded": number,
+  "cognitiveLoadWarning": "warning if timeframe is too short"
 }`;
 
     const response = await this.aiService.routeRequest(AITask.BATCH_LOGIC, prompt);

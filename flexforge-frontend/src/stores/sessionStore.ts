@@ -213,11 +213,11 @@ export const useSessionStore = create<SessionState>()(
     set({ isLoading: true });
     try {
       const response = await sessionService.getActive();
-      console.log('[fetchActiveSession] Fetched session:', {
-        id: response.session?.id,
-        currentDay: response.session?.currentDay,
-        skillName: response.session?.skillName,
-      });
+      // console.log('[fetchActiveSession] Fetched session:', {
+      //   id: response.session?.id,
+      //   currentDay: response.session?.currentDay,
+      //   skillName: response.session?.skillName,
+      // });
       set({ activeSession: response.session, isLoading: false });
     } catch (error: any) {
       console.error('[fetchActiveSession] Error:', error);
