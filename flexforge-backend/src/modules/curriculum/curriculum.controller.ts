@@ -16,7 +16,6 @@ import {
   RecordBounceDto,
   RecordRegenerationDto,
   RefreshVideoDto,
-  GenerateDayDetailsDto,
   CurriculumCacheResponse,
 } from './dto/curriculum-cache.dto';
 import { VideoMatchingService } from './services/youtube/video-matching.service';
@@ -55,63 +54,6 @@ export class CurriculumController {
         error.message || 'Failed to generate curriculum',
       );
     }
-  }
-
-  /**
-   * POST /api/v1/curriculum/day-details
-   * Generate full content for a specific day
-   * Called when user clicks "Start Learning" on any day (including Day 1)
-   */
-  @Post('day-details')
-  async generateDayDetails(
-    @Body() dto: GenerateDayDetailsDto,
-    @CurrentUser() user: User,
-  ) {
-    try {
-      const result = await this.curriculumService.generateDayDetails(
-        dto.curriculum,
-        dto.dayNumber,
-        user.quotaTier,
-      );
-
-      return {
-        message: `Day ${dto.dayNumber} details generated successfully`,
-        dayContent: result.dayContent,
-        metadata: {
-          tokensUsed: result.tokensUsed,
-          cost: result.cost,
-        },
-      };
-    } catch (error) {
-      throw new BadRequestException(
-        error.message || `Failed to generate Day ${dto.dayNumber} details`,
-      );
-    }
-  }
-
-  /**
-   * POST /api/v1/curriculum/starter-code
-   * Generate starter code template
-   */
-  @Post('starter-code')
-  async generateStarterCode(
-    @Body()
-    body: {
-      projectTitle: string;
-      projectDescription: string;
-      language: string;
-    },
-  ) {
-    const result = await this.curriculumService.generateStarterCode(body);
-
-    return {
-      message: 'Starter code generated successfully',
-      code: result.code,
-      metadata: {
-        tokensUsed: result.tokensUsed,
-        cost: result.cost,
-      },
-    };
   }
 
   /**

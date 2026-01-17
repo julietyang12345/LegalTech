@@ -144,31 +144,6 @@ export class SessionController {
   // ═══════════════════════════════════════════════════
 
   /**
-   * POST /api/v1/sessions/:id/days/:dayNumber/start
-   * Start a day - generates full day content (Phase 2)
-   * Day 1: Always available
-   * Day 2+: Requires previous day's practice project submitted
-   */
-  @Post(':id/days/:dayNumber/start')
-  async startDay(
-    @Request() req,
-    @Param('id') id: string,
-    @Param('dayNumber') dayNumber: string,
-  ) {
-    const result = await this.sessionService.startDay(
-      id,
-      req.user.id,
-      parseInt(dayNumber, 10),
-    );
-
-    return {
-      message: `Day ${dayNumber} started successfully`,
-      dayContent: result.dayContent,
-      tokensUsed: result.tokensUsed,
-    };
-  }
-
-  /**
    * POST /api/v1/sessions/:id/days/:dayNumber/start-core
    * Start a day - CORE content only (fast initial load)
    * Returns: prePrompt, video, foundationCards, task1

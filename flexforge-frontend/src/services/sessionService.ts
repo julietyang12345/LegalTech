@@ -5,7 +5,6 @@ import type {
   UpdateSessionDto,
   SessionResponse,
   ProgressStats,
-  StartDayResponse,
   StartDayCoreResponse,
   LoadDayDeferredResponse,
   SkipTestResponse,
@@ -93,18 +92,6 @@ export const sessionService = {
   // ═══════════════════════════════════════════════════
   // TWO-PHASE CURRICULUM METHODS
   // ═══════════════════════════════════════════════════
-
-  /**
-   * Start a day - generates full day content (Phase 2)
-   * Day 1: Always available
-   * Day 2+: Requires previous day's practice project submitted
-   */
-  async startDay(sessionId: string, dayNumber: number): Promise<StartDayResponse> {
-    const { data } = await api.post<StartDayResponse>(
-      `/sessions/${sessionId}/days/${dayNumber}/start`
-    );
-    return data;
-  },
 
   /**
    * Start a day - CORE content only (fast initial load)

@@ -72,7 +72,6 @@ interface SessionState {
   resetSteps: () => void;
 
   // Two-phase curriculum actions
-  loadDayContent: (dayNumber: number) => Promise<CurriculumDay>;
   submitSkipTest: (dayNumber: number, answers: number[]) => Promise<SkipTestResponse>;
   forceSkipDay: (dayNumber: number) => Promise<{ success: boolean; nextDayUnlocked: boolean }>;
   submitPracticeProject: (dayNumber: number, answer: string, confidence?: number) => Promise<PracticeSubmitResponse>;
@@ -411,55 +410,6 @@ export const useSessionStore = create<SessionState>()(
       });
     } catch (error) {
       console.error('Failed to update progress:', error);
-      throw error;
-    }
-  },
-
-  // Two-phase curriculum actions
-  loadDayContent: async (dayNumber: number) => {
-    const { activeSession } = get();
-    if (!activeSession) throw new Error('No active session');
-
-    set({ isDayLoading: true, dayLoadingNumber: dayNumber, error: null });
-
-    try {
-      const response = await sessionService.startDay(activeSession.id, dayNumber);
-      const dayContent = response.dayContent;
-
-      // Update the curriculum day with full content
-      set((state) => {
-        if (!state.activeSession) return state;
-
-        const updatedDays = state.activeSession.curriculum.days.map((d) => {
-          if (d.day !== dayNumber) return d;
-          // Preserve COMPLETED/SKIPPED status when revisiting - only set IN_PROGRESS if UNLOCKABLE
-          const newStatus = (d.status === DayStatus.COMPLETED || d.status === DayStatus.SKIPPED)
-            ? d.status
-            : DayStatus.IN_PROGRESS;
-          return { ...d, ...dayContent, detailsLoaded: true, status: newStatus };
-        });
-
-        return {
-          activeSession: {
-            ...state.activeSession,
-            curriculum: {
-              ...state.activeSession.curriculum,
-              days: updatedDays,
-            },
-          },
-          currentDay: dayContent,
-          isDayLoading: false,
-          dayLoadingNumber: null,
-        };
-      });
-
-      return dayContent;
-    } catch (error: any) {
-      set({
-        error: error.response?.data?.message || 'Failed to load day content',
-        isDayLoading: false,
-        dayLoadingNumber: null,
-      });
       throw error;
     }
   },
