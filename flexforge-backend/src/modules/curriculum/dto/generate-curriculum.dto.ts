@@ -35,4 +35,8 @@ export class GenerateCurriculumDto {
   @IsOptional()
   @IsArray()
   directionKeywords?: string[];
+
+  @IsOptional()
+  @IsString()
+  selectedLanguage?: string; // User's chosen language (overrides auto-detection)
 }

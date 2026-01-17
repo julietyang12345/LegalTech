@@ -7,6 +7,7 @@ export interface LearnerPrefsForPrompt {
   selectedDirection?: string;      // The direction they picked (more specific than skillName)
   selectedDirectionOutcome?: string; // "You'll be able to..." - specific deliverable
   directionKeywords?: string[];    // Keywords for the selected direction
+  selectedLanguage?: string;       // User's chosen language (overrides auto-detection)
   outputType?: OutputType;
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
   contentDepth?: 'fast' | 'medium' | 'deep';

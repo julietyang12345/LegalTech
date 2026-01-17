@@ -126,6 +126,7 @@ export class SessionService {
             selectedDirection: learnerPrefs?.selectedDirection,
             selectedDirectionOutcome: learnerPrefs?.selectedDirectionOutcome,
             directionKeywords: learnerPrefs?.directionKeywords,
+            selectedLanguage: learnerPrefs?.selectedLanguage,
           },
           tierString,
         );

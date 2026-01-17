@@ -8,6 +8,7 @@ import {
   RefinementPanel,
   DepthStep,
 } from '@/components/onboarding';
+import { LanguageStep } from '@/components/onboarding/LanguageStep';
 import { onboardingService } from '@/services/onboardingService';
 import { useAuthStore } from '@/stores/authStore';
 import type {
@@ -23,6 +24,7 @@ type OnboardingStep =
   | 'generating'     // Loading: AI generating directions
   | 'directions'     // Step 2-3: Show directions + confirmation
   | 'refinement'     // Step 3b: Refinement panel (if "Not quite")
+  | 'language'       // Step 4b: Language selection (if CODE/AI_AGENT)
   | 'depth'          // Step 5: Depth test
   | 'completing';    // Final: Saving preferences
 
@@ -38,6 +40,7 @@ export default function OnboardingPage() {
   const [directions, setDirections] = useState<LearningDirection[]>([]);
   const [interpretedGoal, setInterpretedGoal] = useState('');
   const [selectedDirection, setSelectedDirection] = useState<LearningDirection | null>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState<string | undefined>();
   const [refinementContext, setRefinementContext] = useState<RefinementContext | undefined>();
 
   // Error handling
@@ -61,9 +64,21 @@ export default function OnboardingPage() {
     }
   }, []);
 
-  // Step 2-3: Select direction → go to depth step
+  // Step 2-3: Select direction → go to language step (if CODE/AI_AGENT) or depth step
   const handleDirectionSelect = useCallback((direction: LearningDirection) => {
     setSelectedDirection(direction);
+    // If direction has language config, show language selection step
+    if (direction.languageConfig) {
+      setSelectedLanguage(direction.languageConfig.recommended); // Default to recommended
+      setStep('language');
+    } else {
+      setStep('depth');
+    }
+  }, []);
+
+  // Step 4b: Select language → go to depth step
+  const handleLanguageSelect = useCallback((language: string) => {
+    setSelectedLanguage(language);
     setStep('depth');
   }, []);
 
@@ -101,6 +116,8 @@ export default function OnboardingPage() {
         contentDepth: depth,
         // Use tool-specific directions to set platform tolerance
         platformTolerance: selectedDirection.isToolSpecific ? 'any' : 'preferGeneric',
+        // Language selection (for CODE/AI_AGENT directions)
+        selectedLanguage: selectedLanguage,
         // Include refinement context if used
         outputType: refinementContext?.outputType,
         usageContext: refinementContext?.usageContext,
@@ -120,7 +137,7 @@ export default function OnboardingPage() {
       setError(err.response?.data?.message || 'Failed to save preferences. Please try again.');
       setStep('depth');
     }
-  }, [goal, selectedDirection, refinementContext, navigate, refreshUser]);
+  }, [goal, selectedDirection, selectedLanguage, refinementContext, navigate, refreshUser]);
 
   // Progress indicator
   const getProgress = () => {
@@ -128,11 +145,13 @@ export default function OnboardingPage() {
       case 'goal_input':
         return 20;
       case 'generating':
-        return 40;
+        return 35;
       case 'directions':
         return 50;
       case 'refinement':
         return 50;
+      case 'language':
+        return 65;
       case 'depth':
         return 80;
       case 'completing':
@@ -205,8 +224,19 @@ export default function OnboardingPage() {
               <StepWrapper key="refinement">
                 <RefinementPanel
                   originalGoal={goal}
+                  directions={directions}
                   onSubmit={handleRefinementSubmit}
                   onBack={() => setStep('directions')}
+                />
+              </StepWrapper>
+            )}
+
+            {step === 'language' && selectedDirection?.languageConfig && (
+              <StepWrapper key="language">
+                <LanguageStep
+                  selectedDirection={selectedDirection.title}
+                  languageConfig={selectedDirection.languageConfig}
+                  onSelect={handleLanguageSelect}
                 />
               </StepWrapper>
             )}

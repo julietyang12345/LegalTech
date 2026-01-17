@@ -181,8 +181,12 @@ export class CurriculumService {
       selectedDirection: dto.selectedDirection,
       selectedDirectionOutcome: dto.selectedDirectionOutcome,
       directionKeywords: dto.directionKeywords,
+      selectedLanguage: dto.selectedLanguage,
     };
     this.logger.log(`🎯 DEBUG learnerPrefs passed to prompt:`, JSON.stringify(learnerPrefs));
+
+    // Use user's selected language if provided, otherwise use auto-detected
+    const effectiveLanguage = dto.selectedLanguage || skillDetection.suggestedLanguage;
 
     const { staticPart, dynamicPart, userPrompt } = buildCacheableCurriculumPrompt({
       skillName: dto.skillName,
@@ -192,7 +196,7 @@ export class CurriculumService {
       skillType: skillDetection.skillType,
       complexity: skillDetection.complexity,
       userTier,
-      suggestedLanguage: skillDetection.suggestedLanguage,
+      suggestedLanguage: effectiveLanguage,
       prerequisiteSkills: skillDetection.prerequisiteSkills,
       learnerPrefs,
     });
@@ -241,6 +245,13 @@ export class CurriculumService {
     const isProjectBased = usesProjectBasedLearning(skillDetection.skillType, dto.outputType);
     this.logger.log(`🎯 Curriculum type: ${isProjectBased ? 'PROJECT-BASED' : 'PRACTICE-BASED'}`);
 
+    // Validate curriculum structure before proceeding
+    if (!curriculum.days || !Array.isArray(curriculum.days) || curriculum.days.length === 0) {
+      this.logger.error('❌ AI returned invalid curriculum structure - missing days array');
+      this.logger.error('Curriculum received:', JSON.stringify(curriculum).substring(0, 500));
+      throw new BadRequestException('Failed to generate curriculum - invalid structure. Please try again.');
+    }
+
     // Add metadata to curriculum
     curriculum.metadata = {
       skillName: dto.skillName,
@@ -249,7 +260,7 @@ export class CurriculumService {
       skillLevel: dto.skillLevel,
       skillType: skillDetection.skillType,
       complexity: skillDetection.complexity,
-      suggestedLanguage: skillDetection.suggestedLanguage,
+      suggestedLanguage: effectiveLanguage, // User's selected language (or auto-detected if not chosen)
       isProjectBased, // Store this - use it consistently, don't re-calculate
       outputType: dto.outputType, // Store user's intent
     };
@@ -332,9 +343,11 @@ export class CurriculumService {
     // This ensures video content aligns with foundationCards and tasks
     let universityResourcePromise: Promise<any> | null = null;
     let docFetchPromise: Promise<DocFetchResult | null> | null = null;
-    const shouldSearchVideo = contentSource === 'university' ||
-      (videoStrategy !== 'skip' && contentSource !== 'text' && contentSource !== 'docs');
+    // Search for videos unless explicitly set to skip or contentSource is 'text' (simple AI explanations)
+    // Keep videos for docs/youtube/university - only skip for text to save Gemini tokens
+    const shouldSearchVideo = videoStrategy !== 'skip' && contentSource !== 'text';
 
+    this.logger.log(`🔍 VIDEO DEBUG: shouldSearchVideo=${shouldSearchVideo}, videoStrategy=${videoStrategy}, contentSource=${contentSource}`);
     if (!shouldSearchVideo) {
       this.logger.log(`📝 Skipping video search for Day ${dayNumber} (videoStrategy: ${videoStrategy}, contentSource: ${contentSource})`);
     }
@@ -483,6 +496,9 @@ export class CurriculumService {
         this.logger.warn(`⚠️ Video search failed: ${error.message}`);
         videoResult = null;
       }
+      this.logger.log(`🔍 VIDEO RESULT: success=${videoResult?.success}, video=${videoResult?.video?.title || 'none'}, error=${videoResult?.error || 'none'}`);
+    } else {
+      this.logger.log(`🔍 VIDEO SEARCH SKIPPED: shouldSearchVideo=${shouldSearchVideo}, hasDayContentVideo=${!!dayContent?.video}`);
     }
 
     // Merge strategy metadata into dayContent for frontend

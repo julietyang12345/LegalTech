@@ -1,5 +1,5 @@
 import { clsx } from 'clsx';
-import { Clock, Target, Wrench, DollarSign } from 'lucide-react';
+import { Clock, Target, Wrench, DollarSign, Code2 } from 'lucide-react';
 import type { LearningDirection } from '@/types';
 
 interface DirectionCardProps {
@@ -65,7 +65,17 @@ export function DirectionCard({ direction, isSelected, onClick }: DirectionCardP
             </p>
           )}
 
-          <p className="text-sm text-gray-600 mb-3">{direction.outcome}</p>
+          <p className="text-sm text-gray-600 mb-2">{direction.outcome}</p>
+
+          {/* Language badge (for CODE/AI_AGENT directions) */}
+          {direction.languageConfig && (
+            <div className="mb-3">
+              <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-slate-100 text-slate-700">
+                <Code2 className="w-3 h-3" />
+                {direction.languageConfig.recommended}
+              </span>
+            </div>
+          )}
 
           <div className="flex items-center gap-4 text-xs text-gray-500">
             <span className="flex items-center gap-1">

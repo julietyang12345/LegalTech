@@ -520,6 +520,10 @@ export const useSessionStore = create<SessionState>()(
           ? dayNumber
           : state.activeSession.currentDay;
 
+        // Check if this is fresh content for a new day (not a refresh of already-loaded day)
+        const existingDay = state.activeSession.curriculum.days.find((d) => d.day === dayNumber);
+        const isNewDayContent = !existingDay?.detailsLoaded && !existingDay?.coreContent;
+
         return {
           activeSession: {
             ...state.activeSession,
@@ -531,9 +535,16 @@ export const useSessionStore = create<SessionState>()(
             },
           },
           currentDay: { ...updatedDays.find((d) => d.day === dayNumber)! },
+          currentDayNumber: dayNumber,
           isDayLoading: false,
           dayLoadingNumber: null,
           isCoreLoaded: true,
+          // Reset step state when loading fresh content (not resuming)
+          ...(isNewDayContent ? {
+            currentStep: 'prePrompt' as const,
+            completedSteps: [],
+            stepStartTime: new Date(),
+          } : {}),
           // Variant tracking for quality-based caching
           currentDayVariantId: variantId || null,
           regenCount,

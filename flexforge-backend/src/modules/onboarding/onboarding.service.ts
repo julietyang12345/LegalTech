@@ -76,6 +76,18 @@ export class OnboardingService {
         paymentNote: d.isToolSpecific && !d.isFree ? String(d.paymentNote || 'May require payment') : undefined,
         estimatedMinutes: Number(d.estimatedMinutes) || 60,
         skillType: this.parseSkillType(d.skillType),
+        // Pass through languageConfig for CODE/AI_AGENT skillTypes
+        languageConfig: d.languageConfig ? {
+          recommended: String(d.languageConfig.recommended || 'TypeScript'),
+          recommendedReason: String(d.languageConfig.recommendedReason || 'Best tooling support'),
+          alternatives: Array.isArray(d.languageConfig.alternatives)
+            ? d.languageConfig.alternatives.slice(0, 3).map((alt: any) => ({
+                language: String(alt.language),
+                reason: String(alt.reason || ''),
+                tradeoffs: alt.tradeoffs ? String(alt.tradeoffs) : undefined,
+              }))
+            : [],
+        } : undefined,
       })) as LearningDirection[];
 
     // Separate concept vs tool-specific
@@ -122,6 +134,7 @@ export class OnboardingService {
       selectedDirection: dto.selectedDirection,
       selectedDirectionOutcome: dto.selectedDirectionOutcome,
       directionKeywords: dto.directionKeywords,
+      selectedLanguage: dto.selectedLanguage,
       contentDepth: dto.contentDepth,
       platformTolerance: dto.platformTolerance,
       outputType: dto.outputType,
@@ -203,6 +216,7 @@ DIRECTION REQUIREMENTS:
 1. SEARCHABLE: Use common terms YouTube tutorials would use.
 2. LOW-FRICTION: Prioritize managed services, serverless, auto-deploy.
 3. TRADEOFFS: Each direction should suit a different user preference/skill.
+4. PRESERVE CONTEXT: Direction titles/outcomes must include user's specific subject (e.g., "AI app", "Reddit bot"). Never strip context to generic tool tutorials.
 
 GRANULARITY (for LEARNING goals):
 - GOOD: "Webhooks + retries for reliable automations"
@@ -217,6 +231,12 @@ TOOL-SPECIFIC RULES:
 - Majority must be FREE (isFree: true) - e.g., Python, VS Code, Git
 - At most 1-2 paid/freemium (isFree: false) - add paymentNote
 
+LANGUAGE CONFIG (for CODE/AI_AGENT skillTypes only):
+- Include languageConfig with recommended language and reason
+- Only add alternatives that are GENUINELY EQUIVALENT (not a downgrade)
+- Alternatives should have sandbox support and similar learning curve
+- Don't offer languages that would fundamentally change the project
+
 Return JSON:
 {
   "interpretedGoal": "Summary of goal",
@@ -228,9 +248,18 @@ Return JSON:
     "isToolSpecific": false,
     "isFree": true,
     "paymentNote": null,
-    "estimatedMinutes": 60
+    "estimatedMinutes": 60,
+    "languageConfig": {
+      "recommended": "TypeScript",
+      "recommendedReason": "Best tooling + instant preview in sandbox",
+      "alternatives": [
+        {"language": "Python", "reason": "Good for data-focused projects", "tradeoffs": "Slower feedback loop"}
+      ]
+    }
   }]
-}`;
+}
+
+Note: languageConfig is ONLY for CODE/AI_AGENT skillTypes. Omit for KNOWLEDGE/PHYSICAL/DESIGN.`;
   }
 
   private buildDirectionUserPrompt(
