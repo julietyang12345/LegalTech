@@ -488,45 +488,24 @@ export class AiService {
     this.logger.log('✅ Step 1: Using existing directions (no regeneration)');
 
     // Step 2: Send to Gemini to review quality AND incorporate user feedback
-    const reviewPrompt = `You are a learning path expert reviewing AI-generated learning directions.
+    // Compress directions to just titles/outcomes to save tokens
+    let compressedDirections = existingDirections;
+    try {
+      const parsed = JSON.parse(existingDirections);
+      if (parsed.directions) {
+        compressedDirections = parsed.directions.map((d: any, i: number) =>
+          `${i + 1}. ${d.title}: ${d.outcome || ''}`
+        ).join('\n');
+      }
+    } catch { /* use full if parse fails */ }
 
-ORIGINAL DIRECTIONS:
-${existingDirections}
+    const reviewPrompt = `Review these learning directions. User feedback: "${userFeedback}"
 
-USER'S FEEDBACK (they clicked "Not quite" and said):
-"${userFeedback}"
+DIRECTIONS:
+${compressedDirections}
 
-YOUR TASK - Provide a thorough review:
-
-1. QUALITY CHECK - Are these directions good?
-   - Are they searchable (would YouTube tutorials exist for these terms)?
-   - Are they appropriately scoped (30-90 min each)?
-   - Do they cover diverse approaches (code vs no-code, beginner vs advanced)?
-   - Are low-friction options included (managed services, auto-deploy)?
-
-2. ISSUES FOUND - List any problems:
-   - Directions that are too vague or too specific
-   - Missing approaches the user might want
-   - Tool recommendations that are outdated or have better alternatives
-   - Any direction that doesn't fully achieve the user's goal
-
-3. SUGGESTED IMPROVEMENTS - Be specific:
-   - What should be changed, added, or removed?
-   - Better keywords for video searchability?
-   - Alternative tools or approaches to consider?
-
-4. FEEDBACK ALIGNMENT - Does the response address the user's specific feedback?
-   - What's still missing from what they asked for?
-   - What changes would better match their intent?
-
-Return your review as JSON:
-{
-  "overallQuality": "good" | "needs_improvement" | "poor",
-  "issues": ["issue 1", "issue 2"],
-  "suggestions": ["suggestion 1", "suggestion 2"],
-  "missingApproaches": ["approach 1", "approach 2"],
-  "feedbackAlignment": "fully_addressed" | "partially_addressed" | "not_addressed" | null
-}`;
+Check: searchable terms? scoped (30-90min)? diverse approaches? low-friction options?
+Return JSON: {overallQuality, issues[], suggestions[], missingApproaches[], feedbackAlignment}`;
 
     let geminiReview: AIResponse;
     let reviewData: any = null;
@@ -561,26 +540,28 @@ Return your review as JSON:
     }
 
     // Step 3: Claude synthesizes final directions incorporating Gemini's feedback
-    const synthesisPrompt = `You are improving learning directions based on reviewer feedback and user input.
+    // Extract just the actionable feedback from Gemini's review
+    let reviewSummary = geminiReview.content;
+    if (reviewData) {
+      const parts = [];
+      if (reviewData.issues?.length) parts.push(`Issues: ${reviewData.issues.join('; ')}`);
+      if (reviewData.suggestions?.length) parts.push(`Suggestions: ${reviewData.suggestions.join('; ')}`);
+      if (reviewData.missingApproaches?.length) parts.push(`Missing: ${reviewData.missingApproaches.join('; ')}`);
+      if (parts.length) reviewSummary = parts.join('\n');
+    }
 
-ORIGINAL DIRECTIONS:
+    const synthesisPrompt = `Improve these directions based on feedback.
+
+ORIGINAL:
 ${existingDirections}
 
-REVIEWER'S FEEDBACK:
-${geminiReview.content}
+REVIEW:
+${reviewSummary}
 
-USER'S SPECIFIC FEEDBACK (MUST be addressed):
+USER FEEDBACK (address this):
 "${userFeedback}"
 
-TASK: Generate improved directions that:
-1. Address ALL issues raised by the reviewer
-2. Incorporate the reviewer's suggestions where appropriate
-3. FULLY address the user's specific feedback
-4. Keep the same JSON format as before
-5. Ensure each direction achieves the user's COMPLETE goal
-6. Include all user preferences in the response
-
-Return ONLY the improved JSON with directions, no explanation.`;
+Return improved JSON with same format. Each direction must achieve user's complete goal.`;
 
     try {
       const finalResponse = await this.callAnthropic(

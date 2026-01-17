@@ -64,11 +64,12 @@ export interface RefinementContext {
  * Captures user's learning intent and preferences for personalized content.
  */
 export interface LearnerPrefs {
-  // From onboarding Step 1: Free-text goal
+  // From onboarding Step 1: Free-text goal (kept for reference, not passed to curriculum)
   originalGoal: string; // User's raw input: "I want to learn AI automations"
 
   // From onboarding Step 4: Selected direction
   selectedDirection: string; // The direction title they picked
+  selectedDirectionOutcome: string; // "You'll be able to..." - specific deliverable
   directionKeywords: string[]; // Keywords for video matching hints
 
   // From refinement (Step 3b, if used)
@@ -128,6 +129,7 @@ export interface DirectionsResponse {
 export interface CompleteOnboardingDto {
   originalGoal: string;
   selectedDirection: string;
+  selectedDirectionOutcome: string; // "You'll be able to..." from the direction
   directionKeywords: string[];
   contentDepth: 'fast' | 'medium' | 'deep';
   platformTolerance: 'any' | 'preferGeneric' | 'genericOnly';

@@ -887,10 +887,11 @@ export interface RefinementContext {
 // Full learner preferences (stored in User.preferences.learner)
 export interface LearnerPrefs {
   // From onboarding Step 1
-  originalGoal: string;              // User's free-text goal
+  originalGoal: string;              // User's free-text goal (kept for reference)
 
   // From onboarding Step 4
   selectedDirection: string;         // The direction title they picked
+  selectedDirectionOutcome: string;  // "You'll be able to..." - specific deliverable
   directionKeywords: string[];       // Keywords for video matching hints
 
   // From refinement (Step 3b, if used)
@@ -923,6 +924,7 @@ export interface DirectionsResponse {
 export interface CompleteOnboardingDto {
   originalGoal: string;
   selectedDirection: string;
+  selectedDirectionOutcome: string; // "You'll be able to..." from the direction
   directionKeywords: string[];
   contentDepth: 'fast' | 'medium' | 'deep';
   platformTolerance?: 'any' | 'preferGeneric' | 'genericOnly';

@@ -96,6 +96,7 @@ export default function OnboardingPage() {
       const dto: CompleteOnboardingDto = {
         originalGoal: goal,
         selectedDirection: selectedDirection.title,
+        selectedDirectionOutcome: selectedDirection.outcome,
         directionKeywords: selectedDirection.keywords,
         contentDepth: depth,
         // Use tool-specific directions to set platform tolerance

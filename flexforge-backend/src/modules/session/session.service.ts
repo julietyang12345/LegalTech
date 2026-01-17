@@ -123,8 +123,8 @@ export class SessionService {
           {
             ...createSessionDto,
             outputType: learnerPrefs?.outputType,
-            originalGoal: learnerPrefs?.originalGoal,
             selectedDirection: learnerPrefs?.selectedDirection,
+            selectedDirectionOutcome: learnerPrefs?.selectedDirectionOutcome,
             directionKeywords: learnerPrefs?.directionKeywords,
           },
           tierString,

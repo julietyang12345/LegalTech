@@ -26,11 +26,11 @@ export class GenerateCurriculumDto {
   // From onboarding directions
   @IsOptional()
   @IsString()
-  originalGoal?: string;
+  selectedDirection?: string;
 
   @IsOptional()
   @IsString()
-  selectedDirection?: string;
+  selectedDirectionOutcome?: string; // "You'll be able to..." - specific deliverable
 
   @IsOptional()
   @IsArray()

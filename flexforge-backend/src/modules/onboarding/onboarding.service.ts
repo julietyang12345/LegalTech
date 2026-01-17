@@ -120,6 +120,7 @@ export class OnboardingService {
     const learnerPrefs: LearnerPrefs = {
       originalGoal: dto.originalGoal,
       selectedDirection: dto.selectedDirection,
+      selectedDirectionOutcome: dto.selectedDirectionOutcome,
       directionKeywords: dto.directionKeywords,
       contentDepth: dto.contentDepth,
       platformTolerance: dto.platformTolerance,

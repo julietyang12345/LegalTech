@@ -178,8 +178,8 @@ export class CurriculumService {
     // Include full learner preferences from onboarding directions
     const learnerPrefs = {
       outputType: dto.outputType,
-      originalGoal: dto.originalGoal,
       selectedDirection: dto.selectedDirection,
+      selectedDirectionOutcome: dto.selectedDirectionOutcome,
       directionKeywords: dto.directionKeywords,
     };
     this.logger.log(`🎯 DEBUG learnerPrefs passed to prompt:`, JSON.stringify(learnerPrefs));

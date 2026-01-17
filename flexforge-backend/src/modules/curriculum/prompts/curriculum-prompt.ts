@@ -4,8 +4,8 @@ import { OutputType } from '../types/learner-prefs.interface';
 
 // Learner preferences from onboarding (optional - may not exist for users who skipped onboarding)
 export interface LearnerPrefsForPrompt {
-  originalGoal?: string;           // User's free-text goal from onboarding
   selectedDirection?: string;      // The direction they picked (more specific than skillName)
+  selectedDirectionOutcome?: string; // "You'll be able to..." - specific deliverable
   directionKeywords?: string[];    // Keywords for the selected direction
   outputType?: OutputType;
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
@@ -128,14 +128,14 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
 
   const parts: string[] = [];
 
-  // Original goal provides the most context
-  if (prefs.originalGoal) {
-    parts.push(`USER'S ORIGINAL GOAL: "${prefs.originalGoal}"`);
+  // Selected direction is the specific path they chose
+  if (prefs.selectedDirection) {
+    parts.push(`LEARNING DIRECTION: "${prefs.selectedDirection}"`);
   }
 
-  // Selected direction is more specific than skillName
-  if (prefs.selectedDirection) {
-    parts.push(`SPECIFIC FOCUS: "${prefs.selectedDirection}"`);
+  // Outcome is the specific deliverable - what they'll be able to DO
+  if (prefs.selectedDirectionOutcome) {
+    parts.push(`TARGET OUTCOME: "${prefs.selectedDirectionOutcome}"`);
   }
 
   // Direction keywords help with search and content focus
@@ -242,39 +242,14 @@ function getBossMilestoneTemplate(dayNumber: number, estimatedMinutes: number): 
 }
 
 function getTierInstructions(userTier: string): string {
+  // Only include relevant tier - no need to describe all tiers
   switch (userTier) {
     case 'FREE':
-      return `FREE TIER ACCESS:
-- Video timestamps: Days 1-2 only
-- Tasks: 1 hint + solution with annotations
-- Practice Project: 1 hint + solution
-- Boss Project (Day 1): Step-by-step guide
-- Boss Project (Day 2+): Solution only
-- Reflection: All questions, no AI feedback
-- NO AI Tutor access`;
-
+      return `TIER: FREE - Include 1 hint + solution. No AI Tutor.`;
     case 'PRO':
-      return `PRO TIER ACCESS ($15/mo):
-- Video timestamps: All days + "Ask AI" (3 questions)
-- Active Recall: AI reviews and grades explanation
-- Tasks: Starter code + 3 progressive hints + AI Tutor
-- Practice Project: Step-by-step + 3 hints + AI assistance
-- Boss Project: Step-by-step for all days + 3 hints
-- Reflection: AI analysis + personalized review plan
-- AI Tutor: 20 messages/day`;
-
+      return `TIER: PRO - Include 3 progressive hints, starter code, step-by-step guides.`;
     case 'PREMIUM':
-      return `PREMIUM TIER ACCESS ($39/mo):
-- Everything in PRO, plus:
-- UNLIMITED AI Tutor
-- Adaptive difficulty on Tasks, Practice, Boss:
-  * High confidence → Challenge mode (harder variations)
-  * Medium confidence → Standard difficulty
-  * Low confidence → Guided mode (more scaffolding)
-- Code review on every submission
-- Weakness tracking dashboard
-- Career path integration`;
-
+      return `TIER: PREMIUM - Include adaptive difficulty options (challenge/standard/guided), full hints.`;
     default:
       return '';
   }
@@ -588,56 +563,23 @@ Output valid JSON only.`;
   const task1Minutes = Math.round(time.task1 * 0.4);
   const bossMilestoneMinutes = Math.round(time.task1 * 0.6);
 
-  const userPrompt = `{
-  "day": ${params.dayNumber},
-  "title": "${params.dayTitle}",
-  "subtitle": "${params.skeleton?.subtitle || ''}",
-  "skills": ${JSON.stringify(params.skeleton?.skills || params.dayObjectives)},
-  "estimatedMinutes": ${time.totalMinutes},
+  // Minimal template - AI generates all content
+  const skills = JSON.stringify(params.skeleton?.skills || params.dayObjectives);
+  const taskFormat = params.skillLevel === 'BEGINNER' ? 'quiz' : 'fillBlank';
 
-  "prePrompt": {"text": "", "primeQuestions": [], "yesterdayRecap": ""},
-  "video": {"watchPoints": []},
+  const userPrompt = `Day ${params.dayNumber}: "${params.dayTitle}"
+Skills: ${skills}
+Minutes: ${time.totalMinutes}
 
-  "foundationCards": [
-    {"id": "day${params.dayNumber}-card-1", "concept": "", "visual": "", "explanation": "", "realWorldContext": "", "microQuestion": {"question": "", "type": "gotit"}, "order": 1},
-    {"id": "day${params.dayNumber}-card-2", "concept": "", "visual": "", "explanation": "", "realWorldContext": "", "codeExample": "", "microQuestion": {"question": "", "type": "understanding", "options": [], "correctIndex": 0, "explanation": ""}, "order": 2}
-  ],
-
-  ${getTask1Template(params.dayNumber, params.skillLevel, 5, task1Minutes)},
-
-  ${getBossMilestoneTemplate(params.dayNumber, bossMilestoneMinutes)},
-
-  ${time.practice > 0 ? `"practiceProject": {
-    "id": "day${params.dayNumber}-practice",
-    "title": "",
-    "description": "",
-    "estimatedMinutes": ${time.practice},
-    "coreChallenge": "",
-    "requirements": [],
-    "hints": [],
-    "solution": "",
-    "stretchGoals": [],
-    "tierResources": {"free": {"hints": 1, "solution": true}, "pro": {"hints": 3, "stepByStep": true, "aiTutor": true}, "premium": {"adaptiveDifficulty": {"high": "Challenge", "medium": "Standard", "low": "Guided"}}}
-  },` : ''}
-
-  "reflection": {
-    "questions": [
-      {"id": "confidence", "question": "Confidence 1-5?", "type": "scale"},
-      {"id": "clicked", "question": "What clicked?", "type": "text"},
-      {"id": "foggy", "question": "What's unclear?", "type": "text"},
-      {"id": "connection", "question": "How does today connect to Day ${params.dayNumber - 1}?", "type": "text"}
-    ]
-  },
-
-  "skipTest": {
-    "questionSets": [[
-      {"question": "Hard question 1?", "options": ["A", "B", "C", "D"], "correctIndex": 0},
-      {"question": "Hard question 2?", "options": ["A", "B", "C", "D"], "correctIndex": 1},
-      {"question": "Hard question 3?", "options": ["A", "B", "C", "D"], "correctIndex": 2}
-    ]],
-    "passThreshold": 3
-  }
-}`;
+Generate JSON with:
+- prePrompt: {text, primeQuestions[], yesterdayRecap}
+- video: {watchPoints[]}
+- foundationCards: 6-10 cards, each with {id, concept, visual, explanation, realWorldContext, microQuestion{question, type}, order}
+- task1: {format:"${taskFormat}", passingScore:70, ${taskFormat === 'quiz' ? 'questions[5 MCQs with explanation]' : 'items[5 fillBlank with blanks[], explanation]'}}
+- bossMilestone: {title, microTask, starterCode(10-25 lines REAL code), expectedOutput, hints[3 levels], solution(15-40 lines COMPLETE code), solutionAnnotations[], validationType:"run"}
+${time.practice > 0 ? `- practiceProject: {title, description, estimatedMinutes:${time.practice}, coreChallenge, requirements[], hints[], solution}` : ''}
+- reflection: {questions[confidence(scale), clicked(text), foggy(text), connection(text)]}
+- skipTest: {questionSets[[3 hard MCQs]], passThreshold:3}`;
 
   return { systemPrompt, userPrompt };
 }
@@ -843,92 +785,22 @@ CRITICAL - CODE GENERATION REQUIREMENTS:
 
 Output valid JSON only.`;
 
-  const userPrompt = `Generate complete boss project:
+  // Minimal template - AI generates content
+  const userPrompt = `Boss Project Day ${params.bossDay}: "${params.bossTitle}"
+Combines Days: ${params.combinesDays.join(', ')}
+Topics: ${params.dayTitles.join(' → ')}
 
-{
-  "day": ${params.bossDay},
-  "title": "${params.bossTitle}",
-  "description": "${params.bossDescription}",
-  "combinesDays": ${JSON.stringify(params.combinesDays)},
-  "estimatedMinutes": 75,
-
-  "overview": {
-    "whatYouBuild": "Clear description of final product",
-    "whyItMatters": "Real-world relevance",
-    "skillsIntegrated": [
-      {"skill": "From Day 1", "howUsed": "How applied in project"},
-      {"skill": "From Day 2", "howUsed": "How applied in project"}
-    ]
-  },
-
-  "requirements": [
-    {"requirement": "Functional req 1", "fromDay": 1, "concept": "Concept name"},
-    {"requirement": "Functional req 2", "fromDay": 2, "concept": "Concept name"}
-  ],
-
-  "phases": [
-    {"phase": 1, "title": "Setup", "minutes": 15, "objectives": ["Obj 1"], "deliverable": "What works"},
-    {"phase": 2, "title": "Core Build", "minutes": 35, "objectives": ["Obj 1", "Obj 2"], "deliverable": "What works"},
-    {"phase": 3, "title": "Polish", "minutes": 25, "objectives": ["Obj 1"], "deliverable": "Final product"}
-  ],
-
-  "starterCode": "GENERATE: Actual ${params.suggestedLanguage || 'code'} with imports, structure, and TODO comments where user adds code",
-
-  "hints": [
-    {"level": 1, "hint": "High-level approach", "phase": 1},
-    {"level": 2, "hint": "Specific guidance", "phase": 2},
-    {"level": 3, "hint": "Detailed approach", "phase": 2},
-    {"level": 4, "hint": "Integration help", "phase": 3}
-  ],
-
-  "solution": "GENERATE: Complete working ${params.suggestedLanguage || 'code'} solution with comments explaining key logic",
-
-  "solutionWalkthrough": [
-    {"step": 1, "description": "First...", "code": "snippet"},
-    {"step": 2, "description": "Then...", "code": "snippet"}
-  ],
-
-  "tierResources": {
-    "free": {
-      "day1StepByStep": true,
-      "otherDaysStepByStep": false,
-      "hints": 1,
-      "solution": true
-    },
-    "pro": {
-      "allDaysStepByStep": true,
-      "hints": 3,
-      "aiTutor": true,
-      "weaknessStrengthSummary": true
-    },
-    "premium": {
-      "adaptiveDifficulty": {
-        "high": "Challenge mode: Add [extra requirements]",
-        "medium": "Standard: Complete as described",
-        "low": "Guided: Detailed walkthrough with checkpoints"
-      },
-      "codeReview": true
-    }
-  },
-
-  "evaluation": {
-    "criteria": [
-      {"criterion": "Core functionality", "points": 40, "checks": ["Check 1", "Check 2"]},
-      {"criterion": "All concepts integrated", "points": 30, "checks": ["Uses Day 1", "Uses Day 2"]},
-      {"criterion": "Code quality", "points": 20, "checks": ["Readable", "Organized"]},
-      {"criterion": "Edge cases handled", "points": 10, "checks": ["Error handling"]}
-    ],
-    "passingScore": 70,
-    "excellenceScore": 90
-  },
-
-  "commonMistakes": [
-    {"mistake": "Common error 1", "fix": "How to fix"},
-    {"mistake": "Common error 2", "fix": "How to fix"}
-  ],
-
-  "extensionIdeas": ["Bonus 1", "Bonus 2"]
-}`;
+Generate JSON with:
+- overview: {whatYouBuild, whyItMatters, skillsIntegrated[{skill, howUsed}]}
+- requirements: [{requirement, fromDay, concept}] - one per day combined
+- phases: 3 phases (Setup 15min, Core Build 35min, Polish 25min) with objectives[], deliverable
+- starterCode: REAL ${params.suggestedLanguage || 'code'} with TODOs (30-50 lines)
+- hints: 4 progressive hints with phase numbers
+- solution: COMPLETE working ${params.suggestedLanguage || 'code'} (50-100 lines)
+- solutionWalkthrough: [{step, description, code}]
+- evaluation: {criteria[{criterion, points, checks[]}], passingScore:70}
+- commonMistakes: [{mistake, fix}]
+- extensionIdeas: []`;
 
   return { systemPrompt, userPrompt };
 }
@@ -1019,7 +891,7 @@ export function buildCacheableCurriculumPrompt(params: CurriculumPromptParams): 
 Type: ${params.skillType} | Level: ${params.skillLevel} | ${time.totalMinutes}min/day
 ${params.suggestedLanguage ? `Lang: ${params.suggestedLanguage}` : ''}
 ${isProjectBased ? 'PROJECT-BASED: Boss project spans all days. Include hasBossProject:true, bossMilestonePreview per day.' : 'PRACTICE-BASED: Standalone daily exercises.'}
-${params.learnerPrefs?.originalGoal ? `Goal: "${params.learnerPrefs.originalGoal}"` : ''}
+${params.learnerPrefs?.selectedDirectionOutcome ? `Target: "${params.learnerPrefs.selectedDirectionOutcome}"` : ''}
 ${params.learnerPrefs?.outputType ? `Output: ${params.learnerPrefs.outputType}` : ''}`;
 
   // Minimal template - AI fills in values, no empty strings
