@@ -175,9 +175,13 @@ export class CurriculumService {
     }
 
     // Step 3: Build curriculum prompt with caching support (skeleton only)
-    this.logger.log(`🎯 DEBUG dto.outputType: ${dto.outputType || 'NOT SET'}`);
-    this.logger.log(`🎯 DEBUG skillType: ${skillDetection.skillType}`);
-    const learnerPrefs = dto.outputType ? { outputType: dto.outputType } : undefined;
+    // Include full learner preferences from onboarding directions
+    const learnerPrefs = {
+      outputType: dto.outputType,
+      originalGoal: dto.originalGoal,
+      selectedDirection: dto.selectedDirection,
+      directionKeywords: dto.directionKeywords,
+    };
     this.logger.log(`🎯 DEBUG learnerPrefs passed to prompt:`, JSON.stringify(learnerPrefs));
 
     const { staticPart, dynamicPart, userPrompt } = buildCacheableCurriculumPrompt({

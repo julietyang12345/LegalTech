@@ -116,12 +116,17 @@ export class SessionService {
         this.logger.log(`📦 Cache HIT for "${createSessionDto.skillName}" - variant ${variantId}`);
       } else {
         // Cache MISS - generate new curriculum
-        // Include user's outputType from questionnaire preferences
-        const outputType = user.preferences?.learner?.outputType;
-        this.logger.log(`🎯 DEBUG outputType from user.preferences.learner: ${outputType || 'NOT SET'}`);
-        this.logger.log(`🎯 DEBUG user.preferences.learner:`, JSON.stringify(user.preferences?.learner, null, 2));
+        // Include user's learner preferences from onboarding
+        const learnerPrefs = user.preferences?.learner;
+        this.logger.log(`🎯 DEBUG user.preferences.learner:`, JSON.stringify(learnerPrefs, null, 2));
         const generated = await this.curriculumService.generateCurriculum(
-          { ...createSessionDto, outputType },
+          {
+            ...createSessionDto,
+            outputType: learnerPrefs?.outputType,
+            originalGoal: learnerPrefs?.originalGoal,
+            selectedDirection: learnerPrefs?.selectedDirection,
+            directionKeywords: learnerPrefs?.directionKeywords,
+          },
           tierString,
         );
 

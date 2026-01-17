@@ -36,11 +36,20 @@ export class OnboardingService {
     const systemPrompt = this.buildDirectionSystemPrompt();
     const userPrompt = this.buildDirectionUserPrompt(goal, refinement);
 
-    const response = await this.aiService.routeRequest(
-      AITask.SIMPLE_CLASSIFICATION, // Fast, cheap model is fine for this
-      userPrompt,
-      systemPrompt,
-    );
+    // Use cross-referencing when user provides feedback AND we have previous directions
+    // Otherwise, generate fresh directions with Claude
+    const response = (refinement?.userFeedback && refinement?.previousDirections)
+      ? await this.aiService.crossReferencedRequest(
+          userPrompt,
+          systemPrompt,
+          refinement.userFeedback,
+          refinement.previousDirections,
+        )
+      : await this.aiService.routeRequest(
+          AITask.SIMPLE_CLASSIFICATION,
+          userPrompt,
+          systemPrompt,
+        );
 
     const parsed = parseAiJson(response.content);
 
@@ -176,66 +185,50 @@ export class OnboardingService {
   // ============================================
 
   private buildDirectionSystemPrompt(): string {
-    return `You are helping a learner find the right learning direction.
+    return `Generate 4-6 learning directions based on the user's goal.
 
-Your job is to interpret their goal and generate 4-6 concrete learning directions.
+GOAL TYPE DETECTION:
+- PROJECT goal (e.g., "build a Reddit monitor that summarizes and emails"): Each direction is a DIFFERENT WAY to build the user's EXACT project. Not subtopics - the COMPLETE system.
+  Example: code approach, no-code approach, AI-assisted approach, etc.
+- LEARNING goal (e.g., "learn Python"): Each direction is a bounded subtopic (30-90 min).
 
-Each direction MUST be:
-1. SEARCHABLE: Use common terms that YouTube tutorials and courses would use. No niche jargon.
-2. BOUNDED: Achievable in 30-90 minutes of focused learning. Not a whole course.
-3. ACTIONABLE: Can become a concrete curriculum topic with clear learning outcomes.
+FOR PROJECT GOALS - LOW FRICTION PATHS ONLY:
+- Auto-deploy platforms (git push = live)
+- No manual server config or SSH
+- Free tier or <$20/month
+- Each direction suits a different skill/preference (code vs no-code, quick vs production-ready)
 
-GRANULARITY RULES (CRITICAL):
+DIRECTION REQUIREMENTS:
+1. SEARCHABLE: Use common terms YouTube tutorials would use.
+2. LOW-FRICTION: Prioritize managed services, serverless, auto-deploy.
+3. TRADEOFFS: Each direction should suit a different user preference/skill.
+
+GRANULARITY (for LEARNING goals):
 - GOOD: "Webhooks + retries for reliable automations"
-- TOO DETAILED: "Implement exponential backoff with jitter in NestJS axios interceptors"
+- TOO DETAILED: "Implement exponential backoff with jitter in NestJS"
 - TOO VAGUE: "Learn programming"
 
-Keep directions broad enough that video search will find good matches.
+SKILL TYPES: CODE, AI_AGENT, DESIGN, KNOWLEDGE, PHYSICAL
 
-SKILL TYPE DETECTION (REQUIRED for each direction):
-Classify each direction into one of these skill types:
-- CODE: Programming, software development, coding tutorials (Python, JavaScript, APIs, etc.)
-- AI_AGENT: AI agents, automation with AI, LLM integrations
-- DESIGN: UI/UX design, graphic design, visual design tools
-- KNOWLEDGE: Academic learning, languages, theory, concepts (French, history, math, etc.)
-- PHYSICAL: Sports, music, dance, physical activities, hands-on crafts
+TOOL-SPECIFIC RULES:
+- For LEARNING goals: up to 3 tool-specific directions
+- For PROJECT goals: up to 5 tool-specific directions (prioritize tools)
+- Majority must be FREE (isFree: true) - e.g., Python, VS Code, Git
+- At most 1-2 paid/freemium (isFree: false) - add paymentNote
 
-TOOL-SPECIFIC DIRECTIONS:
-- Include UP TO 3 tool-specific directions (isToolSpecific: true)
-- AT LEAST 2 must be FREE tools (isFree: true) - e.g., Python, Node.js, VS Code, Git
-- AT MOST 1 can be a paid/freemium tool (isFree: false) - e.g., Zapier, Make, AWS
-- For paid tools, set isFree: false and add paymentNote
-- paymentNote examples: "May require paid subscription", "Free tier available with limits", "Paid service"
-
-COMMON TOOLS REFERENCE:
-- FREE: Python, JavaScript, Node.js, VS Code, Git, Docker (free tier), PostgreSQL, MongoDB (free tier)
-- PAID/FREEMIUM: Zapier, Make, AWS, GCP, Azure, Notion API, Airtable, Slack (advanced features)
-
-Return JSON in this exact format:
+Return JSON:
 {
-  "interpretedGoal": "Brief summary of what you understood",
-  "directions": [
-    {
-      "title": "Short title (max 8 words)",
-      "outcome": "You'll be able to... (one sentence)",
-      "keywords": ["keyword1", "keyword2", "keyword3"],
-      "skillType": "CODE",
-      "isToolSpecific": false,
-      "isFree": true,
-      "paymentNote": null,
-      "estimatedMinutes": 60
-    },
-    {
-      "title": "Learn French conversation basics",
-      "outcome": "You'll hold basic conversations in French",
-      "keywords": ["French", "conversation", "language learning"],
-      "skillType": "KNOWLEDGE",
-      "isToolSpecific": false,
-      "isFree": true,
-      "paymentNote": null,
-      "estimatedMinutes": 45
-    }
-  ]
+  "interpretedGoal": "Summary of goal",
+  "directions": [{
+    "title": "Short title (max 8 words)",
+    "outcome": "You'll be able to... (one sentence)",
+    "keywords": ["keyword1", "keyword2"],
+    "skillType": "CODE",
+    "isToolSpecific": false,
+    "isFree": true,
+    "paymentNote": null,
+    "estimatedMinutes": 60
+  }]
 }`;
   }
 
@@ -286,12 +279,19 @@ REFINEMENT CONTEXT (user clarified their intent):`;
         };
         prompt += `\n- Platform tolerance: ${toleranceLabels[refinement.platformTolerance]}`;
       }
+
+      if (refinement.userFeedback) {
+        prompt += `\n\nUSER'S SPECIFIC FEEDBACK (IMPORTANT - address this directly):\n"${refinement.userFeedback}"`;
+      }
     }
 
     prompt += `
 
-Generate 4-6 learning directions. Include at least one tool-specific option if relevant.
-Remember: directions must be searchable (common terms) and bounded (30-90 min).`;
+First determine if this is a PROJECT goal or LEARNING goal.
+- For PROJECT goals: generate 4-6 directions that each achieve the COMPLETE project using different approaches
+- For LEARNING goals: generate 4-6 directions that each cover a bounded subtopic (30-90 min)
+
+Include at least one tool-specific option if relevant.`;
 
     return prompt;
   }

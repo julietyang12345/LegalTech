@@ -880,6 +880,8 @@ export interface RefinementContext {
   timeMinutes?: number;
   platformTolerance?: 'any' | 'preferGeneric' | 'genericOnly';
   skillLevel?: 'beginner' | 'intermediate' | 'advanced';
+  userFeedback?: string; // Free-text: "I want X instead of Y"
+  previousDirections?: string; // JSON string of previous directions (to avoid regenerating)
 }
 
 // Full learner preferences (stored in User.preferences.learner)

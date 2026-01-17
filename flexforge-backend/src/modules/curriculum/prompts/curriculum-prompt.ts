@@ -1022,8 +1022,11 @@ ${isProjectBased ? 'PROJECT-BASED: Boss project spans all days. Include hasBossP
 ${params.learnerPrefs?.originalGoal ? `Goal: "${params.learnerPrefs.originalGoal}"` : ''}
 ${params.learnerPrefs?.outputType ? `Output: ${params.learnerPrefs.outputType}` : ''}`;
 
-  // Compressed user prompt template
-  const userPrompt = `{"title":"","description":"","finalProject":"","skillType":"${params.skillType}","days":[${Array.from({ length: params.durationDays }, (_, i) => `{"day":${i + 1},"title":"Day ${i + 1}:","subtitle":"","skills":[],"teaser":"","estimatedMinutes":${time.totalMinutes}${isProjectBased ? ',"hasBossProject":true,"bossMilestonePreview":""' : ''},"contentLayer":"","videoStrategy":"","transferability":"","contentSource":"","skipTest":{"questionSets":[[{"question":"","options":["","","",""],"correctIndex":0},{"question":"","options":["","","",""],"correctIndex":0},{"question":"","options":["","","",""],"correctIndex":0}]],"passThreshold":2}}`).join(',')}],${isProjectBased ? `"bossProjects":[{"day":${params.durationDays},"title":"Boss Project:","description":"","combinesDays":[${Array.from({ length: params.durationDays }, (_, i) => i + 1).join(',')}],"estimatedMinutes":75}],` : '"bossProjects":[],'}"metadata":{"isProjectBased":${isProjectBased}}}`;
+  // Minimal template - AI fills in values, no empty strings
+  const dayNums = Array.from({ length: params.durationDays }, (_, i) => i + 1);
+  const userPrompt = `Generate ${params.durationDays} days. Each day needs: day, title, subtitle, skills[], teaser, estimatedMinutes:${time.totalMinutes}${isProjectBased ? ', hasBossProject:true, bossMilestonePreview' : ''}, contentLayer, videoStrategy, transferability, contentSource, skipTest{questionSets[[3 MCQs]], passThreshold:2}.
+${isProjectBased ? `bossProjects:[{day:${params.durationDays}, combinesDays:[${dayNums.join(',')}], estimatedMinutes:75}]` : 'bossProjects:[]'}
+metadata:{isProjectBased:${isProjectBased}}`;
 
   return { staticPart, dynamicPart, userPrompt };
 }
@@ -1051,8 +1054,9 @@ ${params.suggestedLanguage ? `Lang: ${params.suggestedLanguage}` : ''}
 ${isProjectBased ? 'Include bossMilestone with REAL starterCode (10-25 lines) and COMPLETE solution code (15-40 lines).' : 'No bossMilestone (practice-based).'}
 Generate: prePrompt, video, foundationCards(5-6), task1, ${isProjectBased ? 'bossMilestone, ' : ''}skipTest.`;
 
-  // Compressed template - bossMilestone fields indicate REAL code is required
-  const userPrompt = `{"day":${params.dayNumber},"title":"${params.dayTitle}","prePrompt":{"text":"","primeQuestions":[],"yesterdayRecap":""},"video":{"watchPoints":[]},"foundationCards":[{"id":"c1","concept":"","explanation":"","realWorldContext":"","microQuestion":{"question":"","type":"gotit"},"order":1}],"task1":{"format":"quiz","passingScore":80,"questions":[{"id":"q1","question":"","options":["","","",""],"correctIndex":0,"explanation":""}]}${isProjectBased ? ',"bossMilestone":{"title":"","description":"","microTask":"SPECIFIC TASK","starterCode":"// GENERATE 10-25 LINES OF REAL STARTER CODE WITH TODOs","expectedOutput":"","hints":[{"level":1,"hint":""},{"level":2,"hint":""},{"level":3,"hint":""}],"solution":"// GENERATE 15-40 LINES OF COMPLETE WORKING SOLUTION CODE","solutionAnnotations":[""],"validationType":"run","estimatedMinutes":10}' : ''},"skipTest":{"questionSets":[[{"question":"","options":["","","",""],"correctIndex":0}]],"passThreshold":3}}`;
+  // Minimal template - AI generates content, no empty placeholders
+  const userPrompt = `Day ${params.dayNumber}: "${params.dayTitle}"
+Generate: prePrompt{text, primeQuestions[], yesterdayRecap}, video{watchPoints[]}, foundationCards[5-6 with id, concept, explanation, realWorldContext, microQuestion], task1{format:quiz/fillBlank, passingScore:80, questions[]}${isProjectBased ? ', bossMilestone{title, microTask, starterCode(10-25 lines REAL code with TODOs), expectedOutput, hints[3 levels], solution(15-40 lines COMPLETE working code), solutionAnnotations[], validationType:run}' : ''}, skipTest{questionSets[[3 hard MCQs]], passThreshold:3}`;
 
   return { staticPart, dynamicPart, userPrompt };
 }

@@ -1,4 +1,4 @@
-import { IsString, IsInt, IsNumber, IsEnum, IsOptional, Min, Max } from 'class-validator';
+import { IsString, IsInt, IsNumber, IsEnum, IsOptional, IsArray, Min, Max } from 'class-validator';
 import { SkillLevel } from '../../../database/entities/session.entity';
 import { OutputType } from '../types/learner-prefs.interface';
 
@@ -22,4 +22,17 @@ export class GenerateCurriculumDto {
   @IsOptional()
   @IsString()
   outputType?: OutputType;
+
+  // From onboarding directions
+  @IsOptional()
+  @IsString()
+  originalGoal?: string;
+
+  @IsOptional()
+  @IsString()
+  selectedDirection?: string;
+
+  @IsOptional()
+  @IsArray()
+  directionKeywords?: string[];
 }

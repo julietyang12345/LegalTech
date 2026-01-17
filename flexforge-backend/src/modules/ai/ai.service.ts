@@ -33,6 +33,9 @@ export enum AITask {
   SIMPLE_CLASSIFICATION = 'SIMPLE_CLASSIFICATION',
   DATA_VALIDATION = 'DATA_VALIDATION',
 
+  // Cross-referenced (multiple models for accuracy)
+  DIRECTION_REFINEMENT = 'DIRECTION_REFINEMENT',
+
   // Fast text (Groq Llama 3.1)
   EMAIL_SUMMARY = 'EMAIL_SUMMARY',
   NOTIFICATION_GENERATION = 'NOTIFICATION_GENERATION',
@@ -216,6 +219,7 @@ export class AiService {
         { provider: 'openai', model: 'gpt-4o-mini' },
       ],
       [AITask.SIMPLE_CLASSIFICATION]: [
+        { provider: 'anthropic', model: 'claude-sonnet-4-20250514' },
         { provider: 'openai', model: 'gpt-4o-mini' },
       ],
       [AITask.DATA_VALIDATION]: [
@@ -457,6 +461,151 @@ export class AiService {
   private calculateCost(model: string, tokens: number): number {
     const costPer1M = this.costs[model] || 0.01;
     return (tokens / 1000000) * costPer1M;
+  }
+
+  // ============ CROSS-REFERENCED REQUESTS ============
+
+  /**
+   * Cross-reference existing directions with Gemini review and Claude synthesis.
+   * Used when user provides feedback ("Not quite") to improve existing directions.
+   *
+   * Strategy:
+   * 1. Take existing directions (already generated, passed from frontend)
+   * 2. Gemini reviews for quality AND incorporates user feedback
+   * 3. Claude synthesizes final directions incorporating Gemini's feedback
+   *
+   * @param prompt - The user prompt with refinement context
+   * @param systemPrompt - System prompt for direction generation
+   * @param userFeedback - User's specific feedback text
+   * @param existingDirections - Previously generated directions JSON (required)
+   */
+  async crossReferencedRequest(
+    prompt: string,
+    systemPrompt: string,
+    userFeedback: string,
+    existingDirections: string, // Required - directions already shown to user
+  ): Promise<AIResponse> {
+    this.logger.log('✅ Step 1: Using existing directions (no regeneration)');
+
+    // Step 2: Send to Gemini to review quality AND incorporate user feedback
+    const reviewPrompt = `You are a learning path expert reviewing AI-generated learning directions.
+
+ORIGINAL DIRECTIONS:
+${existingDirections}
+
+USER'S FEEDBACK (they clicked "Not quite" and said):
+"${userFeedback}"
+
+YOUR TASK - Provide a thorough review:
+
+1. QUALITY CHECK - Are these directions good?
+   - Are they searchable (would YouTube tutorials exist for these terms)?
+   - Are they appropriately scoped (30-90 min each)?
+   - Do they cover diverse approaches (code vs no-code, beginner vs advanced)?
+   - Are low-friction options included (managed services, auto-deploy)?
+
+2. ISSUES FOUND - List any problems:
+   - Directions that are too vague or too specific
+   - Missing approaches the user might want
+   - Tool recommendations that are outdated or have better alternatives
+   - Any direction that doesn't fully achieve the user's goal
+
+3. SUGGESTED IMPROVEMENTS - Be specific:
+   - What should be changed, added, or removed?
+   - Better keywords for video searchability?
+   - Alternative tools or approaches to consider?
+
+4. FEEDBACK ALIGNMENT - Does the response address the user's specific feedback?
+   - What's still missing from what they asked for?
+   - What changes would better match their intent?
+
+Return your review as JSON:
+{
+  "overallQuality": "good" | "needs_improvement" | "poor",
+  "issues": ["issue 1", "issue 2"],
+  "suggestions": ["suggestion 1", "suggestion 2"],
+  "missingApproaches": ["approach 1", "approach 2"],
+  "feedbackAlignment": "fully_addressed" | "partially_addressed" | "not_addressed" | null
+}`;
+
+    let geminiReview: AIResponse;
+    let reviewData: any = null;
+
+    try {
+      geminiReview = await this.callGemini(
+        'gemini-2.0-flash-exp',
+        reviewPrompt,
+        '',
+      );
+
+      this.logger.log('✅ Step 2: Gemini reviewed directions');
+
+      // Try to parse Gemini's review
+      try {
+        const jsonMatch = geminiReview.content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          reviewData = JSON.parse(jsonMatch[0]);
+        }
+      } catch {
+        this.logger.warn('Could not parse Gemini review as JSON, using raw content');
+      }
+    } catch (error) {
+      this.logger.warn('Gemini review failed, returning existing directions');
+      return {
+        content: existingDirections,
+        tokensUsed: 0,
+        cost: 0,
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-20250514',
+      };
+    }
+
+    // Step 3: Claude synthesizes final directions incorporating Gemini's feedback
+    const synthesisPrompt = `You are improving learning directions based on reviewer feedback and user input.
+
+ORIGINAL DIRECTIONS:
+${existingDirections}
+
+REVIEWER'S FEEDBACK:
+${geminiReview.content}
+
+USER'S SPECIFIC FEEDBACK (MUST be addressed):
+"${userFeedback}"
+
+TASK: Generate improved directions that:
+1. Address ALL issues raised by the reviewer
+2. Incorporate the reviewer's suggestions where appropriate
+3. FULLY address the user's specific feedback
+4. Keep the same JSON format as before
+5. Ensure each direction achieves the user's COMPLETE goal
+6. Include all user preferences in the response
+
+Return ONLY the improved JSON with directions, no explanation.`;
+
+    try {
+      const finalResponse = await this.callAnthropic(
+        'claude-sonnet-4-20250514',
+        synthesisPrompt,
+        systemPrompt,
+      );
+
+      this.logger.log('✅ Step 3: Claude synthesized final directions');
+
+      return {
+        ...finalResponse,
+        tokensUsed: geminiReview.tokensUsed + finalResponse.tokensUsed,
+        cost: geminiReview.cost + finalResponse.cost,
+      };
+    } catch (error) {
+      this.logger.warn('Claude synthesis failed, returning existing directions');
+      return {
+        content: existingDirections,
+        tokensUsed: geminiReview.tokensUsed,
+        cost: geminiReview.cost,
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-20250514',
+      };
+    }
   }
 
   // ============ COMPANION-ENHANCED CURRICULUM ============

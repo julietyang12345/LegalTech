@@ -55,6 +55,8 @@ export interface RefinementContext {
   timeMinutes?: number; // 15, 30, 60, 90
   platformTolerance?: 'any' | 'preferGeneric' | 'genericOnly';
   skillLevel?: 'beginner' | 'intermediate' | 'advanced';
+  userFeedback?: string; // Free-text: "I want X instead of Y" or "Focus more on Z"
+  previousDirections?: string; // JSON string of previously generated directions (to avoid regenerating)
 }
 
 /**

@@ -35,6 +35,7 @@ export function RefinementPanel({
   const [platformTolerance, setPlatformTolerance] = useState<PlatformTolerance>();
   const [skillLevel, setSkillLevel] = useState<SkillLevel>();
   const [timeMinutes, setTimeMinutes] = useState<number>();
+  const [userFeedback, setUserFeedback] = useState<string>('');
 
   // Determine the dominant skill type from directions
   const dominantSkillType = useMemo((): SkillType => {
@@ -125,11 +126,16 @@ export function RefinementPanel({
     if (platformTolerance) refinement.platformTolerance = platformTolerance;
     if (skillLevel) refinement.skillLevel = skillLevel;
     if (timeMinutes) refinement.timeMinutes = timeMinutes;
+    if (userFeedback.trim()) refinement.userFeedback = userFeedback.trim();
+    // Pass previous directions to avoid regenerating them
+    if (directions.length > 0) {
+      refinement.previousDirections = JSON.stringify({ directions });
+    }
     onSubmit(refinement);
   };
 
   const hasAnySelection =
-    outputType || usageContext || platformTolerance || skillLevel || timeMinutes;
+    outputType || usageContext || platformTolerance || skillLevel || timeMinutes || userFeedback.trim();
 
   return (
     <div className="max-w-xl mx-auto">
@@ -204,6 +210,21 @@ export function RefinementPanel({
             selected={timeMinutes}
             onSelect={setTimeMinutes}
           />
+        </QuestionSection>
+
+        {/* Q6: Free-text feedback */}
+        <QuestionSection title="Anything specific you want?" emoji="💬">
+          <textarea
+            value={userFeedback}
+            onChange={(e) => setUserFeedback(e.target.value)}
+            placeholder="e.g., 'I want to use Python, not no-code tools' or 'Focus on the email automation part'"
+            className="w-full p-3 rounded-lg border border-gray-200 text-sm resize-none
+                     focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+            rows={3}
+          />
+          <p className="text-xs text-gray-400 mt-1">
+            This helps us find exactly what you're looking for
+          </p>
         </QuestionSection>
       </div>
 
