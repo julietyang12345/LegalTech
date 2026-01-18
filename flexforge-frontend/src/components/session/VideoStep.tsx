@@ -228,23 +228,27 @@ function AIExplanation({
       {/* Header info card */}
       {(video.reason || adaptiveInfo) && (
         <Card className="overflow-hidden">
-          <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 flex items-start gap-3">
-            <div className="p-2 bg-purple-100 rounded-lg shrink-0">
-              <Sparkles className="w-5 h-5 text-purple-600" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
+          <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-100 rounded-lg shrink-0">
+                <Sparkles className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
                 <h3 className="font-semibold text-gray-900">AI-Curated Learning</h3>
-                {adaptiveInfo?.reasonShort && (
-                  <span className="text-xs text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full">
-                    {adaptiveInfo.reasonShort}
-                  </span>
+                {video.reason && (
+                  <p className="text-sm text-gray-600 mt-0.5">{video.reason}</p>
                 )}
               </div>
-              {video.reason && (
-                <p className="text-sm text-gray-600">{video.reason}</p>
-              )}
             </div>
+            {showVideoOption && onSwitchToVideo && (
+              <button
+                onClick={onSwitchToVideo}
+                className="flex items-center gap-1.5 text-xs font-medium text-gray-600 bg-white hover:bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-lg transition-colors shrink-0"
+              >
+                <Video className="w-3.5 h-3.5" />
+                Watch video instead
+              </button>
+            )}
           </div>
         </Card>
       )}
@@ -429,9 +433,9 @@ export function VideoStep({ day, session }: VideoStepProps) {
     (day.foundationCards && day.foundationCards.length > 0));
   const showAiOption = hasAiContent;
 
-  // Adaptive modality state - default to AI if no video found
+  // Adaptive modality state - default to AI summary
   const adaptiveModality = video?.adaptiveModality;
-  const defaultMode = !hasActualVideo ? 'ai' : (adaptiveModality?.defaultMode || (video?.useAiExplanation ? 'ai' : 'video'));
+  const defaultMode: ContentMode = 'ai';
   const [currentMode, setCurrentMode] = useState<ContentMode>(defaultMode);
 
   // Support both single alternative and array of alternatives

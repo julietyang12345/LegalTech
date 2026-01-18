@@ -184,7 +184,7 @@ interface CodeSandboxProps {
   title?: string;
   readOnly?: boolean;
   // For complex projects with npm dependencies
-  template?: 'vanilla' | 'react' | 'vue' | 'node' | 'python';
+  template?: 'vanilla' | 'react' | 'vue' | 'node' | 'nextjs' | 'python';
   dependencies?: Record<string, string>;
 }
 
@@ -216,7 +216,7 @@ function hasComplexArchitecture(code: string): boolean {
 
 function needsStackBlitz(code: string, language: string): boolean {
   const lang = language.toLowerCase();
-  if (['node', 'react', 'vue'].includes(lang)) return true;
+  if (['node', 'react', 'vue', 'nextjs', 'next'].includes(lang)) return true;
 
   if (['javascript', 'typescript', 'js', 'ts'].includes(lang)) {
     const nodePatterns = [
@@ -228,6 +228,8 @@ function needsStackBlitz(code: string, language: string): boolean {
       /from\s+['"]react['"]/,
       /from\s+['"]vue['"]/,
       /from\s+['"]express['"]/,
+      /from\s+['"]next['"]/,
+      /from\s+['"]next\//,
     ];
     return nodePatterns.some(pattern => pattern.test(code));
   }
@@ -539,6 +541,13 @@ const STACKBLITZ_TEMPLATES: Record<string, { template: string; files: Record<str
       'public/index.html': '<!DOCTYPE html><html><head><title>React App</title></head><body><div id="root"></div></body></html>',
     },
   },
+  nextjs: {
+    template: 'nextjs',
+    files: {
+      'pages/index.js': '',
+      'package.json': JSON.stringify({ name: 'nextjs-project', scripts: { dev: 'next dev', build: 'next build', start: 'next start' }, dependencies: { next: 'latest', react: 'latest', 'react-dom': 'latest' } }, null, 2),
+    },
+  },
   vue: {
     template: 'vue',
     files: {
@@ -561,7 +570,7 @@ async function createStackBlitzProject(
   dependencies?: Record<string, string>
 ): Promise<string> {
   const templateConfig = STACKBLITZ_TEMPLATES[template] || STACKBLITZ_TEMPLATES.node;
-  const mainFile = template === 'react' ? 'src/App.js' : template === 'vue' ? 'src/App.vue' : 'index.js';
+  const mainFile = template === 'react' ? 'src/App.js' : template === 'vue' ? 'src/App.vue' : template === 'nextjs' ? 'pages/index.js' : 'index.js';
 
   // Build files
   const files: Record<string, string> = {
@@ -594,36 +603,76 @@ async function createStackBlitzProject(
   return `data:${encoded}`;
 }
 
-// Open code in StackBlitz (new tab)
-function openInStackBlitz(code: string, language: string, dependencies?: Record<string, string>) {
-  const template = language === 'react' ? 'react' : language === 'vue' ? 'vue' : 'node';
-  const files: Record<string, string> = {};
+// StackBlitz fork URLs and file info per template
+const STACKBLITZ_FORK_INFO: Record<string, { url: string; mainFile: string; runInstructions?: string }> = {
+  react: {
+    url: 'https://stackblitz.com/fork/react',
+    mainFile: 'App.js',
+  },
+  node: {
+    url: 'https://stackblitz.com/fork/node',
+    mainFile: 'index.js',
+    runInstructions: 'Run: node index.js or npm start',
+  },
+  nextjs: {
+    url: 'https://stackblitz.com/fork/nextjs',
+    mainFile: 'pages/index.js',
+  },
+  vue: {
+    url: 'https://stackblitz.com/fork/node', // Vue doesn't have a direct fork
+    mainFile: 'index.js',
+  },
+};
 
-  if (template === 'react') {
-    files['src/App.js'] = code;
-    files['src/index.js'] = 'import React from "react";\nimport { createRoot } from "react-dom/client";\nimport App from "./App";\nconst root = createRoot(document.getElementById("root"));\nroot.render(<App />);';
-  } else if (template === 'vue') {
-    files['src/App.vue'] = code;
-    files['src/main.js'] = 'import { createApp } from "vue";\nimport App from "./App.vue";\ncreateApp(App).mount("#app");';
+// Detect template from code content (React, Next.js, Vue patterns)
+function detectTemplateFromCode(code: string): 'react' | 'nextjs' | 'vue' | 'node' {
+  // React patterns
+  if (/import\s+React/i.test(code) || /from\s+['"]react['"]/i.test(code) || /<\w+[^>]*\/?>/.test(code) && /useState|useEffect|Component/.test(code)) {
+    return 'react';
+  }
+  // Next.js patterns
+  if (/from\s+['"]next['"]/i.test(code) || /from\s+['"]next\//.test(code) || /getServerSideProps|getStaticProps/.test(code)) {
+    return 'nextjs';
+  }
+  // Vue patterns
+  if (/from\s+['"]vue['"]/i.test(code) || /<template>/.test(code) || /defineComponent/.test(code)) {
+    return 'vue';
+  }
+  return 'node';
+}
+
+// Open code in StackBlitz (new tab) with proper template URL
+function openInStackBlitz(code: string, language: string, _dependencies?: Record<string, string>) {
+  const lang = language.toLowerCase();
+
+  // First check explicit language, then detect from code content
+  let template: 'react' | 'nextjs' | 'vue' | 'node';
+  if (lang === 'react') {
+    template = 'react';
+  } else if (lang === 'vue') {
+    template = 'vue';
+  } else if (lang === 'nextjs' || lang === 'next') {
+    template = 'nextjs';
   } else {
-    files['index.js'] = code;
+    // Detect from code content for generic js/ts languages
+    template = detectTemplateFromCode(code);
   }
 
-  const pkgJson: any = {
-    name: 'flexforge-project',
-    version: '1.0.0',
-    scripts: { start: template === 'node' ? 'node index.js' : undefined },
-    dependencies: dependencies || {},
-  };
+  const forkInfo = STACKBLITZ_FORK_INFO[template] || STACKBLITZ_FORK_INFO.node;
 
-  files['package.json'] = JSON.stringify(pkgJson, null, 2);
+  // Open the correct StackBlitz fork URL
+  window.open(forkInfo.url, '_blank');
 
-  // Create StackBlitz URL with files encoded
-  const encodedFiles = encodeURIComponent(JSON.stringify(files));
-  window.open(`https://stackblitz.com/fork/node?file=index.js`, '_blank');
-
-  // Copy code to clipboard as fallback
+  // Copy code to clipboard
   navigator.clipboard.writeText(code);
+
+  // Build guidance message
+  let guidance = `Code copied to clipboard!\n\nPaste it in: ${forkInfo.mainFile}`;
+  if (forkInfo.runInstructions) {
+    guidance += `\n${forkInfo.runInstructions}`;
+  }
+
+  return { mainFile: forkInfo.mainFile, guidance };
 }
 
 // Main CodeSandbox component
@@ -714,11 +763,11 @@ export function CodeSandbox({
           simpleExecutor.run();
           return;
 
-        // StackBlitz for Node/React/Vue
+        // StackBlitz for Node/React/Vue/Next.js
         case 'stackblitz':
           if (!sandboxId) {
-            openInStackBlitz(code, language, dependencies);
-            setOutput('Opening in StackBlitz... Code copied to clipboard.');
+            const { guidance } = openInStackBlitz(code, language, dependencies);
+            setOutput(`Opening StackBlitz...\n\n${guidance}`);
           }
           setIsRunning(false);
           return;
