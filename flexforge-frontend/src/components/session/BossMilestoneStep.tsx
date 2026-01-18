@@ -342,6 +342,7 @@ export function BossMilestoneStep({ day, session, onComplete }: BossMilestoneSte
           title={`${activeBoss?.title || 'Boss Project'} - Day ${day.day}`}
           template={getTemplateForLanguage(language)}
           dependencies={activeBoss?.dependencies as Record<string, string> | undefined}
+          setupInstructions={milestone?.setupInstructions || activeBoss?.setupInstructions}
         />
       ) : (
         <Card>
@@ -602,6 +603,7 @@ function PracticeProjectStep({
           onCodeChange={setCode}
           title={`Day ${day.day} Practice`}
           template={getTemplateForLanguage(language)}
+          setupInstructions={practiceProject?.setupInstructions}
         />
       ) : (
         <Card>

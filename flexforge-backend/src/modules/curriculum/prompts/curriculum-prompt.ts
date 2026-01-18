@@ -238,7 +238,12 @@ function getBossMilestoneTemplate(dayNumber: number, estimatedMinutes: number): 
     "solution": "REQUIRED: Generate the COMPLETE working solution code (15-40 lines). This must be real, runnable code that solves the microTask.",
     "solutionAnnotations": ["REQUIRED: 2-4 explanations of key lines in the solution"],
     "validationType": "run",
-    "validationInstructions": "Run the code and verify the output"
+    "validationInstructions": "Run the code and verify the output",
+    "setupInstructions": {
+      "files": [{"path": "REQUIRED: file path like 'index.js' or 'pages/index.js'", "description": "What this file contains"}],
+      "steps": ["REQUIRED: Step-by-step setup instructions (e.g., 'Paste the code into index.js', 'Create a new file pages/api/hello.js')"],
+      "runCommand": "Optional: command to run (e.g., 'node index.js' or 'npm start')"
+    }
   }`;
 }
 
@@ -577,7 +582,7 @@ Generate JSON with:
 - video: {watchPoints[]}
 - foundationCards: 6-10 cards, each with {id, concept, visual, explanation, realWorldContext, microQuestion{question, type}, order}
 - task1: {format:"${taskFormat}", passingScore:70, ${taskFormat === 'quiz' ? 'questions[5 MCQs with explanation]' : 'items[5 fillBlank with blanks[], explanation]'}}
-- bossMilestone: {title, microTask, starterCode(10-25 lines REAL code), expectedOutput, hints[3 levels], solution(15-40 lines COMPLETE code), solutionAnnotations[], validationType:"run"}
+- bossMilestone: {title, microTask, starterCode(10-25 lines REAL code), expectedOutput, hints[3 levels], solution(15-40 lines COMPLETE code), solutionAnnotations[], validationType:"run", setupInstructions:{files:[{path,description}], steps:[], runCommand?}}
 ${time.practice > 0 ? `- practiceProject: {title, description, estimatedMinutes:${time.practice}, coreChallenge, requirements[], hints[], solution}` : ''}
 - reflection: {questions[confidence(scale), clicked(text), foggy(text), connection(text)]}
 - skipTest: {questionSets[[3 hard MCQs]], passThreshold:3}`;
@@ -796,6 +801,7 @@ Generate JSON with:
 - requirements: [{requirement, fromDay, concept}] - one per day combined
 - phases: 3 phases (Setup 15min, Core Build 35min, Polish 25min) with objectives[], deliverable
 - starterCode: REAL ${params.suggestedLanguage || 'code'} with TODOs (30-50 lines)
+- setupInstructions: {files: [{path: "file path", description: "what it contains"}], steps: ["Step-by-step setup instructions"], runCommand: "optional run command"}
 - hints: 4 progressive hints with phase numbers
 - solution: COMPLETE working ${params.suggestedLanguage || 'code'} (50-100 lines)
 - solutionWalkthrough: [{step, description, code}]
@@ -856,6 +862,11 @@ BOSS MILESTONE (for project-based skills) - CRITICAL REQUIREMENTS:
 - solution: MUST be 15-40 lines of COMPLETE, WORKING code that solves the microTask (NOT a placeholder!)
 - solutionAnnotations: 2-4 strings explaining key lines in the solution
 - hints: 3 progressive hints (level 1: conceptual, level 2: specific approach, level 3: detailed guidance)
+- setupInstructions: {files: [{path, description}], steps: [], runCommand?: "optional"}
+  - REQUIRED: Tell user which file(s) to create and where to paste code
+  - files: List each file path with description (e.g., "pages/index.js", "pages/api/hello.js")
+  - steps: Clear setup instructions (e.g., "Create pages/api/hello.js and paste the API code")
+  - runCommand: How to run the code (e.g., "node index.js", "npm start", "npm run dev")
 - DO NOT use placeholder text like "// COMPLETE working solution" - generate ACTUAL code
 - Validation: user runs code, sees output
 

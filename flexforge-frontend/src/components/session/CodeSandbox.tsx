@@ -186,6 +186,12 @@ interface CodeSandboxProps {
   // For complex projects with npm dependencies
   template?: 'vanilla' | 'react' | 'vue' | 'node' | 'nextjs' | 'python';
   dependencies?: Record<string, string>;
+  // AI-generated setup instructions for StackBlitz
+  setupInstructions?: {
+    files: Array<{ path: string; description: string }>;
+    steps: string[];
+    runCommand?: string;
+  };
 }
 
 // Complex architecture patterns that require copy-only mode
@@ -603,25 +609,12 @@ async function createStackBlitzProject(
   return `data:${encoded}`;
 }
 
-// StackBlitz fork URLs and file info per template
-const STACKBLITZ_FORK_INFO: Record<string, { url: string; mainFile: string; runInstructions?: string }> = {
-  react: {
-    url: 'https://stackblitz.com/fork/react',
-    mainFile: 'App.js',
-  },
-  node: {
-    url: 'https://stackblitz.com/fork/node',
-    mainFile: 'index.js',
-    runInstructions: 'Run: node index.js or npm start',
-  },
-  nextjs: {
-    url: 'https://stackblitz.com/fork/nextjs',
-    mainFile: 'pages/index.js',
-  },
-  vue: {
-    url: 'https://stackblitz.com/fork/node', // Vue doesn't have a direct fork
-    mainFile: 'index.js',
-  },
+// StackBlitz fork URLs per template
+const STACKBLITZ_URLS: Record<string, string> = {
+  react: 'https://stackblitz.com/fork/react',
+  node: 'https://stackblitz.com/fork/node',
+  nextjs: 'https://stackblitz.com/fork/nextjs',
+  vue: 'https://stackblitz.com/fork/node',
 };
 
 // Detect template from code content (React, Next.js, Vue patterns)
@@ -642,7 +635,11 @@ function detectTemplateFromCode(code: string): 'react' | 'nextjs' | 'vue' | 'nod
 }
 
 // Open code in StackBlitz (new tab) with proper template URL
-function openInStackBlitz(code: string, language: string, _dependencies?: Record<string, string>) {
+function openInStackBlitz(
+  code: string,
+  language: string,
+  setupInstructions?: CodeSandboxProps['setupInstructions']
+) {
   const lang = language.toLowerCase();
 
   // First check explicit language, then detect from code content
@@ -658,21 +655,41 @@ function openInStackBlitz(code: string, language: string, _dependencies?: Record
     template = detectTemplateFromCode(code);
   }
 
-  const forkInfo = STACKBLITZ_FORK_INFO[template] || STACKBLITZ_FORK_INFO.node;
+  const forkUrl = STACKBLITZ_URLS[template] || STACKBLITZ_URLS.node;
 
   // Open the correct StackBlitz fork URL
-  window.open(forkInfo.url, '_blank');
+  window.open(forkUrl, '_blank');
 
   // Copy code to clipboard
   navigator.clipboard.writeText(code);
 
-  // Build guidance message
-  let guidance = `Code copied to clipboard!\n\nPaste it in: ${forkInfo.mainFile}`;
-  if (forkInfo.runInstructions) {
-    guidance += `\n${forkInfo.runInstructions}`;
+  // Build guidance message from AI-generated instructions or fallback
+  let guidance = 'Code copied to clipboard!\n\n';
+
+  if (setupInstructions) {
+    // Use AI-generated setup instructions
+    if (setupInstructions.files.length > 0) {
+      guidance += 'Files to create:\n';
+      setupInstructions.files.forEach(f => {
+        guidance += `  • ${f.path} - ${f.description}\n`;
+      });
+      guidance += '\n';
+    }
+    if (setupInstructions.steps.length > 0) {
+      guidance += 'Setup steps:\n';
+      setupInstructions.steps.forEach((step, i) => {
+        guidance += `${i + 1}. ${step}\n`;
+      });
+    }
+    if (setupInstructions.runCommand) {
+      guidance += `\nRun: ${setupInstructions.runCommand}`;
+    }
+  } else {
+    // Fallback guidance - generic instructions
+    guidance += `Paste the code into the main file and run it.`;
   }
 
-  return { mainFile: forkInfo.mainFile, guidance };
+  return { template, guidance };
 }
 
 // Main CodeSandbox component
@@ -684,6 +701,7 @@ export function CodeSandbox({
   readOnly = false,
   template = 'vanilla',
   dependencies,
+  setupInstructions,
 }: CodeSandboxProps) {
   const [code, setCode] = useState(initialCode);
   const [output, setOutput] = useState<string>('');
@@ -766,7 +784,7 @@ export function CodeSandbox({
         // StackBlitz for Node/React/Vue/Next.js
         case 'stackblitz':
           if (!sandboxId) {
-            const { guidance } = openInStackBlitz(code, language, dependencies);
+            const { guidance } = openInStackBlitz(code, language, setupInstructions);
             setOutput(`Opening StackBlitz...\n\n${guidance}`);
           }
           setIsRunning(false);

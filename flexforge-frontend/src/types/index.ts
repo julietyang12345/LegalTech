@@ -471,6 +471,13 @@ export interface StretchGoal {
   tier?: string;
 }
 
+// AI-generated setup instructions for StackBlitz/code sandbox
+export interface SetupInstructions {
+  files: Array<{ path: string; description: string }>;
+  steps: string[];
+  runCommand?: string;
+}
+
 // Boss micro-step for daily coding contribution (enhanced BossMilestone)
 export interface BossMilestone {
   day: number;                    // Which day this micro-step is for
@@ -491,6 +498,9 @@ export interface BossMilestone {
   // Validation
   validationType: 'run' | 'visual' | 'test';  // How user validates their work
   validationInstructions?: string;             // "Run the code and check console"
+
+  // AI-generated setup instructions for StackBlitz
+  setupInstructions?: SetupInstructions;
 }
 
 export interface BossProject {
@@ -523,6 +533,9 @@ export interface BossProject {
 
   // npm dependencies for complex projects (React, Node, etc.)
   dependencies?: Record<string, string>;
+
+  // AI-generated setup instructions for StackBlitz
+  setupInstructions?: SetupInstructions;
 
   // Files for the complete project
   files?: {
