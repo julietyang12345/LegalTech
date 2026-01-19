@@ -201,12 +201,21 @@ export class VideoMatchingService {
   // Using Map iteration order as LRU: delete+set moves key to end
   private enrichmentCache = new Map<string, CachedEnrichment>();
   private transcriptCache = new Map<string, CachedTranscript>();
+  // Google CSE for better YouTube search
+  private googleCseApiKey: string;
+  private googleCseEngineId: string;
 
   constructor(private configService: ConfigService) {
     const apiKey = this.configService.get<string>('ai.gemini.apiKey');
     if (apiKey && apiKey !== '') {
       this.genAI = new GoogleGenerativeAI(apiKey);
       this.logger.log('Gemini AI initialized for Layer 3 verification');
+    }
+    // Google CSE for YouTube search (respects quotes, better relevance)
+    this.googleCseApiKey = this.configService.get<string>('google.cse.apiKey') || '';
+    this.googleCseEngineId = this.configService.get<string>('google.cse.engineId') || '';
+    if (this.googleCseApiKey && this.googleCseEngineId) {
+      this.logger.log('Google CSE initialized for YouTube search');
     }
   }
 
@@ -230,15 +239,22 @@ export class VideoMatchingService {
       // LAYER 1: Fast Filter (FREE)
       // ═══════════════════════════════════════════
 
-      const searchQuery = buildSearchQuery(context.concept, context.userLevel);
+      let rawVideos: VideoCandidate[] = [];
 
-      const preferredChannels = getPreferredChannelsForTopic(context.concept);
+      // PRIMARY: Google CSE (respects quotes, much better relevance)
+      // Use skillName directly: "Vercel platform & deployment basics"
+      if (this.googleCseApiKey && this.googleCseEngineId) {
+        const searchTerm = context.skillName || context.concept;
+        rawVideos = await this.searchYouTubeViaGoogle(searchTerm, maxCandidates);
+      }
 
-      const rawVideos = await this.searchYouTube(
-        searchQuery,
-        preferredChannels,
-        maxCandidates,
-      );
+      // FALLBACK: YouTube search API (only if Google CSE not configured or failed)
+      if (rawVideos.length === 0) {
+        this.logger.log('Falling back to YouTube search API');
+        const searchQuery = buildSearchQuery(context.concept, context.userLevel);
+        const preferredChannels = getPreferredChannelsForTopic(context.concept);
+        rawVideos = await this.searchYouTube(searchQuery, preferredChannels, maxCandidates);
+      }
 
       if (!rawVideos || rawVideos.length === 0) {
         return {
@@ -499,71 +515,142 @@ export class VideoMatchingService {
   }
 
   /**
-   * Search YouTube for videos
+   * Search YouTube for videos (fallback when Google CSE not available)
+   * Simplified: just generic search, no channel batching
    */
   private async searchYouTube(
     query: string,
-    preferredChannels: YouTubeChannel[],
+    _preferredChannels: YouTubeChannel[], // Kept for compatibility
     limit: number,
   ): Promise<VideoCandidate[]> {
     try {
-      const allResults: any[] = [];
+      this.logger.log(`YouTube API search: "${query}"`);
 
-      // Search with ALL preferred channels for better coverage
-      if (preferredChannels.length > 0) {
-        this.logger.log(`Searching ${preferredChannels.length} preferred channels for "${query}"`);
+      const results = await youtubeSearch.GetListByKeyword(query, false, limit);
+      const items = results.items || [];
 
-        // Search in parallel batches of 5 for speed
-        const batchSize = 5;
-        for (let i = 0; i < preferredChannels.length; i += batchSize) {
-          const batch = preferredChannels.slice(i, i + batchSize);
-          const batchPromises = batch.map(async (channel) => {
-            try {
-              const channelQuery = `${query} ${channel.name}`;
-              const results = await youtubeSearch.GetListByKeyword(channelQuery, false, 3);
-              return results.items || [];
-            } catch {
-              return [];
-            }
-          });
-          const batchResults = await Promise.all(batchPromises);
-          batchResults.forEach(items => allResults.push(...items));
-        }
-      }
-
-      // Generic search as fallback
-      const genericResults = await youtubeSearch.GetListByKeyword(query, false, limit);
-      if (genericResults.items) {
-        allResults.push(...genericResults.items);
-      }
-
-      // Deduplicate and convert to VideoCandidate
-      const uniqueVideos = new Map<string, VideoCandidate>();
-
-      for (const item of allResults) {
+      // Convert to VideoCandidate
+      const videos: VideoCandidate[] = [];
+      for (const item of items) {
         if (item.type !== 'video' || !item.id) continue;
-        if (uniqueVideos.has(item.id)) continue;
 
-        uniqueVideos.set(item.id, {
+        videos.push({
           videoId: item.id,
           title: item.title || '',
-          description: '', // Will be enriched
+          description: '',
           channelId: item.channelId || '',
           channelName: item.channelTitle || '',
           duration: parseDurationString(item.length?.simpleText || '0:00'),
           thumbnailUrl: item.thumbnail?.thumbnails?.[0]?.url,
-          hasChapters: false, // Will be enriched
-          hasRepository: false, // Will be enriched
+          hasChapters: false,
+          hasRepository: false,
           enriched: false,
         });
       }
 
-      this.logger.log(`Found ${uniqueVideos.size} unique videos from ${allResults.length} total results`);
-      return Array.from(uniqueVideos.values()).slice(0, limit);
+      this.logger.log(`YouTube API found ${videos.length} videos`);
+      return videos.slice(0, limit);
     } catch (error) {
       this.logger.error('YouTube search failed:', error.message);
       return [];
     }
+  }
+
+  /**
+   * Search YouTube via Google Custom Search Engine
+   * Uses site:youtube.com - much better relevance than YouTube API
+   */
+  private async searchYouTubeViaGoogle(
+    searchTerm: string,
+    limit: number,
+  ): Promise<VideoCandidate[]> {
+    if (!this.googleCseApiKey || !this.googleCseEngineId) {
+      return [];
+    }
+
+    try {
+      // Search directly with skillName: site:youtube.com Vercel platform basics tutorial
+      const query = `site:youtube.com ${searchTerm} tutorial`;
+      this.logger.log(`Google CSE search: ${query}`);
+
+      const response = await axios.get<{
+        items?: Array<{
+          title: string;
+          link: string;
+          snippet?: string;
+          pagemap?: {
+            videoobject?: Array<{
+              duration?: string;
+              channelid?: string;
+              thumbnailurl?: string;
+            }>;
+          };
+        }>;
+      }>('https://www.googleapis.com/customsearch/v1', {
+        params: {
+          key: this.googleCseApiKey,
+          cx: this.googleCseEngineId,
+          q: query,
+          num: Math.min(limit, 10), // Max 10 per request
+        },
+        timeout: 10000,
+      });
+
+      const items = response.data.items || [];
+      const videos: VideoCandidate[] = [];
+
+      for (const item of items) {
+        // Extract video ID from YouTube URL
+        const videoId = this.extractYouTubeVideoId(item.link);
+        if (!videoId) continue;
+
+        // Extract channel name from title (often "Title - Channel Name")
+        const titleParts = item.title.split(' - ');
+        const channelName = titleParts.length > 1 ? titleParts[titleParts.length - 1] : '';
+        const videoTitle = titleParts.length > 1
+          ? titleParts.slice(0, -1).join(' - ')
+          : item.title;
+
+        videos.push({
+          videoId,
+          title: videoTitle,
+          description: item.snippet || '',
+          channelId: item.pagemap?.videoobject?.[0]?.channelid || '',
+          channelName,
+          duration: 0, // Will be enriched
+          thumbnailUrl: item.pagemap?.videoobject?.[0]?.thumbnailurl,
+          hasChapters: false,
+          hasRepository: false,
+          enriched: false,
+        });
+      }
+
+      this.logger.log(`Google CSE found ${videos.length} YouTube videos`);
+      return videos;
+    } catch (error: any) {
+      if (axios.isAxiosError(error) && error.response?.status === 429) {
+        this.logger.warn('Google CSE rate limit reached');
+      } else {
+        this.logger.warn(`Google CSE search failed: ${error.message}`);
+      }
+      return [];
+    }
+  }
+
+  /**
+   * Extract YouTube video ID from URL
+   */
+  private extractYouTubeVideoId(url: string): string | null {
+    const patterns = [
+      /youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+      /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+      /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
+    ];
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) return match[1];
+    }
+    return null;
   }
 
   /**

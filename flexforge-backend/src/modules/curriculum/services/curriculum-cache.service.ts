@@ -43,7 +43,7 @@ export const CACHE_CONFIG = {
   cacheExpiryDays: 90,
 
   // DAY CONTENT specific thresholds (slightly more lenient)
-  dayContentMaxRegensPerDay: 3,     // Max 3 regens per day per session
+  dayContentMaxRegensPerDay: 10,    // Max 10 regens per day per session (increased for testing)
   dayContentGoodRegenRate: 0.20,    // <= 20% = good (day content may have higher acceptable rate)
   dayContentBadRegenRate: 0.40,     // > 40% = bad, auto-deactivate
   dayContentWinnerRegenRate: 0.12,  // <= 12% after 10+ serves = winner
