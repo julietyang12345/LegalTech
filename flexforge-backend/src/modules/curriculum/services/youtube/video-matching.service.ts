@@ -52,6 +52,7 @@ export interface VideoMatchContext {
   skillType?: string;           // e.g., 'CODE', 'AI_AGENT', 'DESIGN'
   contentSource?: 'university' | 'youtube' | 'text' | 'docs';  // Content source type
   skillName?: string;           // Full skill name for Gemini context (e.g., "Vercel Deployment")
+  dayConcepts?: string[];       // Day-specific concepts to verify (e.g., ["Serverless Functions", "Environment Variables"])
 
   // Learner preferences from onboarding (affects video selection)
   learnerPrefs?: {
@@ -59,7 +60,7 @@ export interface VideoMatchContext {
     contentDepth: 'fast' | 'medium' | 'deep';
     directionKeywords?: string[];  // Keywords from selected direction (hints for search)
   };
-  // Content verification (concept + platform) handled by Layer 3 Gemini AI
+  // Content verification (concept + platform + dayConcepts) handled by Layer 3 Gemini AI
 }
 
 export interface WatchPlan {
@@ -1365,13 +1366,16 @@ export class VideoMatchingService {
 
         const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
 
-        // Build context-aware prompt with skill name for semantic matching
+        // Build context-aware prompt with skill name and day concepts
         const skillContext = skillName ? `\nSKILL BEING LEARNED: "${skillName}"` : '';
+        const dayConcepts = context.dayConcepts && context.dayConcepts.length > 0
+          ? `\nDAY TOPICS TO COVER: ${context.dayConcepts.join(', ')}`
+          : '';
 
         const prompt = `Verify this video is appropriate for teaching.
 
 VIDEO: "${candidate.video.title}"
-TOPIC: "${context.concept}"${skillContext}
+TOPIC: "${context.concept}"${skillContext}${dayConcepts}
 
 <transcript>
 ${transcriptSamples.join('\n\n')}
@@ -1384,12 +1388,15 @@ Evaluate with SEMANTIC understanding (match similar concepts, not just keywords)
    - Consider synonyms: "deployment" = "deploy", "host", "publish", "ship"
    - Consider related concepts: "Vercel deployment" should use Vercel specifically, not Netlify/AWS/etc.
 ${skillName ? `2. Is this video relevant for learning "${skillName}"? (uses correct platform/framework)` : ''}
-3. Is this primarily promotional content (asking to sign up, product demo, affiliate links)?
+${context.dayConcepts?.length ? `3. Does this video cover ANY of these day topics: ${context.dayConcepts.join(', ')}?
+   - Video doesn't need to cover ALL topics, but should cover at least 1-2 relevant ones` : ''}
+4. Is this primarily promotional content (asking to sign up, product demo, affiliate links)?
 
 Answer with JSON only:
 {
   "is_relevant": true/false,
   "is_promotional": true/false,
+  "topics_covered": ["list", "of", "covered", "topics"],
   "where": "timestamp range where concept is taught (e.g., '3:00-8:00')",
   "confidence": "high"/"medium"/"low",
   "reason": "brief explanation of why video is/isn't appropriate"
