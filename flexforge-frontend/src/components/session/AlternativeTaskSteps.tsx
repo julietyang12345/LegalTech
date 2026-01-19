@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { HelpCircle, Code2, Lightbulb } from 'lucide-react';
+import { HelpCircle, Code2, Lightbulb, Volume2 } from 'lucide-react';
 import { Card, Button, MultipleChoiceQuestion } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { TaskResultsScreen, TaskProgress, TaskNavigation } from './TaskShared';
 import { useSessionStore } from '@/stores/sessionStore';
+import { useBrowserTTS } from '@/hooks/useBrowserTTS';
 import { clsx } from 'clsx';
-import type { CurriculumDay, Session, QuizTask, FillBlankTask, FillBlankItem } from '@/types';
+import type { CurriculumDay, Session, QuizTask, FillBlankTask, FillBlankItem, TargetLanguage } from '@/types';
 
 // ============================================
 // QuizTaskStep - Multiple choice quiz
@@ -18,7 +19,7 @@ interface QuizTaskStepProps {
   onComplete: () => void;
 }
 
-export function QuizTaskStep({ day, onComplete }: QuizTaskStepProps) {
+export function QuizTaskStep({ day, session, onComplete }: QuizTaskStepProps) {
   const quiz = day.task1 as QuizTask;
   // Use consistent index-based IDs to ensure saved progress matches
   const questions = (quiz?.questions || []).map((q, index) => ({
@@ -28,12 +29,17 @@ export function QuizTaskStep({ day, onComplete }: QuizTaskStepProps) {
 
   const { saveTaskProgress, getTaskProgress, clearTaskProgress } = useSessionStore();
 
+  // Get target language for audio questions
+  const targetLanguage = session.curriculum?.metadata?.targetLanguage as TargetLanguage | undefined;
+  const { speak, isSpeaking } = useBrowserTTS(targetLanguage || 'other');
+
   // Load saved progress on mount
   const savedProgress = getTaskProgress(day.day, 'task1');
 
   const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
   const [answers, setAnswers] = useState<Record<string, number | null>>(savedProgress?.answers ?? {});
   const [showResults, setShowResults] = useState(savedProgress?.showResults ?? false);
+  const [audioPlayed, setAudioPlayed] = useState<Record<string, boolean>>({});
 
   // Save progress whenever it changes
   useEffect(() => {
@@ -54,6 +60,20 @@ export function QuizTaskStep({ day, onComplete }: QuizTaskStepProps) {
   const handleAnswer = (questionId: string, selectedIndex: number) => {
     setAnswers(prev => ({ ...prev, [questionId]: selectedIndex }));
   };
+
+  // Play audio for listening questions
+  const playQuestionAudio = (questionId: string, audioText?: string, audioUrl?: string) => {
+    if (audioUrl) {
+      const audio = new Audio(audioUrl);
+      audio.play();
+    } else if (audioText) {
+      speak(audioText);
+    }
+    setAudioPlayed(prev => ({ ...prev, [questionId]: true }));
+  };
+
+  // Check if current question is a listening question
+  const currentHasAudio = currentQuestion?.audioText || currentQuestion?.audioUrl;
 
   const handleNext = () => {
     if (currentIndex < totalQuestions - 1) {
@@ -139,6 +159,47 @@ export function QuizTaskStep({ day, onComplete }: QuizTaskStepProps) {
         color="blue"
         label="Question"
       />
+
+      {/* Audio player for listening questions */}
+      {currentHasAudio && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-4"
+        >
+          <Card className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                  <Volume2 className={clsx(
+                    'w-5 h-5 text-purple-600',
+                    isSpeaking && 'animate-pulse'
+                  )} />
+                </div>
+                <div>
+                  <p className="font-medium text-gray-900">Listening Question</p>
+                  <p className="text-sm text-gray-500">
+                    {audioPlayed[currentQuestion.id] ? 'Tap to hear again' : 'Tap to listen'}
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                onClick={() => playQuestionAudio(
+                  currentQuestion.id,
+                  currentQuestion.audioText,
+                  currentQuestion.audioUrl
+                )}
+                disabled={isSpeaking}
+                className="flex items-center gap-2"
+              >
+                <Volume2 className="w-4 h-4" />
+                {isSpeaking ? 'Playing...' : 'Play'}
+              </Button>
+            </div>
+          </Card>
+        </motion.div>
+      )}
 
       <MultipleChoiceQuestion
         question={currentQuestion.question}

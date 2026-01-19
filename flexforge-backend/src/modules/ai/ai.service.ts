@@ -414,6 +414,9 @@ export class AiService {
     prompt: string,
     systemPrompt?: string,
   ): Promise<AIResponse> {
+    if (!this.gemini) {
+      throw new Error('Gemini API key not configured');
+    }
     const genModel = this.gemini.getGenerativeModel({ model });
 
     const fullPrompt = systemPrompt
@@ -536,19 +539,14 @@ Return JSON: {overallQuality, issues[], suggestions[], missingApproaches[], feed
         this.logger.warn('Could not parse Gemini review as JSON, using raw content');
       }
     } catch (error) {
-      this.logger.warn('Gemini review failed, returning existing directions');
-      return {
-        content: existingDirections,
-        tokensUsed: 0,
-        cost: 0,
-        provider: 'anthropic',
-        model: 'claude-sonnet-4-20250514',
-      };
+      this.logger.error(`Gemini review failed: ${error.message || error}`);
+      // Don't silently return old directions - continue to Claude without review
+      this.logger.log('Skipping Gemini review, proceeding directly to Claude synthesis');
     }
 
     // Step 3: Claude synthesizes final directions incorporating Gemini's feedback
-    // Extract just the actionable feedback from Gemini's review
-    let reviewSummary = geminiReview.content;
+    // Extract just the actionable feedback from Gemini's review (or empty if Gemini failed)
+    let reviewSummary = geminiReview?.content || 'No automated review available';
     if (reviewData) {
       const parts = [];
       if (reviewData.issues?.length) parts.push(`Issues: ${reviewData.issues.join('; ')}`);
@@ -557,16 +555,20 @@ Return JSON: {overallQuality, issues[], suggestions[], missingApproaches[], feed
       if (parts.length) reviewSummary = parts.join('\n');
     }
 
-    const synthesisPrompt = `Improve these directions based on feedback.
+    const synthesisPrompt = `Regenerate learning directions based on user feedback.
 
-ORIGINAL:
+PREVIOUS DIRECTIONS (user wasn't satisfied):
 ${existingDirections}
 
 REVIEW:
 ${reviewSummary}
 
-USER FEEDBACK (address this):
+USER FEEDBACK (this is why they clicked regenerate):
 "${userFeedback}"
+
+REQUIREMENTS:
+- Apply user feedback to ALL directions
+- Include at least 1 completely new approaches (not just reworded originals)
 
 Return improved JSON with same format. Each direction must achieve user's complete goal.`;
 
@@ -581,18 +583,12 @@ Return improved JSON with same format. Each direction must achieve user's comple
 
       return {
         ...finalResponse,
-        tokensUsed: geminiReview.tokensUsed + finalResponse.tokensUsed,
-        cost: geminiReview.cost + finalResponse.cost,
+        tokensUsed: (geminiReview?.tokensUsed || 0) + finalResponse.tokensUsed,
+        cost: (geminiReview?.cost || 0) + finalResponse.cost,
       };
     } catch (error) {
-      this.logger.warn('Claude synthesis failed, returning existing directions');
-      return {
-        content: existingDirections,
-        tokensUsed: geminiReview.tokensUsed,
-        cost: geminiReview.cost,
-        provider: 'anthropic',
-        model: 'claude-sonnet-4-20250514',
-      };
+      this.logger.error(`Claude synthesis failed: ${error.message || error}`);
+      throw new Error('Failed to regenerate directions. Please try again.');
     }
   }
 

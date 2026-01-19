@@ -3,9 +3,10 @@ import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { Layers, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, MultipleChoiceQuestion } from '@/components/common';
 import { StepLayout } from './StepLayout';
+import { VocabularyCard } from './VocabularyCard';
 import { useSessionStore } from '@/stores/sessionStore';
 import { clsx } from 'clsx';
-import type { CurriculumDay, Session, FoundationCard, MicroQuestion } from '@/types';
+import type { CurriculumDay, Session, FoundationCard, MicroQuestion, LanguageFoundationCard, TargetLanguage, LANGUAGE_FEATURES } from '@/types';
 
 interface FoundationCardsStepProps {
   day: CurriculumDay;
@@ -19,13 +20,23 @@ const swipePower = (offset: number, velocity: number) => {
   return Math.abs(offset) * velocity;
 };
 
-export function FoundationCardsStep({ day, onComplete }: FoundationCardsStepProps) {
+export function FoundationCardsStep({ day, session, onComplete }: FoundationCardsStepProps) {
   const { saveTaskProgress, getTaskProgress } = useSessionStore();
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [answeredCards, setAnsweredCards] = useState<Record<string, boolean>>({});
   const [direction, setDirection] = useState(0);
 
-  const cards = day.foundationCards || [];
+  // Check if this is a language learning session
+  const isLanguageLearning = session.curriculum?.metadata?.isLanguageLearning;
+  const targetLanguage = session.curriculum?.metadata?.targetLanguage as TargetLanguage | undefined;
+
+  // Use language-specific cards if available, otherwise regular cards
+  const cards = (day.languageFoundationCards || day.foundationCards || []) as (FoundationCard | LanguageFoundationCard)[];
+
+  // Check if a card is a vocabulary card
+  const isVocabularyCard = (card: FoundationCard | LanguageFoundationCard): card is LanguageFoundationCard => {
+    return 'vocabulary' in card && card.vocabulary !== undefined;
+  };
 
   // Restore progress on mount
   useEffect(() => {
@@ -173,69 +184,79 @@ export function FoundationCardsStep({ day, onComplete }: FoundationCardsStepProp
             onDragEnd={handleDragEnd}
             className="cursor-grab active:cursor-grabbing"
           >
-            <Card className="overflow-hidden">
-              {/* Visual + Concept header */}
-              <div className="p-6 border-b border-gray-100 bg-gradient-to-br from-gray-50 to-white">
-                <div className="flex items-start gap-4">
-                  <span className="text-4xl">{currentCard.visual || '💡'}</span>
-                  <div className="flex-1">
-                    <h2 className="text-xl font-bold text-gray-900 leading-tight">
-                      {currentCard.concept}
-                    </h2>
+            {/* Vocabulary Card (for language learning) */}
+            {isVocabularyCard(currentCard) && currentCard.vocabulary && targetLanguage ? (
+              <VocabularyCard
+                vocabulary={currentCard.vocabulary}
+                language={targetLanguage}
+                onMastered={() => handleAnswer(currentCard.id, true)}
+              />
+            ) : (
+              /* Standard Foundation Card */
+              <Card className="overflow-hidden">
+                {/* Visual + Concept header */}
+                <div className="p-6 border-b border-gray-100 bg-gradient-to-br from-gray-50 to-white">
+                  <div className="flex items-start gap-4">
+                    <span className="text-4xl">{currentCard.visual || '💡'}</span>
+                    <div className="flex-1">
+                      <h2 className="text-xl font-bold text-gray-900 leading-tight">
+                        {currentCard.concept}
+                      </h2>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Explanation */}
-              <div className="p-6 pb-3">
-                <p className="text-gray-700 leading-relaxed text-lg">
-                  {currentCard.explanation}
-                </p>
-              </div>
+                {/* Explanation */}
+                <div className="p-6 pb-3">
+                  <p className="text-gray-700 leading-relaxed text-lg">
+                    {currentCard.explanation}
+                  </p>
+                </div>
 
-              {/* Real World Context - Why This Matters */}
-              {currentCard.realWorldContext && (
-                <div className="mx-6 mb-4 p-3 rounded-lg bg-gradient-to-r from-brand-50 to-focus-50 border border-brand-100">
-                  <div className="flex items-start gap-2">
-                    <span className="text-brand-500 flex-shrink-0">🎯</span>
-                    <p className="text-sm text-brand-800 font-medium">
-                      {currentCard.realWorldContext}
-                    </p>
+                {/* Real World Context - Why This Matters */}
+                {currentCard.realWorldContext && (
+                  <div className="mx-6 mb-4 p-3 rounded-lg bg-gradient-to-r from-brand-50 to-focus-50 border border-brand-100">
+                    <div className="flex items-start gap-2">
+                      <span className="text-brand-500 flex-shrink-0">🎯</span>
+                      <p className="text-sm text-brand-800 font-medium">
+                        {currentCard.realWorldContext}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Video Timestamp Reference */}
-              {currentCard.videoTimestampRef && (
-                <div className="mx-6 mb-4 flex items-center gap-2 text-sm text-gray-500">
-                  <span className="text-focus-500">📹</span>
-                  <p className="italic">{currentCard.videoTimestampRef}</p>
-                </div>
-              )}
-
-              {/* Code Example (if present) */}
-              {currentCard.codeExample && (
-                <div className="mx-6 mb-6 rounded-lg overflow-hidden">
-                  <div className="bg-gray-800 px-4 py-2 text-xs text-gray-400 font-mono">
-                    Example
+                {/* Video Timestamp Reference */}
+                {currentCard.videoTimestampRef && (
+                  <div className="mx-6 mb-4 flex items-center gap-2 text-sm text-gray-500">
+                    <span className="text-focus-500">📹</span>
+                    <p className="italic">{currentCard.videoTimestampRef}</p>
                   </div>
-                  <pre className="bg-gray-900 p-4 text-sm text-gray-100 overflow-x-auto">
-                    <code>{currentCard.codeExample}</code>
-                  </pre>
-                </div>
-              )}
+                )}
 
-              {/* Micro Question */}
-              <div className="p-6 pt-0">
-                <MicroQuestionComponent
-                  cardId={currentCard.id}
-                  question={currentCard.microQuestion}
-                  onAnswer={(correct) => handleAnswer(currentCard.id, correct)}
-                  answered={answeredCards[currentCard.id] !== undefined}
-                  wasCorrect={answeredCards[currentCard.id]}
-                />
-              </div>
-            </Card>
+                {/* Code Example (if present) */}
+                {currentCard.codeExample && (
+                  <div className="mx-6 mb-6 rounded-lg overflow-hidden">
+                    <div className="bg-gray-800 px-4 py-2 text-xs text-gray-400 font-mono">
+                      Example
+                    </div>
+                    <pre className="bg-gray-900 p-4 text-sm text-gray-100 overflow-x-auto">
+                      <code>{currentCard.codeExample}</code>
+                    </pre>
+                  </div>
+                )}
+
+                {/* Micro Question */}
+                <div className="p-6 pt-0">
+                  <MicroQuestionComponent
+                    cardId={currentCard.id}
+                    question={currentCard.microQuestion}
+                    onAnswer={(correct) => handleAnswer(currentCard.id, correct)}
+                    answered={answeredCards[currentCard.id] !== undefined}
+                    wasCorrect={answeredCards[currentCard.id]}
+                  />
+                </div>
+              </Card>
+            )}
           </motion.div>
         </AnimatePresence>
       </div>

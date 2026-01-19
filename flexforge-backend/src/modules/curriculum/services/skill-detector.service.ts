@@ -15,6 +15,12 @@ export enum SkillComplexity {
   ADVANCED = 'ADVANCED', // Strong coding background
 }
 
+// Supported languages for language learning
+export type TargetLanguage =
+  | 'chinese' | 'japanese' | 'korean' | 'arabic' | 'spanish'
+  | 'french' | 'german' | 'italian' | 'portuguese' | 'russian'
+  | 'hindi' | 'thai' | 'vietnamese' | 'other';
+
 export interface SkillDetectionResult {
   skillType: SkillType;
   complexity: SkillComplexity;
@@ -25,6 +31,11 @@ export interface SkillDetectionResult {
   prerequisiteSkills?: string[];
   estimatedDaysNeeded: number;
   cognitiveLoadWarning?: string;
+
+  // Language learning specific (when skillType is KNOWLEDGE + human language)
+  isLanguageLearning?: boolean;
+  targetLanguage?: TargetLanguage;
+  proficiencyLevel?: string;  // HSK1, N5, A1, etc.
 }
 
 @Injectable()
@@ -73,6 +84,10 @@ CATEGORIZATION RULES (in order of priority):
    - Exam preparation for non-practical subjects
    - Output type: knowledge recall, written explanations only
    - KEY TEST: If the learner will CREATE something (code/design/physical), do NOT use KNOWLEDGE
+   - LANGUAGE LEARNING: If learning a human language (Chinese, Spanish, Japanese, etc.):
+     - Set isLanguageLearning: true
+     - Set targetLanguage to one of: chinese, japanese, korean, arabic, spanish, french, german, italian, portuguese, russian, hindi, thai, vietnamese, other
+     - Set proficiencyLevel if mentioned (HSK1-6, JLPT N5-N1, CEFR A1-C2, etc.)
 
 CRITICAL: "Learning" or "understanding" something does NOT make it KNOWLEDGE category.
 - Learning a programming language → CODE (produces code)
@@ -96,7 +111,10 @@ Return ONLY valid JSON:
   "safetyLevel": "low" | "medium" | "high" (only for PHYSICAL),
   "prerequisiteSkills": ["skill1", "skill2"] (if INTERMEDIATE/ADVANCED),
   "estimatedDaysNeeded": number,
-  "cognitiveLoadWarning": "warning if timeframe is too short"
+  "cognitiveLoadWarning": "warning if timeframe is too short",
+  "isLanguageLearning": true/false (only for KNOWLEDGE - human language learning),
+  "targetLanguage": "chinese" | "japanese" | "korean" | "arabic" | "spanish" | "french" | "german" | "italian" | "portuguese" | "russian" | "hindi" | "thai" | "vietnamese" | "other" (only if isLanguageLearning),
+  "proficiencyLevel": "HSK1" | "N5" | "A1" | etc. (only if mentioned in skill name)
 }`;
 
     const response = await this.aiService.routeRequest(AITask.BATCH_LOGIC, prompt);

@@ -226,6 +226,13 @@ export class CurriculumService {
     this.logger.log(`🎯 Curriculum type: ${isProjectBased ? 'PROJECT-BASED' : 'PRACTICE-BASED'}`);
 
     // Validate curriculum structure before proceeding
+    // AI sometimes returns 'curriculum' array instead of 'days' - normalize it
+    if (!curriculum.days && Array.isArray(curriculum.curriculum)) {
+      this.logger.warn('AI returned "curriculum" array instead of "days" - normalizing');
+      curriculum.days = curriculum.curriculum;
+      delete curriculum.curriculum;
+    }
+
     if (!curriculum.days || !Array.isArray(curriculum.days) || curriculum.days.length === 0) {
       this.logger.error('❌ AI returned invalid curriculum structure - missing days array');
       this.logger.error('Curriculum received:', JSON.stringify(curriculum).substring(0, 500));
@@ -874,7 +881,26 @@ export class CurriculumService {
       'ADVANCED': 'advanced',
     };
 
+    // Extract day concepts from foundationCards for Gemini verification
+    const dayConcepts: string[] = [];
+    if (content.foundationCards && Array.isArray(content.foundationCards)) {
+      for (const card of content.foundationCards.slice(0, 5)) {
+        if (card.concept) {
+          const cleaned = card.concept
+            .replace(/^(What is|What are|How to|Why|When to use)\s*/i, '')
+            .replace(/\?$/, '')
+            .trim();
+          if (cleaned && cleaned.length > 2) {
+            dayConcepts.push(cleaned);
+          }
+        }
+      }
+    }
+
     this.logger.log(`🎥 Searching video for: "${searchQuery}" (${videoSlot}min slot)`);
+    if (dayConcepts.length > 0) {
+      this.logger.log(`   Day concepts for verification: ${dayConcepts.join(', ')}`);
+    }
 
     let videoResult: any = null;
     try {
@@ -885,6 +911,7 @@ export class CurriculumService {
         skillType,
         contentSource,
         skillName, // Pass to Gemini for content verification
+        dayConcepts, // Pass day concepts for Gemini to verify coverage
       }, { deepVerify: true });
     } catch (error: any) {
       this.logger.warn(`⚠️ Video search failed: ${error.message}`);

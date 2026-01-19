@@ -602,6 +602,11 @@ export interface QuizQuestion {
   options: string[];      // 4 options
   correctIndex: number;
   explanation: string;
+
+  // Audio support for listening questions (language learning)
+  audioText?: string;     // Text to speak via browser TTS before showing question
+  audioUrl?: string;      // Optional pre-recorded audio
+  audioLanguage?: TargetLanguage; // Language for TTS (if different from session)
 }
 
 export interface QuizTask {

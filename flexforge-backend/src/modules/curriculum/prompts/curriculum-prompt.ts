@@ -488,6 +488,12 @@ export const buildOverviewPrompt = buildCurriculumPrompt;
  * DAY DETAIL PROMPT: Generates full content for a specific day (Day 2+)
  * Called when student unlocks and starts a new day
  */
+// Supported languages for language learning
+export type TargetLanguage =
+  | 'chinese' | 'japanese' | 'korean' | 'arabic' | 'spanish'
+  | 'french' | 'german' | 'italian' | 'portuguese' | 'russian'
+  | 'hindi' | 'thai' | 'vietnamese' | 'other';
+
 export interface DayDetailParams {
   skillName: string;
   dayNumber: number;
@@ -510,12 +516,116 @@ export interface DayDetailParams {
     confidence?: number;
     boostCompleted?: boolean;
   };
+
+  // Language learning specific (when skillType is KNOWLEDGE + human language)
+  isLanguageLearning?: boolean;
+  targetLanguage?: TargetLanguage;
+  proficiencyLevel?: string;  // HSK1, N5, A1, etc.
+}
+
+// Language-specific features for prompts
+function getLanguageFeatures(lang: TargetLanguage): string {
+  const features: Record<TargetLanguage, string> = {
+    chinese: 'hasTones: true, hasScript: true (simplified/traditional), hasRomanization: pinyin',
+    japanese: 'hasScript: true (hiragana/katakana/kanji), hasRomanization: romaji',
+    korean: 'hasScript: true (hangul), hasRomanization: romanization',
+    arabic: 'hasScript: true, isRTL: true, hasGender: true',
+    spanish: 'hasGender: true, hasConjugation: true',
+    french: 'hasGender: true, hasConjugation: true',
+    german: 'hasGender: true, hasCases: true',
+    italian: 'hasGender: true, hasConjugation: true',
+    portuguese: 'hasGender: true, hasConjugation: true',
+    russian: 'hasScript: true (cyrillic), hasGender: true, hasCases: true',
+    hindi: 'hasScript: true (devanagari), hasGender: true',
+    thai: 'hasTones: true, hasScript: true',
+    vietnamese: 'hasTones: true',
+    other: '',
+  };
+  return features[lang] || '';
+}
+
+// Build language learning specific prompt
+function buildLanguageLearningPrompt(params: DayDetailParams): { systemPrompt: string; userPrompt: string } {
+  const lang = params.targetLanguage || 'other';
+  const langFeatures = getLanguageFeatures(lang);
+  const profLevel = params.proficiencyLevel || 'beginner';
+
+  const systemPrompt = `Generate VOCABULARY-BASED learning content for Day ${params.dayNumber} of "${params.skillName}".
+
+TARGET LANGUAGE: ${lang}
+PROFICIENCY: ${profLevel}
+FEATURES: ${langFeatures}
+
+This is LANGUAGE LEARNING - generate vocabulary cards, NOT code.
+
+VOCABULARY CARD FORMAT (use instead of regular foundationCards):
+Each card should be a "languageFoundationCard" with vocabulary:
+{
+  "id": "card-1",
+  "concept": "Word/phrase in English",
+  "visual": "relevant emoji",
+  "explanation": "Usage context and tips",
+  "vocabulary": {
+    "term": "word in ${lang}",
+    "definition": "English meaning",
+    "romanization": "pronunciation guide (pinyin/romaji/etc)",
+    ${lang === 'chinese' || lang === 'thai' || lang === 'vietnamese' ? '"tone": number or [numbers],' : ''}
+    ${['spanish', 'french', 'german', 'italian', 'portuguese', 'arabic', 'russian', 'hindi'].includes(lang) ? '"gender": "masculine" | "feminine" | "neuter",' : ''}
+    "partOfSpeech": "noun/verb/adj/etc",
+    "proficiencyLevel": "${profLevel}",
+    "examples": [{"sentence": "example in ${lang}", "romanization": "if applicable", "translation": "English"}]
+  },
+  "microQuestion": {"question": "Quick check", "type": "gotit"}
+}
+
+LISTENING QUESTIONS (for quiz task1):
+Include audioText for questions that should be spoken:
+{
+  "question": "What does this mean?",
+  "audioText": "text to speak in ${lang}",
+  "options": ["meaning1", "meaning2", "meaning3", "meaning4"],
+  "correctIndex": 0,
+  "explanation": "Why this is correct"
+}
+
+DAILY STRUCTURE:
+1. 5-7 vocabulary cards (new words for today)
+2. Quiz with 2-3 listening questions (audioText field) + 2-3 meaning questions
+3. NO bossMilestone (not a coding skill)
+4. Reflection focused on vocabulary retention
+
+Output valid JSON only.`;
+
+  const skills = JSON.stringify(params.skeleton?.skills || params.dayObjectives);
+
+  const userPrompt = `Day ${params.dayNumber}: "${params.dayTitle}"
+Topic: ${skills}
+Language: ${lang}
+Level: ${profLevel}
+
+Generate JSON with:
+- prePrompt: {text, primeQuestions[], yesterdayRecap}
+- video: {watchPoints[]} (optional pronunciation video tips)
+- languageFoundationCards: 5-7 vocabulary cards with vocabulary field (term, definition, romanization, examples)
+- task1: {format:"quiz", passingScore:70, questions[5 questions, at least 2 with audioText for listening]}
+- reflection: {questions[confidence(scale), clicked(text), foggy(text), connection(text)]}
+- skipTest: {questionSets[[3 hard vocabulary MCQs]], passThreshold:3}
+
+IMPORTANT: Include "vocabulary" object in each languageFoundationCard.
+Include "audioText" in at least 2 quiz questions for listening practice.`;
+
+  return { systemPrompt, userPrompt };
 }
 
 export function buildDayDetailPrompt(params: DayDetailParams): {
   systemPrompt: string;
   userPrompt: string;
 } {
+  // Use language learning specific prompt if applicable
+  if (params.isLanguageLearning && params.targetLanguage) {
+    return buildLanguageLearningPrompt(params);
+  }
+
   const time = getTimeStructure(params.hoursPerDay);
   const dayHeader = getDayHeader({
     dayTitle: params.dayTitle,
