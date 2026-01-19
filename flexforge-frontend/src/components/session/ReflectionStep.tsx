@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, Sparkles, Lock, ChevronDown, Lightbulb } from 'lucide-react';
+import { BookOpen, Sparkles, Lock, ChevronDown, Lightbulb, Target, Plus, X, TrendingUp, TrendingDown } from 'lucide-react';
 import { Card, Button, ConfidenceSlider, QuickPick, SentenceComplete, AnimatedReveal } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { QuickBoostModal } from './QuickBoostModal';
@@ -47,8 +47,14 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
   const [boostCompleted, setBoostCompleted] = useState(false);
   const [boostedConcept, setBoostedConcept] = useState<string | null>(null);
 
+  // Improvement areas state (for shaping future days)
+  const [moreOfInput, setMoreOfInput] = useState('');
+  const [lessOfInput, setLessOfInput] = useState('');
+  const [moreOfAreas, setMoreOfAreas] = useState<string[]>(session.improvementAreas || []);
+  const [lessOfAreas, setLessOfAreas] = useState<string[]>([]);
+
   const { hasTierAccess } = useAuthStore();
-  const { updateTaskProgress } = useSessionStore();
+  const { updateTaskProgress, updateSession } = useSessionStore();
   const canGetAIAnalysis = hasTierAccess(QuotaTier.PRO);
 
   // Get foundation cards for concept selection
@@ -135,6 +141,31 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
     }
   };
 
+  // Improvement areas handlers
+  const handleAddMoreOf = () => {
+    const trimmed = moreOfInput.trim();
+    if (trimmed && !moreOfAreas.includes(trimmed)) {
+      setMoreOfAreas([...moreOfAreas, trimmed]);
+      setMoreOfInput('');
+    }
+  };
+
+  const handleAddLessOf = () => {
+    const trimmed = lessOfInput.trim();
+    if (trimmed && !lessOfAreas.includes(trimmed)) {
+      setLessOfAreas([...lessOfAreas, trimmed]);
+      setLessOfInput('');
+    }
+  };
+
+  const handleRemoveMoreOf = (area: string) => {
+    setMoreOfAreas(moreOfAreas.filter(a => a !== area));
+  };
+
+  const handleRemoveLessOf = (area: string) => {
+    setLessOfAreas(lessOfAreas.filter(a => a !== area));
+  };
+
   const handleAIAnalysis = async () => {
     if (!canGetAIAnalysis) return;
 
@@ -164,6 +195,15 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
         boostCompleted,
         boostConcept: boostedConcept || undefined,
       });
+
+      // Save improvement areas to session if changed
+      // Combine "more of" areas and exclude "less of" items
+      const combinedImprovementAreas = moreOfAreas.filter(area => !lessOfAreas.includes(area));
+      const hasChanges = JSON.stringify(combinedImprovementAreas) !== JSON.stringify(session.improvementAreas || []);
+
+      if (hasChanges) {
+        await updateSession(session.id, { improvementAreas: combinedImprovementAreas });
+      }
 
       await updateTaskProgress(`day${day.day}-reflection`, {
         completed: true,
@@ -370,6 +410,128 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
             value={lockInSentence}
             onChange={setLockInSentence}
           />
+        </div>
+      </Card>
+
+      {/* Shape Future Days - Improvement Areas */}
+      <Card className="bg-gradient-to-br from-purple-50 via-indigo-50 to-blue-50 border-purple-200">
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+              <Target className="w-5 h-5 text-purple-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Shape Future Days</h3>
+              <p className="text-sm text-gray-600">Adjust what upcoming lessons emphasize</p>
+            </div>
+          </div>
+
+          {/* More of this */}
+          <div className="mb-5">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp className="w-4 h-4 text-green-600" />
+              <span className="text-sm font-medium text-gray-700">I want more of...</span>
+            </div>
+            <p className="text-xs text-gray-500 mb-2">Topics or skills to emphasize in examples and practice</p>
+
+            {moreOfAreas.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {moreOfAreas.map((area) => (
+                  <span
+                    key={area}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-green-100 text-green-700 rounded-full text-sm"
+                  >
+                    {area}
+                    <button
+                      onClick={() => handleRemoveMoreOf(area)}
+                      className="hover:bg-green-200 rounded-full p-0.5"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={moreOfInput}
+                onChange={(e) => setMoreOfInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddMoreOf())}
+                placeholder="e.g., real-world examples, hands-on practice..."
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white
+                          focus:border-purple-400 focus:ring-2 focus:ring-purple-100 focus:outline-none"
+              />
+              <button
+                onClick={handleAddMoreOf}
+                disabled={!moreOfInput.trim()}
+                className="px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200
+                          disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Less of this */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingDown className="w-4 h-4 text-orange-500" />
+              <span className="text-sm font-medium text-gray-700">I want less of...</span>
+            </div>
+            <p className="text-xs text-gray-500 mb-2">Topics you're already comfortable with or want to skip</p>
+
+            {lessOfAreas.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {lessOfAreas.map((area) => (
+                  <span
+                    key={area}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-orange-100 text-orange-700 rounded-full text-sm"
+                  >
+                    {area}
+                    <button
+                      onClick={() => handleRemoveLessOf(area)}
+                      className="hover:bg-orange-200 rounded-full p-0.5"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={lessOfInput}
+                onChange={(e) => setLessOfInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddLessOf())}
+                placeholder="e.g., basic theory, tool setup..."
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white
+                          focus:border-purple-400 focus:ring-2 focus:ring-purple-100 focus:outline-none"
+              />
+              <button
+                onClick={handleAddLessOf}
+                disabled={!lessOfInput.trim()}
+                className="px-3 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200
+                          disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Hint */}
+          {(moreOfAreas.length > 0 || lessOfAreas.length > 0) && (
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-xs text-purple-600 mt-4 text-center"
+            >
+              These preferences will shape Days {day.day + 1}+ content
+            </motion.p>
+          )}
         </div>
       </Card>
 

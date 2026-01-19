@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsOptional, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, Min, IsArray, IsString } from 'class-validator';
 import {
   SessionStatus,
   SessionMode,
@@ -17,4 +17,9 @@ export class UpdateSessionDto {
   @Min(1)
   @IsOptional()
   currentDay?: number;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  improvementAreas?: string[];
 }

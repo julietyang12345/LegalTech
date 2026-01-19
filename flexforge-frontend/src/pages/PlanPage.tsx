@@ -11,6 +11,7 @@ import {
   FastForward,
   Loader2,
   SkipForward,
+  Target,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
@@ -282,11 +283,55 @@ function SkipTestModal({
   );
 }
 
+// Improvement Areas Section - shows current improve areas set during reflections
+function ImproveAreasSection({
+  improvementAreas,
+  onClear,
+}: {
+  improvementAreas: string[];
+  onClear: () => void;
+}) {
+  if (improvementAreas.length === 0) return null;
+
+  return (
+    <Card className="mb-6 bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200">
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Target className="w-4 h-4 text-purple-600" />
+            <span className="text-sm font-medium text-gray-900">Your Improvement Areas</span>
+          </div>
+          <button
+            onClick={onClear}
+            className="text-xs text-gray-500 hover:text-gray-700"
+          >
+            Clear all
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {improvementAreas.map((area) => (
+            <span
+              key={area}
+              className="px-3 py-1 bg-white/70 text-purple-700 rounded-full text-sm border border-purple-200"
+            >
+              {area}
+            </span>
+          ))}
+        </div>
+        <p className="text-xs text-gray-500 mt-3">
+          Set during daily reflections. These shape examples in upcoming days.
+        </p>
+      </div>
+    </Card>
+  );
+}
+
 export function PlanPage() {
   const navigate = useNavigate();
   const {
     activeSession,
     fetchActiveSession,
+    updateSession,
     submitSkipTest,
     error,
     clearError,
@@ -339,6 +384,15 @@ export function PlanPage() {
     return day?.skipTest;
   };
 
+  const handleClearImproveAreas = async () => {
+    if (!activeSession) return;
+    try {
+      await updateSession(activeSession.id, { improvementAreas: [] });
+    } catch (err) {
+      console.error('Failed to clear improve areas:', err);
+    }
+  };
+
   if (!activeSession) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-12">
@@ -378,6 +432,12 @@ export function PlanPage() {
         </div>
         <ProgressBar value={currentDay - 1} max={activeSession.durationDays} />
       </div>
+
+      {/* Improvement Areas Section - displays areas set during reflections */}
+      <FocusAreasSection
+        improvementAreas={activeSession.improvementAreas || []}
+        onClear={handleClearFocusAreas}
+      />
 
       {/* Error display */}
       {error && (

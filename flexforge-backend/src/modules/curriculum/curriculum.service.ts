@@ -309,6 +309,7 @@ export class CurriculumService {
     forceRegenerate?: boolean,
     userId?: string,
     sessionId?: string,
+    improvementAreas?: string[],
   ): Promise<DayCoreResult> {
     this.logger.log(`🚀 Generating Day ${dayNumber} CORE content...`);
 
@@ -419,6 +420,8 @@ export class CurriculumService {
       isLanguageLearning: curriculum.metadata.isLanguageLearning,
       targetLanguage: curriculum.metadata.targetLanguage,
       proficiencyLevel: curriculum.metadata.proficiencyLevel,
+      // User-specified focus areas
+      improvementAreas,
     };
 
     const { staticPart, dynamicPart, userPrompt } = buildCacheableDayDetailCorePrompt(params);

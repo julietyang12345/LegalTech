@@ -62,7 +62,7 @@ interface SessionState {
   fetchSessions: () => Promise<void>;
   fetchActiveSession: () => Promise<void>;
   setActiveSession: (session: Session | null) => void;
-  updateSession: (id: string, updates: { status?: SessionStatus; mode?: SessionMode; currentDay?: number }) => Promise<void>;
+  updateSession: (id: string, updates: { status?: SessionStatus; mode?: SessionMode; currentDay?: number; improvementAreas?: string[] }) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
 
   // Focus mode actions

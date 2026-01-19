@@ -11,6 +11,7 @@ export interface LearnerPrefsForPrompt {
   outputType?: OutputType;
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
   contentDepth?: 'fast' | 'medium' | 'deep';
+  improvementAreas?: string[];           // User-specified areas to emphasize (e.g., "conflict resolution", "async/await")
 }
 
 export interface CurriculumPromptParams {
@@ -184,6 +185,13 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
       deep: 'DEPTH: COMPREHENSIVE - Include edge cases, advanced patterns, thorough explanations.',
     };
     parts.push(depthGuidance[prefs.contentDepth] || '');
+  }
+
+  // User-specified improvement areas to emphasize
+  if (prefs.improvementAreas?.length) {
+    parts.push(`IMPROVEMENT AREAS (user wants to get better at):
+${prefs.improvementAreas.map(area => `- ${area}`).join('\n')}
+Incorporate these areas into examples, tasks, and explanations where relevant. Don't change core topics, but use these as a lens for examples and practice scenarios.`);
   }
 
   if (parts.length === 0) return '';
@@ -521,6 +529,9 @@ export interface DayDetailParams {
   isLanguageLearning?: boolean;
   targetLanguage?: TargetLanguage;
   proficiencyLevel?: string;  // HSK1, N5, A1, etc.
+
+  // User-specified improvement areas (updated mid-sprint)
+  improvementAreas?: string[];
 }
 
 // Language-specific features for prompts
@@ -1341,12 +1352,17 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
   // Static part - cacheable
   const staticPart = DAY_DETAIL_STATIC_INSTRUCTIONS;
 
+  // Build improvement areas instruction if provided
+  const improvementAreasInstruction = params.improvementAreas?.length
+    ? `\nIMPROVEMENT AREAS: ${params.improvementAreas.join(', ')}. Incorporate these into examples and scenarios where relevant.`
+    : '';
+
   // Dynamic part - day-specific
   const dynamicPart = `Day ${params.dayNumber} of "${params.skillName}" (${params.skillType})
 Title: ${params.dayTitle}
 ${params.previousDayTitle ? `Previous: ${params.previousDayTitle}` : ''}
 ${params.suggestedLanguage ? `Lang: ${params.suggestedLanguage}` : ''}
-${isProjectBased ? 'Include bossMilestone with REAL starterCode (10-25 lines) and COMPLETE solution code (15-40 lines).' : 'No bossMilestone (practice-based).'}
+${isProjectBased ? 'Include bossMilestone with REAL starterCode (10-25 lines) and COMPLETE solution code (15-40 lines).' : 'No bossMilestone (practice-based).'}${improvementAreasInstruction}
 Generate: prePrompt, video, foundationCards(5-6), task1, ${isProjectBased ? 'bossMilestone, ' : ''}skipTest.`;
 
   // Minimal template - AI generates content, no empty placeholders

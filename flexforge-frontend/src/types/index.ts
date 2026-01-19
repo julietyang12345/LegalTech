@@ -105,6 +105,8 @@ export interface Session {
   // Cache tracking
   variantId?: string;
   fromCache?: boolean;
+  // User-specified focus areas for content emphasis
+  improvementAreas?: string[];
   progress: Progress[];
   createdAt: string;
   updatedAt: string;
@@ -122,6 +124,7 @@ export interface UpdateSessionDto {
   status?: SessionStatus;
   mode?: SessionMode;
   currentDay?: number;
+  improvementAreas?: string[];
 }
 
 // ============================================

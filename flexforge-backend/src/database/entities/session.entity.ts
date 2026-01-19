@@ -102,6 +102,10 @@ export class Session {
   @Column({ default: false })
   fromCache: boolean;
 
+  // User-defined improve areas for content emphasis
+  @Column({ type: 'jsonb', nullable: true, default: [] })
+  improvementAreas: string[];
+
   @Column({ default: 0 })
   extensionsDays: number;
 
