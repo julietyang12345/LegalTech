@@ -243,10 +243,10 @@ export class VideoMatchingService {
       let rawVideos: VideoCandidate[] = [];
 
       // PRIMARY: Google CSE (respects quotes, much better relevance)
-      // Use skillName directly: "Vercel platform & deployment basics"
+      // Use concept (day-specific) which already includes skill context
+      // e.g., "Chinese Basic greetings" not just "learn basic chinese"
       if (this.googleCseApiKey && this.googleCseEngineId) {
-        const searchTerm = context.skillName || context.concept;
-        rawVideos = await this.searchYouTubeViaGoogle(searchTerm, maxCandidates);
+        rawVideos = await this.searchYouTubeViaGoogle(context.concept, maxCandidates);
       }
 
       // FALLBACK: YouTube search API (only if Google CSE not configured or failed)

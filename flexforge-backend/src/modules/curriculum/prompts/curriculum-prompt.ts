@@ -617,6 +617,172 @@ Include "audioText" in at least 2 quiz questions for listening practice.`;
   return { systemPrompt, userPrompt };
 }
 
+// Cacheable version of language learning prompt
+function buildCacheableLanguageLearningPrompt(params: DayDetailParams): {
+  staticPart: string;
+  dynamicPart: string;
+  userPrompt: string;
+} {
+  const lang = params.targetLanguage || 'other';
+  const langFeatures = getLanguageFeatures(lang);
+  const profLevel = params.proficiencyLevel || 'beginner';
+  const hasTones = ['chinese', 'thai', 'vietnamese'].includes(lang);
+
+  // Static part - cacheable instructions
+  const staticPart = `Generate VOCABULARY-BASED learning content for language learning.
+
+VOCABULARY CARD FORMAT (use "languageFoundationCards" array):
+{
+  "id": "day1-vocab-1",
+  "concept": "English meaning",
+  "visual": "emoji",
+  "explanation": "Usage context and tips",
+  "vocabulary": {
+    "term": "word in target language",
+    "definition": "English meaning",
+    "romanization": "pronunciation guide",
+    "partOfSpeech": "noun/verb/adj/phrase",
+    "examples": [{"sentence": "example sentence", "romanization": "pronunciation", "translation": "English"}]
+  },
+  "microQuestion": {"question": "Got it?", "type": "gotit"},
+  "order": 1
+}
+
+TASK1 - QUICK PRACTICE (3-4 types, 8-10 questions total):
+1. "quiz" - MCQ: hear/see word, pick meaning (include audioText for listening)
+2. "matching" - Match words to definitions (4-6 pairs)
+3. "toneSelect" - For tonal languages: hear word, select correct tone${hasTones ? ' (REQUIRED)' : ' (skip if not tonal)'}
+
+PRACTICE PROJECT - INTENSIVE PRACTICE (deferred, 3-4 types):
+1. "fillBlank" - Complete sentence with correct word
+2. "translation" - Translate between languages (both directions)
+3. "reorder" - Arrange scrambled words into correct sentence
+4. "typing" - Type the word/phrase you see or hear
+
+STRUCTURE (all fields required):
+- prePrompt: {text, primeQuestions[], yesterdayRecap}
+- video: {watchPoints[], searchQuery}
+- videoStrategy: "helpful"
+- contentSource: "youtube"
+- contentLayer: "core"
+- languageFoundationCards: 5-7 vocabulary cards (REQUIRED)
+- task1: Quick practice with 3-4 question types mixed
+- reflection: {questions[]}
+- skipTest: {questionSets[[3 MCQs]], passThreshold:3}
+
+Output valid JSON only.`;
+
+  // Dynamic part - day-specific
+  const dynamicPart = `Day ${params.dayNumber} of "${params.skillName}"
+Title: ${params.dayTitle}
+Target Language: ${lang}
+Proficiency: ${profLevel}
+Features: ${langFeatures}
+${params.previousDayTitle ? `Previous: ${params.previousDayTitle}` : ''}
+${lang === 'chinese' || lang === 'thai' || lang === 'vietnamese' ? 'Include tone numbers in vocabulary.' : ''}
+${['spanish', 'french', 'german', 'italian', 'portuguese', 'russian'].includes(lang) ? 'Include gender (masculine/feminine/neuter) in vocabulary.' : ''}`;
+
+  const skills = params.skeleton?.skills || params.dayObjectives || [];
+  const skillsStr = Array.isArray(skills) ? skills.join(', ') : String(skills);
+  const dayNumber = params.dayNumber;
+
+  // Use explicit JSON template to guide AI
+  const userPrompt = `Generate vocabulary learning content for Day ${dayNumber}: "${params.dayTitle}"
+Topics: ${skillsStr}
+Language: ${lang}
+Level: ${profLevel}
+
+Output this JSON structure:
+{
+  "prePrompt": {
+    "text": "Welcome message about today's vocabulary",
+    "primeQuestions": ["Question 1?", "Question 2?"],
+    "yesterdayRecap": "${params.previousDayTitle ? 'Yesterday we learned: ' + params.previousDayTitle : 'Welcome to your first lesson!'}"
+  },
+  "video": {
+    "watchPoints": ["What to notice point 1", "What to notice point 2"],
+    "searchQuery": "${lang} ${skillsStr} lesson beginner"
+  },
+  "videoStrategy": "helpful",
+  "contentSource": "youtube",
+  "contentLayer": "core",
+  "languageFoundationCards": [
+    {
+      "id": "day${dayNumber}-vocab-1",
+      "concept": "English meaning",
+      "visual": "emoji",
+      "explanation": "When and how to use this word/phrase",
+      "vocabulary": {
+        "term": "word in ${lang}",
+        "definition": "English meaning",
+        "romanization": "pronunciation guide",
+        "partOfSpeech": "noun/verb/adj",
+        "examples": [{"sentence": "Example sentence in ${lang}", "romanization": "pronunciation", "translation": "English translation"}]
+      },
+      "microQuestion": {"question": "Got it?", "type": "gotit"},
+      "order": 1
+    }
+  ],
+  "task1": {
+    "id": "day${dayNumber}-task1",
+    "title": "Quick Practice",
+    "description": "Test your understanding with mixed exercises",
+    "estimatedMinutes": 5,
+    "format": "mixed",
+    "passingScore": 0.7,
+    "sections": [
+      {
+        "type": "quiz",
+        "title": "Listening & Recognition",
+        "questions": [
+          {"id": "q1", "question": "What does this mean?", "audioText": "word in ${lang}", "options": ["meaning1", "meaning2", "meaning3", "meaning4"], "correctIndex": 0, "explanation": "Explanation"},
+          {"id": "q2", "question": "Select the correct meaning", "options": ["A", "B", "C", "D"], "correctIndex": 1, "explanation": "Explanation"}
+        ]
+      },
+      {
+        "type": "matching",
+        "title": "Match Words to Meanings",
+        "pairs": [
+          {"term": "word1 in ${lang}", "definition": "English meaning 1"},
+          {"term": "word2 in ${lang}", "definition": "English meaning 2"},
+          {"term": "word3 in ${lang}", "definition": "English meaning 3"},
+          {"term": "word4 in ${lang}", "definition": "English meaning 4"}
+        ]
+      }${hasTones ? `,
+      {
+        "type": "toneSelect",
+        "title": "Tone Recognition",
+        "questions": [
+          {"id": "t1", "audioText": "word", "prompt": "Select the correct tone", "options": ["mā (1st)", "má (2nd)", "mǎ (3rd)", "mà (4th)"], "correctIndex": 0, "explanation": "This is first tone (flat)"}
+        ]
+      }` : ''}
+    ]
+  },
+  "reflection": {
+    "questions": [
+      {"id": "confidence", "question": "Rate your confidence with today's vocabulary (1-5)", "type": "scale"},
+      {"id": "clicked", "question": "Which word stuck with you the most?", "type": "text"},
+      {"id": "foggy", "question": "Which word is still unclear?", "type": "text"}
+    ]
+  },
+  "skipTest": {
+    "questionSets": [[
+      {"question": "Q1?", "options": ["A", "B", "C", "D"], "correctIndex": 0},
+      {"question": "Q2?", "options": ["A", "B", "C", "D"], "correctIndex": 1},
+      {"question": "Q3?", "options": ["A", "B", "C", "D"], "correctIndex": 2}
+    ]],
+    "passThreshold": 3
+  }
+}
+
+REQUIREMENTS:
+- Generate 5-7 vocabulary cards in languageFoundationCards
+- task1.sections must include: quiz (3-4 questions, 2+ with audioText), matching (4-6 pairs)${hasTones ? ', toneSelect (2-3 questions)' : ''}
+- All vocabulary must be appropriate for ${profLevel} level`;
+
+  return { staticPart, dynamicPart, userPrompt };
+}
+
 export function buildDayDetailPrompt(params: DayDetailParams): {
   systemPrompt: string;
   userPrompt: string;
@@ -811,6 +977,11 @@ export function buildDayDetailDeferredPrompt(params: DayDetailParams): {
   systemPrompt: string;
   userPrompt: string;
 } {
+  // Use language learning deferred prompt if applicable
+  if (params.isLanguageLearning && params.targetLanguage) {
+    return buildLanguageLearningDeferredPrompt(params);
+  }
+
   const time = getTimeStructure(params.hoursPerDay);
   const dayHeader = getDayHeader({
     dayTitle: params.dayTitle,
@@ -857,6 +1028,131 @@ Output valid JSON only.`;
     ]
   }
 }`;
+
+  return { systemPrompt, userPrompt };
+}
+
+/**
+ * Language Learning DEFERRED prompt - intensive practice exercises
+ * Includes: fillBlank, translation, reorder, typing exercises
+ */
+function buildLanguageLearningDeferredPrompt(params: DayDetailParams): {
+  systemPrompt: string;
+  userPrompt: string;
+} {
+  const lang = params.targetLanguage || 'other';
+  const profLevel = params.proficiencyLevel || 'beginner';
+  const dayNumber = params.dayNumber;
+  const skills = params.skeleton?.skills || params.dayObjectives || [];
+  const skillsStr = Array.isArray(skills) ? skills.join(', ') : String(skills);
+
+  const systemPrompt = `Generate INTENSIVE PRACTICE content for Day ${dayNumber} of "${params.skillName}".
+
+Language: ${lang}
+Level: ${profLevel}
+Today's Topics: ${skillsStr}
+
+Generate practice exercises that reinforce today's vocabulary through active recall and production.
+Use vocabulary from today's lesson. Make exercises progressively challenging.
+
+EXERCISE TYPES TO INCLUDE:
+1. fillBlank - Complete sentences with correct words (6-8 items)
+2. translation - Translate between ${lang} and English (4-6 items, both directions)
+3. reorder - Arrange scrambled words into correct sentences (4-5 items)
+4. typing - Type the word/phrase shown or spoken (4-6 items)
+
+Output valid JSON only.`;
+
+  const userPrompt = `{
+  "day": ${dayNumber},
+  "practiceProject": {
+    "id": "day${dayNumber}-intensive-practice",
+    "title": "Intensive Practice: ${params.dayTitle}",
+    "description": "Reinforce today's vocabulary through writing and production exercises",
+    "estimatedMinutes": 15,
+    "sections": [
+      {
+        "type": "fillBlank",
+        "title": "Complete the Sentence",
+        "instructions": "Fill in the blank with the correct word",
+        "items": [
+          {
+            "id": "fb1",
+            "sentence": "Sentence with ___BLANK___ in ${lang}",
+            "romanization": "pronunciation of full sentence",
+            "translation": "English translation with ___ blank",
+            "blank": {
+              "correctAnswers": ["correct word", "alternate spelling"],
+              "hint": "Hint about the word"
+            }
+          }
+        ]
+      },
+      {
+        "type": "translation",
+        "title": "Translation Challenge",
+        "instructions": "Translate the following",
+        "items": [
+          {
+            "id": "tr1",
+            "direction": "toTarget",
+            "prompt": "English sentence to translate",
+            "acceptedAnswers": ["correct ${lang} translation", "alternate translation"],
+            "romanization": "pronunciation",
+            "hint": "Translation hint"
+          },
+          {
+            "id": "tr2",
+            "direction": "toEnglish",
+            "prompt": "Sentence in ${lang}",
+            "romanization": "pronunciation",
+            "acceptedAnswers": ["correct English translation", "alternate"],
+            "hint": "Translation hint"
+          }
+        ]
+      },
+      {
+        "type": "reorder",
+        "title": "Build the Sentence",
+        "instructions": "Arrange the words in correct order",
+        "items": [
+          {
+            "id": "ro1",
+            "scrambled": ["word3", "word1", "word4", "word2"],
+            "correctOrder": ["word1", "word2", "word3", "word4"],
+            "translation": "English meaning",
+            "hint": "Grammar hint"
+          }
+        ]
+      },
+      {
+        "type": "typing",
+        "title": "Write What You See/Hear",
+        "instructions": "Type the word or phrase",
+        "items": [
+          {
+            "id": "ty1",
+            "prompt": "Type this word",
+            "displayText": "word in ${lang}",
+            "audioText": "word to speak",
+            "acceptedAnswers": ["correct answer", "alternate spelling"],
+            "romanization": "pronunciation"
+          }
+        ]
+      }
+    ]
+  },
+  "reflection": {
+    "questions": [
+      {"id": "confidence", "question": "Rate your confidence with today's vocabulary (1-5)", "type": "scale"},
+      {"id": "hardest", "question": "Which exercise type was hardest?", "type": "choice", "options": ["Fill in blank", "Translation", "Reordering", "Typing"]},
+      {"id": "review", "question": "Which words need more review?", "type": "text"}
+    ]
+  }
+}
+
+Generate 6-8 fillBlank items, 4-6 translation items (mix both directions), 4-5 reorder items, 4-6 typing items.
+Use vocabulary and grammar from today's lesson: ${skillsStr}`;
 
   return { systemPrompt, userPrompt };
 }
@@ -1033,6 +1329,11 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
   dynamicPart: string;
   userPrompt: string;
 } {
+  // Use language learning specific prompt if applicable
+  if (params.isLanguageLearning && params.targetLanguage) {
+    return buildCacheableLanguageLearningPrompt(params);
+  }
+
   const time = getTimeStructure(params.hoursPerDay);
   // Use stored isProjectBased from metadata, fall back to calculation if not provided
   const isProjectBased = params.isProjectBased ?? usesProjectBasedLearning(params.skillType, params.outputType);

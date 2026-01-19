@@ -21,6 +21,7 @@ import { MemoryBridgeStep } from '@/components/session/MemoryBridgeStep';
 import { ConceptCheckStep } from '@/components/session/ConceptCheckStep';
 import { TaskStep } from '@/components/session/TaskStep';
 import { QuizTaskStep, FillBlankTaskStep } from '@/components/session/AlternativeTaskSteps';
+import { MixedTaskStep } from '@/components/session/MixedTaskStep';
 import { BossMilestoneStep } from '@/components/session/BossMilestoneStep';
 import { ReflectionStep } from '@/components/session/ReflectionStep';
 
@@ -558,11 +559,12 @@ function IncompleteWorkModal({
 }
 
 // Task format types for switching (quiz and fillBlank only - code moved to bossMilestone)
-type TaskFormat = 'quiz' | 'fillBlank';
+type TaskFormat = 'quiz' | 'fillBlank' | 'mixed';
 
 // Task Router: Renders the appropriate task component based on task format
 // task1 is now ONLY quiz or fillBlank for concept reinforcement
 // Code practice is handled by bossMilestone step
+// Language learning uses 'mixed' format with multiple exercise types
 function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session: any; onComplete: () => void }) {
   const task = day.task1;
   const originalFormat = ((task as any)?.format || 'quiz') as TaskFormat;
@@ -576,12 +578,23 @@ function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session:
 
   if (!task) return null;
 
+  // For language learning (mixed format), render MixedTaskStep directly
+  // No format switching available for mixed tasks
+  if (originalFormat === 'mixed') {
+    return <MixedTaskStep day={day} session={session} onComplete={onComplete} />;
+  }
+
   const handleFormatSwitch = async (format: TaskFormat) => {
     // If switching back to original format, just use the original task
     if (format === originalFormat) {
       setSelectedFormat(format);
       setAlternativeTask(null);
       setLoadError(null);
+      return;
+    }
+
+    // Mixed format is handled separately and doesn't support format switching
+    if (format === 'mixed') {
       return;
     }
 

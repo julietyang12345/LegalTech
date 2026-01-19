@@ -309,10 +309,10 @@ export interface CurriculumDay {
     questions: ConceptQuestion[];
   };
 
-  // Task section: Quiz or Fill-in-the-Blank for concept reinforcement
+  // Task section: Quiz, Fill-in-the-Blank, or Mixed for concept reinforcement
   // (Coding practice moved to bossMilestone micro-steps)
-  task1?: QuizTask | FillBlankTask;
-  taskFormat?: 'quiz' | 'fillBlank';
+  task1?: QuizTask | FillBlankTask | MixedTask;
+  taskFormat?: TaskFormat;
   practiceProject?: PracticeProject;
 
   reflection?: {
@@ -594,7 +594,145 @@ export interface Task {
 // ============================================
 
 // Task formats for concept reinforcement (code tasks moved to bossMilestone)
-export type TaskFormat = 'quiz' | 'fillBlank';
+export type TaskFormat = 'quiz' | 'fillBlank' | 'mixed';
+
+// ============================================
+// Language Learning Exercise Types
+// ============================================
+
+// Matching exercise - match words to definitions
+export interface MatchingPair {
+  term: string;        // Word in target language
+  definition: string;  // English meaning
+}
+
+export interface MatchingSection {
+  type: 'matching';
+  title: string;
+  pairs: MatchingPair[];  // 4-6 pairs to match
+}
+
+// Tone selection exercise - for tonal languages
+export interface ToneSelectQuestion {
+  id: string;
+  audioText: string;        // Word to speak
+  prompt: string;           // e.g., "Select the correct tone"
+  options: string[];        // e.g., ["mā (1st)", "má (2nd)", "mǎ (3rd)", "mà (4th)"]
+  correctIndex: number;
+  explanation: string;
+}
+
+export interface ToneSelectSection {
+  type: 'toneSelect';
+  title: string;
+  questions: ToneSelectQuestion[];
+}
+
+// Quiz section for mixed task
+export interface QuizSection {
+  type: 'quiz';
+  title: string;
+  questions: QuizQuestion[];
+}
+
+// Fill in the blank for language learning (sentence completion)
+export interface LanguageFillBlankItem {
+  id: string;
+  sentence: string;         // Sentence with ___BLANK___
+  romanization?: string;    // Pronunciation of full sentence
+  translation: string;      // English translation with blank
+  blank: {
+    correctAnswers: string[];
+    hint?: string;
+  };
+}
+
+export interface LanguageFillBlankSection {
+  type: 'fillBlank';
+  title: string;
+  instructions: string;
+  items: LanguageFillBlankItem[];
+}
+
+// Translation exercise
+export interface TranslationItem {
+  id: string;
+  direction: 'toTarget' | 'toEnglish';
+  prompt: string;               // Text to translate
+  romanization?: string;        // For toEnglish direction
+  acceptedAnswers: string[];    // Multiple correct translations
+  hint?: string;
+}
+
+export interface TranslationSection {
+  type: 'translation';
+  title: string;
+  instructions: string;
+  items: TranslationItem[];
+}
+
+// Sentence reordering exercise
+export interface ReorderItem {
+  id: string;
+  scrambled: string[];      // Words in scrambled order
+  correctOrder: string[];   // Correct word order
+  translation: string;      // English meaning
+  hint?: string;
+}
+
+export interface ReorderSection {
+  type: 'reorder';
+  title: string;
+  instructions: string;
+  items: ReorderItem[];
+}
+
+// Typing exercise
+export interface TypingItem {
+  id: string;
+  prompt: string;           // Instruction
+  displayText?: string;     // Text to show (for visual typing)
+  audioText?: string;       // Text to speak (for audio typing)
+  acceptedAnswers: string[];
+  romanization?: string;
+}
+
+export interface TypingSection {
+  type: 'typing';
+  title: string;
+  instructions: string;
+  items: TypingItem[];
+}
+
+// Union type for all task sections
+export type TaskSection =
+  | QuizSection
+  | MatchingSection
+  | ToneSelectSection
+  | LanguageFillBlankSection
+  | TranslationSection
+  | ReorderSection
+  | TypingSection;
+
+// Mixed task format (for language learning)
+export interface MixedTask {
+  id: string;
+  title: string;
+  description: string;
+  estimatedMinutes: number;
+  format: 'mixed';
+  passingScore: number;
+  sections: TaskSection[];
+}
+
+// Language learning practice project (intensive practice)
+export interface LanguagePracticeProject {
+  id: string;
+  title: string;
+  description: string;
+  estimatedMinutes: number;
+  sections: (LanguageFillBlankSection | TranslationSection | ReorderSection | TypingSection)[];
+}
 
 export interface QuizQuestion {
   id: string;
@@ -641,7 +779,7 @@ export interface FillBlankTask {
 }
 
 // Union type for all task formats
-export type TaskContent = Task | QuizTask | FillBlankTask;
+export type TaskContent = Task | QuizTask | FillBlankTask | MixedTask;
 
 export interface PracticeProject {
   id: string;

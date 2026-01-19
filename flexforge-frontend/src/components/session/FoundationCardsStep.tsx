@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
-import { Layers, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Layers, ChevronLeft, ChevronRight, Volume2 } from 'lucide-react';
 import { Card, MultipleChoiceQuestion } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { VocabularyCard } from './VocabularyCard';
 import { useSessionStore } from '@/stores/sessionStore';
+import { useBrowserTTS } from '@/hooks/useBrowserTTS';
 import { clsx } from 'clsx';
 import type { CurriculumDay, Session, FoundationCard, MicroQuestion, LanguageFoundationCard, TargetLanguage, LANGUAGE_FEATURES } from '@/types';
 
@@ -30,12 +31,34 @@ export function FoundationCardsStep({ day, session, onComplete }: FoundationCard
   const isLanguageLearning = session.curriculum?.metadata?.isLanguageLearning;
   const targetLanguage = session.curriculum?.metadata?.targetLanguage as TargetLanguage | undefined;
 
+  // Browser TTS for pronunciation (language learning)
+  const { speak, isSpeaking } = useBrowserTTS(targetLanguage || 'other', { rate: 0.9 });
+
   // Use language-specific cards if available, otherwise regular cards
   const cards = (day.languageFoundationCards || day.foundationCards || []) as (FoundationCard | LanguageFoundationCard)[];
 
   // Check if a card is a vocabulary card
   const isVocabularyCard = (card: FoundationCard | LanguageFoundationCard): card is LanguageFoundationCard => {
     return 'vocabulary' in card && card.vocabulary !== undefined;
+  };
+
+  // Check if a card has audio (for language learning cards)
+  const hasAudioText = (card: FoundationCard | LanguageFoundationCard): card is LanguageFoundationCard => {
+    return 'audioText' in card && !!card.audioText;
+  };
+
+  // Play audio for the current card
+  const playCardAudio = () => {
+    const card = currentCard as LanguageFoundationCard;
+    if (card.audioUrl) {
+      const audio = new Audio(card.audioUrl);
+      audio.play();
+    } else if (card.audioText) {
+      speak(card.audioText);
+    } else if (isLanguageLearning && currentCard.concept) {
+      // Fallback: speak the concept title for language learning
+      speak(currentCard.concept);
+    }
   };
 
   // Restore progress on mount
@@ -203,6 +226,21 @@ export function FoundationCardsStep({ day, session, onComplete }: FoundationCard
                         {currentCard.concept}
                       </h2>
                     </div>
+                    {/* Audio button for language learning - show when language learning or targetLanguage set */}
+                    {(isLanguageLearning || targetLanguage || hasAudioText(currentCard)) && (
+                      <button
+                        onClick={playCardAudio}
+                        className={clsx(
+                          'p-3 rounded-full transition-all flex-shrink-0',
+                          isSpeaking
+                            ? 'bg-purple-100 text-purple-600 scale-110'
+                            : 'bg-purple-50 text-purple-600 hover:bg-purple-100'
+                        )}
+                        title="Hear pronunciation"
+                      >
+                        <Volume2 className={clsx('w-5 h-5', isSpeaking && 'animate-pulse')} />
+                      </button>
+                    )}
                   </div>
                 </div>
 

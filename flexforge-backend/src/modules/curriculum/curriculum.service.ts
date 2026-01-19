@@ -66,43 +66,62 @@ export class CurriculumService {
     fallbackTitle: string,
     skillName?: string,
   ): string {
-    // PRIMARY: Use skillName directly - it's the best source
-    // "Vercel platform & deployment basics" → "Vercel deployment"
+    // Extract skill context (e.g., "Chinese" from "learn basic chinese")
+    // This MUST be included in the search to avoid wrong-language results
+    let skillContext = '';
     if (skillName) {
       const cleaned = skillName
-        .replace(/\b(platform|basics|fundamentals|introduction|intro|learning|course|tutorial|and|&|the|a|an)\b/gi, '')
+        .replace(/\b(platform|basics|fundamentals|introduction|intro|learning|learn|course|tutorial|and|&|the|a|an)\b/gi, '')
         .replace(/[^\w\s-]/g, ' ')
         .trim();
       const words = cleaned.split(/\s+/).filter(w => w.length > 2);
       if (words.length >= 1) {
-        return words.slice(0, 3).join(' '); // Max 3 words: "Vercel deployment"
+        skillContext = words.slice(0, 2).join(' '); // e.g., "Chinese", "Vercel deployment"
       }
     }
 
-    // SECONDARY: Try foundationCards for day-specific concept
-    if (dayContent.foundationCards && Array.isArray(dayContent.foundationCards)) {
-      for (const card of dayContent.foundationCards.slice(1, 4)) {
-        if (card.concept) {
-          const cleaned = card.concept
+    // Try to get day-specific concept from foundationCards or languageFoundationCards
+    let dayConcept = '';
+    const cards = dayContent.languageFoundationCards || dayContent.foundationCards;
+    if (cards && Array.isArray(cards)) {
+      for (const card of cards.slice(1, 4)) {
+        const conceptText = card.concept;
+        if (conceptText) {
+          const cleaned = conceptText
             .replace(/^(What is|What are|How to|Why|When to use)\s*/i, '')
             .replace(/\?$/, '')
             .trim();
           if (cleaned && cleaned.length > 2 && cleaned.split(' ').length <= 4) {
-            return cleaned;
+            dayConcept = cleaned;
+            break;
           }
         }
       }
     }
 
-    // TERTIARY: Task title
-    if (dayContent.task1?.title) {
+    // Try task title if no foundation card concept
+    if (!dayConcept && dayContent.task1?.title) {
       const cleaned = dayContent.task1.title
         .replace(/^(Build|Create|Implement|Write|Make|Set up|Configure)\s*/i, '')
         .trim();
       if (cleaned && cleaned.split(' ').length <= 4) {
-        return cleaned;
+        dayConcept = cleaned;
       }
     }
+
+    // COMBINE: skill context + day concept
+    // e.g., "Chinese" + "Basic greetings" → "Chinese Basic greetings"
+    // This prevents Spanish greetings showing up for Chinese course
+    if (skillContext && dayConcept) {
+      // Check if day concept already includes skill context
+      if (!dayConcept.toLowerCase().includes(skillContext.toLowerCase())) {
+        return `${skillContext} ${dayConcept}`.slice(0, 50);
+      }
+      return dayConcept;
+    }
+
+    if (skillContext) return skillContext;
+    if (dayConcept) return dayConcept;
 
     // LAST RESORT: First 3 words of fallback title
     return fallbackTitle.split(' ').slice(0, 3).join(' ');
@@ -250,6 +269,10 @@ export class CurriculumService {
       suggestedLanguage: effectiveLanguage, // User's selected language (or auto-detected if not chosen)
       isProjectBased, // Store this - use it consistently, don't re-calculate
       outputType: dto.outputType, // Store user's intent
+      // Language learning specific (from skill detection)
+      isLanguageLearning: skillDetection.isLanguageLearning,
+      targetLanguage: skillDetection.targetLanguage,
+      proficiencyLevel: skillDetection.proficiencyLevel,
     };
 
     // All days are skeletons - full content generated on-demand when user starts each day
@@ -392,6 +415,10 @@ export class CurriculumService {
       suggestedLanguage: curriculum.metadata.suggestedLanguage,
       outputType: curriculum.metadata.outputType,
       isProjectBased: curriculum.metadata.isProjectBased, // Use stored value, don't re-calculate
+      // Language learning specific
+      isLanguageLearning: curriculum.metadata.isLanguageLearning,
+      targetLanguage: curriculum.metadata.targetLanguage,
+      proficiencyLevel: curriculum.metadata.proficiencyLevel,
     };
 
     const { staticPart, dynamicPart, userPrompt } = buildCacheableDayDetailCorePrompt(params);
@@ -404,6 +431,9 @@ export class CurriculumService {
 
     let coreContent: any;
     try {
+      // DEBUG: Log raw AI response (first 500 chars)
+      this.logger.log(`🤖 Day ${dayNumber} AI response (first 500 chars): ${aiResponse.content.substring(0, 500)}`);
+
       let cleanedContent = aiResponse.content
         .replace(/```json\n?/g, '')
         .replace(/```\n?/g, '')
@@ -426,6 +456,15 @@ export class CurriculumService {
         coreContent.foundationCards = coreContent.foundationCards.map((card: any, index: number) => ({
           ...card,
           id: card.id || `day${dayNumber}-card-${index + 1}`,
+          order: card.order ?? index + 1,
+        }));
+      }
+
+      // Normalize languageFoundationCards (for language learning)
+      if (coreContent.languageFoundationCards && Array.isArray(coreContent.languageFoundationCards)) {
+        coreContent.languageFoundationCards = coreContent.languageFoundationCards.map((card: any, index: number) => ({
+          ...card,
+          id: card.id || `day${dayNumber}-vocab-${index + 1}`,
           order: card.order ?? index + 1,
         }));
       }
@@ -490,9 +529,15 @@ export class CurriculumService {
         this.logger.log(`ℹ️ Day ${dayNumber} has no bossMilestone (practice-based curriculum)`);
       }
 
-      this.logger.log(`✅ Day ${dayNumber} CORE parsed: ${coreContent.foundationCards?.length || 0} cards`);
+      const cardCount = coreContent.languageFoundationCards?.length || coreContent.foundationCards?.length || 0;
+      this.logger.log(`✅ Day ${dayNumber} CORE parsed: ${cardCount} cards${coreContent.languageFoundationCards ? ' (vocabulary)' : ''}`);
+
+      // DEBUG: Log what fields the AI returned
+      const presentFields = Object.keys(coreContent).join(', ');
+      this.logger.log(`🔍 Day ${dayNumber} coreContent fields: ${presentFields}`);
     } catch (error) {
       this.logger.error(`❌ Failed to parse Day ${dayNumber} CORE:`, error.message);
+      this.logger.error(`❌ Raw content that failed to parse: ${aiResponse.content.substring(0, 1000)}`);
       throw new BadRequestException('Failed to generate core day content. Please try again.');
     }
 
@@ -683,6 +728,10 @@ export class CurriculumService {
       suggestedLanguage: curriculum.metadata.suggestedLanguage,
       outputType: curriculum.metadata.outputType,
       isProjectBased: curriculum.metadata.isProjectBased, // Use stored value, don't re-calculate
+      // Language learning specific
+      isLanguageLearning: curriculum.metadata.isLanguageLearning,
+      targetLanguage: curriculum.metadata.targetLanguage,
+      proficiencyLevel: curriculum.metadata.proficiencyLevel,
     };
 
     const { systemPrompt, userPrompt } = buildDayDetailDeferredPrompt(params);
@@ -881,12 +930,15 @@ export class CurriculumService {
       'ADVANCED': 'advanced',
     };
 
-    // Extract day concepts from foundationCards for Gemini verification
+    // Extract day concepts from foundationCards or languageFoundationCards for Gemini verification
     const dayConcepts: string[] = [];
-    if (content.foundationCards && Array.isArray(content.foundationCards)) {
-      for (const card of content.foundationCards.slice(0, 5)) {
-        if (card.concept) {
-          const cleaned = card.concept
+    const cards = content.languageFoundationCards || content.foundationCards;
+    if (cards && Array.isArray(cards)) {
+      for (const card of cards.slice(0, 5)) {
+        // For vocabulary cards, use the term; for regular cards, use the concept
+        const conceptText = card.vocabulary?.term || card.concept;
+        if (conceptText) {
+          const cleaned = conceptText
             .replace(/^(What is|What are|How to|Why|When to use)\s*/i, '')
             .replace(/\?$/, '')
             .trim();
@@ -1068,15 +1120,20 @@ export class CurriculumService {
 
   /**
    * Generate AI explanation from day content when no good video match is found.
-   * Uses foundationCards if available, otherwise creates a structured summary.
+   * Uses foundationCards or languageFoundationCards if available, otherwise creates a structured summary.
    */
   private generateAiExplanation(dayContent: any, concept: string): string {
     const sections: string[] = [];
 
-    // Use foundationCards content if available
-    if (dayContent.foundationCards && Array.isArray(dayContent.foundationCards)) {
-      for (const card of dayContent.foundationCards) {
-        if (card.concept && card.explanation) {
+    // Use languageFoundationCards or foundationCards content if available
+    const cards = dayContent.languageFoundationCards || dayContent.foundationCards;
+    if (cards && Array.isArray(cards)) {
+      for (const card of cards) {
+        // For vocabulary cards, format term + definition
+        if (card.vocabulary) {
+          const { term, definition, romanization } = card.vocabulary;
+          sections.push(`**${term}**${romanization ? ` (${romanization})` : ''}\n${definition}`);
+        } else if (card.concept && card.explanation) {
           sections.push(`**${card.concept}**\n${card.explanation}`);
         }
       }

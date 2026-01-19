@@ -141,6 +141,11 @@ Return ONLY valid JSON:
       this.logger.log(
         `✅ Detected: ${result.skillType} (${result.complexity}) - ${result.estimatedDaysNeeded} days`,
       );
+
+      // Log language learning detection
+      if (result.isLanguageLearning) {
+        this.logger.log(`🌍 Language learning detected: ${result.targetLanguage} (${result.proficiencyLevel || 'beginner'})`);
+      }
     } catch (error) {
       this.logger.error('Failed to parse skill detection:', error.message);
       // Default to BEGINNER AI_AGENT if parsing fails

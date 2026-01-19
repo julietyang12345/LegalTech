@@ -425,8 +425,11 @@ export function VideoStep({ day, session }: VideoStepProps) {
   const video = day.video;
 
   // Determine what options are available
+  // Only show video tab if we have an actual playable video
+  // useAiExplanation=true means AI is primary, but video tab still shows if backupVideo exists
   const hasActualVideo = !!(video?.videoId || video?.backupVideo?.videoId);
-  const showVideoOption = hasActualVideo && video?.videoAvailable !== false;
+  const videoUnavailable = video?.videoAvailable === false || (!video?.videoId && !video?.backupVideo?.videoId);
+  const showVideoOption = hasActualVideo && !videoUnavailable;
 
   // Check for AI explanation from multiple sources (for backwards compatibility)
   const hasAiContent = !!(video?.aiExplanation || video?.explanation ||
