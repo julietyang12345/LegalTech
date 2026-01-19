@@ -58,180 +58,54 @@ export class CurriculumService {
   private readonly logger = new Logger(CurriculumService.name);
 
   /**
-   * Extract key concepts from generated day content for video search
-   * Returns structured requirements for both search and scoring
+   * Extract search query from day content for video search
+   * Simplified: just builds search query, content verification is done by Gemini AI
    */
-  private async extractSearchConceptsFromContent(
+  private extractSearchQuery(
     dayContent: any,
     fallbackTitle: string,
     skillName?: string,
-    dayObjectives?: string[],
-  ): Promise<{
-    searchQuery: string;
-    mustCover: string[];
-    platform?: string;
-    avoidTopics?: string[];
-  }> {
-    const concepts: string[] = [];
-    const mustCover: string[] = [];
+  ): string {
+    // PRIMARY: Use skillName directly - it's the best source
+    // "Vercel platform & deployment basics" → "Vercel deployment"
+    if (skillName) {
+      const cleaned = skillName
+        .replace(/\b(platform|basics|fundamentals|introduction|intro|learning|course|tutorial|and|&|the|a|an)\b/gi, '')
+        .replace(/[^\w\s-]/g, ' ')
+        .trim();
+      const words = cleaned.split(/\s+/).filter(w => w.length > 2);
+      if (words.length >= 1) {
+        return words.slice(0, 3).join(' '); // Max 3 words: "Vercel deployment"
+      }
+    }
 
-    // Extract from foundationCards (primary concepts)
+    // SECONDARY: Try foundationCards for day-specific concept
     if (dayContent.foundationCards && Array.isArray(dayContent.foundationCards)) {
-      // Get concepts from first 3-4 cards (core concepts, skip intro card)
-      const coreCards = dayContent.foundationCards.slice(1, 5);
-      for (const card of coreCards) {
+      for (const card of dayContent.foundationCards.slice(1, 4)) {
         if (card.concept) {
-          // Clean concept - remove questions like "What is X?" -> "X"
           const cleaned = card.concept
             .replace(/^(What is|What are|How to|Why|When to use)\s*/i, '')
             .replace(/\?$/, '')
             .trim();
-          if (cleaned && cleaned.length > 2) {
-            concepts.push(cleaned);
-            mustCover.push(cleaned);
+          if (cleaned && cleaned.length > 2 && cleaned.split(' ').length <= 4) {
+            return cleaned;
           }
         }
       }
     }
 
-    // Add day objectives to mustCover (these are the learning goals)
-    if (dayObjectives && Array.isArray(dayObjectives)) {
-      for (const obj of dayObjectives) {
-        if (obj && !mustCover.some(c => c.toLowerCase() === obj.toLowerCase())) {
-          mustCover.push(obj);
-        }
-      }
-    }
-
-    // Extract from task title (practical application)
+    // TERTIARY: Task title
     if (dayContent.task1?.title) {
-      const taskConcept = dayContent.task1.title
+      const cleaned = dayContent.task1.title
         .replace(/^(Build|Create|Implement|Write|Make|Set up|Configure)\s*/i, '')
         .trim();
-      if (taskConcept && taskConcept.length > 3) {
-        concepts.push(taskConcept);
+      if (cleaned && cleaned.split(' ').length <= 4) {
+        return cleaned;
       }
     }
 
-    // Detect platform from skill name (AI with cache + pattern fallback)
-    const platform = await this.detectPlatformFromSkill(skillName || '');
-
-    // Build search query with skill context for relevance
-    let searchQuery: string;
-    if (concepts.length > 0) {
-      // Take first 2-3 concepts, deduplicated
-      const uniqueConcepts = [...new Set(concepts)].slice(0, 3);
-      const conceptQuery = uniqueConcepts.join(' ');
-
-      // Always include skill context to ensure domain-specific results
-      if (skillName) {
-        const skillContext = skillName
-          .replace(/\b(introduction to|intro to|basics of|fundamentals of|learning|course|tutorial)\b/gi, '')
-          .trim()
-          .split(' ')
-          .slice(0, 2)  // First 2 words of skill name
-          .join(' ');
-
-        // Avoid duplicating platform in query if already in concepts
-        const conceptsLower = conceptQuery.toLowerCase();
-        if (platform && conceptsLower.includes(platform.toLowerCase())) {
-          searchQuery = `${conceptQuery} tutorial`;
-        } else {
-          searchQuery = `${skillContext} ${conceptQuery}`;
-        }
-      } else {
-        searchQuery = conceptQuery;
-      }
-    } else {
-      searchQuery = fallbackTitle;
-    }
-
-    this.logger.log(`🔍 Search: "${searchQuery}" | mustCover: [${mustCover.slice(0, 3).join(', ')}] | platform: ${platform || 'none'}`);
-
-    return {
-      searchQuery,
-      mustCover: mustCover.slice(0, 5), // Cap at 5 concepts
-      platform,
-    };
-  }
-
-  // Cache for AI-detected platforms (skill name -> platform)
-  private platformCache = new Map<string, string | null>();
-
-  /**
-   * Detect platform/framework from skill name using AI (Haiku)
-   * Falls back to pattern-based detection if AI fails
-   * Caches results to minimize API calls
-   */
-  private async detectPlatformFromSkill(skillName: string): Promise<string | undefined> {
-    if (!skillName || skillName.trim().length < 3) return undefined;
-
-    const cacheKey = skillName.toLowerCase().trim();
-
-    // Check cache first
-    if (this.platformCache.has(cacheKey)) {
-      const cached = this.platformCache.get(cacheKey);
-      return cached ?? undefined;
-    }
-
-    try {
-      // Minimal prompt for Haiku (~40 tokens total)
-      const prompt = `Skill: "${skillName}"
-Extract the main platform/framework/tool name. Reply with ONLY the name (e.g., "React", "Vercel", "n8n") or "none" if no specific platform.`;
-
-      const response = await this.aiService.routeRequest(
-        AITask.LIGHTWEIGHT_EXTRACTION,
-        prompt,
-      );
-
-      const result = response.content.trim();
-      const platform = result.toLowerCase() === 'none' ? null : result;
-
-      // Cache the result
-      this.platformCache.set(cacheKey, platform);
-
-      if (platform) {
-        this.logger.debug(`🎯 AI detected platform "${platform}" from "${skillName}"`);
-      }
-
-      return platform ?? undefined;
-    } catch (error) {
-      this.logger.warn(`Platform detection AI failed, using pattern fallback: ${error.message}`);
-      // Fallback to pattern-based detection
-      const fallback = this.detectPlatformByPattern(skillName);
-      this.platformCache.set(cacheKey, fallback ?? null);
-      return fallback;
-    }
-  }
-
-  /**
-   * Pattern-based platform detection (fallback when AI fails)
-   */
-  private detectPlatformByPattern(skillName: string): string | undefined {
-    const words = skillName.split(/\s+/);
-
-    const skipWords = new Set([
-      'the', 'a', 'an', 'with', 'using', 'for', 'and', 'in', 'to', 'of',
-      'basics', 'fundamentals', 'introduction', 'intro', 'advanced', 'beginner',
-      'tutorial', 'guide', 'course', 'deployment', 'development', 'programming',
-    ]);
-
-    for (const word of words) {
-      const clean = word.replace(/[^a-zA-Z0-9.]/g, '');
-      if (!clean || clean.length < 2) continue;
-      if (skipWords.has(clean.toLowerCase())) continue;
-
-      // Ends with .js, .ts, .com, .io
-      if (/\.(js|ts|com|io|dev)$/i.test(clean)) return clean;
-      // All caps abbreviations (AWS, GCP)
-      if (/^[A-Z0-9]{2,}$/.test(clean)) return clean;
-      // Tools like n8n, v0
-      if (/^[a-z]+[0-9]+[a-z]*$/i.test(clean)) return clean;
-      // Capitalized names (React, Vercel)
-      if (/^[A-Z][a-zA-Z0-9]*$/.test(clean) && clean.length >= 3) return clean;
-    }
-
-    return undefined;
+    // LAST RESORT: First 3 words of fallback title
+    return fallbackTitle.split(' ').slice(0, 3).join(' ');
   }
 
   constructor(
@@ -984,14 +858,8 @@ Extract the main platform/framework/tool name. Reply with ONLY the name (e.g., "
       return null;
     }
 
-    // Extract search query AND concept requirements from day content
-    // This returns structured data for both search and scoring
-    const extracted = await this.extractSearchConceptsFromContent(
-      content,
-      searchConcept,
-      skillName,
-      dayObjectives,
-    );
+    // Extract search query from day content (simplified - AI verifies content)
+    const searchQuery = this.extractSearchQuery(content, searchConcept, skillName);
 
     // Calculate video slot based on hours per day
     const sessionMinutes = (hoursPerDay || 1) * 60;
@@ -1006,22 +874,17 @@ Extract the main platform/framework/tool name. Reply with ONLY the name (e.g., "
       'ADVANCED': 'advanced',
     };
 
-    this.logger.log(`🎥 Searching video for: "${extracted.searchQuery}" (${videoSlot}min slot) with ${extracted.mustCover.length} required concepts`);
+    this.logger.log(`🎥 Searching video for: "${searchQuery}" (${videoSlot}min slot)`);
 
     let videoResult: any = null;
     try {
       videoResult = await this.videoMatcher.findBestVideo({
-        concept: extracted.searchQuery,
+        concept: searchQuery,
         userSlot: videoSlot,
         userLevel: levelMap[skillLevel] || 'beginner',
         skillType,
         contentSource,
-        // Pass concept requirements to drive video scoring
-        conceptRequirements: {
-          mustCover: extracted.mustCover,
-          platform: extracted.platform,
-          avoidTopics: extracted.avoidTopics,
-        },
+        skillName, // Pass to Gemini for content verification
       }, { deepVerify: true });
     } catch (error: any) {
       this.logger.warn(`⚠️ Video search failed: ${error.message}`);
@@ -1031,7 +894,7 @@ Extract the main platform/framework/tool name. Reply with ONLY the name (e.g., "
     this.logger.log(`🔍 VIDEO RESULT: success=${videoResult?.success}, video=${videoResult?.video?.title || 'none'}, error=${videoResult?.error || 'none'}`);
 
     // Generate AI explanation as fallback
-    const aiExplanation = this.generateAiExplanation(content, extracted.searchQuery);
+    const aiExplanation = this.generateAiExplanation(content, searchQuery);
     const adaptiveModality = videoResult?.adaptiveModality;
     const defaultMode = adaptiveModality?.defaultMode || 'ai';
 
@@ -1043,10 +906,10 @@ Extract the main platform/framework/tool name. Reply with ONLY the name (e.g., "
         this.logger.log(`📝 Day ${dayNumber}: AI explanation as default (${adaptiveModality?.reasonShort || 'confidence low'})`);
         processedVideo = {
           useAiExplanation: true,
-          concept: extracted.searchQuery,
-          title: `Understanding ${extracted.searchQuery}`,
+          concept: searchQuery,
+          title: `Understanding ${searchQuery}`,
           explanation: aiExplanation,
-          reason: adaptiveModality?.reason || `AI explanation recommended for "${extracted.searchQuery}".`,
+          reason: adaptiveModality?.reason || `AI explanation recommended for "${searchQuery}".`,
           videoAvailable: adaptiveModality?.videoAvailable ?? true,
           showVideoOption: adaptiveModality?.showVideoOption ?? true,
           ...(videoResult.video ? {
@@ -1130,11 +993,6 @@ Extract the main platform/framework/tool name. Reply with ONLY the name (e.g., "
             reason: adaptiveModality?.reason || 'Good video match found.',
             reasonShort: adaptiveModality?.reasonShort || 'Good match',
           },
-          // Concept requirements used for this search (for debugging/transparency)
-          conceptRequirements: {
-            mustCover: extracted.mustCover,
-            platform: extracted.platform,
-          },
         };
       }
     } else if (videoResult && !videoResult.success) {
@@ -1142,10 +1000,10 @@ Extract the main platform/framework/tool name. Reply with ONLY the name (e.g., "
       this.logger.warn(`⚠️ Day ${dayNumber} video not found: ${videoResult?.error || 'No result'}`);
       processedVideo = {
         useAiExplanation: true,
-        concept: extracted.searchQuery,
-        title: `Understanding ${extracted.searchQuery}`,
+        concept: searchQuery,
+        title: `Understanding ${searchQuery}`,
         explanation: aiExplanation,
-        reason: `No suitable video found for "${extracted.searchQuery}". Here's a focused explanation.`,
+        reason: `No suitable video found for "${searchQuery}". Here's a focused explanation.`,
         videoAvailable: false,
         showVideoOption: false,
         watchPoints: content.video?.watchPoints,
@@ -1160,8 +1018,8 @@ Extract the main platform/framework/tool name. Reply with ONLY the name (e.g., "
       // videoResult is null (search wasn't performed or failed)
       processedVideo = {
         useAiExplanation: true,
-        concept: extracted.searchQuery,
-        title: `Understanding ${extracted.searchQuery}`,
+        concept: searchQuery,
+        title: `Understanding ${searchQuery}`,
         explanation: aiExplanation,
         reason: 'AI explanation provided for this topic.',
         videoAvailable: false,

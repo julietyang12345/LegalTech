@@ -154,8 +154,9 @@ function calculateScore(video: ScoringVideo, context: ScoringContext): { total: 
   const weights = SCORING_WEIGHTS[context.userLevel];
   const mw = MARKETING_WEIGHTS[context.userLevel] ?? 0.4;
 
+  const conceptMatchScore = scoreConceptMatch(video, context);
   const scores = {
-    conceptMatch: scoreConceptMatch(video, context),
+    conceptMatch: conceptMatchScore,
     channelTrust: scoreChannelTrust(video),
     marketingPenalty: scoreMarketingPenalty(video),
     durationFit: scoreDurationFit(video, context),

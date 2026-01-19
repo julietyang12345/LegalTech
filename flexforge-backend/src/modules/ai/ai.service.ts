@@ -229,6 +229,7 @@ export class AiService {
       // Lightweight extraction (minimal tokens)
       [AITask.LIGHTWEIGHT_EXTRACTION]: [
         { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
+        { provider: 'groq', model: 'llama-3.1-70b-versatile' },
         { provider: 'openai', model: 'gpt-4o-mini' },
       ],
 
