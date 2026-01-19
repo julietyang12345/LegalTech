@@ -33,6 +33,9 @@ export enum AITask {
   SIMPLE_CLASSIFICATION = 'SIMPLE_CLASSIFICATION',
   DATA_VALIDATION = 'DATA_VALIDATION',
 
+  // Lightweight extraction (Haiku - minimal tokens)
+  LIGHTWEIGHT_EXTRACTION = 'LIGHTWEIGHT_EXTRACTION',
+
   // Fast text (Groq Llama 3.1)
   EMAIL_SUMMARY = 'EMAIL_SUMMARY',
   NOTIFICATION_GENERATION = 'NOTIFICATION_GENERATION',
@@ -158,46 +161,46 @@ export class AiService {
 
       // Interactive
       [AITask.TUTOR_CHAT]: [
-        { provider: 'anthropic', model: 'claude-haiku-3-5-20241022' },
+        { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
         { provider: 'anthropic', model: 'claude-sonnet-4-20250514' },
         { provider: 'openai', model: 'gpt-4o-mini' },
       ],
       [AITask.ALTERNATIVE_EXPLANATION]: [
-        { provider: 'anthropic', model: 'claude-haiku-3-5-20241022' },
+        { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
         { provider: 'openai', model: 'gpt-4o-mini' },
       ],
       [AITask.CODE_REVIEW]: [
-        { provider: 'anthropic', model: 'claude-haiku-3-5-20241022' },
+        { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
         { provider: 'anthropic', model: 'claude-sonnet-4-20250514' },
       ],
       [AITask.STUCK_DETECTION]: [
-        { provider: 'anthropic', model: 'claude-haiku-3-5-20241022' },
+        { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
         { provider: 'openai', model: 'gpt-4o-mini' },
       ],
       [AITask.LIFE_HAPPENS_ADJUST]: [
-        { provider: 'anthropic', model: 'claude-haiku-3-5-20241022' },
+        { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
         { provider: 'openai', model: 'gpt-4o-mini' },
       ],
       [AITask.REFLECTION_ANALYSIS]: [
-        { provider: 'anthropic', model: 'claude-haiku-3-5-20241022' },
+        { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
         { provider: 'openai', model: 'gpt-4o-mini' },
       ],
 
       // Video/Multimodal
       [AITask.VIDEO_SUMMARY]: [
         { provider: 'gemini', model: 'gemini-2.0-flash-exp' },
-        { provider: 'anthropic', model: 'claude-haiku-3-5-20241022' },
+        { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
       ],
       [AITask.VIDEO_TIMESTAMP_EXTRACTION]: [
         { provider: 'gemini', model: 'gemini-2.0-flash-exp' },
-        { provider: 'anthropic', model: 'claude-haiku-3-5-20241022' },
+        { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
       ],
       [AITask.VIDEO_CHAPTER_GENERATION]: [
         { provider: 'gemini', model: 'gemini-2.0-flash-exp' },
       ],
       [AITask.TRANSCRIPT_ANALYSIS]: [
         { provider: 'gemini', model: 'gemini-2.0-flash-exp' },
-        { provider: 'anthropic', model: 'claude-haiku-3-5-20241022' },
+        { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
       ],
       [AITask.VISUAL_CONTENT_ANALYSIS]: [
         { provider: 'gemini', model: 'gemini-2.0-flash-exp' },
@@ -210,7 +213,7 @@ export class AiService {
       ],
       [AITask.QUIZ_GENERATION]: [
         { provider: 'openai', model: 'gpt-4o-mini' },
-        { provider: 'anthropic', model: 'claude-haiku-3-5-20241022' },
+        { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
       ],
       [AITask.SPACED_REPETITION_SCHEDULE]: [
         { provider: 'openai', model: 'gpt-4o-mini' },
@@ -220,6 +223,12 @@ export class AiService {
         { provider: 'openai', model: 'gpt-4o-mini' },
       ],
       [AITask.DATA_VALIDATION]: [
+        { provider: 'openai', model: 'gpt-4o-mini' },
+      ],
+
+      // Lightweight extraction (minimal tokens)
+      [AITask.LIGHTWEIGHT_EXTRACTION]: [
+        { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
         { provider: 'openai', model: 'gpt-4o-mini' },
       ],
 
@@ -234,7 +243,7 @@ export class AiService {
     };
 
     return routes[task] || [
-      { provider: 'anthropic', model: 'claude-haiku-3-5-20241022' },
+      { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
     ];
   }
 

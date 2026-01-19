@@ -138,6 +138,11 @@ export interface CurriculumMetadata {
   suggestedLanguage?: string;
   isProjectBased?: boolean;
   outputType?: 'working_code' | 'understand_concept' | 'fix_bug' | 'ship_project';
+
+  // Language learning specific (when skillType is KNOWLEDGE + language skill)
+  isLanguageLearning?: boolean;
+  targetLanguage?: TargetLanguage;
+  proficiencyLevel?: string;       // HSK1, A1, N5, etc.
 }
 
 export interface Curriculum {
@@ -319,6 +324,10 @@ export interface CurriculumDay {
   // Boss project flag (from curriculum skeleton - indicates this day contributes to boss project)
   hasBossProject?: boolean;
   bossMilestonePreview?: string;
+
+  // Language learning specific (when isLanguageLearning = true)
+  dailyDeck?: DailyDeck;                      // Auto-generated vocab deck for the day
+  languageFoundationCards?: LanguageFoundationCard[]; // Language-specific cards
 }
 
 export interface ConceptQuestion {
@@ -351,6 +360,194 @@ export interface FoundationCard {
   codeExample?: string;      // Optional code snippet (max 5 lines)
   microQuestion: MicroQuestion;
   order: number;
+}
+
+// ============================================
+// Language Learning Types (Generic Framework)
+// ============================================
+
+// Supported target languages with their features
+export type TargetLanguage =
+  | 'chinese'    // Mandarin - tones, characters, pinyin
+  | 'japanese'   // Hiragana, katakana, kanji, romaji
+  | 'korean'     // Hangul, romanization
+  | 'arabic'     // RTL, script, diacritics
+  | 'spanish'    // Gender, conjugation
+  | 'french'     // Gender, liaisons, accents
+  | 'german'     // Cases, gender, compound words
+  | 'italian'    // Gender, conjugation
+  | 'portuguese' // Gender, nasal sounds
+  | 'russian'    // Cyrillic, cases, aspect
+  | 'hindi'      // Devanagari, gender
+  | 'thai'       // Tones, no spaces, script
+  | 'vietnamese' // Tones, diacritics
+  | 'other';
+
+// Language-specific features (auto-enabled based on target language)
+export interface LanguageFeatures {
+  hasTones: boolean;              // Chinese, Thai, Vietnamese
+  hasGender: boolean;             // Spanish, French, German, etc.
+  hasScript: boolean;             // Non-Latin scripts (Chinese, Japanese, Arabic, etc.)
+  hasRomanization: boolean;       // Pinyin, Romaji, etc.
+  isRTL: boolean;                 // Arabic, Hebrew
+  hasStrokeOrder: boolean;        // Chinese, Japanese kanji
+  hasCases: boolean;              // German, Russian
+  hasConjugation: boolean;        // Most European languages
+  proficiencyLevels?: string[];   // HSK, JLPT, CEFR, etc.
+}
+
+// Default features per language
+export const LANGUAGE_FEATURES: Record<TargetLanguage, LanguageFeatures> = {
+  chinese: { hasTones: true, hasGender: false, hasScript: true, hasRomanization: true, isRTL: false, hasStrokeOrder: true, hasCases: false, hasConjugation: false, proficiencyLevels: ['HSK1', 'HSK2', 'HSK3', 'HSK4', 'HSK5', 'HSK6'] },
+  japanese: { hasTones: false, hasGender: false, hasScript: true, hasRomanization: true, isRTL: false, hasStrokeOrder: true, hasCases: false, hasConjugation: true, proficiencyLevels: ['N5', 'N4', 'N3', 'N2', 'N1'] },
+  korean: { hasTones: false, hasGender: false, hasScript: true, hasRomanization: true, isRTL: false, hasStrokeOrder: false, hasCases: false, hasConjugation: true, proficiencyLevels: ['TOPIK1', 'TOPIK2', 'TOPIK3', 'TOPIK4', 'TOPIK5', 'TOPIK6'] },
+  arabic: { hasTones: false, hasGender: true, hasScript: true, hasRomanization: true, isRTL: true, hasStrokeOrder: false, hasCases: true, hasConjugation: true },
+  spanish: { hasTones: false, hasGender: true, hasScript: false, hasRomanization: false, isRTL: false, hasStrokeOrder: false, hasCases: false, hasConjugation: true, proficiencyLevels: ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] },
+  french: { hasTones: false, hasGender: true, hasScript: false, hasRomanization: false, isRTL: false, hasStrokeOrder: false, hasCases: false, hasConjugation: true, proficiencyLevels: ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] },
+  german: { hasTones: false, hasGender: true, hasScript: false, hasRomanization: false, isRTL: false, hasStrokeOrder: false, hasCases: true, hasConjugation: true, proficiencyLevels: ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] },
+  italian: { hasTones: false, hasGender: true, hasScript: false, hasRomanization: false, isRTL: false, hasStrokeOrder: false, hasCases: false, hasConjugation: true, proficiencyLevels: ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] },
+  portuguese: { hasTones: false, hasGender: true, hasScript: false, hasRomanization: false, isRTL: false, hasStrokeOrder: false, hasCases: false, hasConjugation: true, proficiencyLevels: ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] },
+  russian: { hasTones: false, hasGender: true, hasScript: true, hasRomanization: true, isRTL: false, hasStrokeOrder: false, hasCases: true, hasConjugation: true, proficiencyLevels: ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] },
+  hindi: { hasTones: false, hasGender: true, hasScript: true, hasRomanization: true, isRTL: false, hasStrokeOrder: false, hasCases: true, hasConjugation: true },
+  thai: { hasTones: true, hasGender: false, hasScript: true, hasRomanization: true, isRTL: false, hasStrokeOrder: false, hasCases: false, hasConjugation: false },
+  vietnamese: { hasTones: true, hasGender: false, hasScript: false, hasRomanization: false, isRTL: false, hasStrokeOrder: false, hasCases: false, hasConjugation: false },
+  other: { hasTones: false, hasGender: false, hasScript: false, hasRomanization: false, isRTL: false, hasStrokeOrder: false, hasCases: false, hasConjugation: false },
+};
+
+// Vocabulary item - the core learning unit
+export interface VocabularyItem {
+  id: string;
+
+  // Core content (required)
+  term: string;                   // The word in target language
+  definition: string;             // Meaning in user's language
+
+  // Pronunciation (use browser TTS by default)
+  romanization?: string;          // Pinyin, romaji, transliteration
+  romanizationAlt?: string;       // Alternative notation (e.g., "xue2" vs "xué")
+  pronunciation?: string;         // IPA or simplified pronunciation guide
+  audioUrl?: string;              // Optional pre-recorded audio (cloud TTS)
+
+  // Language-specific fields (populated based on LanguageFeatures)
+  tone?: number | number[];       // For tonal languages (1-5 or array for multi-syllable)
+  gender?: 'masculine' | 'feminine' | 'neuter'; // For gendered languages
+  scriptVariants?: {              // For languages with multiple scripts
+    primary: string;              // e.g., simplified Chinese, hiragana
+    secondary?: string;           // e.g., traditional Chinese, kanji
+    tertiary?: string;            // e.g., katakana for Japanese
+  };
+
+  // Context & examples
+  partOfSpeech?: string;          // noun, verb, adjective, etc.
+  examples: ExampleSentence[];    // 1-3 example sentences
+
+  // Metadata
+  proficiencyLevel?: string;      // HSK1, N5, A1, etc.
+  frequency?: number;             // 1-10000 (lower = more common)
+  tags?: string[];                // Categories: food, travel, business, etc.
+
+  // Related words (for later phases)
+  relatedWords?: string[];        // IDs of related vocabulary
+}
+
+// Example sentence with audio
+export interface ExampleSentence {
+  sentence: string;               // Full sentence in target language
+  romanization?: string;          // Romanized version
+  translation: string;            // Translation
+  audioUrl?: string;              // Optional audio
+}
+
+// Daily deck - the habit loop core
+export interface DailyDeck {
+  date: string;                   // ISO date
+  sessionId: string;
+
+  // Auto-generated deck (no user choice = less friction)
+  newWords: VocabularyItem[];     // 5 new words
+  reviewWords: VocabularyItem[];  // 5 review words (from spaced repetition)
+
+  // Quick listening check (1-2 questions)
+  listeningCheck?: ListeningQuestion[];
+
+  // Progress
+  completed: boolean;
+  completedAt?: Date;
+  streakDay?: number;             // Current streak count
+}
+
+// Listening question - audio → choice
+export interface ListeningQuestion {
+  id: string;
+  audioText: string;              // Text to be spoken (use browser TTS)
+  audioUrl?: string;              // Optional pre-recorded
+  questionType: 'meaning' | 'transcription' | 'fill-blank';
+
+  // For 'meaning' type
+  options?: string[];             // Multiple choice options
+  correctIndex?: number;
+
+  // For 'transcription' type
+  correctAnswer?: string;
+  acceptedVariants?: string[];    // Alternative correct answers
+
+  // For 'fill-blank' type
+  sentenceWithBlank?: string;     // "I ___ to the store"
+  blankAnswer?: string;
+}
+
+// Spaced repetition progress (SM-2 algorithm)
+export interface VocabProgress {
+  id: string;
+  userId: string;
+  vocabularyId: string;
+  sessionId: string;
+
+  // SM-2 algorithm fields
+  easeFactor: number;             // Default 2.5, adjusted per review
+  interval: number;               // Days until next review
+  repetitions: number;            // Successful reviews in a row
+  nextReviewDate: Date;
+
+  // Stats
+  totalReviews: number;
+  correctCount: number;
+  lastReviewedAt?: Date;
+
+  // Mastery level (derived from easeFactor + repetitions)
+  masteryLevel: 'new' | 'learning' | 'reviewing' | 'mastered';
+}
+
+// Language learning session config
+export interface LanguageLearningConfig {
+  targetLanguage: TargetLanguage;
+  proficiencyLevel?: string;      // HSK1, A1, N5, etc.
+  features: LanguageFeatures;     // Auto-populated from LANGUAGE_FEATURES
+
+  // User preferences
+  showRomanization: boolean;      // Show pinyin/romaji by default
+  showScriptVariant?: 'primary' | 'secondary' | 'both'; // Simplified/traditional
+  dailyNewWords: number;          // Default 5
+  dailyReviewWords: number;       // Default 5
+
+  // TTS preference
+  useBrowserTTS: boolean;         // Default true (free, instant)
+  ttsSpeed?: number;              // 0.75, 1.0, 1.25
+}
+
+// Foundation card extended for language learning
+export interface LanguageFoundationCard extends FoundationCard {
+  // Language-specific content
+  vocabulary?: VocabularyItem;    // If card teaches a word
+  grammarPattern?: {
+    pattern: string;              // e.g., "Subject + 了 + Verb"
+    meaning: string;
+    examples: ExampleSentence[];
+  };
+
+  // Audio (uses browser TTS if audioUrl not provided)
+  audioText?: string;             // Text to speak
+  audioUrl?: string;              // Pre-recorded audio
 }
 
 export interface Task {

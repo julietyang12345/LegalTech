@@ -59,15 +59,21 @@ export class CurriculumService {
 
   /**
    * Extract key concepts from generated day content for video search
-   * Uses foundationCards concepts and task title/description to build search query
-   * Includes skill context to avoid overly generic searches
+   * Returns structured requirements for both search and scoring
    */
-  private extractSearchConceptsFromContent(
+  private async extractSearchConceptsFromContent(
     dayContent: any,
     fallbackTitle: string,
     skillName?: string,
-  ): string {
+    dayObjectives?: string[],
+  ): Promise<{
+    searchQuery: string;
+    mustCover: string[];
+    platform?: string;
+    avoidTopics?: string[];
+  }> {
     const concepts: string[] = [];
+    const mustCover: string[] = [];
 
     // Extract from foundationCards (primary concepts)
     if (dayContent.foundationCards && Array.isArray(dayContent.foundationCards)) {
@@ -82,7 +88,17 @@ export class CurriculumService {
             .trim();
           if (cleaned && cleaned.length > 2) {
             concepts.push(cleaned);
+            mustCover.push(cleaned);
           }
+        }
+      }
+    }
+
+    // Add day objectives to mustCover (these are the learning goals)
+    if (dayObjectives && Array.isArray(dayObjectives)) {
+      for (const obj of dayObjectives) {
+        if (obj && !mustCover.some(c => c.toLowerCase() === obj.toLowerCase())) {
+          mustCover.push(obj);
         }
       }
     }
@@ -97,13 +113,17 @@ export class CurriculumService {
       }
     }
 
+    // Detect platform from skill name (AI with cache + pattern fallback)
+    const platform = await this.detectPlatformFromSkill(skillName || '');
+
     // Build search query with skill context for relevance
+    let searchQuery: string;
     if (concepts.length > 0) {
-      // Take first 2-3 concepts
-      const conceptQuery = concepts.slice(0, 3).join(' ');
+      // Take first 2-3 concepts, deduplicated
+      const uniqueConcepts = [...new Set(concepts)].slice(0, 3);
+      const conceptQuery = uniqueConcepts.join(' ');
 
       // Always include skill context to ensure domain-specific results
-      // e.g., "AI Automation" + "API request" → "AI Automation API request"
       if (skillName) {
         const skillContext = skillName
           .replace(/\b(introduction to|intro to|basics of|fundamentals of|learning|course|tutorial)\b/gi, '')
@@ -112,17 +132,106 @@ export class CurriculumService {
           .slice(0, 2)  // First 2 words of skill name
           .join(' ');
 
-        const searchQuery = `${skillContext} ${conceptQuery}`;
-        this.logger.log(`🔍 Search query: "${searchQuery}" (skill: ${skillContext}, concepts: ${conceptQuery})`);
-        return searchQuery;
+        // Avoid duplicating platform in query if already in concepts
+        const conceptsLower = conceptQuery.toLowerCase();
+        if (platform && conceptsLower.includes(platform.toLowerCase())) {
+          searchQuery = `${conceptQuery} tutorial`;
+        } else {
+          searchQuery = `${skillContext} ${conceptQuery}`;
+        }
+      } else {
+        searchQuery = conceptQuery;
       }
-
-      this.logger.log(`🔍 Search query (no skill context): "${conceptQuery}"`);
-      return conceptQuery;
+    } else {
+      searchQuery = fallbackTitle;
     }
 
-    this.logger.log(`🔍 Using fallback search concept: "${fallbackTitle}"`);
-    return fallbackTitle;
+    this.logger.log(`🔍 Search: "${searchQuery}" | mustCover: [${mustCover.slice(0, 3).join(', ')}] | platform: ${platform || 'none'}`);
+
+    return {
+      searchQuery,
+      mustCover: mustCover.slice(0, 5), // Cap at 5 concepts
+      platform,
+    };
+  }
+
+  // Cache for AI-detected platforms (skill name -> platform)
+  private platformCache = new Map<string, string | null>();
+
+  /**
+   * Detect platform/framework from skill name using AI (Haiku)
+   * Falls back to pattern-based detection if AI fails
+   * Caches results to minimize API calls
+   */
+  private async detectPlatformFromSkill(skillName: string): Promise<string | undefined> {
+    if (!skillName || skillName.trim().length < 3) return undefined;
+
+    const cacheKey = skillName.toLowerCase().trim();
+
+    // Check cache first
+    if (this.platformCache.has(cacheKey)) {
+      const cached = this.platformCache.get(cacheKey);
+      return cached ?? undefined;
+    }
+
+    try {
+      // Minimal prompt for Haiku (~40 tokens total)
+      const prompt = `Skill: "${skillName}"
+Extract the main platform/framework/tool name. Reply with ONLY the name (e.g., "React", "Vercel", "n8n") or "none" if no specific platform.`;
+
+      const response = await this.aiService.routeRequest(
+        AITask.LIGHTWEIGHT_EXTRACTION,
+        prompt,
+      );
+
+      const result = response.content.trim();
+      const platform = result.toLowerCase() === 'none' ? null : result;
+
+      // Cache the result
+      this.platformCache.set(cacheKey, platform);
+
+      if (platform) {
+        this.logger.debug(`🎯 AI detected platform "${platform}" from "${skillName}"`);
+      }
+
+      return platform ?? undefined;
+    } catch (error) {
+      this.logger.warn(`Platform detection AI failed, using pattern fallback: ${error.message}`);
+      // Fallback to pattern-based detection
+      const fallback = this.detectPlatformByPattern(skillName);
+      this.platformCache.set(cacheKey, fallback ?? null);
+      return fallback;
+    }
+  }
+
+  /**
+   * Pattern-based platform detection (fallback when AI fails)
+   */
+  private detectPlatformByPattern(skillName: string): string | undefined {
+    const words = skillName.split(/\s+/);
+
+    const skipWords = new Set([
+      'the', 'a', 'an', 'with', 'using', 'for', 'and', 'in', 'to', 'of',
+      'basics', 'fundamentals', 'introduction', 'intro', 'advanced', 'beginner',
+      'tutorial', 'guide', 'course', 'deployment', 'development', 'programming',
+    ]);
+
+    for (const word of words) {
+      const clean = word.replace(/[^a-zA-Z0-9.]/g, '');
+      if (!clean || clean.length < 2) continue;
+      if (skipWords.has(clean.toLowerCase())) continue;
+
+      // Ends with .js, .ts, .com, .io
+      if (/\.(js|ts|com|io|dev)$/i.test(clean)) return clean;
+      // All caps abbreviations (AWS, GCP)
+      if (/^[A-Z0-9]{2,}$/.test(clean)) return clean;
+      // Tools like n8n, v0
+      if (/^[a-z]+[0-9]+[a-z]*$/i.test(clean)) return clean;
+      // Capitalized names (React, Vercel)
+      if (/^[A-Z][a-zA-Z0-9]*$/.test(clean) && clean.length >= 3) return clean;
+    }
+
+    return undefined;
   }
 
   constructor(
@@ -512,6 +621,7 @@ export class CurriculumService {
     coreContent.contentSource = contentSource;
 
     // ====== VIDEO SEARCH FOR CORE CONTENT (using shared helper) ======
+    // Includes multi-model alignment verification (Haiku checks Gemini's video selection)
     const videoResult = await this.searchAndProcessVideo({
       content: coreContent,
       searchConcept: dayOverview.title,
@@ -523,6 +633,7 @@ export class CurriculumService {
       hoursPerDay: curriculum.metadata.hoursPerDay || 1,
       dayNumber,
       includeAlternatives: false,  // CORE doesn't need alternatives
+      dayObjectives: dayOverview.skills || [],  // For multi-model alignment verification
     });
 
     const shouldSearchVideo = videoStrategy !== 'skip' && contentSource !== 'text';
@@ -833,6 +944,7 @@ export class CurriculumService {
   /**
    * Shared video search and processing logic for generateDayCoreDetails.
    * Handles video search, adaptive modality decision, and returns the processed video object.
+   * Includes multi-model alignment verification to ensure video matches day content.
    */
   private async searchAndProcessVideo(params: {
     content: any;  // dayContent or coreContent
@@ -845,6 +957,7 @@ export class CurriculumService {
     hoursPerDay: number;
     dayNumber: number;
     includeAlternatives?: boolean;  // true for generateDayDetails, false for CORE
+    dayObjectives?: string[];  // Day's learning objectives for alignment verification
   }): Promise<{ video: any; rawResult: any } | null> {
     const {
       content,
@@ -857,6 +970,7 @@ export class CurriculumService {
       hoursPerDay,
       dayNumber,
       includeAlternatives = false,
+      dayObjectives = [],
     } = params;
 
     const shouldSearchVideo = videoStrategy !== 'skip' && contentSource !== 'text';
@@ -870,11 +984,13 @@ export class CurriculumService {
       return null;
     }
 
-    // Extract search concept from content
-    const contentBasedConcept = this.extractSearchConceptsFromContent(
+    // Extract search query AND concept requirements from day content
+    // This returns structured data for both search and scoring
+    const extracted = await this.extractSearchConceptsFromContent(
       content,
       searchConcept,
       skillName,
+      dayObjectives,
     );
 
     // Calculate video slot based on hours per day
@@ -890,16 +1006,22 @@ export class CurriculumService {
       'ADVANCED': 'advanced',
     };
 
-    this.logger.log(`🎥 Searching video for: "${contentBasedConcept}" (${videoSlot}min slot)`);
+    this.logger.log(`🎥 Searching video for: "${extracted.searchQuery}" (${videoSlot}min slot) with ${extracted.mustCover.length} required concepts`);
 
     let videoResult: any = null;
     try {
       videoResult = await this.videoMatcher.findBestVideo({
-        concept: contentBasedConcept,
+        concept: extracted.searchQuery,
         userSlot: videoSlot,
         userLevel: levelMap[skillLevel] || 'beginner',
         skillType,
         contentSource,
+        // Pass concept requirements to drive video scoring
+        conceptRequirements: {
+          mustCover: extracted.mustCover,
+          platform: extracted.platform,
+          avoidTopics: extracted.avoidTopics,
+        },
       }, { deepVerify: true });
     } catch (error: any) {
       this.logger.warn(`⚠️ Video search failed: ${error.message}`);
@@ -909,7 +1031,7 @@ export class CurriculumService {
     this.logger.log(`🔍 VIDEO RESULT: success=${videoResult?.success}, video=${videoResult?.video?.title || 'none'}, error=${videoResult?.error || 'none'}`);
 
     // Generate AI explanation as fallback
-    const aiExplanation = this.generateAiExplanation(content, contentBasedConcept);
+    const aiExplanation = this.generateAiExplanation(content, extracted.searchQuery);
     const adaptiveModality = videoResult?.adaptiveModality;
     const defaultMode = adaptiveModality?.defaultMode || 'ai';
 
@@ -921,10 +1043,10 @@ export class CurriculumService {
         this.logger.log(`📝 Day ${dayNumber}: AI explanation as default (${adaptiveModality?.reasonShort || 'confidence low'})`);
         processedVideo = {
           useAiExplanation: true,
-          concept: contentBasedConcept,
-          title: `Understanding ${contentBasedConcept}`,
+          concept: extracted.searchQuery,
+          title: `Understanding ${extracted.searchQuery}`,
           explanation: aiExplanation,
-          reason: adaptiveModality?.reason || `AI explanation recommended for "${contentBasedConcept}".`,
+          reason: adaptiveModality?.reason || `AI explanation recommended for "${extracted.searchQuery}".`,
           videoAvailable: adaptiveModality?.videoAvailable ?? true,
           showVideoOption: adaptiveModality?.showVideoOption ?? true,
           ...(videoResult.video ? {
@@ -1008,6 +1130,11 @@ export class CurriculumService {
             reason: adaptiveModality?.reason || 'Good video match found.',
             reasonShort: adaptiveModality?.reasonShort || 'Good match',
           },
+          // Concept requirements used for this search (for debugging/transparency)
+          conceptRequirements: {
+            mustCover: extracted.mustCover,
+            platform: extracted.platform,
+          },
         };
       }
     } else if (videoResult && !videoResult.success) {
@@ -1015,10 +1142,10 @@ export class CurriculumService {
       this.logger.warn(`⚠️ Day ${dayNumber} video not found: ${videoResult?.error || 'No result'}`);
       processedVideo = {
         useAiExplanation: true,
-        concept: contentBasedConcept,
-        title: `Understanding ${contentBasedConcept}`,
+        concept: extracted.searchQuery,
+        title: `Understanding ${extracted.searchQuery}`,
         explanation: aiExplanation,
-        reason: `No suitable video found for "${contentBasedConcept}". Here's a focused explanation.`,
+        reason: `No suitable video found for "${extracted.searchQuery}". Here's a focused explanation.`,
         videoAvailable: false,
         showVideoOption: false,
         watchPoints: content.video?.watchPoints,
@@ -1033,8 +1160,8 @@ export class CurriculumService {
       // videoResult is null (search wasn't performed or failed)
       processedVideo = {
         useAiExplanation: true,
-        concept: contentBasedConcept,
-        title: `Understanding ${contentBasedConcept}`,
+        concept: extracted.searchQuery,
+        title: `Understanding ${extracted.searchQuery}`,
         explanation: aiExplanation,
         reason: 'AI explanation provided for this topic.',
         videoAvailable: false,

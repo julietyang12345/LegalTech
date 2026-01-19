@@ -101,6 +101,17 @@ export interface ScoringContext {
   concept: string;
   userSlot: number;
   userLevel: 'beginner' | 'intermediate' | 'advanced';
+  // Optional concept requirements for curriculum-driven scoring
+  conceptRequirements?: {
+    mustCover: string[];      // Concepts video must teach
+    platform?: string;        // Required platform (e.g., "Vercel")
+    avoidTopics?: string[];   // Topics to penalize
+  };
+}
+
+export interface ConceptMatchResult {
+  score: number;              // 0-100
+  conceptCoverage?: number;   // % of mustCover concepts found (0-100)
 }
 
 // ============================================
@@ -928,11 +939,17 @@ export function scoreChannelTrust(video: ScoringVideo): number {
  *
  * Uses word coverage ratio to penalize videos that only match some concept words.
  * e.g., searching "AI API" but video only has "API" = low coverage = penalty
+ *
+ * Also handles curriculum-driven requirements:
+ * - mustCover: bonus for covering required concepts
+ * - platform: penalty if required platform not in title
+ * - avoidTopics: penalty for mentioning topics to avoid
  */
-export function scoreConceptMatch(video: ScoringVideo, context: ScoringContext): number {
+export function scoreConceptMatch(video: ScoringVideo, context: ScoringContext): ConceptMatchResult {
   let score = 50;
   const titleLower = video.title.toLowerCase();
   const descLower = video.description.toLowerCase();
+  const combined = `${titleLower} ${descLower}`;
   const conceptLower = context.concept.toLowerCase();
 
   // Exact concept in title: +30
@@ -985,7 +1002,55 @@ export function scoreConceptMatch(video: ScoringVideo, context: ScoringContext):
     }
   }
 
-  return Math.max(20, Math.min(100, score));
+  // ══════════════════════════════════════════════════════════════
+  // Curriculum-driven requirements (mustCover, platform, avoidTopics)
+  // ══════════════════════════════════════════════════════════════
+  let conceptCoverage: number | undefined;
+  const requirements = context.conceptRequirements;
+
+  if (requirements?.mustCover?.length) {
+    // Count how many required concepts are mentioned
+    let coveredCount = 0;
+    for (const concept of requirements.mustCover) {
+      const conceptLower = concept.toLowerCase();
+      const conceptWords = conceptLower.split(/\s+/).filter(w => w.length > 2);
+
+      if (combined.includes(conceptLower)) {
+        coveredCount++;
+      } else if (conceptWords.length > 1 && conceptWords.every(w => combined.includes(w))) {
+        coveredCount += 0.5; // Partial match
+      }
+    }
+
+    // Calculate coverage percentage
+    conceptCoverage = Math.round((coveredCount / requirements.mustCover.length) * 100);
+
+    // Bonus: +0.25 per 1% coverage, max +25
+    score += Math.min(25, Math.round(conceptCoverage * 0.25));
+  }
+
+  // Penalty for avoid topics
+  if (requirements?.avoidTopics?.length) {
+    for (const avoid of requirements.avoidTopics) {
+      if (combined.includes(avoid.toLowerCase())) {
+        score -= 8;
+      }
+    }
+  }
+
+  // Platform mismatch penalty:
+  // If required platform is set but not in video TITLE, penalize
+  if (requirements?.platform) {
+    const requiredPlatform = requirements.platform.toLowerCase();
+    if (!titleLower.includes(requiredPlatform)) {
+      score -= 15;
+    }
+  }
+
+  return {
+    score: Math.max(20, Math.min(100, score)),
+    conceptCoverage,
+  };
 }
 
 /**

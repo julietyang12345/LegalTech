@@ -58,6 +58,16 @@ export interface VideoMatchContext {
     contentDepth: 'fast' | 'medium' | 'deep';
     directionKeywords?: string[];  // Keywords from selected direction (hints for search)
   };
+
+  // Structured concept requirements (extracted from day content by Haiku)
+  // These drive video search and scoring - video MUST cover these concepts
+  conceptRequirements?: {
+    mustCover: string[];        // Concepts video MUST teach (used for scoring)
+    searchTerms?: string[];     // Optimized search phrases (used for YouTube query)
+    platform?: string;          // e.g., "React", "Python" (filters results)
+    framework?: string;         // e.g., "JavaScript" (filters results)
+    avoidTopics?: string[];     // Topics to avoid (penalize in scoring)
+  };
 }
 
 export interface WatchPlan {
@@ -114,6 +124,7 @@ export interface ScoredVideo {
   cheapScore: number;           // Quick score before enrichment (for debugging)
   validationResult: VideoValidationResult;
   contentType: ContentTypeResult;  // CONCEPT vs TOOL_SPECIFIC classification
+  conceptCoverage?: number;     // % of mustCover concepts found in video (0-100)
 }
 
 export interface VideoAlternative {
@@ -219,15 +230,27 @@ export class VideoMatchingService {
   ): Promise<VideoMatchResult> {
     const { deepVerify = false, excludeVideoIds = [], maxCandidates = 30 } = options;
 
+    const hasRequirements = context.conceptRequirements?.mustCover?.length > 0;
     this.logger.log(
-      `Finding video for "${context.concept}" (${context.userSlot}min, ${context.userLevel}, deepVerify: ${deepVerify})`,
+      `Finding video for "${context.concept}" (${context.userSlot}min, ${context.userLevel}, deepVerify: ${deepVerify}, hasRequirements: ${hasRequirements})`,
     );
 
     try {
       // ═══════════════════════════════════════════
       // LAYER 1: Fast Filter (FREE)
       // ═══════════════════════════════════════════
-      const searchQuery = buildSearchQuery(context.concept, context.userLevel);
+
+      // Use concept requirements for search if available (from Haiku extraction)
+      // Otherwise fall back to standard query building
+      let searchQuery: string;
+      if (context.conceptRequirements?.searchTerms?.length) {
+        // Use the first optimized search term
+        searchQuery = context.conceptRequirements.searchTerms[0];
+        this.logger.log(`🎯 Using requirement-driven search: "${searchQuery}"`);
+      } else {
+        searchQuery = buildSearchQuery(context.concept, context.userLevel);
+      }
+
       const preferredChannels = getPreferredChannelsForTopic(context.concept);
 
       const rawVideos = await this.searchYouTube(
@@ -334,7 +357,7 @@ export class VideoMatchingService {
         }
       }
 
-      const topCandidates = scoredVideos.slice(0, 10);
+      let topCandidates = scoredVideos.slice(0, 10);
       this.logger.log(
         `Layer 2: Top ${topCandidates.length} candidates. Best: ${topCandidates[0]?.totalScore.toFixed(1)} - "${topCandidates[0]?.video.title}"`,
       );
@@ -343,6 +366,51 @@ export class VideoMatchingService {
       }
       if (topCandidates.length > 2) {
         this.logger.log(`Layer 2: #3: "${topCandidates[2]?.video.title}" (${topCandidates[2]?.video.channelName})`);
+      }
+
+      // ═══════════════════════════════════════════
+      // LAYER 2.5: Coverage Threshold (FREE)
+      // Filter out candidates below minimum coverage threshold
+      // Platform mismatch penalty is already applied in scoring
+      // ═══════════════════════════════════════════
+      const MIN_COVERAGE = 20; // Minimum % of mustCover concepts required
+      const hasRequirements = context.conceptRequirements?.mustCover?.length > 0;
+
+      if (hasRequirements && topCandidates.length > 0) {
+        // Filter to only candidates meeting minimum coverage
+        const acceptableCandidates = topCandidates.filter(
+          c => (c.conceptCoverage ?? 0) >= MIN_COVERAGE
+        );
+
+        if (acceptableCandidates.length === 0) {
+          // No candidates meet coverage threshold - fall back to AI explanation
+          this.logger.log(
+            `Layer 2.5: No candidates meet ${MIN_COVERAGE}% coverage threshold. ` +
+            `Best was ${topCandidates[0]?.conceptCoverage ?? 0}% - falling back to AI explanation.`,
+          );
+          return {
+            success: false,
+            layer: 2,
+            tokenCost: 0,
+            useAiExplanation: true,
+            adaptiveModality: {
+              defaultMode: 'ai',
+              videoConfidence: 0,
+              reason: `No videos found with sufficient concept coverage (need ${MIN_COVERAGE}%+). AI explanation recommended.`,
+              reasonShort: 'Low video coverage',
+              videoAvailable: false,
+              aiAvailable: true,
+              showAiOption: false,
+              showVideoOption: false,
+            },
+            error: 'No videos meet minimum coverage threshold',
+          };
+        }
+
+        this.logger.log(
+          `Layer 2.5: ${acceptableCandidates.length}/${topCandidates.length} candidates meet ${MIN_COVERAGE}% coverage threshold`,
+        );
+        topCandidates = acceptableCandidates;
       }
 
       // ═══════════════════════════════════════════
@@ -938,8 +1006,16 @@ export class VideoMatchingService {
           return null;
         }
 
+        // Score concept match (includes mustCover/platform/avoidTopics handling)
+        const scoringContextWithRequirements = {
+          ...scoringContext,
+          conceptRequirements: context.conceptRequirements,
+        };
+        const conceptMatchResult = scoreConceptMatch(scoringVideo, scoringContextWithRequirements);
+        const conceptCoverage = conceptMatchResult.conceptCoverage;
+
         const scores = {
-          conceptMatch: scoreConceptMatch(scoringVideo, scoringContext),
+          conceptMatch: conceptMatchResult.score,
           channelTrust: scoreChannelTrust(scoringVideo),
           marketingPenalty: promoScore,
           durationFit: scoreDurationFit(scoringVideo, scoringContext),
@@ -1011,10 +1087,11 @@ export class VideoMatchingService {
           cheapScore: cheapScoreMap.get(video.videoId) ?? 0,
           validationResult,
           contentType, // Include for UI labeling
+          conceptCoverage, // % of mustCover concepts found (for filtering)
         };
       })
-      .filter((v): v is ScoredVideo => v !== null)
-      .sort((a, b) => b.totalScore - a.totalScore);
+      .filter((v): v is NonNullable<typeof v> => v !== null)
+      .sort((a, b) => b.totalScore - a.totalScore) as ScoredVideo[];
   }
 
   /**
