@@ -36,6 +36,12 @@ export interface SkillDetectionResult {
   isLanguageLearning?: boolean;
   targetLanguage?: TargetLanguage;
   proficiencyLevel?: string;  // HSK1, N5, A1, etc.
+
+  // Hybrid skill sections (when skill spans multiple categories)
+  customSections?: {
+    task1: string[];      // e.g., ['quiz', 'outputPrediction', 'designCritique']
+    intensive: string[];  // e.g., ['codeCompletion', 'designCritique', 'quiz']
+  } | null;
 }
 
 @Injectable()
@@ -96,6 +102,21 @@ CRITICAL: "Learning" or "understanding" something does NOT make it KNOWLEDGE cat
 - Learning music theory → KNOWLEDGE (theory only)
 - Learning an instrument → PHYSICAL (requires practice)
 
+HYBRID SKILLS: Some skills span multiple categories. If a skill doesn't fit cleanly into one category:
+- Pick the PRIMARY category as skillType
+- Set customSections to mix exercise types from both categories
+- Example: "Data Visualization" = CODE primary + DESIGN elements
+  → customSections: {task1: ["quiz", "outputPrediction", "designCritique"], intensive: ["codeCompletion", "designCritique", "quiz"]}
+- Example: "Music Production" = DESIGN primary + CODE elements (for DAWs)
+  → customSections: {task1: ["quiz", "designCritique", "fillBlank"], intensive: ["designCritique", "quiz", "matching"]}
+
+Available section types:
+- Universal: quiz, matching, fillBlank
+- CODE/AI_AGENT: outputPrediction, codeCompletion, debugging
+- PHYSICAL: reorder, formCheck, safetyCheck
+- DESIGN: designCritique
+- KNOWLEDGE: reorder (for sequential topics)
+
 Complexity Assessment:
 - BEGINNER: No prerequisites, achievable in 2-5 days
 - INTERMEDIATE: Requires background knowledge, 7-14 days
@@ -113,16 +134,37 @@ Return ONLY valid JSON:
   "estimatedDaysNeeded": number,
   "cognitiveLoadWarning": "warning if timeframe is too short",
   "isLanguageLearning": true/false (only for KNOWLEDGE - human language learning),
-  "targetLanguage": "chinese" | "japanese" | "korean" | "arabic" | "spanish" | "french" | "german" | "italian" | "portuguese" | "russian" | "hindi" | "thai" | "vietnamese" | "other" (only if isLanguageLearning),
-  "proficiencyLevel": "HSK1" | "N5" | "A1" | etc. (only if mentioned in skill name)
+  "targetLanguage": "chinese" | ... | "other" (only if isLanguageLearning),
+  "proficiencyLevel": "HSK1" | "N5" | "A1" | etc. (only if mentioned in skill name),
+  "customSections": null | {task1: ["section1", "section2", ...], intensive: ["section1", ...]} (only for hybrid skills)
 }`;
 
     const response = await this.aiService.routeRequest(AITask.BATCH_LOGIC, prompt);
 
     let result: SkillDetectionResult;
     try {
-      result = JSON.parse(response.content);
-      
+      // Strip markdown code blocks if present (```json ... ``` or ``` ... ```)
+      let jsonContent = response.content.trim();
+      this.logger.log(`🔍 Raw AI response (first 500 chars): ${jsonContent.substring(0, 500)}`);
+
+      if (jsonContent.startsWith('```')) {
+        jsonContent = jsonContent.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+        this.logger.log(`🔍 After stripping markdown: ${jsonContent.substring(0, 500)}`);
+      }
+      result = JSON.parse(jsonContent);
+
+      // DEBUG: Log full parsed result
+      this.logger.log(`🔍 Parsed skill detection result:`, JSON.stringify({
+        skillType: result.skillType,
+        complexity: result.complexity,
+        isLanguageLearning: result.isLanguageLearning,
+        targetLanguage: result.targetLanguage,
+        proficiencyLevel: result.proficiencyLevel,
+        customSections: result.customSections,
+        confidence: result.confidence,
+        reasoning: result.reasoning?.substring(0, 100),
+      }));
+
       // Validate AI_AGENT complexity vs days
       if (result.skillType === SkillType.AI_AGENT) {
         if (result.complexity === SkillComplexity.BEGINNER && result.estimatedDaysNeeded <= 5) {

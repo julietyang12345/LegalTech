@@ -10,23 +10,11 @@ import { CompanionChat, CompanionBubble } from '@/components/companion';
 import { CourseSidebar } from '@/components/session/CourseSidebar';
 import type { SessionStep } from '@/types';
 
-// New flow with foundation cards
-const STEPS_NEW: SessionStep[] = [
+// Session flow steps
+const STEPS: SessionStep[] = [
   'prePrompt',
   'video',
   'foundationCards',
-  'task1',
-  'bossMilestone',
-  'reflection',
-];
-
-// Legacy flow for backward compatibility
-const STEPS_LEGACY: SessionStep[] = [
-  'prePrompt',
-  'video',
-  'activeRecall',
-  'memoryBridge',
-  'conceptCheck',
   'task1',
   'bossMilestone',
   'reflection',
@@ -105,21 +93,25 @@ function PresenceBar() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Check if curriculum is project-based
-  const isProjectBased = activeSession?.curriculum?.metadata?.isProjectBased !== false &&
-    (activeSession?.curriculum?.bossProjects?.length ?? 0) > 0;
-
-  // Select step order based on whether foundationCards exist
-  const hasFoundationCards = currentDay?.foundationCards && currentDay.foundationCards.length > 0;
-  const baseSteps = hasFoundationCards ? STEPS_NEW : STEPS_LEGACY;
-
   // Filter steps based on current day
-  const availableSteps = baseSteps.filter(step => {
-    if (step === 'memoryBridge' && currentDay?.day === 1) return false;
-    // Show bossMilestone step if project-based (with milestone or hasBossProject) or practice-based (with practice project)
+  const availableSteps = STEPS.filter(step => {
+    // Skip video for language learning (uses TTS instead)
+    if (step === 'video') {
+      const isLanguageLearning = activeSession?.curriculum?.metadata?.isLanguageLearning;
+      const videoStrategy = (currentDay as any)?.videoStrategy;
+      if (isLanguageLearning || videoStrategy === 'skip') return false;
+    }
+    // Skip foundationCards if not present (check both regular and language-specific cards)
+    if (step === 'foundationCards') {
+      const hasCards = (currentDay?.foundationCards && currentDay.foundationCards.length > 0) ||
+                       (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
+      if (!hasCards) return false;
+    }
+    // Show bossMilestone if project-based (milestone/hasBossProject) OR practice-based (intensivePractice)
     if (step === 'bossMilestone') {
-      if (isProjectBased) return !!currentDay?.bossMilestone || !!currentDay?.hasBossProject;
-      return !!currentDay?.deferredContent?.practiceProject;
+      const hasProjectContent = currentDay?.bossMilestone || currentDay?.hasBossProject;
+      const hasPracticeContent = currentDay?.deferredContent?.intensivePractice;
+      return !!hasProjectContent || !!hasPracticeContent;
     }
     return true;
   });
@@ -147,7 +139,6 @@ function PresenceBar() {
               currentStep={currentStep}
               completedSteps={completedSteps}
               onStepClick={(step) => setCurrentStep(step)}
-              isProjectBased={isProjectBased}
             />
 
             {/* Right side: topic, timer, companion */}

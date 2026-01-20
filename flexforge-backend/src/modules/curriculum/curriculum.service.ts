@@ -198,6 +198,7 @@ export class CurriculumService {
       suggestedLanguage: effectiveLanguage,
       prerequisiteSkills: skillDetection.prerequisiteSkills,
       learnerPrefs,
+      customSections: skillDetection.customSections,
     });
 
     // Step 4: Generate curriculum OVERVIEW with AI (Phase 1) - with prompt caching
@@ -274,6 +275,11 @@ export class CurriculumService {
       targetLanguage: skillDetection.targetLanguage,
       proficiencyLevel: skillDetection.proficiencyLevel,
     };
+
+    // DEBUG: Log language learning detection result
+    this.logger.log(
+      `🌍 Language learning metadata: isLanguageLearning=${curriculum.metadata.isLanguageLearning}, targetLanguage=${curriculum.metadata.targetLanguage}`,
+    );
 
     // All days are skeletons - full content generated on-demand when user starts each day
     curriculum.days = curriculum.days.map((day: any, index: number) => ({
@@ -423,6 +429,11 @@ export class CurriculumService {
       // User-specified focus areas
       improvementAreas,
     };
+
+    // DEBUG: Log language learning params before prompt builder
+    this.logger.log(
+      `🌍 Day ${dayNumber} CORE params: isLanguageLearning=${params.isLanguageLearning}, targetLanguage=${params.targetLanguage}`,
+    );
 
     const { staticPart, dynamicPart, userPrompt } = buildCacheableDayDetailCorePrompt(params);
 
@@ -694,7 +705,7 @@ export class CurriculumService {
 
   /**
    * Generate DEFERRED day content (background load)
-   * Returns: practiceProject, reflection
+   * Returns: reflection
    * Called after core loads, while user watches video
    */
   async generateDayDeferredDetails(

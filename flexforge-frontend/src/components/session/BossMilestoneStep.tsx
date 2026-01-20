@@ -1,12 +1,22 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Trophy, ArrowRight, CheckCircle2, ListChecks, Lightbulb, ChevronDown, ChevronUp, Target, BookOpen } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Trophy, ArrowRight, CheckCircle2, Lightbulb, ChevronDown, ChevronUp, BookOpen, ChevronRight, RotateCcw } from 'lucide-react';
+import { clsx } from 'clsx';
 import { Card, Button, ProgressBar } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { CodeSandbox } from './CodeSandbox';
+import {
+  QuizSectionExercise,
+  MatchingSectionExercise,
+  ToneSelectSectionExercise,
+  FillBlankSectionExercise,
+  TranslationSectionExercise,
+  ReorderSectionExercise,
+  TypingSectionExercise,
+} from './LanguageExercises';
 import { useCompanionStore } from '@/stores/companionStore';
 import { useSessionStore } from '@/stores/sessionStore';
-import type { CurriculumDay, Session } from '@/types';
+import type { CurriculumDay, Session, TaskSection, TargetLanguage } from '@/types';
 
 interface BossMilestoneStepProps {
   day: CurriculumDay;
@@ -17,7 +27,7 @@ interface BossMilestoneStepProps {
 // Check if curriculum is project-based (has boss projects)
 const isProjectBasedCurriculum = (session: Session): boolean => {
   return session.curriculum.metadata?.isProjectBased !== false &&
-    session.curriculum.bossProjects?.length > 0;
+    (session.curriculum.bossProjects?.length ?? 0) > 0;
 };
 
 // Coding languages that support live preview
@@ -56,6 +66,417 @@ const saveMilestoneDay = (sessionId: string, bossDay: number, dayNumber: number)
 };
 
 export function BossMilestoneStep({ day, session, onComplete }: BossMilestoneStepProps) {
+  const isProjectBased = isProjectBasedCurriculum(session);
+
+  // For practice-based curricula, render intensive practice
+  if (!isProjectBased) {
+    return (
+      <IntensivePracticeStep
+        day={day}
+        session={session}
+        onComplete={onComplete}
+      />
+    );
+  }
+
+  // For project-based curricula, render boss milestone
+  return (
+    <ProjectMilestoneStep
+      day={day}
+      session={session}
+      onComplete={onComplete}
+    />
+  );
+}
+
+// ============================================
+// Intensive Practice Step (for practice-based learning)
+// ============================================
+
+interface IntensivePracticeStepProps {
+  day: CurriculumDay;
+  session: Session;
+  onComplete: () => void;
+}
+
+interface SectionResult {
+  score: number;
+  total: number;
+  completed: boolean;
+}
+
+function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeStepProps) {
+  const { addSystemMessage } = useCompanionStore();
+  const targetLanguage = session.curriculum?.metadata?.targetLanguage as TargetLanguage | undefined;
+
+  // Get intensive practice from deferred content
+  const intensivePractice = day.deferredContent?.intensivePractice as {
+    id: string;
+    title: string;
+    description: string;
+    estimatedMinutes: number;
+    sections: TaskSection[];
+  } | undefined;
+
+  const sections = intensivePractice?.sections || [];
+
+  const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
+  const [sectionResults, setSectionResults] = useState<Record<number, SectionResult>>({});
+  const [showResults, setShowResults] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
+
+  const currentSection = sections[currentSectionIndex];
+
+  const handleSectionComplete = (score: number, total: number) => {
+    setSectionResults(prev => ({
+      ...prev,
+      [currentSectionIndex]: { score, total, completed: true },
+    }));
+
+    setTimeout(() => {
+      if (currentSectionIndex < sections.length - 1) {
+        setCurrentSectionIndex(prev => prev + 1);
+      } else {
+        setShowResults(true);
+      }
+    }, 1500);
+  };
+
+  const getTotalScore = () => {
+    let totalScore = 0;
+    let totalQuestions = 0;
+    Object.values(sectionResults).forEach(result => {
+      totalScore += result.score;
+      totalQuestions += result.total;
+    });
+    return { score: totalScore, total: totalQuestions };
+  };
+
+  const resetPractice = () => {
+    setCurrentSectionIndex(0);
+    setSectionResults({});
+    setShowResults(false);
+  };
+
+  const handleComplete = () => {
+    const { score, total } = getTotalScore();
+    const percentage = total > 0 ? Math.round((score / total) * 100) : 100;
+    addSystemMessage(
+      percentage >= 70
+        ? `Excellent work! You scored ${percentage}% on intensive practice! 🎯`
+        : `Good effort! You scored ${percentage}%. Keep practicing! 💪`,
+      percentage >= 70 ? 'celebratory' : 'encouraging'
+    );
+    onComplete();
+  };
+
+  const renderSection = (section: TaskSection) => {
+    switch (section.type) {
+      case 'quiz':
+        return (
+          <QuizSectionExercise
+            section={section}
+            targetLanguage={targetLanguage}
+            onComplete={handleSectionComplete}
+          />
+        );
+      case 'matching':
+        return (
+          <MatchingSectionExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+      case 'toneSelect':
+        return (
+          <ToneSelectSectionExercise
+            section={section}
+            targetLanguage={targetLanguage}
+            onComplete={handleSectionComplete}
+          />
+        );
+      case 'fillBlank':
+        return (
+          <FillBlankSectionExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+      case 'translation':
+        return (
+          <TranslationSectionExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+      case 'reorder':
+        return (
+          <ReorderSectionExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+      case 'typing':
+        return (
+          <TypingSectionExercise
+            section={section}
+            targetLanguage={targetLanguage}
+            onComplete={handleSectionComplete}
+          />
+        );
+      default:
+        return (
+          <div className="text-center py-8 text-gray-500">
+            Unknown section type: {(section as any).type}
+          </div>
+        );
+    }
+  };
+
+  // No intensive practice available - allow skip
+  if (!intensivePractice || sections.length === 0) {
+    return (
+      <StepLayout
+        icon={BookOpen}
+        iconGradient="from-blue-400 to-cyan-500"
+        title="Intensive Practice"
+        subtitle="Reinforce today's concepts"
+      >
+        <div className="max-w-lg mx-auto text-center py-8">
+          <BookOpen className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+          <h2 className="text-xl font-semibold text-gray-700 mb-2">Practice Loading...</h2>
+          <p className="text-gray-500 mb-6">
+            Intensive practice exercises are being generated. You can skip for now or wait.
+          </p>
+          <button
+            onClick={onComplete}
+            className="px-6 py-3 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors"
+          >
+            Continue to Reflection
+          </button>
+        </div>
+      </StepLayout>
+    );
+  }
+
+  // Introduction screen
+  if (!hasStarted) {
+    return (
+      <StepLayout
+        icon={BookOpen}
+        iconGradient="from-blue-400 to-cyan-500"
+        title="Intensive Practice"
+        subtitle="Reinforce today's concepts"
+      >
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-lg mx-auto"
+        >
+          <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-100">
+            <div className="p-8 text-center">
+              <div className="w-16 h-16 mx-auto bg-white rounded-full shadow-sm flex items-center justify-center mb-4">
+                <BookOpen className="w-8 h-8 text-blue-600" />
+              </div>
+
+              <h2 className="text-2xl font-bold mb-2">{intensivePractice.title}</h2>
+              <p className="text-gray-600 mb-6">{intensivePractice.description}</p>
+
+              <div className="bg-white/80 rounded-lg p-4 mb-6 text-left">
+                <h3 className="text-sm font-medium text-gray-500 mb-3">What you'll practice:</h3>
+                <ul className="space-y-2">
+                  {sections.map((section, index) => (
+                    <li key={index} className="flex items-center gap-2 text-sm">
+                      <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-medium">
+                        {index + 1}
+                      </span>
+                      <span>{section.title}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-6">
+                <span>Estimated time:</span>
+                <span className="font-medium">{intensivePractice.estimatedMinutes} minutes</span>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={onComplete}
+                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Skip for now
+                </button>
+                <button
+                  onClick={() => setHasStarted(true)}
+                  className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"
+                >
+                  Start Practice
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          </Card>
+        </motion.div>
+      </StepLayout>
+    );
+  }
+
+  // Results screen
+  if (showResults) {
+    const { score, total } = getTotalScore();
+    const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
+    const passed = percentage >= 70;
+
+    return (
+      <StepLayout
+        icon={BookOpen}
+        iconGradient="from-blue-400 to-cyan-500"
+        title="Intensive Practice"
+        subtitle="Results"
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="max-w-lg mx-auto"
+        >
+          <Card className="p-8 text-center">
+            <div className={clsx(
+              'w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-4',
+              passed ? 'bg-green-100' : 'bg-orange-100'
+            )}>
+              {passed ? (
+                <Trophy className="w-10 h-10 text-green-600" />
+              ) : (
+                <RotateCcw className="w-10 h-10 text-orange-600" />
+              )}
+            </div>
+
+            <h2 className="text-2xl font-bold mb-2">
+              {passed ? 'Great Job!' : 'Keep Practicing!'}
+            </h2>
+
+            <p className="text-gray-600 mb-6">
+              You scored {score} out of {total} ({percentage}%)
+            </p>
+
+            {/* Section breakdown */}
+            <div className="bg-gray-50 rounded-lg p-4 mb-6 text-left">
+              <h3 className="text-sm font-medium text-gray-500 mb-3">Section Breakdown</h3>
+              <div className="space-y-2">
+                {sections.map((section, index) => {
+                  const result = sectionResults[index];
+                  const sectionPct = result ? Math.round((result.score / result.total) * 100) : 0;
+                  return (
+                    <div key={index} className="flex justify-between items-center">
+                      <span className="text-sm">{section.title}</span>
+                      <span className={clsx(
+                        'text-sm font-medium',
+                        sectionPct >= 70 ? 'text-green-600' : 'text-orange-600'
+                      )}>
+                        {result?.score}/{result?.total} ({sectionPct}%)
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              {!passed && (
+                <button
+                  onClick={resetPractice}
+                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Try Again
+                </button>
+              )}
+              <button
+                onClick={handleComplete}
+                className="flex-1 px-4 py-3 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors flex items-center justify-center gap-2"
+              >
+                {passed ? 'Continue' : 'Continue Anyway'}
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          </Card>
+        </motion.div>
+      </StepLayout>
+    );
+  }
+
+  // Practice in progress
+  return (
+    <StepLayout
+      icon={BookOpen}
+      iconGradient="from-blue-400 to-cyan-500"
+      title="Intensive Practice"
+      subtitle={intensivePractice.title}
+    >
+      <div className="max-w-2xl mx-auto">
+        {/* Section progress indicators */}
+        <div className="flex gap-2 mb-6">
+          {sections.map((_, index) => {
+            const result = sectionResults[index];
+            const isActive = index === currentSectionIndex;
+            const isCompleted = result?.completed;
+
+            return (
+              <div
+                key={index}
+                className={clsx(
+                  'flex-1 h-2 rounded-full transition-all',
+                  isCompleted
+                    ? 'bg-green-500'
+                    : isActive
+                    ? 'bg-blue-500'
+                    : 'bg-gray-200'
+                )}
+              />
+            );
+          })}
+        </div>
+
+        {/* Section label */}
+        <div className="mb-4 flex items-center gap-2">
+          <span className="text-sm text-gray-500">
+            Section {currentSectionIndex + 1} of {sections.length}
+          </span>
+          <span className="text-sm px-2 py-0.5 bg-gray-100 rounded-full capitalize">
+            {currentSection.type === 'fillBlank' ? 'Fill in Blank' : currentSection.type}
+          </span>
+        </div>
+
+        {/* Current section */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentSectionIndex}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.2 }}
+          >
+            {renderSection(currentSection)}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+    </StepLayout>
+  );
+}
+
+// ============================================
+// Project Milestone Step (for project-based learning)
+// ============================================
+
+interface ProjectMilestoneStepProps {
+  day: CurriculumDay;
+  session: Session;
+  onComplete: () => void;
+}
+
+function ProjectMilestoneStep({ day, session, onComplete }: ProjectMilestoneStepProps) {
   const { saveTaskProgress, getTaskProgress } = useSessionStore();
   const { addSystemMessage } = useCompanionStore();
 
@@ -78,45 +499,20 @@ export function BossMilestoneStep({ day, session, onComplete }: BossMilestoneSte
     }
   }, [code, isSubmitted, day.day, saveTaskProgress]);
 
-  const isProjectBased = isProjectBasedCurriculum(session);
-  const practiceProject = day.deferredContent?.practiceProject;
   const language = session.curriculum.metadata?.suggestedLanguage || 'javascript';
   const isCodingProject = CODING_LANGUAGES.some(lang =>
     language.toLowerCase().includes(lang)
   );
 
-  // For practice-based curricula, render simplified practice project UI
-  if (!isProjectBased) {
-    return (
-      <PracticeProjectStep
-        day={day}
-        session={session}
-        practiceProject={practiceProject}
-        language={language}
-        isCodingProject={isCodingProject}
-        code={code}
-        setCode={setCode}
-        isSubmitted={isSubmitted}
-        setIsSubmitted={setIsSubmitted}
-        showHints={showHints}
-        setShowHints={setShowHints}
-        showSolution={showSolution}
-        setShowSolution={setShowSolution}
-        onComplete={onComplete}
-        addSystemMessage={addSystemMessage}
-      />
-    );
-  }
-
   // Find the current boss project (the one this day belongs to)
-  const currentBoss = session.curriculum.bossProjects.find(
+  const currentBoss = session.curriculum.bossProjects?.find(
     b => b.combinesDays?.includes(day.day)
   );
 
   // Find the next boss project
-  const nextBoss = session.curriculum.bossProjects.find(
+  const nextBoss = session.curriculum.bossProjects?.find(
     b => b.day > day.day
-  ) || session.curriculum.bossProjects[session.curriculum.bossProjects.length - 1];
+  ) || session.curriculum.bossProjects?.[session.curriculum.bossProjects.length - 1];
 
   // Use currentBoss if available, otherwise nextBoss
   const activeBoss = currentBoss || nextBoss;
@@ -180,8 +576,8 @@ export function BossMilestoneStep({ day, session, onComplete }: BossMilestoneSte
 
     addSystemMessage(
       newProgress >= 100
-        ? `🎉 Amazing! You've completed all milestones for "${activeBoss?.title}"! Boss project ready!`
-        : `🎯 Milestone saved! Progress: ${newProgress}%. ${daysUntilBoss > 0 ? `${daysUntilBoss} day${daysUntilBoss !== 1 ? 's' : ''} until boss day!` : 'Boss day is today!'}`,
+        ? `Amazing! You've completed all milestones for "${activeBoss?.title}"! Boss project ready!`
+        : `Milestone saved! Progress: ${newProgress}%. ${daysUntilBoss > 0 ? `${daysUntilBoss} day${daysUntilBoss !== 1 ? 's' : ''} until boss day!` : 'Boss day is today!'}`,
       'encouraging'
     );
   };
@@ -190,7 +586,7 @@ export function BossMilestoneStep({ day, session, onComplete }: BossMilestoneSte
     <StepLayout
       icon={Trophy}
       iconGradient="from-purple-400 to-pink-500"
-      title="Boss Milestone 🏆"
+      title="Boss Milestone"
       subtitle="A little each day = most is done before Boss Day!"
     >
       {/* Progress toward boss project */}
@@ -390,7 +786,7 @@ export function BossMilestoneStep({ day, session, onComplete }: BossMilestoneSte
                 {currentDayAlreadySaved && !isSubmitted ? 'Milestone Already Saved!' : 'Milestone Saved!'}
               </h3>
               <p className="text-sm text-green-600">
-                This code is now part of your "{activeBoss?.title}" project 🎉
+                This code is now part of your "{activeBoss?.title}" project
               </p>
             </div>
           </Card>
@@ -439,255 +835,6 @@ export function BossMilestoneStep({ day, session, onComplete }: BossMilestoneSte
             </div>
           </Card>
         )}
-      </div>
-    </StepLayout>
-  );
-}
-
-// Practice Project Step - for practice-based curricula (KNOWLEDGE, PHYSICAL, or understand_concept goal)
-type CompanionMood = 'welcoming' | 'encouraging' | 'celebratory' | 'supportive' | 'focused';
-
-interface PracticeProjectStepProps {
-  day: CurriculumDay;
-  session: Session;
-  practiceProject: any;
-  language: string;
-  isCodingProject: boolean;
-  code: string;
-  setCode: (code: string) => void;
-  isSubmitted: boolean;
-  setIsSubmitted: (submitted: boolean) => void;
-  showHints: boolean;
-  setShowHints: (show: boolean) => void;
-  showSolution: boolean;
-  setShowSolution: (show: boolean) => void;
-  onComplete: () => void;
-  addSystemMessage: (content: string, mood?: CompanionMood) => void;
-}
-
-function PracticeProjectStep({
-  day,
-  session,
-  practiceProject,
-  language,
-  isCodingProject,
-  code,
-  setCode,
-  isSubmitted,
-  setIsSubmitted,
-  showHints,
-  setShowHints,
-  showSolution,
-  setShowSolution,
-  onComplete,
-  addSystemMessage,
-}: PracticeProjectStepProps) {
-  const handleSubmit = () => {
-    setIsSubmitted(true);
-    addSystemMessage(
-      `Great work on today's practice! You've reinforced the concepts from Day ${day.day}. 🎯`,
-      'encouraging'
-    );
-  };
-
-  const hints = practiceProject?.hints || [];
-  const solution = practiceProject?.solution;
-  const requirements = practiceProject?.requirements || [];
-
-  return (
-    <StepLayout
-      icon={BookOpen}
-      iconGradient="from-blue-400 to-cyan-500"
-      title="Practice Project 📝"
-      subtitle="Apply what you learned today"
-    >
-      {/* Practice project info */}
-      <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-100">
-        <div className="p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center">
-              <BookOpen className="w-6 h-6 text-blue-600" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-900">
-                {practiceProject?.title || `Day ${day.day} Practice`}
-              </h3>
-              <p className="text-sm text-gray-500">
-                {practiceProject?.estimatedMinutes ? `${practiceProject.estimatedMinutes} min` : 'Self-paced'}
-              </p>
-            </div>
-          </div>
-
-          {practiceProject?.description && (
-            <p className="text-gray-600 mb-4">{practiceProject.description}</p>
-          )}
-        </div>
-      </Card>
-
-      {/* Core challenge */}
-      {practiceProject?.coreChallenge && (
-        <Card>
-          <div className="p-6">
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                <Target className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Your Challenge</h3>
-                <p className="text-gray-600 mt-1">{practiceProject.coreChallenge}</p>
-              </div>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* Requirements */}
-      {requirements.length > 0 && (
-        <Card>
-          <div className="p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <ListChecks className="w-5 h-5 text-blue-600" />
-              <h3 className="font-semibold text-gray-900">Requirements</h3>
-            </div>
-            <ul className="space-y-2">
-              {requirements.map((req: string, index: number) => (
-                <li key={index} className="flex items-start gap-2">
-                  <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 text-xs flex items-center justify-center flex-shrink-0 mt-0.5">
-                    {index + 1}
-                  </span>
-                  <span className="text-gray-700">{req}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </Card>
-      )}
-
-      {/* Hints */}
-      {hints.length > 0 && (
-        <Card>
-          <button
-            onClick={() => setShowHints(!showHints)}
-            className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Lightbulb className="w-5 h-5 text-amber-500" />
-              <span className="font-medium text-gray-900">Need help? View hints</span>
-            </div>
-            {showHints ? (
-              <ChevronUp className="w-5 h-5 text-gray-400" />
-            ) : (
-              <ChevronDown className="w-5 h-5 text-gray-400" />
-            )}
-          </button>
-          {showHints && (
-            <div className="px-4 pb-4 border-t border-gray-100 pt-4">
-              <ul className="space-y-3">
-                {hints.map((hint: string, index: number) => (
-                  <li key={index} className="flex items-start gap-2 p-3 bg-amber-50 rounded-lg">
-                    <Lightbulb className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                    <span className="text-amber-800 text-sm">{hint}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* Code area or text area */}
-      {isCodingProject ? (
-        <CodeSandbox
-          code={code || practiceProject?.starterCode || '// Start practicing here...\n'}
-          language={language}
-          onCodeChange={setCode}
-          title={`Day ${day.day} Practice`}
-          template={getTemplateForLanguage(language)}
-          setupInstructions={practiceProject?.setupInstructions}
-        />
-      ) : (
-        <Card>
-          <div className="p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Your work
-            </label>
-            <textarea
-              placeholder="Write your answers or practice notes here..."
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              className="w-full min-h-[150px] p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
-            />
-          </div>
-        </Card>
-      )}
-
-      {/* Submit button */}
-      {!isSubmitted ? (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-        >
-          <Button
-            variant="primary"
-            size="lg"
-            onClick={handleSubmit}
-            disabled={code.length < 5}
-            className="w-full"
-            leftIcon={<CheckCircle2 className="w-5 h-5" />}
-          >
-            Complete Practice
-          </Button>
-        </motion.div>
-      ) : (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-        >
-          <Card className="bg-green-50 border border-green-200">
-            <div className="p-4 text-center">
-              <CheckCircle2 className="w-8 h-8 text-green-500 mx-auto mb-2" />
-              <h3 className="font-semibold text-green-800">Practice Complete!</h3>
-              <p className="text-sm text-green-600">
-                Great job reinforcing today's concepts! 🎉
-              </p>
-            </div>
-          </Card>
-        </motion.div>
-      )}
-
-      {/* Solution (below submit button for easy access) */}
-      <div className="text-center">
-        <button
-          onClick={() => setShowSolution(!showSolution)}
-          className="text-xs text-gray-400 hover:text-gray-500 transition-colors inline-flex items-center gap-1"
-        >
-          {showSolution ? (
-            <>Hide solution <ChevronUp className="w-3 h-3" /></>
-          ) : (
-            <>{isSubmitted ? 'Compare with solution' : 'Stuck? View solution'} <ChevronDown className="w-3 h-3" /></>
-          )}
-        </button>
-        {showSolution && (
-          <Card className="mt-3 text-left">
-            <div className="p-4">
-              {solution ? (
-                <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg overflow-x-auto text-sm font-mono whitespace-pre-wrap">
-                  {solution}
-                </pre>
-              ) : (
-                <p className="text-gray-500 text-sm">
-                  Solution not available for this practice project. Try completing it on your own, or check the hints above!
-                </p>
-              )}
-            </div>
-          </Card>
-        )}
-      </div>
-
-      {/* Motivation */}
-      <div className="text-center text-sm text-gray-500">
-        💡 Practice makes progress! Each exercise reinforces what you've learned.
       </div>
     </StepLayout>
   );

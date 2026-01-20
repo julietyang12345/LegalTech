@@ -787,10 +787,24 @@ export function SessionPage() {
 
   // Get available steps (filter out skipped ones)
   const availableSteps = STEP_ORDER.filter(step => {
-    // Skip bossMilestone if not present in day content
-    if (step === 'bossMilestone' && !currentDay?.bossMilestone && !currentDay?.hasBossProject) return false;
-    // Skip foundationCards if not present
-    if (step === 'foundationCards' && (!currentDay?.foundationCards || currentDay.foundationCards.length === 0)) return false;
+    // Skip video for language learning (uses TTS instead)
+    if (step === 'video') {
+      const isLanguageLearning = activeSession?.curriculum?.metadata?.isLanguageLearning;
+      const videoStrategy = (currentDay as any)?.videoStrategy;
+      if (isLanguageLearning || videoStrategy === 'skip') return false;
+    }
+    // Skip bossMilestone if not present (check for project-based OR practice-based content)
+    if (step === 'bossMilestone') {
+      const hasProjectContent = currentDay?.bossMilestone || currentDay?.hasBossProject;
+      const hasPracticeContent = currentDay?.deferredContent?.intensivePractice;
+      if (!hasProjectContent && !hasPracticeContent) return false;
+    }
+    // Skip foundationCards if not present (check both regular and language-specific cards)
+    if (step === 'foundationCards') {
+      const hasCards = (currentDay?.foundationCards && currentDay.foundationCards.length > 0) ||
+                       (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
+      if (!hasCards) return false;
+    }
     return true;
   });
 
@@ -819,7 +833,9 @@ export function SessionPage() {
     const incomplete: { step: string; label: string; icon: string }[] = [];
 
     // Check foundation cards (if they exist in this flow) - uses local state
-    if (currentDay?.foundationCards && currentDay.foundationCards.length > 0 && !stepEngagement.foundationCards) {
+    const hasCards = (currentDay?.foundationCards && currentDay.foundationCards.length > 0) ||
+                     (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
+    if (hasCards && !stepEngagement.foundationCards) {
       incomplete.push({
         step: 'foundationCards',
         label: 'Review Foundation Cards',
@@ -1007,6 +1023,19 @@ export function SessionPage() {
   }
 
   const StepComponent = STEP_COMPONENTS[currentStep];
+
+  // Safety check - if StepComponent is undefined, show error
+  if (!StepComponent) {
+    console.error('Unknown step:', currentStep, 'Available steps:', Object.keys(STEP_COMPONENTS));
+    return (
+      <FocusModeLayout>
+        <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
+          <p className="text-red-500">Unknown step: {currentStep}</p>
+          <Button onClick={() => navigate('/dashboard')}>Return to Dashboard</Button>
+        </div>
+      </FocusModeLayout>
+    );
+  }
 
   // Wrap onComplete to track engagement for specific steps
   const handleStepComplete = () => {

@@ -278,7 +278,10 @@ export interface CurriculumDay {
 
   // Split loading: backend saves content in these nested objects, merged on load
   coreContent?: Record<string, unknown>;      // video, foundationCards, task1, prePrompt
-  deferredContent?: Record<string, unknown>;  // task2, practiceProject, reflection, skipTest
+  deferredContent?: {
+    reflection?: { questions: ReflectionQuestion[] };
+    intensivePractice?: IntensivePractice;  // For practice-based learning
+  };
   coreLoaded?: boolean;
   deferredLoaded?: boolean;
 
@@ -312,11 +315,10 @@ export interface CurriculumDay {
     questions: ConceptQuestion[];
   };
 
-  // Task section: Quiz, Fill-in-the-Blank, or Mixed for concept reinforcement
+  // Task section: Quiz, Fill-in-the-Blank, Mixed, or Sections for concept reinforcement
   // (Coding practice moved to bossMilestone micro-steps)
-  task1?: QuizTask | FillBlankTask | MixedTask;
+  task1?: QuizTask | FillBlankTask | MixedTask | SectionsTask;
   taskFormat?: TaskFormat;
-  practiceProject?: PracticeProject;
 
   reflection?: {
     questions: ReflectionQuestion[];
@@ -857,14 +859,6 @@ export interface MixedTask {
   sections: TaskSection[];
 }
 
-// Language learning practice project (intensive practice)
-export interface LanguagePracticeProject {
-  id: string;
-  title: string;
-  description: string;
-  estimatedMinutes: number;
-  sections: (LanguageFillBlankSection | TranslationSection | ReorderSection | TypingSection)[];
-}
 
 export interface QuizQuestion {
   id: string;
@@ -913,35 +907,6 @@ export interface FillBlankTask {
 // Union type for all task formats
 export type TaskContent = Task | QuizTask | FillBlankTask | MixedTask | SectionsTask;
 
-export interface PracticeProject {
-  id: string;
-  title: string;
-  estimatedMinutes: number;
-  coreChallenge: string;
-  stretchGoals: StretchGoal[];
-  tierResources: {
-    free: { hint1: boolean; solution: boolean };
-    pro: { stepByStep: boolean; hints: number; aiTutor: boolean };
-    premium: {
-      adaptiveDifficulty: {
-        high: string;
-        medium: string;
-        low: string;
-      };
-    };
-  };
-  files?: {
-    starter: string;
-    hints: string;
-    solution: string;
-  };
-}
-
-export interface StretchGoal {
-  condition: string;
-  goal: string;
-  tier?: string;
-}
 
 // AI-generated setup instructions for StackBlitz/code sandbox
 export interface SetupInstructions {
@@ -1198,9 +1163,18 @@ export interface DayCoreContent {
   skipTest: SkipTest;
 }
 
+// Intensive practice for practice-based learning (shown in bossMilestone step)
+export interface IntensivePractice {
+  id: string;
+  title: string;
+  description: string;
+  estimatedMinutes: number;
+  sections: TaskSection[];
+}
+
 export interface DayDeferredContent {
   task2?: Task;
-  practiceProject: PracticeProject;
+  intensivePractice?: IntensivePractice;  // For practice-based learning
   reflection: {
     questions: ReflectionQuestion[];
   };
@@ -1292,10 +1266,7 @@ export interface ReflectionData {
 export type SessionStep =
   | 'prePrompt'
   | 'video'
-  | 'foundationCards'  // New Imprint-style flow
-  | 'activeRecall'     // Legacy
-  | 'memoryBridge'     // Legacy
-  | 'conceptCheck'     // Legacy
+  | 'foundationCards'
   | 'task1'
   | 'bossMilestone'
   | 'reflection';

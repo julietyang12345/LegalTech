@@ -157,7 +157,7 @@ export class ProgressService {
       const prompt = `Add 2-3 challenge stretch goals:
 
 Skill: ${skillName}
-Project: ${day.practiceProject?.title || day.task1?.title}
+Project: ${day.task1?.title || day.bossMilestone?.title || 'Practice'}
 
 Return ONLY JSON:
 {
@@ -173,15 +173,15 @@ Return ONLY JSON:
 
       const additions = JSON.parse(response.content);
 
-      if (day.practiceProject) {
-        day.practiceProject.stretchGoals = [
-          ...(day.practiceProject.stretchGoals || []),
+      if (day.bossMilestone) {
+        day.bossMilestone.stretchGoals = [
+          ...(day.bossMilestone.stretchGoals || []),
           ...additions.stretchGoals,
         ];
       }
     } catch (error) {
-      if (day.practiceProject) {
-        day.practiceProject.stretchGoals = [
+      if (day.bossMilestone) {
+        day.bossMilestone.stretchGoals = [
           {
             goal: 'Add error handling for edge cases',
             hint: 'Think about what could go wrong',
@@ -197,11 +197,11 @@ Return ONLY JSON:
     weakAreas: string[],
     skillName: string,
   ): Promise<void> {
-    if (day.practiceProject) {
-      day.practiceProject.simplifiedMode = true;
-      day.practiceProject.hint1 =
+    if (day.bossMilestone) {
+      day.bossMilestone.simplifiedMode = true;
+      day.bossMilestone.hint1 =
         "SIMPLIFIED: Let's break this into smaller steps...";
-      day.practiceProject.subSteps = [
+      day.bossMilestone.subSteps = [
         'Step 1: Set up basic structure',
         'Step 2: Add core functionality',
         'Step 3: Test one feature at a time',
@@ -243,7 +243,7 @@ Return ONLY JSON with 2 simple exercises.`;
     const totalTasks = session.curriculum.days.reduce((sum, day) => {
       let dayTasks = 0;
       if (day.task1) dayTasks++;
-      if (day.practiceProject) dayTasks++;
+      if (day.bossMilestone) dayTasks++;
       if (day.bossProject) dayTasks++;
       return sum + dayTasks;
     }, 0);
@@ -273,7 +273,7 @@ Return ONLY JSON with 2 simple exercises.`;
 
       let dayTotalTasks = 0;
       if (day.task1) dayTotalTasks++;
-      if (day.practiceProject) dayTotalTasks++;
+      if (day.bossMilestone) dayTotalTasks++;
       if (day.bossProject) dayTotalTasks++;
 
       const dayCompletedTasks = dayProgress.filter((p) => p.completed).length;

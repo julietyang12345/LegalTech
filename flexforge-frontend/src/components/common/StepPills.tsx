@@ -15,11 +15,8 @@ const getStepLabels = (isProjectBased: boolean): Record<SessionStep, string> => 
   prePrompt: 'Prep',
   video: 'Watch',
   foundationCards: 'Learn',
-  activeRecall: 'Recall',
-  memoryBridge: 'Connect',
-  conceptCheck: 'Check',
-  task1: 'Code',
-  bossMilestone: isProjectBased ? 'Boss' : 'Practice',
+  task1: 'Practice',
+  bossMilestone: 'Boss',
   reflection: 'Reflect',
 });
 

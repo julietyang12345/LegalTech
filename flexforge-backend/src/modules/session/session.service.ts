@@ -686,7 +686,7 @@ export class SessionService {
 
   /**
    * Load DEFERRED day content (background)
-   * Returns: practiceProject, reflection
+   * Returns: reflection
    */
   async loadDayDeferred(
     sessionId: string,

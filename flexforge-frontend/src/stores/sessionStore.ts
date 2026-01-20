@@ -107,8 +107,8 @@ interface SessionState {
   clearError: () => void;
 }
 
-// New flow with foundation cards
-const STEP_ORDER_NEW: SessionStep[] = [
+// Step order for session flow
+const STEP_ORDER: SessionStep[] = [
   'prePrompt',
   'video',
   'foundationCards',
@@ -117,23 +117,8 @@ const STEP_ORDER_NEW: SessionStep[] = [
   'reflection',
 ];
 
-// Legacy flow for backward compatibility
-const STEP_ORDER_LEGACY: SessionStep[] = [
-  'prePrompt',
-  'video',
-  'activeRecall',
-  'memoryBridge',
-  'conceptCheck',
-  'task1',
-  'bossMilestone',
-  'reflection',
-];
-
-// Helper to get appropriate step order based on day content
-const getStepOrder = (day: CurriculumDay | null): SessionStep[] => {
-  const hasFoundationCards = day?.foundationCards && day.foundationCards.length > 0;
-  return hasFoundationCards ? STEP_ORDER_NEW : STEP_ORDER_LEGACY;
-};
+// Helper to get step order
+const getStepOrder = (_day: CurriculumDay | null): SessionStep[] => STEP_ORDER;
 
 // Helper to update day statuses in curriculum days array
 const updateDayStatuses = (
@@ -289,7 +274,7 @@ export const useSessionStore = create<SessionState>()(
     const dayData = activeSession.curriculum.days.find(d => d.day === dayNumber);
 
     // Merge saved day content into top level for refresh
-    // Backend saves to: coreContent (video, foundationCards, task1) + deferredContent (task2, practiceProject, etc.)
+    // Backend saves to: coreContent (video, foundationCards, task1) + deferredContent (reflection)
     // Frontend expects flat structure: day.video, day.foundationCards, etc.
     if (!dayData) {
       set({ currentDay: null, currentStep: 'prePrompt', completedSteps: [], stepStartTime: new Date() });
@@ -347,20 +332,24 @@ export const useSessionStore = create<SessionState>()(
   completeStep: (step) => {
     const { completedSteps, currentDay } = get();
 
-    const STEP_ORDER = getStepOrder(currentDay);
-    const currentIndex = STEP_ORDER.indexOf(step);
+    const stepOrder = getStepOrder(currentDay);
+    const currentIndex = stepOrder.indexOf(step);
 
-    // Find next step (skip memoryBridge on day 1, skip bossMilestone if not present)
-    let nextStep = STEP_ORDER[currentIndex + 1];
+    // Find next step (skip steps that don't apply)
+    let nextStep = stepOrder[currentIndex + 1];
 
-    // Skip memoryBridge on day 1 (only relevant in legacy flow)
-    if (nextStep === 'memoryBridge' && currentDay?.day === 1) {
-      nextStep = STEP_ORDER[currentIndex + 2];
+    // Skip foundationCards if not present (check both regular and language-specific cards)
+    if (nextStep === 'foundationCards') {
+      const hasCards = (currentDay?.foundationCards && currentDay.foundationCards.length > 0) ||
+                       (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
+      if (!hasCards) {
+        nextStep = stepOrder[currentIndex + 2];
+      }
     }
 
     // Skip bossMilestone if not present (check both bossMilestone and hasBossProject)
     if (nextStep === 'bossMilestone' && !currentDay?.bossMilestone && !currentDay?.hasBossProject) {
-      nextStep = STEP_ORDER[currentIndex + 2];
+      nextStep = stepOrder[currentIndex + 2];
     }
 
     // Add to completed steps if not already there
@@ -968,12 +957,14 @@ export const useSessionStore = create<SessionState>()(
 
   getStepProgress: () => {
     const { completedSteps, currentDay } = get();
-    const STEP_ORDER = getStepOrder(currentDay);
-    let total = STEP_ORDER.length;
+    const stepOrder = getStepOrder(currentDay);
+    let total = stepOrder.length;
 
-    // Adjust total based on what's available
-    if (currentDay?.day === 1 && STEP_ORDER.includes('memoryBridge')) total -= 1; // No memory bridge on day 1 (legacy)
-    if (!currentDay?.bossMilestone) total -= 1; // No boss milestone
+    // Adjust total based on what's available (check both regular and language-specific cards)
+    const hasCards = (currentDay?.foundationCards && currentDay.foundationCards.length > 0) ||
+                     (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
+    if (!hasCards) total -= 1;
+    if (!currentDay?.bossMilestone && !currentDay?.hasBossProject) total -= 1;
 
     return {
       current: completedSteps.length,

@@ -108,7 +108,7 @@ export const sessionService = {
 
   /**
    * Load deferred content in background
-   * Returns: task2, practiceProject, reflection, skipTest
+   * Returns: reflection
    */
   async loadDayDeferred(sessionId: string, dayNumber: number): Promise<LoadDayDeferredResponse> {
     const { data } = await api.post<LoadDayDeferredResponse>(
