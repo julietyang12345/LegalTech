@@ -45,6 +45,100 @@ export type Transferability = 'high' | 'medium' | 'low';
 // Content source: Where to get the content
 export type ContentSource = 'university' | 'youtube' | 'text' | 'docs';
 
+// ============================================
+// SECTION REGISTRY (Unified Section-Based Task System)
+// ============================================
+
+// Section types available for each skill category
+export type UniversalSectionType = 'quiz' | 'matching' | 'fillBlank' | 'reorder';
+export type LanguageSectionType = 'toneSelect' | 'translation' | 'typing';
+export type CodeSectionType = 'codeCompletion' | 'debugging' | 'outputPrediction';
+export type PhysicalSectionType = 'formCheck' | 'safetyCheck';
+export type DesignSectionType = 'designCritique';
+
+export type SectionType =
+  | UniversalSectionType
+  | LanguageSectionType
+  | CodeSectionType
+  | PhysicalSectionType
+  | DesignSectionType;
+
+// Section registry: maps skill types to appropriate section combinations
+//
+// LEARNING FLOW:
+// - Project-based (ANY skill): task1 + bossMilestone → NO intensive (bossMilestone IS the hands-on practice)
+// - Non-project-based (ANY skill): task1 + intensive → NO bossMilestone (intensive IS the hands-on practice)
+//
+export const SECTION_REGISTRY: Record<SkillType, {
+  task1: SectionType[];      // Concept reinforcement sections (always included)
+  intensive: SectionType[];  // Deep practice sections (only when NOT project-based)
+}> = {
+  [SkillType.CODE]: {
+    task1: ['quiz', 'outputPrediction', 'fillBlank'],
+    intensive: ['codeCompletion', 'debugging', 'fillBlank'],    // Only used when NOT project-based
+  },
+  [SkillType.PHYSICAL]: {
+    task1: ['quiz', 'reorder', 'matching'],
+    intensive: ['formCheck', 'safetyCheck', 'reorder'],
+  },
+  [SkillType.KNOWLEDGE]: {
+    task1: ['quiz', 'matching', 'fillBlank'],
+    intensive: ['fillBlank', 'reorder', 'quiz'],
+  },
+  [SkillType.DESIGN]: {
+    task1: ['quiz', 'designCritique', 'matching'],
+    intensive: ['designCritique', 'quiz', 'matching'],
+  },
+  [SkillType.AI_AGENT]: {
+    task1: ['quiz', 'fillBlank', 'outputPrediction'],
+    intensive: ['codeCompletion', 'fillBlank', 'quiz'],         // Only used when NOT project-based
+  },
+};
+
+// Language learning extends KNOWLEDGE with language-specific sections
+export const LANGUAGE_SECTION_REGISTRY = {
+  task1: ['quiz', 'matching', 'toneSelect'] as SectionType[],  // toneSelect only for tonal languages
+  intensive: ['fillBlank', 'translation', 'reorder', 'typing'] as SectionType[],
+};
+
+/**
+ * Get appropriate sections for a skill type
+ *
+ * Logic:
+ * - Project-based (ANY skill): task1 (full sections) + bossMilestone + NO intensive
+ * - Non-project-based (ANY skill): task1 (full sections) + intensive (no bossMilestone)
+ * - Language learning: Uses LANGUAGE_SECTION_REGISTRY (always has intensive, no bossMilestone)
+ */
+export function getSectionsForSkillType(
+  skillType: SkillType,
+  options: {
+    isLanguageLearning?: boolean;
+    hasTones?: boolean;
+    isProjectBased?: boolean;
+  } = {}
+): { task1: SectionType[]; intensive: SectionType[]; skipIntensive: boolean } {
+  const { isLanguageLearning = false, hasTones = false, isProjectBased = false } = options;
+
+  // Language learning has its own registry (never project-based)
+  if (isLanguageLearning) {
+    return {
+      task1: hasTones
+        ? LANGUAGE_SECTION_REGISTRY.task1
+        : LANGUAGE_SECTION_REGISTRY.task1.filter(s => s !== 'toneSelect'),
+      intensive: LANGUAGE_SECTION_REGISTRY.intensive,
+      skipIntensive: false,
+    };
+  }
+
+  const registry = SECTION_REGISTRY[skillType] || SECTION_REGISTRY[SkillType.KNOWLEDGE];
+
+  return {
+    task1: registry.task1,
+    intensive: registry.intensive,
+    skipIntensive: isProjectBased,  // Project-based: bossMilestone handles hands-on, skip intensive
+  };
+}
+
 // Consolidated time structure with all activities
 // New flow: Video → FoundationCards → Quiz/FillBlank → BossMilestone → Reflection
 function getTimeStructure(hoursPerDay: number): {
@@ -205,56 +299,6 @@ If user has a specific project goal, day titles should reference building toward
 `;
 }
 
-// Helper to generate task1 JSON template (quiz or fillBlank)
-function getTask1Template(dayNumber: number, skillLevel: string, questionCount: number, estimatedMinutes: number): string {
-  const isQuiz = skillLevel === 'BEGINNER';
-  const format = isQuiz ? 'quiz' : 'fillBlank';
-
-  const questions = Array.from({ length: questionCount }, (_, i) =>
-    `{"id": "q${i + 1}", "question": "", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": ""}`
-  ).join(',\n      ');
-
-  const items = Array.from({ length: questionCount }, (_, i) =>
-    `{"id": "fb${i + 1}", "codeTemplate": "___BLANK___", "blanks": [{"id": "b1", "correctAnswers": [], "hint": ""}], "explanation": ""}`
-  ).join(',\n      ');
-
-  return `"taskFormat": "${format}",
-  "task1": {
-    "id": "day${dayNumber}-task1",
-    "title": "Concept Check",
-    "description": "Reinforce today's concepts",
-    "estimatedMinutes": ${estimatedMinutes},
-    "format": "${format}",
-    "passingScore": 0.7,
-    ${isQuiz ? `"questions": [\n      ${questions}\n    ]` : `"items": [\n      ${items}\n    ]`}
-  }`;
-}
-
-// Helper to generate bossMilestone JSON template
-function getBossMilestoneTemplate(dayNumber: number, estimatedMinutes: number): string {
-  return `"bossMilestone": {
-    "day": ${dayNumber},
-    "title": "Day ${dayNumber} Contribution",
-    "description": "Build a piece of your boss project",
-    "microTask": "REQUIRED: Specific task description (5-15 lines of code)",
-    "dayContribution": "How this helps the final project",
-    "conceptConnection": "Which foundationCard concept this applies",
-    "estimatedMinutes": ${estimatedMinutes},
-    "starterCode": "REQUIRED: Generate 5-20 lines of ACTUAL starter code with TODOs marking where the user should add code. ${dayNumber === 1 ? 'Start fresh.' : 'Build on previous days - include relevant code from day ' + (dayNumber - 1) + '.'}",
-    "expectedOutput": "What user should see when they run the code",
-    "hints": [{"level": 1, "hint": "REQUIRED: Gentle conceptual hint"}, {"level": 2, "hint": "REQUIRED: More specific approach"}, {"level": 3, "hint": "REQUIRED: Detailed guidance"}],
-    "solution": "REQUIRED: Generate the COMPLETE working solution code (15-40 lines). This must be real, runnable code that solves the microTask.",
-    "solutionAnnotations": ["REQUIRED: 2-4 explanations of key lines in the solution"],
-    "validationType": "run",
-    "validationInstructions": "Run the code and verify the output",
-    "setupInstructions": {
-      "files": [{"path": "REQUIRED: file path like 'index.js' or 'pages/index.js'", "description": "What this file contains"}],
-      "steps": ["REQUIRED: Step-by-step setup instructions (e.g., 'Paste the code into index.js', 'Create a new file pages/api/hello.js')"],
-      "runCommand": "Optional: command to run (e.g., 'node index.js' or 'npm start')"
-    }
-  }`;
-}
-
 function getTierInstructions(userTier: string): string {
   // Only include relevant tier - no need to describe all tiers
   switch (userTier) {
@@ -368,133 +412,7 @@ function getSkillTypeGuidance(skillType: SkillType, complexity: SkillComplexity,
 }
 
 /**
- * PRIMARY PROMPT: Generates SKELETON for ALL days
- * Day content is generated on-demand via buildDayDetailPrompt
- * Automatically includes learner context when learnerPrefs is provided
- *
- * Project-based skills (CODE, AI_AGENT, DESIGN):
- * - Boss project spans entire session
- * - Every day contributes a micro-step to the boss project
- * - Final day is the "Boss Day" where the complete project is assembled
- *
- * Practice-based skills (KNOWLEDGE, PHYSICAL):
- * - No boss projects, each day has standalone practice projects
- * - Better for language learning, theory, physical skills
- */
-export function buildCurriculumPrompt(params: CurriculumPromptParams): {
-  systemPrompt: string;
-  userPrompt: string;
-} {
-  const time = getTimeStructure(params.hoursPerDay);
-  const learnerContext = getLearnerContextGuidance(params.learnerPrefs);
-  const isProjectBased = usesProjectBasedLearning(params.skillType, params.learnerPrefs?.outputType);
-  const allDays = Array.from({ length: params.durationDays }, (_, i) => i + 1);
-  const bossDay = params.durationDays;
-
-  const projectBasedInstructions = `IMPORTANT - PROJECT-BASED STRUCTURE:
-- ONE boss project spans the ENTIRE ${params.durationDays}-day session
-- EVERY day includes a bossMilestonePreview (what code they'll build that day)
-- Final day (Day ${params.durationDays}) is "Boss Day" - complete project assembly
-- Daily flow: Video → Cards → Quiz/FillBlank → Boss Micro-Step → Reflection`;
-
-  const practiceBasedInstructions = `IMPORTANT - PRACTICE-BASED STRUCTURE:
-- Each day is self-contained with standalone practice exercises
-- No multi-day projects - focus on mastering daily concepts
-- Daily flow: Video → Cards → Quiz/FillBlank → Practice Project → Reflection`;
-
-  const systemPrompt = `Generate ${params.durationDays}-day curriculum skeleton for "${params.skillName}".
-Type: ${params.skillType} | Level: ${params.skillLevel} | ${time.totalMinutes}min/day (${time.mode})
-${params.suggestedLanguage ? `Language: ${params.suggestedLanguage}` : ''}
-
-${isProjectBased ? projectBasedInstructions : practiceBasedInstructions}
-
-${learnerContext}
-${getSkillTypeGuidance(params.skillType, params.complexity, params.safetyLevel)}
-
-${getContentStrategyGuidance()}
-
-${getTopicRelevanceGuidance()}
-
-Per day: day, title, subtitle, skills[], teaser, estimatedMinutes, ${isProjectBased ? 'hasBossProject (true for all), bossMilestonePreview,' : ''} contentLayer, videoStrategy, transferability, contentSource, skipTest.
-
-Output valid JSON only.`;
-
-  const dayTemplate = isProjectBased ? `{
-      "day": 1,
-      "title": "Day 1: [Topic]",
-      "subtitle": "Tagline",
-      "skills": ["Skill 1", "Skill 2"],
-      "teaser": "What they'll learn",
-      "estimatedMinutes": ${time.totalMinutes},
-      "hasBossProject": true,
-      "bossMilestonePreview": "What code they'll add to the boss project today",
-      "contentLayer": "",
-      "videoStrategy": "",
-      "transferability": "",
-      "contentSource": "",
-      "skipTest": {
-        "description": "Prove mastery to skip this day",
-        "questionSets": [[
-          {"question": "MCQ testing concept?", "options": ["Wrong", "Wrong", "Correct", "Wrong"], "correctIndex": 2},
-          {"question": "Another MCQ?", "options": ["Correct", "Wrong", "Wrong", "Wrong"], "correctIndex": 0},
-          {"question": "Third MCQ?", "options": ["Wrong", "Correct", "Wrong", "Wrong"], "correctIndex": 1}
-        ]],
-        "passThreshold": 2
-      }
-    }` : `{
-      "day": 1,
-      "title": "Day 1: [Topic]",
-      "subtitle": "Tagline",
-      "skills": ["Skill 1", "Skill 2"],
-      "teaser": "What they'll learn",
-      "estimatedMinutes": ${time.totalMinutes},
-      "contentLayer": "",
-      "videoStrategy": "",
-      "transferability": "",
-      "contentSource": "",
-      "skipTest": {
-        "description": "Prove mastery to skip this day",
-        "questionSets": [[
-          {"question": "MCQ testing concept?", "options": ["Wrong", "Wrong", "Correct", "Wrong"], "correctIndex": 2},
-          {"question": "Another MCQ?", "options": ["Correct", "Wrong", "Wrong", "Wrong"], "correctIndex": 0},
-          {"question": "Third MCQ?", "options": ["Wrong", "Correct", "Wrong", "Wrong"], "correctIndex": 1}
-        ]],
-        "passThreshold": 2
-      }
-    }`;
-
-  const bossProjectsSection = isProjectBased ? `"bossProjects": [{
-    "day": ${bossDay},
-    "title": "Boss Project: [Name]",
-    "description": "Complete project built across all ${params.durationDays} days",
-    "combinesDays": [${allDays.join(', ')}],
-    "estimatedMinutes": 75,
-    "teaser": "Final assembly and polish of your working project"
-  }],` : `"bossProjects": [],`;
-
-  const userPrompt = `{
-  "title": "Curriculum title",
-  "description": "What student will master",
-  "finalProject": "${isProjectBased ? `Capstone project built across all ${params.durationDays} days` : 'Mastery of all daily concepts and exercises'}",
-  "skillType": "${params.skillType}",
-  "days": [
-    ${dayTemplate}
-  ],
-  ${bossProjectsSection}
-  "metadata": {"recommendedTools": [], "prerequisites": ${JSON.stringify(params.prerequisiteSkills || [])}, "safetyLevel": "${params.safetyLevel || 'low'}", "isProjectBased": ${isProjectBased}${params.learnerPrefs?.outputType ? `, "outputType": "${params.learnerPrefs.outputType}"` : ''}}
-}
-
-Generate ALL ${params.durationDays} days. ${isProjectBased ? 'hasBossProject=true for ALL days (each day contributes to the boss project). Include bossMilestonePreview for each day showing what code they\'ll build.' : 'Each day should have self-contained learning objectives.'}`;
-
-  return { systemPrompt, userPrompt };
-}
-
-// Alias for backward compatibility (buildPreviewPrompt removed - use buildCurriculumPrompt)
-export const buildOverviewPrompt = buildCurriculumPrompt;
-
-/**
- * DAY DETAIL PROMPT: Generates full content for a specific day (Day 2+)
- * Called when student unlocks and starts a new day
+ * DAY HEADER: Common header for day detail prompts
  */
 // Supported languages for language learning
 export type TargetLanguage =
@@ -555,79 +473,6 @@ function getLanguageFeatures(lang: TargetLanguage): string {
   return features[lang] || '';
 }
 
-// Build language learning specific prompt
-function buildLanguageLearningPrompt(params: DayDetailParams): { systemPrompt: string; userPrompt: string } {
-  const lang = params.targetLanguage || 'other';
-  const langFeatures = getLanguageFeatures(lang);
-  const profLevel = params.proficiencyLevel || 'beginner';
-
-  const systemPrompt = `Generate VOCABULARY-BASED learning content for Day ${params.dayNumber} of "${params.skillName}".
-
-TARGET LANGUAGE: ${lang}
-PROFICIENCY: ${profLevel}
-FEATURES: ${langFeatures}
-
-This is LANGUAGE LEARNING - generate vocabulary cards, NOT code.
-
-VOCABULARY CARD FORMAT (use instead of regular foundationCards):
-Each card should be a "languageFoundationCard" with vocabulary:
-{
-  "id": "card-1",
-  "concept": "Word/phrase in English",
-  "visual": "relevant emoji",
-  "explanation": "Usage context and tips",
-  "vocabulary": {
-    "term": "word in ${lang}",
-    "definition": "English meaning",
-    "romanization": "pronunciation guide (pinyin/romaji/etc)",
-    ${lang === 'chinese' || lang === 'thai' || lang === 'vietnamese' ? '"tone": number or [numbers],' : ''}
-    ${['spanish', 'french', 'german', 'italian', 'portuguese', 'arabic', 'russian', 'hindi'].includes(lang) ? '"gender": "masculine" | "feminine" | "neuter",' : ''}
-    "partOfSpeech": "noun/verb/adj/etc",
-    "proficiencyLevel": "${profLevel}",
-    "examples": [{"sentence": "example in ${lang}", "romanization": "if applicable", "translation": "English"}]
-  },
-  "microQuestion": {"question": "Quick check", "type": "gotit"}
-}
-
-LISTENING QUESTIONS (for quiz task1):
-Include audioText for questions that should be spoken:
-{
-  "question": "What does this mean?",
-  "audioText": "text to speak in ${lang}",
-  "options": ["meaning1", "meaning2", "meaning3", "meaning4"],
-  "correctIndex": 0,
-  "explanation": "Why this is correct"
-}
-
-DAILY STRUCTURE:
-1. 5-7 vocabulary cards (new words for today)
-2. Quiz with 2-3 listening questions (audioText field) + 2-3 meaning questions
-3. NO bossMilestone (not a coding skill)
-4. Reflection focused on vocabulary retention
-
-Output valid JSON only.`;
-
-  const skills = JSON.stringify(params.skeleton?.skills || params.dayObjectives);
-
-  const userPrompt = `Day ${params.dayNumber}: "${params.dayTitle}"
-Topic: ${skills}
-Language: ${lang}
-Level: ${profLevel}
-
-Generate JSON with:
-- prePrompt: {text, primeQuestions[], yesterdayRecap}
-- video: {watchPoints[]} (optional pronunciation video tips)
-- languageFoundationCards: 5-7 vocabulary cards with vocabulary field (term, definition, romanization, examples)
-- task1: {format:"quiz", passingScore:70, questions[5 questions, at least 2 with audioText for listening]}
-- reflection: {questions[confidence(scale), clicked(text), foggy(text), connection(text)]}
-- skipTest: {questionSets[[3 hard vocabulary MCQs]], passThreshold:3}
-
-IMPORTANT: Include "vocabulary" object in each languageFoundationCard.
-Include "audioText" in at least 2 quiz questions for listening practice.`;
-
-  return { systemPrompt, userPrompt };
-}
-
 // Cacheable version of language learning prompt
 function buildCacheableLanguageLearningPrompt(params: DayDetailParams): {
   staticPart: string;
@@ -640,27 +485,37 @@ function buildCacheableLanguageLearningPrompt(params: DayDetailParams): {
   const hasTones = ['chinese', 'thai', 'vietnamese'].includes(lang);
 
   // Static part - cacheable instructions
+  const hasGender = ['spanish', 'french', 'german', 'italian', 'portuguese', 'arabic', 'russian', 'hindi'].includes(lang);
+
   const staticPart = `Generate VOCABULARY-BASED learning content for language learning.
+This is LANGUAGE LEARNING - generate vocabulary cards, NOT code.
 
 VOCABULARY CARD FORMAT (use "languageFoundationCards" array):
 {
   "id": "day1-vocab-1",
-  "concept": "English meaning",
-  "visual": "emoji",
+  "concept": "Word/phrase in English",
+  "visual": "relevant emoji",
   "explanation": "Usage context and tips",
   "vocabulary": {
     "term": "word in target language",
     "definition": "English meaning",
-    "romanization": "pronunciation guide",
+    "romanization": "pronunciation guide (pinyin/romaji/etc)",${hasTones ? `
+    "tone": "number or [numbers] for tonal languages",` : ''}${hasGender ? `
+    "gender": "masculine | feminine | neuter",` : ''}
     "partOfSpeech": "noun/verb/adj/phrase",
-    "examples": [{"sentence": "example sentence", "romanization": "pronunciation", "translation": "English"}]
+    "proficiencyLevel": "HSK1/N5/A1/etc",
+    "examples": [{"sentence": "example in target language", "romanization": "if applicable", "translation": "English"}]
   },
-  "microQuestion": {"question": "Got it?", "type": "gotit"},
+  "microQuestion": {"question": "Quick check", "type": "gotit"},
   "order": 1
 }
 
+LISTENING QUESTIONS (for quiz in task1):
+Include audioText for questions that should be spoken:
+{"question": "What does this mean?", "audioText": "text to speak", "options": [...], "correctIndex": 0, "explanation": "..."}
+
 TASK1 - QUICK PRACTICE (3-4 types, 8-10 questions total):
-1. "quiz" - MCQ: hear/see word, pick meaning (include audioText for listening)
+1. "quiz" - MCQ: hear/see word, pick meaning (include audioText for listening, at least 2 questions)
 2. "matching" - Match words to definitions (4-6 pairs)
 3. "toneSelect" - For tonal languages: hear word, select correct tone${hasTones ? ' (REQUIRED)' : ' (skip if not tonal)'}
 
@@ -720,15 +575,18 @@ Output this JSON structure:
   "languageFoundationCards": [
     {
       "id": "day${dayNumber}-vocab-1",
-      "concept": "English meaning",
-      "visual": "emoji",
+      "concept": "Word/phrase in English",
+      "visual": "relevant emoji",
       "explanation": "When and how to use this word/phrase",
       "vocabulary": {
         "term": "word in ${lang}",
         "definition": "English meaning",
-        "romanization": "pronunciation guide",
+        "romanization": "pronunciation guide (pinyin/romaji/etc)",${hasTones ? `
+        "tone": 1,` : ''}${hasGender ? `
+        "gender": "masculine",` : ''}
         "partOfSpeech": "noun/verb/adj",
-        "examples": [{"sentence": "Example sentence in ${lang}", "romanization": "pronunciation", "translation": "English translation"}]
+        "proficiencyLevel": "${profLevel}",
+        "examples": [{"sentence": "Example in ${lang}", "romanization": "pronunciation", "translation": "English"}]
       },
       "microQuestion": {"question": "Got it?", "type": "gotit"},
       "order": 1
@@ -792,188 +650,6 @@ REQUIREMENTS:
 - All vocabulary must be appropriate for ${profLevel} level`;
 
   return { staticPart, dynamicPart, userPrompt };
-}
-
-export function buildDayDetailPrompt(params: DayDetailParams): {
-  systemPrompt: string;
-  userPrompt: string;
-} {
-  // Use language learning specific prompt if applicable
-  if (params.isLanguageLearning && params.targetLanguage) {
-    return buildLanguageLearningPrompt(params);
-  }
-
-  const time = getTimeStructure(params.hoursPerDay);
-  const dayHeader = getDayHeader({
-    dayTitle: params.dayTitle,
-    skeleton: params.skeleton,
-    dayObjectives: params.dayObjectives,
-    previousDayTitle: params.previousDayTitle,
-    skillType: params.skillType,
-    hoursPerDay: params.hoursPerDay,
-    suggestedLanguage: params.suggestedLanguage,
-    userTier: params.userTier,
-    includeMode: true,
-  });
-
-  // Task formats: Quiz or FillBlank for concept reinforcement (code moved to bossMilestone)
-  const taskFormatGuidance = `
-TASK FORMATS (choose one for task1.format - concept reinforcement only):
-- "quiz": passingScore, questions[{question, options[4], correctIndex, explanation}] - 5-8 MCQs
-- "fillBlank": passingScore, items[{codeTemplate with ___BLANK___, blanks[{correctAnswers[], hint}], explanation}]
-Recommended: ${params.skillLevel === 'BEGINNER' ? '"quiz" for conceptual understanding' : '"fillBlank" for code patterns'}
-
-BOSS MILESTONE (daily coding micro-step):
-- bossMilestone builds toward the boss project - small daily contribution (5-15 lines)
-- Each day adds working code that connects to today's foundationCards concepts
-- Validation: user runs code and sees output (validationType: "run")`;
-
-  const systemPrompt = `Generate COMPLETE learning content for Day ${params.dayNumber} of "${params.skillName}".
-
-${dayHeader}
-
-${getSkillTypeGuidance(params.skillType, params.complexity)}
-
-${getTierInstructions(params.userTier)}
-
-REQUIREMENTS:
-1. Connect to previous day's concept (spaced repetition)
-2. Generate 6-10 foundationCards (REQUIRED)
-3. task1 = quiz OR fillBlank for CONCEPT REINFORCEMENT (not coding)
-4. bossMilestone = CODING practice (daily micro-step toward boss project)
-   - Starter code builds on previous days (cumulative)
-   - Small task (5-15 lines of new code)
-   - User validates by running and seeing output
-${taskFormatGuidance}
-
-FOUNDATION CARDS (6-10 cards):
-${params.dayNumber === 1 ? `Card 1: INTRO - "Today we'll learn [X]..."` : `Card 1: RECAP - "Yesterday: [X]. Today builds on..."`}
-Cards 2-7: Core concepts, patterns, gotchas. Each card needs realWorldContext (1 sentence: where/why used).
-MicroQuestion types: "gotit" (intro/recap), "understanding" (MCQ for concepts).
-
-Output valid JSON only.`;
-
-  const task1Minutes = Math.round(time.task1 * 0.4);
-  const bossMilestoneMinutes = Math.round(time.task1 * 0.6);
-
-  // Minimal template - AI generates all content
-  const skills = JSON.stringify(params.skeleton?.skills || params.dayObjectives);
-  const taskFormat = params.skillLevel === 'BEGINNER' ? 'quiz' : 'fillBlank';
-
-  const userPrompt = `Day ${params.dayNumber}: "${params.dayTitle}"
-Skills: ${skills}
-Minutes: ${time.totalMinutes}
-
-Generate JSON with:
-- prePrompt: {text, primeQuestions[], yesterdayRecap}
-- video: {watchPoints[]}
-- foundationCards: 6-10 cards, each with {id, concept, visual, explanation, realWorldContext, microQuestion{question, type}, order}
-- task1: {format:"${taskFormat}", passingScore:70, ${taskFormat === 'quiz' ? 'questions[5 MCQs with explanation]' : 'items[5 fillBlank with blanks[], explanation]'}}
-- bossMilestone: {title, microTask, starterCode(10-25 lines REAL code), expectedOutput, hints[3 levels], solution(15-40 lines COMPLETE code), solutionAnnotations[], validationType:"run", setupInstructions:{files:[{path,description}], steps:[], runCommand?}}
-${time.practice > 0 ? `- practiceProject: {title, description, estimatedMinutes:${time.practice}, coreChallenge, requirements[], hints[], solution}` : ''}
-- reflection: {questions[confidence(scale), clicked(text), foggy(text), connection(text)]}
-- skipTest: {questionSets[[3 hard MCQs]], passThreshold:3}`;
-
-  return { systemPrompt, userPrompt };
-}
-
-/**
- * DAY DETAIL CORE PROMPT: Fast essential content only
- * Generates: prePrompt, video, foundationCards (5-6), task1 (quiz/fillBlank), bossMilestone (project-based only), skipTest
- * Called first for quick initial load
- *
- * Project-based skills include bossMilestone (daily coding toward boss project)
- * Practice-based skills skip bossMilestone (use practice projects in deferred instead)
- */
-export function buildDayDetailCorePrompt(params: DayDetailParams): {
-  systemPrompt: string;
-  userPrompt: string;
-} {
-  const time = getTimeStructure(params.hoursPerDay);
-  // Use stored isProjectBased from metadata, fall back to calculation if not provided
-  const isProjectBased = params.isProjectBased ?? usesProjectBasedLearning(params.skillType, params.outputType);
-  const dayHeader = getDayHeader({
-    dayTitle: params.dayTitle,
-    skeleton: params.skeleton,
-    dayObjectives: params.dayObjectives,
-    previousDayTitle: params.previousDayTitle,
-    skillType: params.skillType,
-    hoursPerDay: params.hoursPerDay,
-    suggestedLanguage: params.suggestedLanguage,
-  });
-
-  const task1Minutes = isProjectBased ? Math.round(time.task1 * 0.4) : time.task1;
-  const bossMilestoneMinutes = Math.round(time.task1 * 0.6);
-
-  const coreItems = isProjectBased
-    ? 'prePrompt, video info, foundationCards (5-6 cards), task1 (quiz or fillBlank), bossMilestone, skipTest'
-    : 'prePrompt, video info, foundationCards (5-6 cards), task1 (quiz or fillBlank), skipTest';
-
-  const bossInstructions = isProjectBased
-    ? `- bossMilestone = daily coding micro-step toward boss project
-  - starterCode: MUST be real code (10-25 lines) with TODOs marking where user adds code
-  - solution: MUST be complete working code (15-40 lines) that solves the microTask
-  - hints: 3 progressive hints (conceptual → specific → detailed)
-  - solutionAnnotations: 2-4 explanations of key lines
-`
-    : '';
-
-  // Build personalized prePrompt instructions based on previous day's reflection
-  let reflectionContext = '';
-  if (params.previousDayReflection?.confusedConcepts?.length) {
-    reflectionContext = `
-IMPORTANT - Previous Day Reflection:
-The student found these concepts confusing yesterday: ${params.previousDayReflection.confusedConcepts.join(', ')}
-${params.previousDayReflection.boostCompleted ? 'They completed a quick boost to review.' : ''}
-In the prePrompt.yesterdayRecap, briefly reconnect to these concepts and show how today's material builds on or clarifies them.
-`;
-  }
-
-  const systemPrompt = `Generate CORE learning content for Day ${params.dayNumber} of "${params.skillName}".
-
-${dayHeader}
-
-${getSkillTypeGuidance(params.skillType, params.complexity)}
-${reflectionContext}
-Generate ONLY: ${coreItems}.
-- task1 = concept reinforcement (quiz or fillBlank ONLY, no coding)
-${bossInstructions}skipTest: 3 hard MCQs testing day's concepts - user can skip day if they pass.
-
-Output valid JSON only.`;
-
-  const bossMilestoneSection = isProjectBased
-    ? `${getBossMilestoneTemplate(params.dayNumber, bossMilestoneMinutes)},`
-    : '';
-
-  const userPrompt = `{
-  "day": ${params.dayNumber},
-  "title": "${params.dayTitle}",
-  "subtitle": "${params.skeleton?.subtitle || ''}",
-  "skills": ${JSON.stringify(params.skeleton?.skills || params.dayObjectives)},
-
-  "prePrompt": {"text": "Brief intro connecting to previous learning", "primeQuestions": ["Q1?", "Q2?"], "yesterdayRecap": "${params.previousDayTitle ? 'Yesterday: ' + params.previousDayTitle : ''}"},
-  "video": {"watchPoints": ["Point 1", "Point 2"]},
-
-  "foundationCards": [
-    {"id": "day${params.dayNumber}-card-1", "concept": "", "visual": "", "explanation": "", "realWorldContext": "", "microQuestion": {"question": "", "type": "gotit"}, "order": 1},
-    {"id": "day${params.dayNumber}-card-2", "concept": "", "visual": "", "explanation": "", "realWorldContext": "", "codeExample": "", "microQuestion": {"question": "", "type": "understanding", "options": [], "correctIndex": 0, "explanation": ""}, "order": 2}
-  ],
-
-  ${getTask1Template(params.dayNumber, params.skillLevel, 3, task1Minutes)},
-
-  ${bossMilestoneSection}
-
-  "skipTest": {
-    "questionSets": [[
-      {"question": "Hard question 1 testing day's concept?", "options": ["A", "B", "C", "D"], "correctIndex": 0},
-      {"question": "Hard question 2 testing day's concept?", "options": ["A", "B", "C", "D"], "correctIndex": 1},
-      {"question": "Hard question 3 testing day's concept?", "options": ["A", "B", "C", "D"], "correctIndex": 2}
-    ]],
-    "passThreshold": 3
-  }
-}`;
-
-  return { systemPrompt, userPrompt };
 }
 
 /**
@@ -1266,17 +942,42 @@ Output valid JSON only.`;
 
 /**
  * Static instructions for day detail generation - cacheable
+ * Uses UNIFIED SECTIONS FORMAT for ALL skill types
  */
-const DAY_DETAIL_STATIC_INSTRUCTIONS = `You generate day learning content.
+const DAY_DETAIL_STATIC_INSTRUCTIONS = `You generate day learning content using the UNIFIED SECTIONS FORMAT.
 
-TASK FORMATS (task1 - concept reinforcement):
-- quiz: {passingScore, questions[{question, options[4], correctIndex, explanation}]} - 5-8 MCQs
-- fillBlank: {passingScore, items[{codeTemplate with ___BLANK___, blanks[{correctAnswers[], hint}]}]}
+TASK1 - UNIFIED SECTIONS FORMAT (format: "sections"):
+Use sections array with mixed exercise types based on skill type.
+
+UNIVERSAL SECTIONS (all skills):
+- quiz: {type:"quiz", title, questions[{id, question, options[4], correctIndex, explanation}]}
+- matching: {type:"matching", title, pairs[{term, definition}]}
+- fillBlank: {type:"fillBlank", title, instructions, items[{id, sentence with ___BLANK___, translation, blank:{correctAnswers[], hint?}}]}
+- reorder: {type:"reorder", title, instructions, items[{id, scrambled[], correctOrder[], translation, hint?}]}
+
+CODE SECTIONS (CODE, AI_AGENT skills):
+- outputPrediction: {type:"outputPrediction", title, questions[{id, code, options[], correctIndex, explanation, language?}]}
+- codeCompletion: {type:"codeCompletion", title, items[{id, description, starterCode, solution, hints[], language?}]}
+- debugging: {type:"debugging", title, items[{id, buggyCode, fixedCode, hint?, explanation, language?}]}
+
+PHYSICAL SECTIONS (PHYSICAL skills):
+- formCheck: {type:"formCheck", title, items[{id, checkpoint, description, commonMistake?}]}
+- safetyCheck: {type:"safetyCheck", title, items[{id, question, correctAnswer:boolean, explanation}]}
+
+DESIGN SECTIONS (DESIGN skills):
+- designCritique: {type:"designCritique", title, items[{id, description, question, options[], correctIndex, principle, explanation, imageUrl?}]}
+
+SECTION SELECTION BY SKILL TYPE:
+- CODE: quiz + outputPrediction + fillBlank (for task1)
+- PHYSICAL: quiz + reorder + matching (for task1)
+- KNOWLEDGE: quiz + matching + fillBlank (for task1)
+- DESIGN: quiz + designCritique + matching (for task1)
+- AI_AGENT: quiz + fillBlank + outputPrediction (for task1)
 
 BOSS MILESTONE (for project-based skills) - CRITICAL REQUIREMENTS:
-- Daily coding micro-step (5-15 lines new code)
+- Daily micro-step building toward boss project (5-15 lines new code for coding skills)
 - starterCode: MUST be 10-25 lines of REAL, RUNNABLE code with TODO comments marking where user adds code
-- solution: MUST be 15-40 lines of COMPLETE, WORKING code that solves the microTask (NOT a placeholder!)
+- solution: MUST be 15-40 lines of COMPLETE, WORKING code that solves the microTask
 - solutionAnnotations: 2-4 strings explaining key lines in the solution
 - hints: 3 progressive hints (level 1: conceptual, level 2: specific approach, level 3: detailed guidance)
 - setupInstructions: {files: [{path, description}], steps: [], runCommand?: "optional"}
@@ -1296,7 +997,6 @@ CODE EXERCISES:
 - Browser-safe: json, csv, re, math, pandas, numpy, beautifulsoup4
 - Needs local: requests, selenium, flask, django → provide fixture fallback
 - Include error handling, use mock data for external APIs
-- Add note "For production: use backend/local" when needed
 
 Output valid JSON only.`;
 
@@ -1311,29 +1011,90 @@ export function buildCacheableCurriculumPrompt(params: CurriculumPromptParams): 
 } {
   const time = getTimeStructure(params.hoursPerDay);
   const isProjectBased = usesProjectBasedLearning(params.skillType, params.learnerPrefs?.outputType);
+  const learnerContext = getLearnerContextGuidance(params.learnerPrefs);
+  const allDays = Array.from({ length: params.durationDays }, (_, i) => i + 1);
 
   // Static part - cacheable across all users
   const staticPart = CURRICULUM_STATIC_INSTRUCTIONS;
 
-  // Dynamic part - user-specific context
-  const dynamicPart = `Generate ${params.durationDays}-day curriculum for "${params.skillName}".
-Type: ${params.skillType} | Level: ${params.skillLevel} | ${time.totalMinutes}min/day
-${params.suggestedLanguage ? `Lang: ${params.suggestedLanguage}` : ''}
-${isProjectBased ? 'PROJECT-BASED: Boss project spans all days. Include hasBossProject:true, bossMilestonePreview per day.' : 'PRACTICE-BASED: Standalone daily exercises.'}
-${params.learnerPrefs?.selectedDirectionOutcome ? `Target: "${params.learnerPrefs.selectedDirectionOutcome}"` : ''}
-${params.learnerPrefs?.outputType ? `Output: ${params.learnerPrefs.outputType}` : ''}`;
+  // Project vs Practice based instructions
+  const structureInstructions = isProjectBased
+    ? `PROJECT-BASED STRUCTURE:
+- ONE boss project spans the ENTIRE ${params.durationDays}-day session
+- EVERY day includes bossMilestonePreview (what code they'll build that day)
+- Final day (Day ${params.durationDays}) is "Boss Day" - complete project assembly
+- Daily flow: Video → Cards → Quiz/FillBlank → Boss Micro-Step → Reflection`
+    : `PRACTICE-BASED STRUCTURE:
+- Each day is self-contained with standalone practice exercises
+- No multi-day projects - focus on mastering daily concepts
+- Daily flow: Video → Cards → Quiz/FillBlank → Practice Project → Reflection`;
 
-  // Minimal template - AI fills in values, no empty strings
-  const dayNums = Array.from({ length: params.durationDays }, (_, i) => i + 1);
-  const userPrompt = `Generate ${params.durationDays} days. Each day needs: day, title, subtitle, skills[], teaser, estimatedMinutes:${time.totalMinutes}${isProjectBased ? ', hasBossProject:true, bossMilestonePreview' : ''}, contentLayer, videoStrategy, transferability, contentSource, skipTest{questionSets[[3 MCQs]], passThreshold:2}.
-${isProjectBased ? `bossProjects:[{day:${params.durationDays}, combinesDays:[${dayNums.join(',')}], estimatedMinutes:75}]` : 'bossProjects:[]'}
-metadata:{isProjectBased:${isProjectBased}}`;
+  // Dynamic part - user-specific context with skill guidance
+  const skillGuidance = getSkillTypeGuidance(params.skillType, params.complexity, params.safetyLevel);
+  const dynamicPart = `Generate ${params.durationDays}-day curriculum skeleton for "${params.skillName}".
+Type: ${params.skillType} | Level: ${params.skillLevel} | ${time.totalMinutes}min/day (${time.mode})
+${params.suggestedLanguage ? `Language: ${params.suggestedLanguage}` : ''}
+
+${structureInstructions}
+${learnerContext}
+${skillGuidance}
+
+Per day: day, title, subtitle, skills[], teaser, estimatedMinutes:${time.totalMinutes}, ${isProjectBased ? 'hasBossProject:true, bossMilestonePreview,' : ''} contentLayer, videoStrategy, transferability, contentSource, skipTest.`;
+
+  // User prompt with day template
+  const bossProjectsSection = isProjectBased
+    ? `"bossProjects": [{
+    "day": ${params.durationDays},
+    "title": "Boss Project: [Name]",
+    "description": "Complete project built across all ${params.durationDays} days",
+    "combinesDays": [${allDays.join(', ')}],
+    "estimatedMinutes": 75,
+    "teaser": "Final assembly and polish"
+  }]`
+    : `"bossProjects": []`;
+
+  const userPrompt = `Generate ALL ${params.durationDays} days with this structure:
+{
+  "title": "Curriculum title",
+  "description": "What student will master",
+  "finalProject": "${isProjectBased ? 'Capstone project built across all days' : 'Mastery of all daily concepts'}",
+  "skillType": "${params.skillType}",
+  "days": [
+    {
+      "day": 1,
+      "title": "Day 1: [Topic]",
+      "subtitle": "Tagline",
+      "skills": ["Skill 1", "Skill 2"],
+      "teaser": "What they'll learn",
+      "estimatedMinutes": ${time.totalMinutes},${isProjectBased ? `
+      "hasBossProject": true,
+      "bossMilestonePreview": "What code they'll add today",` : ''}
+      "contentLayer": "foundation|language_core|framework|tool|project",
+      "videoStrategy": "skip|optional|helpful|recommended",
+      "transferability": "high|medium|low",
+      "contentSource": "university|youtube|text|docs",
+      "skipTest": {
+        "description": "Prove mastery to skip this day",
+        "questionSets": [[
+          {"question": "MCQ testing concept?", "options": ["Wrong", "Wrong", "Correct", "Wrong"], "correctIndex": 2},
+          {"question": "Another MCQ?", "options": ["Correct", "Wrong", "Wrong", "Wrong"], "correctIndex": 0},
+          {"question": "Third MCQ?", "options": ["Wrong", "Correct", "Wrong", "Wrong"], "correctIndex": 1}
+        ]],
+        "passThreshold": 2
+      }
+    }
+  ],
+  ${bossProjectsSection},
+  "metadata": {"recommendedTools": [], "prerequisites": ${JSON.stringify(params.prerequisiteSkills || [])}, "safetyLevel": "${params.safetyLevel || 'low'}", "isProjectBased": ${isProjectBased}${params.learnerPrefs?.outputType ? `, "outputType": "${params.learnerPrefs.outputType}"` : ''}}
+}
+${isProjectBased ? 'hasBossProject=true for ALL days. Include bossMilestonePreview showing what code they\'ll build each day.' : 'Each day should have self-contained learning objectives.'}`;
 
   return { staticPart, dynamicPart, userPrompt };
 }
 
 /**
  * Cacheable day detail core prompt
+ * Uses UNIFIED SECTIONS FORMAT for ALL skill types
  */
 export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
   staticPart: string;
@@ -1352,22 +1113,95 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
   // Static part - cacheable
   const staticPart = DAY_DETAIL_STATIC_INSTRUCTIONS;
 
+  // Get appropriate sections for this skill type
+  const sections = getSectionsForSkillType(params.skillType);
+  const sectionTypes = sections.task1.join(' + ');
+
   // Build improvement areas instruction if provided
   const improvementAreasInstruction = params.improvementAreas?.length
     ? `\nIMPROVEMENT AREAS: ${params.improvementAreas.join(', ')}. Incorporate these into examples and scenarios where relevant.`
     : '';
 
-  // Dynamic part - day-specific
+  // Dynamic part - day-specific with skill type guidance
+  const skillGuidance = getSkillTypeGuidance(params.skillType, params.complexity);
   const dynamicPart = `Day ${params.dayNumber} of "${params.skillName}" (${params.skillType})
 Title: ${params.dayTitle}
 ${params.previousDayTitle ? `Previous: ${params.previousDayTitle}` : ''}
 ${params.suggestedLanguage ? `Lang: ${params.suggestedLanguage}` : ''}
-${isProjectBased ? 'Include bossMilestone with REAL starterCode (10-25 lines) and COMPLETE solution code (15-40 lines).' : 'No bossMilestone (practice-based).'}${improvementAreasInstruction}
-Generate: prePrompt, video, foundationCards(5-6), task1, ${isProjectBased ? 'bossMilestone, ' : ''}skipTest.`;
+${skillGuidance}
+SECTIONS FOR ${params.skillType}: ${sectionTypes}
+${isProjectBased ? 'Include bossMilestone with REAL starterCode and COMPLETE solution code.' : 'No bossMilestone (practice-based).'}${improvementAreasInstruction}
+Generate: prePrompt, video, foundationCards(5-6), task1 (format:"sections" with ${sectionTypes}), ${isProjectBased ? 'bossMilestone, ' : ''}skipTest.`;
 
-  // Minimal template - AI generates content, no empty placeholders
+  // Build section-specific task1 template based on skill type
+  const task1SectionsTemplate = getSectionTemplateForSkillType(params.skillType, params.dayNumber);
+
+  // Boss milestone template with required fields
+  const bossMilestoneTemplate = isProjectBased ? `- bossMilestone: {
+    day: ${params.dayNumber},
+    title: "Day ${params.dayNumber} Contribution",
+    description: "Build a piece of your boss project",
+    microTask: "REQUIRED: Specific task description (5-15 lines of code)",
+    dayContribution: "How this helps the final project",
+    conceptConnection: "Which foundationCard concept this applies",
+    estimatedMinutes: 10,
+    starterCode: "REQUIRED: 5-20 lines ACTUAL starter code with TODOs marking where user adds code. ${params.dayNumber === 1 ? 'Start fresh.' : 'Build on previous days - include relevant code from day ' + (params.dayNumber - 1) + '.'}",
+    expectedOutput: "What user should see when they run the code",
+    hints: [{level:1, hint:"REQUIRED: Gentle conceptual hint"}, {level:2, hint:"REQUIRED: More specific approach"}, {level:3, hint:"REQUIRED: Detailed guidance"}],
+    solution: "REQUIRED: 15-40 lines COMPLETE working solution code. Must be real, runnable code.",
+    solutionAnnotations: ["REQUIRED: 2-4 explanations of key lines in the solution"],
+    validationType: "run",
+    validationInstructions: "Run the code and verify the output",
+    setupInstructions: {
+      files: [{path: "REQUIRED: e.g. 'index.js' or 'pages/index.js'", description: "What this file contains"}],
+      steps: ["REQUIRED: Step-by-step setup (e.g., 'Paste code into index.js')"],
+      runCommand: "e.g. 'node index.js' or 'npm start'"
+    }
+  }` : '';
+
+  // Minimal template - AI generates content using sections format
   const userPrompt = `Day ${params.dayNumber}: "${params.dayTitle}"
-Generate: prePrompt{text, primeQuestions[], yesterdayRecap}, video{watchPoints[]}, foundationCards[5-6 with id, concept, explanation, realWorldContext, microQuestion], task1{format:quiz/fillBlank, passingScore:80, questions[]}${isProjectBased ? ', bossMilestone{title, microTask, starterCode(10-25 lines REAL code with TODOs), expectedOutput, hints[3 levels], solution(15-40 lines COMPLETE working code), solutionAnnotations[], validationType:run}' : ''}, skipTest{questionSets[[3 hard MCQs]], passThreshold:3}`;
+Generate JSON with:
+- prePrompt: {text, primeQuestions[], yesterdayRecap}
+- video: {watchPoints[]}
+- foundationCards: [5-6 cards with id, concept, explanation, realWorldContext, microQuestion]
+- task1: {id:"day${params.dayNumber}-task1", title:"Practice", description:"Reinforce today's concepts", estimatedMinutes:${Math.round(time.task1)}, format:"sections", passingScore:0.7, sections:[${task1SectionsTemplate}]}
+${bossMilestoneTemplate}
+- skipTest: {questionSets:[[3 hard MCQs testing day's concepts]], passThreshold:3}`;
 
   return { staticPart, dynamicPart, userPrompt };
+}
+
+/**
+ * Generate section template snippet for task1 based on skill type
+ */
+function getSectionTemplateForSkillType(skillType: SkillType, dayNumber: number): string {
+  switch (skillType) {
+    case SkillType.CODE:
+    case SkillType.AI_AGENT:
+      return `
+        {type:"quiz", title:"Concept Check", questions:[{id:"q1", question:"...", options:["A","B","C","D"], correctIndex:0, explanation:"..."}]},
+        {type:"outputPrediction", title:"Predict the Output", questions:[{id:"op1", code:"...", options:["output1","output2","output3","output4"], correctIndex:0, explanation:"..."}]},
+        {type:"fillBlank", title:"Complete the Code", instructions:"Fill in the blanks", items:[{id:"fb1", sentence:"code with ___BLANK___", translation:"", blank:{correctAnswers:["answer"], hint:"hint"}}]}
+      `;
+    case SkillType.PHYSICAL:
+      return `
+        {type:"quiz", title:"Knowledge Check", questions:[{id:"q1", question:"...", options:["A","B","C","D"], correctIndex:0, explanation:"..."}]},
+        {type:"reorder", title:"Order the Steps", instructions:"Put these steps in the correct order", items:[{id:"ro1", scrambled:["step2","step1","step3"], correctOrder:["step1","step2","step3"], translation:"Complete sequence", hint:"Think about the logical flow"}]},
+        {type:"matching", title:"Match Terms", pairs:[{term:"Term 1", definition:"Definition 1"}]}
+      `;
+    case SkillType.DESIGN:
+      return `
+        {type:"quiz", title:"Design Principles", questions:[{id:"q1", question:"...", options:["A","B","C","D"], correctIndex:0, explanation:"..."}]},
+        {type:"designCritique", title:"Design Critique", items:[{id:"dc1", description:"Design scenario", question:"What would improve this?", options:["Option A","Option B","Option C","Option D"], correctIndex:0, principle:"Design Principle", explanation:"..."}]},
+        {type:"matching", title:"Match Concepts", pairs:[{term:"Concept 1", definition:"Definition 1"}]}
+      `;
+    case SkillType.KNOWLEDGE:
+    default:
+      return `
+        {type:"quiz", title:"Concept Check", questions:[{id:"q1", question:"...", options:["A","B","C","D"], correctIndex:0, explanation:"..."}]},
+        {type:"matching", title:"Match Terms", pairs:[{term:"Term 1", definition:"Definition 1"}]},
+        {type:"fillBlank", title:"Fill in the Blanks", instructions:"Complete the sentences", items:[{id:"fb1", sentence:"Sentence with ___BLANK___", translation:"", blank:{correctAnswers:["answer"], hint:"hint"}}]}
+      `;
+  }
 }

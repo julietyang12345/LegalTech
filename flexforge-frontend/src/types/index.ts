@@ -597,7 +597,8 @@ export interface Task {
 // ============================================
 
 // Task formats for concept reinforcement (code tasks moved to bossMilestone)
-export type TaskFormat = 'quiz' | 'fillBlank' | 'mixed';
+// 'sections' is the new unified format that works for ALL skill types
+export type TaskFormat = 'quiz' | 'fillBlank' | 'mixed' | 'sections';
 
 // ============================================
 // Language Learning Exercise Types
@@ -707,17 +708,145 @@ export interface TypingSection {
   items: TypingItem[];
 }
 
-// Union type for all task sections
+// ============================================
+// Code-Specific Sections (NEW)
+// ============================================
+
+export interface CodeCompletionItem {
+  id: string;
+  description: string;
+  starterCode: string;
+  solution: string;
+  hints: string[];
+  language?: string;
+}
+
+export interface CodeCompletionSection {
+  type: 'codeCompletion';
+  title: string;
+  items: CodeCompletionItem[];
+}
+
+export interface DebuggingItem {
+  id: string;
+  buggyCode: string;
+  fixedCode: string;
+  hint?: string;
+  explanation: string;
+  language?: string;
+}
+
+export interface DebuggingSection {
+  type: 'debugging';
+  title: string;
+  items: DebuggingItem[];
+}
+
+export interface OutputPredictionQuestion {
+  id: string;
+  code: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
+  language?: string;
+}
+
+export interface OutputPredictionSection {
+  type: 'outputPrediction';
+  title: string;
+  questions: OutputPredictionQuestion[];
+}
+
+// ============================================
+// Physical-Specific Sections (NEW)
+// ============================================
+
+export interface FormCheckItem {
+  id: string;
+  checkpoint: string;
+  description: string;
+  commonMistake?: string;
+}
+
+export interface FormCheckSection {
+  type: 'formCheck';
+  title: string;
+  items: FormCheckItem[];
+}
+
+export interface SafetyCheckItem {
+  id: string;
+  question: string;
+  correctAnswer: boolean;
+  explanation: string;
+}
+
+export interface SafetyCheckSection {
+  type: 'safetyCheck';
+  title: string;
+  items: SafetyCheckItem[];
+}
+
+// SequenceOrder reuses ReorderSection with different semantics
+
+// ============================================
+// Design-Specific Sections (NEW)
+// ============================================
+
+export interface DesignCritiqueItem {
+  id: string;
+  description: string;
+  question: string;
+  options: string[];
+  correctIndex: number;
+  principle: string;
+  explanation: string;
+  imageUrl?: string;
+}
+
+export interface DesignCritiqueSection {
+  type: 'designCritique';
+  title: string;
+  items: DesignCritiqueItem[];
+}
+
+// ============================================
+// Unified Task Section Type
+// ============================================
+
+// Union type for all task sections - universal + language + code + physical + design
 export type TaskSection =
+  // Universal sections (all skill types)
   | QuizSection
   | MatchingSection
-  | ToneSelectSection
-  | LanguageFillBlankSection
-  | TranslationSection
   | ReorderSection
-  | TypingSection;
+  | LanguageFillBlankSection
+  // Language-specific sections
+  | ToneSelectSection
+  | TranslationSection
+  | TypingSection
+  // Code-specific sections
+  | CodeCompletionSection
+  | DebuggingSection
+  | OutputPredictionSection
+  // Physical-specific sections
+  | FormCheckSection
+  | SafetyCheckSection
+  // Design-specific sections
+  | DesignCritiqueSection;
 
-// Mixed task format (for language learning)
+// Sections task format (unified format for ALL skill types)
+export interface SectionsTask {
+  id: string;
+  title: string;
+  description: string;
+  estimatedMinutes: number;
+  format: 'sections';
+  passingScore: number;
+  sections: TaskSection[];
+}
+
+// Mixed task format (legacy alias for language learning, same as SectionsTask)
 export interface MixedTask {
   id: string;
   title: string;
@@ -782,7 +911,7 @@ export interface FillBlankTask {
 }
 
 // Union type for all task formats
-export type TaskContent = Task | QuizTask | FillBlankTask | MixedTask;
+export type TaskContent = Task | QuizTask | FillBlankTask | MixedTask | SectionsTask;
 
 export interface PracticeProject {
   id: string;

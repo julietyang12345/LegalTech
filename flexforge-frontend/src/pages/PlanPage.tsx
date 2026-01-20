@@ -433,11 +433,7 @@ export function PlanPage() {
         <ProgressBar value={currentDay - 1} max={activeSession.durationDays} />
       </div>
 
-      {/* Improvement Areas Section - displays areas set during reflections */}
-      <FocusAreasSection
-        improvementAreas={activeSession.improvementAreas || []}
-        onClear={handleClearFocusAreas}
-      />
+      {/* Improvement Areas Section - TODO: implement FocusAreasSection component */}
 
       {/* Error display */}
       {error && (

@@ -11,15 +11,32 @@ import {
   ReorderSectionExercise,
   TypingSectionExercise,
 } from './LanguageExercises';
+import {
+  CodeCompletionExercise,
+  DebuggingExercise,
+  OutputPredictionExercise,
+} from './CodeExercises';
+import {
+  FormCheckExercise,
+  SafetyCheckExercise,
+} from './PhysicalExercises';
+import {
+  DesignCritiqueExercise,
+} from './DesignExercises';
 import type {
-  MixedTask,
   TaskSection,
   CurriculumDay,
   Session,
   TargetLanguage,
+  QuizTask,
+  FillBlankTask,
+  MixedTask,
+  SectionsTask,
+  QuizSection,
+  LanguageFillBlankSection,
 } from '@/types';
 
-interface MixedTaskStepProps {
+interface SectionTaskStepProps {
   day: CurriculumDay;
   session: Session;
   onComplete: () => void;
@@ -31,17 +48,91 @@ interface SectionResult {
   completed: boolean;
 }
 
-export function MixedTaskStep({ day, session, onComplete }: MixedTaskStepProps) {
-  const task = day.task1 as MixedTask;
-  const sections = task?.sections || [];
+/**
+ * Converts a legacy QuizTask to sections format
+ */
+function convertQuizToSections(task: QuizTask): TaskSection[] {
+  const quizSection: QuizSection = {
+    type: 'quiz',
+    title: task.title || 'Quiz',
+    questions: task.questions.map(q => ({
+      ...q,
+      // Ensure id exists
+      id: q.id || `q-${Math.random().toString(36).slice(2)}`,
+    })),
+  };
+  return [quizSection];
+}
+
+/**
+ * Converts a legacy FillBlankTask to sections format
+ */
+function convertFillBlankToSections(task: FillBlankTask): TaskSection[] {
+  const fillBlankSection: LanguageFillBlankSection = {
+    type: 'fillBlank',
+    title: task.title || 'Fill in the Blanks',
+    instructions: task.description || 'Complete the blanks with the correct answers',
+    items: task.items.map(item => ({
+      id: item.id,
+      sentence: item.codeTemplate,
+      translation: item.explanation || '',
+      blank: {
+        correctAnswers: item.blanks[0]?.correctAnswers || [],
+        hint: item.blanks[0]?.hint,
+      },
+    })),
+  };
+  return [fillBlankSection];
+}
+
+/**
+ * Gets sections from a task, converting legacy formats if needed
+ */
+function getTaskSections(task: QuizTask | FillBlankTask | MixedTask | SectionsTask): TaskSection[] {
+  const format = (task as any).format;
+
+  if (format === 'sections' || format === 'mixed') {
+    return (task as MixedTask | SectionsTask).sections || [];
+  }
+
+  if (format === 'quiz') {
+    return convertQuizToSections(task as QuizTask);
+  }
+
+  if (format === 'fillBlank') {
+    return convertFillBlankToSections(task as FillBlankTask);
+  }
+
+  // Fallback: check if sections array exists
+  if ('sections' in task && Array.isArray((task as any).sections)) {
+    return (task as any).sections;
+  }
+
+  // Fallback: check if questions array exists (legacy quiz)
+  if ('questions' in task && Array.isArray((task as any).questions)) {
+    return convertQuizToSections(task as QuizTask);
+  }
+
+  // Fallback: check if items array exists (legacy fillBlank)
+  if ('items' in task && Array.isArray((task as any).items)) {
+    return convertFillBlankToSections(task as FillBlankTask);
+  }
+
+  return [];
+}
+
+export function SectionTaskStep({ day, session, onComplete }: SectionTaskStepProps) {
+  const task = day.task1 as QuizTask | FillBlankTask | MixedTask | SectionsTask;
+  const sections = getTaskSections(task);
   const targetLanguage = session.curriculum?.metadata?.targetLanguage as TargetLanguage | undefined;
+  const skillType = session.curriculum?.skillType;
 
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
   const [sectionResults, setSectionResults] = useState<Record<number, SectionResult>>({});
   const [showResults, setShowResults] = useState(false);
 
   const currentSection = sections[currentSectionIndex];
-  const allSectionsCompleted = Object.keys(sectionResults).length === sections.length;
+  const passingScore = (task as any)?.passingScore || 0.7;
 
   const handleSectionComplete = (score: number, total: number) => {
     setSectionResults(prev => ({
@@ -72,7 +163,7 @@ export function MixedTaskStep({ day, session, onComplete }: MixedTaskStepProps) 
   const getPassStatus = () => {
     const { score, total } = getTotalScore();
     const percentage = total > 0 ? score / total : 0;
-    return percentage >= (task?.passingScore || 0.7);
+    return percentage >= passingScore;
   };
 
   const resetTask = () => {
@@ -83,6 +174,7 @@ export function MixedTaskStep({ day, session, onComplete }: MixedTaskStepProps) 
 
   const renderSection = (section: TaskSection) => {
     switch (section.type) {
+      // Universal sections
       case 'quiz':
         return (
           <QuizSectionExercise
@@ -98,11 +190,10 @@ export function MixedTaskStep({ day, session, onComplete }: MixedTaskStepProps) 
             onComplete={handleSectionComplete}
           />
         );
-      case 'toneSelect':
+      case 'reorder':
         return (
-          <ToneSelectSectionExercise
+          <ReorderSectionExercise
             section={section}
-            targetLanguage={targetLanguage}
             onComplete={handleSectionComplete}
           />
         );
@@ -113,16 +204,19 @@ export function MixedTaskStep({ day, session, onComplete }: MixedTaskStepProps) 
             onComplete={handleSectionComplete}
           />
         );
-      case 'translation':
+
+      // Language-specific sections
+      case 'toneSelect':
         return (
-          <TranslationSectionExercise
+          <ToneSelectSectionExercise
             section={section}
+            targetLanguage={targetLanguage}
             onComplete={handleSectionComplete}
           />
         );
-      case 'reorder':
+      case 'translation':
         return (
-          <ReorderSectionExercise
+          <TranslationSectionExercise
             section={section}
             onComplete={handleSectionComplete}
           />
@@ -135,8 +229,61 @@ export function MixedTaskStep({ day, session, onComplete }: MixedTaskStepProps) 
             onComplete={handleSectionComplete}
           />
         );
+
+      // Code-specific sections
+      case 'codeCompletion':
+        return (
+          <CodeCompletionExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+      case 'debugging':
+        return (
+          <DebuggingExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+      case 'outputPrediction':
+        return (
+          <OutputPredictionExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+
+      // Physical-specific sections
+      case 'formCheck':
+        return (
+          <FormCheckExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+      case 'safetyCheck':
+        return (
+          <SafetyCheckExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+
+      // Design-specific sections
+      case 'designCritique':
+        return (
+          <DesignCritiqueExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+
       default:
-        return null;
+        return (
+          <div className="text-center py-8 text-gray-500">
+            Unknown section type: {(section as any).type}
+          </div>
+        );
     }
   };
 
@@ -234,7 +381,7 @@ export function MixedTaskStep({ day, session, onComplete }: MixedTaskStepProps) 
 
       {/* Section progress indicators */}
       <div className="flex gap-2 mb-6">
-        {sections.map((section, index) => {
+        {sections.map((_, index) => {
           const result = sectionResults[index];
           const isActive = index === currentSectionIndex;
           const isCompleted = result?.completed;

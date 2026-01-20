@@ -16,12 +16,9 @@ import type { CurriculumDay } from '@/types';
 import { PrePromptStep } from '@/components/session/PrePromptStep';
 import { VideoStep } from '@/components/session/VideoStep';
 import { FoundationCardsStep } from '@/components/session/FoundationCardsStep';
-import { ActiveRecallStep } from '@/components/session/ActiveRecallStep';
-import { MemoryBridgeStep } from '@/components/session/MemoryBridgeStep';
-import { ConceptCheckStep } from '@/components/session/ConceptCheckStep';
 import { TaskStep } from '@/components/session/TaskStep';
 import { QuizTaskStep, FillBlankTaskStep } from '@/components/session/AlternativeTaskSteps';
-import { MixedTaskStep } from '@/components/session/MixedTaskStep';
+import { SectionTaskStep } from '@/components/session/SectionTaskStep';
 import { BossMilestoneStep } from '@/components/session/BossMilestoneStep';
 import { ReflectionStep } from '@/components/session/ReflectionStep';
 
@@ -559,12 +556,12 @@ function IncompleteWorkModal({
 }
 
 // Task format types for switching (quiz and fillBlank only - code moved to bossMilestone)
-type TaskFormat = 'quiz' | 'fillBlank' | 'mixed';
+type TaskFormat = 'quiz' | 'fillBlank' | 'mixed' | 'sections';
 
 // Task Router: Renders the appropriate task component based on task format
-// task1 is now ONLY quiz or fillBlank for concept reinforcement
-// Code practice is handled by bossMilestone step
-// Language learning uses 'mixed' format with multiple exercise types
+// Unified section-based system: ALL skill types can use sections format
+// Legacy quiz/fillBlank formats are auto-converted by SectionTaskStep
+// Language learning uses 'mixed' format (treated same as 'sections')
 function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session: any; onComplete: () => void }) {
   const task = day.task1;
   const originalFormat = ((task as any)?.format || 'quiz') as TaskFormat;
@@ -578,12 +575,14 @@ function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session:
 
   if (!task) return null;
 
-  // For language learning (mixed format), render MixedTaskStep directly
-  // No format switching available for mixed tasks
-  if (originalFormat === 'mixed') {
-    return <MixedTaskStep day={day} session={session} onComplete={onComplete} />;
+  // For section-based formats (sections, mixed), use unified SectionTaskStep
+  // This handles ALL skill types with appropriate section rendering
+  if (originalFormat === 'sections' || originalFormat === 'mixed') {
+    return <SectionTaskStep day={day} session={session} onComplete={onComplete} />;
   }
 
+  // For legacy formats (quiz, fillBlank), allow format switching
+  // SectionTaskStep can also handle these via auto-conversion
   const handleFormatSwitch = async (format: TaskFormat) => {
     // If switching back to original format, just use the original task
     if (format === originalFormat) {
@@ -593,8 +592,9 @@ function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session:
       return;
     }
 
-    // Mixed format is handled separately and doesn't support format switching
-    if (format === 'mixed') {
+    // Sections format uses the unified component with auto-conversion
+    if (format === 'sections' || format === 'mixed') {
+      setSelectedFormat(format);
       return;
     }
 
@@ -650,6 +650,10 @@ function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session:
         return <QuizTaskStep day={modifiedDay} session={session} onComplete={onComplete} />;
       case 'fillBlank':
         return <FillBlankTaskStep day={modifiedDay} session={session} onComplete={onComplete} />;
+      case 'sections':
+      case 'mixed':
+        // Use unified SectionTaskStep which auto-converts legacy formats
+        return <SectionTaskStep day={modifiedDay} session={session} onComplete={onComplete} />;
       default:
         return <QuizTaskStep day={modifiedDay} session={session} onComplete={onComplete} />;
     }
@@ -704,31 +708,16 @@ const STEP_COMPONENTS: Record<SessionStepType, React.ComponentType<any>> = {
   prePrompt: PrePromptStep,
   video: VideoStep,
   foundationCards: FoundationCardsStep,
-  activeRecall: ActiveRecallStep,
-  memoryBridge: MemoryBridgeStep,
-  conceptCheck: ConceptCheckStep,
   task1: TaskRouter,
   bossMilestone: BossMilestoneStep,
   reflection: ReflectionStep,
 };
 
-// New flow with foundation cards (replaces activeRecall + memoryBridge + conceptCheck)
-const STEP_ORDER_NEW: SessionStepType[] = [
+// Step order for the session flow
+const STEP_ORDER: SessionStepType[] = [
   'prePrompt',
   'video',
   'foundationCards',
-  'task1',
-  'bossMilestone',
-  'reflection',
-];
-
-// Legacy flow for backward compatibility
-const STEP_ORDER_LEGACY: SessionStepType[] = [
-  'prePrompt',
-  'video',
-  'activeRecall',
-  'memoryBridge',
-  'conceptCheck',
   'task1',
   'bossMilestone',
   'reflection',
@@ -796,32 +785,12 @@ export function SessionPage() {
     }
   }, [activeSession, currentDay, startDay]);
 
-  // Determine which flow to use based on content
-  const useNewFlow = !!(currentDay?.foundationCards && currentDay.foundationCards.length > 0);
-  const baseStepOrder = useNewFlow ? STEP_ORDER_NEW : STEP_ORDER_LEGACY;
-
-  // // Debug logging
-  // console.log('[SessionPage] Flow detection:', {
-  //   useNewFlow,
-  //   hasFoundationCards: !!currentDay?.foundationCards,
-  //   foundationCardsCount: currentDay?.foundationCards?.length ?? 0,
-  //   hasActiveRecall: !!currentDay?.activeRecall,
-  //   hasConceptCheck: !!currentDay?.conceptCheck,
-  //   currentStep,
-  //   availableSteps: baseStepOrder,
-  // });
-
   // Get available steps (filter out skipped ones)
-  const availableSteps = baseStepOrder.filter(step => {
-    // Skip memoryBridge on day 1 (only in legacy flow)
-    if (step === 'memoryBridge' && currentDay?.day === 1) return false;
-    // Boss milestone is now shown for ALL days (every day contributes to boss project)
-    // Only skip if explicitly not present in day content
+  const availableSteps = STEP_ORDER.filter(step => {
+    // Skip bossMilestone if not present in day content
     if (step === 'bossMilestone' && !currentDay?.bossMilestone && !currentDay?.hasBossProject) return false;
-    // Skip foundationCards if not present (fallback to legacy)
+    // Skip foundationCards if not present
     if (step === 'foundationCards' && (!currentDay?.foundationCards || currentDay.foundationCards.length === 0)) return false;
-    // Skip legacy steps if using new flow
-    if (useNewFlow && (step === 'activeRecall' || step === 'conceptCheck' || step === 'memoryBridge')) return false;
     return true;
   });
 
@@ -933,7 +902,6 @@ export function SessionPage() {
     // Steps that require explicit engagement - check store for persisted progress
     if (step === 'foundationCards') return hasStepEngagement(currentDay.day, 'foundationCards');
     if (step === 'task1') return hasStepEngagement(currentDay.day, 'task1');
-    if (step === 'conceptCheck') return hasStepEngagement(currentDay.day, 'conceptCheck');
     if (step === 'bossMilestone') return hasStepEngagement(currentDay.day, 'bossMilestone');
     if (step === 'reflection') return stepEngagement.reflection;
     // Other steps (prePrompt, video, etc.) are considered complete when viewed
@@ -960,17 +928,7 @@ export function SessionPage() {
       completeStep(currentStep);
     } else {
       // Just move to next step without marking complete
-      const STEP_ORDER = currentDay?.foundationCards?.length ?
-        ['prePrompt', 'video', 'foundationCards', 'task1', 'bossMilestone', 'reflection'] :
-        ['prePrompt', 'video', 'activeRecall', 'memoryBridge', 'conceptCheck', 'task1', 'bossMilestone', 'reflection'];
-      const currentIndex = STEP_ORDER.indexOf(currentStep);
-      let nextStep = STEP_ORDER[currentIndex + 1] as SessionStepType;
-
-      // Skip bossMilestone if not present
-      if (nextStep === 'bossMilestone' && !currentDay?.bossMilestone && !currentDay?.hasBossProject) {
-        nextStep = STEP_ORDER[currentIndex + 2] as SessionStepType;
-      }
-
+      const nextStep = availableSteps[currentStepIndex + 1] as SessionStepType;
       setCurrentStep(nextStep || 'reflection');
     }
 
@@ -1053,14 +1011,14 @@ export function SessionPage() {
   // Wrap onComplete to track engagement for specific steps
   const handleStepComplete = () => {
     // Mark engagement based on current step
-    // task1, conceptCheck, bossMilestone are tracked in the store (persisted progress)
+    // task1, bossMilestone are tracked in the store (persisted progress)
     // foundationCards and reflection still use local state
     if (currentStep === 'foundationCards') {
       markStepEngaged('foundationCards');
     } else if (currentStep === 'reflection') {
       markStepEngaged('reflection');
     }
-    // task1, conceptCheck, bossMilestone engagement is automatically tracked
+    // task1, bossMilestone engagement is automatically tracked
     // when user answers questions or types code
     handleContinue();
   };
