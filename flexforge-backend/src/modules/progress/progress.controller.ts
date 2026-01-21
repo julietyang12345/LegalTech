@@ -147,4 +147,38 @@ export class ProgressController {
       companionMessage: progressMessage,
     };
   }
+
+  /**
+   * AI-powered evaluation for open-ended questions
+   * Pro users: Unlimited | Free users: 1/day
+   */
+  @Post('evaluate-open-ended')
+  async evaluateOpenEnded(
+    @Request() req,
+    @Body() body: {
+      questionId: string;
+      question: string;
+      category: string;
+      scenario?: string;
+      constraints?: string[];
+      response: string;
+      evaluationDimensions: {
+        id: string;
+        label: string;
+        hint: string;
+        required?: boolean;
+        keywords?: string[];
+      }[];
+    },
+  ) {
+    return this.progressService.evaluateOpenEndedWithAI(req.user.id, body);
+  }
+
+  /**
+   * Get remaining AI evaluations for today
+   */
+  @Get('ai-evaluations/remaining')
+  async getAIEvaluationRemaining(@Request() req) {
+    return this.progressService.getAIEvaluationRemaining(req.user.id);
+  }
 }

@@ -55,7 +55,7 @@ export type ContentSource = 'university' | 'youtube' | 'text' | 'docs';
 // ============================================
 
 // Section types available for each skill category
-export type UniversalSectionType = 'quiz' | 'matching' | 'fillBlank';
+export type UniversalSectionType = 'quiz' | 'matching' | 'fillBlank' | 'openEnded';
 export type SequenceSectionType = 'reorder';  // Only for skills where ordering matters (language, physical, some knowledge)
 export type LanguageSectionType = 'toneSelect' | 'translation' | 'typing';
 export type CodeSectionType = 'codeCompletion' | 'debugging' | 'outputPrediction';
@@ -89,8 +89,9 @@ export const SECTION_REGISTRY: Record<SkillType, {
     intensive: ['formCheck', 'safetyCheck', 'reorder'],
   },
   [SkillType.KNOWLEDGE]: {
-    task1: ['quiz', 'matching', 'fillBlank'],
-    intensive: ['fillBlank', 'reorder', 'quiz'],
+    // AI chooses: quiz + matching + fillBlank (factual) OR quiz + fillBlank + openEnded (soft skills/leadership)
+    task1: ['quiz', 'matching', 'fillBlank', 'openEnded'],
+    intensive: ['fillBlank', 'reorder', 'quiz', 'openEnded'],  // openEnded for soft skills scenarios
   },
   [SkillType.DESIGN]: {
     task1: ['quiz', 'designCritique', 'matching'],
@@ -637,7 +638,9 @@ REQUIREMENTS:
 
 /**
  * DAY DETAIL DEFERRED PROMPT: Secondary content loaded in background
- * Generates: intensivePractice (for practice-based skills), reflection
+ * Generates:
+ * - Project-based skills: bossMilestone + reflection
+ * - Practice-based skills: intensivePractice + reflection
  * Called after core loads, while user watches video
  */
 export function buildDayDetailDeferredPrompt(params: DayDetailParams): {
@@ -657,27 +660,71 @@ export function buildDayDetailDeferredPrompt(params: DayDetailParams): {
     return buildPracticeBasedDeferredPrompt(params);
   }
 
-  // For project-based skills, only generate reflection
-  const dayHeader = getDayHeader({
-    dayTitle: params.dayTitle,
-    skeleton: params.skeleton,
-    dayObjectives: params.dayObjectives,
-    skillType: params.skillType,
-    hoursPerDay: params.hoursPerDay,
-    suggestedLanguage: params.suggestedLanguage,
-    includePrevious: false,
-  });
+  // For project-based skills, generate bossMilestone + reflection
+  return buildProjectBasedDeferredPrompt(params);
+}
 
-  const systemPrompt = `Generate DEFERRED learning content for Day ${params.dayNumber} of "${params.skillName}".
+/**
+ * Project-based DEFERRED prompt - bossMilestone for project-based skills
+ */
+function buildProjectBasedDeferredPrompt(params: DayDetailParams): {
+  systemPrompt: string;
+  userPrompt: string;
+} {
+  const dayNumber = params.dayNumber;
+  const skills = params.skeleton?.skills || params.dayObjectives || [];
+  const skillsStr = Array.isArray(skills) ? skills.join(', ') : String(skills);
 
-${dayHeader}
+  const systemPrompt = `Generate DEFERRED content for Day ${dayNumber} of "${params.skillName}".
+Skill Type: ${params.skillType}
+Today's Topics: ${skillsStr}
+${params.suggestedLanguage ? `Language: ${params.suggestedLanguage}` : ''}
 
-Generate ONLY: reflection.
+Generate bossMilestone (daily micro-step toward boss project) + reflection.
+
+BOSS MILESTONE - CRITICAL REQUIREMENTS:
+- Daily micro-step building toward boss project (5-15 lines new code for coding skills)
+- starterCode: MUST be 10-25 lines of REAL, RUNNABLE code with TODO comments marking where user adds code
+- solution: MUST be 15-40 lines of COMPLETE, WORKING code that solves the microTask
+- solutionAnnotations: 2-4 strings explaining key lines in the solution
+- hints: 3 progressive hints (level 1: conceptual, level 2: specific approach, level 3: detailed guidance)
+- setupInstructions: {files: [{path, description}], steps: [], runCommand?: "optional"}
+  - REQUIRED: Tell user which file(s) to create and where to paste code
+  - files: List each file path with description (e.g., "pages/index.js", "pages/api/hello.js")
+  - steps: Clear setup instructions (e.g., "Create pages/api/hello.js and paste the API code")
+  - runCommand: How to run the code (e.g., "node index.js", "npm start", "npm run dev")
+- DO NOT use placeholder text like "// COMPLETE working solution" - generate ACTUAL code
+- Validation: user runs code, sees output
 
 Output valid JSON only.`;
 
   const userPrompt = `{
-  "day": ${params.dayNumber},
+  "day": ${dayNumber},
+  "bossMilestone": {
+    "day": ${dayNumber},
+    "title": "Day ${dayNumber} Contribution",
+    "description": "Build a piece of your boss project",
+    "microTask": "REQUIRED: Specific task description (5-15 lines of code)",
+    "dayContribution": "How this helps the final project",
+    "conceptConnection": "Which foundationCard concept this applies",
+    "estimatedMinutes": 10,
+    "starterCode": "REQUIRED: 5-20 lines ACTUAL starter code with TODOs marking where user adds code. ${dayNumber === 1 ? 'Start fresh.' : 'Build on previous days - include relevant code from day ' + (dayNumber - 1) + '.'}",
+    "expectedOutput": "What user should see when they run the code",
+    "hints": [
+      {"level": 1, "hint": "REQUIRED: Gentle conceptual hint"},
+      {"level": 2, "hint": "REQUIRED: More specific approach"},
+      {"level": 3, "hint": "REQUIRED: Detailed guidance"}
+    ],
+    "solution": "REQUIRED: 15-40 lines COMPLETE working solution code. Must be real, runnable code.",
+    "solutionAnnotations": ["REQUIRED: 2-4 explanations of key lines in the solution"],
+    "validationType": "run",
+    "validationInstructions": "Run the code and verify the output",
+    "setupInstructions": {
+      "files": [{"path": "REQUIRED: e.g. 'index.js' or 'pages/index.js'", "description": "What this file contains"}],
+      "steps": ["REQUIRED: Step-by-step setup (e.g., 'Paste code into index.js')"],
+      "runCommand": "e.g. 'node index.js' or 'npm start'"
+    }
+  },
   "reflection": {
     "questions": [
       {"id": "confidence", "question": "Rate your confidence (1-5)?", "type": "scale"},
@@ -685,7 +732,10 @@ Output valid JSON only.`;
       {"id": "foggy", "question": "What's still unclear?", "type": "text"}
     ]
   }
-}`;
+}
+
+Topics: ${skillsStr}
+Generate REAL ${params.suggestedLanguage || 'code'} for starterCode and solution.`;
 
   return { systemPrompt, userPrompt };
 }
@@ -709,10 +759,16 @@ function getIntensiveSectionInstructions(skillType: SkillType): string {
 3. reorder - Order the steps of movements/exercises (3-4 items)`;
 
     case SkillType.KNOWLEDGE:
-      return `SECTION TYPES TO INCLUDE:
+      return `SECTION TYPES TO INCLUDE (AI chooses based on topic):
+For FACTUAL topics (history, science):
 1. fillBlank - Complete statements with correct terms (4-5 items)
 2. reorder - Order steps/events in correct sequence (3-4 items, only if topic has sequences)
-3. quiz - Multiple choice questions testing understanding (4-5 questions)`;
+3. quiz - Multiple choice questions testing understanding (4-5 questions)
+
+For SOFT SKILLS/LEADERSHIP topics:
+1. fillBlank - Complete statements with correct terms (3-4 items)
+2. quiz - Multiple choice questions (3-4 questions)
+3. openEnded - Scenario-based reflection questions (2-3 items)`;
 
     case SkillType.DESIGN:
       return `SECTION TYPES TO INCLUDE:
@@ -869,7 +925,7 @@ function getIntensiveSectionTemplate(skillType: SkillType, dayNumber: number): s
 
     case SkillType.KNOWLEDGE:
     default:
-      // KNOWLEDGE intensive: fillBlank, reorder (for sequential topics), quiz
+      // AI chooses: factual → fillBlank+reorder+quiz, soft skills → fillBlank+quiz+openEnded
       return `[
       {
         "type": "fillBlank",
@@ -884,6 +940,7 @@ function getIntensiveSectionTemplate(skillType: SkillType, dayNumber: number): s
           }
         ]
       },
+      /* FOR FACTUAL TOPICS use reorder: */
       {
         "type": "reorder",
         "title": "Order the Steps",
@@ -908,6 +965,20 @@ function getIntensiveSectionTemplate(skillType: SkillType, dayNumber: number): s
             "options": ["A", "B", "C", "D"],
             "correctIndex": 0,
             "explanation": "Explanation"
+          }
+        ]
+      }
+      /* FOR SOFT SKILLS/LEADERSHIP use openEnded instead of reorder: */
+      {
+        "type": "openEnded",
+        "title": "Apply Your Learning",
+        "questions": [
+          {
+            "id": "oe1",
+            "question": "Scenario-based question...",
+            "prompt": "Describe how you would handle...",
+            "sampleAnswer": "A strong response would include...",
+            "evaluationCriteria": ["Shows understanding", "Applies to real situation", "Demonstrates critical thinking"]
           }
         ]
       }
@@ -1212,9 +1283,10 @@ TASK1 - UNIFIED SECTIONS FORMAT (format: "sections"):
 Use sections array with mixed exercise types based on skill type provided.
 
 UNIVERSAL SECTIONS (all skills):
-- quiz: {type:"quiz", title, questions[{id, question, options[4], correctIndex, explanation}]}
+- quiz: {type:"quiz", title, questions[{id, question, options[], correctIndex, explanation}]}
 - matching: {type:"matching", title, pairs[{term, definition}]}
 - fillBlank: {type:"fillBlank", title, instructions, items[{id, sentence with ___BLANK___, translation, blank:{correctAnswers[], hint?}}]}
+- openEnded: {type:"openEnded", title, questions[{id, question, prompt, sampleAnswer, evaluationCriteria[]}]} - for soft skills, leadership, reflection
 
 SEQUENCE SECTIONS (PHYSICAL, ordered KNOWLEDGE only):
 - reorder: {type:"reorder", title, instructions, items[{id, scrambled[], correctOrder[], translation, hint?}]}
@@ -1235,23 +1307,12 @@ SECTION SELECTION BY SKILL TYPE:
 - LANGUAGE_LEARNING: quiz + matching + toneSelect(if tonal) - use languageFoundationCards
 - CODE: quiz + outputPrediction + fillBlank (for task1)
 - PHYSICAL: quiz + reorder + matching (for task1) - reorder for movement sequences
-- KNOWLEDGE: quiz + matching + fillBlank (for task1) - add reorder only for sequential topics
+- KNOWLEDGE: AI chooses based on topic:
+    - Factual topics (history, science, trivia): quiz + matching + fillBlank
+    - Soft skills/leadership (communication, management, teamwork): quiz + fillBlank + openEnded
 - DESIGN: quiz + designCritique + matching (for task1)
 - AI_AGENT: quiz + fillBlank + outputPrediction (for task1)
 
-BOSS MILESTONE (for project-based skills) - CRITICAL REQUIREMENTS:
-- Daily micro-step building toward boss project (5-15 lines new code for coding skills)
-- starterCode: MUST be 10-25 lines of REAL, RUNNABLE code with TODO comments marking where user adds code
-- solution: MUST be 15-40 lines of COMPLETE, WORKING code that solves the microTask
-- solutionAnnotations: 2-4 strings explaining key lines in the solution
-- hints: 3 progressive hints (level 1: conceptual, level 2: specific approach, level 3: detailed guidance)
-- setupInstructions: {files: [{path, description}], steps: [], runCommand?: "optional"}
-  - REQUIRED: Tell user which file(s) to create and where to paste code
-  - files: List each file path with description (e.g., "pages/index.js", "pages/api/hello.js")
-  - steps: Clear setup instructions (e.g., "Create pages/api/hello.js and paste the API code")
-  - runCommand: How to run the code (e.g., "node index.js", "npm start", "npm run dev")
-- DO NOT use placeholder text like "// COMPLETE working solution" - generate ACTUAL code
-- Validation: user runs code, sees output
 
 FOUNDATION CARDS (5-6):
 - Card 1: INTRO/RECAP connecting to previous
@@ -1409,45 +1470,20 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
 Day ${params.dayNumber}: ${params.dayTitle}
 ${params.previousDayTitle ? `Previous: ${params.previousDayTitle}` : ''}
 Type: ${params.skillType} | Sections: ${sectionTypes}
-${skillGuidance}
-${isProjectBased && params.skillType !== 'KNOWLEDGE' ? 'Include bossMilestone with REAL starterCode and COMPLETE solution code.' : 'No bossMilestone.'}${improvementAreasInstruction}${lessOfAreasInstruction}`;
+${skillGuidance}${improvementAreasInstruction}${lessOfAreasInstruction}`;
 
   // Build section-specific task1 template based on skill type
   const task1SectionsTemplate = params.customSections
     ? `/* Generate sections: ${params.customSections.task1.join(', ')} */`
     : getSectionTemplateForSkillType(params.skillType, params.dayNumber);
 
-  // Boss milestone template with required fields
-  const bossMilestoneTemplate = isProjectBased ? `- bossMilestone: {
-    day: ${params.dayNumber},
-    title: "Day ${params.dayNumber} Contribution",
-    description: "Build a piece of your boss project",
-    microTask: "REQUIRED: Specific task description (5-15 lines of code)",
-    dayContribution: "How this helps the final project",
-    conceptConnection: "Which foundationCard concept this applies",
-    estimatedMinutes: 10,
-    starterCode: "REQUIRED: 5-20 lines ACTUAL starter code with TODOs marking where user adds code. ${params.dayNumber === 1 ? 'Start fresh.' : 'Build on previous days - include relevant code from day ' + (params.dayNumber - 1) + '.'}",
-    expectedOutput: "What user should see when they run the code",
-    hints: [{level:1, hint:"REQUIRED: Gentle conceptual hint"}, {level:2, hint:"REQUIRED: More specific approach"}, {level:3, hint:"REQUIRED: Detailed guidance"}],
-    solution: "REQUIRED: 15-40 lines COMPLETE working solution code. Must be real, runnable code.",
-    solutionAnnotations: ["REQUIRED: 2-4 explanations of key lines in the solution"],
-    validationType: "run",
-    validationInstructions: "Run the code and verify the output",
-    setupInstructions: {
-      files: [{path: "REQUIRED: e.g. 'index.js' or 'pages/index.js'", description: "What this file contains"}],
-      steps: ["REQUIRED: Step-by-step setup (e.g., 'Paste code into index.js')"],
-      runCommand: "e.g. 'node index.js' or 'npm start'"
-    }
-  }` : '';
-
-  // User prompt for regular (non-language) skills
+  // User prompt for regular (non-language) skills - CORE content only (no bossMilestone or intensivePractice)
   const userPrompt = `Day ${params.dayNumber}: "${params.dayTitle}" for skill "${params.skillName}"
 Skill Type: ${params.skillType}
 
-Generate:
+Generate CORE content only:
 - foundationCards: [5-6 cards with id, concept, explanation, realWorldContext, microQuestion]
 - task1: {id:"day${params.dayNumber}-task1", title:"Practice", estimatedMinutes:${Math.round(time.task1)}, format:"sections", passingScore:0.7, sections:[${task1SectionsTemplate}]}
-${bossMilestoneTemplate}
 
 ALWAYS INCLUDE:
 - prePrompt: {text, primeQuestions[], yesterdayRecap}
@@ -1483,10 +1519,12 @@ function getSectionTemplateForSkillType(skillType: SkillType, dayNumber: number)
       `;
     case SkillType.KNOWLEDGE:
     default:
+      // AI chooses: factual → quiz+matching+fillBlank, soft skills → quiz+fillBlank+openEnded
       return `
         {type:"quiz", title:"Concept Check", questions:[{id:"q1", question:"...", options:["A","B","C","D"], correctIndex:0, explanation:"..."}]},
-        {type:"matching", title:"Match Terms", pairs:[{term:"Term 1", definition:"Definition 1"}]},
+        /* FOR FACTUAL TOPICS use: */ {type:"matching", title:"Match Terms", pairs:[{term:"Term 1", definition:"Definition 1"}]},
         {type:"fillBlank", title:"Fill in the Blanks", instructions:"Complete the sentences", items:[{id:"fb1", sentence:"Sentence with ___BLANK___", translation:"", blank:{correctAnswers:["answer"], hint:"hint"}}]}
+        /* FOR SOFT SKILLS/LEADERSHIP use openEnded instead of matching: */ {type:"openEnded", title:"Apply Your Learning", questions:[{id:"oe1", question:"Scenario-based question...", prompt:"Describe how you would handle...", sampleAnswer:"A strong response would include...", evaluationCriteria:["Shows understanding", "Applies to real situation", "Demonstrates critical thinking"]}]}
       `;
   }
 }

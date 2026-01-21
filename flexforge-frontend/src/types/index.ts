@@ -815,6 +815,21 @@ export interface DesignCritiqueSection {
   items: DesignCritiqueItem[];
 }
 
+// Open-ended question for soft skills/leadership (scenario-based reflection)
+export interface OpenEndedItem {
+  id: string;
+  question: string;           // The scenario/question
+  prompt: string;             // Guidance like "Describe how you would handle..."
+  sampleAnswer: string;       // Example of a strong response
+  evaluationCriteria: string[]; // What makes a good answer
+}
+
+export interface OpenEndedSection {
+  type: 'openEnded';
+  title: string;
+  questions: OpenEndedItem[];
+}
+
 // ============================================
 // Unified Task Section Type
 // ============================================
@@ -826,6 +841,7 @@ export type TaskSection =
   | MatchingSection
   | ReorderSection
   | LanguageFillBlankSection
+  | OpenEndedSection
   // Language-specific sections
   | ToneSelectSection
   | TranslationSection
@@ -863,12 +879,218 @@ export interface MixedTask {
 }
 
 
+// ============================================
+// Open-Ended Question Support
+// ============================================
+
+/**
+ * Open-ended question categories for higher-order thinking
+ * Use when correctness depends on reasoning, not a single answer
+ */
+export type OpenEndedCategory =
+  | 'decision'      // Decision-making under uncertainty
+  | 'tradeoff'      // Tradeoff & constraint reasoning
+  | 'assumption'    // Assumption surfacing
+  | 'diagnostic'    // Diagnostic/debug thinking
+  | 'strategy'      // Strategy formation
+  | 'reflection'    // Reflection & mental model building
+  | 'general';      // General reasoning (leadership, soft skills)
+
+/**
+ * Evaluation dimension for open-ended questions
+ * Defines WHAT we're looking for and HOW to detect it
+ */
+export interface EvaluationDimension {
+  id: string;
+  label: string;              // "Clear decision", "Named tradeoffs"
+  hint: string;               // Feedback hint: "Try stating your decision clearly"
+  required?: boolean;         // Must be present to pass
+  keywords?: string[];        // Presence indicators for basic evaluation
+}
+
+/**
+ * Configuration for open-ended question evaluation
+ */
+export interface OpenEndedConfig {
+  category: OpenEndedCategory;
+  scenario?: string;                    // Optional additional context
+  constraints?: string[];               // Optional constraints shown as chips
+  minWords?: number;                    // Minimum word count, default 30
+  maxWords?: number;                    // Maximum word count (optional)
+  evaluationDimensions: EvaluationDimension[];
+  showSelfCheck?: boolean;              // Show checklist before submit, default true
+}
+
+/**
+ * Result of evaluating an open-ended response
+ */
+export interface OpenEndedResult {
+  passed: boolean;
+  score: number;                        // 0-1 normalized score
+  dimensionResults: {
+    dimensionId: string;
+    label: string;
+    found: boolean;
+    hint?: string;
+    aiScore?: number;                   // 0-1 AI-assessed quality (Pro only)
+    aiFeedback?: string;                // AI-generated specific feedback (Pro only)
+  }[];
+  feedback: string;
+
+  // AI evaluation fields (Pro users only)
+  evaluationType: 'basic' | 'ai';       // Which evaluation was used
+  aiOverallFeedback?: string;           // AI-generated holistic feedback
+  aiStrengths?: string[];               // What the response did well
+  aiImprovements?: string[];            // Specific suggestions to improve
+  aiExampleResponse?: string;           // Optional: example of stronger response
+}
+
+/**
+ * Request to evaluate open-ended response with AI (Pro only)
+ */
+export interface AIEvaluationRequest {
+  questionId: string;
+  question: string;
+  category: OpenEndedCategory;
+  scenario?: string;
+  constraints?: string[];
+  response: string;
+  evaluationDimensions: EvaluationDimension[];
+}
+
+/**
+ * Response from AI evaluation endpoint
+ */
+export interface AIEvaluationResponse {
+  success: boolean;
+  result?: OpenEndedResult;
+  error?: string;
+  tokensUsed?: number;
+  remaining?: number;           // Remaining AI evaluations for free users (-1 = unlimited for Pro)
+}
+
+/**
+ * Response from AI evaluation remaining check
+ */
+export interface AIEvaluationRemainingResponse {
+  remaining: number;            // -1 = unlimited (Pro user)
+  limit: number;                // Daily limit for free users
+  isPro: boolean;
+}
+
+/**
+ * Default evaluation dimensions by category
+ * AI uses these when generating open-ended questions
+ */
+export const OPEN_ENDED_PRESETS: Record<OpenEndedCategory, EvaluationDimension[]> = {
+  decision: [
+    { id: 'choice', label: 'Stated choice', hint: 'State your decision clearly', required: true, keywords: ['would', 'choose', 'decide', 'go with', 'pick', 'select'] },
+    { id: 'reasoning', label: 'Gave reasoning', hint: 'Explain why you chose this', required: true, keywords: ['because', 'since', 'reason', 'due to', 'as'] },
+    { id: 'tradeoff', label: 'Acknowledged tradeoff', hint: 'What are you giving up?', keywords: ['but', 'however', 'downside', 'risk', 'cost', 'sacrifice'] },
+  ],
+  tradeoff: [
+    { id: 'priority', label: 'Named priority', hint: 'What matters most here?', required: true, keywords: ['prioritize', 'focus', 'important', 'first', 'main', 'key'] },
+    { id: 'sacrifice', label: 'Named sacrifice', hint: 'What are you giving up?', required: true, keywords: ['sacrifice', 'give up', 'less', 'skip', 'accept', 'trade'] },
+    { id: 'justification', label: 'Justified choice', hint: 'Why this tradeoff?', keywords: ['because', 'since', 'given', 'constraint'] },
+  ],
+  assumption: [
+    { id: 'listed', label: 'Listed assumptions', hint: 'What are you assuming?', required: true, keywords: ['assume', 'assuming', 'if', 'given that', 'suppose'] },
+    { id: 'risk', label: 'Identified risks', hint: 'Which assumptions are risky?', keywords: ['risky', 'uncertain', 'might not', 'could fail', 'biggest risk'] },
+  ],
+  diagnostic: [
+    { id: 'hypotheses', label: 'Listed causes', hint: 'What could be wrong?', required: true, keywords: ['could be', 'might be', 'possibly', 'maybe', 'perhaps', 'likely'] },
+    { id: 'testing', label: 'How to test', hint: 'How would you verify?', required: true, keywords: ['check', 'test', 'verify', 'look at', 'examine', 'debug', 'log'] },
+    { id: 'priority', label: 'Prioritized', hint: 'What would you check first?', keywords: ['first', 'start with', 'most likely', 'probably'] },
+  ],
+  strategy: [
+    { id: 'steps', label: 'Ordered steps', hint: 'List your steps in order', required: true, keywords: ['first', 'then', 'next', 'finally', 'step', '1.', '2.', '3.'] },
+    { id: 'rationale', label: 'Explained order', hint: 'Why this sequence?', keywords: ['because', 'before', 'depends', 'enables', 'blocks', 'requires'] },
+    { id: 'risks', label: 'Noted risks', hint: 'What could go wrong?', keywords: ['risk', 'might fail', 'watch out', 'careful', 'if not'] },
+  ],
+  reflection: [
+    { id: 'insight', label: 'Stated insight', hint: 'What did you learn?', required: true, keywords: ['learned', 'realized', 'now understand', 'see that', 'insight'] },
+    { id: 'contrast', label: 'Before/after', hint: 'How did your thinking change?', keywords: ['before', 'now', 'used to', 'changed', 'thought'] },
+    { id: 'application', label: 'Future use', hint: 'How will you apply this?', keywords: ['next time', 'going forward', 'will use', 'apply'] },
+  ],
+  general: [
+    { id: 'position', label: 'Stated position', hint: 'Make your point clear', required: true, keywords: ['think', 'believe', 'would', 'should', 'recommend'] },
+    { id: 'support', label: 'Supported reasoning', hint: 'Explain your thinking', required: true, keywords: ['because', 'since', 'example', 'instance', 'reason'] },
+    { id: 'consideration', label: 'Considered alternatives', hint: 'What else did you consider?', keywords: ['alternatively', 'other option', 'could also', 'on the other hand'] },
+  ],
+};
+
+/**
+ * Evaluate an open-ended response using presence checks
+ * Machine-gradable, no AI required
+ */
+export function evaluateOpenEndedResponse(
+  response: string,
+  config: OpenEndedConfig,
+  selfCheckResults?: Record<string, boolean>
+): OpenEndedResult {
+  const text = response.toLowerCase();
+  const wordCount = response.trim().split(/\s+/).filter(Boolean).length;
+  const minWords = config.minWords || 30;
+
+  const dimensionResults = config.evaluationDimensions.map(dim => {
+    // Check for keyword presence
+    let found = dim.keywords?.some(kw => text.includes(kw.toLowerCase())) || false;
+
+    // If user self-checked and we didn't find keywords, give partial credit
+    if (!found && selfCheckResults?.[dim.id]) {
+      found = true; // Trust user's self-assessment
+    }
+
+    // If response is long enough, be more lenient
+    if (!found && wordCount >= minWords * 2) {
+      found = true; // Assume thorough response covers it
+    }
+
+    return {
+      dimensionId: dim.id,
+      label: dim.label,
+      found,
+      hint: found ? undefined : dim.hint,
+    };
+  });
+
+  // Calculate score
+  const foundCount = dimensionResults.filter(r => r.found).length;
+  const totalCount = dimensionResults.length;
+  const score = totalCount > 0 ? foundCount / totalCount : 0;
+
+  // Check if all required dimensions are met
+  const requiredMet = config.evaluationDimensions
+    .filter(d => d.required)
+    .every(d => dimensionResults.find(r => r.dimensionId === d.id)?.found);
+
+  const passed = requiredMet && score >= 0.5 && wordCount >= minWords;
+
+  // Generate feedback
+  const missing = dimensionResults.filter(r => !r.found);
+  const feedback = passed
+    ? 'Good reasoning! You addressed the key elements.'
+    : missing.length > 0
+    ? `Consider: ${missing.map(m => m.hint).join('. ')}`
+    : `Response too short. Aim for at least ${minWords} words.`;
+
+  return { passed, score, dimensionResults, feedback, evaluationType: 'basic' };
+}
+
 export interface QuizQuestion {
   id: string;
   question: string;
-  options: string[];      // 4 options
-  correctIndex: number;
-  explanation: string;
+
+  // Response type: 'choice' (default MCQ) or 'openEnded'
+  responseType?: 'choice' | 'openEnded';
+
+  // For 'choice' type (existing MCQ behavior)
+  options?: string[];      // 4 options
+  correctIndex?: number;
+  explanation?: string;
+
+  // For 'openEnded' type (new)
+  openEndedConfig?: OpenEndedConfig;
 
   // Audio support for listening questions (language learning)
   audioText?: string;     // Text to speak via browser TTS before showing question

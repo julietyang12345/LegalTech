@@ -10,6 +10,7 @@ import {
   TranslationSectionExercise,
   ReorderSectionExercise,
   TypingSectionExercise,
+  OpenEndedSectionExercise,
 } from './LanguageExercises';
 import {
   CodeCompletionExercise,
@@ -139,15 +140,16 @@ export function SectionTaskStep({ day, session, onComplete }: SectionTaskStepPro
       ...prev,
       [currentSectionIndex]: { score, total, completed: true },
     }));
+    // Auto-advance after recording score
+    handleContinue();
+  };
 
-    // Auto-advance to next section after a delay
-    setTimeout(() => {
-      if (currentSectionIndex < sections.length - 1) {
-        setCurrentSectionIndex(prev => prev + 1);
-      } else {
-        setShowResults(true);
-      }
-    }, 1500);
+  const handleContinue = () => {
+    if (currentSectionIndex < sections.length - 1) {
+      setCurrentSectionIndex(prev => prev + 1);
+    } else {
+      setShowResults(true);
+    }
   };
 
   const getTotalScore = () => {
@@ -273,6 +275,15 @@ export function SectionTaskStep({ day, session, onComplete }: SectionTaskStepPro
       case 'designCritique':
         return (
           <DesignCritiqueExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+
+      // Open-ended sections (soft skills/leadership)
+      case 'openEnded':
+        return (
+          <OpenEndedSectionExercise
             section={section}
             onComplete={handleSectionComplete}
           />
@@ -424,6 +435,17 @@ export function SectionTaskStep({ day, session, onComplete }: SectionTaskStepPro
           {renderSection(currentSection)}
         </motion.div>
       </AnimatePresence>
+
+      {/* Subtle continue button - always visible */}
+      <div className="mt-6 flex justify-end">
+        <button
+          onClick={handleContinue}
+          className="text-sm text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
+        >
+          {currentSectionIndex < sections.length - 1 ? 'Skip section' : 'Finish'}
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 }

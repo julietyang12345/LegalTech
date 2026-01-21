@@ -415,6 +415,204 @@ Return ONLY JSON with questions array.`;
 
     return { isStuck: false };
   }
+
+  // In-memory rate limit tracking (in production, use Redis)
+  private aiEvaluationUsage: Map<string, { count: number; date: string }> = new Map();
+  private readonly FREE_USER_DAILY_LIMIT = 1;
+
+  /**
+   * Check and update AI evaluation rate limit for free users
+   */
+  private checkAIEvaluationLimit(userId: string, isPro: boolean): { allowed: boolean; remaining: number } {
+    if (isPro) {
+      return { allowed: true, remaining: -1 }; // Unlimited for Pro
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const usage = this.aiEvaluationUsage.get(userId);
+
+    if (!usage || usage.date !== today) {
+      // First use today
+      this.aiEvaluationUsage.set(userId, { count: 1, date: today });
+      return { allowed: true, remaining: this.FREE_USER_DAILY_LIMIT - 1 };
+    }
+
+    if (usage.count >= this.FREE_USER_DAILY_LIMIT) {
+      return { allowed: false, remaining: 0 };
+    }
+
+    // Increment usage
+    this.aiEvaluationUsage.set(userId, { count: usage.count + 1, date: today });
+    return { allowed: true, remaining: this.FREE_USER_DAILY_LIMIT - usage.count - 1 };
+  }
+
+  /**
+   * Get remaining AI evaluations for today
+   */
+  async getAIEvaluationRemaining(userId: string): Promise<{ remaining: number; limit: number; isPro: boolean }> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    const isPro = user?.hasTierAccess(QuotaTier.PRO) ?? false;
+
+    if (isPro) {
+      return { remaining: -1, limit: -1, isPro: true }; // Unlimited
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const usage = this.aiEvaluationUsage.get(userId);
+
+    if (!usage || usage.date !== today) {
+      return { remaining: this.FREE_USER_DAILY_LIMIT, limit: this.FREE_USER_DAILY_LIMIT, isPro: false };
+    }
+
+    return {
+      remaining: Math.max(0, this.FREE_USER_DAILY_LIMIT - usage.count),
+      limit: this.FREE_USER_DAILY_LIMIT,
+      isPro: false
+    };
+  }
+
+  /**
+   * AI-powered evaluation for open-ended questions
+   * Pro users: Unlimited
+   * Free users: 1/day limit
+   */
+  async evaluateOpenEndedWithAI(
+    userId: string,
+    request: {
+      questionId: string;
+      question: string;
+      category: string;
+      scenario?: string;
+      constraints?: string[];
+      response: string;
+      evaluationDimensions: {
+        id: string;
+        label: string;
+        hint: string;
+        required?: boolean;
+        keywords?: string[];
+      }[];
+    },
+  ): Promise<{
+    success: boolean;
+    result?: {
+      passed: boolean;
+      score: number;
+      evaluationType: 'ai';
+      dimensionResults: {
+        dimensionId: string;
+        label: string;
+        found: boolean;
+        hint?: string;
+        aiScore?: number;
+        aiFeedback?: string;
+      }[];
+      feedback: string;
+      aiOverallFeedback?: string;
+      aiStrengths?: string[];
+      aiImprovements?: string[];
+    };
+    error?: string;
+    tokensUsed?: number;
+    remaining?: number;  // Remaining AI evaluations for free users
+  }> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    const isPro = user?.hasTierAccess(QuotaTier.PRO) ?? false;
+
+    // Check rate limit
+    const limitCheck = this.checkAIEvaluationLimit(userId, isPro);
+    if (!limitCheck.allowed) {
+      return {
+        success: false,
+        error: 'Daily AI evaluation limit reached. Upgrade to Pro for unlimited AI feedback.',
+        remaining: 0,
+      };
+    }
+
+    try {
+      const dimensionsDescription = request.evaluationDimensions
+        .map(d => `- ${d.id}: ${d.label} (${d.required ? 'required' : 'optional'}) - ${d.hint}`)
+        .join('\n');
+
+      const prompt = `You are evaluating a learner's open-ended response. Assess the QUALITY OF REASONING, not correctness of any specific answer.
+
+QUESTION TYPE: ${request.category}
+${request.scenario ? `SCENARIO: ${request.scenario}` : ''}
+${request.constraints?.length ? `CONSTRAINTS: ${request.constraints.join(', ')}` : ''}
+
+QUESTION: ${request.question}
+
+LEARNER'S RESPONSE:
+"""
+${request.response}
+"""
+
+EVALUATION DIMENSIONS:
+${dimensionsDescription}
+
+Evaluate each dimension on a 0-1 scale based on how well the learner demonstrated that element.
+Be encouraging but honest. Focus on the reasoning process, not whether you agree with their conclusion.
+
+Return ONLY valid JSON:
+{
+  "dimensions": [
+    {
+      "id": "dimension_id",
+      "score": 0.0-1.0,
+      "found": true/false,
+      "feedback": "Brief specific feedback for this dimension"
+    }
+  ],
+  "overallScore": 0.0-1.0,
+  "passed": true/false,
+  "strengths": ["What they did well - 1-2 points"],
+  "improvements": ["Specific suggestions - 1-2 points"],
+  "overallFeedback": "1-2 sentence encouraging summary"
+}`;
+
+      const response = await this.aiService.routeRequest(
+        AITask.TUTOR_CHAT,
+        prompt,
+      );
+
+      const parsed = JSON.parse(response.content);
+
+      // Map AI results to our format
+      const dimensionResults = request.evaluationDimensions.map(dim => {
+        const aiDim = parsed.dimensions?.find((d: any) => d.id === dim.id);
+        return {
+          dimensionId: dim.id,
+          label: dim.label,
+          found: aiDim?.found ?? aiDim?.score >= 0.5,
+          hint: aiDim?.found ? undefined : dim.hint,
+          aiScore: aiDim?.score,
+          aiFeedback: aiDim?.feedback,
+        };
+      });
+
+      return {
+        success: true,
+        result: {
+          passed: parsed.passed ?? parsed.overallScore >= 0.6,
+          score: parsed.overallScore ?? 0,
+          evaluationType: 'ai',
+          dimensionResults,
+          feedback: parsed.overallFeedback || 'Response evaluated.',
+          aiOverallFeedback: parsed.overallFeedback,
+          aiStrengths: parsed.strengths,
+          aiImprovements: parsed.improvements,
+        },
+        tokensUsed: response.tokensUsed,
+        remaining: limitCheck.remaining,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: 'AI evaluation failed. Please try again or use basic evaluation.',
+        remaining: limitCheck.remaining,
+      };
+    }
+  }
 }
 
 

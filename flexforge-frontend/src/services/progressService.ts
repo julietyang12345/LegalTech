@@ -1,5 +1,5 @@
 import api from './api';
-import type { Progress, UpdateProgressDto, ProgressStats, ProgressResponse } from '@/types';
+import type { Progress, UpdateProgressDto, ProgressStats, ProgressResponse, AIEvaluationRequest, AIEvaluationResponse, AIEvaluationRemainingResponse } from '@/types';
 
 export const progressService = {
   /**
@@ -91,5 +91,33 @@ export const progressService = {
   }> {
     const { data } = await api.get(`/progress/session/${sessionId}/stuck`);
     return data;
+  },
+
+  /**
+   * AI-powered evaluation for open-ended questions
+   * Pro users: Unlimited | Free users: 1/day
+   */
+  async evaluateOpenEndedWithAI(request: AIEvaluationRequest): Promise<AIEvaluationResponse> {
+    try {
+      const { data } = await api.post<AIEvaluationResponse>('/progress/evaluate-open-ended', request);
+      return data;
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.response?.data?.error || 'AI evaluation failed. Please try again.',
+      };
+    }
+  },
+
+  /**
+   * Get remaining AI evaluations for today
+   */
+  async getAIEvaluationRemaining(): Promise<AIEvaluationRemainingResponse> {
+    try {
+      const { data } = await api.get<AIEvaluationRemainingResponse>('/progress/ai-evaluations/remaining');
+      return data;
+    } catch {
+      return { remaining: 0, limit: 1, isPro: false };
+    }
   },
 };

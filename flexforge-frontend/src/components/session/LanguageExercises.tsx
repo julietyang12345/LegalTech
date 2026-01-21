@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, X, Volume2, ArrowRight, Shuffle, RotateCcw, Lightbulb } from 'lucide-react';
+import { Check, X, Volume2, ArrowRight, Shuffle, RotateCcw, Lightbulb, Sparkles, Lock } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useBrowserTTS } from '@/hooks/useBrowserTTS';
+import { useAuthStore } from '@/stores/authStore';
+import { progressService } from '@/services/progressService';
 import type {
   QuizSection,
   MatchingSection,
@@ -11,15 +13,11 @@ import type {
   TranslationSection,
   ReorderSection,
   TypingSection,
-  MatchingPair,
-  QuizQuestion,
-  ToneSelectQuestion,
-  LanguageFillBlankItem,
-  TranslationItem,
-  ReorderItem,
-  TypingItem,
+  OpenEndedSection,
   TargetLanguage,
+  OpenEndedResult,
 } from '@/types';
+import { evaluateOpenEndedResponse, QuotaTier } from '@/types';
 
 // ============================================
 // Shared Components
@@ -82,7 +80,7 @@ function FeedbackToast({ show, correct, message }: FeedbackToastProps) {
 }
 
 // ============================================
-// Quiz Section Component
+// Quiz Section Component (MCQ + Open-Ended)
 // ============================================
 
 interface QuizSectionProps {
@@ -93,37 +91,143 @@ interface QuizSectionProps {
 
 export function QuizSectionExercise({ section, targetLanguage, onComplete }: QuizSectionProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, number>>({});
+  // For MCQ answers (stores option index)
+  const [mcqAnswers, setMcqAnswers] = useState<Record<string, number>>({});
+  // For open-ended answers (stores text response)
+  const [openEndedAnswers, setOpenEndedAnswers] = useState<Record<string, string>>({});
+  // For open-ended evaluation results
+  const [openEndedResults, setOpenEndedResults] = useState<Record<string, OpenEndedResult>>({});
+  // UI states
   const [showFeedback, setShowFeedback] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
+  const [textInput, setTextInput] = useState('');
+  // AI evaluation states
+  const [isEvaluatingWithAI, setIsEvaluatingWithAI] = useState(false);
+  const [aiEvaluationsRemaining, setAiEvaluationsRemaining] = useState<number | null>(null);
+
   const { speak, isSupported } = useBrowserTTS(targetLanguage || 'chinese');
+  const { hasTierAccess } = useAuthStore();
+  const isProUser = hasTierAccess(QuotaTier.PRO);
+
+  // Fetch AI evaluation remaining on mount
+  useEffect(() => {
+    progressService.getAIEvaluationRemaining().then(res => {
+      setAiEvaluationsRemaining(res.isPro ? -1 : res.remaining);
+    });
+  }, []);
 
   const questions = section.questions;
   const currentQuestion = questions[currentIndex];
-  const hasAnswered = currentQuestion?.id in answers;
+  const isOpenEnded = currentQuestion?.responseType === 'openEnded';
+  const hasAnswered = isOpenEnded
+    ? currentQuestion?.id in openEndedResults
+    : currentQuestion?.id in mcqAnswers;
 
-  const handleAnswer = (optionIndex: number) => {
+  // Word count for open-ended
+  const wordCount = textInput.trim().split(/\s+/).filter(Boolean).length;
+  const minWords = currentQuestion?.openEndedConfig?.minWords || 30;
+
+  // Handle MCQ answer
+  const handleMcqAnswer = (optionIndex: number) => {
     if (hasAnswered) return;
 
     const correct = optionIndex === currentQuestion.correctIndex;
-    setAnswers(prev => ({ ...prev, [currentQuestion.id]: optionIndex }));
+    setMcqAnswers(prev => ({ ...prev, [currentQuestion.id]: optionIndex }));
     setIsCorrect(correct);
     setShowFeedback(true);
 
     setTimeout(() => {
       setShowFeedback(false);
-      if (currentIndex < questions.length - 1) {
-        setCurrentIndex(prev => prev + 1);
-      } else {
-        // Calculate score
-        const correctCount = Object.entries({ ...answers, [currentQuestion.id]: optionIndex })
-          .filter(([id, ans]) => {
-            const q = questions.find(q => q.id === id);
-            return q && ans === q.correctIndex;
-          }).length;
-        onComplete(correctCount, questions.length);
-      }
+      advanceOrComplete(correct ? 1 : 0);
     }, 1500);
+  };
+
+  // Handle open-ended submission - always basic evaluation first
+  const handleOpenEndedSubmit = () => {
+    if (!currentQuestion.openEndedConfig) return;
+
+    // Do basic keyword-based evaluation
+    const basicResult = evaluateOpenEndedResponse(
+      textInput,
+      currentQuestion.openEndedConfig,
+    );
+
+    setOpenEndedAnswers(prev => ({ ...prev, [currentQuestion.id]: textInput }));
+    setOpenEndedResults(prev => ({ ...prev, [currentQuestion.id]: basicResult }));
+    setIsCorrect(basicResult.passed);
+    setShowFeedback(true);
+
+    setTimeout(() => {
+      setShowFeedback(false);
+    }, 1500);
+  };
+
+  // Request AI evaluation (available to all users with limits)
+  const handleRequestAIEvaluation = async () => {
+    if (!currentQuestion.openEndedConfig) return;
+    if (aiEvaluationsRemaining === 0) return;
+
+    setIsEvaluatingWithAI(true);
+
+    try {
+      const aiResponse = await progressService.evaluateOpenEndedWithAI({
+        questionId: currentQuestion.id,
+        question: currentQuestion.question,
+        category: currentQuestion.openEndedConfig.category,
+        scenario: currentQuestion.openEndedConfig.scenario,
+        constraints: currentQuestion.openEndedConfig.constraints,
+        response: openEndedAnswers[currentQuestion.id] || textInput,
+        evaluationDimensions: currentQuestion.openEndedConfig.evaluationDimensions,
+      });
+
+      if (aiResponse.success && aiResponse.result) {
+        setOpenEndedResults(prev => ({ ...prev, [currentQuestion.id]: aiResponse.result! }));
+        // Update remaining count
+        if (aiResponse.remaining !== undefined && aiResponse.remaining >= 0) {
+          setAiEvaluationsRemaining(aiResponse.remaining);
+        }
+      }
+    } finally {
+      setIsEvaluatingWithAI(false);
+    }
+  };
+
+  // Continue to next question
+  const handleContinue = () => {
+    const result = openEndedResults[currentQuestion.id];
+    advanceOrComplete(result?.score || 0);
+  };
+
+  // Advance to next question or complete the section
+  const advanceOrComplete = (questionScore: number) => {
+    if (currentIndex < questions.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+      setTextInput('');
+    } else {
+      // Calculate final score
+      let totalScore = 0;
+      const allAnswers = { ...mcqAnswers };
+      const allOpenEndedResults = { ...openEndedResults };
+
+      // Add current question's score
+      if (isOpenEnded) {
+        totalScore += questionScore;
+      } else {
+        totalScore += questionScore;
+      }
+
+      // Add previous questions' scores
+      questions.slice(0, currentIndex).forEach(q => {
+        if (q.responseType === 'openEnded') {
+          totalScore += allOpenEndedResults[q.id]?.score || 0;
+        } else {
+          const correct = allAnswers[q.id] === q.correctIndex;
+          totalScore += correct ? 1 : 0;
+        }
+      });
+
+      onComplete(Math.round(totalScore), questions.length);
+    }
   };
 
   const playAudio = useCallback(() => {
@@ -132,13 +236,18 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete }: Qui
     }
   }, [currentQuestion?.audioText, isSupported, speak]);
 
-  // Auto-play audio when question changes (delay gives voices time to load)
+  // Auto-play audio when question changes
   useEffect(() => {
     if (currentQuestion?.audioText && isSupported) {
       const timer = setTimeout(playAudio, 500);
       return () => clearTimeout(timer);
     }
   }, [currentIndex, currentQuestion?.audioText, isSupported, playAudio]);
+
+  // Reset text input when moving to a new question
+  useEffect(() => {
+    setTextInput('');
+  }, [currentIndex]);
 
   if (!currentQuestion) return null;
 
@@ -150,6 +259,7 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete }: Qui
       />
 
       <div className="bg-white rounded-lg p-6 shadow-sm border">
+        {/* Audio button */}
         {currentQuestion.audioText && (
           <button
             onClick={playAudio}
@@ -160,31 +270,228 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete }: Qui
           </button>
         )}
 
+        {/* Open-ended badge and scenario */}
+        {isOpenEnded && currentQuestion.openEndedConfig && (
+          <div className="mb-4">
+            <span className="inline-block px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium capitalize mb-2">
+              {currentQuestion.openEndedConfig.category}
+            </span>
+            {currentQuestion.openEndedConfig.scenario && (
+              <div className="bg-gray-50 rounded-lg p-3 mb-3">
+                <p className="text-sm text-gray-700">{currentQuestion.openEndedConfig.scenario}</p>
+              </div>
+            )}
+            {currentQuestion.openEndedConfig.constraints && currentQuestion.openEndedConfig.constraints.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {currentQuestion.openEndedConfig.constraints.map((c, i) => (
+                  <span key={i} className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">
+                    {c}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Question text */}
         <p className="text-lg font-medium mb-4">{currentQuestion.question}</p>
 
-        <div className="space-y-2">
-          {currentQuestion.options.map((option, index) => (
+        {/* MCQ Options */}
+        {!isOpenEnded && currentQuestion.options && (
+          <div className="space-y-2">
+            {currentQuestion.options.map((option, index) => (
+              <button
+                key={index}
+                onClick={() => handleMcqAnswer(index)}
+                disabled={hasAnswered}
+                className={clsx(
+                  'w-full p-3 text-left rounded-lg border transition-all',
+                  hasAnswered
+                    ? index === currentQuestion.correctIndex
+                      ? 'bg-green-100 border-green-500'
+                      : index === mcqAnswers[currentQuestion.id]
+                      ? 'bg-red-100 border-red-500'
+                      : 'bg-gray-50 border-gray-200'
+                    : 'hover:bg-brand-50 hover:border-brand-300 border-gray-200'
+                )}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Open-ended text area */}
+        {isOpenEnded && !hasAnswered && (
+          <div className="space-y-3">
+            <textarea
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              placeholder="Type your response here..."
+              className="w-full h-32 p-3 border rounded-lg resize-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+            />
+            <div className={clsx(
+              'text-sm',
+              wordCount >= minWords ? 'text-green-600' : 'text-gray-500'
+            )}>
+              {wordCount} / {minWords} words minimum
+            </div>
+
             <button
-              key={index}
-              onClick={() => handleAnswer(index)}
-              disabled={hasAnswered}
+              onClick={handleOpenEndedSubmit}
+              disabled={wordCount < minWords}
               className={clsx(
-                'w-full p-3 text-left rounded-lg border transition-all',
-                hasAnswered
-                  ? index === currentQuestion.correctIndex
-                    ? 'bg-green-100 border-green-500'
-                    : index === answers[currentQuestion.id]
-                    ? 'bg-red-100 border-red-500'
-                    : 'bg-gray-50 border-gray-200'
-                  : 'hover:bg-brand-50 hover:border-brand-300 border-gray-200'
+                'w-full py-3 rounded-lg font-medium transition-colors',
+                wordCount >= minWords
+                  ? 'bg-brand-500 text-white hover:bg-brand-600'
+                  : 'bg-gray-200 text-gray-500 cursor-not-allowed'
               )}
             >
-              {option}
+              Submit Response
             </button>
-          ))}
-        </div>
+          </div>
+        )}
 
-        {hasAnswered && currentQuestion.explanation && (
+        {/* AI Evaluation Loading */}
+        {isOpenEnded && isEvaluatingWithAI && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-4 p-4 rounded-lg bg-purple-50 border border-purple-200"
+          >
+            <div className="flex items-center gap-3">
+              <Sparkles className="w-5 h-5 text-purple-600 animate-pulse" />
+              <div>
+                <p className="font-medium text-purple-800">Analyzing your response...</p>
+                <p className="text-sm text-purple-600">Our AI is evaluating your reasoning quality</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Open-ended result display */}
+        {isOpenEnded && hasAnswered && openEndedResults[currentQuestion.id] && !isEvaluatingWithAI && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className={clsx(
+              'mt-4 p-4 rounded-lg',
+              openEndedResults[currentQuestion.id].passed ? 'bg-green-50' : 'bg-orange-50'
+            )}
+          >
+            {/* AI evaluation badge */}
+            {openEndedResults[currentQuestion.id].evaluationType === 'ai' && (
+              <div className="flex items-center gap-1 text-xs text-purple-600 mb-2">
+                <Sparkles className="w-3 h-3" />
+                AI-Powered Feedback
+              </div>
+            )}
+
+            <div className="flex items-start gap-2 mb-2">
+              {openEndedResults[currentQuestion.id].passed ? (
+                <Check className="w-5 h-5 text-green-600 mt-0.5" />
+              ) : (
+                <Lightbulb className="w-5 h-5 text-orange-600 mt-0.5" />
+              )}
+              <p className={clsx(
+                'font-medium',
+                openEndedResults[currentQuestion.id].passed ? 'text-green-800' : 'text-orange-800'
+              )}>
+                {openEndedResults[currentQuestion.id].aiOverallFeedback || openEndedResults[currentQuestion.id].feedback}
+              </p>
+            </div>
+
+            {/* AI Strengths (Pro only) */}
+            {openEndedResults[currentQuestion.id].aiStrengths && openEndedResults[currentQuestion.id].aiStrengths!.length > 0 && (
+              <div className="mt-3 p-2 bg-green-100 rounded">
+                <p className="text-xs font-medium text-green-700 mb-1">Strengths:</p>
+                <ul className="text-sm text-green-800 space-y-1">
+                  {openEndedResults[currentQuestion.id].aiStrengths!.map((s, i) => (
+                    <li key={i} className="flex items-start gap-1">
+                      <Check className="w-3 h-3 mt-1 flex-shrink-0" />
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* AI Improvements (Pro only) */}
+            {openEndedResults[currentQuestion.id].aiImprovements && openEndedResults[currentQuestion.id].aiImprovements!.length > 0 && (
+              <div className="mt-2 p-2 bg-orange-100 rounded">
+                <p className="text-xs font-medium text-orange-700 mb-1">To strengthen your response:</p>
+                <ul className="text-sm text-orange-800 space-y-1">
+                  {openEndedResults[currentQuestion.id].aiImprovements!.map((s, i) => (
+                    <li key={i} className="flex items-start gap-1">
+                      <ArrowRight className="w-3 h-3 mt-1 flex-shrink-0" />
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Dimension breakdown */}
+            <div className="mt-3 space-y-1">
+              {openEndedResults[currentQuestion.id].dimensionResults.map(dim => (
+                <div key={dim.dimensionId} className="flex items-start gap-2 text-sm">
+                  {dim.found ? (
+                    <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <X className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                  )}
+                  <div>
+                    <span className={dim.found ? 'text-green-700' : 'text-gray-500'}>
+                      {dim.label}
+                    </span>
+                    {/* AI-specific feedback per dimension (Pro only) */}
+                    {dim.aiFeedback && (
+                      <p className="text-xs text-gray-500 mt-0.5">{dim.aiFeedback}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Action buttons */}
+            <div className="mt-4 flex gap-2">
+              {/* Get AI Feedback button - show if basic evaluation and has remaining */}
+              {openEndedResults[currentQuestion.id].evaluationType === 'basic' && aiEvaluationsRemaining !== 0 && (
+                <button
+                  onClick={handleRequestAIEvaluation}
+                  disabled={isEvaluatingWithAI}
+                  className="flex-1 py-2 px-4 rounded-lg font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Get AI Feedback
+                  {aiEvaluationsRemaining !== null && aiEvaluationsRemaining >= 0 && (
+                    <span className="text-xs opacity-75">({aiEvaluationsRemaining} left today)</span>
+                  )}
+                </button>
+              )}
+
+              {/* No AI remaining message */}
+              {openEndedResults[currentQuestion.id].evaluationType === 'basic' && aiEvaluationsRemaining === 0 && (
+                <div className="flex-1 py-2 px-4 rounded-lg bg-gray-100 text-gray-500 text-sm text-center">
+                  <Lock className="w-4 h-4 inline mr-1" />
+                  Daily AI limit reached. Upgrade to Pro for unlimited.
+                </div>
+              )}
+
+              {/* Continue button */}
+              <button
+                onClick={handleContinue}
+                className="flex-1 py-2 px-4 rounded-lg font-medium bg-brand-500 text-white hover:bg-brand-600 transition-colors flex items-center justify-center gap-2"
+              >
+                Continue
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* MCQ explanation */}
+        {!isOpenEnded && hasAnswered && currentQuestion.explanation && (
           <motion.p
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
@@ -987,6 +1294,238 @@ export function TypingSectionExercise({ section, targetLanguage, onComplete }: T
       </div>
 
       <FeedbackToast show={showFeedback} correct={isCorrect} />
+    </div>
+  );
+}
+
+// ============================================
+// Open-Ended Section Exercise (Soft Skills/Leadership)
+// ============================================
+
+interface OpenEndedSectionProps {
+  section: OpenEndedSection;
+  onComplete: (score: number, total: number) => void;
+}
+
+export function OpenEndedSectionExercise({ section, onComplete }: OpenEndedSectionProps) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [responses, setResponses] = useState<Record<string, string>>({});
+  const [results, setResults] = useState<Record<string, { passed: boolean; feedback: string }>>({});
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
+
+  const questions = section.questions;
+  const currentQuestion = questions[currentIndex];
+  const currentResponse = responses[currentQuestion.id] || '';
+  const currentResult = results[currentQuestion.id];
+
+  const handleResponseChange = (value: string) => {
+    setResponses(prev => ({ ...prev, [currentQuestion.id]: value }));
+  };
+
+  const handleSubmit = async () => {
+    if (currentResponse.trim().length < 20) return;
+
+    setIsEvaluating(true);
+    try {
+      // Convert simple evaluationCriteria to evaluationDimensions format
+      const evaluationDimensions = currentQuestion.evaluationCriteria.map((criterion, i) => ({
+        id: `dim-${i}`,
+        label: criterion,
+        hint: `Consider: ${criterion}`,
+        required: i === 0, // First criterion is required
+      }));
+
+      // Call AI evaluation
+      const evalResult = await progressService.evaluateOpenEndedWithAI({
+        questionId: currentQuestion.id,
+        question: `${currentQuestion.question}\n\n${currentQuestion.prompt}`,
+        category: 'general' as const,
+        scenario: currentQuestion.sampleAnswer ? `Sample answer for reference: ${currentQuestion.sampleAnswer}` : undefined,
+        response: currentResponse,
+        evaluationDimensions,
+      });
+
+      if (evalResult.success && evalResult.result) {
+        setResults(prev => ({
+          ...prev,
+          [currentQuestion.id]: {
+            passed: evalResult.result!.passed,
+            feedback: evalResult.result!.feedback || (evalResult.result!.passed ? 'Good response!' : 'Consider expanding your answer.'),
+          },
+        }));
+      } else {
+        throw new Error(evalResult.error || 'Evaluation failed');
+      }
+      setShowFeedback(true);
+    } catch {
+      // Fallback: basic word count check
+      const wordCount = currentResponse.trim().split(/\s+/).length;
+      const passed = wordCount >= 15;
+      setResults(prev => ({
+        ...prev,
+        [currentQuestion.id]: {
+          passed,
+          feedback: passed ? 'Response recorded.' : 'Try to provide more detail.',
+        },
+      }));
+      setShowFeedback(true);
+    } finally {
+      setIsEvaluating(false);
+    }
+  };
+
+  const handleNext = () => {
+    if (currentIndex < questions.length - 1) {
+      setCurrentIndex(currentIndex + 1);
+      setShowFeedback(false);
+    } else {
+      // Calculate final score
+      const passed = Object.values(results).filter(r => r.passed).length;
+      onComplete(passed, questions.length);
+    }
+  };
+
+  const wordCount = currentResponse.trim().split(/\s+/).filter(w => w.length > 0).length;
+
+  return (
+    <div className="space-y-6">
+      <ExerciseHeader
+        title={section.title}
+        progress={{ current: currentIndex + 1, total: questions.length }}
+      />
+
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={currentQuestion.id}
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -20 }}
+          className="space-y-4"
+        >
+          {/* Question/Scenario */}
+          <div className="bg-gradient-to-r from-purple-50 to-indigo-50 p-4 rounded-xl border border-purple-100">
+            <p className="text-gray-800 font-medium">{currentQuestion.question}</p>
+          </div>
+
+          {/* Prompt */}
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <p className="text-gray-600 text-sm italic">{currentQuestion.prompt}</p>
+          </div>
+
+          {/* Response textarea */}
+          <div className="space-y-2">
+            <textarea
+              value={currentResponse}
+              onChange={(e) => handleResponseChange(e.target.value)}
+              placeholder="Type your response here..."
+              disabled={!!currentResult}
+              className={clsx(
+                'w-full p-4 rounded-xl border-2 resize-none transition-all min-h-[150px]',
+                currentResult
+                  ? currentResult.passed
+                    ? 'border-green-300 bg-green-50'
+                    : 'border-amber-300 bg-amber-50'
+                  : 'border-gray-200 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
+              )}
+              rows={6}
+            />
+            <div className="flex justify-between text-sm text-gray-500">
+              <span>{wordCount} words</span>
+              <span className={wordCount >= 20 ? 'text-green-600' : 'text-gray-400'}>
+                Min: 20 words
+              </span>
+            </div>
+          </div>
+
+          {/* Evaluation criteria hints */}
+          {!currentResult && (
+            <div className="bg-blue-50 p-3 rounded-lg">
+              <p className="text-sm font-medium text-blue-800 mb-2">Your response should:</p>
+              <ul className="text-sm text-blue-700 space-y-1">
+                {currentQuestion.evaluationCriteria.map((criterion, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="text-blue-400">•</span>
+                    {criterion}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Feedback */}
+          {showFeedback && currentResult && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={clsx(
+                'p-4 rounded-xl',
+                currentResult.passed ? 'bg-green-100 border border-green-200' : 'bg-amber-100 border border-amber-200'
+              )}
+            >
+              <div className="flex items-start gap-3">
+                {currentResult.passed ? (
+                  <Check className="w-5 h-5 text-green-600 mt-0.5" />
+                ) : (
+                  <Lightbulb className="w-5 h-5 text-amber-600 mt-0.5" />
+                )}
+                <div>
+                  <p className={currentResult.passed ? 'text-green-800' : 'text-amber-800'}>
+                    {currentResult.feedback}
+                  </p>
+                  {!currentResult.passed && currentQuestion.sampleAnswer && (
+                    <details className="mt-2">
+                      <summary className="text-sm text-amber-700 cursor-pointer hover:underline">
+                        View sample answer
+                      </summary>
+                      <p className="mt-2 text-sm text-gray-700 bg-white p-3 rounded-lg">
+                        {currentQuestion.sampleAnswer}
+                      </p>
+                    </details>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Submit / Next button */}
+          <div className="flex justify-end">
+            {!currentResult ? (
+              <button
+                onClick={handleSubmit}
+                disabled={wordCount < 20 || isEvaluating}
+                className={clsx(
+                  'px-6 py-3 rounded-xl font-medium transition-all flex items-center gap-2',
+                  wordCount >= 20 && !isEvaluating
+                    ? 'bg-purple-600 text-white hover:bg-purple-700'
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                )}
+              >
+                {isEvaluating ? (
+                  <>
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
+                      className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
+                    />
+                    Evaluating...
+                  </>
+                ) : (
+                  'Submit'
+                )}
+              </button>
+            ) : (
+              <button
+                onClick={handleNext}
+                className="px-6 py-3 rounded-xl font-medium bg-purple-600 text-white hover:bg-purple-700 transition-all flex items-center gap-2"
+              >
+                {currentIndex < questions.length - 1 ? 'Next Question' : 'Complete'}
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
