@@ -107,6 +107,8 @@ export interface Session {
   fromCache?: boolean;
   // User-specified focus areas for content emphasis
   improvementAreas?: string[];
+  // User-specified areas to reduce content for
+  lessOfAreas?: string[];
   progress: Progress[];
   createdAt: string;
   updatedAt: string;
@@ -125,6 +127,7 @@ export interface UpdateSessionDto {
   mode?: SessionMode;
   currentDay?: number;
   improvementAreas?: string[];
+  lessOfAreas?: string[];
 }
 
 // ============================================

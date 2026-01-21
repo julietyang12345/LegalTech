@@ -431,6 +431,8 @@ export interface DayDetailParams {
 
   // User-specified improvement areas (updated mid-sprint)
   improvementAreas?: string[];
+  // User-specified areas to reduce content for
+  lessOfAreas?: string[];
 
   // AI-decided custom sections for hybrid skills (from curriculum metadata)
   customSections?: {
@@ -1406,6 +1408,11 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
     ? `\nIMPROVEMENT AREAS: ${params.improvementAreas.join(', ')}. Incorporate these into examples and scenarios where relevant.`
     : '';
 
+  // Build less of areas instruction if provided
+  const lessOfAreasInstruction = params.lessOfAreas?.length
+    ? `\nREDUCE CONTENT FOR: ${params.lessOfAreas.join(', ')}. Minimize examples, scenarios, and explanations involving these areas. Focus on other aspects instead.`
+    : '';
+
   // Dynamic part - skill name is checked against language detection in static instructions
   const skillGuidance = getSkillTypeGuidance(params.skillType, params.complexity);
   const dynamicPart = `SKILL: "${params.skillName}"
@@ -1413,7 +1420,7 @@ Day ${params.dayNumber}: ${params.dayTitle}
 ${params.previousDayTitle ? `Previous: ${params.previousDayTitle}` : ''}
 Type: ${params.skillType} | Sections: ${sectionTypes}
 ${skillGuidance}
-${isProjectBased && params.skillType !== 'KNOWLEDGE' ? 'Include bossMilestone with REAL starterCode and COMPLETE solution code.' : 'No bossMilestone.'}${improvementAreasInstruction}`;
+${isProjectBased && params.skillType !== 'KNOWLEDGE' ? 'Include bossMilestone with REAL starterCode and COMPLETE solution code.' : 'No bossMilestone.'}${improvementAreasInstruction}${lessOfAreasInstruction}`;
 
   // Build section-specific task1 template based on skill type
   const task1SectionsTemplate = params.customSections

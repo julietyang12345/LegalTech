@@ -196,13 +196,15 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
         boostConcept: boostedConcept || undefined,
       });
 
-      // Save improvement areas to session if changed
-      // Combine "more of" areas and exclude "less of" items
-      const combinedImprovementAreas = moreOfAreas.filter(area => !lessOfAreas.includes(area));
-      const hasChanges = JSON.stringify(combinedImprovementAreas) !== JSON.stringify(session.improvementAreas || []);
+      // Save improvement areas and lessOfAreas to session if changed
+      const improvementAreasChanged = JSON.stringify(moreOfAreas) !== JSON.stringify(session.improvementAreas || []);
+      const lessOfAreasChanged = JSON.stringify(lessOfAreas) !== JSON.stringify(session.lessOfAreas || []);
 
-      if (hasChanges) {
-        await updateSession(session.id, { improvementAreas: combinedImprovementAreas });
+      if (improvementAreasChanged || lessOfAreasChanged) {
+        await updateSession(session.id, {
+          improvementAreas: moreOfAreas,
+          lessOfAreas: lessOfAreas,
+        });
       }
 
       await updateTaskProgress(`day${day.day}-reflection`, {

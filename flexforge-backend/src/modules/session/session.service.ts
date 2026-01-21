@@ -624,7 +624,7 @@ export class SessionService {
     }
 
     // Generate core content (fast) with variant tracking
-    // Pass session's improvementAreas to bias content generation
+    // Pass session's improvementAreas and lessOfAreas to bias content generation
     const result = await this.curriculumService.generateDayCoreDetails(
       session.curriculum,
       dayNumber,
@@ -633,6 +633,7 @@ export class SessionService {
       userId,
       sessionId,
       session.improvementAreas,
+      session.lessOfAreas,
     );
 
     // Update session with core content

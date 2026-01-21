@@ -106,6 +106,10 @@ export class Session {
   @Column({ type: 'jsonb', nullable: true, default: [] })
   improvementAreas: string[];
 
+  // User-defined areas to reduce content for
+  @Column({ type: 'jsonb', nullable: true, default: [] })
+  lessOfAreas: string[];
+
   @Column({ default: 0 })
   extensionsDays: number;
 

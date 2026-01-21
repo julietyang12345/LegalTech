@@ -316,6 +316,7 @@ export class CurriculumService {
     userId?: string,
     sessionId?: string,
     improvementAreas?: string[],
+    lessOfAreas?: string[],
   ): Promise<DayCoreResult> {
     this.logger.log(`🚀 Generating Day ${dayNumber} CORE content...`);
 
@@ -428,6 +429,8 @@ export class CurriculumService {
       proficiencyLevel: curriculum.metadata.proficiencyLevel,
       // User-specified focus areas
       improvementAreas,
+      // User-specified areas to reduce content for
+      lessOfAreas,
     };
 
     // DEBUG: Log language learning params before prompt builder
