@@ -518,7 +518,6 @@ STRUCTURE (all fields required):
 - prePrompt: {text, primeQuestions[], yesterdayRecap}
 - video: null (no video for language learning - use TTS and practice instead)
 - videoStrategy: "skip"
-- contentSource: "text"
 - contentLayer: "language_core"
 - languageFoundationCards: 5-7 vocabulary cards (REQUIRED)
 - task1: Quick practice with 3-4 question types mixed
@@ -555,8 +554,7 @@ Output this JSON structure:
     "yesterdayRecap": "${params.previousDayTitle ? 'Yesterday we learned: ' + params.previousDayTitle : 'Welcome to your first lesson!'}"
   },
   "videoStrategy": "skip",
-  "contentSource": "text",
-  "contentLayer": "language_core",
+    "contentLayer": "language_core",
   "languageFoundationCards": [
     {
       "id": "day${dayNumber}-vocab-1",
@@ -1173,39 +1171,31 @@ Skill type and sections are pre-determined - focus on curriculum structure and c
 CONTENT STRATEGY - decide per day:
 
 contentLayer:
-  foundation    = core CS concepts (algorithms, data structures, Big O)
-  language_core = language syntax/features (Python, JS, TS basics)
-  framework     = framework patterns (React, Next.js, Django)
-  tool          = tools/platforms (APIs, IDEs, deployment)
-  project       = building/integrating (end-to-end implementation)
+  foundation    = core theoretical concepts (fundamentals, principles, theory)
+  language_core = language/domain basics (syntax, vocabulary, fundamentals)
+  framework     = patterns and methodologies (best practices, frameworks)
+  tool          = tools/platforms (software, equipment, resources)
+  project       = building/applying (hands-on practice, real projects)
 
 videoStrategy:
-  skip        = text is better (simple syntax only, NOT for algorithms/CS theory)
-  optional    = video might help (language basics, simple patterns)
-  helpful     = video aids understanding (framework patterns, visualizations)
-  recommended = video is best (UI tools, algorithms, Big O, debugging)
+  skip        = text is better (simple definitions, quick facts)
+  optional    = video might help (basic concepts, simple patterns)
+  helpful     = video aids understanding (visual concepts, demonstrations)
+  recommended = video is best (complex topics, tutorials, walkthroughs)
 
-contentSource:
-  university = MIT/Stanford lectures (algorithms, data structures, CS theory, math)
-  youtube    = tutorials (frameworks, tools, projects)
-  text       = AI explanations (simple syntax when video=skip)
-  docs       = official docs (language features, APIs)
+transferability: high (universal) | medium (similar domains) | low (specific context)
 
-transferability: high (universal) | medium (similar tools) | low (platform-specific)
-
-For foundational CS topics (algorithms, data structures, Big O, recursion, trees, graphs, sorting) - ALWAYS use contentSource=university.
-
-Each day: title, subtitle, skills[], teaser, estimatedMinutes, contentLayer, videoStrategy, transferability, contentSource, skipTest
+Each day: title, subtitle, skills[], teaser, estimatedMinutes, contentLayer, videoStrategy, transferability, skipTest
 
 TOPIC FILTER: Only include what blocks progress toward the goal. MEANS (tools/setup) → minimum to use. ENDS (goal itself) → full depth. No history, theory, or comparisons for things they just use.
 
-CODE ENVIRONMENT:
-Browser-safe: json, csv, re, math, datetime, collections, itertools, pandas, numpy, beautifulsoup4
-Needs local: requests, selenium, playwright, psycopg2, flask, django, fastapi
-→ If using local-only modules, provide fixture data as fallback
+SKILL-SPECIFIC ENVIRONMENT GUIDANCE:
+- CODE/AI_AGENT: Prefer browser-safe libraries. Provide fixture data for external APIs.
+- PHYSICAL: Include safety warnings, warm-up requirements, equipment lists.
+- KNOWLEDGE: Use spaced repetition, mnemonics, real-world applications.
+- DESIGN: Provide before/after examples, critique frameworks, assessment rubrics.
 
-AVOID: scraping amazon/google/twitter/linkedin, Docker in Days 1-7, live APIs without fixtures
-→ Use mock data or SQLite instead
+AVOID (all skills): Content requiring expensive equipment, dangerous activities without safety context, or access to gated/login-required platforms.
 
 skipTest format: {questionSets: [[{question, options[4], correctIndex}]], passThreshold: 2}
 
@@ -1268,10 +1258,11 @@ FOUNDATION CARDS (5-6):
 - Cards 2-5: Core concepts with realWorldContext
 - microQuestion types: gotit, understanding (MCQ)
 
-CODE EXERCISES:
-- Browser-safe: json, csv, re, math, pandas, numpy, beautifulsoup4
-- Needs local: requests, selenium, flask, django → provide fixture fallback
-- Include error handling, use mock data for external APIs
+SKILL-SPECIFIC EXERCISE GUIDANCE:
+- CODE/AI_AGENT: Browser-safe libraries preferred. Provide fixture data for external APIs. Include error handling.
+- PHYSICAL: Include safety checks, form cues, common mistakes. Video references where helpful.
+- KNOWLEDGE: Use concrete examples, mnemonics, application scenarios. Connect to real-world use cases.
+- DESIGN: Use before/after examples, critique exercises, visual references. Include rubrics.
 
 Output valid JSON only.`;
 
@@ -1314,7 +1305,7 @@ ${structureInstructions}
 ${learnerContext}
 ${skillGuidance}
 
-Per day: day, title, subtitle, skills[], teaser, estimatedMinutes:${time.totalMinutes}, ${isProjectBased ? 'hasBossProject:true, bossMilestonePreview,' : ''} contentLayer, videoStrategy, transferability, contentSource, skipTest.`;
+Per day: day, title, subtitle, skills[], teaser, estimatedMinutes:${time.totalMinutes}, ${isProjectBased ? 'hasBossProject:true, bossMilestonePreview,' : ''} contentLayer, videoStrategy, transferability, skipTest.`;
 
   // User prompt with day template
   const bossProjectsSection = isProjectBased
@@ -1347,7 +1338,6 @@ Per day: day, title, subtitle, skills[], teaser, estimatedMinutes:${time.totalMi
       "contentLayer": "foundation|language_core|framework|tool|project",
       "videoStrategy": "skip|optional|helpful|recommended",
       "transferability": "high|medium|low",
-      "contentSource": "university|youtube|text|docs",
       "skipTest": {
         "description": "Prove mastery to skip this day",
         "questionSets": [[

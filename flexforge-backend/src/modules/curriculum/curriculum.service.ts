@@ -53,78 +53,380 @@ export interface DayDeferredResult {
   fromCache?: boolean;
 }
 
+// Abstract skill types that often need AI-assisted query generation
+const ABSTRACT_SKILL_TYPES = new Set([
+  'SOFT_SKILL', 'CRITICAL_THINKING', 'LEADERSHIP', 'COMMUNICATION',
+  'CREATIVITY', 'PROBLEM_SOLVING', 'EMOTIONAL_INTELLIGENCE', 'MINDFULNESS',
+]);
+
+// Generic words that signal a weak search query
+const GENERIC_QUERY_WORDS = new Set([
+  'understanding', 'introduction', 'overview', 'thinking', 'principles',
+  'concepts', 'basics', 'fundamentals', 'learning', 'mastering', 'exploring',
+  'developing', 'building', 'creating', 'improving', 'advanced', 'essential',
+]);
+
 @Injectable()
 export class CurriculumService {
   private readonly logger = new Logger(CurriculumService.name);
 
+  // Cache for AI-generated search queries: key = "skillName:dayNumber:level"
+  private searchQueryCache = new Map<string, string>();
+
   /**
    * Extract search query from day content for video search
-   * Simplified: just builds search query, content verification is done by Gemini AI
+   * HYBRID: Uses deterministic extraction first, falls back to AI for abstract/weak queries
    */
-  private extractSearchQuery(
+  private async extractSearchQuery(
     dayContent: any,
     fallbackTitle: string,
     skillName?: string,
+    context?: {
+      dayNumber?: number;
+      skillLevel?: string;
+      skillType?: string;
+      dayObjectives?: string[];
+    },
+  ): Promise<string> {
+    // Step 1: Try deterministic extraction (FREE)
+    // Map skill level to user level for YouTube search modifiers
+    const levelMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
+      'BEGINNER': 'beginner',
+      'INTERMEDIATE': 'intermediate',
+      'ADVANCED': 'advanced',
+    };
+    const userLevel = levelMap[context?.skillLevel || ''] || 'beginner';
+
+    const deterministicQuery = this.extractSearchQueryDeterministic(
+      dayContent,
+      fallbackTitle,
+      skillName,
+      userLevel,
+    );
+
+    // Step 2: Detect if query is likely to fail
+    const isLikelyWeak = this.isWeakSearchQuery(
+      deterministicQuery,
+      skillName,
+      context?.skillType,
+    );
+
+    if (!isLikelyWeak) {
+      return deterministicQuery;
+    }
+
+    // Step 3: Check cache before calling AI
+    const cacheKey = this.buildSearchQueryCacheKey(
+      skillName || '',
+      context?.dayNumber || 0,
+      context?.skillLevel || 'BEGINNER',
+    );
+
+    const cached = this.searchQueryCache.get(cacheKey);
+    if (cached) {
+      this.logger.log(`🔍 Search query cache HIT: "${cached}"`);
+      return cached;
+    }
+
+    // Step 4: Fall back to AI for better query generation
+    this.logger.log(`🤖 Weak query detected ("${deterministicQuery}"), using AI fallback...`);
+
+    try {
+      const aiQuery = await this.generateSearchQueryWithAI({
+        skillName: skillName || '',
+        dayTitle: fallbackTitle,
+        foundationConcepts: this.extractTopConcepts(dayContent, 3),
+        taskTitle: dayContent.task1?.title,
+        skillLevel: context?.skillLevel || 'BEGINNER',
+        dayObjectives: context?.dayObjectives || [],
+      });
+
+      if (aiQuery && aiQuery.length >= 8) {
+        // Cache the AI result
+        this.searchQueryCache.set(cacheKey, aiQuery);
+        this.logger.log(`✅ AI query generated and cached: "${aiQuery}"`);
+        return aiQuery;
+      }
+    } catch (error) {
+      this.logger.warn(`⚠️ AI query generation failed: ${error.message}`);
+    }
+
+    // Fallback to deterministic if AI fails
+    return deterministicQuery;
+  }
+
+  /**
+   * Deterministic search query extraction (FREE, no AI)
+   * Improved V3: proper normalization, more signals, level modifiers
+   */
+  private extractSearchQueryDeterministic(
+    dayContent: any,
+    fallbackTitle: string,
+    skillName?: string,
+    userLevel: 'beginner' | 'intermediate' | 'advanced' = 'beginner',
   ): string {
-    // Extract skill context (e.g., "Chinese" from "learn basic chinese")
-    // This MUST be included in the search to avoid wrong-language results
+    // Normalize text: lowercase, alphanumeric only, single spaces
+    const norm = (s: string) =>
+      (s ?? '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    // Strip question prefixes and leading articles
+    const stripLead = (s: string) =>
+      s
+        .replace(/^(what is|what are|how to|why|when to use)\s*/i, '')
+        .replace(/\?$/, '')
+        .replace(/^(a|an|the)\s+/i, '')
+        .trim();
+
+    // Generic words that don't help YouTube search
+    const GENERIC = new Set([
+      'understanding', 'introduction', 'intro', 'overview', 'basics', 'fundamentals',
+      'thinking', 'principles', 'guide', 'learn', 'learning', 'session', 'day',
+      'module', 'chapter', 'unit', 'lesson', 'part', 'section', 'step',
+      'what', 'how', 'why', 'when', 'where', 'which', 'who', // question words
+    ]);
+
+    // 1) Extract skill context
     let skillContext = '';
     if (skillName) {
-      const cleaned = skillName
-        .replace(/\b(platform|basics|fundamentals|introduction|intro|learning|learn|course|tutorial|and|&|the|a|an)\b/gi, '')
-        .replace(/[^\w\s-]/g, ' ')
+      const cleaned = norm(skillName)
+        .replace(/\b(platform|basics|fundamentals|introduction|intro|learning|learn|course|tutorial|and|the|a|an)\b/g, '')
+        .replace(/\s+/g, ' ')
         .trim();
-      const words = cleaned.split(/\s+/).filter(w => w.length > 2);
-      if (words.length >= 1) {
-        skillContext = words.slice(0, 2).join(' '); // e.g., "Chinese", "Vercel deployment"
+
+      const words = cleaned.split(' ').filter(w => w.length > 2);
+      skillContext = words.slice(0, 2).join(' ');
+
+      // Fallback if we stripped everything
+      if (!skillContext) {
+        const rawWords = norm(skillName)
+          .split(' ')
+          .filter(w => w.length > 2 && !GENERIC.has(w));
+        skillContext = rawWords.slice(0, 2).join(' ');
       }
     }
 
-    // Try to get day-specific concept from foundationCards or languageFoundationCards
+    // 2) Day concept: keyTopics > cards (0-6) > tasks (1-3)
     let dayConcept = '';
-    const cards = dayContent.languageFoundationCards || dayContent.foundationCards;
-    if (cards && Array.isArray(cards)) {
-      for (const card of cards.slice(1, 4)) {
-        const conceptText = card.concept;
-        if (conceptText) {
-          const cleaned = conceptText
-            .replace(/^(What is|What are|How to|Why|When to use)\s*/i, '')
-            .replace(/\?$/, '')
-            .trim();
-          if (cleaned && cleaned.length > 2 && cleaned.split(' ').length <= 4) {
-            dayConcept = cleaned;
-            break;
-          }
+
+    // Try keyTopics first (most specific)
+    const keyTopics = Array.isArray(dayContent?.keyTopics) ? dayContent.keyTopics : [];
+    if (keyTopics.length) {
+      dayConcept = stripLead(norm(keyTopics.slice(0, 2).join(' ')));
+    }
+
+    // Try foundation cards (first 6, not just 1-3)
+    const cards = dayContent?.languageFoundationCards || dayContent?.foundationCards;
+    if (!dayConcept && Array.isArray(cards)) {
+      for (const card of cards.slice(0, 6)) {
+        const c = stripLead(norm(card?.concept || card?.vocabulary?.term || ''));
+        const words = c.split(' ').filter(Boolean);
+        if (c && words.length >= 1 && words.length <= 6 && !GENERIC.has(words[0])) {
+          dayConcept = c;
+          break;
         }
       }
     }
 
-    // Try task title if no foundation card concept
-    if (!dayConcept && dayContent.task1?.title) {
-      const cleaned = dayContent.task1.title
-        .replace(/^(Build|Create|Implement|Write|Make|Set up|Configure)\s*/i, '')
+    // Try task titles (task1, task2, task3)
+    if (!dayConcept) {
+      for (const t of [dayContent?.task1, dayContent?.task2, dayContent?.task3]) {
+        if (!t?.title) continue;
+        const title = stripLead(
+          norm(t.title).replace(/^(build|create|implement|write|make|set up|configure)\s*/i, ''),
+        );
+        const words = title.split(' ').filter(Boolean);
+        if (title && words.length >= 1 && words.length <= 6) {
+          dayConcept = title;
+          break;
+        }
+      }
+    }
+
+    // 3) Smart fallback from title (filter generic words, keep up to 5 meaningful words)
+    const fallbackWords = norm(fallbackTitle)
+      .split(' ')
+      .filter(w => w.length > 2 && !GENERIC.has(w));
+    const fallbackConcept = fallbackWords.slice(0, 5).join(' ');
+
+    // 4) Level modifier for better YouTube matches
+    const modifier =
+      userLevel === 'beginner' ? 'tutorial explained' :
+      userLevel === 'intermediate' ? 'tutorial example' :
+      'deep dive';
+
+    // 5) Compose final query
+    const base = [skillContext, dayConcept || fallbackConcept]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+
+    // Normalize and cap at 70 chars
+    return norm(`${base} ${modifier}`).slice(0, 70);
+  }
+
+  /**
+   * Detect if a search query is likely to fail on YouTube
+   * Checks the "base" content, ignoring level modifiers added by deterministic extractor
+   */
+  private isWeakSearchQuery(
+    query: string,
+    skillName?: string,
+    skillType?: string,
+  ): boolean {
+    // Level modifiers added by deterministic extractor - ignore these
+    const LEVEL_MODIFIERS = new Set([
+      'tutorial', 'explained', 'example', 'deep', 'dive', 'beginner', 'beginners',
+    ]);
+
+    const queryLower = query.toLowerCase();
+    const allWords = queryLower.split(/\s+/);
+
+    // Filter out level modifiers to check the "base" content
+    const words = allWords.filter(w => !LEVEL_MODIFIERS.has(w));
+
+    // Check 1: Base query too short (< 8 chars or only 1 word after filtering modifiers)
+    const baseQuery = words.join(' ');
+    if (baseQuery.length < 8 || words.length <= 1) {
+      return true;
+    }
+
+    // Check 2: Contains too many generic/abstract words (relative to total)
+    const genericWordCount = words.filter(w => GENERIC_QUERY_WORDS.has(w)).length;
+    if (genericWordCount >= 2 || (genericWordCount >= 1 && words.length <= 2)) {
+      return true;
+    }
+
+    // Check 3: Skill type is abstract (soft skills, critical thinking, etc.)
+    if (skillType && ABSTRACT_SKILL_TYPES.has(skillType)) {
+      return true;
+    }
+
+    // Check 4: No concrete nouns (heuristic: all words are common English)
+    const commonWords = new Set([
+      'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+      'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+      'should', 'may', 'might', 'must', 'shall', 'can', 'need', 'dare',
+      'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'as',
+      'into', 'through', 'during', 'before', 'after', 'above', 'below',
+      'between', 'under', 'again', 'further', 'then', 'once', 'here',
+      'there', 'when', 'where', 'why', 'how', 'all', 'each', 'every',
+      'both', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor',
+      'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'just',
+      'and', 'but', 'if', 'or', 'because', 'until', 'while', 'about',
+    ]);
+    const concreteWords = words.filter(w =>
+      w.length > 3 && !commonWords.has(w) && !GENERIC_QUERY_WORDS.has(w),
+    );
+    if (concreteWords.length === 0) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Generate search queries using AI (small, constrained call)
+   * Returns the best query from 3 candidates
+   */
+  private async generateSearchQueryWithAI(params: {
+    skillName: string;
+    dayTitle: string;
+    foundationConcepts: string[];
+    taskTitle?: string;
+    skillLevel: string;
+    dayObjectives: string[];
+  }): Promise<string | null> {
+    const levelModifier = {
+      'BEGINNER': 'beginner tutorial',
+      'INTERMEDIATE': 'explained',
+      'ADVANCED': 'deep dive',
+    }[params.skillLevel] || 'tutorial';
+
+    const prompt = `Generate 3 YouTube search queries for finding a video about this topic.
+
+SKILL: ${params.skillName}
+DAY TOPIC: ${params.dayTitle}
+FOUNDATION CONCEPTS: ${params.foundationConcepts.join(', ') || 'none'}
+TASK: ${params.taskTitle || 'none'}
+OBJECTIVES: ${params.dayObjectives.slice(0, 3).join(', ') || 'none'}
+LEVEL: ${params.skillLevel}
+
+Requirements:
+- Each query max 70 characters
+- Include skill/domain terms (not just generic words)
+- Add level modifier like "${levelModifier}" where helpful
+- Optimize for YouTube search (what would a real person search?)
+
+Return JSON only:
+{"queries": ["query1", "query2", "query3"], "best": 0, "reason": "one line why"}`;
+
+    const response = await this.aiService.routeRequest(
+      AITask.CURRICULUM_GENERATION,
+      prompt,
+      'You are a YouTube search optimization expert. Return valid JSON only.',
+    );
+
+    try {
+      const cleaned = response.content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
         .trim();
-      if (cleaned && cleaned.split(' ').length <= 4) {
-        dayConcept = cleaned;
+      const result = JSON.parse(cleaned);
+
+      if (result.queries && Array.isArray(result.queries) && result.queries.length > 0) {
+        const bestIdx = typeof result.best === 'number' ? result.best : 0;
+        const bestQuery = result.queries[bestIdx] || result.queries[0];
+
+        // Enforce max 70 chars
+        return bestQuery.slice(0, 70);
+      }
+    } catch {
+      // Parse failed
+    }
+
+    return null;
+  }
+
+  /**
+   * Extract top N concepts from day content for AI context
+   */
+  private extractTopConcepts(dayContent: any, limit: number): string[] {
+    const concepts: string[] = [];
+    const cards = dayContent.languageFoundationCards || dayContent.foundationCards;
+
+    if (cards && Array.isArray(cards)) {
+      for (const card of cards.slice(0, limit + 1)) {
+        const text = card.vocabulary?.term || card.concept;
+        if (text) {
+          const cleaned = text
+            .replace(/^(What is|What are|How to|Why|When to use)\s*/i, '')
+            .replace(/\?$/, '')
+            .trim();
+          if (cleaned && cleaned.length > 2) {
+            concepts.push(cleaned);
+          }
+        }
+        if (concepts.length >= limit) break;
       }
     }
 
-    // COMBINE: skill context + day concept
-    // e.g., "Chinese" + "Basic greetings" → "Chinese Basic greetings"
-    // This prevents Spanish greetings showing up for Chinese course
-    if (skillContext && dayConcept) {
-      // Check if day concept already includes skill context
-      if (!dayConcept.toLowerCase().includes(skillContext.toLowerCase())) {
-        return `${skillContext} ${dayConcept}`.slice(0, 50);
-      }
-      return dayConcept;
-    }
+    return concepts;
+  }
 
-    if (skillContext) return skillContext;
-    if (dayConcept) return dayConcept;
-
-    // LAST RESORT: First 3 words of fallback title
-    return fallbackTitle.split(' ').slice(0, 3).join(' ');
+  /**
+   * Build cache key for search query
+   */
+  private buildSearchQueryCacheKey(
+    skillName: string,
+    dayNumber: number,
+    skillLevel: string,
+  ): string {
+    const normalizedSkill = skillName.toLowerCase().replace(/\s+/g, '-').slice(0, 50);
+    return `sq:${normalizedSkill}:d${dayNumber}:${skillLevel.toLowerCase()}`;
   }
 
   constructor(
@@ -380,20 +682,32 @@ export class CurriculumService {
       .replace(/\s+/g, ' ')
       .trim();
 
+    // Extract day objectives for smarter search
+    const dayObjectives: string[] = dayOverview.skills || [];
+
+    // Build enhanced university search query using objectives
+    // Combine title concept with top objectives for better relevance
+    const universitySearchQuery = this.buildUniversitySearchQuery(
+      searchConcept,
+      dayObjectives,
+      curriculum.metadata.skillName,
+    );
+
     // Start parallel searches for university resources and documentation
+    // Always search university alongside YouTube - pick best result by confidence
     let universityResourcePromise: Promise<any> | null = null;
     let docFetchPromise: Promise<DocFetchResult | null> | null = null;
 
-    if (contentSource === 'university') {
-      this.logger.log(`🎓 Starting university resource search for: "${searchConcept}"`);
-      universityResourcePromise = Promise.all([
-        this.universityResource.searchResources(searchConcept, 'lecture_notes', 2),
-        this.universityResource.searchResources(searchConcept, 'problem_set', 2),
-      ]).catch(error => {
-        this.logger.warn(`⚠️ University resource search failed: ${error.message}`);
-        return null;
-      });
-    }
+    // Always run university search in parallel with YouTube
+    this.logger.log(`🎓 Starting university resource search for: "${universitySearchQuery}" (objectives: ${dayObjectives.slice(0, 2).join(', ')})`);
+    universityResourcePromise = Promise.all([
+      this.universityResource.searchResources(universitySearchQuery, 'lecture_video', 2, dayObjectives),
+      this.universityResource.searchResources(universitySearchQuery, 'lecture_notes', 2, dayObjectives),
+      this.universityResource.searchResources(universitySearchQuery, 'problem_set', 2, dayObjectives),
+    ]).catch(error => {
+      this.logger.warn(`⚠️ University resource search failed: ${error.message}`);
+      return null;
+    });
 
     if (contentSource === 'docs') {
       this.logger.log(`📚 Starting documentation fetch for: "${searchConcept}"`);
@@ -605,56 +919,83 @@ export class CurriculumService {
     }
     // ====== END VIDEO SEARCH ======
 
-    // Await parallel searches
+    // Await parallel searches (university always runs alongside YouTube now)
     const universityResults = universityResourcePromise ? await universityResourcePromise : null;
     const docResult = docFetchPromise ? await docFetchPromise : null;
 
-    // FALLBACK: If video failed/skipped AND contentLayer is 'foundation', try university resources
-    let fallbackUniversityResults = null;
-    if (!universityResults && contentLayer === 'foundation' && (!videoResult?.rawResult?.success || !shouldSearchVideo)) {
-      this.logger.log(`🎓 Fallback: Searching university resources for foundation topic: "${searchConcept}"`);
-      try {
-        fallbackUniversityResults = await Promise.all([
-          this.universityResource.searchResources(searchConcept, 'lecture_video', 2),
-          this.universityResource.searchResources(searchConcept, 'lecture_notes', 2),
-        ]);
-      } catch (error) {
-        this.logger.warn(`⚠️ Fallback university search failed: ${error.message}`);
-      }
-    }
+    // Minimum confidence threshold for video sources
+    const MIN_VIDEO_CONFIDENCE = 40;
+    const MIN_UNIVERSITY_CONFIDENCE = 30;
 
-    // Use fallback results if original universityResults is null
-    const finalUniversityResults = universityResults || fallbackUniversityResults;
-
-    // Add university resources (lecture notes, problem sets) if available
-    if (finalUniversityResults) {
-      const [lectureNotesResult, problemSetsResult] = finalUniversityResults;
+    // Add university resources (lecture videos, notes, problem sets) if available
+    // Filter by confidence threshold
+    if (universityResults) {
+      const [lectureVideoResult, lectureNotesResult, problemSetsResult] = universityResults;
       const universityResources: any[] = [];
 
+      if (lectureVideoResult?.success && lectureVideoResult.resources?.length > 0) {
+        const filteredVideos = lectureVideoResult.resources
+          .filter((r: any) => r.confidence >= MIN_UNIVERSITY_CONFIDENCE);
+        universityResources.push(...filteredVideos.map((r: any) => ({
+          type: 'lecture_video',
+          source: r.source,
+          title: r.title,
+          url: r.url,
+          description: r.description,
+          confidence: r.confidence,
+        })));
+        if (filteredVideos.length < lectureVideoResult.resources.length) {
+          this.logger.log(`🎓 Filtered ${lectureVideoResult.resources.length - filteredVideos.length} low-confidence lecture videos`);
+        }
+      }
+
       if (lectureNotesResult?.success && lectureNotesResult.resources?.length > 0) {
-        universityResources.push(...lectureNotesResult.resources.map((r: any) => ({
+        const filteredNotes = lectureNotesResult.resources
+          .filter((r: any) => r.confidence >= MIN_UNIVERSITY_CONFIDENCE);
+        universityResources.push(...filteredNotes.map((r: any) => ({
           type: 'lecture_notes',
           source: r.source,
           title: r.title,
           url: r.url,
           description: r.description,
+          confidence: r.confidence,
         })));
       }
 
       if (problemSetsResult?.success && problemSetsResult.resources?.length > 0) {
-        universityResources.push(...problemSetsResult.resources.map((r: any) => ({
+        const filteredProblems = problemSetsResult.resources
+          .filter((r: any) => r.confidence >= MIN_UNIVERSITY_CONFIDENCE);
+        universityResources.push(...filteredProblems.map((r: any) => ({
           type: 'problem_set',
           source: r.source,
           title: r.title,
           url: r.url,
           description: r.description,
+          confidence: r.confidence,
         })));
       }
 
       if (universityResources.length > 0) {
         coreContent.universityResources = universityResources;
-        this.logger.log(`✅ Day ${dayNumber}: Found ${universityResources.length} university resources`);
+        const topConfidence = Math.max(...universityResources.map((r: any) => r.confidence));
+        this.logger.log(`✅ Day ${dayNumber}: Found ${universityResources.length} university resources (top confidence: ${topConfidence}%)`);
       }
+    }
+
+    // Log video source selection summary
+    const youtubeConfidence = videoResult?.rawResult?.matchPercent || 0;
+    const universityVideoConfidence = coreContent.universityResources?.find((r: any) => r.type === 'lecture_video')?.confidence || 0;
+    const hasYouTube = youtubeConfidence >= MIN_VIDEO_CONFIDENCE && videoResult?.rawResult?.success;
+    const hasUniversity = universityVideoConfidence >= MIN_UNIVERSITY_CONFIDENCE;
+
+    if (hasYouTube && hasUniversity) {
+      this.logger.log(`📊 Both sources available - YouTube: ${youtubeConfidence}% (preferred), University: ${universityVideoConfidence}%`);
+    } else if (hasYouTube) {
+      this.logger.log(`📊 YouTube only: ${youtubeConfidence}%`);
+    } else if (hasUniversity) {
+      this.logger.log(`📊 University only: ${universityVideoConfidence}%`);
+    } else {
+      this.logger.log(`📊 No video sources met confidence threshold (YouTube: ${youtubeConfidence}%, University: ${universityVideoConfidence}%)`);
     }
 
     // Add official documentation resources if available
@@ -931,8 +1272,13 @@ export class CurriculumService {
       return null;
     }
 
-    // Extract search query from day content (simplified - AI verifies content)
-    const searchQuery = this.extractSearchQuery(content, searchConcept, skillName);
+    // Extract search query from day content (hybrid: deterministic + AI fallback for abstract topics)
+    const searchQuery = await this.extractSearchQuery(content, searchConcept, skillName, {
+      dayNumber,
+      skillLevel,
+      skillType,
+      dayObjectives,
+    });
 
     // Calculate video slot based on hours per day
     const sessionMinutes = (hoursPerDay || 1) * 60;
@@ -987,7 +1333,15 @@ export class CurriculumService {
       videoResult = null;
     }
 
-    this.logger.log(`🔍 VIDEO RESULT: success=${videoResult?.success}, video=${videoResult?.video?.title || 'none'}, error=${videoResult?.error || 'none'}`);
+    this.logger.log(`🔍 VIDEO RESULT: success=${videoResult?.success}, video=${videoResult?.video?.title || 'none'}, matchPercent=${videoResult?.matchPercent || 0}, error=${videoResult?.error || 'none'}`);
+
+    // Minimum confidence threshold - reject low quality matches
+    const MIN_VIDEO_CONFIDENCE = 40;
+    const meetsMinConfidence = videoResult?.matchPercent && videoResult.matchPercent >= MIN_VIDEO_CONFIDENCE;
+
+    if (videoResult?.success && !meetsMinConfidence) {
+      this.logger.log(`⚠️ Video rejected: matchPercent ${videoResult?.matchPercent}% < ${MIN_VIDEO_CONFIDENCE}% threshold`);
+    }
 
     // Generate AI explanation as fallback
     const aiExplanation = this.generateAiExplanation(content, searchQuery);
@@ -996,7 +1350,8 @@ export class CurriculumService {
 
     let processedVideo: any;
 
-    if (videoResult?.success && videoResult.video) {
+    // Only use video if it meets minimum confidence threshold
+    if (videoResult?.success && videoResult.video && meetsMinConfidence) {
       if (defaultMode === 'ai') {
         // AI is primary, video as backup
         this.logger.log(`📝 Day ${dayNumber}: AI explanation as default (${adaptiveModality?.reasonShort || 'confidence low'})`);
@@ -1031,25 +1386,28 @@ export class CurriculumService {
         const watchPlan = videoResult.watchPlan;
 
         // Build alternatives if requested (for generateDayDetails)
+        // Only include alternatives that meet minimum confidence threshold
         let alternatives: any[] = [];
         if (includeAlternatives && videoResult.alternatives) {
-          alternatives = videoResult.alternatives.map((alt: any) => ({
-            videoId: alt.video.videoId,
-            title: alt.video.title,
-            channelName: alt.video.channelName,
-            duration: alt.video.duration,
-            startTime: alt.watchPlan?.primarySegment
-              ? formatTime(alt.watchPlan.primarySegment.startSeconds)
-              : undefined,
-            endTime: alt.watchPlan?.primarySegment
-              ? formatTime(alt.watchPlan.primarySegment.endSeconds)
-              : undefined,
-            estimatedMinutes: alt.watchPlan?.primarySegment
-              ? Math.ceil((alt.watchPlan.primarySegment.endSeconds - alt.watchPlan.primarySegment.startSeconds) / 60)
-              : 6,
-            differentiator: alt.differentiator,
-            matchPercent: alt.matchPercent,
-          }));
+          alternatives = videoResult.alternatives
+            .filter((alt: any) => alt.matchPercent >= MIN_VIDEO_CONFIDENCE)
+            .map((alt: any) => ({
+              videoId: alt.video.videoId,
+              title: alt.video.title,
+              channelName: alt.video.channelName,
+              duration: alt.video.duration,
+              startTime: alt.watchPlan?.primarySegment
+                ? formatTime(alt.watchPlan.primarySegment.startSeconds)
+                : undefined,
+              endTime: alt.watchPlan?.primarySegment
+                ? formatTime(alt.watchPlan.primarySegment.endSeconds)
+                : undefined,
+              estimatedMinutes: alt.watchPlan?.primarySegment
+                ? Math.ceil((alt.watchPlan.primarySegment.endSeconds - alt.watchPlan.primarySegment.startSeconds) / 60)
+                : 6,
+              differentiator: alt.differentiator,
+              matchPercent: alt.matchPercent,
+            }));
         }
 
         // Check if this is a university channel
@@ -1182,6 +1540,54 @@ export class CurriculumService {
     return fallbackSections.length > 0
       ? fallbackSections.join('\n\n')
       : `Learn about ${concept} through the practice exercises below.`;
+  }
+
+  /**
+   * Build optimized search query for university resources
+   * Combines title concept with key objectives for better relevance
+   */
+  private buildUniversitySearchQuery(
+    searchConcept: string,
+    dayObjectives: string[],
+    skillName: string,
+  ): string {
+    // Extract key terms from objectives (first 2 objectives, max 3 words each)
+    const objectiveTerms: string[] = [];
+    for (const obj of dayObjectives.slice(0, 2)) {
+      // Clean and extract key nouns/verbs
+      const cleaned = obj
+        .replace(/\b(understand|learn|master|apply|create|build|implement|use|know|identify|explain|describe|analyze|develop|practice)\b/gi, '')
+        .replace(/\b(the|a|an|and|or|to|for|with|how|what|why|when)\b/gi, '')
+        .replace(/[^\w\s]/g, ' ')
+        .trim();
+
+      const words = cleaned.split(/\s+/).filter(w => w.length > 3);
+      if (words.length > 0) {
+        objectiveTerms.push(words.slice(0, 2).join(' '));
+      }
+    }
+
+    // Combine: searchConcept + top objective terms
+    let query = searchConcept;
+
+    // Add skill context if not already in concept
+    const skillWords = skillName.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+    for (const sw of skillWords.slice(0, 2)) {
+      if (!query.toLowerCase().includes(sw)) {
+        query = `${sw} ${query}`;
+        break;
+      }
+    }
+
+    // Add objective terms if they add value
+    for (const term of objectiveTerms.slice(0, 1)) {
+      if (term && !query.toLowerCase().includes(term.toLowerCase())) {
+        query = `${query} ${term}`;
+      }
+    }
+
+    // Limit to 50 chars for search effectiveness
+    return query.slice(0, 50).trim();
   }
 
   /**

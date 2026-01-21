@@ -21,11 +21,11 @@ import { Button, Card, GeneratingScreen, QuotaExceededModal } from '@/components
 import { SkillLevel } from '@/types';
 import { onboardingService } from '@/services/onboardingService';
 
-// Loading steps for curriculum generation (~30-40 seconds)
+// Loading steps for curriculum generation (~50-60 seconds)
 const GENERATION_LOADING_STEPS = [
   { icon: Search, text: 'Analyzing your skill...', duration: 5000 },
   { icon: Brain, text: 'Designing learning path...', duration: 8000 },
-  { icon: BookOpen, text: 'Building curriculum...', duration: 20000 },
+  { icon: BookOpen, text: 'Building curriculum...', duration: 40000 },
   { icon: CheckCircle, text: 'Finalizing your plan...', duration: 5000 },
 ];
 
@@ -270,7 +270,7 @@ export function StartPage() {
         steps={GENERATION_LOADING_STEPS}
         title="Creating your curriculum"
         subtitle={`Building a personalized ${skillName} learning path...`}
-        timeEstimate="This takes about 30-40 seconds"
+        timeEstimate="This takes about 50-60 seconds"
       />
     );
   }

@@ -1,21 +1,31 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
-import {
-  UNIVERSITY_SOURCES,
-  UniversityResource,
-  UniversityResourceType,
-  isUniversityUrl,
-} from './university-sources';
 
 // ============================================
 // UNIVERSITY RESOURCE SERVICE
 // ============================================
-// Searches for educational resources from universities:
-// - MIT OCW, Stanford, Berkeley, CMU, Harvard
-// - Lecture videos, notes, problem sets
-// - Uses Google Custom Search API (100 free/day)
+// Searches for educational resources from .edu domains
+// Uses Google Custom Search API (100 free/day)
 // ============================================
+
+export type UniversityResourceType =
+  | 'lecture_video'
+  | 'lecture_notes'
+  | 'slides'
+  | 'problem_set'
+  | 'assignment'
+  | 'syllabus'
+  | 'reading';
+
+export interface UniversityResource {
+  type: UniversityResourceType;
+  source: string;
+  title: string;
+  url: string;
+  description?: string;
+  confidence: number;  // 0-100 relevance score
+}
 
 export interface UniversitySearchResult {
   success: boolean;
@@ -55,11 +65,13 @@ export class UniversityResourceService {
   /**
    * Search for university resources on a topic
    * Uses Google Custom Search API with .edu domain filter
+   * @param dayObjectives - Learning objectives for content matching
    */
   async searchResources(
     concept: string,
     resourceType: UniversityResourceType = 'lecture_video',
     limit: number = 5,
+    dayObjectives: string[] = [],
   ): Promise<UniversitySearchResult> {
     this.logger.log(`🎓 Searching university resources for: "${concept}" (${resourceType})`);
 
@@ -81,7 +93,7 @@ export class UniversityResourceService {
       const searchQuery = `${concept} ${typeKeyword}`;
 
       // Search with .edu site restriction
-      const resources = await this.searchGoogleCSE(searchQuery, resourceType, limit);
+      const resources = await this.searchGoogleCSE(searchQuery, resourceType, limit, dayObjectives);
 
       if (resources.length === 0) {
         return {
@@ -111,7 +123,14 @@ export class UniversityResourceService {
     query: string,
     resourceType: UniversityResourceType,
     limit: number,
+    dayObjectives: string[] = [],
   ): Promise<UniversityResource[]> {
+    // Extract search concept from query (remove type keywords)
+    const searchConcept = query
+      .replace(/\b(lecture video|problem set solutions|slides pdf|lecture notes)\b/gi, '')
+      .trim()
+      .toLowerCase();
+
     try {
       const response = await axios.get<GoogleCSEResponse>(
         'https://www.googleapis.com/customsearch/v1',
@@ -130,21 +149,28 @@ export class UniversityResourceService {
       const resources: UniversityResource[] = [];
 
       for (const item of items) {
-        // Verify it's from a trusted university
-        const { trusted, source } = isUniversityUrl(item.link);
-
-        // Accept any .edu domain
-        const isEdu = item.link.includes('.edu');
-        if (!trusted && !isEdu) continue;
+        const source = this.extractUniversityName(item.displayLink || item.link);
+        const confidence = this.calculateConfidence(
+          item.title,
+          item.snippet || '',
+          source,
+          searchConcept,
+          resourceType,
+          dayObjectives,
+        );
 
         resources.push({
           type: resourceType,
-          source: source?.shortName || this.extractUniversityName(item.displayLink || item.link),
+          source,
           title: item.title,
           url: item.link,
           description: item.snippet || '',
+          confidence,
         });
       }
+
+      // Sort by confidence descending
+      resources.sort((a, b) => b.confidence - a.confidence);
 
       return resources;
 
@@ -157,54 +183,99 @@ export class UniversityResourceService {
   }
 
   /**
-   * Search for resources from specific universities
-   * More targeted search for high-quality results
+   * Calculate confidence score for a university resource
+   * Uses both search concept and day objectives for content matching
    */
-  async searchSpecificUniversity(
-    concept: string,
-    universityShortName: 'MIT' | 'Stanford' | 'Berkeley' | 'Harvard' | 'CMU',
-    resourceType: UniversityResourceType = 'lecture_video',
-  ): Promise<UniversitySearchResult> {
-    const university = UNIVERSITY_SOURCES.find(u => u.shortName === universityShortName);
-    if (!university) {
-      return { success: false, resources: [], error: 'University not found' };
+  private calculateConfidence(
+    title: string,
+    description: string,
+    source: string,
+    searchConcept: string,
+    resourceType: UniversityResourceType,
+    dayObjectives: string[] = [],
+  ): number {
+    let score = 0;
+    const titleLower = title.toLowerCase();
+    const descLower = description.toLowerCase();
+    const conceptWords = searchConcept.split(/\s+/).filter(w => w.length > 2);
+
+    // Title contains search concept words (+20 max)
+    const titleMatches = conceptWords.filter(w => titleLower.includes(w)).length;
+    score += Math.min(20, titleMatches * 10);
+
+    // Top-tier university (+20)
+    const topUniversities = ['MIT', 'Stanford', 'Harvard'];
+    const goodUniversities = ['Berkeley', 'CMU', 'Princeton', 'Yale', 'Cornell'];
+    if (topUniversities.includes(source)) {
+      score += 20;
+    } else if (goodUniversities.includes(source)) {
+      score += 15;
+    } else {
+      score += 5; // Any .edu gets some credit
     }
 
-    const typeKeyword = resourceType === 'lecture_video' ? 'lecture video'
-      : resourceType === 'problem_set' ? 'problem set'
-      : resourceType === 'slides' ? 'slides'
-      : 'lecture notes';
-
-    const query = `${concept} ${typeKeyword} site:${university.domain}`;
-
-    try {
-      const response = await axios.get<GoogleCSEResponse>(
-        'https://www.googleapis.com/customsearch/v1',
-        {
-          params: {
-            key: this.apiKey,
-            cx: this.engineId,
-            q: query,
-            num: 5,
-          },
-          timeout: 10000,
-        },
-      );
-
-      const items = response.data.items || [];
-      const resources: UniversityResource[] = items.map(item => ({
-        type: resourceType,
-        source: university.shortName,
-        title: item.title,
-        url: item.link,
-        description: item.snippet || '',
-      }));
-
-      return { success: true, resources };
-
-    } catch (error) {
-      return { success: false, resources: [], error: error.message };
+    // Title contains resource type indicator (+10)
+    const typeIndicators: Record<UniversityResourceType, string[]> = {
+      lecture_video: ['lecture', 'video', 'course', 'class'],
+      lecture_notes: ['notes', 'lecture', 'slides', 'handout'],
+      slides: ['slides', 'presentation', 'ppt'],
+      problem_set: ['problem', 'exercise', 'homework', 'assignment', 'solution'],
+      assignment: ['assignment', 'project', 'homework'],
+      syllabus: ['syllabus', 'course', 'outline'],
+      reading: ['reading', 'chapter', 'textbook'],
+    };
+    const indicators = typeIndicators[resourceType] || [];
+    if (indicators.some(ind => titleLower.includes(ind))) {
+      score += 10;
     }
+
+    // Description contains search concept (+10 max)
+    const descMatches = conceptWords.filter(w => descLower.includes(w)).length;
+    score += Math.min(10, descMatches * 5);
+
+    // Content matches day objectives (+20 max) - KEY FOR RELEVANCE
+    // Only match on SPECIFIC terms, not the generic search concept
+    if (dayObjectives.length > 0) {
+      const combinedText = `${titleLower} ${descLower}`;
+      let objectiveMatches = 0;
+
+      // Get search concept words to exclude from matching
+      const conceptWordsToExclude = new Set(conceptWords);
+
+      for (const objective of dayObjectives) {
+        // Extract key terms from objective, excluding generic words AND search concept
+        const objTerms = objective.toLowerCase()
+          .replace(/\b(understand|learn|master|apply|create|build|implement|use|know|identify|explain|describe|analyze|develop|practice|the|a|an|and|or|to|for|with|how|what|why|when|different|various|basic|advanced|effective|key|main|core|essential|important)\b/g, '')
+          .split(/\s+/)
+          .filter(w => w.length > 3)
+          .filter(w => !conceptWordsToExclude.has(w)); // Exclude search concept words
+
+        // Check if any SPECIFIC objective terms appear in title or description
+        for (const term of objTerms) {
+          if (combinedText.includes(term)) {
+            objectiveMatches++;
+            break; // Count each objective once
+          }
+        }
+      }
+
+      // Score based on percentage of objectives matched (+30 max)
+      const matchRatio = objectiveMatches / dayObjectives.length;
+      score += Math.round(matchRatio * 30);
+    }
+
+    // Has substantial description (+5)
+    if (description.length > 50) {
+      score += 5;
+    }
+
+    // Penalty for generic/listing pages (-15)
+    const genericIndicators = ['index', 'search results', 'all courses', 'course catalog'];
+    if (genericIndicators.some(ind => titleLower.includes(ind))) {
+      score -= 15;
+    }
+
+    return Math.max(0, Math.min(100, score));
   }
 
   /**
