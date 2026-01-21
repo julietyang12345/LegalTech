@@ -96,39 +96,32 @@ function VideoCard({
   const embedUrl = buildEmbedUrl(video);
   const youtubeUrl = video?.videoId ? `https://www.youtube.com/watch?v=${video.videoId}` : null;
 
+  // No video found - show minimal message without video frame
+  if (!embedUrl) {
+    return (
+      <div className={`rounded-xl overflow-hidden ${isAlternative ? 'border-2' : ''} ${isActive ? 'border-brand-500 ring-2 ring-brand-200' : 'border-gray-200'}`}>
+        <div className="p-6">
+          <div className="flex items-center gap-3 text-gray-500">
+            <Info className="w-5 h-5 text-gray-400" />
+            <p className="text-sm">No matching video found for this topic.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`rounded-xl overflow-hidden ${isAlternative ? 'border-2' : ''} ${isActive ? 'border-brand-500 ring-2 ring-brand-200' : 'border-gray-200'}`}>
       {/* Video embed */}
       <div className={`aspect-video bg-gray-900 relative ${isAlternative ? 'max-h-48' : ''}`}>
-        {embedUrl ? (
-          <iframe
-            title={video?.title || fallbackTitle}
-            src={embedUrl}
-            className="w-full h-full"
-            referrerPolicy="strict-origin-when-cross-origin"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-          />
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full text-white">
-            <Play className="w-12 h-12 mb-3 opacity-50" />
-            <p className="text-sm font-medium mb-2">{video?.title || fallbackTitle}</p>
-            <p className="text-xs text-gray-400 mb-3">Video search failed - find one manually</p>
-            <a
-              href={`https://www.youtube.com/results?search_query=${encodeURIComponent(
-                (video && 'searchQuery' in video && video.searchQuery)
-                  ? video.searchQuery
-                  : (video?.title || fallbackTitle) + ' tutorial'
-              )}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
-            >
-              <Youtube className="w-4 h-4" />
-              Search on YouTube
-            </a>
-          </div>
-        )}
+        <iframe
+          title={video?.title || fallbackTitle}
+          src={embedUrl}
+          className="w-full h-full"
+          referrerPolicy="strict-origin-when-cross-origin"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+        />
 
         {/* Open on YouTube link - always show if we have a video */}
         {youtubeUrl && (
@@ -672,7 +665,7 @@ export function VideoStep({ day, session }: VideoStepProps) {
                 ) : (
                   <RefreshCw className="w-4 h-4" />
                 )}
-                Try different video
+                {currentVideo?.videoId ? 'Try different video' : 'Try alternative video'}
               </button>
 
               {showAiOption && (
