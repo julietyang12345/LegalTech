@@ -29,6 +29,7 @@ import { ProgressModule } from './modules/progress/progress.module';
 import { ProjectModule } from './modules/project/project.module';
 import { CompanionModule } from './modules/companion/companion.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
+import { TtsModule } from './modules/tts/tts.module';
 
 @Module({
   imports: [
@@ -87,6 +88,7 @@ import { OnboardingModule } from './modules/onboarding/onboarding.module';
     ProgressModule,
     ProjectModule,
     OnboardingModule,
+    TtsModule,
   ],
 })
 export class AppModule {}

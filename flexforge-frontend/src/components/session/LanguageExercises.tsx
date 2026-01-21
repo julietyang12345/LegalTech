@@ -126,17 +126,19 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete }: Qui
     }, 1500);
   };
 
-  const playAudio = () => {
+  const playAudio = useCallback(() => {
     if (currentQuestion?.audioText && isSupported) {
       speak(currentQuestion.audioText);
     }
-  };
+  }, [currentQuestion?.audioText, isSupported, speak]);
 
+  // Auto-play audio when question changes (delay gives voices time to load)
   useEffect(() => {
-    if (currentQuestion?.audioText) {
-      playAudio();
+    if (currentQuestion?.audioText && isSupported) {
+      const timer = setTimeout(playAudio, 500);
+      return () => clearTimeout(timer);
     }
-  }, [currentIndex]);
+  }, [currentIndex, currentQuestion?.audioText, isSupported, playAudio]);
 
   if (!currentQuestion) return null;
 
@@ -357,17 +359,19 @@ export function ToneSelectSectionExercise({ section, targetLanguage, onComplete 
     }, 1500);
   };
 
-  const playAudio = () => {
+  const playAudio = useCallback(() => {
     if (currentQuestion?.audioText && isSupported) {
       speak(currentQuestion.audioText);
     }
-  };
+  }, [currentQuestion?.audioText, isSupported, speak]);
 
+  // Auto-play audio when question changes (delay gives voices time to load)
   useEffect(() => {
-    if (currentQuestion?.audioText) {
-      setTimeout(playAudio, 500);
+    if (currentQuestion?.audioText && isSupported) {
+      const timer = setTimeout(playAudio, 500);
+      return () => clearTimeout(timer);
     }
-  }, [currentIndex]);
+  }, [currentIndex, currentQuestion?.audioText, isSupported, playAudio]);
 
   if (!currentQuestion) return null;
 
@@ -874,17 +878,19 @@ export function TypingSectionExercise({ section, targetLanguage, onComplete }: T
   const currentItem = items[currentIndex];
   const hasAnswered = currentItem?.id in results;
 
-  const playAudio = () => {
+  const playAudio = useCallback(() => {
     if (currentItem?.audioText && isSupported) {
       speak(currentItem.audioText);
     }
-  };
+  }, [currentItem?.audioText, isSupported, speak]);
 
+  // Auto-play audio when item changes (only for audio-only mode)
   useEffect(() => {
-    if (currentItem?.audioText && !currentItem.displayText) {
-      setTimeout(playAudio, 500);
+    if (currentItem?.audioText && !currentItem.displayText && isSupported) {
+      const timer = setTimeout(playAudio, 500);
+      return () => clearTimeout(timer);
     }
-  }, [currentIndex]);
+  }, [currentIndex, currentItem?.audioText, currentItem?.displayText, isSupported, playAudio]);
 
   const checkAnswer = () => {
     if (!inputValue.trim()) return;

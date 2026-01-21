@@ -19,6 +19,23 @@ const LANGUAGE_CODES: Record<TargetLanguage, string> = {
   other: 'en-US',        // Fallback to English
 };
 
+/**
+ * TTS using backend proxy to Google Translate (no API key needed)
+ * Works everywhere without installation
+ */
+function speakWithTTS(text: string, langCode: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // Use our backend proxy to avoid CORS issues
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
+    const url = `${apiUrl}/tts/speak?text=${encodeURIComponent(text)}&lang=${langCode}`;
+
+    const audio = new Audio(url);
+    audio.onended = () => resolve();
+    audio.onerror = () => reject(new Error('TTS failed'));
+    audio.play().catch(reject);
+  });
+}
+
 interface UseBrowserTTSOptions {
   rate?: number;         // Speech rate: 0.1 to 10 (default 1)
   pitch?: number;        // Pitch: 0 to 2 (default 1)
@@ -78,10 +95,14 @@ export function useBrowserTTS(
 
     const loadVoices = () => {
       const voices = speechSynthesis.getVoices();
+      console.log('[TTS] Voices loaded:', voices.length, 'total voices');
+
       // Filter voices for the target language
       const languageVoices = voices.filter(voice =>
         voice.lang.startsWith(langCode.split('-')[0])
       );
+      console.log('[TTS] Language voices for', langCode, ':', languageVoices.length);
+
       setAvailableVoices(languageVoices.length > 0 ? languageVoices : voices);
 
       // Auto-select best voice for language
@@ -90,6 +111,7 @@ export function useBrowserTTS(
           || languageVoices[0]
           || voices.find(v => v.lang.startsWith(langCode.split('-')[0]))
           || null;
+        console.log('[TTS] Selected voice:', bestVoice?.name || 'none');
         setSelectedVoice(bestVoice);
       }
     };
@@ -103,41 +125,25 @@ export function useBrowserTTS(
     };
   }, [isSupported, langCode, selectedVoice]);
 
-  // Speak text
+  // Speak text using backend TTS proxy (works everywhere, no installation needed)
   const speak = useCallback((text: string) => {
-    if (!isSupported || !text.trim()) return;
+    if (!text.trim()) return;
 
-    // Cancel any ongoing speech
-    speechSynthesis.cancel();
+    console.log('[TTS] Speaking:', text.substring(0, 30) + '...');
+    setIsSpeaking(true);
+    onStart?.();
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = langCode;
-    utterance.rate = rate;
-    utterance.pitch = pitch;
-    utterance.volume = volume;
-
-    if (selectedVoice) {
-      utterance.voice = selectedVoice;
-    }
-
-    utterance.onstart = () => {
-      setIsSpeaking(true);
-      onStart?.();
-    };
-
-    utterance.onend = () => {
-      setIsSpeaking(false);
-      onEnd?.();
-    };
-
-    utterance.onerror = (event) => {
-      setIsSpeaking(false);
-      onError?.(event.error);
-    };
-
-    utteranceRef.current = utterance;
-    speechSynthesis.speak(utterance);
-  }, [isSupported, langCode, rate, pitch, volume, selectedVoice, onStart, onEnd, onError]);
+    speakWithTTS(text, langCode)
+      .then(() => {
+        setIsSpeaking(false);
+        onEnd?.();
+      })
+      .catch((err) => {
+        console.error('[TTS] Error:', err);
+        setIsSpeaking(false);
+        onError?.(err.message);
+      });
+  }, [langCode, onStart, onEnd, onError]);
 
   // Stop speaking
   const stop = useCallback(() => {
