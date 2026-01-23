@@ -1,0 +1,10 @@
+# Development environment variables for Cloudflare Workers
+# Copy this file to .dev.vars and fill in the values
+
+# Upstash Redis credentials (get from https://console.upstash.com)
+UPSTASH_REDIS_URL=https://your-redis-url.upstash.io
+UPSTASH_REDIS_TOKEN=your-upstash-redis-token
+
+# Backend URL (use local for development)
+BACKEND_URL=http://localhost:4000
+

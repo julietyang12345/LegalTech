@@ -1,0 +1,44 @@
+# Cloudflare Workers configuration for FlexForge Edge API
+# See https://developers.cloudflare.com/workers/wrangler/configuration/
+
+name = "flexforge-edge"
+main = "src/worker.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Environment variables (non-sensitive)
+# Oracle Cloud VM - replace with your VM's domain or IP
+[vars]
+BACKEND_URL = "https://api.flexforge.app"
+
+# KV Namespaces - Create with: npx wrangler kv:namespace create <NAME>
+# After creating, replace the placeholder IDs below with actual IDs
+
+[[kv_namespaces]]
+binding = "VIDEO_CACHE"
+id = "REPLACE_WITH_VIDEO_CACHE_ID"
+# preview_id = "REPLACE_WITH_VIDEO_CACHE_PREVIEW_ID"
+
+[[kv_namespaces]]
+binding = "TRANSCRIPT_CACHE"
+id = "REPLACE_WITH_TRANSCRIPT_CACHE_ID"
+# preview_id = "REPLACE_WITH_TRANSCRIPT_CACHE_PREVIEW_ID"
+
+[[kv_namespaces]]
+binding = "DOC_CACHE"
+id = "REPLACE_WITH_DOC_CACHE_ID"
+# preview_id = "REPLACE_WITH_DOC_CACHE_PREVIEW_ID"
+
+# Secrets - Set with: npx wrangler secret put <SECRET_NAME>
+# Required secrets:
+# - UPSTASH_REDIS_URL: Your Upstash Redis REST URL
+# - UPSTASH_REDIS_TOKEN: Your Upstash Redis REST token
+
+# Development overrides
+[env.development]
+vars = { BACKEND_URL = "http://localhost:4000" }
+
+# Staging environment (optional)
+[env.staging]
+vars = { BACKEND_URL = "https://staging-api.flexforge.app" }
+

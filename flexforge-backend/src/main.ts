@@ -9,11 +9,35 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
 
   // Enable CORS
+  const frontendUrl = configService.get('frontend.url');
+  const allowedOrigins = [
+    frontendUrl,
+    'http://localhost:5173',
+    'http://localhost:3000',
+  ].filter(Boolean);
+
   app.enableCors({
-    origin: configService.get('frontend.url'),
+    origin: (origin, callback) => {
+      // Allow requests with no origin (server-to-server, like from Workers edge)
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      // Allow configured origins
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      // Allow any flexforge.app subdomain
+      if (origin.endsWith('.flexforge.app') || origin.endsWith('.workers.dev')) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-real-ip', 'x-request-id'],
   });
 
   // Global validation pipe

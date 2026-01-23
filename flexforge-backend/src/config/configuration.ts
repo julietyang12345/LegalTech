@@ -1,16 +1,39 @@
-export default () => ({
-  port: parseInt(process.env.PORT, 10) || 3000,
-  nodeEnv: process.env.NODE_ENV || 'development',
-  frontend: {
-    url: process.env.FRONTEND_URL || 'http://localhost:5173',
-  },
-  database: {
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT, 10) || 5432,
-    username: process.env.DB_USERNAME || 'flexforge',
-    password: process.env.DB_PASSWORD || 'flexforge_dev_password',
-    database: process.env.DB_DATABASE || 'flexforge_dev',
-  },
+// Parse DATABASE_URL if provided (cloud providers like Neon/Supabase use this format)
+const parseDatabaseUrl = (url: string | undefined) => {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    return {
+      host: parsed.hostname,
+      port: parseInt(parsed.port, 10) || 5432,
+      username: parsed.username,
+      password: parsed.password,
+      database: parsed.pathname.slice(1), // Remove leading /
+      ssl: url.includes('sslmode=require') || parsed.searchParams.get('sslmode') === 'require',
+    };
+  } catch {
+    return null;
+  }
+};
+
+export default () => {
+  const dbFromUrl = parseDatabaseUrl(process.env.DATABASE_URL);
+
+  return {
+    port: parseInt(process.env.PORT, 10) || 3000,
+    nodeEnv: process.env.NODE_ENV || 'development',
+    frontend: {
+      url: process.env.FRONTEND_URL || 'http://localhost:5173',
+    },
+    database: {
+      url: process.env.DATABASE_URL,
+      host: dbFromUrl?.host || process.env.DB_HOST || 'localhost',
+      port: dbFromUrl?.port || parseInt(process.env.DB_PORT, 10) || 5432,
+      username: dbFromUrl?.username || process.env.DB_USERNAME || 'flexforge',
+      password: dbFromUrl?.password || process.env.DB_PASSWORD || 'flexforge_dev_password',
+      database: dbFromUrl?.database || process.env.DB_DATABASE || 'flexforge_dev',
+      ssl: dbFromUrl?.ssl || process.env.DB_SSL === 'true',
+    },
   redis: {
     host: process.env.REDIS_HOST || 'localhost',
     port: parseInt(process.env.REDIS_PORT, 10) || 6379,
@@ -70,4 +93,5 @@ export default () => ({
     aiTutor: process.env.ENABLE_AI_TUTOR === 'true',
     socialFeatures: process.env.ENABLE_SOCIAL_FEATURES === 'true',
   },
-});
+  };
+};

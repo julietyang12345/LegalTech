@@ -3,6 +3,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule } from '@nestjs/throttler';
 import configuration from './config/configuration';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 
 // Entities
 import { User } from './database/entities/user.entity';
@@ -64,6 +66,9 @@ import { TtsModule } from './modules/tts/tts.module';
         ],
         synchronize: configService.get('nodeEnv') === 'development',
         logging: configService.get('nodeEnv') === 'development',
+        ssl: configService.get('database.ssl')
+          ? { rejectUnauthorized: false }
+          : false,
       }),
       inject: [ConfigService],
     }),
@@ -90,5 +95,7 @@ import { TtsModule } from './modules/tts/tts.module';
     OnboardingModule,
     TtsModule,
   ],
+  controllers: [AppController],
+  providers: [AppService],
 })
 export class AppModule {}
