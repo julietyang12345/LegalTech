@@ -73,7 +73,7 @@ function TopNav() {
 
             {/* User menu */}
             <div className="relative group">
-              <button className="flex items-center gap-2 p-2 rounded-full hover:bg-gray-100 transition-colors">
+              <button className="flex items-center gap-2 p-3 rounded-full hover:bg-gray-100 transition-colors">
                 <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center">
                   <User className="w-4 h-4 text-brand-600" />
                 </div>
@@ -133,7 +133,7 @@ function BottomNav() {
             }
           >
             <item.icon className="w-5 h-5" />
-            <span className="text-xs">{item.label}</span>
+            <span className="text-sm">{item.label}</span>
           </NavLink>
         ))}
         <NavLink
@@ -146,7 +146,7 @@ function BottomNav() {
           }
         >
           <User className="w-5 h-5" />
-          <span className="text-xs">Profile</span>
+          <span className="text-sm">Profile</span>
         </NavLink>
       </div>
     </nav>

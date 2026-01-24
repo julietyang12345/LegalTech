@@ -64,7 +64,7 @@ function DayPreviewModal({
         initial={{ opacity: 0, x: -10 }}
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -10 }}
-        className="absolute bg-white rounded-2xl w-[420px] shadow-xl overflow-hidden max-h-[calc(100vh-100px)] overflow-y-auto"
+        className="absolute bg-white rounded-2xl w-[95vw] max-w-[420px] shadow-xl overflow-hidden max-h-[calc(100vh-100px)] overflow-y-auto left-4 md:left-auto"
         style={{ top: topPosition, left: leftPosition }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -81,7 +81,7 @@ function DayPreviewModal({
             </div>
             <button
               onClick={onClose}
-              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded-lg transition-colors"
+              className="p-2.5 text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded-lg transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -394,7 +394,7 @@ export function CourseSidebar({ onDayClick }: CourseSidebarProps) {
       transition={{ duration: 0.2, ease: 'easeInOut' }}
       className={clsx(
         'fixed left-0 top-14 bottom-0 bg-white/95 backdrop-blur-sm border-r border-gray-200 z-20',
-        'flex flex-col shadow-sm'
+        'hidden md:flex flex-col shadow-sm'
       )}
     >
       {/* Collapse toggle */}

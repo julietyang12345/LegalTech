@@ -336,7 +336,7 @@ function AIExplanation({
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-900">Video Available</p>
-                <p className="text-xs text-gray-500 truncate max-w-[200px]">
+                <p className="text-xs text-gray-500 truncate max-w-[140px] sm:max-w-[200px]">
                   {video.backupVideo.title}
                 </p>
               </div>

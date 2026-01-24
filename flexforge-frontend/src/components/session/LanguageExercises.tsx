@@ -801,7 +801,7 @@ export function FillBlankSectionExercise({ section, onComplete }: FillBlankSecti
       <div className="bg-white rounded-lg p-6 shadow-sm border">
         <div className="text-lg mb-2">
           {sentenceParts[0]}
-          <span className="inline-block mx-1 px-2 py-1 bg-brand-100 rounded border-b-2 border-brand-500 min-w-[80px]">
+          <span className="inline-block mx-1 px-2 py-1 bg-brand-100 rounded border-b-2 border-brand-500 min-w-[60px] sm:min-w-[80px]">
             {hasAnswered ? answers[currentItem.id] : '______'}
           </span>
           {sentenceParts[1]}

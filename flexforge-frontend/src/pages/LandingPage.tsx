@@ -171,7 +171,7 @@ function HeroSection() {
               {['😊', '🧑‍💻', '👩‍🎨', '🧑‍🔬'].map((emoji, i) => (
                 <div
                   key={i}
-                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-lg border-2 border-white"
+                  className="w-10 h-10 sm:w-8 sm:h-8 rounded-full bg-gray-100 flex items-center justify-center text-lg border-2 border-white"
                 >
                   {emoji}
                 </div>

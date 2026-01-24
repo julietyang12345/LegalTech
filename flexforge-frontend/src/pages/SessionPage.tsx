@@ -179,7 +179,7 @@ function SkipTestModal({
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-        className="bg-white rounded-3xl max-w-lg w-full max-h-[85vh] overflow-hidden shadow-2xl flex flex-col"
+        className="bg-white rounded-3xl max-w-lg w-[calc(100vw-2rem)] sm:w-full max-h-[85vh] overflow-hidden shadow-2xl flex flex-col mx-4 sm:mx-0"
       >
         {/* Header with gradient */}
         <div className="relative overflow-hidden">
@@ -498,7 +498,7 @@ function IncompleteWorkModal({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden"
+        className="bg-white rounded-2xl shadow-xl max-w-md w-[calc(100vw-2rem)] sm:w-full overflow-hidden mx-4 sm:mx-0"
       >
         {/* Header */}
         <div className="p-6 border-b border-gray-100">

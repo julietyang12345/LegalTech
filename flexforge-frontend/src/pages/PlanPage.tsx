@@ -215,7 +215,7 @@ function SkipTestModal({
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-xl max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-2xl p-4 sm:p-6 max-w-2xl w-[calc(100vw-2rem)] sm:w-full shadow-xl max-h-[90vh] overflow-y-auto"
       >
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">

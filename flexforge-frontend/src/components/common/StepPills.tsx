@@ -88,7 +88,7 @@ export function StepPillsExpanded({
 }: StepPillsExpandedProps) {
   const stepLabels = getStepLabels(isProjectBased);
   return (
-    <div className={clsx('flex items-center gap-2 overflow-x-auto no-scrollbar', className)}>
+    <div className={clsx('flex items-center gap-2 overflow-x-auto no-scrollbar px-1', className)}>
       {steps.map((step, index) => {
         const isComplete = completedSteps.includes(step);
         const isCurrent = step === currentStep;

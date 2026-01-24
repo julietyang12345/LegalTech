@@ -196,14 +196,12 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
         boostConcept: boostedConcept || undefined,
       });
 
-      // Save improvement areas and lessOfAreas to session if changed
+      // Save improvement areas to session if changed
       const improvementAreasChanged = JSON.stringify(moreOfAreas) !== JSON.stringify(session.improvementAreas || []);
-      const lessOfAreasChanged = JSON.stringify(lessOfAreas) !== JSON.stringify(session.lessOfAreas || []);
 
-      if (improvementAreasChanged || lessOfAreasChanged) {
+      if (improvementAreasChanged) {
         await updateSession(session.id, {
           improvementAreas: moreOfAreas,
-          lessOfAreas: lessOfAreas,
         });
       }
 

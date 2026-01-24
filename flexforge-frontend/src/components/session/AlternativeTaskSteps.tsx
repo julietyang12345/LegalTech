@@ -203,8 +203,8 @@ export function QuizTaskStep({ day, session, onComplete }: QuizTaskStepProps) {
 
       <MultipleChoiceQuestion
         question={currentQuestion.question}
-        options={currentQuestion.options}
-        correctIndex={currentQuestion.correctIndex}
+        options={currentQuestion.options || []}
+        correctIndex={currentQuestion.correctIndex ?? 0}
         explanation={currentQuestion.explanation}
         selectedIndex={answers[currentQuestion.id] ?? null}
         onSelect={(index) => handleAnswer(currentQuestion.id, index)}

@@ -76,7 +76,7 @@ function QuickActions() {
   const { quickActions, executeQuickAction } = useCompanionStore();
 
   return (
-    <div className="flex gap-2 px-4 py-2 border-t border-gray-100 overflow-x-auto no-scrollbar">
+    <div className="flex flex-wrap sm:flex-nowrap gap-2 px-4 py-2 border-t border-gray-100 sm:overflow-x-auto no-scrollbar">
       {quickActions.map((action) => (
         <button
           key={action.id}
@@ -131,8 +131,8 @@ export function CompanionChat() {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.9, y: 20 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="fixed bottom-24 right-6 w-96 max-h-[500px] bg-white rounded-2xl shadow-companion 
-                     flex flex-col overflow-hidden z-40"
+          className="fixed bottom-24 right-4 w-[calc(100vw-2rem)] max-w-96 max-h-[500px] bg-white rounded-2xl shadow-companion
+                     flex flex-col overflow-hidden z-40 sm:right-6 sm:w-96"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-brand-500 to-brand-600">
