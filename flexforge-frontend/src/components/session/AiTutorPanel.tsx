@@ -283,7 +283,14 @@ export function AiTutorPanel({ isOpen, onClose, sessionId, dayNumber, context }:
                   )}
                 </Button>
               </div>
-              <p className="text-xs text-gray-400 mt-2 text-center">
+              {/* Mobile close button */}
+              <button
+                onClick={onClose}
+                className="w-full mt-3 py-2.5 text-sm text-gray-600 bg-gray-200 rounded-xl hover:bg-gray-300 transition-colors md:hidden"
+              >
+                Close Tutor
+              </button>
+              <p className="text-xs text-gray-400 mt-2 text-center hidden md:block">
                 Press Enter to send, Shift+Enter for new line
               </p>
             </div>

@@ -42,19 +42,19 @@ function SkillLevelSelector({
       value: SkillLevel.BEGINNER,
       emoji: '🌱',
       label: 'Beginner',
-      description: 'New to this topic',
+      description: 'New to this',
     },
     {
       value: SkillLevel.INTERMEDIATE,
       emoji: '🌿',
       label: 'Intermediate',
-      description: 'Know the basics',
+      description: 'Know basics',
     },
     {
       value: SkillLevel.ADVANCED,
       emoji: '🌳',
       label: 'Advanced',
-      description: 'Looking to master',
+      description: 'Master it',
     },
   ];
 
@@ -66,15 +66,23 @@ function SkillLevelSelector({
           type="button"
           onClick={() => onChange(level.value)}
           className={clsx(
-            'p-2 sm:p-4 rounded-xl border-2 text-center transition-all',
+            'p-3 sm:p-4 rounded-xl transition-all',
+            'flex flex-col items-center justify-center text-center min-h-[88px]',
             value === level.value
-              ? 'border-brand-500 bg-brand-50'
-              : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              ? 'border-[3px] border-brand-500 bg-brand-50 shadow-sm'
+              : 'border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
           )}
         >
-          <span className="text-xl sm:text-2xl mb-1 sm:mb-2 block">{level.emoji}</span>
-          <span className="font-medium text-gray-900 block text-sm sm:text-base">{level.label}</span>
-          <span className="text-xs text-gray-500 hidden sm:block">{level.description}</span>
+          <span className="text-2xl sm:text-3xl mb-1">{level.emoji}</span>
+          <span className={clsx(
+            'font-medium text-xs sm:text-sm leading-tight',
+            value === level.value ? 'text-brand-700' : 'text-gray-900'
+          )}>
+            {level.label}
+          </span>
+          <span className="text-[10px] sm:text-xs text-gray-500 leading-tight mt-0.5">
+            {level.description}
+          </span>
         </button>
       ))}
     </div>
@@ -90,29 +98,41 @@ function DurationSelector({
   onChange: (days: number) => void;
 }) {
   const options = [
-    { days: 3, label: '3 days', description: 'Quick intro' },
-    { days: 5, label: '5 days', description: 'Solid foundation' },
-    { days: 7, label: '7 days', description: 'Recommended' },
-    { days: 14, label: '14 days', description: 'Deep dive' },
+    { days: 3, label: '3', sublabel: 'days', description: 'Quick' },
+    { days: 5, label: '5', sublabel: 'days', description: 'Solid' },
+    { days: 7, label: '7', sublabel: 'days', description: 'Best', recommended: true },
+    { days: 14, label: '14', sublabel: 'days', description: 'Deep' },
   ];
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+    <div className="grid grid-cols-4 gap-2">
       {options.map((option) => (
         <button
           key={option.days}
           type="button"
           onClick={() => onChange(option.days)}
           className={clsx(
-            'p-3 sm:p-4 rounded-xl border-2 text-center transition-all',
+            'p-3 rounded-xl transition-all text-center',
+            'flex flex-col items-center justify-center min-h-[72px]',
             value === option.days
-              ? 'border-brand-500 bg-brand-50'
-              : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50',
-            option.days === 7 && value !== option.days && 'ring-2 ring-focus-200'
+              ? 'border-[3px] border-brand-500 bg-brand-50 shadow-sm'
+              : 'border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50',
+            option.recommended && value !== option.days && 'ring-2 ring-focus-200'
           )}
         >
-          <span className="font-bold text-base sm:text-lg text-gray-900 block">{option.label}</span>
-          <span className="text-xs text-gray-500 truncate block">{option.description}</span>
+          <span className={clsx(
+            'font-bold text-lg sm:text-xl leading-none',
+            value === option.days ? 'text-brand-700' : 'text-gray-900'
+          )}>
+            {option.label}
+          </span>
+          <span className="text-[10px] text-gray-400 leading-tight">{option.sublabel}</span>
+          <span className={clsx(
+            'text-[10px] mt-1 leading-tight',
+            value === option.days ? 'text-brand-600' : 'text-gray-500'
+          )}>
+            {option.description}
+          </span>
         </button>
       ))}
     </div>
@@ -128,8 +148,8 @@ function HoursSelector({
   onChange: (hours: number) => void;
 }) {
   const options = [
-    { hours: 0.5, label: '30min', recommended: false },
-    { hours: 0.75, label: '45min', recommended: false },
+    { hours: 0.5, label: '30m', recommended: false },
+    { hours: 0.75, label: '45m', recommended: false },
     { hours: 1, label: '1h', recommended: true },
     { hours: 1.5, label: '1.5h', recommended: true },
   ];
@@ -142,15 +162,21 @@ function HoursSelector({
           type="button"
           onClick={() => onChange(option.hours)}
           className={clsx(
-            'py-3 px-1 rounded-lg border-2 font-medium transition-all text-center',
+            'py-3 px-2 rounded-xl transition-all text-center',
+            'flex flex-col items-center justify-center min-h-[60px]',
             value === option.hours
-              ? 'border-brand-500 bg-brand-50 text-brand-700'
-              : 'border-gray-200 hover:border-gray-300 text-gray-600'
+              ? 'border-[3px] border-brand-500 bg-brand-50 shadow-sm'
+              : 'border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
           )}
         >
-          <span className="block text-sm sm:text-base">{option.label}</span>
+          <span className={clsx(
+            'font-semibold text-sm sm:text-base',
+            value === option.hours ? 'text-brand-700' : 'text-gray-700'
+          )}>
+            {option.label}
+          </span>
           {option.recommended && (
-            <span className="text-xs text-gray-400 font-normal hidden sm:block">Recommended</span>
+            <span className="text-[10px] text-gray-400 font-normal mt-0.5">Best</span>
           )}
         </button>
       ))}

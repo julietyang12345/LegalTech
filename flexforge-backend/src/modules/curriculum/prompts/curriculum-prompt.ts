@@ -423,6 +423,7 @@ export interface DayDetailParams {
     confusedConcepts?: string[];
     confidence?: number;
     boostCompleted?: boolean;
+    whatsFoggy?: string;  // 'when' | 'how' | 'connection' | 'everything'
   };
 
   // Language learning specific (when skillType is KNOWLEDGE + human language)
@@ -1466,13 +1467,41 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
     ? `\nREDUCE CONTENT FOR: ${params.lessOfAreas.join(', ')}. Minimize examples, scenarios, and explanations involving these areas. Focus on other aspects instead.`
     : '';
 
+  // Build reflection-based personalization instructions
+  let reflectionInstruction = '';
+  if (params.previousDayReflection) {
+    const { whatsFoggy,  confusedConcepts, confidence } = params.previousDayReflection;
+
+    // Handle "what's foggy" - adjust content based on user's confusion type
+    if (whatsFoggy) {
+      const foggyInstructions: Record<string, string> = {
+        'when': 'YESTERDAY FEEDBACK: User was unclear on WHEN to apply concepts. Add clear "use this when..." context to examples. Include real-world scenarios showing appropriate timing and situations.',
+        'how': 'YESTERDAY FEEDBACK: User struggled with HOW to apply concepts. Include step-by-step application examples. Show practical implementation with clear before/after demonstrations.',
+        'connection': 'YESTERDAY FEEDBACK: User had trouble seeing HOW CONCEPTS CONNECT. Explicitly show relationships between ideas. Use "this builds on..." and "this relates to..." framing.',
+        'everything': 'YESTERDAY FEEDBACK: User found everything confusing. Start with a brief 2-3 sentence recap of key points. Use simpler examples and build up gradually.',
+      };
+      reflectionInstruction += `\n${foggyInstructions[whatsFoggy] || ''}`;
+    }
+
+
+    // Handle confused concepts - add targeted review
+    if (confusedConcepts?.length) {
+      reflectionInstruction += `\nREVIEW NEEDED: User was confused about [${confusedConcepts.join(', ')}]. If today's content builds on these, include a brief clarifying example.`;
+    }
+
+    // Handle low confidence - add encouragement and scaffolding
+    if (confidence && confidence < 3) {
+      reflectionInstruction += `\nSCAFFOLDING: User had low confidence yesterday (${confidence}/5). Use encouraging framing and break down complex steps.`;
+    }
+  }
+
   // Dynamic part - skill name is checked against language detection in static instructions
   const skillGuidance = getSkillTypeGuidance(params.skillType, params.complexity);
   const dynamicPart = `SKILL: "${params.skillName}"
 Day ${params.dayNumber}: ${params.dayTitle}
 ${params.previousDayTitle ? `Previous: ${params.previousDayTitle}` : ''}
 Type: ${params.skillType} | Sections: ${sectionTypes}
-${skillGuidance}${improvementAreasInstruction}${lessOfAreasInstruction}`;
+${skillGuidance}${improvementAreasInstruction}${lessOfAreasInstruction}${reflectionInstruction}`;
 
   // Build section-specific task1 template based on skill type
   const task1SectionsTemplate = params.customSections

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Button } from './Button';
 import { Card } from './Card';
@@ -122,29 +122,37 @@ export function QuickPick({ options, selected, onSelect, columns = 2 }: QuickPic
       'grid gap-2',
       columns === 2 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4'
     )}>
-      {options.map((option) => (
-        <button
-          key={option.value}
-          onClick={() => onSelect(option.value)}
-          className={clsx(
-            'p-3 rounded-xl border-2 text-left transition-all flex items-center gap-2',
-            selected === option.value
-              ? 'border-brand-500 bg-brand-50 ring-2 ring-brand-200'
-              : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-          )}
-        >
-          <span className="text-xl">{option.emoji}</span>
-          <span className={clsx(
-            'text-sm font-medium',
-            selected === option.value ? 'text-brand-700' : 'text-gray-700'
-          )}>
-            {option.label}
-          </span>
-          {selected === option.value && (
-            <Check className="w-4 h-4 text-brand-500 ml-auto" />
-          )}
-        </button>
-      ))}
+      {options.map((option) => {
+        const isSelected = selected === option.value;
+        return (
+          <button
+            key={option.value}
+            onClick={() => onSelect(option.value)}
+            className={clsx(
+              'p-3 rounded-xl transition-all',
+              'flex flex-col items-center justify-center text-center',
+              'min-h-[80px] h-full',
+              isSelected
+                ? 'border-[3px] border-brand-500 bg-brand-50 shadow-sm'
+                : 'border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+            )}
+          >
+            {/* Content wrapper - ensures vertical centering */}
+            <div className="flex flex-col items-center justify-center flex-1 w-full">
+              {/* Emoji */}
+              <span className="text-2xl mb-1.5">{option.emoji}</span>
+
+              {/* Label - wraps and centers */}
+              <span className={clsx(
+                'text-xs font-medium leading-tight text-center w-full',
+                isSelected ? 'text-brand-700' : 'text-gray-600'
+              )}>
+                {option.label}
+              </span>
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }

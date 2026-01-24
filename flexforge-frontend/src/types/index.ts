@@ -336,6 +336,9 @@ export interface CurriculumDay {
   // Language learning specific (when isLanguageLearning = true)
   dailyDeck?: DailyDeck;                      // Auto-generated vocab deck for the day
   languageFoundationCards?: LanguageFoundationCard[]; // Language-specific cards
+
+  // Intensive practice (for practice-based learning, spread from deferredContent by sessionStore)
+  intensivePractice?: IntensivePractice;
 }
 
 export interface ConceptQuestion {

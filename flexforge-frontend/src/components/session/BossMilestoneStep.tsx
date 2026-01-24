@@ -109,14 +109,9 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
   const { addSystemMessage } = useCompanionStore();
   const targetLanguage = session.curriculum?.metadata?.targetLanguage as TargetLanguage | undefined;
 
-  // Get intensive practice from deferred content
-  const intensivePractice = day.deferredContent?.intensivePractice as {
-    id: string;
-    title: string;
-    description: string;
-    estimatedMinutes: number;
-    sections: TaskSection[];
-  } | undefined;
+  // Get intensive practice from deferred content (spread directly onto day by sessionStore)
+  // Also check nested deferredContent for backward compatibility
+  const intensivePractice = day.intensivePractice || day.deferredContent?.intensivePractice;
 
   const sections = intensivePractice?.sections || [];
 

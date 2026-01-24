@@ -110,7 +110,7 @@ function PresenceBar() {
     // Show bossMilestone if project-based (milestone/hasBossProject) OR practice-based (intensivePractice)
     if (step === 'bossMilestone') {
       const hasProjectContent = currentDay?.bossMilestone || currentDay?.hasBossProject;
-      const hasPracticeContent = currentDay?.deferredContent?.intensivePractice;
+      const hasPracticeContent = currentDay?.intensivePractice || currentDay?.deferredContent?.intensivePractice;
       return !!hasProjectContent || !!hasPracticeContent;
     }
     return true;

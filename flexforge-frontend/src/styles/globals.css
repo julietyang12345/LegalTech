@@ -9,17 +9,35 @@
 @layer base {
   html {
     scroll-behavior: smooth;
+    overflow-x: hidden !important;
+    overscroll-behavior-x: none;
   }
 
   body {
     @apply bg-gray-50 text-gray-900;
+    overflow-x: hidden !important;
+    overscroll-behavior-x: none;
+    position: relative;
+    width: 100%;
+    min-width: 0;
   }
 
-  /* Prevent horizontal scroll on mobile */
-  @media (max-width: 768px) {
-    html, body {
-      overflow-x: hidden;
-    }
+  /* Ensure root container doesn't overflow */
+  #root {
+    overflow-x: hidden !important;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  /* Prevent any element from causing horizontal scroll */
+  * {
+    max-width: 100%;
+  }
+
+  /* Exception for elements that need to overflow (like code blocks) */
+  pre, code, .overflow-x-auto {
+    max-width: none;
   }
 
   /* Focus states */

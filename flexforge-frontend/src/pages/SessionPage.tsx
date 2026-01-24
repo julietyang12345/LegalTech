@@ -797,7 +797,8 @@ export function SessionPage() {
     // Skip bossMilestone if not present (check for project-based OR practice-based content)
     if (step === 'bossMilestone') {
       const hasProjectContent = currentDay?.bossMilestone || currentDay?.hasBossProject;
-      const hasPracticeContent = currentDay?.deferredContent?.intensivePractice;
+      // Check both direct property (spread by sessionStore) and nested (legacy)
+      const hasPracticeContent = currentDay?.intensivePractice || currentDay?.deferredContent?.intensivePractice;
       if (!hasProjectContent && !hasPracticeContent) return false;
     }
     // Skip foundationCards if not present (check both regular and language-specific cards)
