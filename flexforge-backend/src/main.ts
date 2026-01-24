@@ -14,6 +14,8 @@ async function bootstrap() {
     frontendUrl,
     'http://localhost:5173',
     'http://localhost:3000',
+    'http://10.3.8.169:3000',
+    'http://10.3.8.169',
   ].filter(Boolean);
 
   app.enableCors({

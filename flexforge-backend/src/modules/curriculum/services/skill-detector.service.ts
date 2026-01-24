@@ -153,6 +153,17 @@ Return ONLY valid JSON:
       }
       result = JSON.parse(jsonContent);
 
+      // Ensure estimatedDaysNeeded has a default value based on complexity
+      if (!result.estimatedDaysNeeded) {
+        const defaultDays = {
+          [SkillComplexity.BEGINNER]: 5,
+          [SkillComplexity.INTERMEDIATE]: 10,
+          [SkillComplexity.ADVANCED]: 30,
+        };
+        result.estimatedDaysNeeded = defaultDays[result.complexity] || 7;
+        this.logger.warn(`⚠️ AI did not return estimatedDaysNeeded, defaulting to ${result.estimatedDaysNeeded} days`);
+      }
+
       // DEBUG: Log full parsed result
       this.logger.log(`🔍 Parsed skill detection result:`, JSON.stringify({
         skillType: result.skillType,
