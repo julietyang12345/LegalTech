@@ -1,0 +1,10 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: flexforge-frontend:latest
+    container_name: flexforge-frontend
+    ports:
+      - "80:80"
+    restart: unless-stopped
