@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { Layers, ChevronLeft, ChevronRight, Volume2 } from 'lucide-react';
-import { Card, MultipleChoiceQuestion } from '@/components/common';
+import { Card, MultipleChoiceQuestion, Button } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { VocabularyCard } from './VocabularyCard';
 import { useSessionStore } from '@/stores/sessionStore';
@@ -301,39 +301,31 @@ export function FoundationCardsStep({ day, session, onComplete }: FoundationCard
 
       {/* Navigation buttons */}
       <div className="flex items-center justify-between">
-        <button
+        <Button
+          variant="ghost"
           onClick={handlePrevCard}
           disabled={currentCardIndex === 0}
-          className={clsx(
-            'flex items-center gap-2 px-4 py-2 rounded-lg transition-all',
-            currentCardIndex === 0
-              ? 'text-gray-300 cursor-not-allowed'
-              : 'text-gray-600 hover:bg-gray-100'
-          )}
+          leftIcon={<ChevronLeft className="w-5 h-5" />}
         >
-          <ChevronLeft className="w-5 h-5" />
-          <span className="text-sm">Previous</span>
-        </button>
+          Previous
+        </Button>
 
-        <span className="text-xs text-gray-400">
+        <span className="hidden sm:block text-xs text-gray-400">
           Swipe or use buttons
         </span>
 
         <button
           onClick={handleNextCard}
           disabled={currentCardIndex === cards.length - 1 && !allAnswered}
-          className={clsx(
-            'flex items-center gap-2 px-4 py-2 rounded-lg transition-all',
-            currentCardIndex === cards.length - 1 && !allAnswered
-              ? 'text-gray-300 cursor-not-allowed'
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all
+            ${currentCardIndex === cards.length - 1 && !allAnswered
+              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
               : currentCardIndex === cards.length - 1 && allAnswered
-                ? 'bg-green-500 text-white hover:bg-green-600'
-                : 'text-gray-600 hover:bg-gray-100'
-          )}
+                ? 'bg-brand-600 text-white shadow-md hover:bg-brand-700 active:scale-[0.98]'
+                : 'bg-gray-700 text-white shadow-md hover:bg-gray-800 active:scale-[0.98]'
+            }`}
         >
-          <span className="text-sm">
-            {currentCardIndex === cards.length - 1 ? 'Continue' : 'Next'}
-          </span>
+          {currentCardIndex === cards.length - 1 ? 'Continue' : 'Next'}
           <ChevronRight className="w-5 h-5" />
         </button>
       </div>

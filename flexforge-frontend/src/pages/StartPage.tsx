@@ -59,22 +59,22 @@ function SkillLevelSelector({
   ];
 
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-3 gap-2 sm:gap-3">
       {levels.map((level) => (
         <button
           key={level.value}
           type="button"
           onClick={() => onChange(level.value)}
           className={clsx(
-            'p-4 rounded-xl border-2 text-center transition-all',
+            'p-2 sm:p-4 rounded-xl border-2 text-center transition-all',
             value === level.value
               ? 'border-brand-500 bg-brand-50'
               : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
           )}
         >
-          <span className="text-2xl mb-2 block">{level.emoji}</span>
-          <span className="font-medium text-gray-900 block">{level.label}</span>
-          <span className="text-xs text-gray-500">{level.description}</span>
+          <span className="text-xl sm:text-2xl mb-1 sm:mb-2 block">{level.emoji}</span>
+          <span className="font-medium text-gray-900 block text-sm sm:text-base">{level.label}</span>
+          <span className="text-xs text-gray-500 hidden sm:block">{level.description}</span>
         </button>
       ))}
     </div>
@@ -97,22 +97,22 @@ function DurationSelector({
   ];
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
       {options.map((option) => (
         <button
           key={option.days}
           type="button"
           onClick={() => onChange(option.days)}
           className={clsx(
-            'p-4 rounded-xl border-2 text-center transition-all',
+            'p-3 sm:p-4 rounded-xl border-2 text-center transition-all',
             value === option.days
               ? 'border-brand-500 bg-brand-50'
               : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50',
             option.days === 7 && value !== option.days && 'ring-2 ring-focus-200'
           )}
         >
-          <span className="font-bold text-lg text-gray-900 block">{option.label}</span>
-          <span className="text-xs text-gray-500">{option.description}</span>
+          <span className="font-bold text-base sm:text-lg text-gray-900 block">{option.label}</span>
+          <span className="text-xs text-gray-500 truncate block">{option.description}</span>
         </button>
       ))}
     </div>
@@ -135,22 +135,22 @@ function HoursSelector({
   ];
 
   return (
-    <div className="flex gap-2">
+    <div className="grid grid-cols-4 gap-2">
       {options.map((option) => (
         <button
           key={option.hours}
           type="button"
           onClick={() => onChange(option.hours)}
           className={clsx(
-            'flex-1 py-3 rounded-lg border-2 font-medium transition-all',
+            'py-3 px-1 rounded-lg border-2 font-medium transition-all text-center',
             value === option.hours
               ? 'border-brand-500 bg-brand-50 text-brand-700'
               : 'border-gray-200 hover:border-gray-300 text-gray-600'
           )}
         >
-          <span className="block">{option.label}</span>
+          <span className="block text-sm sm:text-base">{option.label}</span>
           {option.recommended && (
-            <span className="text-xs text-gray-400 font-normal">Recommended</span>
+            <span className="text-xs text-gray-400 font-normal hidden sm:block">Recommended</span>
           )}
         </button>
       ))}

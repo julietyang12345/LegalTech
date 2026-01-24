@@ -439,14 +439,31 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           })}
         </div>
 
-        {/* Section label */}
-        <div className="mb-4 flex items-center gap-2">
-          <span className="text-sm text-gray-500">
-            Section {currentSectionIndex + 1} of {sections.length}
-          </span>
-          <span className="text-sm px-2 py-0.5 bg-gray-100 rounded-full capitalize">
-            {currentSection.type === 'fillBlank' ? 'Fill in Blank' : currentSection.type}
-          </span>
+        {/* Section label with skip option */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">
+              Section {currentSectionIndex + 1} of {sections.length}
+            </span>
+            <span className="text-sm px-2 py-0.5 bg-gray-100 rounded-full capitalize">
+              {currentSection.type === 'fillBlank' ? 'Fill in Blank' : currentSection.type}
+            </span>
+          </div>
+          {currentSectionIndex < sections.length - 1 ? (
+            <button
+              onClick={() => setCurrentSectionIndex(prev => prev + 1)}
+              className="text-sm text-gray-400 hover:text-brand-500 transition-colors"
+            >
+              Skip section →
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowResults(true)}
+              className="text-sm text-gray-400 hover:text-brand-500 transition-colors"
+            >
+              Finish →
+            </button>
+          )}
         </div>
 
         {/* Current section */}

@@ -37,7 +37,7 @@ export class User {
   @Column({
     type: 'enum',
     enum: QuotaTier,
-    default: QuotaTier.FREE,
+    default: QuotaTier.PRO, // Default to PRO for testing
   })
   quotaTier: QuotaTier;
 

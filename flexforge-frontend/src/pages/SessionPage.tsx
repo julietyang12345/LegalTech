@@ -738,6 +738,7 @@ export function SessionPage() {
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
   const [incompleteItems, setIncompleteItems] = useState<{ step: string; label: string; icon: string }[]>([]);
   const [showAiTutor, setShowAiTutor] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const { hasTierAccess } = useAuthStore();
   const canUseAITutor = hasTierAccess(QuotaTier.PRO);
@@ -1081,7 +1082,8 @@ export function SessionPage() {
               className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-brand-500 transition-colors"
             >
               <Zap className="w-3.5 h-3.5" />
-              <span>Already know this? Take the skip test to advance to the next day.</span>
+              <span className="hidden sm:inline">Already know this? Take the skip test to advance to the next day.</span>
+              <span className="sm:hidden">Skip test</span>
             </button>
           </div>
 
@@ -1096,21 +1098,26 @@ export function SessionPage() {
               Previous
             </Button>
 
-            {/* AI Tutor Button - Center */}
-            {canUseAITutor ? (
-              <button
-                onClick={() => setShowAiTutor(true)}
-                className="group flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 bg-white hover:bg-gray-50 border border-gray-200 hover:border-purple-300 hover:shadow-md hover:shadow-purple-100"
-              >
-                <Sparkles className="w-4 h-4 text-purple-500 group-hover:text-purple-600" />
-                <span className="text-gray-700 group-hover:text-gray-900">Ask AI Tutor</span>
-              </button>
-            ) : (
-              <div className="flex items-center gap-2 px-4 py-2 text-sm text-gray-400 bg-gray-50 rounded-xl border border-gray-100">
-                <Lock className="w-3.5 h-3.5" />
-                Ask AI Tutor (PRO)
-              </div>
-            )}
+            {/* AI Tutor Button - Desktop only (inline) */}
+            <div className="hidden md:block">
+              {canUseAITutor ? (
+                <button
+                  onClick={() => setShowAiTutor(true)}
+                  className="group flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 bg-white hover:bg-gray-50 border border-gray-200 hover:border-purple-300 hover:shadow-md hover:shadow-purple-100"
+                >
+                  <Sparkles className="w-4 h-4 text-purple-500 group-hover:text-purple-600" />
+                  <span className="text-gray-700 group-hover:text-gray-900">Ask AI Tutor</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowUpgradeModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 text-sm text-gray-500 bg-gray-50 hover:bg-gray-100 rounded-xl border border-gray-200 transition-colors"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Ask AI Tutor (PRO)
+                </button>
+              )}
+            </div>
 
             <Button
               variant={isLastStep ? 'accent' : 'primary'}
@@ -1123,8 +1130,8 @@ export function SessionPage() {
         </div>
       </div>
 
-      {/* Spacer for fixed footer */}
-      <div className="h-24" />
+      {/* Spacer for fixed footer - taller on mobile */}
+      <div className="h-32 sm:h-24" />
 
       {/* Skip Test Modal */}
       {currentDay && (
@@ -1150,6 +1157,27 @@ export function SessionPage() {
         incompleteItems={incompleteItems}
       />
 
+      {/* Floating AI Tutor Button - Mobile only */}
+      <div className="md:hidden">
+        {canUseAITutor ? (
+          <button
+            onClick={() => setShowAiTutor(true)}
+            className="fixed bottom-28 right-4 z-30 flex items-center gap-2 px-4 py-3 rounded-full bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300"
+          >
+            <Sparkles className="w-5 h-5" />
+            <span className="text-sm font-medium">Ask AI Tutor</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowUpgradeModal(true)}
+            className="fixed bottom-28 right-4 z-30 flex items-center gap-2 px-4 py-3 rounded-full bg-gray-100 text-gray-500 shadow-md hover:bg-gray-200 transition-all duration-300"
+          >
+            <Sparkles className="w-5 h-5" />
+            <span className="text-sm font-medium">Ask AI Tutor</span>
+          </button>
+        )}
+      </div>
+
       {/* AI Tutor Panel */}
       {activeSession && currentDay && (
         <AiTutorPanel
@@ -1164,6 +1192,73 @@ export function SessionPage() {
           }}
         />
       )}
+
+      {/* Upgrade Modal */}
+      <AnimatePresence>
+        {showUpgradeModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowUpgradeModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl max-w-sm w-full shadow-xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="bg-gradient-to-r from-purple-500 to-purple-600 p-6 text-center">
+                <div className="w-16 h-16 mx-auto mb-4 bg-white/20 rounded-full flex items-center justify-center">
+                  <Sparkles className="w-8 h-8 text-white" />
+                </div>
+                <h2 className="text-xl font-bold text-white">Unlock AI Tutor</h2>
+                <p className="text-purple-100 text-sm mt-1">Get personalized help anytime</p>
+              </div>
+
+              {/* Content */}
+              <div className="p-6">
+                <ul className="space-y-3 mb-6">
+                  <li className="flex items-center gap-3 text-sm text-gray-700">
+                    <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                    <span>Ask unlimited questions about your lessons</span>
+                  </li>
+                  <li className="flex items-center gap-3 text-sm text-gray-700">
+                    <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                    <span>Get instant explanations and examples</span>
+                  </li>
+                  <li className="flex items-center gap-3 text-sm text-gray-700">
+                    <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                    <span>Personalized learning assistance 24/7</span>
+                  </li>
+                </ul>
+
+                <Button
+                  size="lg"
+                  className="w-full bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"
+                  onClick={() => {
+                    setShowUpgradeModal(false);
+                    // Navigate to upgrade page or show payment modal
+                    window.open('/upgrade', '_blank');
+                  }}
+                >
+                  Upgrade to PRO
+                </Button>
+
+                <button
+                  onClick={() => setShowUpgradeModal(false)}
+                  className="w-full mt-3 py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+                >
+                  Maybe later
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </FocusModeLayout>
   );
 }

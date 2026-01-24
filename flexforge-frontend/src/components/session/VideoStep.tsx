@@ -708,12 +708,14 @@ export function VideoStep({ day, session }: VideoStepProps) {
         {currentMode === 'video' && (
           canAskAI ? (
             <Button variant="secondary" size="sm" leftIcon={<MessageCircle className="w-4 h-4" />}>
-              Ask AI about this video
+              <span className="hidden sm:inline">Ask AI about this video</span>
+              <span className="sm:hidden">Ask AI</span>
             </Button>
           ) : (
-            <div className="flex items-center gap-2 text-sm text-gray-400">
+            <div className="flex items-center gap-2 text-sm text-gray-400 whitespace-nowrap">
               <Lock className="w-4 h-4" />
-              <span>Ask AI (PRO feature)</span>
+              <span className="hidden sm:inline">Ask AI (PRO)</span>
+              <span className="sm:hidden">PRO</span>
             </div>
           )
         )}
