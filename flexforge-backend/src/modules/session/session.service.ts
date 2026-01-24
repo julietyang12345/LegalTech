@@ -1190,4 +1190,31 @@ export class SessionService {
       tokensUsed: result.tokensUsed,
     };
   }
+
+  /**
+   * Clear all deferred content from all sessions (admin utility)
+   * This forces regeneration of intensive practice/reflection on next load
+   */
+  async clearAllDeferredContent(): Promise<{ sessionsUpdated: number }> {
+    // Use raw query to update all sessions' curriculum.days to remove deferredContent
+    const result = await this.sessionsRepository.query(`
+      UPDATE sessions
+      SET curriculum = jsonb_set(
+        curriculum,
+        '{days}',
+        (
+          SELECT COALESCE(jsonb_agg(
+            day - 'deferredContent' - 'deferredLoaded'
+          ), '[]'::jsonb)
+          FROM jsonb_array_elements(curriculum->'days') AS day
+        )
+      )
+      WHERE curriculum->'days' IS NOT NULL
+    `);
+
+    const count = result[1] || 0;
+    this.logger.log(`✅ Cleared deferredContent from ${count} sessions`);
+
+    return { sessionsUpdated: count };
+  }
 }

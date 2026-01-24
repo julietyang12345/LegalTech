@@ -254,33 +254,8 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
           <QuickPick
             options={clickedOptions}
             selected={whatClicked}
-            onSelect={(v) => {
-              setWhatClicked(v);
-              if (v !== 'nothing') setShowClickedDetails(true);
-            }}
+            onSelect={setWhatClicked}
           />
-
-          {/* Optional expand */}
-          <AnimatedReveal show={showClickedDetails && !!whatClicked && whatClicked !== 'nothing'} className="mt-4">
-            <button
-              onClick={() => setShowClickedDetails(!showClickedDetails)}
-              className="text-sm text-gray-500 flex items-center gap-1 mb-2"
-            >
-              <ChevronDown className={clsx(
-                'w-4 h-4 transition-transform',
-                whatClickedDetails && 'rotate-180'
-              )} />
-              Add details (optional)
-            </button>
-            <input
-              type="text"
-              value={whatClickedDetails}
-              onChange={(e) => setWhatClickedDetails(e.target.value)}
-              placeholder="What specifically made sense?"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm
-                        focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
-            />
-          </AnimatedReveal>
         </div>
       </Card>
 
@@ -394,24 +369,6 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
           </Card>
         </motion.div>
       )}
-
-      {/* Lock it in - Sentence completion */}
-      <Card>
-        <div className="p-6">
-          <h3 className="font-medium text-gray-900 mb-2">
-            🧠 Lock it in
-          </h3>
-          <p className="text-sm text-gray-500 mb-4">
-            What's the key idea you don't want to forget?
-          </p>
-          <SentenceComplete
-            prefix="Today I learned that..."
-            suggestions={sentenceSuggestions}
-            value={lockInSentence}
-            onChange={setLockInSentence}
-          />
-        </div>
-      </Card>
 
       {/* Shape Future Days - Improvement Areas */}
       <Card className="bg-gradient-to-br from-purple-50 via-indigo-50 to-blue-50 border-purple-200">

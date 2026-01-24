@@ -648,7 +648,8 @@ export function buildDayDetailDeferredPrompt(params: DayDetailParams): {
   userPrompt: string;
 } {
   // Use language learning deferred prompt if applicable
-  if (params.isLanguageLearning && params.targetLanguage) {
+  // Only check isLanguageLearning - targetLanguage defaults to 'other' inside the function
+  if (params.isLanguageLearning) {
     return buildLanguageLearningDeferredPrompt(params);
   }
 
@@ -1436,7 +1437,8 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
   userPrompt: string;
 } {
   // Use dedicated language learning prompt if detected by skill detector
-  if (params.isLanguageLearning && params.targetLanguage) {
+  // Only check isLanguageLearning - targetLanguage defaults to 'other' inside the function
+  if (params.isLanguageLearning) {
     return buildCacheableLanguageLearningPrompt(params);
   }
 

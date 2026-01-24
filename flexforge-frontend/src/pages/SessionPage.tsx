@@ -991,14 +991,14 @@ export function SessionPage() {
     return (
       <GeneratingScreen
         steps={[
-          { icon: Sparkles, text: 'Generating fresh content...', duration: 30000 },
-          { icon: Target, text: 'Creating new exercises...', duration: 30000 },
-          { icon: BookOpen, text: 'Finding a new video...', duration: 30000 },
-          { icon: Trophy, text: 'Preparing your refreshed session...', duration: 10000 },
+          { icon: Sparkles, text: 'Generating fresh content...', duration: 20000 },
+          { icon: Target, text: 'Creating new exercises...', duration: 20000 },
+          { icon: BookOpen, text: 'Finding a new video...', duration: 22000 },
+          { icon: Trophy, text: 'Preparing your refreshed session...', duration: 15000 },
         ]}
         title={`Regenerating Day ${currentDay.day}`}
         subtitle={`Creating fresh ${activeSession.skillName} content just for you`}
-        timeEstimate="This usually takes 1-2 minutes"
+        timeEstimate="This usually takes about 90 seconds"
       />
     );
   }
@@ -1011,14 +1011,14 @@ export function SessionPage() {
       <GeneratingScreen
         steps={[
           { icon: CheckCircle, text: `Saving Day ${currentDay.day} progress...`, duration: 2000 },
-          { icon: Sparkles, text: 'Generating next lesson...', duration: 30000 },
-          { icon: Target, text: 'Creating practice exercises...', duration: 30000 },
-          { icon: BookOpen, text: 'Finding the perfect video...', duration: 30000 },
-          { icon: Trophy, text: 'Preparing your session...', duration: 10000 },
+          { icon: Sparkles, text: 'Generating fresh content...', duration: 20000 },
+          { icon: Target, text: 'Creating new exercises...', duration: 20000 },
+          { icon: BookOpen, text: 'Finding a new video...', duration: 22000 },
+          { icon: Trophy, text: 'Preparing your refreshed session...', duration: 15000 },
         ]}
         title={`Preparing Day ${nextDayNumber}`}
         subtitle={nextDayData?.title || `Your next ${activeSession.skillName} lesson`}
-        timeEstimate="This usually takes 1-2 minutes"
+        timeEstimate="This usually takes about 90 seconds"
       />
     );
   }

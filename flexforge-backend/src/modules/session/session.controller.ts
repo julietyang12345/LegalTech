@@ -390,4 +390,17 @@ export class SessionController {
       tokensUsed: result.tokensUsed,
     };
   }
+
+  /**
+   * POST /api/v1/sessions/admin/clear-deferred
+   * Clear all deferred content from all sessions (admin endpoint)
+   */
+  @Post('admin/clear-deferred')
+  async clearAllDeferredContent(@Request() req) {
+    const result = await this.sessionService.clearAllDeferredContent();
+    return {
+      message: 'All session deferred content cleared',
+      ...result,
+    };
+  }
 }

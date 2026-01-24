@@ -296,6 +296,16 @@ export class CurriculumController {
   }
 
   /**
+   * POST /api/v1/curriculum/clear-cache
+   * Clear all curriculum and day content caches (admin endpoint)
+   */
+  @Post('clear-cache')
+  async clearAllCache() {
+    const result = await this.cacheService.clearAllCache();
+    return { message: 'All caches cleared', ...result };
+  }
+
+  /**
    * POST /api/v1/curriculum/refresh-video
    * Find a new video for a day using Layer 3 deep verification
    * Called when user exhausts the alternative and clicks "Find New Video" again

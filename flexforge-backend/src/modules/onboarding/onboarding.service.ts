@@ -216,7 +216,12 @@ DIRECTION REQUIREMENTS:
 1. SEARCHABLE: Use common terms YouTube tutorials would use.
 2. LOW-FRICTION: Prioritize managed services, serverless, auto-deploy.
 3. TRADEOFFS: Each direction should suit a different user preference/skill.
-4. PRESERVE CONTEXT: Direction titles/outcomes must include user's specific subject (e.g., "AI app", "Reddit bot"). Never strip context to generic tool tutorials.
+4. PRESERVE CONTEXT: Direction titles/outcomes must include user's specific subject. Never strip or generalize specifics from the user's goal.
+   - Project goals: Keep specific subjects (e.g., "AI app", "Reddit bot")
+   - Language goals: Keep the specific language name (e.g., "Italian", "Japanese", "Spanish") in titles/outcomes
+   - Topic goals: Keep the specific topic (e.g., "machine learning", "woodworking")
+   WRONG: Goal "learn basic Italian" → interpretedGoal "learn a language for daily life"
+   RIGHT: Goal "learn basic Italian" → interpretedGoal "learn basic Italian for daily life"
 
 GRANULARITY (for LEARNING goals):
 - GOOD: "Webhooks + retries for reliable automations"

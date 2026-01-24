@@ -1053,6 +1053,48 @@ export class CurriculumCacheService implements OnModuleInit {
   }
 
   // ==========================================================================
+  // ADMIN: CLEAR ALL CACHE
+  // ==========================================================================
+
+  async clearAllCache(): Promise<{ cleared: string[] }> {
+    const cleared: string[] = [];
+
+    try {
+      // Clear in-memory caches
+      this.dayContentCache.clear();
+      this.normalizedSkillCache.clear();
+      cleared.push('in-memory caches');
+
+      // Clear day content tables
+      await this.dayServeRepo.query('TRUNCATE day_content_serves CASCADE');
+      cleared.push('day_content_serves');
+
+      await this.dayVariantRepo.query('TRUNCATE day_content_variants CASCADE');
+      cleared.push('day_content_variants');
+
+      await this.dayContentRepo.query('TRUNCATE day_content_cache CASCADE');
+      cleared.push('day_content_cache');
+
+      // Clear curriculum cache tables
+      await this.serveRepo.query('TRUNCATE curriculum_serves CASCADE');
+      cleared.push('curriculum_serves');
+
+      await this.variantRepo.query('TRUNCATE curriculum_cache_variants CASCADE');
+      cleared.push('curriculum_cache_variants');
+
+      await this.keyRepo.query('TRUNCATE curriculum_cache_keys CASCADE');
+      cleared.push('curriculum_cache_keys');
+
+      this.logger.log(`✅ All caches cleared: ${cleared.join(', ')}`);
+    } catch (error) {
+      this.logger.error(`Cache clear failed: ${error.message}`);
+      throw error;
+    }
+
+    return { cleared };
+  }
+
+  // ==========================================================================
   // ADMIN: GET CACHE STATS
   // ==========================================================================
 
