@@ -4,3 +4,4 @@ export { sessionService } from './sessionService';
 export { progressService } from './progressService';
 export { projectService } from './projectService';
 export { companionService } from './companionService';
+export { onboardingService } from './onboardingService';

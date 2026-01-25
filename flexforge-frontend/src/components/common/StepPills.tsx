@@ -30,7 +30,7 @@ export function StepPills({
 }: StepPillsProps) {
   const stepLabels = getStepLabels(isProjectBased);
   return (
-    <div className={clsx('flex items-center gap-1', className)}>
+    <div className={clsx('flex items-center gap-0.5 sm:gap-1 flex-shrink min-w-0', className)}>
       {steps.map((step, index) => {
         const isComplete = completedSteps.includes(step);
         const isCurrent = step === currentStep;
@@ -42,26 +42,26 @@ export function StepPills({
               type="button"
               onClick={() => onStepClick?.(step)}
               className={clsx(
-                'w-8 h-8 rounded-full flex items-center justify-center',
-                'text-sm font-medium transition-all duration-200 cursor-pointer hover:scale-110',
+                'w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center',
+                'text-xs sm:text-sm font-medium transition-all duration-200 cursor-pointer hover:scale-110',
                 isComplete && 'bg-focus-500 text-white',
-                isCurrent && 'bg-brand-500 text-white ring-4 ring-brand-200',
+                isCurrent && 'bg-brand-500 text-white ring-2 sm:ring-4 ring-brand-200',
                 isUpcoming && 'bg-gray-200 text-gray-500 hover:bg-gray-300',
               )}
               title={stepLabels[step]}
             >
               {isComplete ? (
-                <Check className="w-4 h-4" />
+                <Check className="w-3 h-3 sm:w-4 sm:h-4" />
               ) : (
-                <span className="text-xs">{index + 1}</span>
+                <span className="text-[10px] sm:text-xs">{index + 1}</span>
               )}
             </button>
 
-            {/* Connector line */}
+            {/* Connector line - shorter on mobile */}
             {index < steps.length - 1 && (
               <div
                 className={clsx(
-                  'w-4 h-0.5 mx-0.5',
+                  'w-2 sm:w-4 h-0.5 mx-0.5',
                   isComplete ? 'bg-focus-500' : 'bg-gray-200'
                 )}
               />

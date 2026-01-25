@@ -7,37 +7,30 @@
    ============================================ */
 
 @layer base {
+  /* Fix 100vw causing horizontal scroll (100vw includes scrollbar width) */
+  :root {
+    --vw: 1vw;
+  }
+
+  @supports (width: 100dvw) {
+    :root {
+      --vw: 1dvw;
+    }
+  }
+
   html {
     scroll-behavior: smooth;
-    overflow-x: hidden !important;
-    overscroll-behavior-x: none;
+    overflow-x: clip;
   }
 
   body {
     @apply bg-gray-50 text-gray-900;
-    overflow-x: hidden !important;
+    overflow-x: clip;
     overscroll-behavior-x: none;
-    position: relative;
-    width: 100%;
-    min-width: 0;
   }
 
-  /* Ensure root container doesn't overflow */
   #root {
-    overflow-x: hidden !important;
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-  }
-
-  /* Prevent any element from causing horizontal scroll */
-  * {
-    max-width: 100%;
-  }
-
-  /* Exception for elements that need to overflow (like code blocks) */
-  pre, code, .overflow-x-auto {
-    max-width: none;
+    overflow-x: clip;
   }
 
   /* Focus states */
@@ -232,26 +225,6 @@
   }
 
   /* ============================================
-     Skill Tree Node
-     ============================================ */
-  .skill-node {
-    @apply w-20 h-20 rounded-xl flex flex-col items-center justify-center
-           text-xs font-medium transition-all duration-300;
-  }
-
-  .skill-node-complete {
-    @apply skill-node bg-focus-500 text-white;
-  }
-
-  .skill-node-progress {
-    @apply skill-node bg-brand-100 text-brand-700 border-2 border-brand-300;
-  }
-
-  .skill-node-locked {
-    @apply skill-node bg-gray-100 text-gray-400;
-  }
-
-  /* ============================================
      Typing Indicator
      ============================================ */
   .typing-dot {
@@ -298,11 +271,6 @@
   /* Text gradient */
   .text-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r;
-  }
-
-  /* Glass effect */
-  .glass {
-    @apply bg-white/80 backdrop-blur-lg;
   }
 
   /* Hide scrollbar but keep scrolling */

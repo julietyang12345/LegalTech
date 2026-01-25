@@ -64,7 +64,7 @@ function DayPreviewModal({
         initial={{ opacity: 0, x: -10 }}
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -10 }}
-        className="absolute bg-white rounded-2xl w-[95vw] max-w-[420px] shadow-xl overflow-hidden max-h-[calc(100vh-100px)] overflow-y-auto left-4 md:left-auto"
+        className="absolute bg-white rounded-2xl w-full max-w-[420px] shadow-xl overflow-hidden max-h-[calc(100vh-100px)] overflow-y-auto left-0 right-0 mx-4 md:left-auto md:right-auto md:mx-0"
         style={{ top: topPosition, left: leftPosition }}
         onClick={(e) => e.stopPropagation()}
       >

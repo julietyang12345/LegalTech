@@ -4,9 +4,7 @@ import { motion } from 'framer-motion';
 import { X, Clock } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
-import { useCompanionStore } from '@/stores/companionStore';
 import { StepPills } from '@/components/common';
-import { CompanionChat, CompanionBubble } from '@/components/companion';
 import { CourseSidebar } from '@/components/session/CourseSidebar';
 import type { SessionStep } from '@/types';
 
@@ -67,7 +65,6 @@ function ExitConfirmModal({ isOpen, onClose, onConfirm }: {
 function PresenceBar() {
   const navigate = useNavigate();
   const [showExitModal, setShowExitModal] = useState(false);
-  const { toggleChat, currentMood } = useCompanionStore();
   const {
     activeSession,
     currentStep,
@@ -123,54 +120,44 @@ function PresenceBar() {
   return (
     <>
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-gray-200">
-        <div className="max-w-focus mx-auto px-4">
-          <div className="flex items-center justify-between h-14">
-            {/* Exit button */}
-            <button
-              onClick={() => setShowExitModal(true)}
-              className="p-3 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
+        <div className="relative h-12 sm:h-14">
+          {/* Exit button - fixed to left corner */}
+          <button
+            onClick={() => setShowExitModal(true)}
+            className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors z-10"
+          >
+            <X className="w-5 h-5" />
+          </button>
 
-            {/* Step pills */}
-            <StepPills
-              steps={availableSteps}
-              currentStep={currentStep}
-              completedSteps={completedSteps}
-              onStepClick={(step) => setCurrentStep(step)}
-            />
-
-            {/* Right side: topic, timer, companion */}
-            <div className="flex items-center gap-3">
-              {/* Topic */}
-              <span className="hidden sm:block text-sm text-gray-600">
-                Day {currentDay?.day}: {currentDay?.title?.split(':')[1]?.trim() || 'Loading...'}
-              </span>
-
-              {/* Timer */}
-              {showTimer && (
-                <button
-                  onClick={() => setShowTimer(false)}
-                  className="flex items-center gap-1 px-3 py-2 text-sm text-gray-500 hover:bg-gray-100 rounded transition-colors"
-                >
-                  <Clock className="w-4 h-4" />
-                  {formatTime(elapsedSeconds)}
-                </button>
-              )}
-
-              {/* Companion toggle */}
-              <button
-                onClick={toggleChat}
-                className={clsx(
-                  'w-10 h-10 rounded-full flex items-center justify-center transition-all',
-                  'bg-gradient-to-br from-brand-400 to-brand-500 text-white',
-                  'hover:scale-110'
-                )}
-              >
-                <span className="text-lg">🦊</span>
-              </button>
+          {/* Step pills - centered in full width */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="overflow-x-auto no-scrollbar px-12">
+              <StepPills
+                steps={availableSteps}
+                currentStep={currentStep}
+                completedSteps={completedSteps}
+                onStepClick={(step) => setCurrentStep(step)}
+              />
             </div>
+          </div>
+
+          {/* Right side: timer (desktop only) */}
+          <div className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-3">
+            {/* Topic */}
+            <span className="hidden lg:block text-sm text-gray-600 max-w-[200px] truncate">
+              Day {currentDay?.day}: {currentDay?.title?.split(':')[1]?.trim() || 'Loading...'}
+            </span>
+
+            {/* Timer */}
+            {showTimer && (
+              <button
+                onClick={() => setShowTimer(false)}
+                className="flex items-center gap-1 px-2 py-1.5 text-sm text-gray-500 hover:bg-gray-100 rounded transition-colors"
+              >
+                <Clock className="w-4 h-4" />
+                {formatTime(elapsedSeconds)}
+              </button>
+            )}
           </div>
         </div>
 
@@ -211,7 +198,7 @@ export function FocusModeLayout({ children, showSidebar = true }: FocusModeLayou
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 text-sm sm:text-base">
       <PresenceBar />
 
       {/* Course Sidebar */}
@@ -222,7 +209,7 @@ export function FocusModeLayout({ children, showSidebar = true }: FocusModeLayou
       )}
 
       {/* Content area - always centered */}
-      <main className="max-w-focus mx-auto px-4 py-8">
+      <main className="max-w-focus mx-auto px-3 sm:px-4 py-4 sm:py-8">
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -231,9 +218,6 @@ export function FocusModeLayout({ children, showSidebar = true }: FocusModeLayou
           {children}
         </motion.div>
       </main>
-
-      {/* Companion (always available) */}
-      <CompanionChat />
     </div>
   );
 }

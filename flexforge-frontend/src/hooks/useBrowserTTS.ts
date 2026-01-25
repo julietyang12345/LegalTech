@@ -95,13 +95,11 @@ export function useBrowserTTS(
 
     const loadVoices = () => {
       const voices = speechSynthesis.getVoices();
-      console.log('[TTS] Voices loaded:', voices.length, 'total voices');
 
       // Filter voices for the target language
       const languageVoices = voices.filter(voice =>
         voice.lang.startsWith(langCode.split('-')[0])
       );
-      console.log('[TTS] Language voices for', langCode, ':', languageVoices.length);
 
       setAvailableVoices(languageVoices.length > 0 ? languageVoices : voices);
 
@@ -111,7 +109,6 @@ export function useBrowserTTS(
           || languageVoices[0]
           || voices.find(v => v.lang.startsWith(langCode.split('-')[0]))
           || null;
-        console.log('[TTS] Selected voice:', bestVoice?.name || 'none');
         setSelectedVoice(bestVoice);
       }
     };
@@ -129,7 +126,6 @@ export function useBrowserTTS(
   const speak = useCallback((text: string) => {
     if (!text.trim()) return;
 
-    console.log('[TTS] Speaking:', text.substring(0, 30) + '...');
     setIsSpeaking(true);
     onStart?.();
 
@@ -139,7 +135,6 @@ export function useBrowserTTS(
         onEnd?.();
       })
       .catch((err) => {
-        console.error('[TTS] Error:', err);
         setIsSpeaking(false);
         onError?.(err.message);
       });

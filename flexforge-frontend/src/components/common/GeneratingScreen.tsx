@@ -124,7 +124,7 @@ export function GeneratingScreen({ steps, title, subtitle, timeEstimate }: Gener
             })}
           </div>
 
-          <div className="mt-6 pt-4 border-t border-gray-100">
+          <div className="mt-4 sm:mt-6 pt-4 border-t border-gray-100">
             <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
               <motion.div
                 className="h-full bg-gradient-to-r from-brand-400 to-brand-500"
@@ -133,7 +133,8 @@ export function GeneratingScreen({ steps, title, subtitle, timeEstimate }: Gener
                 transition={{ duration: 0.5 }}
               />
             </div>
-            <p className="text-xs text-gray-500 text-center mt-2">
+            {/* Time estimate - hidden on mobile */}
+            <p className="hidden sm:block text-xs text-gray-500 text-center mt-2">
               {timeEstimate}
             </p>
           </div>
