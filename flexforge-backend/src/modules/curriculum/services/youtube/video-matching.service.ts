@@ -516,6 +516,89 @@ export class VideoMatchingService {
   }
 
   /**
+   * Get transcript summary for a video (PRO feature)
+   * Fetches the YouTube transcript and generates an AI summary
+   */
+  async getTranscriptSummary(
+    videoId: string,
+    concept?: string,
+  ): Promise<{
+    success: boolean;
+    summary?: string;
+    keyPoints?: string[];
+    error?: string;
+  }> {
+    try {
+      // Fetch transcript
+      const transcript = await this.getYouTubeTranscript(videoId);
+
+      if (!transcript || transcript.length === 0) {
+        return {
+          success: false,
+          error: 'No transcript available for this video',
+        };
+      }
+
+      // Combine transcript into full text (limit to ~8000 chars for API)
+      const fullText = transcript
+        .map((t) => t.text)
+        .join(' ')
+        .slice(0, 8000);
+
+      if (!this.genAI) {
+        return {
+          success: false,
+          error: 'AI service not available',
+        };
+      }
+
+      // Generate summary using Gemini
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+
+      const prompt = `You are summarizing a YouTube video transcript for a learner.
+${concept ? `The video is about: ${concept}` : ''}
+
+Transcript:
+${fullText}
+
+Provide a concise summary in this exact JSON format:
+{
+  "summary": "A 2-3 sentence summary of the main content and takeaways",
+  "keyPoints": ["Key point 1", "Key point 2", "Key point 3", "Key point 4", "Key point 5"]
+}
+
+Focus on actionable insights and key concepts. Keep the summary educational and engaging.
+Return ONLY valid JSON, no markdown or extra text.`;
+
+      const result = await model.generateContent(prompt);
+      const responseText = result.response.text().trim();
+
+      // Parse JSON response
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return {
+          success: false,
+          error: 'Failed to parse AI response',
+        };
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      return {
+        success: true,
+        summary: parsed.summary || '',
+        keyPoints: parsed.keyPoints || [],
+      };
+    } catch (error: any) {
+      this.logger.error(`Transcript summary failed for ${videoId}: ${error.message}`);
+      return {
+        success: false,
+        error: 'Failed to generate summary',
+      };
+    }
+  }
+
+  /**
    * Search YouTube for videos (fallback when Google CSE not available)
    * Simplified: just generic search, no channel batching
    */
