@@ -33,13 +33,6 @@ describe('Curriculum Generation (e2e)', () => {
         videoStrategy: 'helpful',
         transferability: 'medium',
         contentSource: 'youtube',
-        skipTest: {
-          questionSets: [[
-            { question: 'Q1?', options: ['A', 'B', 'C', 'D'], correctIndex: 0 },
-          ]],
-          currentSetIndex: 0,
-          passThreshold: 0.7,
-        },
       })),
       bossProjects: [{
         day: durationDays,

@@ -599,7 +599,6 @@ STRUCTURE (all fields required):
 - languageFoundationCards: ${levelGuidance.foundationCardCount} vocabulary cards (REQUIRED)
 - task1: Quick practice with 3-4 question types mixed, ${levelGuidance.quizQuestionCount} questions total
 - reflection: {questions[]}
-- skipTest: {questionSets[[3 MCQs]], passThreshold:3}
 
 ${levelGuidance.complexityGuidance}
 
@@ -697,14 +696,6 @@ Output this JSON structure:
       {"id": "clicked", "question": "Which word stuck with you the most?", "type": "text"},
       {"id": "foggy", "question": "Which word is still unclear?", "type": "text"}
     ]
-  },
-  "skipTest": {
-    "questionSets": [[
-      {"question": "Q1?", "options": ["A", "B", "C", "D"], "correctIndex": 0},
-      {"question": "Q2?", "options": ["A", "B", "C", "D"], "correctIndex": 1},
-      {"question": "Q3?", "options": ["A", "B", "C", "D"], "correctIndex": 2}
-    ]],
-    "passThreshold": 3
   }
 }
 
@@ -1377,7 +1368,7 @@ videoStrategy:
 
 transferability: high (universal) | medium (similar domains) | low (specific context)
 
-Each day: title, subtitle, skills[], teaser, estimatedMinutes, contentLayer, videoStrategy, transferability, skipTest
+Each day: title, subtitle, skills[], teaser, estimatedMinutes, contentLayer, videoStrategy, transferability
 
 TOPIC FILTER: Only include what blocks progress toward the goal. MEANS (tools/setup) → minimum to use. ENDS (goal itself) → full depth. No history, theory, or comparisons for things they just use.
 
@@ -1388,8 +1379,6 @@ SKILL-SPECIFIC ENVIRONMENT GUIDANCE:
 - DESIGN: Provide before/after examples, critique frameworks, assessment rubrics.
 
 AVOID (all skills): Content requiring expensive equipment, dangerous activities without safety context, or access to gated/login-required platforms.
-
-skipTest format: {questionSets: [[{question, options[4], correctIndex}]], passThreshold: 2}
 
 Output valid JSON only.`;
 
@@ -1492,7 +1481,7 @@ ${skillGuidance}
 
 ${levelGuidance.complexityGuidance}
 
-Per day: day, title, subtitle, skills[], teaser, estimatedMinutes:${time.totalMinutes}, ${isProjectBased ? 'hasBossProject:true, bossMilestonePreview,' : ''} contentLayer, videoStrategy, transferability, skipTest.`;
+Per day: day, title, subtitle, skills[], teaser, estimatedMinutes:${time.totalMinutes}, ${isProjectBased ? 'hasBossProject:true, bossMilestonePreview,' : ''} contentLayer, videoStrategy, transferability.`;
 
   // User prompt with day template
   const bossProjectsSection = isProjectBased
@@ -1524,16 +1513,7 @@ Per day: day, title, subtitle, skills[], teaser, estimatedMinutes:${time.totalMi
       "bossMilestonePreview": "What code they'll add today",` : ''}
       "contentLayer": "foundation|language_core|framework|tool|project",
       "videoStrategy": "skip|optional|helpful|recommended",
-      "transferability": "high|medium|low",
-      "skipTest": {
-        "description": "Prove mastery to skip this day",
-        "questionSets": [[
-          {"question": "MCQ testing concept?", "options": ["Wrong", "Wrong", "Correct", "Wrong"], "correctIndex": 2},
-          {"question": "Another MCQ?", "options": ["Correct", "Wrong", "Wrong", "Wrong"], "correctIndex": 0},
-          {"question": "Third MCQ?", "options": ["Wrong", "Correct", "Wrong", "Wrong"], "correctIndex": 1}
-        ]],
-        "passThreshold": 2
-      }
+      "transferability": "high|medium|low"
     }
   ],
   ${bossProjectsSection},
@@ -1646,8 +1626,7 @@ Generate CORE content only:
 
 ALWAYS INCLUDE:
 - prePrompt: {text, primeQuestions[], yesterdayRecap}
-- video: {watchPoints[], searchQuery}
-- skipTest: {questionSets:[[3 hard MCQs]], passThreshold:3}`;
+- video: {watchPoints[], searchQuery}`;
 
   return { staticPart, dynamicPart, userPrompt };
 }

@@ -9,7 +9,6 @@ import {
   type CurriculumDay,
   type Progress,
   type SessionStep,
-  type SkipTestResponse,
   type PracticeSubmitResponse,
   type DayCoreContent,
   type DayDeferredContent,
@@ -72,8 +71,6 @@ interface SessionState {
   resetSteps: () => void;
 
   // Two-phase curriculum actions
-  submitSkipTest: (dayNumber: number, answers: number[]) => Promise<SkipTestResponse>;
-  forceSkipDay: (dayNumber: number) => Promise<{ success: boolean; nextDayUnlocked: boolean }>;
   submitPracticeProject: (dayNumber: number, answer: string, confidence?: number) => Promise<PracticeSubmitResponse>;
   getDayStatus: (dayNumber: number) => DayStatus;
   canStartDay: (dayNumber: number) => boolean;
@@ -745,130 +742,6 @@ export const useSessionStore = create<SessionState>()(
 
     // Has engagement if any answers exist
     return Object.keys(progress.answers).length > 0;
-  },
-
-  submitSkipTest: async (dayNumber: number, answers: number[]) => {
-    const { activeSession } = get();
-    if (!activeSession) throw new Error('No active session');
-
-    try {
-      const result = await sessionService.submitSkipTest(activeSession.id, dayNumber, answers);
-
-      if (result.passed) {
-        // Update day status to skipped, unlock next day, and advance currentDay
-        set((state) => {
-          if (!state.activeSession) return state;
-
-          const totalDays = state.activeSession.curriculum.days.length;
-          const hasNextDay = dayNumber < totalDays;
-
-          const statusUpdates: Array<{ dayNumber: number; status: DayStatus }> = [
-            { dayNumber, status: DayStatus.SKIPPED },
-          ];
-          if (hasNextDay) {
-            statusUpdates.push({ dayNumber: dayNumber + 1, status: DayStatus.UNLOCKABLE });
-          }
-
-          const updatedDays = updateDayStatuses(state.activeSession.curriculum.days, statusUpdates);
-
-          // Advance currentDay only if there's a next day (matches backend behavior)
-          const newCurrentDay = hasNextDay && dayNumber >= state.activeSession.currentDay
-            ? dayNumber + 1
-            : state.activeSession.currentDay;
-
-          return {
-            activeSession: {
-              ...state.activeSession,
-              currentDay: newCurrentDay,
-              curriculum: {
-                ...state.activeSession.curriculum,
-                days: updatedDays,
-              },
-            },
-          };
-        });
-      } else if (result.newQuestions) {
-        // Failed but have another question set: increment currentSetIndex
-        set((state) => {
-          if (!state.activeSession) return state;
-
-          const updatedDays = state.activeSession.curriculum.days.map((d) => {
-            if (d.day === dayNumber && d.skipTest?.questionSets) {
-              const currentSetIndex = d.skipTest.currentSetIndex ?? 0;
-              return {
-                ...d,
-                skipTest: {
-                  ...d.skipTest,
-                  currentSetIndex: currentSetIndex + 1,
-                },
-              };
-            }
-            return d;
-          });
-
-          return {
-            activeSession: {
-              ...state.activeSession,
-              curriculum: {
-                ...state.activeSession.curriculum,
-                days: updatedDays,
-              },
-            },
-          };
-        });
-      }
-      // If allSetsExhausted, no state update needed - user must complete day or force skip
-
-      return result;
-    } catch (error: any) {
-      set({ error: error.response?.data?.message || 'Failed to submit skip test' });
-      throw error;
-    }
-  },
-
-  forceSkipDay: async (dayNumber: number) => {
-    const { activeSession } = get();
-    if (!activeSession) throw new Error('No active session');
-
-    try {
-      const result = await sessionService.forceSkipDay(activeSession.id, dayNumber);
-
-      if (result.success) {
-        set((state) => {
-          if (!state.activeSession) return state;
-
-          const updates: Array<{ dayNumber: number; status: DayStatus }> = [
-            { dayNumber, status: DayStatus.SKIPPED },
-          ];
-          if (result.nextDayUnlocked) {
-            updates.push({ dayNumber: dayNumber + 1, status: DayStatus.UNLOCKABLE });
-          }
-
-          const updatedDays = updateDayStatuses(state.activeSession.curriculum.days, updates);
-
-          // Advance currentDay only if next day was unlocked (matches backend behavior)
-          const newCurrentDay = result.nextDayUnlocked && dayNumber >= state.activeSession.currentDay
-            ? dayNumber + 1
-            : state.activeSession.currentDay;
-
-          return {
-            activeSession: {
-              ...state.activeSession,
-              currentDay: newCurrentDay,
-              curriculum: {
-                ...state.activeSession.curriculum,
-                days: updatedDays,
-              },
-            },
-          };
-        });
-      }
-
-      return result;
-    } catch (error: any) {
-      set({ error: error.response?.data?.message || 'Failed to skip day' });
-      throw error;
-    }
   },
 
   submitPracticeProject: async (dayNumber: number, answer: string, confidence?: number) => {

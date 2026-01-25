@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -8,8 +8,6 @@ import {
   Lock,
   Clock,
   Plus,
-  FastForward,
-  Loader2,
   SkipForward,
   Target,
 } from 'lucide-react';
@@ -161,128 +159,6 @@ function TimelineDayItem({
   );
 }
 
-// Skip Test Modal
-function SkipTestModal({
-  isOpen,
-  onClose,
-  dayNumber,
-  skipTest,
-  onSubmit,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  dayNumber: number;
-  skipTest: {
-    questionSets?: Array<Array<{ question: string; options: string[]; correctIndex: number }>>;
-    currentSetIndex?: number;
-    passThreshold?: number;
-  } | undefined;
-  onSubmit: (answers: number[]) => void;
-}) {
-  const [selectedAnswers, setSelectedAnswers] = useState<(number | null)[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const questions = useMemo(() => {
-    if (!skipTest?.questionSets || skipTest.questionSets.length === 0) return [];
-    const setIndex = skipTest.currentSetIndex ?? 0;
-    return skipTest.questionSets[setIndex] || [];
-  }, [skipTest]);
-
-  const passThreshold = skipTest?.passThreshold ?? 3;
-
-  useEffect(() => {
-    if (isOpen && questions.length > 0) {
-      setSelectedAnswers(new Array(questions.length).fill(null));
-    }
-  }, [isOpen, questions]);
-
-  if (!isOpen || !skipTest || questions.length === 0) return null;
-
-  const allAnswered = selectedAnswers.every(a => a !== null);
-
-  const handleSubmit = async () => {
-    if (!allAnswered) return;
-    setIsSubmitting(true);
-    try {
-      onSubmit(selectedAnswers as number[]);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl p-4 sm:p-6 max-w-2xl w-full shadow-xl max-h-[90vh] overflow-y-auto"
-      >
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
-            <FastForward className="w-5 h-5 text-purple-600" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Skip Test - Day {dayNumber}</h2>
-            <p className="text-sm text-gray-600">Answer all questions correctly to skip this day</p>
-          </div>
-        </div>
-
-        <div className="space-y-6 mb-6">
-          {questions.map((q, qIndex) => (
-            <div key={qIndex} className="space-y-3">
-              <div className="flex items-start gap-2">
-                <span className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-sm font-medium flex-shrink-0 mt-0.5">
-                  {qIndex + 1}
-                </span>
-                <p className="text-gray-800 font-medium">{q.question}</p>
-              </div>
-              <div className="grid gap-2 pl-8">
-                {q.options.map((option, optIndex) => (
-                  <button
-                    key={optIndex}
-                    onClick={() => {
-                      const newAnswers = [...selectedAnswers];
-                      newAnswers[qIndex] = optIndex;
-                      setSelectedAnswers(newAnswers);
-                    }}
-                    className={clsx(
-                      'w-full text-left px-4 py-3 rounded-lg border-2 transition-all',
-                      selectedAnswers[qIndex] === optIndex
-                        ? 'border-brand-500 bg-brand-50 text-brand-700'
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                    )}
-                  >
-                    <span className="font-medium mr-2">{String.fromCharCode(65 + optIndex)}.</span>
-                    {option}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex justify-between items-center pt-4 border-t border-gray-100">
-          <p className="text-sm text-gray-500">
-            Must get all {passThreshold} correct to skip
-          </p>
-          <div className="flex gap-3">
-            <Button variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={isSubmitting || !allAnswered}
-              leftIcon={isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined}
-            >
-              {isSubmitting ? 'Checking...' : 'Submit Answers'}
-            </Button>
-          </div>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
 // Improvement Areas Section - shows current improve areas set during reflections
 function ImproveAreasSection({
   improvementAreas,
@@ -332,13 +208,10 @@ export function PlanPage() {
     activeSession,
     fetchActiveSession,
     updateSession,
-    submitSkipTest,
     error,
     clearError,
   } = useSessionStore();
   const { hasTierAccess } = useAuthStore();
-  const [skipTestDay, setSkipTestDay] = useState<number | null>(null);
-  const [skipTestResult, setSkipTestResult] = useState<{ passed: boolean; message: string } | null>(null);
 
   useEffect(() => {
     if (!activeSession) {
@@ -349,39 +222,6 @@ export function PlanPage() {
   const handleStartLearning = () => {
     // Navigate to today page which shows day preview
     navigate('/today');
-  };
-
-  const handleOpenSkipTest = (dayNumber: number) => {
-    setSkipTestDay(dayNumber);
-    setSkipTestResult(null);
-  };
-
-  const handleSubmitSkipTest = async (answers: number[]) => {
-    if (skipTestDay === null) return;
-
-    try {
-      const result = await submitSkipTest(skipTestDay, answers);
-      setSkipTestResult({
-        passed: result.passed,
-        message: result.passed
-          ? `Day ${skipTestDay} skipped! You demonstrated mastery.`
-          : `${result.correctCount}/${result.totalQuestions} correct. Need ${result.passThreshold} to pass.`,
-      });
-
-      if (result.passed) {
-        setTimeout(() => {
-          setSkipTestDay(null);
-          setSkipTestResult(null);
-        }, 2000);
-      }
-    } catch (err) {
-      console.error('Failed to submit skip test:', err);
-    }
-  };
-
-  const getSkipTestForDay = (dayNumber: number) => {
-    const day = activeSession?.curriculum.days.find(d => d.day === dayNumber);
-    return day?.skipTest;
   };
 
   const handleClearImproveAreas = async () => {
@@ -492,19 +332,6 @@ export function PlanPage() {
         </div>
       )}
 
-      {/* Skip Test Modal */}
-      {skipTestDay !== null && (
-        <SkipTestModal
-          isOpen={skipTestDay !== null}
-          onClose={() => {
-            setSkipTestDay(null);
-            setSkipTestResult(null);
-          }}
-          dayNumber={skipTestDay}
-          skipTest={getSkipTestForDay(skipTestDay)}
-          onSubmit={handleSubmitSkipTest}
-        />
-      )}
     </div>
   );
 }

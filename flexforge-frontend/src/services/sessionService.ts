@@ -7,7 +7,6 @@ import type {
   ProgressStats,
   StartDayCoreResponse,
   LoadDayDeferredResponse,
-  SkipTestResponse,
   PracticeSubmitResponse,
   DayDetailsResponse,
 } from '@/types';
@@ -113,35 +112,6 @@ export const sessionService = {
   async loadDayDeferred(sessionId: string, dayNumber: number): Promise<LoadDayDeferredResponse> {
     const { data } = await api.post<LoadDayDeferredResponse>(
       `/sessions/${sessionId}/days/${dayNumber}/load-deferred`
-    );
-    return data;
-  },
-
-  /**
-   * Submit skip test answers to skip a day (multiple choice)
-   * Must get all correct to skip
-   */
-  async submitSkipTest(
-    sessionId: string,
-    dayNumber: number,
-    answers: number[]
-  ): Promise<SkipTestResponse> {
-    const { data } = await api.post<SkipTestResponse>(
-      `/sessions/${sessionId}/days/${dayNumber}/skip-test`,
-      { answers }
-    );
-    return data;
-  },
-
-  /**
-   * Force skip a day without passing the test
-   */
-  async forceSkipDay(
-    sessionId: string,
-    dayNumber: number
-  ): Promise<{ success: boolean; message: string; nextDayUnlocked: boolean }> {
-    const { data } = await api.post(
-      `/sessions/${sessionId}/days/${dayNumber}/force-skip`
     );
     return data;
   },
