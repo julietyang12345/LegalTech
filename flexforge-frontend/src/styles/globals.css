@@ -7,30 +7,16 @@
    ============================================ */
 
 @layer base {
-  /* Fix 100vw causing horizontal scroll (100vw includes scrollbar width) */
-  :root {
-    --vw: 1vw;
-  }
-
-  @supports (width: 100dvw) {
-    :root {
-      --vw: 1dvw;
-    }
-  }
-
   html {
     scroll-behavior: smooth;
-    overflow-x: clip;
   }
 
   body {
     @apply bg-gray-50 text-gray-900;
-    overflow-x: clip;
-    overscroll-behavior-x: none;
   }
 
   #root {
-    overflow-x: clip;
+    min-height: 100vh;
   }
 
   /* Focus states */

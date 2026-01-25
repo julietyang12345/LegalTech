@@ -1131,7 +1131,7 @@ export function SessionPage() {
         </div>
       </div>
 
-      {/* Spacer for fixed footer - taller on mobile */}
+      {/* Spacer for fixed footer */}
       <div className="h-32 sm:h-24" />
 
       {/* Skip Test Modal */}

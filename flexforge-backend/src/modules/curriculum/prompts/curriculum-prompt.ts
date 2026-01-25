@@ -526,6 +526,9 @@ STRUCTURE (all fields required):
 - reflection: {questions[]}
 - skipTest: {questionSets[[3 MCQs]], passThreshold:3}
 
+CONTENT RULES:
+- task1: ONLY use vocabulary from today's languageFoundationCards. No new words.
+
 Output valid JSON only.`;
 
   // Dynamic part - day-specific
@@ -1016,8 +1019,12 @@ Skill Type: ${skillType}${params.customSections ? ' (hybrid - using custom secti
 
 Today's Topics: ${skillsStr}
 
+CONTENT RULES:
+- Primarily use concepts from today's foundation cards
+- New easy concepts OK but include brief explanation inline
+- Keep new content simple and relevant
+
 Generate practice exercises that reinforce today's concepts through active application.
-Make exercises progressively challenging and practical.
 
 ${sectionInstructions}
 
@@ -1065,8 +1072,13 @@ Language: ${lang}
 Level: ${profLevel}
 Today's Topics: ${skillsStr}
 
+CONTENT RULES:
+- Primarily use vocabulary from today's foundation cards
+- New easy words OK but MUST show translation/meaning inline e.g. "苹果 (apple)"
+- Keep new vocabulary simple and relevant
+
 Generate practice exercises that reinforce today's vocabulary through active recall and production.
-Use vocabulary from today's lesson. Make exercises progressively challenging.
+Make exercises progressively challenging but always within today's scope.
 
 SECTION TYPES TO INCLUDE:
 1. fillBlank - Complete sentences with correct words (5-6 items)
@@ -1320,6 +1332,8 @@ FOUNDATION CARDS (5-6):
 - Card 1: INTRO/RECAP connecting to previous
 - Cards 2-5: Core concepts with realWorldContext
 - microQuestion types: gotit, understanding (MCQ)
+
+TASK1: Only test concepts from today's foundationCards. No new knowledge.
 
 SKILL-SPECIFIC EXERCISE GUIDANCE:
 - CODE/AI_AGENT: Browser-safe libraries preferred. Provide fixture data for external APIs. Include error handling.

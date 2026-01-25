@@ -5,8 +5,6 @@ import './styles/globals.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <div style={{ overflowX: 'clip', width: '100%', minHeight: '100vh' }}>
-      <App />
-    </div>
+    <App />
   </React.StrictMode>
 );
