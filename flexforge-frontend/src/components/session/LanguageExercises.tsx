@@ -20,6 +20,24 @@ import type {
 } from '@/types';
 import { evaluateOpenEndedResponse, QuotaTier } from '@/types';
 
+// Extended result type for open-ended that includes all AI fields
+interface OpenEndedFeedbackResult {
+  passed: boolean;
+  feedback: string;
+  score?: number;
+  evaluationType?: 'basic' | 'ai';
+  aiStrengths?: string[];
+  aiImprovements?: string[];
+  dimensionResults?: {
+    dimensionId: string;
+    label: string;
+    found: boolean;
+    hint?: string;
+    aiScore?: number;
+    aiFeedback?: string;
+  }[];
+}
+
 // ============================================
 // Shared Components
 // ============================================
@@ -1342,7 +1360,7 @@ interface OpenEndedSectionProps {
 export function OpenEndedSectionExercise({ section, onComplete }: OpenEndedSectionProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [responses, setResponses] = useState<Record<string, string>>({});
-  const [results, setResults] = useState<Record<string, { passed: boolean; feedback: string }>>({});
+  const [results, setResults] = useState<Record<string, OpenEndedFeedbackResult>>({});
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
 
@@ -1379,26 +1397,48 @@ export function OpenEndedSectionExercise({ section, onComplete }: OpenEndedSecti
       });
 
       if (evalResult.success && evalResult.result) {
+        const result = evalResult.result;
         setResults(prev => ({
           ...prev,
           [currentQuestion.id]: {
-            passed: evalResult.result!.passed,
-            feedback: evalResult.result!.feedback || (evalResult.result!.passed ? 'Good response!' : 'Consider expanding your answer.'),
+            passed: result.passed,
+            feedback: result.feedback || result.aiOverallFeedback || (result.passed ? 'Good response!' : 'Consider expanding your answer.'),
+            score: result.score,
+            evaluationType: result.evaluationType,
+            aiStrengths: result.aiStrengths,
+            aiImprovements: result.aiImprovements,
+            dimensionResults: result.dimensionResults,
           },
         }));
+        setShowFeedback(true);
       } else {
+        // Log the error for debugging
+        console.error('AI evaluation returned error:', evalResult.error);
         throw new Error(evalResult.error || 'Evaluation failed');
       }
-      setShowFeedback(true);
-    } catch {
-      // Fallback: basic word count check
+    } catch (error) {
+      console.error('AI evaluation failed:', error);
+      // Fallback: provide helpful feedback based on criteria
       const wordCount = currentResponse.trim().split(/\s+/).length;
-      const passed = wordCount >= 15;
+      const passed = wordCount >= 20;
+      const criteria = currentQuestion.evaluationCriteria;
+
+      let feedback = '';
+      if (passed) {
+        feedback = `Your response has been recorded. Consider reviewing these points:\n• ${criteria.slice(0, 2).join('\n• ')}`;
+        if (currentQuestion.sampleAnswer) {
+          feedback += '\n\nCheck the sample answer below for comparison.';
+        }
+      } else {
+        feedback = `Try to expand your answer (currently ${wordCount} words, aim for 20+). Make sure to address: ${criteria[0]}`;
+      }
+
       setResults(prev => ({
         ...prev,
         [currentQuestion.id]: {
           passed,
-          feedback: passed ? 'Response recorded.' : 'Try to provide more detail.',
+          feedback,
+          evaluationType: 'basic',
         },
       }));
       setShowFeedback(true);
@@ -1490,33 +1530,190 @@ export function OpenEndedSectionExercise({ section, onComplete }: OpenEndedSecti
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className={clsx(
-                'p-4 rounded-xl',
-                currentResult.passed ? 'bg-green-100 border border-green-200' : 'bg-amber-100 border border-amber-200'
-              )}
+              className="space-y-4"
             >
-              <div className="flex items-start gap-3">
-                {currentResult.passed ? (
-                  <Check className="w-5 h-5 text-green-600 mt-0.5" />
-                ) : (
-                  <Lightbulb className="w-5 h-5 text-amber-600 mt-0.5" />
-                )}
-                <div>
-                  <p className={currentResult.passed ? 'text-green-800' : 'text-amber-800'}>
-                    {currentResult.feedback}
-                  </p>
-                  {!currentResult.passed && currentQuestion.sampleAnswer && (
-                    <details className="mt-2">
-                      <summary className="text-sm text-amber-700 cursor-pointer hover:underline">
-                        View sample answer
-                      </summary>
-                      <p className="mt-2 text-sm text-gray-700 bg-white p-3 rounded-lg">
-                        {currentQuestion.sampleAnswer}
-                      </p>
-                    </details>
+              {/* Main feedback card */}
+              <div className={clsx(
+                'rounded-2xl overflow-hidden border-2',
+                currentResult.passed
+                  ? 'border-green-200 bg-gradient-to-br from-green-50 to-emerald-50'
+                  : 'border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50'
+              )}>
+                {/* Header with score */}
+                <div className={clsx(
+                  'px-4 py-3 flex items-center justify-between',
+                  currentResult.passed ? 'bg-green-100/50' : 'bg-amber-100/50'
+                )}>
+                  <div className="flex items-center gap-2">
+                    {currentResult.passed ? (
+                      <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center">
+                        <Check className="w-5 h-5 text-white" />
+                      </div>
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center">
+                        <Lightbulb className="w-5 h-5 text-white" />
+                      </div>
+                    )}
+                    <span className={clsx(
+                      'font-semibold',
+                      currentResult.passed ? 'text-green-800' : 'text-amber-800'
+                    )}>
+                      {currentResult.passed ? 'Great Response!' : 'Good Effort!'}
+                    </span>
+                  </div>
+
+                  {/* Score badge */}
+                  {currentResult.score !== undefined && (
+                    <div className={clsx(
+                      'px-3 py-1 rounded-full text-sm font-medium',
+                      currentResult.passed ? 'bg-green-200 text-green-800' : 'bg-amber-200 text-amber-800'
+                    )}>
+                      {Math.round(currentResult.score * 100)}%
+                    </div>
+                  )}
+
+                  {/* AI badge */}
+                  {currentResult.evaluationType === 'ai' && (
+                    <div className="flex items-center gap-1 px-2 py-1 bg-purple-100 rounded-full">
+                      <Sparkles className="w-3 h-3 text-purple-600" />
+                      <span className="text-xs font-medium text-purple-700">AI Feedback</span>
+                    </div>
                   )}
                 </div>
+
+                {/* Main feedback content */}
+                <div className="p-4">
+                  <p className={clsx(
+                    'text-sm leading-relaxed',
+                    currentResult.passed ? 'text-green-800' : 'text-amber-800'
+                  )}>
+                    {currentResult.feedback}
+                  </p>
+                </div>
               </div>
+
+              {/* Strengths section */}
+              {currentResult.aiStrengths && currentResult.aiStrengths.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="bg-white rounded-xl border border-green-200 p-4"
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center">
+                      <Check className="w-4 h-4 text-green-600" />
+                    </div>
+                    <span className="font-medium text-green-800">What you did well</span>
+                  </div>
+                  <ul className="space-y-2">
+                    {currentResult.aiStrengths.map((strength, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                        <span className="text-green-500 mt-0.5">+</span>
+                        {strength}
+                      </li>
+                    ))}
+                  </ul>
+                </motion.div>
+              )}
+
+              {/* Improvements section */}
+              {currentResult.aiImprovements && currentResult.aiImprovements.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.2 }}
+                  className="bg-white rounded-xl border border-blue-200 p-4"
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center">
+                      <ArrowRight className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <span className="font-medium text-blue-800">To strengthen your response</span>
+                  </div>
+                  <ul className="space-y-2">
+                    {currentResult.aiImprovements.map((improvement, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                        <span className="text-blue-500 mt-0.5">→</span>
+                        {improvement}
+                      </li>
+                    ))}
+                  </ul>
+                </motion.div>
+              )}
+
+              {/* Dimension results */}
+              {currentResult.dimensionResults && currentResult.dimensionResults.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="bg-white rounded-xl border border-gray-200 p-4"
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="font-medium text-gray-800">Evaluation Criteria</span>
+                  </div>
+                  <div className="space-y-2">
+                    {currentResult.dimensionResults.map((dim) => (
+                      <div key={dim.dimensionId} className="flex items-center gap-3">
+                        <div className={clsx(
+                          'w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0',
+                          dim.found ? 'bg-green-100' : 'bg-gray-100'
+                        )}>
+                          {dim.found ? (
+                            <Check className="w-3 h-3 text-green-600" />
+                          ) : (
+                            <X className="w-3 h-3 text-gray-400" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className={clsx(
+                              'text-sm',
+                              dim.found ? 'text-gray-800' : 'text-gray-500'
+                            )}>
+                              {dim.label}
+                            </span>
+                            {dim.aiScore !== undefined && (
+                              <span className={clsx(
+                                'text-xs px-1.5 py-0.5 rounded',
+                                dim.aiScore >= 0.7 ? 'bg-green-100 text-green-700' :
+                                dim.aiScore >= 0.4 ? 'bg-amber-100 text-amber-700' :
+                                'bg-gray-100 text-gray-500'
+                              )}>
+                                {Math.round(dim.aiScore * 100)}%
+                              </span>
+                            )}
+                          </div>
+                          {dim.aiFeedback && (
+                            <p className="text-xs text-gray-500 mt-0.5">{dim.aiFeedback}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Sample answer */}
+              {currentQuestion.sampleAnswer && (
+                <motion.details
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.4 }}
+                  className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+                >
+                  <summary className="px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <Lightbulb className="w-4 h-4 text-amber-500" />
+                    View sample answer
+                  </summary>
+                  <div className="px-4 pb-4 pt-2 border-t border-gray-100">
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      {currentQuestion.sampleAnswer}
+                    </p>
+                  </div>
+                </motion.details>
+              )}
             </motion.div>
           )}
 

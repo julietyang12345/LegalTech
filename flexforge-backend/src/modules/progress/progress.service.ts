@@ -553,7 +553,7 @@ ${dimensionsDescription}
 Evaluate each dimension on a 0-1 scale based on how well the learner demonstrated that element.
 Be encouraging but honest. Focus on the reasoning process, not whether you agree with their conclusion.
 
-Return ONLY valid JSON:
+Return ONLY valid JSON (no markdown, no code blocks, no extra text):
 {
   "dimensions": [
     {
@@ -575,7 +575,19 @@ Return ONLY valid JSON:
         prompt,
       );
 
-      const parsed = JSON.parse(response.content);
+      // Clean the response content - remove markdown code blocks if present
+      let jsonContent = response.content.trim();
+      // Remove ```json or ``` wrapper if present
+      if (jsonContent.startsWith('```')) {
+        jsonContent = jsonContent.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+      }
+      // Try to extract JSON object if there's extra text
+      const jsonMatch = jsonContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        jsonContent = jsonMatch[0];
+      }
+
+      const parsed = JSON.parse(jsonContent);
 
       // Map AI results to our format
       const dimensionResults = request.evaluationDimensions.map(dim => {
@@ -606,9 +618,10 @@ Return ONLY valid JSON:
         remaining: limitCheck.remaining,
       };
     } catch (error) {
+      console.error('AI evaluation error:', error?.message || error);
       return {
         success: false,
-        error: 'AI evaluation failed. Please try again or use basic evaluation.',
+        error: `AI evaluation failed: ${error?.message || 'Unknown error'}. Please try again or use basic evaluation.`,
         remaining: limitCheck.remaining,
       };
     }
