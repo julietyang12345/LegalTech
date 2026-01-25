@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../common/Button';
 import { DirectionCard } from './DirectionCard';
-import { ArrowRight, RefreshCw, HelpCircle } from 'lucide-react';
+import { ArrowRight, RefreshCw } from 'lucide-react';
 import type { LearningDirection } from '@/types';
 
 interface DirectionsStepProps {
@@ -20,7 +20,6 @@ export function DirectionsStep({
   isLoading,
 }: DirectionsStepProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [showExplanations, setShowExplanations] = useState(false);
 
   const selectedDirection = directions.find((d) => d.id === selectedId);
 
@@ -74,58 +73,15 @@ export function DirectionsStep({
           Yes, this is it
         </Button>
 
-        <div className="flex gap-3">
-          <Button
-            variant="secondary"
-            className="flex-1"
-            onClick={onRefine}
-            leftIcon={<RefreshCw className="w-4 h-4" />}
-          >
-            Not quite
-          </Button>
-          <Button
-            variant="ghost"
-            className="flex-1"
-            onClick={() => setShowExplanations(!showExplanations)}
-            leftIcon={<HelpCircle className="w-4 h-4" />}
-          >
-            {showExplanations ? 'Hide details' : 'What do these mean?'}
-          </Button>
-        </div>
+        <Button
+          variant="secondary"
+          className="w-full"
+          onClick={onRefine}
+          leftIcon={<RefreshCw className="w-4 h-4" />}
+        >
+          Not quite
+        </Button>
       </div>
-
-      {/* Explanations panel */}
-      {showExplanations && (
-        <div className="mt-6 p-4 bg-blue-50 rounded-xl border border-blue-100">
-          <h3 className="font-semibold text-blue-900 mb-3">Understanding the directions</h3>
-          <div className="space-y-3 text-sm">
-            <div className="flex items-start gap-2">
-              <span className="bg-brand-100 text-brand-700 px-2 py-0.5 rounded text-xs">
-                Concept
-              </span>
-              <p className="text-blue-800">
-                Teaches principles that work across tools. Great for building transferable
-                understanding.
-              </p>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs">
-                Tool-specific
-              </span>
-              <p className="text-blue-800">
-                Focuses on a specific tool or platform. Choose this if you know exactly
-                what you'll use.
-              </p>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="text-xs text-blue-600">Time estimates</span>
-              <p className="text-blue-800">
-                How long it takes to learn the basics. Actual sessions adapt to your pace.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

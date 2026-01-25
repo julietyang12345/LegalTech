@@ -166,7 +166,7 @@ export function CodeCompletionExercise({ section, onComplete }: CodeCompletionEx
                 value={userCode}
                 onChange={(e) => setUserCode(e.target.value)}
                 placeholder="Write your code here..."
-                className="w-full h-40 p-3 font-mono text-sm border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-gray-50"
+                className="w-full h-40 p-3 font-mono text-base border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-gray-50"
               />
             </div>
 
@@ -326,7 +326,7 @@ export function DebuggingExercise({ section, onComplete }: DebuggingExerciseProp
               <textarea
                 value={userCode}
                 onChange={(e) => setUserCode(e.target.value)}
-                className="w-full h-40 p-3 font-mono text-sm border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-gray-50"
+                className="w-full h-40 p-3 font-mono text-base border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-gray-50"
               />
             </div>
 

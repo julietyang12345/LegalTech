@@ -138,10 +138,6 @@ export function LoginPage() {
             </div>
           </Card>
 
-          {/* Demo account hint */}
-          <p className="mt-6 text-center text-sm text-gray-500">
-            Demo: <code className="bg-gray-100 px-1 rounded">demo@flexforge.ai</code> / <code className="bg-gray-100 px-1 rounded">demo123</code>
-          </p>
         </motion.div>
       </div>
     </div>

@@ -1031,7 +1031,7 @@ export function CodeSandbox({
             onChange={(e) => handleCodeChange(e.target.value)}
             readOnly={readOnly}
             className={clsx(
-              'w-full h-full p-4 font-mono text-sm resize-none',
+              'w-full h-full p-4 font-mono text-base resize-none',
               'bg-gray-900 text-gray-100',
               'focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-inset',
               readOnly && 'cursor-not-allowed opacity-75'

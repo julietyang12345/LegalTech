@@ -262,7 +262,7 @@ export function AiTutorPanel({ isOpen, onClose, sessionId, dayNumber, context }:
                     rows={1}
                     className={clsx(
                       'w-full px-4 py-2.5 pr-12 bg-white border border-gray-300 rounded-xl resize-none',
-                      'text-sm text-gray-900 placeholder-gray-400',
+                      'text-base text-gray-900 placeholder-gray-400', // text-base (16px) prevents iOS zoom on focus
                       'focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500',
                       'transition-all duration-200'
                     )}

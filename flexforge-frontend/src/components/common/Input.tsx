@@ -20,7 +20,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           ref={ref}
           className={clsx(
             'w-full px-4 py-2.5 bg-white border rounded-lg',
-            'text-gray-900 placeholder-gray-400',
+            'text-base text-gray-900 placeholder-gray-400', // text-base (16px) prevents iOS zoom on focus
             'transition-colors duration-200',
             'focus:outline-none focus:ring-2 focus:ring-brand-500/20',
             error
@@ -64,7 +64,7 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
           maxLength={maxLength}
           className={clsx(
             'w-full px-4 py-3 bg-white border rounded-lg resize-none min-h-[100px]',
-            'text-gray-900 placeholder-gray-400',
+            'text-base text-gray-900 placeholder-gray-400', // text-base (16px) prevents iOS zoom on focus
             'transition-colors duration-200',
             'focus:outline-none focus:ring-2 focus:ring-brand-500/20',
             error

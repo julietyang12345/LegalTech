@@ -190,7 +190,7 @@ export function TaskStep({ day, onComplete }: TaskStepProps) {
             }}
             placeholder="// Start typing... there's no wrong answer while learning!"
             className={clsx(
-              'w-full min-h-[240px] p-4 rounded-lg font-mono text-sm resize-y',
+              'w-full min-h-[240px] p-4 rounded-lg font-mono text-base resize-y',
               'focus:outline-none focus:ring-2 focus:ring-brand-500',
               starterCode && !hasModifiedCode
                 ? 'bg-brand-50 border-2 border-brand-200 text-gray-800'

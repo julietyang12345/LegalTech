@@ -218,7 +218,7 @@ export function RefinementPanel({
             value={userFeedback}
             onChange={(e) => setUserFeedback(e.target.value)}
             placeholder="e.g., 'I want to use Python, not no-code tools' or 'Focus on the email automation part'"
-            className="w-full p-3 rounded-lg border border-gray-200 text-sm resize-none
+            className="w-full p-3 rounded-lg border border-gray-200 text-base resize-none
                      focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
             rows={3}
           />

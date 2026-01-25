@@ -15,6 +15,18 @@ import {
   TypingSectionExercise,
   OpenEndedSectionExercise,
 } from './LanguageExercises';
+import {
+  CodeCompletionExercise,
+  DebuggingExercise,
+  OutputPredictionExercise,
+} from './CodeExercises';
+import {
+  FormCheckExercise,
+  SafetyCheckExercise,
+} from './PhysicalExercises';
+import {
+  DesignCritiqueExercise,
+} from './DesignExercises';
 import { useCompanionStore } from '@/stores/companionStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import type { CurriculumDay, Session, TaskSection, TargetLanguage } from '@/types';
@@ -223,6 +235,51 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
       case 'openEnded':
         return (
           <OpenEndedSectionExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+      // Code-specific sections
+      case 'codeCompletion':
+        return (
+          <CodeCompletionExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+      case 'debugging':
+        return (
+          <DebuggingExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+      case 'outputPrediction':
+        return (
+          <OutputPredictionExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+      // Physical-specific sections
+      case 'formCheck':
+        return (
+          <FormCheckExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+      case 'safetyCheck':
+        return (
+          <SafetyCheckExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+      // Design-specific sections
+      case 'designCritique':
+        return (
+          <DesignCritiqueExercise
             section={section}
             onComplete={handleSectionComplete}
           />
@@ -772,7 +829,7 @@ function ProjectMilestoneStep({ day, session, onComplete }: ProjectMilestoneStep
               placeholder="Describe your progress or paste your work here..."
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              className="w-full min-h-[150px] p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
+              className="w-full min-h-[150px] p-3 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
             />
           </div>
         </Card>

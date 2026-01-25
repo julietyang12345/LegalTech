@@ -374,7 +374,7 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete }: Qui
               value={textInput}
               onChange={(e) => setTextInput(e.target.value)}
               placeholder="Type your response here..."
-              className="w-full h-32 p-3 border rounded-lg resize-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+              className="w-full h-32 p-3 border rounded-lg resize-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-base"
             />
             <div className={clsx(
               'text-sm',
@@ -870,7 +870,7 @@ export function FillBlankSectionExercise({ section, onComplete }: FillBlankSecti
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && checkAnswer()}
                 placeholder="Type your answer..."
-                className="flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+                className="flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-base"
                 autoFocus
               />
               <button
@@ -999,7 +999,7 @@ export function TranslationSectionExercise({ section, onComplete }: TranslationS
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && checkAnswer()}
                 placeholder="Type your translation..."
-                className="flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+                className="flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-base"
                 autoFocus
               />
               <button
@@ -1493,7 +1493,7 @@ export function OpenEndedSectionExercise({ section, onComplete }: OpenEndedSecti
               placeholder="Type your response here..."
               disabled={!!currentResult}
               className={clsx(
-                'w-full p-4 rounded-xl border-2 resize-none transition-all min-h-[150px]',
+                'w-full p-4 rounded-xl border-2 resize-none transition-all min-h-[150px] text-base',
                 currentResult
                   ? currentResult.passed
                     ? 'border-green-300 bg-green-50'
