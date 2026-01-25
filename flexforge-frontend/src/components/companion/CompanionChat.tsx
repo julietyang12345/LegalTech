@@ -209,17 +209,17 @@ export function CompanionBubble() {
       whileHover={{ scale: 1.1 }}
       whileTap={{ scale: 0.95 }}
       className={clsx(
-        'fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg',
+        'fixed bottom-20 right-4 sm:bottom-6 sm:right-6 w-14 h-14 rounded-full shadow-lg',
         'flex items-center justify-center z-40',
         'bg-gradient-to-br from-brand-500 to-brand-600',
         'transition-transform duration-200'
       )}
     >
       <CompanionAvatar mood={currentMood} size="lg" />
-      
+
       {/* Unread indicator */}
       {hasUnread && !isOpen && (
-        <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 rounded-full 
+        <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 rounded-full
                         flex items-center justify-center text-[10px] text-white font-bold
                         animate-bounce-soft">
           !

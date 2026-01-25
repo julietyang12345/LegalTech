@@ -612,6 +612,14 @@ export type TaskFormat = 'quiz' | 'fillBlank' | 'mixed' | 'sections';
 // Language Learning Exercise Types
 // ============================================
 
+// New knowledge/vocabulary introduced in a section (shown before exercises)
+export interface NewKnowledgeItem {
+  term: string;           // The new word/concept
+  meaning: string;        // Explanation or translation
+  pronunciation?: string; // Optional pronunciation guide
+  example?: string;       // Optional example usage
+}
+
 // Matching exercise - match words to definitions
 export interface MatchingPair {
   term: string;        // Word in target language
@@ -645,6 +653,7 @@ export interface QuizSection {
   type: 'quiz';
   title: string;
   questions: QuizQuestion[];
+  newKnowledge?: NewKnowledgeItem[];
 }
 
 // Fill in the blank for language learning (sentence completion)
@@ -664,6 +673,7 @@ export interface LanguageFillBlankSection {
   title: string;
   instructions: string;
   items: LanguageFillBlankItem[];
+  newKnowledge?: NewKnowledgeItem[];
 }
 
 // Translation exercise
@@ -681,6 +691,7 @@ export interface TranslationSection {
   title: string;
   instructions: string;
   items: TranslationItem[];
+  newKnowledge?: NewKnowledgeItem[];  // New vocabulary shown before exercises
 }
 
 // Sentence reordering exercise
@@ -697,6 +708,7 @@ export interface ReorderSection {
   title: string;
   instructions: string;
   items: ReorderItem[];
+  newKnowledge?: NewKnowledgeItem[];
 }
 
 // Typing exercise
@@ -714,6 +726,7 @@ export interface TypingSection {
   title: string;
   instructions: string;
   items: TypingItem[];
+  newKnowledge?: NewKnowledgeItem[];
 }
 
 // ============================================

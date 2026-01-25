@@ -521,45 +521,6 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
         </div>
       </Card>
 
-      {/* AI Analysis (PRO feature) */}
-      <div className="space-y-3">
-        {canGetAIAnalysis ? (
-          <>
-            <Button
-              variant="secondary"
-              onClick={handleAIAnalysis}
-              isLoading={isAnalyzing}
-              disabled={!canComplete}
-              leftIcon={<Sparkles className="w-4 h-4" />}
-              className="w-full"
-            >
-              Get AI Insights
-            </Button>
-
-            {aiAnalysis && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                <Card className="bg-indigo-50 border border-indigo-200">
-                  <div className="p-4">
-                    <div className="flex items-start gap-3">
-                      <Sparkles className="w-5 h-5 text-indigo-500 flex-shrink-0" />
-                      <p className="text-indigo-700">{aiAnalysis}</p>
-                    </div>
-                  </div>
-                </Card>
-              </motion.div>
-            )}
-          </>
-        ) : (
-          <div className="flex items-center justify-center gap-2 text-sm text-gray-400 p-4">
-            <Lock className="w-4 h-4" />
-            <span>AI Insights (PRO feature)</span>
-          </div>
-        )}
-      </div>
-
       {/* Auto-adjust notice */}
       {confidence !== null && confidence < 3 && confusedConcepts.length > 0 && (
         <motion.div

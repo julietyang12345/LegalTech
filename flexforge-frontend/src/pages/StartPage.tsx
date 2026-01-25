@@ -21,11 +21,11 @@ import { Button, Card, GeneratingScreen, QuotaExceededModal } from '@/components
 import { SkillLevel } from '@/types';
 import { onboardingService } from '@/services/onboardingService';
 
-// Loading steps for curriculum generation (~50-60 seconds)
-const GENERATION_LOADING_STEPS = [
+// Loading steps for curriculum generation (~50-60 seconds, +20s for >7 days)
+const getGenerationLoadingSteps = (days: number) => [
   { icon: Search, text: 'Analyzing your skill...', duration: 5000 },
   { icon: Brain, text: 'Designing learning path...', duration: 8000 },
-  { icon: BookOpen, text: 'Building curriculum...', duration: 40000 },
+  { icon: BookOpen, text: 'Building curriculum...', duration: days > 7 ? 60000 : 40000 },
   { icon: CheckCircle, text: 'Finalizing your plan...', duration: 5000 },
 ];
 
@@ -293,10 +293,10 @@ export function StartPage() {
   if (isGenerating) {
     return (
       <GeneratingScreen
-        steps={GENERATION_LOADING_STEPS}
+        steps={getGenerationLoadingSteps(durationDays)}
         title="Creating your curriculum"
         subtitle={`Building a personalized ${skillName} learning path...`}
-        timeEstimate="This takes about 50-60 seconds"
+        timeEstimate={durationDays > 7 ? "This takes about 70-80 seconds" : "This takes about 50-60 seconds"}
       />
     );
   }

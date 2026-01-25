@@ -218,6 +218,7 @@ export function FocusModeLayout({ children, showSidebar = true }: FocusModeLayou
           {children}
         </motion.div>
       </main>
+
     </div>
   );
 }

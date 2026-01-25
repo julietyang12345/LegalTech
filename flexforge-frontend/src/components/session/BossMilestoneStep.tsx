@@ -13,6 +13,7 @@ import {
   TranslationSectionExercise,
   ReorderSectionExercise,
   TypingSectionExercise,
+  OpenEndedSectionExercise,
 } from './LanguageExercises';
 import { useCompanionStore } from '@/stores/companionStore';
 import { useSessionStore } from '@/stores/sessionStore';
@@ -216,6 +217,13 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           <TypingSectionExercise
             section={section}
             targetLanguage={targetLanguage}
+            onComplete={handleSectionComplete}
+          />
+        );
+      case 'openEnded':
+        return (
+          <OpenEndedSectionExercise
+            section={section}
             onComplete={handleSectionComplete}
           />
         );
@@ -434,16 +442,31 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           })}
         </div>
 
-        {/* Section label with skip option */}
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500">
-              Section {currentSectionIndex + 1} of {sections.length}
-            </span>
-            <span className="text-sm px-2 py-0.5 bg-gray-100 rounded-full capitalize">
-              {currentSection.type === 'fillBlank' ? 'Fill in Blank' : currentSection.type}
-            </span>
-          </div>
+        {/* Section label */}
+        <div className="mb-4 flex items-center gap-2">
+          <span className="text-sm text-gray-500">
+            Section {currentSectionIndex + 1} of {sections.length}
+          </span>
+          <span className="text-sm px-2 py-0.5 bg-gray-100 rounded-full capitalize">
+            {currentSection.type === 'fillBlank' ? 'Fill in Blank' : currentSection.type}
+          </span>
+        </div>
+
+        {/* Current section */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentSectionIndex}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.2 }}
+          >
+            {renderSection(currentSection)}
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Skip/Finish button at bottom */}
+        <div className="mt-6 flex justify-end">
           {currentSectionIndex < sections.length - 1 ? (
             <button
               onClick={() => setCurrentSectionIndex(prev => prev + 1)}
@@ -460,19 +483,6 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
             </button>
           )}
         </div>
-
-        {/* Current section */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentSectionIndex}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.2 }}
-          >
-            {renderSection(currentSection)}
-          </motion.div>
-        </AnimatePresence>
       </div>
     </StepLayout>
   );

@@ -10,7 +10,6 @@ import {
   LogOut,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
-import { CompanionChat, CompanionBubble } from '@/components/companion';
 import { StreakBadge } from '@/components/common';
 
 const NAV_ITEMS = [
@@ -163,10 +162,6 @@ export function MainLayout() {
       </main>
 
       <BottomNav />
-
-      {/* Companion */}
-      <CompanionBubble />
-      <CompanionChat />
     </div>
   );
 }

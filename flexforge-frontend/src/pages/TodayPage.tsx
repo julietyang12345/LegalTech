@@ -370,11 +370,6 @@ export function TodayPage() {
               </p>
             )}
 
-            {canStart && (
-              <p className="mt-4 text-xs text-gray-400">
-                Just one button. That's it.
-              </p>
-            )}
 
             {/* Generate New Course option */}
             <div className="mt-6 pt-4 border-t border-gray-100">
@@ -389,7 +384,7 @@ export function TodayPage() {
                 ) : (
                   <RefreshCw className="w-4 h-4" />
                 )}
-                {isRegenerating ? 'Generating new curriculum...' : 'Not satisfied? Start a new course'}
+                {isRegenerating ? 'Generating new curriculum...' : 'Want something different? Start a new course'}
               </button>
             </div>
           </div>

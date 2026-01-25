@@ -123,18 +123,6 @@ function VideoCard({
           allowFullScreen
         />
 
-        {/* Open on YouTube link - always show if we have a video */}
-        {youtubeUrl && (
-          <a
-            href={youtubeUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-white bg-black/60 hover:bg-black/80 rounded-lg transition-colors"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-            Open on YouTube
-          </a>
-        )}
       </div>
 
       {/* Video source attribution */}

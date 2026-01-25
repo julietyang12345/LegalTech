@@ -16,12 +16,40 @@ import type {
   OpenEndedSection,
   TargetLanguage,
   OpenEndedResult,
+  NewKnowledgeItem,
 } from '@/types';
 import { evaluateOpenEndedResponse, QuotaTier } from '@/types';
 
 // ============================================
 // Shared Components
 // ============================================
+
+// Display new knowledge/vocabulary before exercises
+interface NewKnowledgeBoxProps {
+  items?: NewKnowledgeItem[];
+}
+
+function NewKnowledgeBox({ items }: NewKnowledgeBoxProps) {
+  if (!items || items.length === 0) return null;
+
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 sm:p-4 mb-4">
+      <div className="flex items-center gap-2 mb-2">
+        <Sparkles className="w-4 h-4 text-amber-500" />
+        <span className="text-sm font-medium text-amber-700">New in this section:</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {items.map((item, idx) => (
+          <span key={idx} className="inline-flex items-center gap-1 px-2 py-1 bg-white rounded border border-amber-200 text-sm">
+            <strong className="text-gray-900">{item.term}</strong>
+            <span className="text-gray-500">= {item.meaning}</span>
+            {item.pronunciation && <span className="text-gray-400 text-xs">[{item.pronunciation}]</span>}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 interface ExerciseHeaderProps {
   title: string;
@@ -798,6 +826,8 @@ export function FillBlankSectionExercise({ section, onComplete }: FillBlankSecti
         progress={{ current: currentIndex + 1, total: items.length }}
       />
 
+      <NewKnowledgeBox items={section.newKnowledge} />
+
       <div className="bg-white rounded-lg p-6 shadow-sm border">
         <div className="text-lg mb-2">
           {sentenceParts[0]}
@@ -925,6 +955,8 @@ export function TranslationSectionExercise({ section, onComplete }: TranslationS
         instructions={section.instructions}
         progress={{ current: currentIndex + 1, total: items.length }}
       />
+
+      <NewKnowledgeBox items={section.newKnowledge} />
 
       <div className="bg-white rounded-lg p-6 shadow-sm border">
         <div className="mb-4">

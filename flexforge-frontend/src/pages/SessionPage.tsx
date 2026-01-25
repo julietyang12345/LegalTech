@@ -1,7 +1,7 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Zap, X, CheckCircle, XCircle, Loader2, Shuffle, Code2, HelpCircle, FileText, Sparkles, Target, BookOpen, Trophy, MessageCircle, Lock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Zap, X, CheckCircle, XCircle, Loader2, Shuffle, Code2, HelpCircle, FileText, Sparkles, Target, BookOpen, Trophy, MessageCircle, Lock, GraduationCap } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
@@ -25,6 +25,115 @@ import { ReflectionStep } from '@/components/session/ReflectionStep';
 import type { QuizTask, FillBlankTask } from '@/types';
 
 import type { SessionStep as SessionStepType } from '@/types';
+
+// Draggable AI Tutor Button for mobile
+function DraggableAiTutorButton({
+  canUseAITutor,
+  onOpenTutor,
+  onOpenUpgrade,
+}: {
+  canUseAITutor: boolean;
+  onOpenTutor: () => void;
+  onOpenUpgrade: () => void;
+}) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState(() => {
+    const saved = localStorage.getItem('ai-tutor-btn-pos');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return { right: 16, bottom: 112 };
+      }
+    }
+    return { right: 16, bottom: 112 };
+  });
+  const dragInfo = useRef({ startX: 0, startY: 0, startRight: 0, startBottom: 0, moved: false });
+
+  useEffect(() => {
+    const btn = buttonRef.current;
+    if (!btn) return;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      dragInfo.current = {
+        startX: touch.clientX,
+        startY: touch.clientY,
+        startRight: pos.right,
+        startBottom: pos.bottom,
+        moved: false,
+      };
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const deltaX = dragInfo.current.startX - touch.clientX;
+      const deltaY = dragInfo.current.startY - touch.clientY;
+
+      if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+        dragInfo.current.moved = true;
+      }
+
+      const newRight = Math.max(10, Math.min(window.innerWidth - 150, dragInfo.current.startRight + deltaX));
+      const newBottom = Math.max(10, Math.min(window.innerHeight - 60, dragInfo.current.startBottom + deltaY));
+
+      setPos({ right: newRight, bottom: newBottom });
+    };
+
+    const handleTouchEnd = () => {
+      localStorage.setItem('ai-tutor-btn-pos', JSON.stringify(pos));
+      if (!dragInfo.current.moved) {
+        if (canUseAITutor) {
+          onOpenTutor();
+        } else {
+          onOpenUpgrade();
+        }
+      }
+    };
+
+    btn.addEventListener('touchstart', handleTouchStart, { passive: false });
+    btn.addEventListener('touchmove', handleTouchMove, { passive: false });
+    btn.addEventListener('touchend', handleTouchEnd);
+
+    return () => {
+      btn.removeEventListener('touchstart', handleTouchStart);
+      btn.removeEventListener('touchmove', handleTouchMove);
+      btn.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [pos, canUseAITutor, onOpenTutor, onOpenUpgrade]);
+
+  return (
+    <button
+      ref={buttonRef}
+      onClick={() => {
+        if (!dragInfo.current.moved) {
+          if (canUseAITutor) {
+            onOpenTutor();
+          } else {
+            onOpenUpgrade();
+          }
+        }
+        dragInfo.current.moved = false;
+      }}
+      style={{
+        position: 'fixed',
+        right: pos.right,
+        bottom: pos.bottom,
+        touchAction: 'none',
+      }}
+      className={clsx(
+        'z-30 flex items-center gap-2 px-4 py-2.5 rounded-2xl shadow-lg transition-all duration-200',
+        canUseAITutor
+          ? 'bg-gradient-to-br from-focus-500 to-focus-600 text-white hover:shadow-xl active:scale-95'
+          : 'bg-gray-200 text-gray-500 hover:bg-gray-300 active:scale-95'
+      )}
+    >
+      <GraduationCap className="w-5 h-5" />
+      <span className="text-sm font-medium">AI Tutor</span>
+    </button>
+  );
+}
 
 // Skip Test Modal (Multiple Choice) - Enhanced UI
 function SkipTestModal({
@@ -1158,25 +1267,13 @@ export function SessionPage() {
         incompleteItems={incompleteItems}
       />
 
-      {/* Floating AI Tutor Button - Mobile only */}
+      {/* Floating AI Tutor Button - Mobile only (draggable) */}
       <div className="md:hidden">
-        {canUseAITutor ? (
-          <button
-            onClick={() => setShowAiTutor(true)}
-            className="fixed bottom-28 right-4 z-30 flex items-center gap-2 px-4 py-3 rounded-full bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300"
-          >
-            <Sparkles className="w-5 h-5" />
-            <span className="text-sm font-medium">Ask AI Tutor</span>
-          </button>
-        ) : (
-          <button
-            onClick={() => setShowUpgradeModal(true)}
-            className="fixed bottom-28 right-4 z-30 flex items-center gap-2 px-4 py-3 rounded-full bg-gray-100 text-gray-500 shadow-md hover:bg-gray-200 transition-all duration-300"
-          >
-            <Sparkles className="w-5 h-5" />
-            <span className="text-sm font-medium">Ask AI Tutor</span>
-          </button>
-        )}
+        <DraggableAiTutorButton
+          canUseAITutor={canUseAITutor}
+          onOpenTutor={() => setShowAiTutor(true)}
+          onOpenUpgrade={() => setShowUpgradeModal(true)}
+        />
       </div>
 
       {/* AI Tutor Panel */}

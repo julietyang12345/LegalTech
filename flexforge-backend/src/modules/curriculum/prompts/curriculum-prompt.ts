@@ -295,36 +295,54 @@ function getTierInstructions(userTier: string): string {
   }
 }
 
-// Helper to build common day header for all day detail prompts
-function getDayHeader(params: {
-  dayTitle: string;
-  skeleton?: any;
-  dayObjectives?: string[];
-  previousDayTitle?: string;
-  skillType: SkillType;
-  hoursPerDay: number;
-  suggestedLanguage?: string;
-  userTier?: string;
-  includeMode?: boolean;
-  includePrevious?: boolean;
-}): string {
-  const time = getTimeStructure(params.hoursPerDay);
-  const skills = params.skeleton?.skills?.join(', ') || params.dayObjectives?.join(', ') || '';
-  const lines = [
-    `DAY: ${params.dayTitle}`,
-    `SKILLS: ${skills}`,
-  ];
-  if (params.includePrevious !== false) {
-    lines.push(`PREVIOUS: ${params.previousDayTitle || 'N/A'}`);
+/**
+ * Get skill level guidance for content quantity and complexity
+ * BEGINNER: 1x content, foundational concepts, straightforward questions
+ * INTERMEDIATE: 1.2x content, intermediate concepts, moderate difficulty
+ * ADVANCED: 1.5x content, advanced concepts, challenging questions
+ */
+function getSkillLevelGuidance(skillLevel: SkillLevel): {
+  foundationCardCount: string;
+  quizQuestionCount: string;
+  complexityGuidance: string;
+  contentMultiplier: number;
+} {
+  switch (skillLevel) {
+    case SkillLevel.INTERMEDIATE:
+      return {
+        foundationCardCount: '6-7',
+        quizQuestionCount: '10-12',
+        complexityGuidance: `INTERMEDIATE LEVEL COMPLEXITY:
+- Concepts: Include nuanced situations, common pitfalls, and "why this works" explanations
+- Questions: Require applying knowledge to scenarios, not just recall. Include "which approach fits better" and "what would happen if" questions
+- Examples: Use realistic scenarios that combine 2-3 concepts together
+- Depth: Cover when and why to use techniques, not just what they are. Address common mistakes`,
+        contentMultiplier: 1.2,
+      };
+    case SkillLevel.ADVANCED:
+      return {
+        foundationCardCount: '7-9',
+        quizQuestionCount: '12-15',
+        complexityGuidance: `ADVANCED LEVEL COMPLEXITY:
+- Concepts: Focus on sophisticated techniques, subtle distinctions, and expert-level insights
+- Questions: Require analysis, evaluating trade-offs, handling ambiguous situations, and explaining reasoning
+- Examples: Use complex real-world scenarios with multiple valid approaches and nuanced considerations
+- Depth: Cover advanced strategies, when to break conventional rules, and how experts think about the topic`,
+        contentMultiplier: 1.5,
+      };
+    case SkillLevel.BEGINNER:
+    default:
+      return {
+        foundationCardCount: '5-6',
+        quizQuestionCount: '8-10',
+        complexityGuidance: `BEGINNER LEVEL COMPLEXITY:
+- Concepts: Focus on core fundamentals with clear "what" and "how" explanations
+- Questions: Test understanding of basics with clear right/wrong answers. Avoid trick questions
+- Examples: Use simple, focused examples that demonstrate one concept at a time
+- Depth: Cover the essentials first. Mention but don't dwell on exceptions or advanced cases`,
+        contentMultiplier: 1.0,
+      };
   }
-  lines.push(`TYPE: ${params.skillType}${params.includeMode ? ` | MODE: ${time.mode} (${time.totalMinutes} min)` : ` | ${time.totalMinutes} min/day`}`);
-  if (params.userTier) {
-    lines.push(`TIER: ${params.userTier}`);
-  }
-  if (params.suggestedLanguage) {
-    lines.push(`LANGUAGE: ${params.suggestedLanguage}`);
-  }
-  return lines.join('\n');
 }
 
 /**
@@ -402,6 +420,64 @@ export type TargetLanguage =
   | 'french' | 'german' | 'italian' | 'portuguese' | 'russian'
   | 'hindi' | 'thai' | 'vietnamese' | 'other';
 
+// ============================================
+// SHARED HELPERS (Reduce code duplication)
+// ============================================
+
+// Language feature constants
+const TONAL_LANGUAGES: TargetLanguage[] = ['chinese', 'thai', 'vietnamese'];
+const GENDERED_LANGUAGES: TargetLanguage[] = ['spanish', 'french', 'german', 'italian', 'portuguese', 'arabic', 'russian', 'hindi'];
+
+function hasTones(lang: TargetLanguage): boolean {
+  return TONAL_LANGUAGES.includes(lang);
+}
+
+function hasGender(lang: TargetLanguage): boolean {
+  return GENDERED_LANGUAGES.includes(lang);
+}
+
+// Extract skills string from skeleton or dayObjectives
+function getSkillsString(skeleton: any, dayObjectives?: string[]): string {
+  const skills = skeleton?.skills || dayObjectives || [];
+  return Array.isArray(skills) ? skills.join(', ') : String(skills);
+}
+
+// Shared reflection template
+function getReflectionTemplate(type: 'project' | 'practice' | 'language' = 'practice'): object {
+  const baseQuestions = [
+    { id: 'confidence', question: 'Rate your confidence (1-5)?', type: 'scale' },
+  ];
+
+  if (type === 'project') {
+    return {
+      questions: [
+        ...baseQuestions,
+        { id: 'clicked', question: 'What clicked today?', type: 'text' },
+        { id: 'foggy', question: "What's still unclear?", type: 'text' },
+      ],
+    };
+  }
+
+  if (type === 'language') {
+    return {
+      questions: [
+        { id: 'confidence', question: 'Rate your confidence with today\'s vocabulary (1-5)', type: 'scale' },
+        { id: 'hardest', question: 'Which exercise type was hardest?', type: 'choice', options: ['Fill in blank', 'Translation', 'Reordering', 'Typing'] },
+        { id: 'review', question: 'Which words need more review?', type: 'text' },
+      ],
+    };
+  }
+
+  // practice (intensive)
+  return {
+    questions: [
+      ...baseQuestions,
+      { id: 'application', question: 'How will you apply this?', type: 'text' },
+      { id: 'questions', question: 'What questions do you still have?', type: 'text' },
+    ],
+  };
+}
+
 export interface DayDetailParams {
   skillName: string;
   dayNumber: number;
@@ -473,10 +549,9 @@ function buildCacheableLanguageLearningPrompt(params: DayDetailParams): {
   const lang = params.targetLanguage || 'other';
   const langFeatures = getLanguageFeatures(lang);
   const profLevel = params.proficiencyLevel || 'beginner';
-  const hasTones = ['chinese', 'thai', 'vietnamese'].includes(lang);
-
-  // Static part - cacheable instructions
-  const hasGender = ['spanish', 'french', 'german', 'italian', 'portuguese', 'arabic', 'russian', 'hindi'].includes(lang);
+  const langHasTones = hasTones(lang);
+  const langHasGender = hasGender(lang);
+  const levelGuidance = getSkillLevelGuidance(params.skillLevel);
 
   const staticPart = `Generate VOCABULARY-BASED learning content for language learning.
 This is LANGUAGE LEARNING - generate vocabulary cards, NOT code.
@@ -490,8 +565,8 @@ VOCABULARY CARD FORMAT (use "languageFoundationCards" array):
   "vocabulary": {
     "term": "word in target language",
     "definition": "English meaning",
-    "romanization": "pronunciation guide (pinyin/romaji/etc)",${hasTones ? `
-    "tone": "number or [numbers] for tonal languages",` : ''}${hasGender ? `
+    "romanization": "pronunciation guide (pinyin/romaji/etc)",${langHasTones ? `
+    "tone": "number or [numbers] for tonal languages",` : ''}${langHasGender ? `
     "gender": "masculine | feminine | neuter",` : ''}
     "partOfSpeech": "noun/verb/adj/phrase",
     "proficiencyLevel": "HSK1/N5/A1/etc",
@@ -508,7 +583,7 @@ Include audioText for questions that should be spoken:
 TASK1 - QUICK PRACTICE (3-4 types, 8-10 questions total):
 1. "quiz" - MCQ: hear/see word, pick meaning (include audioText for listening, at least 2 questions)
 2. "matching" - Match words to definitions (4-6 pairs)
-3. "toneSelect" - For tonal languages: hear word, select correct tone${hasTones ? ' (REQUIRED)' : ' (skip if not tonal)'}
+3. "toneSelect" - For tonal languages: hear word, select correct tone${langHasTones ? ' (REQUIRED)' : ' (skip if not tonal)'}
 
 PRACTICE PROJECT - INTENSIVE PRACTICE (deferred, 3-4 types):
 1. "fillBlank" - Complete sentence with correct word
@@ -521,10 +596,12 @@ STRUCTURE (all fields required):
 - video: null (no video for language learning - use TTS and practice instead)
 - videoStrategy: "skip"
 - contentLayer: "language_core"
-- languageFoundationCards: 5-7 vocabulary cards (REQUIRED)
-- task1: Quick practice with 3-4 question types mixed
+- languageFoundationCards: ${levelGuidance.foundationCardCount} vocabulary cards (REQUIRED)
+- task1: Quick practice with 3-4 question types mixed, ${levelGuidance.quizQuestionCount} questions total
 - reflection: {questions[]}
 - skipTest: {questionSets[[3 MCQs]], passThreshold:3}
+
+${levelGuidance.complexityGuidance}
 
 CONTENT RULES:
 - task1: ONLY use vocabulary from today's languageFoundationCards. No new words.
@@ -538,11 +615,10 @@ Target Language: ${lang}
 Proficiency: ${profLevel}
 Features: ${langFeatures}
 ${params.previousDayTitle ? `Previous: ${params.previousDayTitle}` : ''}
-${lang === 'chinese' || lang === 'thai' || lang === 'vietnamese' ? 'Include tone numbers in vocabulary.' : ''}
-${['spanish', 'french', 'german', 'italian', 'portuguese', 'russian'].includes(lang) ? 'Include gender (masculine/feminine/neuter) in vocabulary.' : ''}`;
+${langHasTones ? 'Include tone numbers in vocabulary.' : ''}
+${langHasGender ? 'Include gender (masculine/feminine/neuter) in vocabulary.' : ''}`;
 
-  const skills = params.skeleton?.skills || params.dayObjectives || [];
-  const skillsStr = Array.isArray(skills) ? skills.join(', ') : String(skills);
+  const skillsStr = getSkillsString(params.skeleton, params.dayObjectives);
   const dayNumber = params.dayNumber;
 
   // Use explicit JSON template to guide AI
@@ -569,8 +645,8 @@ Output this JSON structure:
       "vocabulary": {
         "term": "word in ${lang}",
         "definition": "English meaning",
-        "romanization": "pronunciation guide (pinyin/romaji/etc)",${hasTones ? `
-        "tone": 1,` : ''}${hasGender ? `
+        "romanization": "pronunciation guide (pinyin/romaji/etc)",${langHasTones ? `
+        "tone": 1,` : ''}${langHasGender ? `
         "gender": "masculine",` : ''}
         "partOfSpeech": "noun/verb/adj",
         "proficiencyLevel": "${profLevel}",
@@ -605,7 +681,7 @@ Output this JSON structure:
           {"term": "word3 in ${lang}", "definition": "English meaning 3"},
           {"term": "word4 in ${lang}", "definition": "English meaning 4"}
         ]
-      }${hasTones ? `,
+      }${langHasTones ? `,
       {
         "type": "toneSelect",
         "title": "Tone Recognition",
@@ -633,8 +709,8 @@ Output this JSON structure:
 }
 
 REQUIREMENTS:
-- Generate 5-7 vocabulary cards in languageFoundationCards
-- task1.sections must include: quiz (3-4 questions, 2+ with audioText), matching (4-6 pairs)${hasTones ? ', toneSelect (2-3 questions)' : ''}
+- Generate ${levelGuidance.foundationCardCount} vocabulary cards in languageFoundationCards
+- task1.sections must include: quiz (${Math.round(4 * levelGuidance.contentMultiplier)}-${Math.round(5 * levelGuidance.contentMultiplier)} questions, 2+ with audioText), matching (${Math.round(5 * levelGuidance.contentMultiplier)}-${Math.round(7 * levelGuidance.contentMultiplier)} pairs)${langHasTones ? `, toneSelect (${Math.round(3 * levelGuidance.contentMultiplier)} questions)` : ''}
 - All vocabulary must be appropriate for ${profLevel} level`;
 
   return { staticPart, dynamicPart, userPrompt };
@@ -677,20 +753,27 @@ function buildProjectBasedDeferredPrompt(params: DayDetailParams): {
   userPrompt: string;
 } {
   const dayNumber = params.dayNumber;
-  const skills = params.skeleton?.skills || params.dayObjectives || [];
-  const skillsStr = Array.isArray(skills) ? skills.join(', ') : String(skills);
+  const skillsStr = getSkillsString(params.skeleton, params.dayObjectives);
+  const levelGuidance = getSkillLevelGuidance(params.skillLevel);
+
+  // Scale code complexity based on skill level
+  const starterCodeLines = params.skillLevel === SkillLevel.ADVANCED ? '15-35' : params.skillLevel === SkillLevel.INTERMEDIATE ? '12-30' : '10-25';
+  const solutionCodeLines = params.skillLevel === SkillLevel.ADVANCED ? '25-60' : params.skillLevel === SkillLevel.INTERMEDIATE ? '20-50' : '15-40';
+  const newCodeLines = params.skillLevel === SkillLevel.ADVANCED ? '10-25' : params.skillLevel === SkillLevel.INTERMEDIATE ? '8-20' : '5-15';
 
   const systemPrompt = `Generate DEFERRED content for Day ${dayNumber} of "${params.skillName}".
-Skill Type: ${params.skillType}
+Skill Type: ${params.skillType} | Level: ${params.skillLevel}
 Today's Topics: ${skillsStr}
 ${params.suggestedLanguage ? `Language: ${params.suggestedLanguage}` : ''}
+
+${levelGuidance.complexityGuidance}
 
 Generate bossMilestone (daily micro-step toward boss project) + reflection.
 
 BOSS MILESTONE - CRITICAL REQUIREMENTS:
-- Daily micro-step building toward boss project (5-15 lines new code for coding skills)
-- starterCode: MUST be 10-25 lines of REAL, RUNNABLE code with TODO comments marking where user adds code
-- solution: MUST be 15-40 lines of COMPLETE, WORKING code that solves the microTask
+- Daily micro-step building toward boss project (${newCodeLines} lines new code for coding skills)
+- starterCode: MUST be ${starterCodeLines} lines of REAL, RUNNABLE code with TODO comments marking where user adds code
+- solution: MUST be ${solutionCodeLines} lines of COMPLETE, WORKING code that solves the microTask
 - solutionAnnotations: 2-4 strings explaining key lines in the solution
 - hints: 3 progressive hints (level 1: conceptual, level 2: specific approach, level 3: detailed guidance)
 - setupInstructions: {files: [{path, description}], steps: [], runCommand?: "optional"}
@@ -1001,13 +1084,16 @@ function buildPracticeBasedDeferredPrompt(params: DayDetailParams): {
 } {
   const dayNumber = params.dayNumber;
   const skillType = params.skillType;
-  const skills = params.skeleton?.skills || params.dayObjectives || [];
-  const skillsStr = Array.isArray(skills) ? skills.join(', ') : String(skills);
+  const skillsStr = getSkillsString(params.skeleton, params.dayObjectives);
+  const levelGuidance = getSkillLevelGuidance(params.skillLevel);
+
+  // Calculate items per section based on skill level (base: 3-4, intermediate: 4-5, advanced: 5-6)
+  const itemsPerSection = `${Math.round(3 * levelGuidance.contentMultiplier)}-${Math.round(5 * levelGuidance.contentMultiplier)}`;
 
   // For custom sections, just list the names (AI knows formats from static instructions)
   // For standard skill types, use the existing functions
   const sectionInstructions = params.customSections
-    ? `INCLUDE THESE SECTION TYPES: ${params.customSections.intensive.join(', ')}\n(3-5 items per section, use formats from section registry)`
+    ? `INCLUDE THESE SECTION TYPES: ${params.customSections.intensive.join(', ')}\n(${itemsPerSection} items per section, use formats from section registry)`
     : getIntensiveSectionInstructions(skillType);
 
   const sectionTemplate = params.customSections
@@ -1015,16 +1101,24 @@ function buildPracticeBasedDeferredPrompt(params: DayDetailParams): {
     : getIntensiveSectionTemplate(skillType, dayNumber);
 
   const systemPrompt = `Generate INTENSIVE PRACTICE content for Day ${dayNumber} of "${params.skillName}".
-Skill Type: ${skillType}${params.customSections ? ' (hybrid - using custom sections)' : ''}
+Skill Type: ${skillType}${params.customSections ? ' (hybrid - using custom sections)' : ''} | Level: ${params.skillLevel}
 
 Today's Topics: ${skillsStr}
 
+${levelGuidance.complexityGuidance}
+
+CONTENT QUANTITY: ${itemsPerSection} items per section (scaled for ${params.skillLevel} level)
+
 CONTENT RULES:
 - Primarily use concepts from today's foundation cards
-- New easy concepts OK but include brief explanation inline
-- Keep new content simple and relevant
+- If introducing ANY new concept not from today's cards, add it to the section's "newKnowledge" array
+- Each section should have "newKnowledge" array listing new terms/concepts
 
-Generate practice exercises that reinforce today's concepts through active application.
+Generate practice exercises that reinforce today's concepts.
+
+For each section, include:
+"newKnowledge": [{"term": "concept", "meaning": "explanation"}]
+List any concepts used that weren't in today's foundation cards.
 
 ${sectionInstructions}
 
@@ -1063,28 +1157,39 @@ function buildLanguageLearningDeferredPrompt(params: DayDetailParams): {
   const lang = params.targetLanguage || 'other';
   const profLevel = params.proficiencyLevel || 'beginner';
   const dayNumber = params.dayNumber;
-  const skills = params.skeleton?.skills || params.dayObjectives || [];
-  const skillsStr = Array.isArray(skills) ? skills.join(', ') : String(skills);
+  const skillsStr = getSkillsString(params.skeleton, params.dayObjectives);
+  const levelGuidance = getSkillLevelGuidance(params.skillLevel);
+
+  // Calculate items per section based on skill level
+  const fillBlankItems = `${Math.round(5 * levelGuidance.contentMultiplier)}-${Math.round(6 * levelGuidance.contentMultiplier)}`;
+  const translationItems = `${Math.round(4 * levelGuidance.contentMultiplier)}-${Math.round(5 * levelGuidance.contentMultiplier)}`;
+  const reorderItems = `${Math.round(3 * levelGuidance.contentMultiplier)}-${Math.round(4 * levelGuidance.contentMultiplier)}`;
+  const typingItems = `${Math.round(3 * levelGuidance.contentMultiplier)}-${Math.round(4 * levelGuidance.contentMultiplier)}`;
 
   const systemPrompt = `Generate INTENSIVE PRACTICE content for Day ${dayNumber} of "${params.skillName}".
 
 Language: ${lang}
-Level: ${profLevel}
+Proficiency: ${profLevel} | Skill Level: ${params.skillLevel}
 Today's Topics: ${skillsStr}
+
+${levelGuidance.complexityGuidance}
 
 CONTENT RULES:
 - Primarily use vocabulary from today's foundation cards
-- New easy words OK but MUST show translation/meaning inline e.g. "苹果 (apple)"
-- Keep new vocabulary simple and relevant
+- If introducing ANY new word not from today's cards, add it to the section's "newKnowledge" array
+- Each section MUST have "newKnowledge" array listing new terms with meanings
 
-Generate practice exercises that reinforce today's vocabulary through active recall and production.
-Make exercises progressively challenging but always within today's scope.
+Generate practice exercises that reinforce today's vocabulary.
 
-SECTION TYPES TO INCLUDE:
-1. fillBlank - Complete sentences with correct words (5-6 items)
-2. translation - Translate between ${lang} and English (4-5 items, both directions)
-3. reorder - Arrange scrambled words into correct sentences (3-4 items)
-4. typing - Type the word/phrase shown (3-4 items)
+SECTION TYPES (each with optional newKnowledge array):
+1. fillBlank - Complete sentences (${fillBlankItems} items)
+2. translation - Translate between ${lang} and English (${translationItems} items)
+3. reorder - Arrange scrambled words (${reorderItems} items)
+4. typing - Type the word/phrase (${typingItems} items)
+
+IMPORTANT: For each section, include:
+"newKnowledge": [{"term": "word", "meaning": "translation", "pronunciation": "optional"}]
+List any words used that weren't in today's foundation cards.
 
 Output valid JSON only.`;
 
@@ -1100,6 +1205,7 @@ Output valid JSON only.`;
         "type": "fillBlank",
         "title": "Complete the Sentence",
         "instructions": "Fill in the blank with the correct word",
+        "newKnowledge": [{"term": "new word", "meaning": "translation"}],
         "items": [
           {
             "id": "fb1",
@@ -1117,6 +1223,7 @@ Output valid JSON only.`;
         "type": "translation",
         "title": "Translation Challenge",
         "instructions": "Translate the following",
+        "newKnowledge": [{"term": "new word", "meaning": "translation"}],
         "items": [
           {
             "id": "tr1",
@@ -1175,7 +1282,7 @@ Output valid JSON only.`;
   }
 }
 
-Generate 5-6 fillBlank, 4-5 translation (mix directions), 3-4 reorder, 3-4 typing items.
+Generate ${fillBlankItems} fillBlank, ${translationItems} translation (mix directions), ${reorderItems} reorder, ${typingItems} typing items.
 Use vocabulary from: ${skillsStr}`;
 
   return { systemPrompt, userPrompt };
@@ -1374,6 +1481,7 @@ export function buildCacheableCurriculumPrompt(params: CurriculumPromptParams): 
 
   // Dynamic part - user-specific context with skill guidance
   const skillGuidance = getSkillTypeGuidance(params.skillType, params.complexity, params.safetyLevel);
+  const levelGuidance = getSkillLevelGuidance(params.skillLevel);
   const dynamicPart = `Generate ${params.durationDays}-day curriculum skeleton for "${params.skillName}".
 Type: ${params.skillType} | Level: ${params.skillLevel} | ${time.totalMinutes}min/day (${time.mode})
 ${params.suggestedLanguage ? `Language: ${params.suggestedLanguage}` : ''}
@@ -1381,6 +1489,8 @@ ${params.suggestedLanguage ? `Language: ${params.suggestedLanguage}` : ''}
 ${structureInstructions}
 ${learnerContext}
 ${skillGuidance}
+
+${levelGuidance.complexityGuidance}
 
 Per day: day, title, subtitle, skills[], teaser, estimatedMinutes:${time.totalMinutes}, ${isProjectBased ? 'hasBossProject:true, bossMilestonePreview,' : ''} contentLayer, videoStrategy, transferability, skipTest.`;
 
@@ -1511,11 +1621,15 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
 
   // Dynamic part - skill name is checked against language detection in static instructions
   const skillGuidance = getSkillTypeGuidance(params.skillType, params.complexity);
+  const levelGuidance = getSkillLevelGuidance(params.skillLevel);
   const dynamicPart = `SKILL: "${params.skillName}"
 Day ${params.dayNumber}: ${params.dayTitle}
 ${params.previousDayTitle ? `Previous: ${params.previousDayTitle}` : ''}
-Type: ${params.skillType} | Sections: ${sectionTypes}
-${skillGuidance}${improvementAreasInstruction}${lessOfAreasInstruction}${reflectionInstruction}`;
+Type: ${params.skillType} | Level: ${params.skillLevel} | Sections: ${sectionTypes}
+${skillGuidance}
+
+${levelGuidance.complexityGuidance}
+CONTENT QUANTITY: ${levelGuidance.foundationCardCount} foundation cards, ${levelGuidance.quizQuestionCount} quiz/exercise questions total${improvementAreasInstruction}${lessOfAreasInstruction}${reflectionInstruction}`;
 
   // Build section-specific task1 template based on skill type
   const task1SectionsTemplate = params.customSections
@@ -1524,11 +1638,11 @@ ${skillGuidance}${improvementAreasInstruction}${lessOfAreasInstruction}${reflect
 
   // User prompt for regular (non-language) skills - CORE content only (no bossMilestone or intensivePractice)
   const userPrompt = `Day ${params.dayNumber}: "${params.dayTitle}" for skill "${params.skillName}"
-Skill Type: ${params.skillType}
+Skill Type: ${params.skillType} | Level: ${params.skillLevel}
 
 Generate CORE content only:
-- foundationCards: [5-6 cards with id, concept, explanation, realWorldContext, microQuestion]
-- task1: {id:"day${params.dayNumber}-task1", title:"Practice", estimatedMinutes:${Math.round(time.task1)}, format:"sections", passingScore:0.7, sections:[${task1SectionsTemplate}]}
+- foundationCards: [${levelGuidance.foundationCardCount} cards with id, concept, explanation, realWorldContext, microQuestion]
+- task1: {id:"day${params.dayNumber}-task1", title:"Practice", estimatedMinutes:${Math.round(time.task1)}, format:"sections", passingScore:0.7, sections with ${levelGuidance.quizQuestionCount} questions total:[${task1SectionsTemplate}]}
 
 ALWAYS INCLUDE:
 - prePrompt: {text, primeQuestions[], yesterdayRecap}
