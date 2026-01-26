@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { Layers, ChevronLeft, ChevronRight, Volume2 } from 'lucide-react';
-import { Card, MultipleChoiceQuestion, Button } from '@/components/common';
+import { Card, MultipleChoiceQuestion, Button, ExerciseLoadingScreen } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { VocabularyCard } from './VocabularyCard';
 import { useSessionStore } from '@/stores/sessionStore';
@@ -125,9 +125,18 @@ export function FoundationCardsStep({ day, session, onComplete }: FoundationCard
 
   if (!currentCard) {
     return (
-      <div className="text-center py-12">
-        <p className="text-gray-500">No foundation cards available for this day.</p>
-      </div>
+      <StepLayout
+        icon={Layers}
+        iconGradient="from-violet-400 to-violet-500"
+        title="Learn the Concepts"
+        subtitle="Loading your learning materials..."
+      >
+        <ExerciseLoadingScreen
+          type="task"
+          skillName={session.skillName}
+          dayNumber={day.day}
+        />
+      </StepLayout>
     );
   }
 
@@ -407,7 +416,6 @@ function MicroQuestionComponent({ question, onAnswer, answered, wasCorrect }: Mi
     setSelectedIndex(index);
     const isCorrect = index === question.correctIndex;
     onAnswer(isCorrect);
-    setShowExplanation(true);
   };
 
   return (

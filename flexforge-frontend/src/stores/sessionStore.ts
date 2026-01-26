@@ -115,7 +115,7 @@ const STEP_ORDER: SessionStep[] = [
 ];
 
 // Helper to get step order
-const getStepOrder = (_day: CurriculumDay | null): SessionStep[] => STEP_ORDER;
+const getStepOrder = (): SessionStep[] => STEP_ORDER;
 
 // Helper to update day statuses in curriculum days array
 const updateDayStatuses = (
@@ -204,11 +204,6 @@ export const useSessionStore = create<SessionState>()(
     set({ isLoading: true });
     try {
       const response = await sessionService.getActive();
-      // console.log('[fetchActiveSession] Fetched session:', {
-      //   id: response.session?.id,
-      //   currentDay: response.session?.currentDay,
-      //   skillName: response.session?.skillName,
-      // });
       set({ activeSession: response.session, isLoading: false });
     } catch (error: any) {
       console.error('[fetchActiveSession] Error:', error);
@@ -329,7 +324,7 @@ export const useSessionStore = create<SessionState>()(
   completeStep: (step) => {
     const { completedSteps, currentDay } = get();
 
-    const stepOrder = getStepOrder(currentDay);
+    const stepOrder = getStepOrder();
     const currentIndex = stepOrder.indexOf(step);
 
     // Find next step (skip steps that don't apply)
@@ -830,7 +825,7 @@ export const useSessionStore = create<SessionState>()(
 
   getStepProgress: () => {
     const { completedSteps, currentDay } = get();
-    const stepOrder = getStepOrder(currentDay);
+    const stepOrder = getStepOrder();
     let total = stepOrder.length;
 
     // Adjust total based on what's available (check both regular and language-specific cards)

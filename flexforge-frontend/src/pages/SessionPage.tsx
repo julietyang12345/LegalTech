@@ -7,7 +7,7 @@ import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
 import { useAuthStore } from '@/stores/authStore';
 import { FocusModeLayout } from '@/components/layout';
-import { Button, GeneratingScreen } from '@/components/common';
+import { Button, GeneratingScreen, ExerciseLoadingScreen } from '@/components/common';
 import { AiTutorPanel } from '@/components/session/AiTutorPanel';
 import { QuotaTier } from '@/types';
 import type { CurriculumDay } from '@/types';
@@ -275,12 +275,12 @@ function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session:
   // Render the appropriate component based on selected format
   const renderTaskComponent = () => {
     if (isLoadingFormat) {
-      const formatLabel = loadingFormatType === 'quiz' ? 'quiz' : 'fill-in-the-blank';
       return (
-        <div className="flex flex-col items-center justify-center py-12 gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
-          <p className="text-gray-600">Generating {formatLabel} version...</p>
-        </div>
+        <ExerciseLoadingScreen
+          type={loadingFormatType === 'quiz' ? 'quiz' : 'task'}
+          skillName={session.skillName}
+          dayNumber={day.day}
+        />
       );
     }
 
@@ -446,12 +446,12 @@ export function SessionPage() {
       const videoStrategy = (currentDay as any)?.videoStrategy;
       if (isLanguageLearning || videoStrategy === 'skip') return false;
     }
-    // Skip bossMilestone if not present (check for project-based OR practice-based content)
+    // Always show bossMilestone step (renders as either boss milestone OR intensive practice)
+    // The BossMilestoneStep component handles both project-based and practice-based curricula
+    // Don't filter based on content existence - content loads async via deferred
     if (step === 'bossMilestone') {
-      const hasProjectContent = currentDay?.bossMilestone || currentDay?.hasBossProject;
-      // Check both direct property (spread by sessionStore) and nested (legacy)
-      const hasPracticeContent = currentDay?.intensivePractice || currentDay?.deferredContent?.intensivePractice;
-      if (!hasProjectContent && !hasPracticeContent) return false;
+      // Only skip if explicitly marked as no practice day (rare edge case)
+      return true;
     }
     // Skip foundationCards if not present (check both regular and language-specific cards)
     if (step === 'foundationCards') {
@@ -631,9 +631,12 @@ export function SessionPage() {
   if (deferredContentMissing && isDeferredLoading) {
     return (
       <FocusModeLayout>
-        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-          <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
-          <p className="text-gray-600">Loading reflection questions...</p>
+        <div className="max-w-lg mx-auto">
+          <ExerciseLoadingScreen
+            type="task"
+            skillName={activeSession.skillName}
+            dayNumber={currentDay.day}
+          />
         </div>
       </FocusModeLayout>
     );

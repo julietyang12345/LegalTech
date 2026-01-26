@@ -1584,8 +1584,7 @@ Generate CORE content (task1 is generated separately in deferred content):
 
 ALWAYS INCLUDE:
 - prePrompt: {text, primeQuestions[], yesterdayRecap}
-- video: {watchPoints[], searchQuery}
-- skipTest: {questions: [{question, options, correctIndex}]} (3-4 quick check questions)`;
+- video: {watchPoints[], searchQuery}`;
 
   return { staticPart, dynamicPart, userPrompt };
 }

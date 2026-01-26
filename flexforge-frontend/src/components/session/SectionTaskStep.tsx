@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, ChevronRight, Trophy, RotateCcw } from 'lucide-react';
 import { clsx } from 'clsx';
+import { ExerciseLoadingScreen } from '@/components/common';
 import {
   QuizSectionExercise,
   MatchingSectionExercise,
@@ -300,8 +301,12 @@ export function SectionTaskStep({ day, session, onComplete }: SectionTaskStepPro
 
   if (!task || sections.length === 0) {
     return (
-      <div className="text-center py-12">
-        <p className="text-gray-500">No exercises available for this day.</p>
+      <div className="max-w-lg mx-auto">
+        <ExerciseLoadingScreen
+          type="task"
+          skillName={session.skillName}
+          dayNumber={day.day}
+        />
       </div>
     );
   }
