@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { BookOpen, Sparkles, Lock, ChevronDown, Lightbulb, Target, Plus, X, TrendingUp, TrendingDown } from 'lucide-react';
 import { Card, Button, ConfidenceSlider, QuickPick, SentenceComplete, AnimatedReveal } from '@/components/common';
@@ -18,27 +18,48 @@ interface ReflectionStepProps {
 }
 
 export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps) {
-  // State for each reflection section
-  const [confidence, setConfidence] = useState<number | null>(null);
-  const [whatClicked, setWhatClicked] = useState<string | null>(null);
+  const { hasTierAccess } = useAuthStore();
+  const { updateTaskProgress, updateSession, saveTaskProgress, getTaskProgress } = useSessionStore();
+  const canGetAIAnalysis = hasTierAccess(QuotaTier.PRO);
+
+  // Load saved progress
+  const savedProgress = getTaskProgress(day.day, 'reflection');
+
+  // State for each reflection section - initialize from saved progress
+  const [confidence, setConfidence] = useState<number | null>(
+    savedProgress?.answers?.confidence as number | null ?? null
+  );
+  const [whatClicked, setWhatClicked] = useState<string | null>(
+    savedProgress?.answers?.whatClicked as string | null ?? null
+  );
   const [whatClickedDetails, setWhatClickedDetails] = useState('');
   const [showClickedDetails, setShowClickedDetails] = useState(false);
 
-  const [whatsFoggy, setWhatsFoggy] = useState<string | null>(null);
+  const [whatsFoggy, setWhatsFoggy] = useState<string | null>(
+    savedProgress?.answers?.whatsFoggy as string | null ?? null
+  );
   const [foggyDetails, setFoggyDetails] = useState('');
-  const [showFoggyDetails, setShowFoggyDetails] = useState(false);
+  const [showFoggyDetails, setShowFoggyDetails] = useState(
+    !!(savedProgress?.answers?.whatsFoggy)
+  );
 
   const [lockInSentence, setLockInSentence] = useState('');
 
-  const [warmupPlan, setWarmupPlan] = useState<string | null>(null);
+  const [warmupPlan, setWarmupPlan] = useState<string | null>(
+    savedProgress?.answers?.warmupPlan as string | null ?? null
+  );
   const [warmupCustom, setWarmupCustom] = useState('');
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
 
   // Confused concepts state
-  const [confusedConcepts, setConfusedConcepts] = useState<string[]>([]);
-  const [showConceptSelector, setShowConceptSelector] = useState(false);
+  const [confusedConcepts, setConfusedConcepts] = useState<string[]>(
+    (savedProgress?.answers?.confusedConcepts as unknown as string[]) || []
+  );
+  const [showConceptSelector, setShowConceptSelector] = useState(
+    !!((savedProgress?.answers?.confusedConcepts as unknown as string[])?.length)
+  );
 
   // Quick Boost state
   const [showBoostModal, setShowBoostModal] = useState(false);
@@ -53,9 +74,20 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
   const [moreOfAreas, setMoreOfAreas] = useState<string[]>(session.improvementAreas || []);
   const [lessOfAreas, setLessOfAreas] = useState<string[]>([]);
 
-  const { hasTierAccess } = useAuthStore();
-  const { updateTaskProgress, updateSession } = useSessionStore();
-  const canGetAIAnalysis = hasTierAccess(QuotaTier.PRO);
+  // Save progress when state changes
+  useEffect(() => {
+    saveTaskProgress(day.day, 'reflection', {
+      answers: {
+        confidence: confidence as unknown as number | null,
+        whatClicked: whatClicked as unknown as number | null,
+        whatsFoggy: whatsFoggy as unknown as number | null,
+        warmupPlan: warmupPlan as unknown as number | null,
+        confusedConcepts: confusedConcepts as unknown as number | null,
+      },
+      currentIndex: 0,
+      showResults: false,
+    });
+  }, [confidence, whatClicked, whatsFoggy, warmupPlan, confusedConcepts, day.day, saveTaskProgress]);
 
   // Get foundation cards for concept selection
   const foundationCards: FoundationCard[] = day.foundationCards || [];

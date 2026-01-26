@@ -120,6 +120,7 @@ interface SectionResult {
 
 function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeStepProps) {
   const { addSystemMessage } = useCompanionStore();
+  const { saveTaskProgress, getTaskProgress } = useSessionStore();
   const targetLanguage = session.curriculum?.metadata?.targetLanguage as TargetLanguage | undefined;
 
   // Get intensive practice from deferred content (spread directly onto day by sessionStore)
@@ -128,12 +129,32 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
 
   const sections = intensivePractice?.sections || [];
 
-  const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
-  const [sectionResults, setSectionResults] = useState<Record<number, SectionResult>>({});
-  const [showResults, setShowResults] = useState(false);
-  const [hasStarted, setHasStarted] = useState(false);
+  // Load saved progress
+  const savedProgress = getTaskProgress(day.day, 'intensivePractice');
+
+  const [currentSectionIndex, setCurrentSectionIndex] = useState(
+    savedProgress?.currentIndex ?? 0
+  );
+  const [sectionResults, setSectionResults] = useState<Record<number, SectionResult>>(
+    (savedProgress?.answers as unknown as Record<number, SectionResult>) || {}
+  );
+  const [showResults, setShowResults] = useState(savedProgress?.showResults ?? false);
+  const [hasStarted, setHasStarted] = useState(
+    !!(savedProgress?.currentIndex || Object.keys(savedProgress?.answers || {}).length)
+  );
 
   const currentSection = sections[currentSectionIndex];
+
+  // Save progress when state changes
+  useEffect(() => {
+    if (hasStarted) {
+      saveTaskProgress(day.day, 'intensivePractice', {
+        answers: sectionResults as unknown as Record<string, number | null>,
+        currentIndex: currentSectionIndex,
+        showResults,
+      });
+    }
+  }, [currentSectionIndex, sectionResults, showResults, hasStarted, day.day, saveTaskProgress]);
 
   const handleSectionComplete = (score: number, total: number) => {
     setSectionResults(prev => ({
