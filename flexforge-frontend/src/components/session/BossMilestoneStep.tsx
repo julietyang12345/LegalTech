@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, ArrowRight, CheckCircle2, Lightbulb, ChevronDown, ChevronUp, BookOpen, ChevronRight, RotateCcw } from 'lucide-react';
+import { Trophy, ArrowRight, CheckCircle2, Lightbulb, ChevronDown, ChevronUp, BookOpen, ChevronRight, ChevronLeft, RotateCcw } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Card, Button, ProgressBar } from '@/components/common';
 import { StepLayout } from './StepLayout';
@@ -128,9 +128,16 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
   const intensivePractice = day.intensivePractice || day.deferredContent?.intensivePractice;
 
   const sections = intensivePractice?.sections || [];
+  const miniFoundationCards = intensivePractice?.miniFoundationCards || [];
 
   // Load saved progress
   const savedProgress = getTaskProgress(day.day, 'intensivePractice');
+
+  // Mini cards phase (shown before exercises)
+  const [miniCardIndex, setMiniCardIndex] = useState(0);
+  const [miniCardsCompleted, setMiniCardsCompleted] = useState(
+    Boolean(savedProgress?.answers?.miniCardsCompleted)
+  );
 
   const [currentSectionIndex, setCurrentSectionIndex] = useState(
     savedProgress?.currentIndex ?? 0
@@ -140,21 +147,22 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
   );
   const [showResults, setShowResults] = useState(savedProgress?.showResults ?? false);
   const [hasStarted, setHasStarted] = useState(
-    !!(savedProgress?.currentIndex || Object.keys(savedProgress?.answers || {}).length)
+    !!(savedProgress?.currentIndex || Object.keys(savedProgress?.answers || {}).length || miniCardsCompleted)
   );
 
   const currentSection = sections[currentSectionIndex];
+  const hasMiniCards = miniFoundationCards.length > 0;
 
   // Save progress when state changes
   useEffect(() => {
     if (hasStarted) {
       saveTaskProgress(day.day, 'intensivePractice', {
-        answers: sectionResults as unknown as Record<string, number | null>,
+        answers: { ...sectionResults, miniCardsCompleted } as unknown as Record<string, number | null>,
         currentIndex: currentSectionIndex,
         showResults,
       });
     }
-  }, [currentSectionIndex, sectionResults, showResults, hasStarted, day.day, saveTaskProgress]);
+  }, [currentSectionIndex, sectionResults, showResults, hasStarted, miniCardsCompleted, day.day, saveTaskProgress]);
 
   const handleSectionComplete = (score: number, total: number) => {
     setSectionResults(prev => ({
@@ -484,6 +492,95 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
             </div>
           </Card>
         </motion.div>
+      </StepLayout>
+    );
+  }
+
+  // Mini Foundation Cards phase (shown before exercises)
+  if (hasMiniCards && !miniCardsCompleted) {
+    const currentMiniCard = miniFoundationCards[miniCardIndex];
+
+    return (
+      <StepLayout
+        icon={BookOpen}
+        iconGradient="from-purple-400 to-indigo-500"
+        title="New Concepts"
+        subtitle="Learn these before practicing"
+      >
+        <div className="max-w-lg mx-auto">
+          {/* Progress dots */}
+          <div className="flex justify-center gap-2 mb-6">
+            {miniFoundationCards.map((_, i) => (
+              <div
+                key={i}
+                className={clsx(
+                  'w-2.5 h-2.5 rounded-full transition-all',
+                  i === miniCardIndex ? 'bg-purple-500 scale-125' : i < miniCardIndex ? 'bg-purple-300' : 'bg-gray-200'
+                )}
+              />
+            ))}
+          </div>
+
+          {/* Mini card */}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={miniCardIndex}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Card className="p-6">
+                <div className="text-center mb-4">
+                  <span className="text-xs font-medium text-purple-600 bg-purple-50 px-2 py-1 rounded-full">
+                    New Concept {miniCardIndex + 1} of {miniFoundationCards.length}
+                  </span>
+                </div>
+
+                <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">
+                  {currentMiniCard.concept}
+                </h3>
+
+                <p className="text-gray-700 leading-relaxed">
+                  {currentMiniCard.explanation}
+                </p>
+              </Card>
+            </motion.div>
+          </AnimatePresence>
+
+          {/* Navigation */}
+          <div className="flex justify-between mt-6">
+            <button
+              onClick={() => setMiniCardIndex(prev => prev - 1)}
+              disabled={miniCardIndex === 0}
+              className={clsx(
+                'px-4 py-2 rounded-lg flex items-center gap-2',
+                miniCardIndex === 0 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100'
+              )}
+            >
+              <ChevronLeft className="w-5 h-5" />
+              Previous
+            </button>
+
+            {miniCardIndex === miniFoundationCards.length - 1 ? (
+              <button
+                onClick={() => setMiniCardsCompleted(true)}
+                className="px-6 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors flex items-center gap-2"
+              >
+                Start Practice
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            ) : (
+              <button
+                onClick={() => setMiniCardIndex(prev => prev + 1)}
+                className="px-4 py-2 text-purple-600 hover:bg-purple-50 rounded-lg flex items-center gap-2"
+              >
+                Next
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            )}
+          </div>
+        </div>
       </StepLayout>
     );
   }

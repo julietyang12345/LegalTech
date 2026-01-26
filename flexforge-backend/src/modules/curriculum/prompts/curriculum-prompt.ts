@@ -744,6 +744,7 @@ function buildProjectBasedDeferredPrompt(params: DayDetailParams): {
   userPrompt: string;
 } {
   const dayNumber = params.dayNumber;
+  const skillType = params.skillType;
   const skillsStr = getSkillsString(params.skeleton, params.dayObjectives);
   const levelGuidance = getSkillLevelGuidance(params.skillLevel);
 
@@ -752,49 +753,59 @@ function buildProjectBasedDeferredPrompt(params: DayDetailParams): {
   const solutionCodeLines = params.skillLevel === SkillLevel.ADVANCED ? '25-60' : params.skillLevel === SkillLevel.INTERMEDIATE ? '20-50' : '15-40';
   const newCodeLines = params.skillLevel === SkillLevel.ADVANCED ? '10-25' : params.skillLevel === SkillLevel.INTERMEDIATE ? '8-20' : '5-15';
 
-  const systemPrompt = `Generate DEFERRED content for Day ${dayNumber} of "${params.skillName}".
-Skill Type: ${params.skillType} | Level: ${params.skillLevel}
-Today's Topics: ${skillsStr}
-${params.suggestedLanguage ? `Language: ${params.suggestedLanguage}` : ''}
+  // Get skill-type-specific task1 template (2 section types per skill)
+  const task1Template = getTask1SectionTemplate(skillType);
 
+  const systemPrompt = `Generate DEFERRED content for Day ${dayNumber}: "${params.skillName}"
+Type: ${params.skillType} | Level: ${params.skillLevel}${params.suggestedLanguage ? ` | Lang: ${params.suggestedLanguage}` : ''}
+Topics: ${skillsStr}
 ${levelGuidance.complexityGuidance}
 
-Generate bossMilestone (daily micro-step toward boss project) + reflection.
+TASK1: 4-6 questions testing today's foundationCards ONLY (no new knowledge)
+- Level 1 "Differentiation" (2-3 Qs): "X or Y?", compare/contrast, edge cases
+- Level 2 "Application" (2-3 Qs): "which approach fits?", "why would B fail?"
 
-BOSS MILESTONE - CRITICAL REQUIREMENTS:
-- Daily micro-step building toward boss project (${newCodeLines} lines new code for coding skills)
-- starterCode: MUST be ${starterCodeLines} lines of REAL, RUNNABLE code with TODO comments marking where user adds code
-- solution: MUST be ${solutionCodeLines} lines of COMPLETE, WORKING code that solves the microTask
-- solutionAnnotations: 2-4 strings explaining key lines in the solution
-- hints: 3 progressive hints (level 1: conceptual, level 2: specific approach, level 3: detailed guidance)
-- setupInstructions: {files: [{path, description}], steps: [], runCommand?: "optional"}
+BOSS MILESTONE (${newCodeLines} new lines):
+- starterCode: ${starterCodeLines} lines REAL RUNNABLE code with TODOs marking where user adds code
+- solution: ${solutionCodeLines} lines COMPLETE WORKING code - NO placeholders like "// COMPLETE working solution"
+- solutionAnnotations: 2-4 strings explaining key lines
+- hints: 3 progressive (conceptual → specific → detailed)
+- setupInstructions:
   - REQUIRED: Tell user which file(s) to create and where to paste code
   - files: List each file path with description (e.g., "pages/index.js", "pages/api/hello.js")
   - steps: Clear setup instructions (e.g., "Create pages/api/hello.js and paste the API code")
   - runCommand: How to run the code (e.g., "node index.js", "npm start", "npm run dev")
-- DO NOT use placeholder text like "// COMPLETE working solution" - generate ACTUAL code
-- Validation: user runs code, sees output
+- DO NOT use placeholder text - generate ACTUAL code
+- Validation: user runs code, sees expectedOutput
 
-Output valid JSON only.`;
+Output valid JSON.`;
 
   const userPrompt = `{
   "day": ${dayNumber},
+  "task1": {
+    "id": "day${dayNumber}-task1",
+    "title": "Practice",
+    "estimatedMinutes": 8,
+    "format": "sections",
+    "passingScore": 0.7,
+    "sections": ${task1Template}
+  },
   "bossMilestone": {
     "day": ${dayNumber},
     "title": "Day ${dayNumber} Contribution",
     "description": "Build a piece of your boss project",
-    "microTask": "REQUIRED: Specific task description (5-15 lines of code)",
+    "microTask": "REQUIRED: Specific task description (${newCodeLines} lines of code)",
     "dayContribution": "How this helps the final project",
     "conceptConnection": "Which foundationCard concept this applies",
     "estimatedMinutes": 10,
-    "starterCode": "REQUIRED: 5-20 lines ACTUAL starter code with TODOs marking where user adds code. ${dayNumber === 1 ? 'Start fresh.' : 'Build on previous days - include relevant code from day ' + (dayNumber - 1) + '.'}",
+    "starterCode": "REQUIRED: ${starterCodeLines} lines ACTUAL starter code with TODOs marking where user adds code.${dayNumber === 1 ? ' Start fresh.' : ' Build on previous days.'}",
     "expectedOutput": "What user should see when they run the code",
     "hints": [
       {"level": 1, "hint": "REQUIRED: Gentle conceptual hint"},
       {"level": 2, "hint": "REQUIRED: More specific approach"},
       {"level": 3, "hint": "REQUIRED: Detailed guidance"}
     ],
-    "solution": "REQUIRED: 15-40 lines COMPLETE working solution code. Must be real, runnable code.",
+    "solution": "REQUIRED: ${solutionCodeLines} lines COMPLETE working ${params.suggestedLanguage || 'code'}. Must be real, runnable code.",
     "solutionAnnotations": ["REQUIRED: 2-4 explanations of key lines in the solution"],
     "validationType": "run",
     "validationInstructions": "Run the code and verify the output",
@@ -811,10 +822,7 @@ Output valid JSON only.`;
       {"id": "foggy", "question": "What's still unclear?", "type": "text"}
     ]
   }
-}
-
-Topics: ${skillsStr}
-Generate REAL ${params.suggestedLanguage || 'code'} for starterCode and solution.`;
+}`;
 
   return { systemPrompt, userPrompt };
 }
@@ -824,48 +832,60 @@ Generate REAL ${params.suggestedLanguage || 'code'} for starterCode and solution
  * Based on SECTION_REGISTRY.intensive
  */
 function getIntensiveSectionInstructions(skillType: SkillType): string {
+  const newKnowledgeNote = `
+IMPORTANT - Each section MUST include:
+"newKnowledge": [{"term": "new concept", "meaning": "brief explanation"}]
+Introduce 2-4 NEW related concepts not covered in foundation cards.
+Use DIFFERENT scenarios than task1 (new contexts, different domains).`;
+
   switch (skillType) {
     case SkillType.CODE:
       return `SECTION TYPES TO INCLUDE:
-1. codeCompletion - Complete partial code with working solution (3-4 items)
-2. debugging - Find and fix bugs in code (3-4 items)
-3. fillBlank - Complete code statements with correct terms (3-4 items)`;
+1. codeCompletion - Complete partial code introducing NEW patterns/methods (3-4 items)
+2. debugging - Find and fix bugs, including edge cases not covered in task1 (3-4 items)
+3. fillBlank - Complete code with NEW syntax/methods related to today's topic (3-4 items)
+${newKnowledgeNote}`;
 
     case SkillType.PHYSICAL:
       return `SECTION TYPES TO INCLUDE:
-1. formCheck - Verify proper form/technique checkpoints (4-5 items)
-2. safetyCheck - True/false safety questions (3-4 items)
-3. reorder - Order the steps of movements/exercises (3-4 items)`;
+1. formCheck - Verify form including ADVANCED variations and NEW techniques (4-5 items)
+2. safetyCheck - Safety questions including NEW scenarios and equipment (3-4 items)
+3. reorder - Order steps for NEW movement combinations (3-4 items)
+${newKnowledgeNote}`;
 
     case SkillType.KNOWLEDGE:
       return `SECTION TYPES TO INCLUDE (AI chooses based on topic):
-For FACTUAL topics (history, science):
-1. fillBlank - Complete statements with correct terms (4-5 items)
-2. reorder - Order steps/events in correct sequence (3-4 items, only if topic has sequences)
-3. quiz - Multiple choice questions testing understanding (4-5 questions)
+For FACTUAL topics:
+1. fillBlank - Statements introducing RELATED facts/concepts (4-5 items)
+2. reorder - Sequences from DIFFERENT contexts (3-4 items)
+3. quiz - Questions requiring synthesis of NEW information (4-5 questions)
 
-For SOFT SKILLS/LEADERSHIP topics:
-1. fillBlank - Complete statements with correct terms (3-4 items)
-2. quiz - Multiple choice questions (3-4 questions)
-3. openEnded - Scenario-based reflection questions (2-3 items)`;
+For SOFT SKILLS/LEADERSHIP:
+1. fillBlank - Statements with NEW frameworks/models (3-4 items)
+2. quiz - Complex scenarios with NEW variables (3-4 questions)
+3. openEnded - Challenging scenarios in NEW domains (2-3 items)
+${newKnowledgeNote}`;
 
     case SkillType.DESIGN:
       return `SECTION TYPES TO INCLUDE:
-1. designCritique - Evaluate designs and identify improvements (3-4 items)
-2. quiz - Multiple choice questions on design principles (3-4 questions)
-3. matching - Match design concepts to definitions (4-5 pairs)`;
+1. designCritique - Evaluate designs using NEW principles/heuristics (3-4 items)
+2. quiz - Questions on ADVANCED principles not covered in task1 (3-4 questions)
+3. matching - Match NEW design concepts and terminology (4-5 pairs)
+${newKnowledgeNote}`;
 
     case SkillType.AI_AGENT:
       return `SECTION TYPES TO INCLUDE:
-1. codeCompletion - Complete AI/API code with working solution (3-4 items)
-2. fillBlank - Complete statements about AI concepts (3-4 items)
-3. quiz - Multiple choice questions testing understanding (3-4 questions)`;
+1. codeCompletion - Complete AI/API code with NEW parameters/methods (3-4 items)
+2. fillBlank - Statements introducing NEW AI concepts/terminology (3-4 items)
+3. quiz - Questions on ADVANCED patterns not covered in task1 (3-4 questions)
+${newKnowledgeNote}`;
 
     default:
       return `SECTION TYPES TO INCLUDE:
-1. fillBlank - Complete statements with correct terms (4-5 items)
-2. quiz - Multiple choice questions testing understanding (4-5 questions)
-3. matching - Match concepts to definitions (4-5 pairs)`;
+1. fillBlank - Statements with NEW related terms (4-5 items)
+2. quiz - Questions requiring NEW knowledge synthesis (4-5 questions)
+3. matching - Match NEW concepts to definitions (4-5 pairs)
+${newKnowledgeNote}`;
   }
 }
 
@@ -873,7 +893,7 @@ For SOFT SKILLS/LEADERSHIP topics:
  * Get intensive section JSON template per skill type
  * Based on SECTION_REGISTRY.intensive
  */
-function getIntensiveSectionTemplate(skillType: SkillType, dayNumber: number): string {
+function getIntensiveSectionTemplate(skillType: SkillType, _dayNumber: number): string {
   switch (skillType) {
     case SkillType.CODE:
     case SkillType.AI_AGENT:
@@ -1081,6 +1101,11 @@ function buildPracticeBasedDeferredPrompt(params: DayDetailParams): {
   // Calculate items per section based on skill level (base: 3-4, intermediate: 4-5, advanced: 5-6)
   const itemsPerSection = `${Math.round(3 * levelGuidance.contentMultiplier)}-${Math.round(5 * levelGuidance.contentMultiplier)}`;
 
+  // Calculate mini foundation card count based on skill level
+  const miniCardCount = params.skillLevel === SkillLevel.ADVANCED ? '4-5'
+    : params.skillLevel === SkillLevel.INTERMEDIATE ? '3-4'
+    : '2-3';
+
   // For custom sections, just list the names (AI knows formats from static instructions)
   // For standard skill types, use the existing functions
   const sectionInstructions = params.customSections
@@ -1091,49 +1116,57 @@ function buildPracticeBasedDeferredPrompt(params: DayDetailParams): {
     ? `[/* Generate sections: ${params.customSections.intensive.join(', ')} */]`
     : getIntensiveSectionTemplate(skillType, dayNumber);
 
-  const systemPrompt = `Generate INTENSIVE PRACTICE content for Day ${dayNumber} of "${params.skillName}".
-Skill Type: ${skillType}${params.customSections ? ' (hybrid - using custom sections)' : ''} | Level: ${params.skillLevel}
+  // Get skill-type-specific task1 template (2 section types per skill)
+  const task1Template = getTask1SectionTemplate(skillType);
 
-Today's Topics: ${skillsStr}
-
+  const systemPrompt = `Generate DEFERRED content for Day ${dayNumber}: "${params.skillName}"
+Type: ${skillType}${params.customSections ? ' (hybrid)' : ''} | Level: ${params.skillLevel}
+Topics: ${skillsStr}
 ${levelGuidance.complexityGuidance}
 
-CONTENT QUANTITY: ${itemsPerSection} items per section (scaled for ${params.skillLevel} level)
+TASK1: 4-6 questions testing today's foundationCards ONLY (no new knowledge)
+- Level 1 "Differentiation" (2-3 Qs): "X or Y?", compare/contrast, edge cases
+- Level 2 "Application" (2-3 Qs): "which approach fits?", "why would B fail?"
 
-CONTENT RULES:
-- Primarily use concepts from today's foundation cards
-- If introducing ANY new concept not from today's cards, add it to the section's "newKnowledge" array
-- Each section should have "newKnowledge" array listing new terms/concepts
-
-Generate practice exercises that reinforce today's concepts.
-
-For each section, include:
-"newKnowledge": [{"term": "concept", "meaning": "explanation"}]
-List any concepts used that weren't in today's foundation cards.
-
+INTENSIVE PRACTICE:
+- miniFoundationCards: ${miniCardCount} cards, NEW concepts not in foundation cards
+  Format: {id, concept, explanation: "100-150 words"} - NO microQuestion
+- sections: EXACTLY 2, higher difficulty than task1
+  For soft skills/decision-making → openEnded; for factual/code → quiz, fillBlank, etc.
+  Use BOTH today's + mini card concepts. Different scenarios than task1.
 ${sectionInstructions}
+Items per section: ${itemsPerSection}
 
-Output valid JSON only.`;
+Output valid JSON.`;
 
   const userPrompt = `{
   "day": ${dayNumber},
+  "task1": {
+    "id": "day${dayNumber}-task1",
+    "title": "Practice",
+    "estimatedMinutes": 8,
+    "format": "sections",
+    "passingScore": 0.7,
+    "sections": ${task1Template}
+  },
   "intensivePractice": {
     "id": "day${dayNumber}-intensive",
     "title": "Intensive Practice: ${params.dayTitle}",
-    "description": "Apply and reinforce today's concepts",
-    "estimatedMinutes": 10,
+    "description": "New concepts and deep practice",
+    "estimatedMinutes": 12,
+    "miniFoundationCards": [/* ${miniCardCount} cards */
+      {"id": "mini1", "concept": "New Concept", "explanation": "100-150 words..."}
+    ],
     "sections": ${sectionTemplate}
   },
   "reflection": {
     "questions": [
       {"id": "confidence", "question": "Rate your confidence (1-5)?", "type": "scale"},
       {"id": "application", "question": "How will you apply this?", "type": "text"},
-      {"id": "questions", "question": "What questions do you still have?", "type": "text"}
+      {"id": "questions", "question": "What questions remain?", "type": "text"}
     ]
   }
-}
-
-Topics: ${skillsStr}`;
+}`;
 
   return { systemPrompt, userPrompt };
 }
@@ -1157,124 +1190,58 @@ function buildLanguageLearningDeferredPrompt(params: DayDetailParams): {
   const reorderItems = `${Math.round(3 * levelGuidance.contentMultiplier)}-${Math.round(4 * levelGuidance.contentMultiplier)}`;
   const typingItems = `${Math.round(3 * levelGuidance.contentMultiplier)}-${Math.round(4 * levelGuidance.contentMultiplier)}`;
 
-  const systemPrompt = `Generate INTENSIVE PRACTICE content for Day ${dayNumber} of "${params.skillName}".
+  // Calculate mini foundation card count based on skill level
+  const miniCardCount = params.skillLevel === SkillLevel.ADVANCED ? '4-5'
+    : params.skillLevel === SkillLevel.INTERMEDIATE ? '3-4'
+    : '2-3';
 
-Language: ${lang}
-Proficiency: ${profLevel} | Skill Level: ${params.skillLevel}
-Today's Topics: ${skillsStr}
-
+  const systemPrompt = `Generate DEFERRED content for Day ${dayNumber}: "${params.skillName}"
+Language: ${lang} | Proficiency: ${profLevel} | Level: ${params.skillLevel}
+Topics: ${skillsStr}
 ${levelGuidance.complexityGuidance}
 
-CONTENT RULES:
-- Primarily use vocabulary from today's foundation cards
-- If introducing ANY new word not from today's cards, add it to the section's "newKnowledge" array
-- Each section MUST have "newKnowledge" array listing new terms with meanings
+TASK1: Quiz/fillBlank testing today's vocabulary ONLY (no new words)
 
-Generate practice exercises that reinforce today's vocabulary.
+INTENSIVE PRACTICE:
+- miniFoundationCards: ${miniCardCount} cards, NEW vocabulary not in foundation cards
+  Format: {id, concept: "Word/Phrase", explanation: "100-150 words with term, meaning, pronunciation, usage"}
+  NO microQuestion - tested in exercises
+- sections: EXACTLY 2 from: fillBlank (${fillBlankItems}), translation (${translationItems}), reorder (${reorderItems}), typing (${typingItems})
+  Use BOTH today's + mini card vocabulary
 
-SECTION TYPES (each with optional newKnowledge array):
-1. fillBlank - Complete sentences (${fillBlankItems} items)
-2. translation - Translate between ${lang} and English (${translationItems} items)
-3. reorder - Arrange scrambled words (${reorderItems} items)
-4. typing - Type the word/phrase (${typingItems} items)
-
-IMPORTANT: For each section, include:
-"newKnowledge": [{"term": "word", "meaning": "translation", "pronunciation": "optional"}]
-List any words used that weren't in today's foundation cards.
-
-Output valid JSON only.`;
+Output valid JSON.`;
 
   const userPrompt = `{
   "day": ${dayNumber},
+  "task1": {
+    "id": "day${dayNumber}-task1",
+    "title": "Vocabulary Check",
+    "estimatedMinutes": 6,
+    "format": "sections",
+    "passingScore": 0.7,
+    "sections": [
+      {"type": "quiz", "title": "Recognition", "questions": [/* 3-4 Qs */]},
+      {"type": "fillBlank", "title": "Usage", "items": [/* 2-3 items */]}
+    ]
+  },
   "intensivePractice": {
     "id": "day${dayNumber}-intensive",
     "title": "Intensive Practice: ${params.dayTitle}",
-    "description": "Reinforce today's vocabulary through writing and production",
+    "description": "New vocabulary and deep practice",
     "estimatedMinutes": 12,
-    "sections": [
-      {
-        "type": "fillBlank",
-        "title": "Complete the Sentence",
-        "instructions": "Fill in the blank with the correct word",
-        "newKnowledge": [{"term": "new word", "meaning": "translation"}],
-        "items": [
-          {
-            "id": "fb1",
-            "sentence": "Sentence with ___BLANK___ in ${lang}",
-            "romanization": "pronunciation",
-            "translation": "English with ___ blank",
-            "blank": {
-              "correctAnswers": ["correct", "alternate"],
-              "hint": "Hint"
-            }
-          }
-        ]
-      },
-      {
-        "type": "translation",
-        "title": "Translation Challenge",
-        "instructions": "Translate the following",
-        "newKnowledge": [{"term": "new word", "meaning": "translation"}],
-        "items": [
-          {
-            "id": "tr1",
-            "direction": "toTarget",
-            "prompt": "English to translate",
-            "acceptedAnswers": ["${lang} translation"],
-            "romanization": "pronunciation",
-            "hint": "Hint"
-          },
-          {
-            "id": "tr2",
-            "direction": "toEnglish",
-            "prompt": "${lang} sentence",
-            "romanization": "pronunciation",
-            "acceptedAnswers": ["English translation"],
-            "hint": "Hint"
-          }
-        ]
-      },
-      {
-        "type": "reorder",
-        "title": "Build the Sentence",
-        "instructions": "Arrange words in correct order",
-        "items": [
-          {
-            "id": "ro1",
-            "scrambled": ["word2", "word1", "word3"],
-            "correctOrder": ["word1", "word2", "word3"],
-            "translation": "English meaning",
-            "hint": "Grammar hint"
-          }
-        ]
-      },
-      {
-        "type": "typing",
-        "title": "Write What You See",
-        "instructions": "Type the word or phrase",
-        "items": [
-          {
-            "id": "ty1",
-            "prompt": "Type this",
-            "displayText": "${lang} word",
-            "acceptedAnswers": ["correct"],
-            "romanization": "pronunciation"
-          }
-        ]
-      }
-    ]
+    "miniFoundationCards": [/* ${miniCardCount} cards */
+      {"id": "mini1", "concept": "New Word in ${lang}", "explanation": "100-150 words with meaning, pronunciation, usage..."}
+    ],
+    "sections": [/* 2 sections from: fillBlank, translation, reorder, typing */]
   },
   "reflection": {
     "questions": [
-      {"id": "confidence", "question": "Rate your confidence with today's vocabulary (1-5)", "type": "scale"},
-      {"id": "hardest", "question": "Which exercise type was hardest?", "type": "choice", "options": ["Fill in blank", "Translation", "Reordering", "Typing"]},
-      {"id": "review", "question": "Which words need more review?", "type": "text"}
+      {"id": "confidence", "question": "Rate your vocabulary confidence (1-5)", "type": "scale"},
+      {"id": "hardest", "question": "Hardest exercise type?", "type": "choice", "options": ["Fill in blank", "Translation", "Reordering", "Typing"]},
+      {"id": "review", "question": "Words needing review?", "type": "text"}
     ]
   }
-}
-
-Generate ${fillBlankItems} fillBlank, ${translationItems} translation (mix directions), ${reorderItems} reorder, ${typingItems} typing items.
-Use vocabulary from: ${skillsStr}`;
+}`;
 
   return { systemPrompt, userPrompt };
 }
@@ -1360,11 +1327,17 @@ contentLayer:
   tool          = tools/platforms (software, equipment, resources)
   project       = building/applying (hands-on practice, real projects)
 
-videoStrategy:
-  skip        = text is better (simple definitions, quick facts)
-  optional    = video might help (basic concepts, simple patterns)
-  helpful     = video aids understanding (visual concepts, demonstrations)
-  recommended = video is best (complex topics, tutorials, walkthroughs)
+videoStrategy (ENFORCED BY SKILL TYPE):
+  KNOWLEDGE → ALWAYS "skip" (text + interaction is always better for concepts)
+  LANGUAGE  → ALWAYS "skip" (handled separately with audio)
+  PHYSICAL  → ALWAYS "recommended" (form demonstration requires visual)
+  CODE      → AI decides: "recommended" only when visual demo genuinely helps
+              (debugging flow, UI walkthrough, architecture animation).
+              "skip" for pure logic, algorithms, syntax, APIs.
+  DESIGN    → AI decides: "recommended" for tool workflows (Figma, software).
+              "skip" for principles, theory.
+
+  Values: skip | optional | helpful | recommended
 
 transferability: high (universal) | medium (similar domains) | low (specific context)
 
@@ -1387,55 +1360,37 @@ Output valid JSON only.`;
  * Uses UNIFIED SECTIONS FORMAT for ALL skill types
  * Note: Skill type is pre-determined by skill detector, passed via params
  */
-const DAY_DETAIL_STATIC_INSTRUCTIONS = `You generate day learning content using the UNIFIED SECTIONS FORMAT.
+const DAY_DETAIL_STATIC_INSTRUCTIONS = `You generate day learning content using PROGRESSIVE LEARNING LEVELS.
 
-TASK1 - UNIFIED SECTIONS FORMAT (format: "sections"):
-Use sections array with mixed exercise types based on skill type provided.
-
-UNIVERSAL SECTIONS (all skills):
-- quiz: {type:"quiz", title, questions[{id, question, options[], correctIndex, explanation}]}
-- matching: {type:"matching", title, pairs[{term, definition}]}
-- fillBlank: {type:"fillBlank", title, instructions, items[{id, sentence with ___BLANK___, translation, blank:{correctAnswers[], hint?}}]}
-- openEnded: {type:"openEnded", title, questions[{id, question, prompt, sampleAnswer, evaluationCriteria[]}]} - for soft skills, leadership, reflection
-
-SEQUENCE SECTIONS (PHYSICAL, ordered KNOWLEDGE only):
-- reorder: {type:"reorder", title, instructions, items[{id, scrambled[], correctOrder[], translation, hint?}]}
-
-CODE SECTIONS (CODE, AI_AGENT skills):
-- outputPrediction: {type:"outputPrediction", title, questions[{id, code, options[], correctIndex, explanation, language?}]}
-- codeCompletion: {type:"codeCompletion", title, items[{id, description, starterCode, solution, hints[], language?}]}
-- debugging: {type:"debugging", title, items[{id, buggyCode, fixedCode, hint?, explanation, language?}]}
-
-PHYSICAL SECTIONS (PHYSICAL skills):
-- formCheck: {type:"formCheck", title, items[{id, checkpoint, description, commonMistake?}]}
-- safetyCheck: {type:"safetyCheck", title, items[{id, question, correctAnswer:boolean, explanation}]}
-
-DESIGN SECTIONS (DESIGN skills):
-- designCritique: {type:"designCritique", title, items[{id, description, question, options[], correctIndex, principle, explanation, imageUrl?}]}
-
-SECTION SELECTION BY SKILL TYPE:
-- LANGUAGE_LEARNING: quiz + matching + toneSelect(if tonal) - use languageFoundationCards
-- CODE: quiz + outputPrediction + fillBlank (for task1)
-- PHYSICAL: quiz + reorder + matching (for task1) - reorder for movement sequences
-- KNOWLEDGE: AI chooses based on topic:
-    - Factual topics (history, science, trivia): quiz + matching + fillBlank
-    - Soft skills/leadership (communication, management, teamwork): quiz + fillBlank + openEnded
-- DESIGN: quiz + designCritique + matching (for task1)
-- AI_AGENT: quiz + fillBlank + outputPrediction (for task1)
-
-
-FOUNDATION CARDS (5-6):
-- Card 1: INTRO/RECAP connecting to previous
+FOUNDATION CARDS (5-6) - Include Level 1 Understanding:
+- Card 1: INTRO/RECAP connecting to previous day
 - Cards 2-5: Core concepts with realWorldContext
-- microQuestion types: gotit, understanding (MCQ)
+- Each card: 200-300 words, answers ONE question, not exhaustive
+- Format: "What is X?" → "It solves B, not A"
+- microQuestion: Understanding check built into each card
+  - "Which statement about X is correct?"
+  - "Which example matches this concept?"
+  - Types: gotit, understanding (MCQ)
 
-TASK1: Only test concepts from today's foundationCards. No new knowledge.
+CASE STUDY CARDS (1-2 per day, optional - for decision-making concepts):
+For cards about choices, trade-offs, or "when to use X vs Y":
+- Add a caseStudy object with:
+  - scenario: Real-world situation (2-3 sentences, e.g., "You're building X and encounter Y...")
+  - question: "What would you do?" or "Which approach fits?"
+  - options: 3-4 choices, each with label (1-5 words) and consequence ("This works, but..." or "This fails because...")
+  - bestChoice: Index of optimal choice (0-based)
+  - explanation: Why it's best (1-2 sentences)
+- NOT every card needs a case study - only for decision-oriented concepts
+- User must answer case study before proceeding (gated like microQuestion)
 
-SKILL-SPECIFIC EXERCISE GUIDANCE:
-- CODE/AI_AGENT: Browser-safe libraries preferred. Provide fixture data for external APIs. Include error handling.
-- PHYSICAL: Include safety checks, form cues, common mistakes. Video references where helpful.
-- KNOWLEDGE: Use concrete examples, mnemonics, application scenarios. Connect to real-world use cases.
-- DESIGN: Use before/after examples, critique exercises, visual references. Include rubrics.
+NOTE: task1 is generated in DEFERRED content (loads in background while user reads foundation cards)
+
+INTENSIVE PRACTICE (deferred content) - NEW CONCEPTS ALLOWED:
+- Introduces NEW related concepts (must add to newKnowledge array)
+- More varied scenarios and domains
+- Cross-domain transfer exercises
+- Higher difficulty, more distractors
+- Types: codeCompletion, debugging, fillBlank, openEnded, etc.
 
 Output valid JSON only.`;
 
@@ -1547,7 +1502,6 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
     return buildCacheableLanguageLearningPrompt(params);
   }
 
-  const time = getTimeStructure(params.hoursPerDay);
   // Use stored isProjectBased from metadata, fall back to calculation if not provided
   const isProjectBased = params.isProjectBased ?? usesProjectBasedLearning(params.skillType, params.outputType);
 
@@ -1611,58 +1565,63 @@ ${skillGuidance}
 ${levelGuidance.complexityGuidance}
 CONTENT QUANTITY: ${levelGuidance.foundationCardCount} foundation cards, ${levelGuidance.quizQuestionCount} quiz/exercise questions total${improvementAreasInstruction}${lessOfAreasInstruction}${reflectionInstruction}`;
 
-  // Build section-specific task1 template based on skill type
-  const task1SectionsTemplate = params.customSections
-    ? `/* Generate sections: ${params.customSections.task1.join(', ')} */`
-    : getSectionTemplateForSkillType(params.skillType, params.dayNumber);
-
-  // User prompt for regular (non-language) skills - CORE content only (no bossMilestone or intensivePractice)
+  // User prompt for regular (non-language) skills - CORE content only (task1 moved to deferred)
   const userPrompt = `Day ${params.dayNumber}: "${params.dayTitle}" for skill "${params.skillName}"
 Skill Type: ${params.skillType} | Level: ${params.skillLevel}
 
-Generate CORE content only:
-- foundationCards: [${levelGuidance.foundationCardCount} cards with id, concept, explanation, realWorldContext, microQuestion]
-- task1: {id:"day${params.dayNumber}-task1", title:"Practice", estimatedMinutes:${Math.round(time.task1)}, format:"sections", passingScore:0.7, sections with ${levelGuidance.quizQuestionCount} questions total:[${task1SectionsTemplate}]}
+Generate CORE content (task1 is generated separately in deferred content):
+
+1. foundationCards (${levelGuidance.foundationCardCount} cards):
+   - Each card: 200-300 words, answers ONE question
+   - Card 1: INTRO/RECAP connecting to previous
+   - Cards 2-5: Core concepts with realWorldContext
+   - microQuestion: Understanding check (理解型) - "which is correct?", "which example matches?"
+   - caseStudy (1-2 cards, optional): For decision-making concepts only
+     * scenario: "You're building X and encounter Y..." (2-3 sentences)
+     * question: "What would you do?"
+     * options: [{label, consequence}] (3-4 choices)
+     * bestChoice: index, explanation: why
 
 ALWAYS INCLUDE:
 - prePrompt: {text, primeQuestions[], yesterdayRecap}
-- video: {watchPoints[], searchQuery}`;
+- video: {watchPoints[], searchQuery}
+- skipTest: {questions: [{question, options, correctIndex}]} (3-4 quick check questions)`;
 
   return { staticPart, dynamicPart, userPrompt };
 }
 
 /**
- * Generate section template snippet for task1 based on skill type
+ * Generate Task1 section template based on skill type
+ * Uses 2 section types per skill type for variety while keeping it focused
  */
-function getSectionTemplateForSkillType(skillType: SkillType, dayNumber: number): string {
+function getTask1SectionTemplate(skillType: SkillType): string {
   switch (skillType) {
     case SkillType.CODE:
     case SkillType.AI_AGENT:
-      return `
-        {type:"quiz", title:"Concept Check", questions:[{id:"q1", question:"...", options:["A","B","C","D"], correctIndex:0, explanation:"..."}]},
-        {type:"outputPrediction", title:"Predict the Output", questions:[{id:"op1", code:"...", options:["output1","output2","output3","output4"], correctIndex:0, explanation:"..."}]},
-        {type:"fillBlank", title:"Complete the Code", instructions:"Fill in the blanks", items:[{id:"fb1", sentence:"code with ___BLANK___", translation:"", blank:{correctAnswers:["answer"], hint:"hint"}}]}
-      `;
+      return `[
+        {"type": "quiz", "level": 1, "title": "Differentiation", "questions": [/* 2-3 compare/contrast Qs */]},
+        {"type": "outputPrediction", "level": 2, "title": "Predict the Output", "questions": [/* 2-3 code output Qs */]}
+      ]`;
+
     case SkillType.PHYSICAL:
-      return `
-        {type:"quiz", title:"Knowledge Check", questions:[{id:"q1", question:"...", options:["A","B","C","D"], correctIndex:0, explanation:"..."}]},
-        {type:"reorder", title:"Order the Steps", instructions:"Put these steps in the correct order", items:[{id:"ro1", scrambled:["step2","step1","step3"], correctOrder:["step1","step2","step3"], translation:"Complete sequence", hint:"Think about the logical flow"}]},
-        {type:"matching", title:"Match Terms", pairs:[{term:"Term 1", definition:"Definition 1"}]}
-      `;
+      return `[
+        {"type": "quiz", "level": 1, "title": "Differentiation", "questions": [/* 2-3 form/technique Qs */]},
+        {"type": "reorder", "level": 2, "title": "Order the Steps", "items": [/* 2-3 movement sequence items */]}
+      ]`;
+
     case SkillType.DESIGN:
-      return `
-        {type:"quiz", title:"Design Principles", questions:[{id:"q1", question:"...", options:["A","B","C","D"], correctIndex:0, explanation:"..."}]},
-        {type:"designCritique", title:"Design Critique", items:[{id:"dc1", description:"Design scenario", question:"What would improve this?", options:["Option A","Option B","Option C","Option D"], correctIndex:0, principle:"Design Principle", explanation:"..."}]},
-        {type:"matching", title:"Match Concepts", pairs:[{term:"Concept 1", definition:"Definition 1"}]}
-      `;
+      return `[
+        {"type": "quiz", "level": 1, "title": "Differentiation", "questions": [/* 2-3 principle Qs */]},
+        {"type": "designCritique", "level": 2, "title": "Apply Design Thinking", "items": [/* 2-3 critique items */]}
+      ]`;
+
     case SkillType.KNOWLEDGE:
     default:
-      // AI chooses: factual → quiz+matching+fillBlank, soft skills → quiz+fillBlank+openEnded
-      return `
-        {type:"quiz", title:"Concept Check", questions:[{id:"q1", question:"...", options:["A","B","C","D"], correctIndex:0, explanation:"..."}]},
-        /* FOR FACTUAL TOPICS use: */ {type:"matching", title:"Match Terms", pairs:[{term:"Term 1", definition:"Definition 1"}]},
-        {type:"fillBlank", title:"Fill in the Blanks", instructions:"Complete the sentences", items:[{id:"fb1", sentence:"Sentence with ___BLANK___", translation:"", blank:{correctAnswers:["answer"], hint:"hint"}}]}
-        /* FOR SOFT SKILLS/LEADERSHIP use openEnded instead of matching: */ {type:"openEnded", title:"Apply Your Learning", questions:[{id:"oe1", question:"Scenario-based question...", prompt:"Describe how you would handle...", sampleAnswer:"A strong response would include...", evaluationCriteria:["Shows understanding", "Applies to real situation", "Demonstrates critical thinking"]}]}
-      `;
+      // For soft skills/leadership, AI can use openEnded instead of fillBlank
+      return `[
+        {"type": "quiz", "level": 1, "title": "Differentiation", "questions": [/* 2-3 compare/contrast Qs */]},
+        {"type": "fillBlank", "level": 2, "title": "Apply the Concepts", "items": [/* 2-3 fill-blank items */]}
+      ]`;
+      // Note: For soft skills, AI may use openEnded instead of fillBlank
   }
 }

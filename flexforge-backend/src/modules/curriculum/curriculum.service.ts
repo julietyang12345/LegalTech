@@ -673,7 +673,15 @@ Return JSON only:
     // Get strategy fields from skeleton
     const contentLayer = dayOverview.contentLayer || 'framework';
     const contentSource = dayOverview.contentSource || 'youtube';
-    const videoStrategy = dayOverview.videoStrategy || 'helpful';
+    let videoStrategy = dayOverview.videoStrategy || 'helpful';
+
+    // Enforce video strategy by skill type (override AI decision)
+    const skillType = curriculum.metadata?.skillType;
+    if (skillType === 'KNOWLEDGE' || skillType === 'LANGUAGE') {
+      videoStrategy = 'skip';  // Text + interaction is always better for concepts
+    } else if (skillType === 'PHYSICAL') {
+      videoStrategy = 'recommended';  // Form demonstration requires visual
+    }
 
     // Build search concept for university/docs searches
     const searchConcept = (dayOverview.title || '')
@@ -1121,6 +1129,21 @@ Return JSON only:
       }
 
       this.logger.log(`✅ Day ${dayNumber} DEFERRED parsed`);
+
+      // Validate intensive practice structure
+      if (deferredContent.intensivePractice) {
+        const ip = deferredContent.intensivePractice;
+
+        // Validate mini foundation cards exist (2-4)
+        if (!ip.miniFoundationCards || ip.miniFoundationCards.length < 2) {
+          this.logger.warn(`⚠️ IntensivePractice missing or insufficient mini foundation cards (${ip.miniFoundationCards?.length || 0})`);
+        }
+
+        // Validate exactly 2 sections
+        if (ip.sections && ip.sections.length !== 2) {
+          this.logger.warn(`⚠️ IntensivePractice has ${ip.sections.length} sections, expected 2`);
+        }
+      }
     } catch (error) {
       this.logger.error(`❌ Failed to parse Day ${dayNumber} DEFERRED:`, error.message);
       throw new BadRequestException('Failed to generate deferred day content. Please try again.');

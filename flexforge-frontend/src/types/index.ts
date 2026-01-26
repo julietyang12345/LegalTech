@@ -280,7 +280,7 @@ export interface CurriculumDay {
   skipTest?: SkipTest;
 
   // Split loading: backend saves content in these nested objects, merged on load
-  coreContent?: Record<string, unknown>;      // video, foundationCards, task1, prePrompt
+  coreContent?: Record<string, unknown>;      // video, foundationCards, prePrompt (task1 moved to deferredContent)
   deferredContent?: {
     reflection?: { questions: ReflectionQuestion[] };
     intensivePractice?: IntensivePractice;  // For practice-based learning
@@ -361,6 +361,20 @@ export interface MicroQuestion {
   explanation?: string;             // Shown after answering
 }
 
+// Case study embedded in foundation card (for decision-making concepts)
+export interface CaseStudyOption {
+  label: string;              // Short answer (1-5 words)
+  consequence: string;        // "This works, but..." or "This fails because..."
+}
+
+export interface EmbeddedCaseStudy {
+  scenario: string;           // "You're building X and encounter Y..." (2-3 sentences)
+  question: string;           // "What would you do?"
+  options: CaseStudyOption[]; // 3-4 choices
+  bestChoice: number;         // Index of best option (0-based)
+  explanation: string;        // Why this is best approach
+}
+
 export interface FoundationCard {
   id: string;
   concept: string;           // One-line title (max 60 chars)
@@ -369,6 +383,7 @@ export interface FoundationCard {
   realWorldContext?: string; // Why this matters in real work (1 sentence)
   videoTimestampRef?: string; // Reference to video moment (e.g., "Remember at 2:15...")
   codeExample?: string;      // Optional code snippet (max 5 lines)
+  caseStudy?: EmbeddedCaseStudy;  // Optional case study for decision-making concepts
   microQuestion: MicroQuestion;
   order: number;
 }
@@ -1397,11 +1412,19 @@ export interface DayCoreContent {
     text: string;
     primeQuestions: string[];
   };
-  video: VideoMatch;
+  video: VideoMatch;            // Conditional based on skill type
   foundationCards: FoundationCard[];
-  task1: QuizTask | FillBlankTask;  // Quiz or fill-blank for concept reinforcement
   bossMilestone?: BossMilestone;    // Daily micro-step for boss project coding
   skipTest: SkipTest;
+  // Note: task1 moved to DayDeferredContent (loads in background)
+}
+
+// Mini foundation card for intensive practice (shorter, no micro question)
+export interface MiniFoundationCard {
+  id: string;
+  concept: string;           // One-line title
+  explanation: string;       // 100-150 words (shorter than regular 200-300)
+  // No microQuestion - understanding tested in exercise sections
 }
 
 // Intensive practice for practice-based learning (shown in bossMilestone step)
@@ -1410,10 +1433,12 @@ export interface IntensivePractice {
   title: string;
   description: string;
   estimatedMinutes: number;
-  sections: TaskSection[];
+  miniFoundationCards?: MiniFoundationCard[];  // 2-4 cards introducing new concepts (shown before exercises)
+  sections: TaskSection[];                     // Exactly 2 sections
 }
 
 export interface DayDeferredContent {
+  task1?: QuizTask | FillBlankTask | SectionsTask;  // Moved from core (loads in background)
   task2?: Task;
   intensivePractice?: IntensivePractice;  // For practice-based learning
   reflection: {

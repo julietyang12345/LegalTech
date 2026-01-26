@@ -271,8 +271,8 @@ export const useSessionStore = create<SessionState>()(
     const dayData = activeSession.curriculum.days.find(d => d.day === dayNumber);
 
     // Merge saved day content into top level for refresh
-    // Backend saves to: coreContent (video, foundationCards, task1) + deferredContent (reflection)
-    // Frontend expects flat structure: day.video, day.foundationCards, etc.
+    // Backend saves to: coreContent (video, foundationCards) + deferredContent (task1, reflection, intensivePractice)
+    // Frontend expects flat structure: day.video, day.foundationCards, day.task1, etc.
     if (!dayData) {
       set({ currentDay: null, currentStep: 'prePrompt', completedSteps: [], stepStartTime: new Date() });
       return;

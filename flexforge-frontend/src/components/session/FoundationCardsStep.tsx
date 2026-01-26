@@ -7,7 +7,7 @@ import { VocabularyCard } from './VocabularyCard';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useBrowserTTS } from '@/hooks/useBrowserTTS';
 import { clsx } from 'clsx';
-import type { CurriculumDay, Session, FoundationCard, MicroQuestion, LanguageFoundationCard, TargetLanguage, LANGUAGE_FEATURES } from '@/types';
+import type { CurriculumDay, Session, FoundationCard, MicroQuestion, LanguageFoundationCard, TargetLanguage, EmbeddedCaseStudy } from '@/types';
 
 interface FoundationCardsStepProps {
   day: CurriculumDay;
@@ -283,16 +283,28 @@ export function FoundationCardsStep({ day, session, onComplete }: FoundationCard
                   </div>
                 )}
 
-                {/* Micro Question */}
-                <div className="p-6 pt-0">
-                  <MicroQuestionComponent
-                    cardId={currentCard.id}
-                    question={currentCard.microQuestion}
-                    onAnswer={(correct) => handleAnswer(currentCard.id, correct)}
-                    answered={answeredCards[currentCard.id] !== undefined}
-                    wasCorrect={answeredCards[currentCard.id]}
-                  />
-                </div>
+                {/* Case Study (if present - for decision-making concepts) */}
+                {'caseStudy' in currentCard && currentCard.caseStudy && (
+                  <div className="p-6 pt-0">
+                    <CaseStudyComponent
+                      caseStudy={currentCard.caseStudy}
+                      onAnswer={(correct) => handleAnswer(currentCard.id, correct)}
+                      answered={answeredCards[currentCard.id] !== undefined}
+                    />
+                  </div>
+                )}
+
+                {/* Micro Question (if no case study, or always if card has both) */}
+                {'caseStudy' in currentCard && currentCard.caseStudy ? null : (
+                  <div className="p-6 pt-0">
+                    <MicroQuestionComponent
+                      question={currentCard.microQuestion}
+                      onAnswer={(correct) => handleAnswer(currentCard.id, correct)}
+                      answered={answeredCards[currentCard.id] !== undefined}
+                      wasCorrect={answeredCards[currentCard.id]}
+                    />
+                  </div>
+                )}
               </Card>
             )}
           </motion.div>
@@ -346,16 +358,14 @@ export function FoundationCardsStep({ day, session, onComplete }: FoundationCard
 
 // Sub-component for micro questions
 interface MicroQuestionProps {
-  cardId: string;
   question: MicroQuestion;
   onAnswer: (correct: boolean) => void;
   answered: boolean;
   wasCorrect?: boolean;
 }
 
-function MicroQuestionComponent({ cardId, question, onAnswer, answered, wasCorrect }: MicroQuestionProps) {
+function MicroQuestionComponent({ question, onAnswer, answered, wasCorrect }: MicroQuestionProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [showExplanation, setShowExplanation] = useState(false);
 
   // "Got it" type question
   if (question.type === 'gotit') {
@@ -411,6 +421,98 @@ function MicroQuestionComponent({ cardId, question, onAnswer, answered, wasCorre
         onSelect={handleSelect}
         showResult={answered}
       />
+    </div>
+  );
+}
+
+// Case study component for decision-making cards
+interface CaseStudyComponentProps {
+  caseStudy: EmbeddedCaseStudy;
+  onAnswer: (correct: boolean) => void;
+  answered: boolean;
+}
+
+function CaseStudyComponent({ caseStudy, onAnswer, answered }: CaseStudyComponentProps) {
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [showResult, setShowResult] = useState(false);
+
+  const handleSelect = (index: number) => {
+    if (answered || showResult) return;
+    setSelectedIndex(index);
+    setShowResult(true);
+
+    // Consider it "correct" if they selected the best choice
+    const isCorrect = index === caseStudy.bestChoice;
+    onAnswer(isCorrect);
+  };
+
+  return (
+    <div className="border-t border-gray-100 pt-4">
+      {/* Scenario */}
+      <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-4 mb-4">
+        <p className="text-sm font-medium text-purple-600 mb-2">Case Study</p>
+        <p className="text-gray-800">{caseStudy.scenario}</p>
+      </div>
+
+      {/* Question */}
+      <p className="text-gray-800 font-medium mb-3">{caseStudy.question}</p>
+
+      {/* Options */}
+      <div className="space-y-2">
+        {caseStudy.options.map((option, index) => {
+          const isSelected = selectedIndex === index;
+          const isBestChoice = index === caseStudy.bestChoice;
+
+          return (
+            <button
+              key={index}
+              onClick={() => handleSelect(index)}
+              disabled={showResult}
+              className={clsx(
+                'w-full text-left p-3 rounded-lg border transition-all',
+                !showResult && 'hover:bg-gray-50 cursor-pointer',
+                showResult && isSelected && isBestChoice && 'bg-green-50 border-green-300',
+                showResult && isSelected && !isBestChoice && 'bg-amber-50 border-amber-300',
+                showResult && !isSelected && isBestChoice && 'bg-green-50 border-green-200 opacity-60',
+                showResult && !isSelected && !isBestChoice && 'opacity-40',
+                !showResult && 'border-gray-200'
+              )}
+            >
+              <div className="flex items-start gap-2">
+                <span className={clsx(
+                  'w-6 h-6 rounded-full flex items-center justify-center text-sm font-medium flex-shrink-0',
+                  showResult && isBestChoice ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'
+                )}>
+                  {String.fromCharCode(65 + index)}
+                </span>
+                <div className="flex-1">
+                  <p className="font-medium text-gray-800">{option.label}</p>
+                  {showResult && (
+                    <p className={clsx(
+                      'text-sm mt-1',
+                      isBestChoice ? 'text-green-700' : 'text-amber-700'
+                    )}>
+                      {option.consequence}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Best choice explanation */}
+      {showResult && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-4 p-3 bg-green-50 rounded-lg"
+        >
+          <p className="text-sm font-medium text-green-800">Best approach:</p>
+          <p className="text-sm text-green-700 mt-1">{caseStudy.explanation}</p>
+        </motion.div>
+      )}
     </div>
   );
 }
