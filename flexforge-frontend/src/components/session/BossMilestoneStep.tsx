@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Trophy, ArrowRight, CheckCircle2, Lightbulb, ChevronDown, ChevronUp, BookOpen, ChevronRight, ChevronLeft, RotateCcw } from 'lucide-react';
 import { clsx } from 'clsx';
-import { Card, Button, ProgressBar } from '@/components/common';
+import { Card, Button, ProgressBar, ExerciseLoadingScreen } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { CodeSandbox } from './CodeSandbox';
 import {
@@ -116,6 +116,16 @@ interface SectionResult {
   score: number;
   total: number;
   completed: boolean;
+  // Individual answers for persistence (question ID -> answer value)
+  answers?: Record<string, number | string | boolean>;
+  // Current question index within section
+  currentIndex?: number;
+}
+
+// Progress data passed to section components
+export interface SectionSavedProgress {
+  answers: Record<string, number | string | boolean>;
+  currentIndex: number;
 }
 
 function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeStepProps) {
@@ -164,20 +174,52 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
     }
   }, [currentSectionIndex, sectionResults, showResults, hasStarted, miniCardsCompleted, day.day, saveTaskProgress]);
 
-  const handleSectionComplete = (score: number, total: number) => {
+  const handleSectionComplete = (score: number, total: number, answers?: Record<string, number | string | boolean>) => {
     setSectionResults(prev => ({
       ...prev,
-      [currentSectionIndex]: { score, total, completed: true },
+      [currentSectionIndex]: { score, total, completed: true, answers, currentIndex: 0 },
     }));
-
-    setTimeout(() => {
-      if (currentSectionIndex < sections.length - 1) {
-        setCurrentSectionIndex(prev => prev + 1);
-      } else {
-        setShowResults(true);
-      }
-    }, 1500);
+    // No auto-advance - user uses Next/Previous buttons
   };
+
+  // Handle real-time progress changes within a section (for persistence during refresh)
+  const handleSectionProgressChange = (answers: Record<string, number | string | boolean>, currentIndex: number) => {
+    setSectionResults(prev => {
+      const existing = prev[currentSectionIndex] || { score: 0, total: 0, completed: false };
+      return {
+        ...prev,
+        [currentSectionIndex]: { ...existing, answers, currentIndex },
+      };
+    });
+  };
+
+  // Get saved progress for current section
+  const getCurrentSectionSavedProgress = (): SectionSavedProgress | undefined => {
+    const result = sectionResults[currentSectionIndex];
+    if (result?.answers) {
+      return {
+        answers: result.answers,
+        currentIndex: result.currentIndex ?? 0,
+      };
+    }
+    return undefined;
+  };
+
+  const handleNext = () => {
+    if (currentSectionIndex < sections.length - 1) {
+      setCurrentSectionIndex(prev => prev + 1);
+    } else {
+      setShowResults(true);
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentSectionIndex > 0) {
+      setCurrentSectionIndex(prev => prev - 1);
+    }
+  };
+
+  const currentSectionCompleted = !!sectionResults[currentSectionIndex]?.completed;
 
   const getTotalScore = () => {
     let totalScore = 0;
@@ -208,6 +250,8 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
   };
 
   const renderSection = (section: TaskSection) => {
+    const savedProgress = getCurrentSectionSavedProgress();
+
     switch (section.type) {
       case 'quiz':
         return (
@@ -215,6 +259,8 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
             section={section}
             targetLanguage={targetLanguage}
             onComplete={handleSectionComplete}
+            savedProgress={savedProgress}
+            onProgressChange={handleSectionProgressChange}
           />
         );
       case 'matching':
@@ -222,6 +268,8 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           <MatchingSectionExercise
             section={section}
             onComplete={handleSectionComplete}
+            savedProgress={savedProgress}
+            onProgressChange={handleSectionProgressChange}
           />
         );
       case 'toneSelect':
@@ -230,6 +278,8 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
             section={section}
             targetLanguage={targetLanguage}
             onComplete={handleSectionComplete}
+            savedProgress={savedProgress}
+            onProgressChange={handleSectionProgressChange}
           />
         );
       case 'fillBlank':
@@ -237,6 +287,8 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           <FillBlankSectionExercise
             section={section}
             onComplete={handleSectionComplete}
+            savedProgress={savedProgress}
+            onProgressChange={handleSectionProgressChange}
           />
         );
       case 'translation':
@@ -244,6 +296,8 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           <TranslationSectionExercise
             section={section}
             onComplete={handleSectionComplete}
+            savedProgress={savedProgress}
+            onProgressChange={handleSectionProgressChange}
           />
         );
       case 'reorder':
@@ -251,6 +305,8 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           <ReorderSectionExercise
             section={section}
             onComplete={handleSectionComplete}
+            savedProgress={savedProgress}
+            onProgressChange={handleSectionProgressChange}
           />
         );
       case 'typing':
@@ -259,6 +315,8 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
             section={section}
             targetLanguage={targetLanguage}
             onComplete={handleSectionComplete}
+            savedProgress={savedProgress}
+            onProgressChange={handleSectionProgressChange}
           />
         );
       case 'openEnded':
@@ -266,6 +324,8 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           <OpenEndedSectionExercise
             section={section}
             onComplete={handleSectionComplete}
+            savedProgress={savedProgress}
+            onProgressChange={handleSectionProgressChange}
           />
         );
       // Code-specific sections
@@ -274,6 +334,8 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           <CodeCompletionExercise
             section={section}
             onComplete={handleSectionComplete}
+            savedProgress={savedProgress}
+            onProgressChange={handleSectionProgressChange}
           />
         );
       case 'debugging':
@@ -281,6 +343,8 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           <DebuggingExercise
             section={section}
             onComplete={handleSectionComplete}
+            savedProgress={savedProgress}
+            onProgressChange={handleSectionProgressChange}
           />
         );
       case 'outputPrediction':
@@ -288,6 +352,8 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           <OutputPredictionExercise
             section={section}
             onComplete={handleSectionComplete}
+            savedProgress={savedProgress}
+            onProgressChange={handleSectionProgressChange}
           />
         );
       // Physical-specific sections
@@ -296,6 +362,8 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           <FormCheckExercise
             section={section}
             onComplete={handleSectionComplete}
+            savedProgress={savedProgress}
+            onProgressChange={handleSectionProgressChange}
           />
         );
       case 'safetyCheck':
@@ -303,6 +371,8 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           <SafetyCheckExercise
             section={section}
             onComplete={handleSectionComplete}
+            savedProgress={savedProgress}
+            onProgressChange={handleSectionProgressChange}
           />
         );
       // Design-specific sections
@@ -311,6 +381,8 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           <DesignCritiqueExercise
             section={section}
             onComplete={handleSectionComplete}
+            savedProgress={savedProgress}
+            onProgressChange={handleSectionProgressChange}
           />
         );
       default:
@@ -322,7 +394,7 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
     }
   };
 
-  // No intensive practice available - allow skip
+  // No intensive practice available - show cool loading screen
   if (!intensivePractice || sections.length === 0) {
     return (
       <StepLayout
@@ -331,18 +403,20 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
         title="Intensive Practice"
         subtitle="Reinforce today's concepts"
       >
-        <div className="max-w-lg mx-auto text-center py-8">
-          <BookOpen className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-          <h2 className="text-xl font-semibold text-gray-700 mb-2">Practice Loading...</h2>
-          <p className="text-gray-500 mb-6">
-            Intensive practice exercises are being generated. You can skip for now or wait.
-          </p>
-          <button
-            onClick={onComplete}
-            className="px-6 py-3 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors"
-          >
-            Continue to Reflection
-          </button>
+        <div className="max-w-lg mx-auto">
+          <ExerciseLoadingScreen
+            type="intensive"
+            skillName={session.skillName}
+            dayNumber={day.day}
+          />
+          <div className="text-center mt-4">
+            <button
+              onClick={onComplete}
+              className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              Skip for now
+            </button>
+          </div>
         </div>
       </StepLayout>
     );
@@ -617,14 +691,24 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           })}
         </div>
 
-        {/* Section label */}
-        <div className="mb-4 flex items-center gap-2">
-          <span className="text-sm text-gray-500">
-            Section {currentSectionIndex + 1} of {sections.length}
-          </span>
-          <span className="text-sm px-2 py-0.5 bg-gray-100 rounded-full capitalize">
-            {currentSection.type === 'fillBlank' ? 'Fill in Blank' : currentSection.type}
-          </span>
+        {/* Section label with skip option */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">
+              Section {currentSectionIndex + 1} of {sections.length}
+            </span>
+            <span className="text-sm px-2 py-0.5 bg-gray-100 rounded-full capitalize">
+              {currentSection.type === 'fillBlank' ? 'Fill in Blank' : currentSection.type}
+            </span>
+          </div>
+          {!currentSectionCompleted && (
+            <button
+              onClick={handleNext}
+              className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              Skip section
+            </button>
+          )}
         </div>
 
         {/* Current section */}
@@ -640,23 +724,34 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           </motion.div>
         </AnimatePresence>
 
-        {/* Skip/Finish button at bottom */}
-        <div className="mt-6 flex justify-end">
-          {currentSectionIndex < sections.length - 1 ? (
-            <button
-              onClick={() => setCurrentSectionIndex(prev => prev + 1)}
-              className="text-sm text-gray-400 hover:text-brand-500 transition-colors"
-            >
-              Skip section →
-            </button>
-          ) : (
-            <button
-              onClick={() => setShowResults(true)}
-              className="text-sm text-gray-400 hover:text-brand-500 transition-colors"
-            >
-              Finish →
-            </button>
-          )}
+        {/* Navigation buttons */}
+        <div className="mt-6 flex justify-between">
+          <button
+            onClick={handlePrevious}
+            disabled={currentSectionIndex === 0}
+            className={clsx(
+              'px-4 py-2 rounded-lg flex items-center gap-2 transition-colors',
+              currentSectionIndex === 0
+                ? 'text-gray-300 cursor-not-allowed'
+                : 'text-gray-600 hover:bg-gray-100'
+            )}
+          >
+            <ChevronLeft className="w-5 h-5" />
+            Previous
+          </button>
+
+          <button
+            onClick={handleNext}
+            className={clsx(
+              'px-4 py-2 rounded-lg flex items-center gap-2 transition-colors',
+              currentSectionCompleted
+                ? 'bg-blue-500 text-white hover:bg-blue-600'
+                : 'text-gray-600 hover:bg-gray-100'
+            )}
+          >
+            {currentSectionIndex < sections.length - 1 ? 'Next' : 'Finish'}
+            <ChevronRight className="w-5 h-5" />
+          </button>
         </div>
       </div>
     </StepLayout>

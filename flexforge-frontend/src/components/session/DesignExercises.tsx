@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, X, Palette, Lightbulb } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -6,6 +6,12 @@ import type {
   DesignCritiqueSection,
   DesignCritiqueItem,
 } from '@/types';
+
+// Progress persistence types
+export interface SectionSavedProgress {
+  answers: Record<string, number | string | boolean>;
+  currentIndex: number;
+}
 
 // ============================================
 // Shared Components
@@ -73,12 +79,21 @@ function FeedbackToast({ show, correct, message }: FeedbackToastProps) {
 
 interface DesignCritiqueExerciseProps {
   section: DesignCritiqueSection;
-  onComplete: (score: number, total: number) => void;
+  onComplete: (score: number, total: number, answers?: Record<string, number | string | boolean>) => void;
+  savedProgress?: SectionSavedProgress;
+  onProgressChange?: (answers: Record<string, number | string | boolean>, currentIndex: number) => void;
 }
 
-export function DesignCritiqueExercise({ section, onComplete }: DesignCritiqueExerciseProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, number>>({});
+export function DesignCritiqueExercise({ section, onComplete, savedProgress, onProgressChange }: DesignCritiqueExerciseProps) {
+  const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
+  const [answers, setAnswers] = useState<Record<string, number>>(() => {
+    if (!savedProgress?.answers) return {};
+    const result: Record<string, number> = {};
+    Object.entries(savedProgress.answers).forEach(([k, v]) => {
+      if (typeof v === 'number') result[k] = v;
+    });
+    return result;
+  });
   const [showFeedback, setShowFeedback] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
 
@@ -90,21 +105,27 @@ export function DesignCritiqueExercise({ section, onComplete }: DesignCritiqueEx
     if (hasAnswered) return;
 
     const correct = optionIndex === currentItem.correctIndex;
-    setAnswers(prev => ({ ...prev, [currentItem.id]: optionIndex }));
+    const newAnswers = { ...answers, [currentItem.id]: optionIndex };
+    setAnswers(newAnswers);
     setIsCorrect(correct);
     setShowFeedback(true);
+
+    // Report progress
+    if (onProgressChange) {
+      onProgressChange(newAnswers as Record<string, number | string | boolean>, currentIndex);
+    }
 
     setTimeout(() => {
       setShowFeedback(false);
       if (currentIndex < items.length - 1) {
         setCurrentIndex(prev => prev + 1);
       } else {
-        const correctCount = Object.entries({ ...answers, [currentItem.id]: optionIndex })
+        const correctCount = Object.entries(newAnswers)
           .filter(([id, ans]) => {
             const item = items.find(i => i.id === id);
             return item && ans === item.correctIndex;
           }).length;
-        onComplete(correctCount, items.length);
+        onComplete(correctCount, items.length, newAnswers as Record<string, number | string | boolean>);
       }
     }, 2500);
   };

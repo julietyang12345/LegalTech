@@ -809,64 +809,11 @@ Return JSON only:
         }));
       }
 
-      // Validate and normalize bossMilestone (for project-based curricula)
+      // Note: bossMilestone is now generated in DEFERRED content, not CORE
+      // Remove any legacy bossMilestone from core if present (old cached data)
       if (coreContent.bossMilestone) {
-        const bm = coreContent.bossMilestone;
-
-        // DEBUG: Log raw bossMilestone content
-        this.logger.log(`🔍 Day ${dayNumber} bossMilestone RAW:`, JSON.stringify({
-          title: bm.title,
-          microTask: bm.microTask?.substring(0, 50),
-          starterCodeType: typeof bm.starterCode,
-          starterCodeLength: bm.starterCode?.length || 0,
-          starterCodePreview: bm.starterCode?.substring(0, 150),
-          solutionType: typeof bm.solution,
-          solutionLength: bm.solution?.length || 0,
-          solutionPreview: bm.solution?.substring(0, 150),
-        }, null, 2));
-
-        // Check if starterCode is a placeholder or missing
-        const isStarterCodePlaceholder = !bm.starterCode ||
-          bm.starterCode.includes('REQUIRED:') ||
-          bm.starterCode.includes('GENERATE:') ||
-          bm.starterCode.includes('// Comprehensive starter') ||
-          bm.starterCode === '// Start your project here\n\n' ||
-          bm.starterCode.length < 20;
-
-        // Check if solution is a placeholder or missing
-        const isSolutionPlaceholder = !bm.solution ||
-          bm.solution.includes('REQUIRED:') ||
-          bm.solution.includes('GENERATE:') ||
-          bm.solution.includes('// COMPLETE working solution') ||
-          bm.solution.length < 30;
-
-        if (isStarterCodePlaceholder || isSolutionPlaceholder) {
-          this.logger.warn(`⚠️ Day ${dayNumber} bossMilestone has placeholder content:
-  - starterCode valid: ${!isStarterCodePlaceholder}
-  - solution valid: ${!isSolutionPlaceholder}
-  - starterCode preview: "${bm.starterCode?.substring(0, 80)}"
-  - solution preview: "${bm.solution?.substring(0, 80)}"`);
-        }
-
-        // Ensure hints are properly formatted
-        if (bm.hints && Array.isArray(bm.hints)) {
-          coreContent.bossMilestone.hints = bm.hints
-            .filter((h: any) => h.hint && !h.hint.includes('REQUIRED:'))
-            .map((h: any, index: number) => ({
-              level: h.level || index + 1,
-              hint: typeof h === 'string' ? h : h.hint,
-            }));
-        }
-
-        // Ensure solutionAnnotations are strings
-        if (bm.solutionAnnotations && Array.isArray(bm.solutionAnnotations)) {
-          coreContent.bossMilestone.solutionAnnotations = bm.solutionAnnotations
-            .filter((a: any) => a && !String(a).includes('REQUIRED:'));
-        }
-
-        this.logger.log(`✅ Day ${dayNumber} bossMilestone FINAL: starterCode=${bm.starterCode?.length || 0} chars, solution=${bm.solution?.length || 0} chars`);
-      } else {
-        this.logger.log(`ℹ️ Day ${dayNumber} has no bossMilestone (practice-based curriculum)`);
+        this.logger.log(`ℹ️ Day ${dayNumber} removing legacy bossMilestone from CORE (now in DEFERRED)`);
+        delete coreContent.bossMilestone;
       }
 
       const cardCount = coreContent.languageFoundationCards?.length || coreContent.foundationCards?.length || 0;
@@ -1130,7 +1077,7 @@ Return JSON only:
 
       this.logger.log(`✅ Day ${dayNumber} DEFERRED parsed`);
 
-      // Validate intensive practice structure
+      // Validate intensive practice structure (practice-based curricula)
       if (deferredContent.intensivePractice) {
         const ip = deferredContent.intensivePractice;
 
@@ -1143,6 +1090,35 @@ Return JSON only:
         if (ip.sections && ip.sections.length !== 2) {
           this.logger.warn(`⚠️ IntensivePractice has ${ip.sections.length} sections, expected 2`);
         }
+      }
+
+      // Validate bossMilestone structure (project-based curricula)
+      if (deferredContent.bossMilestone) {
+        const bm = deferredContent.bossMilestone;
+
+        // Ensure hints are properly formatted
+        if (bm.hints && Array.isArray(bm.hints)) {
+          deferredContent.bossMilestone.hints = bm.hints
+            .filter((h: any) => h.hint && !h.hint.includes('REQUIRED:'))
+            .map((h: any, index: number) => ({
+              level: h.level || index + 1,
+              hint: typeof h === 'string' ? h : h.hint,
+            }));
+        }
+
+        // Ensure solutionAnnotations are strings
+        if (bm.solutionAnnotations && Array.isArray(bm.solutionAnnotations)) {
+          deferredContent.bossMilestone.solutionAnnotations = bm.solutionAnnotations
+            .filter((a: any) => a && !String(a).includes('REQUIRED:'));
+        }
+
+        // Check for placeholder content
+        const hasPlaceholders = bm.starterCode?.includes('REQUIRED:') || bm.solution?.includes('REQUIRED:');
+        if (hasPlaceholders) {
+          this.logger.warn(`⚠️ Day ${dayNumber} bossMilestone has placeholder content`);
+        }
+
+        this.logger.log(`✅ Day ${dayNumber} bossMilestone: starterCode=${bm.starterCode?.length || 0} chars, solution=${bm.solution?.length || 0} chars`);
       }
     } catch (error) {
       this.logger.error(`❌ Failed to parse Day ${dayNumber} DEFERRED:`, error.message);

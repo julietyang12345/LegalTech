@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, X, CheckCircle, AlertTriangle, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -8,6 +8,12 @@ import type {
   FormCheckItem,
   SafetyCheckItem,
 } from '@/types';
+
+// Progress persistence types
+export interface SectionSavedProgress {
+  answers: Record<string, number | string | boolean>;
+  currentIndex: number;
+}
 
 // ============================================
 // Shared Components
@@ -75,11 +81,20 @@ function FeedbackToast({ show, correct, message }: FeedbackToastProps) {
 
 interface FormCheckExerciseProps {
   section: FormCheckSection;
-  onComplete: (score: number, total: number) => void;
+  onComplete: (score: number, total: number, answers?: Record<string, number | string | boolean>) => void;
+  savedProgress?: SectionSavedProgress;
+  onProgressChange?: (answers: Record<string, number | string | boolean>, currentIndex: number) => void;
 }
 
-export function FormCheckExercise({ section, onComplete }: FormCheckExerciseProps) {
-  const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
+export function FormCheckExercise({ section, onComplete, savedProgress, onProgressChange }: FormCheckExerciseProps) {
+  const [checkedItems, setCheckedItems] = useState<Set<string>>(() => {
+    if (!savedProgress?.answers) return new Set();
+    const result = new Set<string>();
+    Object.entries(savedProgress.answers).forEach(([k, v]) => {
+      if (v === true) result.add(k);
+    });
+    return result;
+  });
   const [showCommonMistake, setShowCommonMistake] = useState<string | null>(null);
 
   const items = section.items;
@@ -93,13 +108,21 @@ export function FormCheckExercise({ section, onComplete }: FormCheckExerciseProp
       } else {
         next.add(itemId);
       }
+      // Report progress
+      if (onProgressChange) {
+        const answers: Record<string, boolean> = {};
+        next.forEach(id => { answers[id] = true; });
+        onProgressChange(answers, next.size);
+      }
       return next;
     });
   };
 
   const handleComplete = () => {
     // All items should be checked for proper form
-    onComplete(checkedCount, items.length);
+    const answers: Record<string, boolean> = {};
+    checkedItems.forEach(id => { answers[id] = true; });
+    onComplete(checkedCount, items.length, answers);
   };
 
   return (
@@ -185,13 +208,31 @@ export function FormCheckExercise({ section, onComplete }: FormCheckExerciseProp
 
 interface SafetyCheckExerciseProps {
   section: SafetyCheckSection;
-  onComplete: (score: number, total: number) => void;
+  onComplete: (score: number, total: number, answers?: Record<string, number | string | boolean>) => void;
+  savedProgress?: SectionSavedProgress;
+  onProgressChange?: (answers: Record<string, number | string | boolean>, currentIndex: number) => void;
 }
 
-export function SafetyCheckExercise({ section, onComplete }: SafetyCheckExerciseProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, boolean>>({});
-  const [results, setResults] = useState<Record<string, boolean>>({});
+export function SafetyCheckExercise({ section, onComplete, savedProgress, onProgressChange }: SafetyCheckExerciseProps) {
+  const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
+  const [answers, setAnswers] = useState<Record<string, boolean>>(() => {
+    if (!savedProgress?.answers) return {};
+    const result: Record<string, boolean> = {};
+    Object.entries(savedProgress.answers).forEach(([k, v]) => {
+      if (typeof v === 'boolean' && !k.endsWith('_result')) result[k] = v;
+    });
+    return result;
+  });
+  const [results, setResults] = useState<Record<string, boolean>>(() => {
+    if (!savedProgress?.answers) return {};
+    const result: Record<string, boolean> = {};
+    Object.entries(savedProgress.answers).forEach(([k, v]) => {
+      if (k.endsWith('_result') && typeof v === 'boolean') {
+        result[k.replace('_result', '')] = v;
+      }
+    });
+    return result;
+  });
   const [showFeedback, setShowFeedback] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
 
@@ -203,18 +244,33 @@ export function SafetyCheckExercise({ section, onComplete }: SafetyCheckExercise
     if (hasAnswered) return;
 
     const correct = answer === currentItem.correctAnswer;
-    setAnswers(prev => ({ ...prev, [currentItem.id]: answer }));
-    setResults(prev => ({ ...prev, [currentItem.id]: correct }));
+    const newAnswers = { ...answers, [currentItem.id]: answer };
+    const newResults = { ...results, [currentItem.id]: correct };
+    setAnswers(newAnswers);
+    setResults(newResults);
     setIsCorrect(correct);
     setShowFeedback(true);
+
+    // Report progress
+    if (onProgressChange) {
+      const progressAnswers: Record<string, number | string | boolean> = { ...newAnswers };
+      Object.entries(newResults).forEach(([k, v]) => {
+        progressAnswers[`${k}_result`] = v;
+      });
+      onProgressChange(progressAnswers, currentIndex);
+    }
 
     setTimeout(() => {
       setShowFeedback(false);
       if (currentIndex < items.length - 1) {
         setCurrentIndex(prev => prev + 1);
       } else {
-        const correctCount = Object.values({ ...results, [currentItem.id]: correct }).filter(Boolean).length;
-        onComplete(correctCount, items.length);
+        const correctCount = Object.values(newResults).filter(Boolean).length;
+        const finalAnswers: Record<string, number | string | boolean> = { ...newAnswers };
+        Object.entries(newResults).forEach(([k, v]) => {
+          finalAnswers[`${k}_result`] = v;
+        });
+        onComplete(correctCount, items.length, finalAnswers);
       }
     }, 2000);
   };

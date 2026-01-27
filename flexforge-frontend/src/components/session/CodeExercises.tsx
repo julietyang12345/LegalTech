@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, X, Lightbulb, ChevronRight, Eye, EyeOff, Play } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -10,6 +10,12 @@ import type {
   DebuggingItem,
   OutputPredictionQuestion,
 } from '@/types';
+
+// Progress persistence types
+export interface SectionSavedProgress {
+  answers: Record<string, number | string | boolean>;
+  currentIndex: number;
+}
 
 // ============================================
 // Shared Components
@@ -86,13 +92,22 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
 
 interface CodeCompletionExerciseProps {
   section: CodeCompletionSection;
-  onComplete: (score: number, total: number) => void;
+  onComplete: (score: number, total: number, answers?: Record<string, number | string | boolean>) => void;
+  savedProgress?: SectionSavedProgress;
+  onProgressChange?: (answers: Record<string, number | string | boolean>, currentIndex: number) => void;
 }
 
-export function CodeCompletionExercise({ section, onComplete }: CodeCompletionExerciseProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
+export function CodeCompletionExercise({ section, onComplete, savedProgress, onProgressChange }: CodeCompletionExerciseProps) {
+  const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
   const [userCode, setUserCode] = useState('');
-  const [results, setResults] = useState<Record<string, boolean>>({});
+  const [results, setResults] = useState<Record<string, boolean>>(() => {
+    if (!savedProgress?.answers) return {};
+    const result: Record<string, boolean> = {};
+    Object.entries(savedProgress.answers).forEach(([k, v]) => {
+      if (typeof v === 'boolean') result[k] = v;
+    });
+    return result;
+  });
   const [showFeedback, setShowFeedback] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
   const [showHint, setShowHint] = useState(false);
@@ -111,10 +126,16 @@ export function CodeCompletionExercise({ section, onComplete }: CodeCompletionEx
       code.replace(/\s+/g, ' ').trim().toLowerCase();
 
     const correct = normalizeCode(userCode) === normalizeCode(currentItem.solution);
+    const newResults = { ...results, [currentItem.id]: correct };
 
-    setResults(prev => ({ ...prev, [currentItem.id]: correct }));
+    setResults(newResults);
     setIsCorrect(correct);
     setShowFeedback(true);
+
+    // Report progress
+    if (onProgressChange) {
+      onProgressChange(newResults as Record<string, number | string | boolean>, currentIndex);
+    }
 
     setTimeout(() => {
       setShowFeedback(false);
@@ -125,8 +146,8 @@ export function CodeCompletionExercise({ section, onComplete }: CodeCompletionEx
         setCurrentHintIndex(0);
         setShowSolution(false);
       } else {
-        const correctCount = Object.values({ ...results, [currentItem.id]: correct }).filter(Boolean).length;
-        onComplete(correctCount, items.length);
+        const correctCount = Object.values(newResults).filter(Boolean).length;
+        onComplete(correctCount, items.length, newResults as Record<string, number | string | boolean>);
       }
     }, 2000);
   };
@@ -256,13 +277,22 @@ export function CodeCompletionExercise({ section, onComplete }: CodeCompletionEx
 
 interface DebuggingExerciseProps {
   section: DebuggingSection;
-  onComplete: (score: number, total: number) => void;
+  onComplete: (score: number, total: number, answers?: Record<string, number | string | boolean>) => void;
+  savedProgress?: SectionSavedProgress;
+  onProgressChange?: (answers: Record<string, number | string | boolean>, currentIndex: number) => void;
 }
 
-export function DebuggingExercise({ section, onComplete }: DebuggingExerciseProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
+export function DebuggingExercise({ section, onComplete, savedProgress, onProgressChange }: DebuggingExerciseProps) {
+  const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
   const [userCode, setUserCode] = useState('');
-  const [results, setResults] = useState<Record<string, boolean>>({});
+  const [results, setResults] = useState<Record<string, boolean>>(() => {
+    if (!savedProgress?.answers) return {};
+    const result: Record<string, boolean> = {};
+    Object.entries(savedProgress.answers).forEach(([k, v]) => {
+      if (typeof v === 'boolean') result[k] = v;
+    });
+    return result;
+  });
   const [showFeedback, setShowFeedback] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
   const [showHint, setShowHint] = useState(false);
@@ -272,11 +302,11 @@ export function DebuggingExercise({ section, onComplete }: DebuggingExerciseProp
   const hasAnswered = currentItem?.id in results;
 
   // Initialize user code with buggy code
-  useState(() => {
-    if (currentItem) {
+  useEffect(() => {
+    if (currentItem && !hasAnswered) {
       setUserCode(currentItem.buggyCode);
     }
-  });
+  }, [currentIndex, currentItem, hasAnswered]);
 
   const checkAnswer = () => {
     if (!userCode.trim()) return;
@@ -285,10 +315,16 @@ export function DebuggingExercise({ section, onComplete }: DebuggingExerciseProp
       code.replace(/\s+/g, ' ').trim().toLowerCase();
 
     const correct = normalizeCode(userCode) === normalizeCode(currentItem.fixedCode);
+    const newResults = { ...results, [currentItem.id]: correct };
 
-    setResults(prev => ({ ...prev, [currentItem.id]: correct }));
+    setResults(newResults);
     setIsCorrect(correct);
     setShowFeedback(true);
+
+    // Report progress
+    if (onProgressChange) {
+      onProgressChange(newResults as Record<string, number | string | boolean>, currentIndex);
+    }
 
     setTimeout(() => {
       setShowFeedback(false);
@@ -297,8 +333,8 @@ export function DebuggingExercise({ section, onComplete }: DebuggingExerciseProp
         setUserCode(items[currentIndex + 1]?.buggyCode || '');
         setShowHint(false);
       } else {
-        const correctCount = Object.values({ ...results, [currentItem.id]: correct }).filter(Boolean).length;
-        onComplete(correctCount, items.length);
+        const correctCount = Object.values(newResults).filter(Boolean).length;
+        onComplete(correctCount, items.length, newResults as Record<string, number | string | boolean>);
       }
     }, 2000);
   };
@@ -386,12 +422,21 @@ export function DebuggingExercise({ section, onComplete }: DebuggingExerciseProp
 
 interface OutputPredictionExerciseProps {
   section: OutputPredictionSection;
-  onComplete: (score: number, total: number) => void;
+  onComplete: (score: number, total: number, answers?: Record<string, number | string | boolean>) => void;
+  savedProgress?: SectionSavedProgress;
+  onProgressChange?: (answers: Record<string, number | string | boolean>, currentIndex: number) => void;
 }
 
-export function OutputPredictionExercise({ section, onComplete }: OutputPredictionExerciseProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, number>>({});
+export function OutputPredictionExercise({ section, onComplete, savedProgress, onProgressChange }: OutputPredictionExerciseProps) {
+  const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
+  const [answers, setAnswers] = useState<Record<string, number>>(() => {
+    if (!savedProgress?.answers) return {};
+    const result: Record<string, number> = {};
+    Object.entries(savedProgress.answers).forEach(([k, v]) => {
+      if (typeof v === 'number') result[k] = v;
+    });
+    return result;
+  });
   const [showFeedback, setShowFeedback] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
 
@@ -403,21 +448,27 @@ export function OutputPredictionExercise({ section, onComplete }: OutputPredicti
     if (hasAnswered) return;
 
     const correct = optionIndex === currentQuestion.correctIndex;
-    setAnswers(prev => ({ ...prev, [currentQuestion.id]: optionIndex }));
+    const newAnswers = { ...answers, [currentQuestion.id]: optionIndex };
+    setAnswers(newAnswers);
     setIsCorrect(correct);
     setShowFeedback(true);
+
+    // Report progress
+    if (onProgressChange) {
+      onProgressChange(newAnswers as Record<string, number | string | boolean>, currentIndex);
+    }
 
     setTimeout(() => {
       setShowFeedback(false);
       if (currentIndex < questions.length - 1) {
         setCurrentIndex(prev => prev + 1);
       } else {
-        const correctCount = Object.entries({ ...answers, [currentQuestion.id]: optionIndex })
+        const correctCount = Object.entries(newAnswers)
           .filter(([id, ans]) => {
             const q = questions.find(q => q.id === id);
             return q && ans === q.correctIndex;
           }).length;
-        onComplete(correctCount, questions.length);
+        onComplete(correctCount, questions.length, newAnswers as Record<string, number | string | boolean>);
       }
     }, 2000);
   };
