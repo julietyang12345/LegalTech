@@ -13,19 +13,34 @@ import {
 import { clsx } from 'clsx';
 import { useAuthStore } from '@/stores/authStore';
 import { projectService } from '@/services/projectService';
+import { sessionService } from '@/services/sessionService';
 import { Button, Card } from '@/components/common';
-import type { Project } from '@/types';
+import type { Project, Session } from '@/types';
+
+// Skill progress derived from sessions
+interface SkillProgress {
+  name: string;
+  status: 'complete' | 'progress' | 'locked';
+  daysCompleted: number;
+  totalDays: number;
+  projects: number;
+  sessionId?: string;
+}
 
 // Skill node for RPG tree
 function SkillNode({
   name,
   status,
   projects,
+  daysCompleted,
+  totalDays,
   onClick,
 }: {
   name: string;
   status: 'complete' | 'progress' | 'locked';
   projects: number;
+  daysCompleted?: number;
+  totalDays?: number;
   onClick: () => void;
 }) {
   const statusStyles = {
@@ -34,6 +49,10 @@ function SkillNode({
     locked: 'bg-gray-100 text-gray-400 border-gray-200',
   };
 
+  const progressPercent = totalDays && totalDays > 0
+    ? Math.round((daysCompleted || 0) / totalDays * 100)
+    : 0;
+
   return (
     <motion.button
       whileHover={{ scale: status !== 'locked' ? 1.05 : 1 }}
@@ -41,12 +60,20 @@ function SkillNode({
       onClick={onClick}
       disabled={status === 'locked'}
       className={clsx(
-        'w-24 h-24 rounded-xl flex flex-col items-center justify-center',
+        'w-24 h-24 rounded-xl flex flex-col items-center justify-center relative overflow-hidden',
         'border-2 transition-all duration-200',
         statusStyles[status],
         status !== 'locked' && 'cursor-pointer hover:shadow-lg'
       )}
     >
+      {/* Progress bar background for in-progress skills */}
+      {status === 'progress' && totalDays && (
+        <div
+          className="absolute bottom-0 left-0 h-1 bg-brand-500 transition-all"
+          style={{ width: `${progressPercent}%` }}
+        />
+      )}
+
       {status === 'locked' ? (
         <Lock className="w-6 h-6 mb-1" />
       ) : status === 'complete' ? (
@@ -55,9 +82,13 @@ function SkillNode({
         <span className="text-2xl mb-1">🔨</span>
       )}
       <span className="text-xs font-medium text-center px-1 leading-tight">{name}</span>
-      {projects > 0 && (
+      {status === 'progress' && totalDays ? (
+        <span className="text-[10px] opacity-75">Day {daysCompleted}/{totalDays}</span>
+      ) : projects > 0 ? (
         <span className="text-[10px] opacity-75">{projects} projects</span>
-      )}
+      ) : status === 'complete' && totalDays ? (
+        <span className="text-[10px] opacity-75">{totalDays} days</span>
+      ) : null}
     </motion.button>
   );
 }
@@ -190,33 +221,53 @@ function ProjectCard({ project }: { project: Project }) {
 export function ShowcasePage() {
   const { user: _user } = useAuthStore();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [skills, setSkills] = useState<SkillProgress[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<'all' | 'boss'>('all');
 
   useEffect(() => {
-    loadProjects();
+    loadData();
   }, []);
 
-  const loadProjects = async () => {
+  const loadData = async () => {
     try {
-      const response = await projectService.getAll();
-      setProjects(response.projects);
+      // Load projects and sessions in parallel
+      const [projectsResponse, sessionsResponse] = await Promise.all([
+        projectService.getAll(),
+        sessionService.getAll(),
+      ]);
+
+      setProjects(projectsResponse.projects);
+      setSessions(sessionsResponse.sessions);
+
+      // Convert sessions to skill progress
+      const skillProgress: SkillProgress[] = sessionsResponse.sessions.map((session) => {
+        const isComplete = session.status === 'COMPLETED';
+        const isInProgress = session.status === 'ACTIVE';
+
+        // Count projects associated with this session's skill
+        const sessionProjects = projectsResponse.projects.filter(
+          p => p.sessionId === session.id
+        ).length;
+
+        return {
+          name: session.skillName || 'Unknown Skill',
+          status: isComplete ? 'complete' : isInProgress ? 'progress' : 'locked',
+          daysCompleted: session.currentDay - 1, // currentDay is next day to work on
+          totalDays: session.durationDays,
+          projects: sessionProjects,
+          sessionId: session.id,
+        };
+      });
+
+      setSkills(skillProgress);
     } catch (error) {
-      console.error('Failed to load projects:', error);
+      console.error('Failed to load data:', error);
     } finally {
       setIsLoading(false);
     }
   };
-
-  // Mock skills for demo
-  const skills = [
-    { name: 'Variables', status: 'complete' as const, projects: 2 },
-    { name: 'Functions', status: 'complete' as const, projects: 1 },
-    { name: 'Loops', status: 'progress' as const, projects: 0 },
-    { name: 'Objects', status: 'locked' as const, projects: 0 },
-    { name: 'APIs', status: 'locked' as const, projects: 0 },
-    { name: 'Databases', status: 'locked' as const, projects: 0 },
-  ];
 
   const unlockedSkills = skills
     .filter(s => s.status !== 'locked')
@@ -249,15 +300,27 @@ export function ShowcasePage() {
 
               {/* Simple grid layout for skills */}
               <div className="grid grid-cols-2 gap-3">
-                {skills.map((skill, i) => (
-                  <SkillNode
-                    key={i}
-                    name={skill.name}
-                    status={skill.status}
-                    projects={skill.projects}
-                    onClick={() => {}}
-                  />
-                ))}
+                {skills.length === 0 && !isLoading ? (
+                  <div className="col-span-2 text-center py-8 text-gray-500 text-sm">
+                    Start a learning session to build your skill tree!
+                  </div>
+                ) : (
+                  skills.map((skill, i) => (
+                    <SkillNode
+                      key={skill.sessionId || i}
+                      name={skill.name}
+                      status={skill.status}
+                      projects={skill.projects}
+                      daysCompleted={skill.daysCompleted}
+                      totalDays={skill.totalDays}
+                      onClick={() => {
+                        if (skill.sessionId && skill.status === 'progress') {
+                          window.location.href = '/today';
+                        }
+                      }}
+                    />
+                  ))
+                )}
               </div>
 
               <div className="mt-4 pt-4 border-t border-gray-100">
