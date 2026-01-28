@@ -14,8 +14,6 @@ interface RefinementPanelProps {
 
 type OutputType = NonNullable<RefinementContext['outputType']>;
 type UsageContext = NonNullable<RefinementContext['usageContext']>;
-type PlatformTolerance = NonNullable<RefinementContext['platformTolerance']>;
-type SkillLevel = NonNullable<RefinementContext['skillLevel']>;
 
 interface ChipOption<T> {
   value: T;
@@ -32,9 +30,6 @@ export function RefinementPanel({
 }: RefinementPanelProps) {
   const [outputType, setOutputType] = useState<OutputType>();
   const [usageContext, setUsageContext] = useState<UsageContext>();
-  const [platformTolerance, setPlatformTolerance] = useState<PlatformTolerance>();
-  const [skillLevel, setSkillLevel] = useState<SkillLevel>();
-  const [timeMinutes, setTimeMinutes] = useState<number>();
   const [userFeedback, setUserFeedback] = useState<string>('');
 
   // Determine the dominant skill type from directions
@@ -100,32 +95,10 @@ export function RefinementPanel({
     { value: 'school', label: 'School/learning', emoji: '📚' },
   ];
 
-  const platformOptions: ChipOption<PlatformTolerance>[] = [
-    { value: 'any', label: 'Any tools fine', emoji: '🔧' },
-    { value: 'preferGeneric', label: 'Prefer general', emoji: '🎯' },
-    { value: 'genericOnly', label: 'Concepts only', emoji: '💡' },
-  ];
-
-  const skillOptions: ChipOption<SkillLevel>[] = [
-    { value: 'beginner', label: 'Beginner', emoji: '🌱' },
-    { value: 'intermediate', label: 'Intermediate', emoji: '🌿' },
-    { value: 'advanced', label: 'Advanced', emoji: '🌳' },
-  ];
-
-  const timeOptions: ChipOption<number>[] = [
-    { value: 15, label: '15 min', emoji: '⚡' },
-    { value: 30, label: '30 min', emoji: '🕐' },
-    { value: 60, label: '1 hour', emoji: '📖' },
-    { value: 90, label: '1.5 hours', emoji: '🎯' },
-  ];
-
   const handleSubmit = () => {
     const refinement: RefinementContext = {};
     if (outputType) refinement.outputType = outputType;
     if (usageContext) refinement.usageContext = usageContext;
-    if (platformTolerance) refinement.platformTolerance = platformTolerance;
-    if (skillLevel) refinement.skillLevel = skillLevel;
-    if (timeMinutes) refinement.timeMinutes = timeMinutes;
     if (userFeedback.trim()) refinement.userFeedback = userFeedback.trim();
     // Pass previous directions to avoid regenerating them
     if (directions.length > 0) {
@@ -134,8 +107,7 @@ export function RefinementPanel({
     onSubmit(refinement);
   };
 
-  const hasAnySelection =
-    outputType || usageContext || platformTolerance || skillLevel || timeMinutes || userFeedback.trim();
+  const hasAnyInput = outputType || usageContext || userFeedback.trim();
 
   return (
     <div className="max-w-xl mx-auto">
@@ -150,12 +122,10 @@ export function RefinementPanel({
         </button>
 
         <h2 className="text-xl font-bold text-gray-900 mb-2">
-          Let's refine your goal
+          Help us understand better
         </h2>
-        <p className="text-gray-600 text-sm">
-          Answer a few quick questions to get better recommendations.
-          <br />
-          <span className="text-gray-500 italic">All optional - just pick what applies</span>
+        <p className="text-gray-500 text-sm">
+          What's missing from the directions above?
         </p>
       </div>
 
@@ -165,10 +135,10 @@ export function RefinementPanel({
         <span className="text-gray-800">{originalGoal}</span>
       </div>
 
-      {/* Questions */}
+      {/* Questions - simplified to just 3 */}
       <div className="space-y-6">
-        {/* Q1: Output type */}
-        <QuestionSection title="What's the output?" emoji="🎯">
+        {/* Q1: What you want to end up with */}
+        <QuestionSection title="What do you want to end up with?" emoji="🎯">
           <ChipGroup
             options={outputOptions}
             selected={outputType}
@@ -176,8 +146,8 @@ export function RefinementPanel({
           />
         </QuestionSection>
 
-        {/* Q2: Usage context */}
-        <QuestionSection title="Where will you use it?" emoji="📍">
+        {/* Q2: Context */}
+        <QuestionSection title="What's this for?" emoji="📍">
           <ChipGroup
             options={usageOptions}
             selected={usageContext}
@@ -185,46 +155,17 @@ export function RefinementPanel({
           />
         </QuestionSection>
 
-        {/* Q3: Skill level */}
-        <QuestionSection title="Your current level?" emoji="📊">
-          <ChipGroup
-            options={skillOptions}
-            selected={skillLevel}
-            onSelect={setSkillLevel}
-          />
-        </QuestionSection>
-
-        {/* Q4: Platform tolerance */}
-        <QuestionSection title="Content preference?" emoji="🎬">
-          <ChipGroup
-            options={platformOptions}
-            selected={platformTolerance}
-            onSelect={setPlatformTolerance}
-          />
-        </QuestionSection>
-
-        {/* Q5: Time */}
-        <QuestionSection title="Daily learning time?" emoji="⏱️">
-          <ChipGroup
-            options={timeOptions}
-            selected={timeMinutes}
-            onSelect={setTimeMinutes}
-          />
-        </QuestionSection>
-
-        {/* Q6: Free-text feedback */}
-        <QuestionSection title="Anything specific you want?" emoji="💬">
+        {/* Q3: Free-text - most important */}
+        <QuestionSection title="Tell us more" emoji="💬">
           <textarea
             value={userFeedback}
             onChange={(e) => setUserFeedback(e.target.value)}
-            placeholder="e.g., 'I want to use Python, not no-code tools' or 'Focus on the email automation part'"
+            placeholder="What specifically are you looking for? e.g., 'I want to use Python, not no-code' or 'Focus on the automation part'"
             className="w-full p-3 rounded-lg border border-gray-200 text-base resize-none
                      focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
             rows={3}
+            autoFocus
           />
-          <p className="text-xs text-gray-400 mt-1">
-            This helps us find exactly what you're looking for
-          </p>
         </QuestionSection>
       </div>
 
@@ -237,7 +178,7 @@ export function RefinementPanel({
           isLoading={isLoading}
           rightIcon={<ArrowRight className="w-5 h-5" />}
         >
-          {hasAnySelection ? 'Find better directions' : 'Try again with same info'}
+          {hasAnyInput ? 'Find better directions' : 'Try again'}
         </Button>
       </div>
     </div>

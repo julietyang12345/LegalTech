@@ -217,26 +217,26 @@ export function StartPage() {
     if (prefs?.selectedDirection && !skillName) {
       setSkillName(prefs.selectedDirection);
     }
-    if (prefs?.skillLevel && !skillName) {
-      const levelMap: Record<string, SkillLevel> = {
-        beginner: SkillLevel.BEGINNER,
-        intermediate: SkillLevel.INTERMEDIATE,
-        advanced: SkillLevel.ADVANCED,
+    // Map familiarity to skill level
+    if (prefs?.familiarity && !skillName) {
+      const familiarityMap: Record<string, SkillLevel> = {
+        new: SkillLevel.BEGINNER,
+        know_basics: SkillLevel.INTERMEDIATE,
+        skilled: SkillLevel.ADVANCED,
       };
-      if (levelMap[prefs.skillLevel]) {
-        setSkillLevel(levelMap[prefs.skillLevel]);
+      if (familiarityMap[prefs.familiarity]) {
+        setSkillLevel(familiarityMap[prefs.familiarity]);
       }
     }
-    if (prefs?.dailyMinutes && !skillName) {
-      const hoursMap: Record<number, number> = {
-        15: 0.25,
-        30: 0.5,
-        45: 0.75,
-        60: 1,
-        90: 1.5,
+    // Map session length to hours per day
+    if (prefs?.sessionLength && !skillName) {
+      const sessionMap: Record<string, number> = {
+        short: 0.5,   // <30 min → 0.5 hours
+        medium: 1,    // 30-60 min → 1 hour
+        long: 1.5,    // >1 hour → 1.5 hours
       };
-      if (hoursMap[prefs.dailyMinutes]) {
-        setHoursPerDay(hoursMap[prefs.dailyMinutes]);
+      if (sessionMap[prefs.sessionLength]) {
+        setHoursPerDay(sessionMap[prefs.sessionLength]);
       }
     }
   }, [user]);

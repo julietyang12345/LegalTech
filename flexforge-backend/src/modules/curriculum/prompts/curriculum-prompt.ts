@@ -11,6 +11,9 @@ export interface LearnerPrefsForPrompt {
   outputType?: OutputType;
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
   contentDepth?: 'fast' | 'medium' | 'deep';
+  // Feeling-based inputs (easier for users than explicit skill level/time questions)
+  familiarity?: 'new' | 'know_basics' | 'skilled';  // How familiar with topic
+  sessionLength?: 'short' | 'medium' | 'long';      // Daily learning time availability
   improvementAreas?: string[];           // User-specified areas to emphasize (e.g., "conflict resolution", "async/await")
 }
 
@@ -261,6 +264,39 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
       deep: 'DEPTH: COMPREHENSIVE - Include edge cases, advanced patterns, thorough explanations.',
     };
     parts.push(depthGuidance[prefs.contentDepth] || '');
+  }
+
+  // Familiarity affects starting point, complexity, and assumed knowledge
+  if (prefs.familiarity) {
+    const familiarityGuidance: Record<string, string> = {
+      new: 'SKILL LEVEL: BEGINNER - Start from absolute basics, explain all terminology, no assumed knowledge. Use simple examples.',
+      know_basics: 'SKILL LEVEL: INTERMEDIATE - User knows fundamentals. Skip basics, focus on practical application and common patterns. Address pain points.',
+      skilled: 'SKILL LEVEL: ADVANCED - User is experienced. Focus on advanced techniques, edge cases, optimization. Challenge them.',
+    };
+    parts.push(familiarityGuidance[prefs.familiarity] || '');
+  }
+
+  // Session length affects content density and quantity
+  if (prefs.sessionLength) {
+    const sessionLengthGuidance: Record<string, string> = {
+      short: `SESSION LENGTH: SHORT (<30 min/day)
+- Generate MINIMAL content: 4-5 foundation cards max
+- Keep explanations brief (150-200 words per card)
+- Only 6-8 quiz questions total
+- User needs quick wins, not comprehensive coverage`,
+      medium: `SESSION LENGTH: MEDIUM (30-60 min/day)
+- Generate STANDARD content: 6-7 foundation cards
+- Normal explanations (200-300 words per card)
+- 8-10 quiz questions total
+- Include all core sections`,
+      long: `SESSION LENGTH: LONG (>1 hour/day)
+- Generate MORE content: 8-10 foundation cards
+- Detailed explanations (300-400 words per card)
+- 12-15 quiz questions total
+- Include deeper examples, edge cases, and additional practice
+- Add extra challenge questions and scenarios`,
+    };
+    parts.push(sessionLengthGuidance[prefs.sessionLength] || '');
   }
 
   // User-specified improvement areas to emphasize

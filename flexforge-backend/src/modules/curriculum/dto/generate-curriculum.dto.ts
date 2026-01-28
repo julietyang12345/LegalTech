@@ -39,4 +39,17 @@ export class GenerateCurriculumDto {
   @IsOptional()
   @IsString()
   selectedLanguage?: string; // User's chosen language (overrides auto-detection)
+
+  // Feeling-based inputs (from onboarding)
+  @IsOptional()
+  @IsString()
+  familiarity?: 'new' | 'know_basics' | 'skilled';
+
+  @IsOptional()
+  @IsString()
+  sessionLength?: 'short' | 'medium' | 'long';
+
+  @IsOptional()
+  @IsString()
+  contentDepth?: 'fast' | 'medium' | 'deep';
 }

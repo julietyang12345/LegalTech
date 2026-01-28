@@ -78,9 +78,7 @@ export type OutputType =
 export interface RefinementContext {
   outputType?: OutputType;
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
-  timeMinutes?: number; // 15, 30, 60, 90
   platformTolerance?: 'any' | 'preferGeneric' | 'genericOnly';
-  skillLevel?: 'beginner' | 'intermediate' | 'advanced';
   userFeedback?: string; // Free-text: "I want X instead of Y" or "Focus more on Z"
   previousDirections?: string; // JSON string of previously generated directions (to avoid regenerating)
 }
@@ -105,16 +103,14 @@ export interface LearnerPrefs {
   outputType?: OutputType;
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
 
-  // From depth test (Step 5)
-  contentDepth: 'fast' | 'medium' | 'deep';
+  // From feeling step (Step 5) - easier for users than explicit skill/time questions
+  contentDepth: 'fast' | 'medium' | 'deep'; // Derived from goal type selection
+  familiarity?: 'new' | 'know_basics' | 'skilled'; // How familiar with the topic
+  sessionLength?: 'short' | 'medium' | 'long';     // Daily learning time availability
 
   // Platform tolerance (from direction label or refinement)
   // KEY for solving the "Zapier problem" - affects TOOL_SPECIFIC video penalty
   platformTolerance: 'any' | 'preferGeneric' | 'genericOnly';
-
-  // Constraints (from refinement, optional)
-  dailyMinutes?: number; // 15, 30, 60, 90
-  skillLevel?: 'beginner' | 'intermediate' | 'advanced';
 
   // Metadata
   completedOnboarding: boolean;
@@ -169,8 +165,10 @@ export interface CompleteOnboardingDto {
   // Optional refinement data
   outputType?: OutputType;
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
-  dailyMinutes?: number;
-  skillLevel?: 'beginner' | 'intermediate' | 'advanced';
+
+  // Feeling-based inputs (easier than explicit skill level/time questions)
+  familiarity?: 'new' | 'know_basics' | 'skilled';
+  sessionLength?: 'short' | 'medium' | 'long';
 }
 
 // ============================================

@@ -1614,9 +1614,7 @@ export type OutputType =
 export interface RefinementContext {
   outputType?: OutputType;
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
-  timeMinutes?: number;
   platformTolerance?: 'any' | 'preferGeneric' | 'genericOnly';
-  skillLevel?: 'beginner' | 'intermediate' | 'advanced';
   userFeedback?: string; // Free-text: "I want X instead of Y"
   previousDirections?: string; // JSON string of previous directions (to avoid regenerating)
 }
@@ -1644,9 +1642,9 @@ export interface LearnerPrefs {
   // Platform tolerance (from direction label or refinement)
   platformTolerance: 'any' | 'preferGeneric' | 'genericOnly';
 
-  // Constraints (from refinement, optional)
-  dailyMinutes?: number;             // 15, 30, 60, 90
-  skillLevel?: 'beginner' | 'intermediate' | 'advanced';
+  // Feeling-based inputs (replaces explicit skill level questions)
+  familiarity?: 'new' | 'know_basics' | 'skilled';  // How familiar with topic
+  sessionLength?: 'short' | 'medium' | 'long';      // Daily learning time availability
 
   // Metadata
   completedOnboarding: boolean;
@@ -1671,6 +1669,7 @@ export interface CompleteOnboardingDto {
   selectedLanguage?: string; // User's chosen language (for CODE/AI_AGENT)
   outputType?: OutputType;
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
-  dailyMinutes?: number;
-  skillLevel?: 'beginner' | 'intermediate' | 'advanced';
+  // Feeling-based inputs (replaces skill level & time questions)
+  familiarity?: string;     // 'new' | 'know_basics' | 'skilled'
+  sessionLength?: string;   // 'short' | 'medium' | 'long'
 }

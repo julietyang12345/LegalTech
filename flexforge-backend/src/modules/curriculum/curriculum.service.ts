@@ -483,6 +483,10 @@ Return JSON only:
       selectedDirectionOutcome: dto.selectedDirectionOutcome,
       directionKeywords: dto.directionKeywords,
       selectedLanguage: dto.selectedLanguage,
+      // Feeling-based inputs from onboarding
+      familiarity: dto.familiarity,
+      sessionLength: dto.sessionLength,
+      contentDepth: dto.contentDepth,
     };
     this.logger.log(`🎯 DEBUG learnerPrefs passed to prompt:`, JSON.stringify(learnerPrefs));
 

@@ -127,6 +127,10 @@ export class SessionService {
             selectedDirectionOutcome: learnerPrefs?.selectedDirectionOutcome,
             directionKeywords: learnerPrefs?.directionKeywords,
             selectedLanguage: learnerPrefs?.selectedLanguage,
+            // Feeling-based inputs from onboarding
+            familiarity: learnerPrefs?.familiarity,
+            sessionLength: learnerPrefs?.sessionLength,
+            contentDepth: learnerPrefs?.contentDepth,
           },
           tierString,
         );

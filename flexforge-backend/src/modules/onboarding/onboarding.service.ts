@@ -139,8 +139,9 @@ export class OnboardingService {
       platformTolerance: dto.platformTolerance,
       outputType: dto.outputType,
       usageContext: dto.usageContext,
-      dailyMinutes: dto.dailyMinutes,
-      skillLevel: dto.skillLevel,
+      // Feeling-based inputs (easier than explicit skill level/time)
+      familiarity: dto.familiarity,
+      sessionLength: dto.sessionLength,
       completedOnboarding: true,
       onboardingCompletedAt: new Date().toISOString(),
       version: 1,
@@ -298,21 +299,13 @@ REFINEMENT CONTEXT (user clarified their intent):`;
         prompt += `\n- Context: ${contextLabels[refinement.usageContext]}`;
       }
 
-      if (refinement.timeMinutes) {
-        prompt += `\n- Available time: ${refinement.timeMinutes} minutes per session`;
-      }
-
-      if (refinement.skillLevel) {
-        prompt += `\n- Skill level: ${refinement.skillLevel}`;
-      }
-
       if (refinement.platformTolerance) {
         const toleranceLabels = {
-          any: 'Okay with tool-specific tutorials (Zapier, Make, etc.)',
-          preferGeneric: 'Prefers concepts but tools are okay',
-          genericOnly: 'Wants vendor-neutral content only',
+          any: 'Fine with specific tools',
+          preferGeneric: 'Prefers a mix of tools and concepts',
+          genericOnly: 'Wants concepts only, no specific tools',
         };
-        prompt += `\n- Platform tolerance: ${toleranceLabels[refinement.platformTolerance]}`;
+        prompt += `\n- Learning style: ${toleranceLabels[refinement.platformTolerance]}`;
       }
 
       if (refinement.userFeedback) {

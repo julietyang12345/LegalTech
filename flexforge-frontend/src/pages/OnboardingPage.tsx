@@ -6,7 +6,7 @@ import {
   GoalInputStep,
   DirectionsStep,
   RefinementPanel,
-  DepthStep,
+  FeelingStep,
 } from '@/components/onboarding';
 import { LanguageStep } from '@/components/onboarding/LanguageStep';
 import { onboardingService } from '@/services/onboardingService';
@@ -100,29 +100,41 @@ export default function OnboardingPage() {
     }
   }, [goal]);
 
-  // Step 5: Select depth → complete onboarding
-  const handleDepthSelect = useCallback(async (depth: LearnerPrefs['contentDepth']) => {
+  // Step 5: Select feelings → complete onboarding
+  const handleFeelingSelect = useCallback(async (
+    depth: LearnerPrefs['contentDepth'],
+    familiarity: string,
+    sessionLength: string,
+    toolPreference: string
+  ) => {
     if (!selectedDirection) return;
 
     setError(null);
     setStep('completing');
 
     try {
+      // Map tool preference to platform tolerance
+      const toolPreferenceMap: Record<string, 'any' | 'preferGeneric' | 'genericOnly'> = {
+        specific_tools: 'any',
+        mixed: 'preferGeneric',
+        concepts_only: 'genericOnly',
+      };
+
       const dto: CompleteOnboardingDto = {
         originalGoal: goal,
         selectedDirection: selectedDirection.title,
         selectedDirectionOutcome: selectedDirection.outcome,
         directionKeywords: selectedDirection.keywords,
         contentDepth: depth,
-        // Use tool-specific directions to set platform tolerance
-        platformTolerance: selectedDirection.isToolSpecific ? 'any' : 'preferGeneric',
+        platformTolerance: toolPreferenceMap[toolPreference] || 'preferGeneric',
         // Language selection (for CODE/AI_AGENT directions)
         selectedLanguage: selectedLanguage,
         // Include refinement context if used
         outputType: refinementContext?.outputType,
         usageContext: refinementContext?.usageContext,
-        dailyMinutes: refinementContext?.timeMinutes,
-        skillLevel: refinementContext?.skillLevel,
+        // Feeling-based inputs
+        familiarity,
+        sessionLength,
       };
 
       await onboardingService.completeOnboarding(dto);
@@ -243,9 +255,9 @@ export default function OnboardingPage() {
 
             {step === 'depth' && selectedDirection && (
               <StepWrapper key="depth">
-                <DepthStep
+                <FeelingStep
                   selectedDirection={selectedDirection.title}
-                  onSelect={handleDepthSelect}
+                  onSelect={handleFeelingSelect}
                 />
               </StepWrapper>
             )}
