@@ -3,10 +3,7 @@
  * Standalone scoring functions used by VideoMatchingService and tests
  */
 
-import {
-  CONTENT_SIGNALS,
-  getChannelPolicy,
-} from './youtube-policy';
+import { CONTENT_SIGNALS, getChannelPolicy } from './youtube-policy';
 import { extractConceptWords } from '../../utils/shared.utils';
 
 // ============================================
@@ -17,67 +14,194 @@ import { extractConceptWords } from '../../utils/shared.utils';
 export const PROMO_SIGNALS = {
   // CTA & Funnel phrases - signals promotional intent
   cta: [
-    'join my community', 'link in the description', 'link below', 'free training',
-    'sign up here', 'sign up now', 'book a call', 'apply now', 'limited spots',
-    'discount code', 'early access', 'exclusive access', 'free guide', 'free ebook',
-    'free template', 'check out my', 'subscribe for more', 'hit the bell',
-    'join the waitlist', 'spots are filling', 'doors are closing', 'enrollment opens',
-    'click the link', 'grab your', 'get your free', 'download my', 'use code',
-    'click below', 'use my code', 'promo code', 'special offer', 'limited time',
-    'start your free trial', 'sign up for free',
+    'join my community',
+    'link in the description',
+    'link below',
+    'free training',
+    'sign up here',
+    'sign up now',
+    'book a call',
+    'apply now',
+    'limited spots',
+    'discount code',
+    'early access',
+    'exclusive access',
+    'free guide',
+    'free ebook',
+    'free template',
+    'check out my',
+    'subscribe for more',
+    'hit the bell',
+    'join the waitlist',
+    'spots are filling',
+    'doors are closing',
+    'enrollment opens',
+    'click the link',
+    'grab your',
+    'get your free',
+    'download my',
+    'use code',
+    'click below',
+    'use my code',
+    'promo code',
+    'special offer',
+    'limited time',
+    'start your free trial',
+    'sign up for free',
   ],
 
   // Monetization signals - courses, coaching, etc.
   monetization: [
-    'my course', 'my coaching', 'my mentorship', 'my program', 'my accelerator',
-    'my bootcamp', 'my agency', 'my community', 'premium members', 'paid members',
-    'inner circle', 'mastermind', 'private group', 'vip access', 'pro version',
-    'full course', 'complete course', 'paid training', 'coaching call',
-    'enroll', 'newsletter', 'join my',
+    'my course',
+    'my coaching',
+    'my mentorship',
+    'my program',
+    'my accelerator',
+    'my bootcamp',
+    'my agency',
+    'my community',
+    'premium members',
+    'paid members',
+    'inner circle',
+    'mastermind',
+    'private group',
+    'vip access',
+    'pro version',
+    'full course',
+    'complete course',
+    'paid training',
+    'coaching call',
+    'enroll',
+    'newsletter',
+    'join my',
   ],
 
   // Affiliate/tracking patterns (regex-friendly)
   affiliatePatterns: [
-    'affiliate', 'aff=', 'ref=', 'utm_', 'partner=', 'coupon', 'discount',
+    'affiliate',
+    'aff=',
+    'ref=',
+    'utm_',
+    'partner=',
+    'coupon',
+    'discount',
   ],
 
   // Self-promo phrases in description (excluding duplicates from monetization)
   selfPromo: [
-    'join', 'my course', 'bootcamp', 'cohort', 'community',
-    'mentorship', 'patreon',
+    'join',
+    'my course',
+    'bootcamp',
+    'cohort',
+    'community',
+    'mentorship',
+    'patreon',
   ],
 
   // Platform/vendor tool names for tool-heavy detection
   platformTools: [
-    'zapier', 'make.com', 'make', 'integromat', 'airtable', 'notion', 'hubspot',
-    'vapi', 'openai', 'anthropic', 'claude', 'chatgpt', 'gpt-4', 'gpt-3',
-    'clickup', 'monday', 'asana', 'trello', 'slack', 'discord',
-    'webflow', 'bubble', 'adalo', 'glide', 'softr', 'retool',
-    'stripe', 'gumroad', 'teachable', 'kajabi', 'thinkific', 'podia',
-    'mailchimp', 'convertkit', 'beehiiv', 'substack', 'lemlist', 'instantly',
-    'calendly', 'cal.com', 'typeform', 'tally', 'jotform',
-    'figma', 'canva', 'midjourney', 'dall-e', 'stable diffusion',
-    'eleven labs', 'heygen', 'synthesia', 'd-id', 'runway',
+    'zapier',
+    'make.com',
+    'make',
+    'integromat',
+    'airtable',
+    'notion',
+    'hubspot',
+    'vapi',
+    'openai',
+    'anthropic',
+    'claude',
+    'chatgpt',
+    'gpt-4',
+    'gpt-3',
+    'clickup',
+    'monday',
+    'asana',
+    'trello',
+    'slack',
+    'discord',
+    'webflow',
+    'bubble',
+    'adalo',
+    'glide',
+    'softr',
+    'retool',
+    'stripe',
+    'gumroad',
+    'teachable',
+    'kajabi',
+    'thinkific',
+    'podia',
+    'mailchimp',
+    'convertkit',
+    'beehiiv',
+    'substack',
+    'lemlist',
+    'instantly',
+    'calendly',
+    'cal.com',
+    'typeform',
+    'tally',
+    'jotform',
+    'figma',
+    'canva',
+    'midjourney',
+    'dall-e',
+    'stable diffusion',
+    'eleven labs',
+    'heygen',
+    'synthesia',
+    'd-id',
+    'runway',
   ],
 
   // Brands that often create promotional tutorials (excluding those already in platformTools)
   promoBrands: [
-    'jasper', 'semrush', 'salesforce', 'shopify', 'wix', 'squarespace',
-    'wordpress', 'twilio', 'sendgrid', 'intercom', 'zendesk', 'freshdesk',
+    'jasper',
+    'semrush',
+    'salesforce',
+    'shopify',
+    'wix',
+    'squarespace',
+    'wordpress',
+    'twilio',
+    'sendgrid',
+    'intercom',
+    'zendesk',
+    'freshdesk',
   ],
 
   // Vendor self-identification patterns
   vendorSelf: [
-    'at zapier we', 'at notion we', 'at airtable we', 'at monday we',
-    'at clickup we', 'at asana we', 'at hubspot we', 'here at',
-    'our team', 'our company', 'our customers', 'our users love',
-    'with our', 'using our', "we've built", 'we designed',
-    'our platform', 'our product', 'our tool', 'our software', 'our solution',
+    'at zapier we',
+    'at notion we',
+    'at airtable we',
+    'at monday we',
+    'at clickup we',
+    'at asana we',
+    'at hubspot we',
+    'here at',
+    'our team',
+    'our company',
+    'our customers',
+    'our users love',
+    'with our',
+    'using our',
+    "we've built",
+    'we designed',
+    'our platform',
+    'our product',
+    'our tool',
+    'our software',
+    'our solution',
   ],
 
   // Sponsorship signals
   sponsorship: [
-    'paid promotion', 'paid partnership', 'sponsored by', 'thanks to our sponsor',
+    'paid promotion',
+    'paid partnership',
+    'sponsored by',
+    'thanks to our sponsor',
   ],
 };
 
@@ -113,28 +237,28 @@ export interface ScoringContext {
 
 export const SCORING_WEIGHTS = {
   beginner: {
-    conceptMatch: 0.28,      // +0.03: prioritize learning fit
+    conceptMatch: 0.28, // +0.03: prioritize learning fit
     channelTrust: 0.25,
-    durationFit: 0.10,
-    cognitiveLoad: 0.12,     // +0.02: beginners need appropriate difficulty
-    engagement: 0.05,        // -0.05: popularity ≠ pedagogy
-    segmentability: 0.20,
+    durationFit: 0.1,
+    cognitiveLoad: 0.12, // +0.02: beginners need appropriate difficulty
+    engagement: 0.05, // -0.05: popularity ≠ pedagogy
+    segmentability: 0.2,
   },
   intermediate: {
-    conceptMatch: 0.32,      // +0.02
+    conceptMatch: 0.32, // +0.02
     channelTrust: 0.15,
-    durationFit: 0.10,
-    cognitiveLoad: 0.12,     // +0.02
-    engagement: 0.06,        // -0.04
+    durationFit: 0.1,
+    cognitiveLoad: 0.12, // +0.02
+    engagement: 0.06, // -0.04
     segmentability: 0.25,
   },
   advanced: {
-    conceptMatch: 0.37,      // +0.02
-    channelTrust: 0.10,
-    durationFit: 0.10,
-    cognitiveLoad: 0.13,     // +0.03: depth matters more
-    engagement: 0.08,        // -0.02: advanced learners tolerate some promo
-    segmentability: 0.22,    // -0.03
+    conceptMatch: 0.37, // +0.02
+    channelTrust: 0.1,
+    durationFit: 0.1,
+    cognitiveLoad: 0.13, // +0.03: depth matters more
+    engagement: 0.08, // -0.02: advanced learners tolerate some promo
+    segmentability: 0.22, // -0.03
   },
 };
 
@@ -151,15 +275,38 @@ export const MARKETING_WEIGHTS: Record<string, number> = {
 
 export const COGNITIVE_SIGNALS = {
   beginner: {
-    positive: ['for beginners', 'simply', 'easy', 'basic', 'introduction', 'intro to', 'getting started', 'first'],
-    negative: ['advanced', 'deep dive', 'under the hood', 'internals', 'vs', 'performance'],
+    positive: [
+      'for beginners',
+      'simply',
+      'easy',
+      'basic',
+      'introduction',
+      'intro to',
+      'getting started',
+      'first',
+    ],
+    negative: [
+      'advanced',
+      'deep dive',
+      'under the hood',
+      'internals',
+      'vs',
+      'performance',
+    ],
   },
   intermediate: {
     positive: ['tutorial', 'explained', 'how to', 'in practice', 'real world'],
     negative: ['for beginners', 'basics', 'internals'],
   },
   advanced: {
-    positive: ['deep dive', 'under the hood', 'internals', 'performance', 'architecture', 'advanced'],
+    positive: [
+      'deep dive',
+      'under the hood',
+      'internals',
+      'performance',
+      'architecture',
+      'advanced',
+    ],
     negative: ['for beginners', 'basics', 'introduction'],
   },
 };
@@ -256,11 +403,12 @@ export function determineAdaptiveModality(
     return {
       defaultMode: 'ai',
       videoConfidence: 0,
-      reason: 'No suitable video found for this topic. AI explanation will help you understand the concepts.',
+      reason:
+        'No suitable video found for this topic. AI explanation will help you understand the concepts.',
       reasonShort: 'No video match',
       videoAvailable: false,
       aiAvailable: true,
-      showAiOption: false,  // AI is the only option
+      showAiOption: false, // AI is the only option
       showVideoOption: false,
     };
   }
@@ -270,12 +418,13 @@ export function determineAdaptiveModality(
     return {
       defaultMode: 'ai',
       videoConfidence,
-      reason: 'Available videos are too promotional. AI explanation focuses on teaching without sales pitches.',
+      reason:
+        'Available videos are too promotional. AI explanation focuses on teaching without sales pitches.',
       reasonShort: 'Videos too promotional',
       videoAvailable: true,
       aiAvailable: true,
       showAiOption: false,
-      showVideoOption: true,  // Let user try anyway if curious
+      showVideoOption: true, // Let user try anyway if curious
     };
   }
 
@@ -288,14 +437,16 @@ export function determineAdaptiveModality(
       reasonShort: 'Great video match',
       videoAvailable: true,
       aiAvailable: true,
-      showAiOption: true,  // User can switch to AI if they prefer reading
+      showAiOption: true, // User can switch to AI if they prefer reading
       showVideoOption: false,
     };
   }
 
   // Medium-high confidence - video is good
   if (videoConfidence >= 60) {
-    const hasWarning = promoVerdict === 'allow_with_warning' || (marketingPenalty && marketingPenalty > 10);
+    const hasWarning =
+      promoVerdict === 'allow_with_warning' ||
+      (marketingPenalty && marketingPenalty > 10);
     return {
       defaultMode: 'video',
       videoConfidence,
@@ -315,7 +466,8 @@ export function determineAdaptiveModality(
     return {
       defaultMode: 'ai',
       videoConfidence,
-      reason: 'AI explanation recommended for this topic. A video is available but may not be the best fit.',
+      reason:
+        'AI explanation recommended for this topic. A video is available but may not be the best fit.',
       reasonShort: 'AI recommended',
       videoAvailable: true,
       aiAvailable: true,
@@ -328,7 +480,8 @@ export function determineAdaptiveModality(
   return {
     defaultMode: 'ai',
     videoConfidence,
-    reason: 'AI explanation is better for this topic. Available videos don\'t closely match what you need to learn.',
+    reason:
+      "AI explanation is better for this topic. Available videos don't closely match what you need to learn.",
     reasonShort: 'AI is better here',
     videoAvailable: true,
     aiAvailable: true,
@@ -344,39 +497,73 @@ export function determineAdaptiveModality(
 // Common abbreviations (bidirectional: full <-> short)
 const ABBREVIATIONS: Record<string, string> = {
   // Languages
-  javascript: 'js', typescript: 'ts', python: 'py', golang: 'go',
+  javascript: 'js',
+  typescript: 'ts',
+  python: 'py',
+  golang: 'go',
   // Infra & databases
-  kubernetes: 'k8s', database: 'db', postgresql: 'postgres', mongodb: 'mongo',
-  elasticsearch: 'es', dynamodb: 'dynamo', redis: 'rd',
+  kubernetes: 'k8s',
+  database: 'db',
+  postgresql: 'postgres',
+  mongodb: 'mongo',
+  elasticsearch: 'es',
+  dynamodb: 'dynamo',
+  redis: 'rd',
   // AI/ML
-  'artificial intelligence': 'ai', 'machine learning': 'ml',
-  'large language model': 'llm', 'generative pre-trained': 'gpt',
-  'natural language processing': 'nlp', 'computer vision': 'cv',
-  'retrieval augmented generation': 'rag', 'neural network': 'nn',
+  'artificial intelligence': 'ai',
+  'machine learning': 'ml',
+  'large language model': 'llm',
+  'generative pre-trained': 'gpt',
+  'natural language processing': 'nlp',
+  'computer vision': 'cv',
+  'retrieval augmented generation': 'rag',
+  'neural network': 'nn',
   // Cloud & DevOps
-  'amazon web services': 'aws', 'google cloud': 'gcp', 'microsoft azure': 'azure',
-  'continuous integration': 'ci', 'continuous deployment': 'cd',
-  'infrastructure as code': 'iac', serverless: 'sls',
+  'amazon web services': 'aws',
+  'google cloud': 'gcp',
+  'microsoft azure': 'azure',
+  'continuous integration': 'ci',
+  'continuous deployment': 'cd',
+  'infrastructure as code': 'iac',
+  serverless: 'sls',
   // Web & API
-  'user interface': 'ui', 'user experience': 'ux',
-  'application programming interface': 'api', 'rest api': 'restful',
-  'graphql': 'gql', 'software development kit': 'sdk',
+  'user interface': 'ui',
+  'user experience': 'ux',
+  'application programming interface': 'api',
+  'rest api': 'restful',
+  graphql: 'gql',
+  'software development kit': 'sdk',
   // Auth & security
-  application: 'app', authentication: 'auth', authorization: 'authz',
-  'json web token': 'jwt', 'single sign-on': 'sso', 'two-factor': '2fa',
+  application: 'app',
+  authentication: 'auth',
+  authorization: 'authz',
+  'json web token': 'jwt',
+  'single sign-on': 'sso',
+  'two-factor': '2fa',
   // Frontend
-  'cascading style sheets': 'css', 'hypertext markup': 'html',
-  'document object model': 'dom', 'server side rendering': 'ssr',
-  'static site generation': 'ssg', 'single page application': 'spa',
+  'cascading style sheets': 'css',
+  'hypertext markup': 'html',
+  'document object model': 'dom',
+  'server side rendering': 'ssr',
+  'static site generation': 'ssg',
+  'single page application': 'spa',
   // Data formats
-  'javascript object notation': 'json', 'extensible markup': 'xml',
+  'javascript object notation': 'json',
+  'extensible markup': 'xml',
   // Testing & quality
-  'test driven development': 'tdd', 'behavior driven': 'bdd',
-  'quality assurance': 'qa', 'end to end': 'e2e',
+  'test driven development': 'tdd',
+  'behavior driven': 'bdd',
+  'quality assurance': 'qa',
+  'end to end': 'e2e',
   // Tools & environments
-  'command line interface': 'cli', 'integrated development environment': 'ide',
-  'version control system': 'vcs', repository: 'repo', configuration: 'config',
-  environment: 'env', development: 'dev', production: 'prod',
+  'command line interface': 'cli',
+  'integrated development environment': 'ide',
+  'version control system': 'vcs',
+  repository: 'repo',
+  configuration: 'config',
+  environment: 'env',
+  development: 'dev',
+  production: 'prod',
 };
 
 /**
@@ -431,7 +618,9 @@ function getWordVariations(word: string): string[] {
   if (ABBREVIATIONS[lower]) {
     variations.push(ABBREVIATIONS[lower]);
   }
-  const fullForm = Object.entries(ABBREVIATIONS).find(([, abbr]) => abbr === lower)?.[0];
+  const fullForm = Object.entries(ABBREVIATIONS).find(
+    ([, abbr]) => abbr === lower,
+  )?.[0];
   if (fullForm) variations.push(fullForm);
 
   // Plurals
@@ -448,7 +637,7 @@ function getWordVariations(word: string): string[] {
  */
 export function textContainsWord(text: string, word: string): boolean {
   const variations = getWordVariations(word);
-  return variations.some(v => text.includes(v));
+  return variations.some((v) => text.includes(v));
 }
 
 // ============================================
@@ -495,7 +684,10 @@ export function scoreMarketingPenalty(video: ScoringVideo): number {
     linkPenalty += 6; // Resource dump = often promotional
   }
   // Check affiliate patterns using shared signals
-  const affiliateRegex = new RegExp(PROMO_SIGNALS.affiliatePatterns.join('|'), 'i');
+  const affiliateRegex = new RegExp(
+    PROMO_SIGNALS.affiliatePatterns.join('|'),
+    'i',
+  );
   if (affiliateRegex.test(video.description)) {
     affiliatePenalty += 8;
   }
@@ -508,10 +700,14 @@ export function scoreMarketingPenalty(video: ScoringVideo): number {
   // Vendor self-promotion detection: channel name appears in video title
   let vendorPenalty = 0;
   if (video.channelName) {
-    const channelWords = video.channelName.toLowerCase()
-      .replace(/\s*(official|channel|tutorials?|academy|learning|hq|tv)\s*/gi, '')
+    const channelWords = video.channelName
+      .toLowerCase()
+      .replace(
+        /\s*(official|channel|tutorials?|academy|learning|hq|tv)\s*/gi,
+        '',
+      )
       .split(/[\s\-_]+/)
-      .filter(w => w.length > 3);
+      .filter((w) => w.length > 3);
 
     for (const word of channelWords) {
       if (titleLower.includes(word)) {
@@ -531,10 +727,19 @@ export function scoreMarketingPenalty(video: ScoringVideo): number {
       moderate: 5,
       heavy: 10,
     };
-    channelPenalty = marketingPenalties[channelInfo.channel.marketingLevel] || 0;
+    channelPenalty =
+      marketingPenalties[channelInfo.channel.marketingLevel] || 0;
   }
 
-  return Math.min(50, hardPenalty + softPenalty + channelPenalty + vendorPenalty + linkPenalty + affiliatePenalty);
+  return Math.min(
+    50,
+    hardPenalty +
+      softPenalty +
+      channelPenalty +
+      vendorPenalty +
+      linkPenalty +
+      affiliatePenalty,
+  );
 }
 
 // ============================================
@@ -550,12 +755,24 @@ export function scoreMarketingPenalty(video: ScoringVideo): number {
 export function isToolRelatedTopic(concept: string): boolean {
   const conceptLower = concept.toLowerCase();
   // Check if concept mentions any specific tools
-  if (PROMO_SIGNALS.platformTools.some(tool => conceptLower.includes(tool.toLowerCase()))) {
+  if (
+    PROMO_SIGNALS.platformTools.some((tool) =>
+      conceptLower.includes(tool.toLowerCase()),
+    )
+  ) {
     return true;
   }
   // Check for generic tool-usage patterns via stems
-  const toolPatterns = ['api', 'automat', 'integrat', 'workflow', 'pipeline', 'webhook', 'endpoint'];
-  return toolPatterns.some(pattern => conceptLower.includes(pattern));
+  const toolPatterns = [
+    'api',
+    'automat',
+    'integrat',
+    'workflow',
+    'pipeline',
+    'webhook',
+    'endpoint',
+  ];
+  return toolPatterns.some((pattern) => conceptLower.includes(pattern));
 }
 
 // ============================================
@@ -586,12 +803,12 @@ export function classifyVideoContentType(
   const conceptLower = concept.toLowerCase();
 
   // Check which platform tools appear in the title
-  const toolsInTitle = PROMO_SIGNALS.platformTools.filter(tool =>
+  const toolsInTitle = PROMO_SIGNALS.platformTools.filter((tool) =>
     titleLower.includes(tool.toLowerCase()),
   );
 
   // Check if concept explicitly mentions these tools (user wants tool-specific content)
-  const toolsRequestedInConcept = toolsInTitle.filter(tool =>
+  const toolsRequestedInConcept = toolsInTitle.filter((tool) =>
     conceptLower.includes(tool.toLowerCase()),
   );
 
@@ -601,7 +818,9 @@ export function classifyVideoContentType(
     /\b(zapier|make|n8n|airtable|notion)\s+(tutorial|guide|course|beginner)/i,
     /\bhow to\b.*\b(zapier|make|n8n|airtable|notion)\b/i,
   ];
-  const hasToolSpecificPattern = toolSpecificPatterns.some(p => p.test(title));
+  const hasToolSpecificPattern = toolSpecificPatterns.some((p) =>
+    p.test(title),
+  );
 
   // If tools in title but NOT in concept = video is too specific for this search
   if (toolsInTitle.length > 0 && toolsRequestedInConcept.length === 0) {
@@ -671,7 +890,7 @@ export interface PromoAnalysisResult {
 
   // A: CTA & Funnel Detection
   ctaHits: number;
-  ctaDensity: number;           // per minute
+  ctaDensity: number; // per minute
   monetizationHits: number;
   promoLevel: 'none' | 'soft' | 'moderate' | 'strong';
 
@@ -685,11 +904,15 @@ export interface PromoAnalysisResult {
   isHardSell: boolean;
 
   // D: Teaching vs Tool-Demo
-  teachingRatio: number;        // 0-1, higher = more teaching
+  teachingRatio: number; // 0-1, higher = more teaching
   isToolDemo: boolean;
 
   // Recommended action
-  recommendedSegments?: { start: number; end: number; type: 'learn' | 'skip' }[];
+  recommendedSegments?: {
+    start: number;
+    end: number;
+    type: 'learn' | 'skip';
+  }[];
   totalPenalty: number;
 }
 
@@ -700,7 +923,10 @@ function countPhraseMatches(text: string, phrases: string[]): number {
   const textLower = text.toLowerCase();
   let count = 0;
   for (const phrase of phrases) {
-    const regex = new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    const regex = new RegExp(
+      phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+      'gi',
+    );
     const matches = textLower.match(regex);
     if (matches) count += matches.length;
   }
@@ -710,13 +936,19 @@ function countPhraseMatches(text: string, phrases: string[]): number {
 /**
  * Count tool/platform mentions
  */
-function countToolMentions(text: string): { total: number; breakdown: Record<string, number> } {
+function countToolMentions(text: string): {
+  total: number;
+  breakdown: Record<string, number>;
+} {
   const textLower = text.toLowerCase();
   const breakdown: Record<string, number> = {};
   let total = 0;
 
   for (const tool of PROMO_SIGNALS.platformTools) {
-    const regex = new RegExp(`\\b${tool.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+    const regex = new RegExp(
+      `\\b${tool.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
+      'gi',
+    );
     const matches = textLower.match(regex);
     if (matches) {
       breakdown[tool] = matches.length;
@@ -737,19 +969,47 @@ function analyzeTeachingRatio(text: string): number {
 
   // Teaching signals
   const teachingPhrases = [
-    'the reason', 'because', 'why this', 'the concept', 'in principle',
-    'fundamentally', 'the idea is', 'think of it as', 'imagine',
-    'for example', 'let me explain', 'understand', 'learn',
-    'the key is', 'important to note', 'remember that',
+    'the reason',
+    'because',
+    'why this',
+    'the concept',
+    'in principle',
+    'fundamentally',
+    'the idea is',
+    'think of it as',
+    'imagine',
+    'for example',
+    'let me explain',
+    'understand',
+    'learn',
+    'the key is',
+    'important to note',
+    'remember that',
   ];
 
   // Tool-demo signals
   const demoPhrases = [
-    'click here', 'click on', 'press the', 'go to', 'open the',
-    'select the', 'choose the', 'drag and drop', 'in the dashboard',
-    'on the left', 'on the right', 'at the top', 'at the bottom',
-    'in the menu', 'in settings', 'copy this', 'paste it',
-    'create a new', 'add a new', 'delete the', 'edit the',
+    'click here',
+    'click on',
+    'press the',
+    'go to',
+    'open the',
+    'select the',
+    'choose the',
+    'drag and drop',
+    'in the dashboard',
+    'on the left',
+    'on the right',
+    'at the top',
+    'at the bottom',
+    'in the menu',
+    'in settings',
+    'copy this',
+    'paste it',
+    'create a new',
+    'add a new',
+    'delete the',
+    'edit the',
   ];
 
   const teachingHits = countPhraseMatches(textLower, teachingPhrases);
@@ -784,7 +1044,7 @@ function analyzeSegments(
 
   // Calculate promo density for each quarter using shared signals
   const allPromoWords = [...PROMO_SIGNALS.cta, ...PROMO_SIGNALS.monetization];
-  const segmentDensities = quarters.map(q => {
+  const segmentDensities = quarters.map((q) => {
     const words = q.split(/\s+/).length;
     if (words < 10) return 0;
     const hits = countPhraseMatches(q, allPromoWords);
@@ -807,13 +1067,16 @@ export function analyzePromoContent(
   videoDurationSec: number,
   concept?: string,
 ): PromoAnalysisResult {
-  const fullText = transcript.map(t => t.text).join(' ');
+  const fullText = transcript.map((t) => t.text).join(' ');
   const videoMinutes = videoDurationSec / 60;
   const toolsExpected = concept ? isToolRelatedTopic(concept) : false;
 
   // A: CTA & Funnel Detection using shared signals
   const ctaHits = countPhraseMatches(fullText, PROMO_SIGNALS.cta);
-  const monetizationHits = countPhraseMatches(fullText, PROMO_SIGNALS.monetization);
+  const monetizationHits = countPhraseMatches(
+    fullText,
+    PROMO_SIGNALS.monetization,
+  );
   const ctaDensity = ctaHits / Math.max(1, videoMinutes);
 
   let promoLevel: 'none' | 'soft' | 'moderate' | 'strong' = 'none';
@@ -833,9 +1096,11 @@ export function analyzePromoContent(
 
   // C: Hard-Sell Detection (segment analysis)
   const segmentAnalysis = analyzeSegments(transcript, videoDurationSec);
-  const avgDensity = segmentAnalysis.segmentDensities.reduce((a, b) => a + b, 0) / 4;
-  const isHardSell = segmentAnalysis.lastQuarterDensity > avgDensity * 2 &&
-                     segmentAnalysis.lastQuarterDensity > 1.5;
+  const avgDensity =
+    segmentAnalysis.segmentDensities.reduce((a, b) => a + b, 0) / 4;
+  const isHardSell =
+    segmentAnalysis.lastQuarterDensity > avgDensity * 2 &&
+    segmentAnalysis.lastQuarterDensity > 1.5;
 
   // D: Teaching vs Tool-Demo
   // For tool-related topics, being a "tool demo" is expected and not penalized
@@ -850,7 +1115,8 @@ export function analyzePromoContent(
 
   if (isHardSell) totalPenalty += 15;
   if (isToolDemo && isPlatformHeavy) totalPenalty += 10;
-  if (isPlatformHeavy && promoLevel !== 'none' && !toolsExpected) totalPenalty += 5;
+  if (isPlatformHeavy && promoLevel !== 'none' && !toolsExpected)
+    totalPenalty += 5;
 
   // Determine verdict
   let verdict: 'reject' | 'allow_with_warning' | 'allow_tagged' | 'ideal';
@@ -876,7 +1142,11 @@ export function analyzePromoContent(
   }
 
   // Generate recommended segments (skip high-promo sections)
-  const recommendedSegments: { start: number; end: number; type: 'learn' | 'skip' }[] = [];
+  const recommendedSegments: {
+    start: number;
+    end: number;
+    type: 'learn' | 'skip';
+  }[] = [];
   const quarterDuration = videoDurationSec / 4;
 
   for (let i = 0; i < 4; i++) {
@@ -937,7 +1207,10 @@ export function scoreChannelTrust(video: ScoringVideo): number {
  * - mustCover: bonus for covering required concepts
  * Content verification (concept + platform) is handled by Layer 3 Gemini AI
  */
-export function scoreConceptMatch(video: ScoringVideo, context: ScoringContext): number {
+export function scoreConceptMatch(
+  video: ScoringVideo,
+  context: ScoringContext,
+): number {
   let score = 50;
   const titleLower = video.title.toLowerCase();
   const descLower = video.description.toLowerCase();
@@ -985,9 +1258,12 @@ export function scoreConceptMatch(video: ScoringVideo, context: ScoringContext):
 
   // Chapter titles contain concept: +12
   if (video.chapters) {
-    const chapterContainsConcept = video.chapters.some(ch =>
-      ch.title.toLowerCase().includes(conceptLower) ||
-      conceptWords.some(word => textContainsWord(ch.title.toLowerCase(), word)),
+    const chapterContainsConcept = video.chapters.some(
+      (ch) =>
+        ch.title.toLowerCase().includes(conceptLower) ||
+        conceptWords.some((word) =>
+          textContainsWord(ch.title.toLowerCase(), word),
+        ),
     );
     if (chapterContainsConcept) {
       score += 12;
@@ -1003,7 +1279,10 @@ export function scoreConceptMatch(video: ScoringVideo, context: ScoringContext):
 /**
  * Score duration fit (0-100)
  */
-export function scoreDurationFit(video: ScoringVideo, context: ScoringContext): number {
+export function scoreDurationFit(
+  video: ScoringVideo,
+  context: ScoringContext,
+): number {
   const targetDuration = context.userSlot * 60;
   const ratio = video.duration / targetDuration;
 
@@ -1033,7 +1312,10 @@ export function scoreDurationFit(video: ScoringVideo, context: ScoringContext): 
 /**
  * Score cognitive load (0-100)
  */
-export function scoreCognitiveLoad(video: ScoringVideo, context: ScoringContext): number {
+export function scoreCognitiveLoad(
+  video: ScoringVideo,
+  context: ScoringContext,
+): number {
   const titleLower = video.title.toLowerCase();
   const signals = COGNITIVE_SIGNALS[context.userLevel];
   let score = 70;
@@ -1086,4 +1368,3 @@ export function scoreEngagement(video: ScoringVideo): number {
 
   return Math.min(100, score);
 }
-

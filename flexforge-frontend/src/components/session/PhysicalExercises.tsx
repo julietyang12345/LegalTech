@@ -1,12 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, X, CheckCircle, AlertTriangle, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { clsx } from 'clsx';
 import type {
   FormCheckSection,
   SafetyCheckSection,
-  FormCheckItem,
-  SafetyCheckItem,
 } from '@/types';
 
 // Progress persistence types

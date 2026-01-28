@@ -1,4 +1,13 @@
-import { IsString, IsInt, IsNumber, IsEnum, IsOptional, IsObject, Min, Max } from 'class-validator';
+import {
+  IsString,
+  IsInt,
+  IsNumber,
+  IsEnum,
+  IsOptional,
+  IsObject,
+  Min,
+  Max,
+} from 'class-validator';
 import { SkillLevel } from '../../../database/entities/session.entity';
 
 export class CreateSessionDto {

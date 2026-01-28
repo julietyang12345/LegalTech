@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Lock, AlertCircle, ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
-import { Button, Input, Card } from '@/components/common';
+import { Button, Card } from '@/components/common';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -22,7 +22,7 @@ export function LoginPage() {
     try {
       await login(email, password);
       navigate(from, { replace: true });
-    } catch (err) {
+    } catch (_err) {
       // Error is handled by store
     }
   };

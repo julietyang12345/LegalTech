@@ -1,10 +1,19 @@
-import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  Optional,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
-import { CompanionService, CompanionContext } from '../companion/companion.service';
+import {
+  CompanionService,
+  CompanionContext,
+} from '../companion/companion.service';
 
 export enum AITask {
   // Heavy reasoning (Claude Sonnet 4)
@@ -51,8 +60,8 @@ export interface AIResponse {
 }
 
 export interface CacheablePrompt {
-  staticPart: string;    // Cacheable instructions (>1024 tokens)
-  dynamicPart: string;   // User-specific context
+  staticPart: string; // Cacheable instructions (>1024 tokens)
+  dynamicPart: string; // User-specific context
 }
 
 @Injectable()
@@ -132,10 +141,7 @@ export class AiService {
 
         return response;
       } catch (error) {
-        this.logger.error(
-          `❌ ${provider} failed for ${task}:`,
-          error.message,
-        );
+        this.logger.error(`❌ ${provider} failed for ${task}:`, error.message);
 
         // Try next provider in fallback chain
         continue;
@@ -222,9 +228,7 @@ export class AiService {
         { provider: 'anthropic', model: 'claude-sonnet-4-20250514' },
         { provider: 'openai', model: 'gpt-4o-mini' },
       ],
-      [AITask.DATA_VALIDATION]: [
-        { provider: 'openai', model: 'gpt-4o-mini' },
-      ],
+      [AITask.DATA_VALIDATION]: [{ provider: 'openai', model: 'gpt-4o-mini' }],
 
       // Lightweight extraction (minimal tokens)
       [AITask.LIGHTWEIGHT_EXTRACTION]: [
@@ -243,9 +247,11 @@ export class AiService {
       ],
     };
 
-    return routes[task] || [
-      { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
-    ];
+    return (
+      routes[task] || [
+        { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
+      ]
+    );
   }
 
   private async callProvider(
@@ -305,7 +311,11 @@ export class AiService {
     cacheableSystem: CacheablePrompt,
   ): Promise<AIResponse> {
     // Build system with cache_control for static parts
-    const systemBlocks: Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }> = [];
+    const systemBlocks: Array<{
+      type: 'text';
+      text: string;
+      cache_control?: { type: 'ephemeral' };
+    }> = [];
 
     // Static part gets cached (must be >1024 tokens to be effective)
     if (cacheableSystem.staticPart) {
@@ -338,7 +348,9 @@ export class AiService {
     const cacheHit = (response as any).usage?.cache_read_input_tokens > 0;
 
     if (cacheHit) {
-      this.logger.log(`🎯 Cache HIT - saved ${(response as any).usage.cache_read_input_tokens} tokens`);
+      this.logger.log(
+        `🎯 Cache HIT - saved ${(response as any).usage.cache_read_input_tokens} tokens`,
+      );
     }
 
     return {
@@ -365,10 +377,10 @@ export class AiService {
     cacheReadTokens: number,
   ): number {
     // Pricing per 1M tokens (Claude Sonnet 4)
-    const inputCost = 3.0;    // $3/1M input
-    const outputCost = 15.0;  // $15/1M output
-    const cacheWriteCost = 3.75;  // $3.75/1M (25% more)
-    const cacheReadCost = 0.30;   // $0.30/1M (90% less!)
+    const inputCost = 3.0; // $3/1M input
+    const outputCost = 15.0; // $15/1M output
+    const cacheWriteCost = 3.75; // $3.75/1M (25% more)
+    const cacheReadCost = 0.3; // $0.30/1M (90% less!)
 
     const normalInputTokens = inputTokens - cacheWriteTokens - cacheReadTokens;
 
@@ -419,9 +431,7 @@ export class AiService {
     }
     const genModel = this.gemini.getGenerativeModel({ model });
 
-    const fullPrompt = systemPrompt
-      ? `${systemPrompt}\n\n${prompt}`
-      : prompt;
+    const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
 
     const result = await genModel.generateContent(fullPrompt);
     const response = await result.response;
@@ -503,11 +513,15 @@ export class AiService {
     try {
       const parsed = JSON.parse(existingDirections);
       if (parsed.directions) {
-        compressedDirections = parsed.directions.map((d: any, i: number) =>
-          `${i + 1}. ${d.title}: ${d.outcome || ''}`
-        ).join('\n');
+        compressedDirections = parsed.directions
+          .map(
+            (d: any, i: number) => `${i + 1}. ${d.title}: ${d.outcome || ''}`,
+          )
+          .join('\n');
       }
-    } catch { /* use full if parse fails */ }
+    } catch {
+      /* use full if parse fails */
+    }
 
     const reviewPrompt = `Review these learning directions. User feedback: "${userFeedback}"
 
@@ -536,22 +550,30 @@ Return JSON: {overallQuality, issues[], suggestions[], missingApproaches[], feed
           reviewData = JSON.parse(jsonMatch[0]);
         }
       } catch {
-        this.logger.warn('Could not parse Gemini review as JSON, using raw content');
+        this.logger.warn(
+          'Could not parse Gemini review as JSON, using raw content',
+        );
       }
     } catch (error) {
       this.logger.error(`Gemini review failed: ${error.message || error}`);
       // Don't silently return old directions - continue to Claude without review
-      this.logger.log('Skipping Gemini review, proceeding directly to Claude synthesis');
+      this.logger.log(
+        'Skipping Gemini review, proceeding directly to Claude synthesis',
+      );
     }
 
     // Step 3: Claude synthesizes final directions incorporating Gemini's feedback
     // Extract just the actionable feedback from Gemini's review (or empty if Gemini failed)
-    let reviewSummary = geminiReview?.content || 'No automated review available';
+    let reviewSummary =
+      geminiReview?.content || 'No automated review available';
     if (reviewData) {
       const parts = [];
-      if (reviewData.issues?.length) parts.push(`Issues: ${reviewData.issues.join('; ')}`);
-      if (reviewData.suggestions?.length) parts.push(`Suggestions: ${reviewData.suggestions.join('; ')}`);
-      if (reviewData.missingApproaches?.length) parts.push(`Missing: ${reviewData.missingApproaches.join('; ')}`);
+      if (reviewData.issues?.length)
+        parts.push(`Issues: ${reviewData.issues.join('; ')}`);
+      if (reviewData.suggestions?.length)
+        parts.push(`Suggestions: ${reviewData.suggestions.join('; ')}`);
+      if (reviewData.missingApproaches?.length)
+        parts.push(`Missing: ${reviewData.missingApproaches.join('; ')}`);
       if (parts.length) reviewSummary = parts.join('\n');
     }
 
@@ -604,7 +626,8 @@ Return improved JSON with same format. Each direction must achieve user's comple
     baseCurriculumPrompt: string,
   ): Promise<AIResponse> {
     // Get companion context for personalization
-    const companionContext = await this.companionService?.getUserContext(userId);
+    const companionContext =
+      await this.companionService?.getUserContext(userId);
 
     let systemPrompt = baseCurriculumPrompt;
 
@@ -640,7 +663,9 @@ Return improved JSON with same format. Each direction must achieve user's comple
   /**
    * Get user's companion context
    */
-  async getUserCompanionContext(userId: string): Promise<CompanionContext | null> {
+  async getUserCompanionContext(
+    userId: string,
+  ): Promise<CompanionContext | null> {
     if (!this.companionService) {
       return null;
     }

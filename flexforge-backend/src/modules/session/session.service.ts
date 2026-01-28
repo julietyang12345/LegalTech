@@ -90,7 +90,9 @@ export class SessionService {
       // Use preview curriculum (instant - no AI call needed)
       curriculum = createSessionDto.previewCurriculum;
       fromPreview = true;
-      this.logger.log(`⚡ Using preview curriculum for "${createSessionDto.skillName}" (instant)`);
+      this.logger.log(
+        `⚡ Using preview curriculum for "${createSessionDto.skillName}" (instant)`,
+      );
 
       // Cache the preview for future users
       const cached = await this.cacheService.cacheNewContent(
@@ -113,12 +115,17 @@ export class SessionService {
         curriculum = cacheResult.curriculum;
         variantId = cacheResult.variantId;
         fromCache = true;
-        this.logger.log(`📦 Cache HIT for "${createSessionDto.skillName}" - variant ${variantId}`);
+        this.logger.log(
+          `📦 Cache HIT for "${createSessionDto.skillName}" - variant ${variantId}`,
+        );
       } else {
         // Cache MISS - generate new curriculum
         // Include user's learner preferences from onboarding
         const learnerPrefs = user.preferences?.learner;
-        this.logger.log(`🎯 DEBUG user.preferences.learner:`, JSON.stringify(learnerPrefs, null, 2));
+        this.logger.log(
+          `🎯 DEBUG user.preferences.learner:`,
+          JSON.stringify(learnerPrefs, null, 2),
+        );
         const generated = await this.curriculumService.generateCurriculum(
           {
             ...createSessionDto,
@@ -150,7 +157,9 @@ export class SessionService {
         );
         variantId = cached.variantId;
 
-        this.logger.log(`🆕 Cache MISS for "${createSessionDto.skillName}" - created variant ${variantId}`);
+        this.logger.log(
+          `🆕 Cache MISS for "${createSessionDto.skillName}" - created variant ${variantId}`,
+        );
       }
     }
 
@@ -178,9 +187,13 @@ export class SessionService {
     const savedSession = await this.sessionsRepository.save(session);
 
     if (fromPreview) {
-      this.logger.log(`✅ Session created: ${savedSession.id} (from preview, instant)`);
+      this.logger.log(
+        `✅ Session created: ${savedSession.id} (from preview, instant)`,
+      );
     } else if (fromCache) {
-      this.logger.log(`✅ Session created: ${savedSession.id} (from cache, variant=${variantId})`);
+      this.logger.log(
+        `✅ Session created: ${savedSession.id} (from cache, variant=${variantId})`,
+      );
     } else {
       this.logger.log(
         `✅ Session created: ${savedSession.id}. Type: ${skillDetection?.skillType}, Complexity: ${skillDetection?.complexity}, Tokens: ${tokensUsed}, Cost: $${cost.toFixed(4)}`,
@@ -327,7 +340,7 @@ export class SessionService {
     // If currentDay is out of sync, fix it
     if (session.currentDay !== calculatedCurrentDay) {
       this.logger.warn(
-        `⚠️ currentDay out of sync for session ${session.id}: stored=${session.currentDay}, calculated=${calculatedCurrentDay}. Fixing...`
+        `⚠️ currentDay out of sync for session ${session.id}: stored=${session.currentDay}, calculated=${calculatedCurrentDay}. Fixing...`,
       );
       session.currentDay = calculatedCurrentDay;
       await this.sessionsRepository.save(session);
@@ -339,7 +352,10 @@ export class SessionService {
   /**
    * Get session progress summary
    */
-  async getProgressSummary(id: string, userId: string): Promise<{
+  async getProgressSummary(
+    id: string,
+    userId: string,
+  ): Promise<{
     session: Session;
     progressPercentage: number;
     tasksCompleted: number;
@@ -374,7 +390,8 @@ export class SessionService {
 
     const summary: any = {
       session,
-      progressPercentage: totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0,
+      progressPercentage:
+        totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0,
       tasksCompleted,
       totalTasks,
       daysCompleted: session.currentDay - 1,
@@ -498,10 +515,9 @@ export class SessionService {
     ) {
       // This would call AI to suggest next skill based on current skill
       // For now, placeholder
-      suggestedNextSkill = 'Advanced AI Automation (suggested based on your progress)';
-      recommendations.push(
-        `💡 Next recommended skill: ${suggestedNextSkill}`,
-      );
+      suggestedNextSkill =
+        'Advanced AI Automation (suggested based on your progress)';
+      recommendations.push(`💡 Next recommended skill: ${suggestedNextSkill}`);
     }
 
     return {
@@ -539,15 +555,22 @@ export class SessionService {
     const regenLimit = CACHE_CONFIG.dayContentMaxRegensPerDay;
 
     // Check if day is unlockable
-    const dayOverview = session.curriculum.days.find((d: any) => d.day === dayNumber);
+    const dayOverview = session.curriculum.days.find(
+      (d: any) => d.day === dayNumber,
+    );
     if (!dayOverview) {
       throw new NotFoundException(`Day ${dayNumber} not found`);
     }
 
     // Day 1 is always unlockable
     if (dayNumber > 1) {
-      const previousDay = session.curriculum.days.find((d: any) => d.day === dayNumber - 1);
-      if (previousDay?.status !== 'completed' && previousDay?.status !== 'skipped') {
+      const previousDay = session.curriculum.days.find(
+        (d: any) => d.day === dayNumber - 1,
+      );
+      if (
+        previousDay?.status !== 'completed' &&
+        previousDay?.status !== 'skipped'
+      ) {
         throw new ForbiddenException(
           `Complete Day ${dayNumber - 1} practice project first to unlock Day ${dayNumber}`,
         );
@@ -557,7 +580,10 @@ export class SessionService {
     // Check if core content already loaded (skip if forceRegenerate)
     if (!forceRegenerate && dayOverview.coreLoaded && dayOverview.coreContent) {
       // Get current regen count for UI
-      const regenCount = await this.cacheService.getDayRegenCount(sessionId, dayNumber);
+      const regenCount = await this.cacheService.getDayRegenCount(
+        sessionId,
+        dayNumber,
+      );
       return {
         coreContent: dayOverview.coreContent,
         tokensUsed: 0,
@@ -570,7 +596,10 @@ export class SessionService {
 
     if (forceRegenerate) {
       // Check rate limit before allowing regeneration
-      const isLimitReached = await this.cacheService.isDayRegenLimitReached(sessionId, dayNumber);
+      const isLimitReached = await this.cacheService.isDayRegenLimitReached(
+        sessionId,
+        dayNumber,
+      );
       if (isLimitReached) {
         throw new HttpException(
           `Day content regeneration limit reached (${regenLimit} per day). Try again tomorrow or continue with current content.`,
@@ -581,14 +610,24 @@ export class SessionService {
       // Mark previous variant as regenerated (negative signal for quality tracking)
       const previousVariantId = dayOverview.variantId;
       if (previousVariantId) {
-        await this.cacheService.markDayContentAsRegenerated(previousVariantId, userId, sessionId);
-        this.logger.log(`📊 Marked variant ${previousVariantId} as regenerated`);
+        await this.cacheService.markDayContentAsRegenerated(
+          previousVariantId,
+          userId,
+          sessionId,
+        );
+        this.logger.log(
+          `📊 Marked variant ${previousVariantId} as regenerated`,
+        );
       }
 
-      this.logger.log(`🔄 Force regenerating Day ${dayNumber} for session ${sessionId}`);
+      this.logger.log(
+        `🔄 Force regenerating Day ${dayNumber} for session ${sessionId}`,
+      );
 
       // Clear all progress for this day when regenerating
-      const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
+      const dayIndex = session.curriculum.days.findIndex(
+        (d: any) => d.day === dayNumber,
+      );
       if (dayIndex !== -1) {
         const dayData = session.curriculum.days[dayIndex];
         // Clear practice submission
@@ -609,8 +648,8 @@ export class SessionService {
 
       // Also clear boss project cache if this day is part of one
       if (session.curriculum.bossProjects) {
-        const bossProject = session.curriculum.bossProjects.find(
-          (bp: any) => bp.combinesDays?.includes(dayNumber)
+        const bossProject = session.curriculum.bossProjects.find((bp: any) =>
+          bp.combinesDays?.includes(dayNumber),
         );
         if (bossProject) {
           // Clear the boss project's detailsLoaded flag so it regenerates
@@ -620,7 +659,9 @@ export class SessionService {
           delete bossProject.requirements;
           delete bossProject.hints;
           delete bossProject.files;
-          this.logger.log(`🧹 Cleared boss project cache for Day ${bossProject.day}`);
+          this.logger.log(
+            `🧹 Cleared boss project cache for Day ${bossProject.day}`,
+          );
         }
       }
     }
@@ -639,7 +680,9 @@ export class SessionService {
     );
 
     // Update session with core content
-    const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
+    const dayIndex = session.curriculum.days.findIndex(
+      (d: any) => d.day === dayNumber,
+    );
 
     // DEBUG: Log bossMilestone solution status
     const bossMilestone = result.coreContent?.bossMilestone;
@@ -665,17 +708,24 @@ export class SessionService {
     // This ensures currentDay is always synced with actual progress
     if (dayNumber > session.currentDay) {
       session.currentDay = dayNumber;
-      this.logger.log(`📍 Updated currentDay to ${dayNumber} for session ${sessionId}`);
+      this.logger.log(
+        `📍 Updated currentDay to ${dayNumber} for session ${sessionId}`,
+      );
     }
 
     // Increment usage
     await this.userService.incrementUsage(userId, result.tokensUsed, 0);
     await this.sessionsRepository.save(session);
 
-    this.logger.log(`🚀 Day ${dayNumber} CORE loaded for session ${sessionId} (variant=${result.variantId})`);
+    this.logger.log(
+      `🚀 Day ${dayNumber} CORE loaded for session ${sessionId} (variant=${result.variantId})`,
+    );
 
     // Get current regen count for UI
-    const regenCount = await this.cacheService.getDayRegenCount(sessionId, dayNumber);
+    const regenCount = await this.cacheService.getDayRegenCount(
+      sessionId,
+      dayNumber,
+    );
 
     return {
       coreContent: result.coreContent,
@@ -695,26 +745,35 @@ export class SessionService {
     sessionId: string,
     userId: string,
     dayNumber: number,
-  ): Promise<{ deferredContent: any; tokensUsed: number; fromCache: boolean; bossProject?: any }> {
+  ): Promise<{
+    deferredContent: any;
+    tokensUsed: number;
+    fromCache: boolean;
+    bossProject?: any;
+  }> {
     const session = await this.findOne(sessionId, userId);
     const user = await this.userService.findById(userId);
     const tierString = user.quotaTier.toUpperCase();
 
-    const dayOverview = session.curriculum.days.find((d: any) => d.day === dayNumber);
+    const dayOverview = session.curriculum.days.find(
+      (d: any) => d.day === dayNumber,
+    );
     if (!dayOverview) {
       throw new NotFoundException(`Day ${dayNumber} not found`);
     }
 
     // Check if this day is part of a boss project
-    const bossProject = session.curriculum.bossProjects?.find(
-      (bp: any) => bp.combinesDays?.includes(dayNumber)
+    const bossProject = session.curriculum.bossProjects?.find((bp: any) =>
+      bp.combinesDays?.includes(dayNumber),
     );
 
     // Check if deferred already loaded
     if (dayOverview.deferredLoaded && dayOverview.deferredContent) {
       // Return cached boss project if applicable
       const cachedBossProject = bossProject
-        ? session.curriculum.bossProjects.find((bp: any) => bp.day === bossProject.day)
+        ? session.curriculum.bossProjects.find(
+            (bp: any) => bp.day === bossProject.day,
+          )
         : null;
       return {
         deferredContent: dayOverview.deferredContent,
@@ -736,7 +795,9 @@ export class SessionService {
     // Load boss project details if needed
     if (bossProject && !bossProject.detailsLoaded) {
       try {
-        this.logger.log(`🎯 Loading boss project details for day ${dayNumber}...`);
+        this.logger.log(
+          `🎯 Loading boss project details for day ${dayNumber}...`,
+        );
         const bossResult = await this.curriculumService.generateBossDetails(
           session.curriculum,
           bossProject.day,
@@ -744,11 +805,13 @@ export class SessionService {
         );
         const bossDetails = bossResult.bossContent;
 
-        this.logger.log(`✅ Boss project details loaded: phases=${bossDetails.phases?.length || 0}, requirements=${bossDetails.requirements?.length || 0}, hints=${bossDetails.hints?.length || 0}`);
+        this.logger.log(
+          `✅ Boss project details loaded: phases=${bossDetails.phases?.length || 0}, requirements=${bossDetails.requirements?.length || 0}, hints=${bossDetails.hints?.length || 0}`,
+        );
 
         // Update the boss project in the curriculum
         const bossIndex = session.curriculum.bossProjects.findIndex(
-          (bp: any) => bp.day === bossProject.day
+          (bp: any) => bp.day === bossProject.day,
         );
         if (bossIndex !== -1) {
           session.curriculum.bossProjects[bossIndex] = {
@@ -765,7 +828,9 @@ export class SessionService {
     }
 
     // Update session with deferred content
-    const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
+    const dayIndex = session.curriculum.days.findIndex(
+      (d: any) => d.day === dayNumber,
+    );
     session.curriculum.days[dayIndex] = {
       ...session.curriculum.days[dayIndex],
       deferredContent: result.deferredContent,
@@ -776,11 +841,15 @@ export class SessionService {
     await this.userService.incrementUsage(userId, totalTokensUsed, 0);
     await this.sessionsRepository.save(session);
 
-    this.logger.log(`⏳ Day ${dayNumber} DEFERRED loaded for session ${sessionId}`);
+    this.logger.log(
+      `⏳ Day ${dayNumber} DEFERRED loaded for session ${sessionId}`,
+    );
 
     // Return the boss project if this day is part of one
     const activeBossProject = bossProject
-      ? session.curriculum.bossProjects.find((bp: any) => bp.day === bossProject.day)
+      ? session.curriculum.bossProjects.find(
+          (bp: any) => bp.day === bossProject.day,
+        )
       : null;
 
     return {
@@ -806,7 +875,9 @@ export class SessionService {
   }> {
     const session = await this.findOne(sessionId, userId);
 
-    const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
+    const dayIndex = session.curriculum.days.findIndex(
+      (d: any) => d.day === dayNumber,
+    );
     if (dayIndex === -1) {
       throw new NotFoundException(`Day ${dayNumber} not found`);
     }
@@ -820,7 +891,9 @@ export class SessionService {
     // Unlock next day
     let nextDayUnlocked = false;
     if (dayNumber < session.curriculum.days.length) {
-      const nextDayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber + 1);
+      const nextDayIndex = session.curriculum.days.findIndex(
+        (d: any) => d.day === dayNumber + 1,
+      );
       if (nextDayIndex !== -1) {
         session.curriculum.days[nextDayIndex].status = 'unlockable';
         nextDayUnlocked = true;
@@ -831,12 +904,16 @@ export class SessionService {
     const previousCurrentDay = session.currentDay;
     if (dayNumber >= session.currentDay) {
       session.currentDay = dayNumber + 1;
-      this.logger.log(`📍 Advancing currentDay from ${previousCurrentDay} to ${session.currentDay} for session ${sessionId}`);
+      this.logger.log(
+        `📍 Advancing currentDay from ${previousCurrentDay} to ${session.currentDay} for session ${sessionId}`,
+      );
     }
 
     await this.sessionsRepository.save(session);
 
-    this.logger.log(`✅ Day ${dayNumber} practice submitted for session ${sessionId}. currentDay is now ${session.currentDay}`);
+    this.logger.log(
+      `✅ Day ${dayNumber} practice submitted for session ${sessionId}. currentDay is now ${session.currentDay}`,
+    );
 
     return {
       nextDayUnlocked,
@@ -859,7 +936,9 @@ export class SessionService {
   }> {
     const session = await this.findOne(sessionId, userId);
 
-    const dayOverview = session.curriculum.days.find((d: any) => d.day === dayNumber);
+    const dayOverview = session.curriculum.days.find(
+      (d: any) => d.day === dayNumber,
+    );
     if (!dayOverview) {
       throw new NotFoundException(`Day ${dayNumber} not found`);
     }
@@ -885,7 +964,9 @@ export class SessionService {
     const session = await this.findOne(sessionId, userId);
     const user = await this.userService.findById(userId);
 
-    const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
+    const dayIndex = session.curriculum.days.findIndex(
+      (d: any) => d.day === dayNumber,
+    );
     const dayOverview = session.curriculum.days[dayIndex];
 
     if (!dayOverview) {
@@ -895,14 +976,18 @@ export class SessionService {
     // Get the original task (from coreContent or directly on day)
     const originalTask = dayOverview.coreContent?.task1 || dayOverview.task1;
     if (!originalTask) {
-      throw new NotFoundException(`Task not found for Day ${dayNumber}. Start the day first.`);
+      throw new NotFoundException(
+        `Task not found for Day ${dayNumber}. Start the day first.`,
+      );
     }
 
     // Check if we already have this format cached
     const cacheKey = `alternativeFormats`;
     const cachedFormats = dayOverview[cacheKey] || {};
     if (cachedFormats[targetFormat]) {
-      this.logger.log(`📦 Alternative format ${targetFormat} cache HIT for Day ${dayNumber}`);
+      this.logger.log(
+        `📦 Alternative format ${targetFormat} cache HIT for Day ${dayNumber}`,
+      );
       return {
         task: cachedFormats[targetFormat],
         tokensUsed: 0,
@@ -944,7 +1029,9 @@ export class SessionService {
     await this.userService.incrementUsage(userId, result.tokensUsed, 0);
     await this.sessionsRepository.save(session);
 
-    this.logger.log(`🔄 Alternative format ${targetFormat} generated for Day ${dayNumber}`);
+    this.logger.log(
+      `🔄 Alternative format ${targetFormat} generated for Day ${dayNumber}`,
+    );
 
     return {
       task: result.task,
@@ -974,7 +1061,9 @@ export class SessionService {
   ): Promise<{ saved: boolean }> {
     const session = await this.findOne(sessionId, userId);
 
-    const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === dayNumber);
+    const dayIndex = session.curriculum.days.findIndex(
+      (d: any) => d.day === dayNumber,
+    );
     if (dayIndex === -1) {
       throw new NotFoundException(`Day ${dayNumber} not found`);
     }
@@ -987,7 +1076,9 @@ export class SessionService {
 
     await this.sessionsRepository.save(session);
 
-    this.logger.log(`📝 Reflection saved for Day ${dayNumber}, session ${sessionId}. Confused concepts: ${reflectionData.confusedConcepts?.join(', ') || 'none'}`);
+    this.logger.log(
+      `📝 Reflection saved for Day ${dayNumber}, session ${sessionId}. Confused concepts: ${reflectionData.confusedConcepts?.join(', ') || 'none'}`,
+    );
 
     return { saved: true };
   }
@@ -1016,7 +1107,9 @@ export class SessionService {
     // Increment usage
     await this.userService.incrementUsage(userId, result.tokensUsed, 0);
 
-    this.logger.log(`💡 Concept boost generated for "${concept}" in session ${sessionId}`);
+    this.logger.log(
+      `💡 Concept boost generated for "${concept}" in session ${sessionId}`,
+    );
 
     return {
       boost: result.boost,

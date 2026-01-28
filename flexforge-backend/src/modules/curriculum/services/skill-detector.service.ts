@@ -17,9 +17,20 @@ export enum SkillComplexity {
 
 // Supported languages for language learning
 export type TargetLanguage =
-  | 'chinese' | 'japanese' | 'korean' | 'arabic' | 'spanish'
-  | 'french' | 'german' | 'italian' | 'portuguese' | 'russian'
-  | 'hindi' | 'thai' | 'vietnamese' | 'other';
+  | 'chinese'
+  | 'japanese'
+  | 'korean'
+  | 'arabic'
+  | 'spanish'
+  | 'french'
+  | 'german'
+  | 'italian'
+  | 'portuguese'
+  | 'russian'
+  | 'hindi'
+  | 'thai'
+  | 'vietnamese'
+  | 'other';
 
 export interface SkillDetectionResult {
   skillType: SkillType;
@@ -35,12 +46,12 @@ export interface SkillDetectionResult {
   // Language learning specific (when skillType is KNOWLEDGE + human language)
   isLanguageLearning?: boolean;
   targetLanguage?: TargetLanguage;
-  proficiencyLevel?: string;  // HSK1, N5, A1, etc.
+  proficiencyLevel?: string; // HSK1, N5, A1, etc.
 
   // Hybrid skill sections (when skill spans multiple categories)
   customSections?: {
-    task1: string[];      // e.g., ['quiz', 'outputPrediction', 'designCritique']
-    intensive: string[];  // e.g., ['codeCompletion', 'designCritique', 'quiz']
+    task1: string[]; // e.g., ['quiz', 'outputPrediction', 'designCritique']
+    intensive: string[]; // e.g., ['codeCompletion', 'designCritique', 'quiz']
   } | null;
 }
 
@@ -139,17 +150,26 @@ Return ONLY valid JSON:
   "customSections": null | {task1: ["section1", "section2", ...], intensive: ["section1", ...]} (only for hybrid skills)
 }`;
 
-    const response = await this.aiService.routeRequest(AITask.BATCH_LOGIC, prompt);
+    const response = await this.aiService.routeRequest(
+      AITask.BATCH_LOGIC,
+      prompt,
+    );
 
     let result: SkillDetectionResult;
     try {
       // Strip markdown code blocks if present (```json ... ``` or ``` ... ```)
       let jsonContent = response.content.trim();
-      this.logger.log(`🔍 Raw AI response (first 500 chars): ${jsonContent.substring(0, 500)}`);
+      this.logger.log(
+        `🔍 Raw AI response (first 500 chars): ${jsonContent.substring(0, 500)}`,
+      );
 
       if (jsonContent.startsWith('```')) {
-        jsonContent = jsonContent.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-        this.logger.log(`🔍 After stripping markdown: ${jsonContent.substring(0, 500)}`);
+        jsonContent = jsonContent
+          .replace(/^```(?:json)?\s*\n?/, '')
+          .replace(/\n?```\s*$/, '');
+        this.logger.log(
+          `🔍 After stripping markdown: ${jsonContent.substring(0, 500)}`,
+        );
       }
       result = JSON.parse(jsonContent);
 
@@ -161,32 +181,46 @@ Return ONLY valid JSON:
           [SkillComplexity.ADVANCED]: 30,
         };
         result.estimatedDaysNeeded = defaultDays[result.complexity] || 7;
-        this.logger.warn(`⚠️ AI did not return estimatedDaysNeeded, defaulting to ${result.estimatedDaysNeeded} days`);
+        this.logger.warn(
+          `⚠️ AI did not return estimatedDaysNeeded, defaulting to ${result.estimatedDaysNeeded} days`,
+        );
       }
 
       // DEBUG: Log full parsed result
-      this.logger.log(`🔍 Parsed skill detection result:`, JSON.stringify({
-        skillType: result.skillType,
-        complexity: result.complexity,
-        isLanguageLearning: result.isLanguageLearning,
-        targetLanguage: result.targetLanguage,
-        proficiencyLevel: result.proficiencyLevel,
-        customSections: result.customSections,
-        confidence: result.confidence,
-        reasoning: result.reasoning?.substring(0, 100),
-      }));
+      this.logger.log(
+        `🔍 Parsed skill detection result:`,
+        JSON.stringify({
+          skillType: result.skillType,
+          complexity: result.complexity,
+          isLanguageLearning: result.isLanguageLearning,
+          targetLanguage: result.targetLanguage,
+          proficiencyLevel: result.proficiencyLevel,
+          customSections: result.customSections,
+          confidence: result.confidence,
+          reasoning: result.reasoning?.substring(0, 100),
+        }),
+      );
 
       // Validate AI_AGENT complexity vs days
       if (result.skillType === SkillType.AI_AGENT) {
-        if (result.complexity === SkillComplexity.BEGINNER && result.estimatedDaysNeeded <= 5) {
-          this.logger.log(`✅ AI Agent skill (BEGINNER) - ${result.estimatedDaysNeeded} days is realistic`);
-        } else if (result.complexity === SkillComplexity.INTERMEDIATE && result.estimatedDaysNeeded < 7) {
-          result.cognitiveLoadWarning = 
-            `WARNING: This requires basic coding knowledge. ${result.estimatedDaysNeeded} days may not be enough. Recommend 7-10 days.`;
+        if (
+          result.complexity === SkillComplexity.BEGINNER &&
+          result.estimatedDaysNeeded <= 5
+        ) {
+          this.logger.log(
+            `✅ AI Agent skill (BEGINNER) - ${result.estimatedDaysNeeded} days is realistic`,
+          );
+        } else if (
+          result.complexity === SkillComplexity.INTERMEDIATE &&
+          result.estimatedDaysNeeded < 7
+        ) {
+          result.cognitiveLoadWarning = `WARNING: This requires basic coding knowledge. ${result.estimatedDaysNeeded} days may not be enough. Recommend 7-10 days.`;
           this.logger.warn(result.cognitiveLoadWarning);
-        } else if (result.complexity === SkillComplexity.ADVANCED && result.estimatedDaysNeeded < 30) {
-          result.cognitiveLoadWarning = 
-            `CRITICAL: Building AI agents requires strong coding background. ${result.estimatedDaysNeeded} days is insufficient. Recommend 30+ days or break into multiple courses.`;
+        } else if (
+          result.complexity === SkillComplexity.ADVANCED &&
+          result.estimatedDaysNeeded < 30
+        ) {
+          result.cognitiveLoadWarning = `CRITICAL: Building AI agents requires strong coding background. ${result.estimatedDaysNeeded} days is insufficient. Recommend 30+ days or break into multiple courses.`;
           this.logger.error(result.cognitiveLoadWarning);
         }
       }
@@ -197,7 +231,9 @@ Return ONLY valid JSON:
 
       // Log language learning detection
       if (result.isLanguageLearning) {
-        this.logger.log(`🌍 Language learning detected: ${result.targetLanguage} (${result.proficiencyLevel || 'beginner'})`);
+        this.logger.log(
+          `🌍 Language learning detected: ${result.targetLanguage} (${result.proficiencyLevel || 'beginner'})`,
+        );
       }
     } catch (error) {
       this.logger.error('Failed to parse skill detection:', error.message);

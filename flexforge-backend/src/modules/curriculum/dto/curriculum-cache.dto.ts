@@ -1,4 +1,14 @@
-import { IsString, IsUUID, IsOptional, IsInt, IsNumber, IsEnum, IsArray, Min, Max } from 'class-validator';
+import {
+  IsString,
+  IsUUID,
+  IsOptional,
+  IsInt,
+  IsNumber,
+  IsEnum,
+  IsArray,
+  Min,
+  Max,
+} from 'class-validator';
 import { SkillLevel } from '../../../database/entities/session.entity';
 
 /**

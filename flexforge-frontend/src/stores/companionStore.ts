@@ -128,7 +128,7 @@ export const useCompanionStore = create<CompanionState>((set, get) => ({
         isTyping: false,
         currentMood: response.response.mood as CompanionMood,
       }));
-    } catch (error) {
+    } catch (_error) {
       set((state) => ({
         messages: [...state.messages, {
           id: `error-${Date.now()}`,
@@ -184,7 +184,7 @@ export const useCompanionStore = create<CompanionState>((set, get) => ({
     try {
       const response = await companionService.getQuickActions(context);
       set({ quickActions: response.actions });
-    } catch (error) {
+    } catch (_error) {
       // Keep default actions
     }
   },

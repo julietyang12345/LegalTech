@@ -632,10 +632,6 @@ export const useSessionStore = create<SessionState>()(
           stepStartTime: new Date(),
         };
       });
-    } catch (error: any) {
-      // If rate limit error from server, the error is already set by loadDayCoreContent
-      // Just re-throw to propagate to the caller
-      throw error;
     } finally {
       set({ isRegenerating: false });
     }

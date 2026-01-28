@@ -46,19 +46,19 @@ import {
 // ============================================
 
 export interface VideoMatchContext {
-  concept: string;              // What the video should teach (e.g., "useState hook")
-  userSlot: number;             // Available minutes for video
+  concept: string; // What the video should teach (e.g., "useState hook")
+  userSlot: number; // Available minutes for video
   userLevel: 'beginner' | 'intermediate' | 'advanced';
-  skillType?: string;           // e.g., 'CODE', 'AI_AGENT', 'DESIGN'
-  contentSource?: 'university' | 'youtube' | 'text' | 'docs';  // Content source type
-  skillName?: string;           // Full skill name for Gemini context (e.g., "Vercel Deployment")
-  dayConcepts?: string[];       // Day-specific concepts to verify (e.g., ["Serverless Functions", "Environment Variables"])
+  skillType?: string; // e.g., 'CODE', 'AI_AGENT', 'DESIGN'
+  contentSource?: 'university' | 'youtube' | 'text' | 'docs'; // Content source type
+  skillName?: string; // Full skill name for Gemini context (e.g., "Vercel Deployment")
+  dayConcepts?: string[]; // Day-specific concepts to verify (e.g., ["Serverless Functions", "Environment Variables"])
 
   // Learner preferences from onboarding (affects video selection)
   learnerPrefs?: {
     platformTolerance: 'any' | 'preferGeneric' | 'genericOnly';
     contentDepth: 'fast' | 'medium' | 'deep';
-    directionKeywords?: string[];  // Keywords from selected direction (hints for search)
+    directionKeywords?: string[]; // Keywords from selected direction (hints for search)
   };
   // Content verification (concept + platform + dayConcepts) handled by Layer 3 Gemini AI
 }
@@ -81,8 +81,8 @@ export interface WatchPlan {
   }>;
   watchUrl: string;
   watchInstructions: string;
-  keyTopics?: string[];  // Key topics extracted from video content
-  summary?: string;      // 3-sentence summary of video content for Active Recall
+  keyTopics?: string[]; // Key topics extracted from video content
+  summary?: string; // 3-sentence summary of video content for Active Recall
 }
 
 export interface VideoCandidate {
@@ -91,48 +91,48 @@ export interface VideoCandidate {
   description: string;
   channelId: string;
   channelName: string;
-  duration: number;           // seconds
+  duration: number; // seconds
   thumbnailUrl?: string;
   hasChapters: boolean;
   hasRepository: boolean;
   chapters?: Array<{ title: string; startSeconds: number }>;
   publishedAt?: string;
   viewCount?: number;
-  enriched: boolean;          // Whether metadata has been fetched
-  enrichFailed?: boolean;     // True if enrichment fetch failed
+  enriched: boolean; // Whether metadata has been fetched
+  enrichFailed?: boolean; // True if enrichment fetch failed
 }
 
 export interface ScoredVideo {
   video: VideoCandidate;
   scores: {
-    conceptMatch: number;       // How well title/desc matches concept (0-100)
-    channelTrust: number;       // Channel reputation/whitelist tier (0-100)
-    marketingPenalty: number;   // Marketing signals detected (0-30, higher = worse)
-    durationFit: number;        // How well duration fits slot (0-100)
-    cognitiveLoad: number;      // Complexity appropriate for level (0-100)
-    engagement: number;         // Views, likes, recency (0-100)
-    segmentability: number;     // Chapters/transcript availability (0-100)
+    conceptMatch: number; // How well title/desc matches concept (0-100)
+    channelTrust: number; // Channel reputation/whitelist tier (0-100)
+    marketingPenalty: number; // Marketing signals detected (0-30, higher = worse)
+    durationFit: number; // How well duration fits slot (0-100)
+    cognitiveLoad: number; // Complexity appropriate for level (0-100)
+    engagement: number; // Views, likes, recency (0-100)
+    segmentability: number; // Chapters/transcript availability (0-100)
   };
   totalScore: number;
-  cheapScore: number;           // Quick score before enrichment (for debugging)
+  cheapScore: number; // Quick score before enrichment (for debugging)
   validationResult: VideoValidationResult;
-  contentType: ContentTypeResult;  // CONCEPT vs TOOL_SPECIFIC classification
+  contentType: ContentTypeResult; // CONCEPT vs TOOL_SPECIFIC classification
 }
 
 export interface VideoAlternative {
   video: VideoCandidate;
   watchPlan: WatchPlan;
   scores: ScoredVideo['scores'];
-  differentiator: string;     // e.g., "⚡ Shorter", "🎨 Different style"
-  matchPercent: number;       // 0-100 for UI display
-  contentType: ContentTypeResult;  // CONCEPT vs TOOL_SPECIFIC classification
+  differentiator: string; // e.g., "⚡ Shorter", "🎨 Different style"
+  matchPercent: number; // 0-100 for UI display
+  contentType: ContentTypeResult; // CONCEPT vs TOOL_SPECIFIC classification
 }
 
 export interface PlatformDependencyInfo {
   isPlatformDependent: boolean;
-  tools: string[];              // e.g., ['Make.com', 'Vapi']
-  teachingRatio: number;        // 0-1, how much is teaching vs demo
-  warningMessage?: string;      // e.g., "This lesson uses Make.com and Vapi"
+  tools: string[]; // e.g., ['Make.com', 'Vapi']
+  teachingRatio: number; // 0-1, how much is teaching vs demo
+  warningMessage?: string; // e.g., "This lesson uses Make.com and Vapi"
 }
 
 export interface VideoMatchResult {
@@ -141,12 +141,12 @@ export interface VideoMatchResult {
   watchPlan?: WatchPlan;
   validationResult?: VideoValidationResult;
   scores?: ScoredVideo['scores'];
-  layer: 1 | 2 | 3;           // Which layer found the match
-  tokenCost: number;          // Tokens used (0 for Layer 1-2)
-  whyThisVideo?: string[];    // Reasons for selection
-  matchPercent?: number;      // 0-100 for UI confidence display
-  alternatives?: VideoAlternative[];  // Other good options (personalization UX)
-  platformDependency?: PlatformDependencyInfo;  // Tool/platform dependency info
+  layer: 1 | 2 | 3; // Which layer found the match
+  tokenCost: number; // Tokens used (0 for Layer 1-2)
+  whyThisVideo?: string[]; // Reasons for selection
+  matchPercent?: number; // 0-100 for UI confidence display
+  alternatives?: VideoAlternative[]; // Other good options (personalization UX)
+  platformDependency?: PlatformDependencyInfo; // Tool/platform dependency info
   useAiExplanation?: boolean; // True if no good video match - use AI summary instead (deprecated, use adaptiveModality)
   /** Adaptive modality decision - whether to show video, AI, or both */
   adaptiveModality?: AdaptiveModalityResult;
@@ -156,9 +156,9 @@ export interface VideoMatchResult {
 }
 
 export interface VideoMatchOptions {
-  deepVerify?: boolean;       // Enable Layer 3 AI verification (costs tokens)
+  deepVerify?: boolean; // Enable Layer 3 AI verification (costs tokens)
   excludeVideoIds?: string[]; // Skip these videos (for regenerate)
-  maxCandidates?: number;     // Max videos to consider (default 20)
+  maxCandidates?: number; // Max videos to consider (default 20)
 }
 
 // Scoring weights and signals imported from video-scoring.utils.ts
@@ -172,7 +172,7 @@ interface CachedEnrichment {
   viewCount?: number;
   publishedAt?: string;
   cachedAt: number;
-  failed?: boolean;  // Negative cache for failed requests
+  failed?: boolean; // Negative cache for failed requests
 }
 
 const ENRICHMENT_CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days for success
@@ -186,7 +186,8 @@ const TRANSCRIPT_CACHE_MAX = 2000; // Smaller: transcripts are larger in memory
 const TRANSCRIPT_CACHE_TARGET = 1800;
 const MAX_TRANSCRIPT_ENTRIES = 300; // Cap stored transcript length to save memory
 
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+const USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
 // Transcript cache interface
 interface CachedTranscript {
@@ -213,8 +214,10 @@ export class VideoMatchingService {
       this.logger.log('Gemini AI initialized for Layer 3 verification');
     }
     // Google CSE for YouTube search (respects quotes, better relevance)
-    this.googleCseApiKey = this.configService.get<string>('google.cse.apiKey') || '';
-    this.googleCseEngineId = this.configService.get<string>('google.cse.engineId') || '';
+    this.googleCseApiKey =
+      this.configService.get<string>('google.cse.apiKey') || '';
+    this.googleCseEngineId =
+      this.configService.get<string>('google.cse.engineId') || '';
     if (this.googleCseApiKey && this.googleCseEngineId) {
       this.logger.log('Google CSE initialized for YouTube search');
     }
@@ -229,7 +232,11 @@ export class VideoMatchingService {
     context: VideoMatchContext,
     options: VideoMatchOptions = {},
   ): Promise<VideoMatchResult> {
-    const { deepVerify = false, excludeVideoIds = [], maxCandidates = 30 } = options;
+    const {
+      deepVerify = false,
+      excludeVideoIds = [],
+      maxCandidates = 30,
+    } = options;
 
     this.logger.log(
       `Finding video for "${context.concept}" (${context.userSlot}min, ${context.userLevel}, deepVerify: ${deepVerify})`,
@@ -246,15 +253,25 @@ export class VideoMatchingService {
       // Use concept (day-specific) which already includes skill context
       // e.g., "Chinese Basic greetings" not just "learn basic chinese"
       if (this.googleCseApiKey && this.googleCseEngineId) {
-        rawVideos = await this.searchYouTubeViaGoogle(context.concept, maxCandidates);
+        rawVideos = await this.searchYouTubeViaGoogle(
+          context.concept,
+          maxCandidates,
+        );
       }
 
       // FALLBACK: YouTube search API (only if Google CSE not configured or failed)
       if (rawVideos.length === 0) {
         this.logger.log('Falling back to YouTube search API');
-        const searchQuery = buildSearchQuery(context.concept, context.userLevel);
+        const searchQuery = buildSearchQuery(
+          context.concept,
+          context.userLevel,
+        );
         const preferredChannels = getPreferredChannelsForTopic(context.concept);
-        rawVideos = await this.searchYouTube(searchQuery, preferredChannels, maxCandidates);
+        rawVideos = await this.searchYouTube(
+          searchQuery,
+          preferredChannels,
+          maxCandidates,
+        );
       }
 
       if (!rawVideos || rawVideos.length === 0) {
@@ -268,14 +285,15 @@ export class VideoMatchingService {
 
       // Basic filter: exclude specified videos and extremely short/long videos
       // Note: duration=0 means parsing failed, allow through but penalize in scoring
-      const minDuration = 60;  // At least 1 minute
+      const minDuration = 60; // At least 1 minute
       // University content: allow any length (lectures can be 1-2 hours)
       // YouTube: up to 10x slot (allows longer content, we segment)
-      const maxDuration = context.contentSource === 'university'
-        ? Infinity
-        : context.userSlot * 600;
+      const maxDuration =
+        context.contentSource === 'university'
+          ? Infinity
+          : context.userSlot * 600;
 
-      let candidates = rawVideos.filter(v => {
+      const candidates = rawVideos.filter((v) => {
         if (excludeVideoIds.includes(v.videoId)) return false;
         // Allow duration=0 through (unparsed), they'll be penalized in durationFit
         if (v.duration > 0 && v.duration < minDuration) return false;
@@ -292,7 +310,9 @@ export class VideoMatchingService {
         };
       }
 
-      this.logger.log(`Layer 1: ${candidates.length} candidates after basic filter`);
+      this.logger.log(
+        `Layer 1: ${candidates.length} candidates after basic filter`,
+      );
 
       // ═══════════════════════════════════════════
       // LAYER 1.5: Cheap Score + Selective Enrichment
@@ -301,35 +321,49 @@ export class VideoMatchingService {
       // ═══════════════════════════════════════════
       const cheapScored = this.cheapScoreVideos(candidates, context);
       const enrichLimit = Math.min(25, candidates.length);
-      const topForEnrichment = this.selectWithDiversity(cheapScored, enrichLimit, 4);
+      const topForEnrichment = this.selectWithDiversity(
+        cheapScored,
+        enrichLimit,
+        4,
+      );
 
       // Build cheapScore map for later use
       const cheapScoreMap = new Map(
-        topForEnrichment.map(x => [x.video.videoId, x.cheapScore]),
+        topForEnrichment.map((x) => [x.video.videoId, x.cheapScore]),
       );
 
       // Shared HTML cache to avoid re-fetching same video pages
       // across enrichment and transcript operations
       const htmlCache = new Map<string, string>();
 
-      this.logger.log(`Layer 1.5: Enriching top ${topForEnrichment.length} candidates (diverse channels)`);
+      this.logger.log(
+        `Layer 1.5: Enriching top ${topForEnrichment.length} candidates (diverse channels)`,
+      );
       const enrichedCandidates = await this.enrichCandidates(
-        topForEnrichment.map(s => s.video),
+        topForEnrichment.map((s) => s.video),
         htmlCache,
       );
 
       // ═══════════════════════════════════════════
       // LAYER 2: Full Scoring (FREE)
       // ═══════════════════════════════════════════
-      const scoredVideos = this.scoreVideos(enrichedCandidates, context, cheapScoreMap);
+      const scoredVideos = this.scoreVideos(
+        enrichedCandidates,
+        context,
+        cheapScoreMap,
+      );
 
-      this.logger.log(`Layer 2: ${scoredVideos.length} videos after scoring (from ${enrichedCandidates.length} enriched)`);
+      this.logger.log(
+        `Layer 2: ${scoredVideos.length} videos after scoring (from ${enrichedCandidates.length} enriched)`,
+      );
 
       // If all videos were filtered, use enriched candidates as fallback
       // (better to show a video with some promo than no video at all)
       if (scoredVideos.length === 0) {
         if (enrichedCandidates.length > 0) {
-          this.logger.warn('Layer 2: All videos blocked by scoring - using first enriched as fallback');
+          this.logger.warn(
+            'Layer 2: All videos blocked by scoring - using first enriched as fallback',
+          );
           // Create a basic scored video from the first enriched candidate
           const fallback = enrichedCandidates[0];
           scoredVideos.push({
@@ -355,15 +389,19 @@ export class VideoMatchingService {
         }
       }
 
-      let topCandidates = scoredVideos.slice(0, 10);
+      const topCandidates = scoredVideos.slice(0, 10);
       this.logger.log(
         `Layer 2: Top ${topCandidates.length} candidates. Best: ${topCandidates[0]?.totalScore.toFixed(1)} - "${topCandidates[0]?.video.title}"`,
       );
       if (topCandidates.length > 1) {
-        this.logger.log(`Layer 2: #2: "${topCandidates[1]?.video.title}" (${topCandidates[1]?.video.channelName})`);
+        this.logger.log(
+          `Layer 2: #2: "${topCandidates[1]?.video.title}" (${topCandidates[1]?.video.channelName})`,
+        );
       }
       if (topCandidates.length > 2) {
-        this.logger.log(`Layer 2: #3: "${topCandidates[2]?.video.title}" (${topCandidates[2]?.video.channelName})`);
+        this.logger.log(
+          `Layer 2: #3: "${topCandidates[2]?.video.title}" (${topCandidates[2]?.video.channelName})`,
+        );
       }
 
       // ═══════════════════════════════════════════
@@ -412,12 +450,15 @@ export class VideoMatchingService {
 
       // Add skip ending for hard-sell videos (funnel at the end)
       // Use the good middle, avoid sales pitch endings
-      if (promoAnalysis?.isHardSell && promoAnalysis.lastQuarterPromoDensity > 0.7) {
+      if (
+        promoAnalysis?.isHardSell &&
+        promoAnalysis.lastQuarterPromoDensity > 0.7
+      ) {
         const skipStart = Math.floor(selectedCandidate.video.duration * 0.75);
         const skipEnd = selectedCandidate.video.duration;
         // Don't add duplicate skip section
         const alreadySkipped = watchPlan.skipSections.some(
-          s => s.start <= skipStart && s.end >= skipEnd,
+          (s) => s.start <= skipStart && s.end >= skipEnd,
         );
         if (!alreadySkipped) {
           watchPlan.skipSections.push({
@@ -441,7 +482,10 @@ export class VideoMatchingService {
 
       // Calculate match percent for confidence display
       const maxPossibleScore = 100; // Theoretical max
-      const matchPercent = Math.min(100, Math.round(selectedCandidate.totalScore));
+      const matchPercent = Math.min(
+        100,
+        Math.round(selectedCandidate.totalScore),
+      );
 
       // Build alternatives (personalization UX - not "regenerate")
       const alternatives = await this.buildAlternatives(
@@ -453,18 +497,23 @@ export class VideoMatchingService {
 
       // Build platform dependency info if analysis detected tool-heavy content
       let platformDependency: PlatformDependencyInfo | undefined;
-      if (promoAnalysis && (promoAnalysis.isPlatformHeavy || promoAnalysis.dominantTools.length > 0)) {
+      if (
+        promoAnalysis &&
+        (promoAnalysis.isPlatformHeavy ||
+          promoAnalysis.dominantTools.length > 0)
+      ) {
         const toolsFormatted = promoAnalysis.dominantTools
-          .map(t => t.charAt(0).toUpperCase() + t.slice(1)) // Capitalize
+          .map((t) => t.charAt(0).toUpperCase() + t.slice(1)) // Capitalize
           .slice(0, 3);
 
         platformDependency = {
           isPlatformDependent: promoAnalysis.isPlatformHeavy,
           tools: toolsFormatted,
           teachingRatio: promoAnalysis.teachingRatio,
-          warningMessage: toolsFormatted.length > 0
-            ? `This lesson uses ${toolsFormatted.join(' and ')}`
-            : undefined,
+          warningMessage:
+            toolsFormatted.length > 0
+              ? `This lesson uses ${toolsFormatted.join(' and ')}`
+              : undefined,
         };
       }
 
@@ -553,7 +602,9 @@ export class VideoMatchingService {
       }
 
       // Generate summary using Gemini
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+      const model = this.genAI.getGenerativeModel({
+        model: 'gemini-2.0-flash-exp',
+      });
 
       const prompt = `You are summarizing a YouTube video transcript for a learner.
 ${concept ? `The video is about: ${concept}` : ''}
@@ -590,7 +641,9 @@ Return ONLY valid JSON, no markdown or extra text.`;
         keyPoints: parsed.keyPoints || [],
       };
     } catch (error: any) {
-      this.logger.error(`Transcript summary failed for ${videoId}: ${error.message}`);
+      this.logger.error(
+        `Transcript summary failed for ${videoId}: ${error.message}`,
+      );
       return {
         success: false,
         error: 'Failed to generate summary',
@@ -690,10 +743,12 @@ Return ONLY valid JSON, no markdown or extra text.`;
 
         // Extract channel name from title (often "Title - Channel Name")
         const titleParts = item.title.split(' - ');
-        const channelName = titleParts.length > 1 ? titleParts[titleParts.length - 1] : '';
-        const videoTitle = titleParts.length > 1
-          ? titleParts.slice(0, -1).join(' - ')
-          : item.title;
+        const channelName =
+          titleParts.length > 1 ? titleParts[titleParts.length - 1] : '';
+        const videoTitle =
+          titleParts.length > 1
+            ? titleParts.slice(0, -1).join(' - ')
+            : item.title;
 
         videos.push({
           videoId,
@@ -745,7 +800,7 @@ Return ONLY valid JSON, no markdown or extra text.`;
     context: VideoMatchContext,
   ): Array<{ video: VideoCandidate; cheapScore: number }> {
     return videos
-      .map(video => {
+      .map((video) => {
         let score = 50;
 
         // Title concept match
@@ -762,14 +817,19 @@ Return ONLY valid JSON, no markdown or extra text.`;
 
         return { video, cheapScore: score };
       })
-      .filter((v): v is { video: VideoCandidate; cheapScore: number } => v !== null)
+      .filter(
+        (v): v is { video: VideoCandidate; cheapScore: number } => v !== null,
+      )
       .sort((a, b) => b.cheapScore - a.cheapScore);
   }
 
   /**
    * Score concept match based on title only (for cheap scoring)
    */
-  private scoreConceptMatchTitle(title: string, context: VideoMatchContext): number {
+  private scoreConceptMatchTitle(
+    title: string,
+    context: VideoMatchContext,
+  ): number {
     let score = 0;
     const titleLower = title.toLowerCase();
     const conceptLower = context.concept.toLowerCase();
@@ -805,7 +865,7 @@ Return ONLY valid JSON, no markdown or extra text.`;
     for (let i = 0; i < candidates.length; i += concurrency) {
       const batch = candidates.slice(i, i + concurrency);
       const results = await Promise.all(
-        batch.map(c => this.enrichSingleCandidate(c, sharedHtmlCache)),
+        batch.map((c) => this.enrichSingleCandidate(c, sharedHtmlCache)),
       );
       enriched.push(...results);
     }
@@ -860,7 +920,9 @@ Return ONLY valid JSON, no markdown or extra text.`;
         html = response.data;
 
         // Only cache HTML if it looks valid (contains expected markers)
-        const isValidHtml = html.includes('ytInitialPlayerResponse') || html.includes('ytInitialData');
+        const isValidHtml =
+          html.includes('ytInitialPlayerResponse') ||
+          html.includes('ytInitialData');
         if (isValidHtml) {
           htmlCache?.set(candidate.videoId, html);
         }
@@ -877,13 +939,17 @@ Return ONLY valid JSON, no markdown or extra text.`;
       }
 
       // Check for github.com in description → hasRepository
-      candidate.hasRepository = candidate.description.toLowerCase().includes('github.com');
+      candidate.hasRepository = candidate.description
+        .toLowerCase()
+        .includes('github.com');
 
       // Extract chapters from description first
       const chapterRegex = /(\d{1,2}:\d{2}(?::\d{2})?)\s+[-–]?\s*(.+)/g;
       const descChapters: Array<{ title: string; startSeconds: number }> = [];
       let chapterMatch;
-      while ((chapterMatch = chapterRegex.exec(candidate.description)) !== null) {
+      while (
+        (chapterMatch = chapterRegex.exec(candidate.description)) !== null
+      ) {
         descChapters.push({
           startSeconds: parseDurationString(chapterMatch[1]),
           title: chapterMatch[2].trim(),
@@ -892,7 +958,8 @@ Return ONLY valid JSON, no markdown or extra text.`;
 
       // Try to extract YouTube chapters from ytInitialPlayerResponse (higher quality)
       const playerChapters = this.extractChaptersFromPlayerResponse(html);
-      const chapters = playerChapters.length > 0 ? playerChapters : descChapters;
+      const chapters =
+        playerChapters.length > 0 ? playerChapters : descChapters;
 
       if (chapters.length >= 3) {
         candidate.hasChapters = true;
@@ -973,7 +1040,9 @@ Return ONLY valid JSON, no markdown or extra text.`;
         this.enrichmentCache.delete(oldestKey);
         evicted++;
       }
-      this.logger.debug(`LRU enrichment cache eviction: removed ${evicted} entries, size now ${this.enrichmentCache.size}`);
+      this.logger.debug(
+        `LRU enrichment cache eviction: removed ${evicted} entries, size now ${this.enrichmentCache.size}`,
+      );
     }
   }
 
@@ -987,9 +1056,17 @@ Return ONLY valid JSON, no markdown or extra text.`;
     try {
       // Look for chapters in the player response
       // Try both formats: var ytInitialPlayerResponse = {...} and "ytInitialPlayerResponse": {...}
-      let playerJson = this.extractJsonObjectAnchored(html, 'ytInitialPlayerResponse', '=');
+      let playerJson = this.extractJsonObjectAnchored(
+        html,
+        'ytInitialPlayerResponse',
+        '=',
+      );
       if (!playerJson) {
-        playerJson = this.extractJsonObjectAnchored(html, '"ytInitialPlayerResponse"', ':');
+        playerJson = this.extractJsonObjectAnchored(
+          html,
+          '"ytInitialPlayerResponse"',
+          ':',
+        );
       }
       if (!playerJson) return [];
 
@@ -1001,7 +1078,9 @@ Return ONLY valid JSON, no markdown or extra text.`;
       if (!Array.isArray(panels)) return [];
 
       for (const panel of panels) {
-        const renderer = panel?.engagementPanelSectionListRenderer?.content?.macroMarkersListRenderer;
+        const renderer =
+          panel?.engagementPanelSectionListRenderer?.content
+            ?.macroMarkersListRenderer;
         if (!renderer?.contents) continue;
 
         const chapters: Array<{ title: string; startSeconds: number }> = [];
@@ -1019,9 +1098,10 @@ Return ONLY valid JSON, no markdown or extra text.`;
 
           // Extract start time in seconds (already in seconds, not ms)
           const startTimeValue = marker.onTap?.watchEndpoint?.startTimeSeconds;
-          const startSeconds = typeof startTimeValue === 'number'
-            ? startTimeValue
-            : parseInt(startTimeValue, 10);
+          const startSeconds =
+            typeof startTimeValue === 'number'
+              ? startTimeValue
+              : parseInt(startTimeValue, 10);
 
           if (title && !isNaN(startSeconds)) {
             chapters.push({ title, startSeconds });
@@ -1083,7 +1163,7 @@ Return ONLY valid JSON, no markdown or extra text.`;
     };
 
     return videos
-      .map(video => {
+      .map((video) => {
         // Convert to ScoringVideo for utils functions
         const scoringVideo: ScoringVideo = {
           videoId: video.videoId,
@@ -1110,7 +1190,9 @@ Return ONLY valid JSON, no markdown or extra text.`;
 
         // HARD REJECT: very promotional and not trusted
         if (!isTrusted && promoHardBlock) {
-          this.logger.debug(`Hard-blocked (promo=${promoScore}): "${video.title}"`);
+          this.logger.debug(
+            `Hard-blocked (promo=${promoScore}): "${video.title}"`,
+          );
           return null;
         }
 
@@ -1129,7 +1211,9 @@ Return ONLY valid JSON, no markdown or extra text.`;
 
         // SOFT REJECT: moderately promotional and low concept match
         if (!isTrusted && promoSoftBlock && scores.conceptMatch < 70) {
-          this.logger.debug(`Soft-blocked (promo=${promoScore}, concept=${scores.conceptMatch}): "${video.title}"`);
+          this.logger.debug(
+            `Soft-blocked (promo=${promoScore}, concept=${scores.conceptMatch}): "${video.title}"`,
+          );
           return null;
         }
 
@@ -1173,9 +1257,16 @@ Return ONLY valid JSON, no markdown or extra text.`;
         // Classify content type: CONCEPT vs TOOL_SPECIFIC
         // TOOL_SPECIFIC videos (e.g., "Zapier Tutorial") are penalized based on user's preference
         // Users with platformTolerance='any' get no penalty, 'genericOnly' gets heavy penalty
-        const contentType = classifyVideoContentType(video.title, context.concept);
-        const platformTolerance = context.learnerPrefs?.platformTolerance ?? 'preferGeneric';
-        const toolPenalty = getPlatformTolerancePenalty(contentType, platformTolerance);
+        const contentType = classifyVideoContentType(
+          video.title,
+          context.concept,
+        );
+        const platformTolerance =
+          context.learnerPrefs?.platformTolerance ?? 'preferGeneric';
+        const toolPenalty = getPlatformTolerancePenalty(
+          contentType,
+          platformTolerance,
+        );
         if (toolPenalty > 0) {
           totalScore -= toolPenalty;
           this.logger.debug(
@@ -1203,8 +1294,11 @@ Return ONLY valid JSON, no markdown or extra text.`;
    * IMPORTANT: If marketing signals exist, engagement becomes a LIABILITY.
    * High engagement + promo = viral funnel content, not quality education.
    */
-  private scoreEngagementEnriched(video: VideoCandidate, marketingPenalty = 0): number {
-    let score = scoreEngagement(video); // Start with base score from utils
+  private scoreEngagementEnriched(
+    video: VideoCandidate,
+    marketingPenalty = 0,
+  ): number {
+    const score = scoreEngagement(video); // Start with base score from utils
 
     if (!video.enriched) {
       // Promo exists but not enriched: cap early
@@ -1224,7 +1318,8 @@ Return ONLY valid JSON, no markdown or extra text.`;
 
     if (video.publishedAt) {
       const publishDate = new Date(video.publishedAt);
-      const monthsAgo = (Date.now() - publishDate.getTime()) / (1000 * 60 * 60 * 24 * 30);
+      const monthsAgo =
+        (Date.now() - publishDate.getTime()) / (1000 * 60 * 60 * 24 * 30);
 
       if (monthsAgo < 6) engagementBoost += 6;
       else if (monthsAgo < 12) engagementBoost += 4;
@@ -1257,9 +1352,9 @@ Return ONLY valid JSON, no markdown or extra text.`;
     // Enrichment failed = likely transcript unavailable too
     // But short videos can still be used whole, so be less harsh
     if (video.enrichFailed) {
-      if (video.duration <= 600) return 70;  // Short: can watch whole thing
+      if (video.duration <= 600) return 70; // Short: can watch whole thing
       if (video.duration <= 1200) return 55; // Medium: harder but manageable
-      return 35;  // Long: really need chapters/transcript
+      return 35; // Long: really need chapters/transcript
     }
 
     // Has chapters = gold standard
@@ -1293,7 +1388,12 @@ Return ONLY valid JSON, no markdown or extra text.`;
    */
   private estimateUsableRatio(video: VideoCandidate, concept: string): number {
     // Use centralized promo signals (monetization + selfPromo)
-    const promoWords = [...PROMO_SIGNALS.monetization, ...PROMO_SIGNALS.selfPromo, 'outro', 'conclusion'];
+    const promoWords = [
+      ...PROMO_SIGNALS.monetization,
+      ...PROMO_SIGNALS.selfPromo,
+      'outro',
+      'conclusion',
+    ];
     const conceptWords = extractConceptWords(concept);
 
     // If chapters exist, count chapters that match concept AND aren't promo
@@ -1301,9 +1401,10 @@ Return ONLY valid JSON, no markdown or extra text.`;
       let goodChapters = 0;
       for (const ch of video.chapters) {
         const titleLower = ch.title.toLowerCase();
-        const isPromo = promoWords.some(p => titleLower.includes(p));
-        const matchesConcept = conceptWords.some(w => titleLower.includes(w)) ||
-                               titleLower.includes(concept.toLowerCase());
+        const isPromo = promoWords.some((p) => titleLower.includes(p));
+        const matchesConcept =
+          conceptWords.some((w) => titleLower.includes(w)) ||
+          titleLower.includes(concept.toLowerCase());
         if (matchesConcept && !isPromo) goodChapters++;
       }
       const ratio = goodChapters / video.chapters.length;
@@ -1311,9 +1412,9 @@ Return ONLY valid JSON, no markdown or extra text.`;
     }
 
     // No chapters: estimate based on duration (short = more likely usable)
-    if (video.duration <= 12 * 60) return 0.45;   // Short: often usable
-    if (video.duration <= 30 * 60) return 0.35;   // Medium: harder
-    return 0.25;  // Long + no chapters: likely lots of fluff/promo
+    if (video.duration <= 12 * 60) return 0.45; // Short: often usable
+    if (video.duration <= 30 * 60) return 0.35; // Medium: harder
+    return 0.25; // Long + no chapters: likely lots of fluff/promo
   }
 
   /**
@@ -1343,7 +1444,10 @@ Return ONLY valid JSON, no markdown or extra text.`;
 
     for (const candidate of candidates) {
       try {
-        const transcript = await this.getYouTubeTranscript(candidate.video.videoId, htmlCache);
+        const transcript = await this.getYouTubeTranscript(
+          candidate.video.videoId,
+          htmlCache,
+        );
         if (!transcript || transcript.length === 0) {
           unverified.push(candidate.video.videoId);
           continue;
@@ -1354,15 +1458,19 @@ Return ONLY valid JSON, no markdown or extra text.`;
         // Detects CTA patterns, platform-heavy content, hard-sell endings, tool demos
         // Pass concept so tool-related topics (automation, API, etc.) aren't penalized for tool mentions
         // ═══════════════════════════════════════════
-        const promoAnalysis = analyzePromoContent(transcript, candidate.video.duration, context.concept);
+        const promoAnalysis = analyzePromoContent(
+          transcript,
+          candidate.video.duration,
+          context.concept,
+        );
         selectedPromoAnalysis = promoAnalysis; // Store for return
 
         // Hard reject if verdict is 'reject'
         if (promoAnalysis.verdict === 'reject') {
           this.logger.log(
             `Layer 3 REJECTED (${promoAnalysis.verdictReason}): "${candidate.video.title}" - ` +
-            `promoLevel=${promoAnalysis.promoLevel}, teachingRatio=${promoAnalysis.teachingRatio.toFixed(2)}, ` +
-            `ctaDensity=${promoAnalysis.ctaDensity.toFixed(2)}/min, tools=[${promoAnalysis.dominantTools.join(', ')}]`,
+              `promoLevel=${promoAnalysis.promoLevel}, teachingRatio=${promoAnalysis.teachingRatio.toFixed(2)}, ` +
+              `ctaDensity=${promoAnalysis.ctaDensity.toFixed(2)}/min, tools=[${promoAnalysis.dominantTools.join(', ')}]`,
           );
           rejectedPromotional.push(candidate.video.videoId);
           continue; // Skip this video, try next candidate
@@ -1373,7 +1481,7 @@ Return ONLY valid JSON, no markdown or extra text.`;
         if (promoAnalysis.isToolDemo && promoAnalysis.isPlatformHeavy) {
           this.logger.log(
             `Layer 3 TAGGED (platform-dependent): "${candidate.video.title}" - ` +
-            `tools=[${promoAnalysis.dominantTools.join(', ')}], teachingRatio=${promoAnalysis.teachingRatio.toFixed(2)}`,
+              `tools=[${promoAnalysis.dominantTools.join(', ')}], teachingRatio=${promoAnalysis.teachingRatio.toFixed(2)}`,
           );
           // Don't reject, but apply score penalty and tag - handled below
         }
@@ -1382,19 +1490,22 @@ Return ONLY valid JSON, no markdown or extra text.`;
         if (promoAnalysis.isHardSell && promoAnalysis.promoLevel !== 'none') {
           this.logger.log(
             `Layer 3 REJECTED (hard-sell ending): "${candidate.video.title}" - ` +
-            `lastQuarterDensity=${promoAnalysis.lastQuarterPromoDensity.toFixed(2)}, ` +
-            `promoLevel=${promoAnalysis.promoLevel}`,
+              `lastQuarterDensity=${promoAnalysis.lastQuarterPromoDensity.toFixed(2)}, ` +
+              `promoLevel=${promoAnalysis.promoLevel}`,
           );
           rejectedPromotional.push(candidate.video.videoId);
           continue;
         }
 
         // Fast-reject strong promo with low teaching (skip AI to save tokens)
-        if (promoAnalysis.promoLevel === 'strong' && promoAnalysis.teachingRatio < 0.4) {
+        if (
+          promoAnalysis.promoLevel === 'strong' &&
+          promoAnalysis.teachingRatio < 0.4
+        ) {
           this.logger.log(
             `Layer 3 FAST-REJECT (strong promo + low teaching): "${candidate.video.title}" - ` +
-            `promoLevel=${promoAnalysis.promoLevel}, teachingRatio=${promoAnalysis.teachingRatio.toFixed(2)}, ` +
-            `ctaDensity=${promoAnalysis.ctaDensity.toFixed(2)}/min`,
+              `promoLevel=${promoAnalysis.promoLevel}, teachingRatio=${promoAnalysis.teachingRatio.toFixed(2)}, ` +
+              `ctaDensity=${promoAnalysis.ctaDensity.toFixed(2)}/min`,
           );
           rejectedPromotional.push(candidate.video.videoId);
           continue;
@@ -1404,7 +1515,7 @@ Return ONLY valid JSON, no markdown or extra text.`;
         if (promoAnalysis.verdict === 'allow_with_warning') {
           this.logger.log(
             `Layer 3 WARNING (${promoAnalysis.verdictReason}): "${candidate.video.title}" ` +
-            `penalty=${promoAnalysis.totalPenalty}`,
+              `penalty=${promoAnalysis.totalPenalty}`,
           );
         }
 
@@ -1420,9 +1531,13 @@ Return ONLY valid JSON, no markdown or extra text.`;
         ) {
           this.logger.log(
             `Layer 3 FAST-PASS (high confidence educational): "${candidate.video.title}" - ` +
-            `teachingRatio=${promoAnalysis.teachingRatio.toFixed(2)}, skipping AI verification`,
+              `teachingRatio=${promoAnalysis.teachingRatio.toFixed(2)}, skipping AI verification`,
           );
-          return { bestVideo: candidate, tokenCost: totalTokens, promoAnalysis };
+          return {
+            bestVideo: candidate,
+            tokenCost: totalTokens,
+            promoAnalysis,
+          };
         }
 
         // Sample multiple windows: 0-3 min, 3-6 min, 6-9 min
@@ -1435,8 +1550,8 @@ Return ONLY valid JSON, no markdown or extra text.`;
         const transcriptSamples: string[] = [];
         for (const window of windows) {
           const windowTranscript = transcript
-            .filter(t => t.start >= window.start && t.start < window.end)
-            .map(t => t.text)
+            .filter((t) => t.start >= window.start && t.start < window.end)
+            .map((t) => t.text)
             .join(' ');
           if (windowTranscript.length > 50) {
             transcriptSamples.push(
@@ -1447,13 +1562,18 @@ Return ONLY valid JSON, no markdown or extra text.`;
 
         if (transcriptSamples.length === 0) continue;
 
-        const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+        const model = this.genAI.getGenerativeModel({
+          model: 'gemini-2.0-flash-exp',
+        });
 
         // Build context-aware prompt with skill name and day concepts
-        const skillContext = skillName ? `\nSKILL BEING LEARNED: "${skillName}"` : '';
-        const dayConcepts = context.dayConcepts && context.dayConcepts.length > 0
-          ? `\nDAY TOPICS TO COVER: ${context.dayConcepts.join(', ')}`
+        const skillContext = skillName
+          ? `\nSKILL BEING LEARNED: "${skillName}"`
           : '';
+        const dayConcepts =
+          context.dayConcepts && context.dayConcepts.length > 0
+            ? `\nDAY TOPICS TO COVER: ${context.dayConcepts.join(', ')}`
+            : '';
 
         const prompt = `Verify this video is appropriate for teaching.
 
@@ -1471,8 +1591,12 @@ Evaluate with SEMANTIC understanding (match similar concepts, not just keywords)
    - Consider synonyms: "deployment" = "deploy", "host", "publish", "ship"
    - Consider related concepts: "Vercel deployment" should use Vercel specifically, not Netlify/AWS/etc.
 ${skillName ? `2. Is this video relevant for learning "${skillName}"? (uses correct platform/framework)` : ''}
-${context.dayConcepts?.length ? `3. Does this video cover ANY of these day topics: ${context.dayConcepts.join(', ')}?
-   - Video doesn't need to cover ALL topics, but should cover at least 1-2 relevant ones` : ''}
+${
+  context.dayConcepts?.length
+    ? `3. Does this video cover ANY of these day topics: ${context.dayConcepts.join(', ')}?
+   - Video doesn't need to cover ALL topics, but should cover at least 1-2 relevant ones`
+    : ''
+}
 4. Is this primarily promotional content (asking to sign up, product demo, affiliate links)?
 
 Answer with JSON only:
@@ -1522,34 +1646,57 @@ Answer with JSON only:
           this.logger.log(
             `Layer 3 verified: "${candidate.video.title}" teaches ${context.concept}${skillName ? ` for ${skillName}` : ''} at ${analysis.where}`,
           );
-          return { bestVideo: candidate, tokenCost: totalTokens, promoAnalysis: selectedPromoAnalysis };
+          return {
+            bestVideo: candidate,
+            tokenCost: totalTokens,
+            promoAnalysis: selectedPromoAnalysis,
+          };
         }
       } catch (error) {
-        this.logger.warn(`Transcript verification failed for ${candidate.video.videoId}`);
+        this.logger.warn(
+          `Transcript verification failed for ${candidate.video.videoId}`,
+        );
         unverified.push(candidate.video.videoId);
         continue;
       }
     }
 
     // All videos that weren't explicitly verified should not be returned
-    const allRejected = [...rejectedPromotional, ...rejectedContentMismatch, ...unverified];
+    const allRejected = [
+      ...rejectedPromotional,
+      ...rejectedContentMismatch,
+      ...unverified,
+    ];
 
     // If all candidates were rejected or unverified, return null (use AI explanation)
     if (allRejected.length >= candidates.length && candidates.length > 0) {
       const reasons: string[] = [];
-      if (rejectedContentMismatch.length > 0) reasons.push(`${rejectedContentMismatch.length} content mismatch`);
-      if (rejectedPromotional.length > 0) reasons.push(`${rejectedPromotional.length} promotional`);
-      if (unverified.length > 0) reasons.push(`${unverified.length} unverified (no transcript)`);
+      if (rejectedContentMismatch.length > 0)
+        reasons.push(`${rejectedContentMismatch.length} content mismatch`);
+      if (rejectedPromotional.length > 0)
+        reasons.push(`${rejectedPromotional.length} promotional`);
+      if (unverified.length > 0)
+        reasons.push(`${unverified.length} unverified (no transcript)`);
 
       this.logger.warn(
         `Layer 3: All ${candidates.length} candidates rejected (${reasons.join(', ')})${skillName ? ` for ${skillName}` : ''} - falling back to AI explanation`,
       );
-      return { bestVideo: null, tokenCost: totalTokens, promoAnalysis: selectedPromoAnalysis };
+      return {
+        bestVideo: null,
+        tokenCost: totalTokens,
+        promoAnalysis: selectedPromoAnalysis,
+      };
     }
 
     // Return first verified, non-rejected candidate (should not reach here if verification worked)
-    const firstValid = candidates.find(c => !allRejected.includes(c.video.videoId));
-    return { bestVideo: firstValid || null, tokenCost: totalTokens, promoAnalysis: selectedPromoAnalysis };
+    const firstValid = candidates.find(
+      (c) => !allRejected.includes(c.video.videoId),
+    );
+    return {
+      bestVideo: firstValid || null,
+      tokenCost: totalTokens,
+      promoAnalysis: selectedPromoAnalysis,
+    };
   }
 
   /**
@@ -1565,7 +1712,11 @@ Answer with JSON only:
 
     // If video has chapters, use them (FREE)
     if (video.hasChapters && video.chapters && video.chapters.length > 0) {
-      return this.generateWatchPlanFromChapters(video, context, userSlotSeconds);
+      return this.generateWatchPlanFromChapters(
+        video,
+        context,
+        userSlotSeconds,
+      );
     }
 
     // If video is short enough (≤ slot duration), use whole thing
@@ -1576,7 +1727,12 @@ Answer with JSON only:
     // If AI is enabled and video is longer than slot, analyze transcript
     if (useAI && this.genAI) {
       try {
-        return await this.generateWatchPlanWithAI(video, context, userSlotSeconds, htmlCache);
+        return await this.generateWatchPlanWithAI(
+          video,
+          context,
+          userSlotSeconds,
+          htmlCache,
+        );
       } catch {
         // Fall through to simple plan
       }
@@ -1596,20 +1752,22 @@ Answer with JSON only:
   ): WatchPlan {
     const chapters = video.chapters || [];
     const conceptLower = context.concept.toLowerCase();
-    const conceptWords = conceptLower.split(' ').filter(w => w.length > 2);
+    const conceptWords = conceptLower.split(' ').filter((w) => w.length > 2);
 
     // Find chapter that matches concept
-    let startIdx = chapters.findIndex(ch =>
-      ch.title.toLowerCase().includes(conceptLower) ||
-      conceptWords.some(word => ch.title.toLowerCase().includes(word)),
+    let startIdx = chapters.findIndex(
+      (ch) =>
+        ch.title.toLowerCase().includes(conceptLower) ||
+        conceptWords.some((word) => ch.title.toLowerCase().includes(word)),
     );
 
     // If no match, skip intro chapters
     if (startIdx === -1) {
-      startIdx = chapters.findIndex(ch =>
-        !ch.title.toLowerCase().includes('intro') &&
-        !ch.title.toLowerCase().includes('welcome') &&
-        !ch.title.toLowerCase().includes('setup'),
+      startIdx = chapters.findIndex(
+        (ch) =>
+          !ch.title.toLowerCase().includes('intro') &&
+          !ch.title.toLowerCase().includes('welcome') &&
+          !ch.title.toLowerCase().includes('setup'),
       );
       if (startIdx === -1) startIdx = 0;
     }
@@ -1636,8 +1794,9 @@ Answer with JSON only:
 
     // End time is the START of the NEXT chapter after our last included one
     // Or video end if we're at the last chapter
-    const endSeconds = chapters[endIdx + 1]?.startSeconds ??
-                       Math.min(startSeconds + userSlotSeconds, video.duration);
+    const endSeconds =
+      chapters[endIdx + 1]?.startSeconds ??
+      Math.min(startSeconds + userSlotSeconds, video.duration);
 
     // Build skip sections
     const skipSections: WatchPlan['skipSections'] = [];
@@ -1649,15 +1808,16 @@ Answer with JSON only:
       });
     }
 
-    const description = startIdx === endIdx
-      ? startChapter?.title || context.concept
-      : `${startChapter?.title} → ${chapters[endIdx]?.title}`;
+    const description =
+      startIdx === endIdx
+        ? startChapter?.title || context.concept
+        : `${startChapter?.title} → ${chapters[endIdx]?.title}`;
 
     // Extract key topics from chapter titles in the selected range
     const keyTopics = chapters
       .slice(startIdx, endIdx + 1)
-      .map(ch => ch.title)
-      .slice(0, 5);  // Limit to 5 topics
+      .map((ch) => ch.title)
+      .slice(0, 5); // Limit to 5 topics
 
     return {
       primarySegment: {
@@ -1685,7 +1845,10 @@ Answer with JSON only:
       return this.generateSimpleWatchPlan(video, userSlotSeconds);
     }
 
-    const transcript = await this.getYouTubeTranscript(video.videoId, htmlCache);
+    const transcript = await this.getYouTubeTranscript(
+      video.videoId,
+      htmlCache,
+    );
     if (!transcript || transcript.length === 0) {
       return this.generateSimpleWatchPlan(video, userSlotSeconds);
     }
@@ -1696,10 +1859,12 @@ Answer with JSON only:
     const sampledTranscript = transcript
       .filter((_, i) => i % step === 0)
       .slice(0, sampleSize)
-      .map(t => `[${formatTime(t.start)}] ${t.text}`)
+      .map((t) => `[${formatTime(t.start)}] ${t.text}`)
       .join('\n');
 
-    const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const model = this.genAI.getGenerativeModel({
+      model: 'gemini-2.0-flash-exp',
+    });
 
     const prompt = `Find the best ${Math.round(userSlotSeconds / 60)} minute segment in this video for learning "${context.concept}".
 
@@ -1731,7 +1896,10 @@ Return JSON only:
     }
 
     const skipSections: WatchPlan['skipSections'] = [];
-    if ((analysis.skip_intro_seconds ?? 0) > 30 || analysis.start_seconds > 30) {
+    if (
+      (analysis.skip_intro_seconds ?? 0) > 30 ||
+      analysis.start_seconds > 30
+    ) {
       skipSections.push({
         start: 0,
         end: Math.max(analysis.skip_intro_seconds, analysis.start_seconds),
@@ -1770,12 +1938,13 @@ Return JSON only:
         endSeconds,
         description: video.title,
       },
-      skipSections: startSeconds > 0
-        ? [{ start: 0, end: startSeconds, reason: 'Introduction' }]
-        : [],
+      skipSections:
+        startSeconds > 0
+          ? [{ start: 0, end: startSeconds, reason: 'Introduction' }]
+          : [],
       watchUrl: `https://www.youtube.com/watch?v=${video.videoId}${startSeconds > 0 ? `&t=${startSeconds}` : ''}`,
       watchInstructions: `Watch ${formatTime(startSeconds)} → ${formatTime(endSeconds)} (${Math.round((endSeconds - startSeconds) / 60)} min)`,
-      keyTopics: [],  // No AI/chapters available to extract topics
+      keyTopics: [], // No AI/chapters available to extract topics
     };
   }
 
@@ -1791,9 +1960,15 @@ Return JSON only:
 
     // Priority 1: Channel trust (most important trust signal)
     if (scores.channelTrust >= 85) {
-      rankedReasons.push({ priority: 1, reason: `Trusted channel: ${video.channelName}` });
+      rankedReasons.push({
+        priority: 1,
+        reason: `Trusted channel: ${video.channelName}`,
+      });
     } else if (validationResult.confidence === 'high') {
-      rankedReasons.push({ priority: 1, reason: `Verified channel: ${video.channelName}` });
+      rankedReasons.push({
+        priority: 1,
+        reason: `Verified channel: ${video.channelName}`,
+      });
     }
 
     // Priority 2: Concept match
@@ -1803,7 +1978,10 @@ Return JSON only:
 
     // Priority 3: Chapters (very actionable)
     if (video.hasChapters) {
-      rankedReasons.push({ priority: 3, reason: 'Has chapters for easy navigation' });
+      rankedReasons.push({
+        priority: 3,
+        reason: 'Has chapters for easy navigation',
+      });
     }
 
     // Priority 4: Code repository (actionable)
@@ -1813,17 +1991,26 @@ Return JSON only:
 
     // Priority 5: Duration fit
     if (scores.durationFit >= 90) {
-      rankedReasons.push({ priority: 5, reason: 'Perfect length for your session' });
+      rankedReasons.push({
+        priority: 5,
+        reason: 'Perfect length for your session',
+      });
     }
 
     // Priority 6: Cognitive load
     if (scores.cognitiveLoad >= 80) {
-      rankedReasons.push({ priority: 6, reason: 'Complexity matches your level' });
+      rankedReasons.push({
+        priority: 6,
+        reason: 'Complexity matches your level',
+      });
     }
 
     // Priority 7: Low marketing (nice-to-have, not critical)
     if (scores.marketingPenalty <= 3) {
-      rankedReasons.push({ priority: 7, reason: 'Education-focused, minimal marketing' });
+      rankedReasons.push({
+        priority: 7,
+        reason: 'Education-focused, minimal marketing',
+      });
     }
 
     // Priority 8: Engagement (least actionable)
@@ -1835,7 +2022,7 @@ Return JSON only:
     return rankedReasons
       .sort((a, b) => a.priority - b.priority)
       .slice(0, 4)
-      .map(r => r.reason);
+      .map((r) => r.reason);
   }
 
   /**
@@ -1848,11 +2035,13 @@ Return JSON only:
     context: VideoMatchContext,
     htmlCache?: Map<string, string>,
   ): Promise<VideoAlternative[]> {
-    this.logger.log(`Building alternatives: ${topCandidates.length} candidates, selected=${selected.video.videoId}`);
+    this.logger.log(
+      `Building alternatives: ${topCandidates.length} candidates, selected=${selected.video.videoId}`,
+    );
 
     // Get candidates that aren't the selected one (up to 2)
     const others = topCandidates
-      .filter(c => c.video.videoId !== selected.video.videoId)
+      .filter((c) => c.video.videoId !== selected.video.videoId)
       .slice(0, 2);
 
     if (others.length === 0) {
@@ -1884,7 +2073,9 @@ Return JSON only:
           contentType: other.contentType,
         });
 
-        this.logger.log(`Alternative ${alternatives.length} found: "${other.video.title}" (${differentiator})`);
+        this.logger.log(
+          `Alternative ${alternatives.length} found: "${other.video.title}" (${differentiator})`,
+        );
       } catch (error) {
         this.logger.warn(`Failed to build alternative: ${error.message}`);
       }
@@ -1906,8 +2097,10 @@ Return JSON only:
       if (alt.scores.channelTrust >= 85) return '⭐ Top channel';
       return '🎨 Different style';
     }
-    if (alt.video.hasChapters && !main.video.hasChapters) return '📑 Has chapters';
-    if (alt.video.hasRepository && !main.video.hasRepository) return '💻 Has code';
+    if (alt.video.hasChapters && !main.video.hasChapters)
+      return '📑 Has chapters';
+    if (alt.video.hasRepository && !main.video.hasRepository)
+      return '💻 Has code';
     return '✨ Alternative';
   }
 
@@ -1930,7 +2123,11 @@ Return JSON only:
 
       // Find the anchor character after the marker
       let anchorIdx = -1;
-      for (let i = markerIdx + marker.length; i < Math.min(markerIdx + marker.length + 50, str.length); i++) {
+      for (
+        let i = markerIdx + marker.length;
+        i < Math.min(markerIdx + marker.length + 50, str.length);
+        i++
+      ) {
         const char = str[i];
         if (char === anchor) {
           anchorIdx = i;
@@ -1949,7 +2146,11 @@ Return JSON only:
 
       // Find { after the anchor (skip whitespace)
       let braceStart = -1;
-      for (let i = anchorIdx + 1; i < Math.min(anchorIdx + 20, str.length); i++) {
+      for (
+        let i = anchorIdx + 1;
+        i < Math.min(anchorIdx + 20, str.length);
+        i++
+      ) {
         const char = str[i];
         if (char === '{') {
           braceStart = i;
@@ -1988,14 +2189,24 @@ Return JSON only:
       // Find : after the marker (it's a JSON key)
       // Allow: closing quote if marker didn't include it, whitespace
       let colonIdx = -1;
-      for (let i = markerIdx + marker.length; i < Math.min(markerIdx + marker.length + 20, str.length); i++) {
+      for (
+        let i = markerIdx + marker.length;
+        i < Math.min(markerIdx + marker.length + 20, str.length);
+        i++
+      ) {
         const char = str[i];
         if (char === ':') {
           colonIdx = i;
           break;
         }
         // Allow closing quote, whitespace (space, tab, newline, carriage return)
-        if (char !== '"' && char !== ' ' && char !== '\t' && char !== '\n' && char !== '\r') {
+        if (
+          char !== '"' &&
+          char !== ' ' &&
+          char !== '\t' &&
+          char !== '\n' &&
+          char !== '\r'
+        ) {
           break;
         }
       }
@@ -2034,7 +2245,10 @@ Return JSON only:
   /**
    * Extract balanced braces starting from given index
    */
-  private extractBalancedBraces(str: string, braceStart: number): string | null {
+  private extractBalancedBraces(
+    str: string,
+    braceStart: number,
+  ): string | null {
     let depth = 0;
     let inString = false;
     let escaped = false;
@@ -2074,7 +2288,10 @@ Return JSON only:
   /**
    * Extract balanced brackets starting from given index
    */
-  private extractBalancedBrackets(str: string, bracketStart: number): string | null {
+  private extractBalancedBrackets(
+    str: string,
+    bracketStart: number,
+  ): string | null {
     let depth = 0;
     let inString = false;
     let escaped = false;
@@ -2135,14 +2352,19 @@ Return JSON only:
       // Use shared HTML cache if available to avoid re-fetching
       let html = htmlCache?.get(videoId);
       if (!html) {
-        const response = await axios.get(`https://www.youtube.com/watch?v=${videoId}`, {
-          headers: { 'User-Agent': USER_AGENT },
-          timeout: 10000,
-        });
+        const response = await axios.get(
+          `https://www.youtube.com/watch?v=${videoId}`,
+          {
+            headers: { 'User-Agent': USER_AGENT },
+            timeout: 10000,
+          },
+        );
         html = response.data;
 
         // Only cache HTML if it looks valid (contains expected markers)
-        const isValidHtml = html.includes('ytInitialPlayerResponse') || html.includes('ytInitialData');
+        const isValidHtml =
+          html.includes('ytInitialPlayerResponse') ||
+          html.includes('ytInitialData');
         if (isValidHtml) {
           htmlCache?.set(videoId, html);
         }
@@ -2150,20 +2372,29 @@ Return JSON only:
 
       // Method 1: Extract ytInitialPlayerResponse with anchor-aware extraction
       // Try both: var ytInitialPlayerResponse = {...} and "ytInitialPlayerResponse": {...}
-      let playerResponseJson = this.extractJsonObjectAnchored(html, 'ytInitialPlayerResponse', '=');
+      let playerResponseJson = this.extractJsonObjectAnchored(
+        html,
+        'ytInitialPlayerResponse',
+        '=',
+      );
       if (!playerResponseJson) {
-        playerResponseJson = this.extractJsonObjectAnchored(html, '"ytInitialPlayerResponse"', ':');
+        playerResponseJson = this.extractJsonObjectAnchored(
+          html,
+          '"ytInitialPlayerResponse"',
+          ':',
+        );
       }
       if (playerResponseJson) {
         try {
           const playerResponse = JSON.parse(playerResponseJson);
           const captionTracks =
-            playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+            playerResponse?.captions?.playerCaptionsTracklistRenderer
+              ?.captionTracks;
 
           if (captionTracks && captionTracks.length > 0) {
             // Find English track, preferring manually-created over ASR (auto speech recognition)
-            const englishTracks = captionTracks.filter(
-              (t: any) => t.languageCode?.startsWith('en'),
+            const englishTracks = captionTracks.filter((t: any) =>
+              t.languageCode?.startsWith('en'),
             );
             const englishTrack =
               englishTracks.find((t: any) => t.kind !== 'asr') ??
@@ -2187,13 +2418,16 @@ Return JSON only:
 
       // Method 2: Extract captionTracks array with anchor-aware extraction
       // Format: "captionTracks": [...]
-      const captionArrayJson = this.extractJsonArrayAnchored(html, '"captionTracks"');
+      const captionArrayJson = this.extractJsonArrayAnchored(
+        html,
+        '"captionTracks"',
+      );
       if (captionArrayJson) {
         try {
           const captionTracks = JSON.parse(captionArrayJson);
           // Prefer manually-created over ASR
-          const englishTracks = captionTracks.filter(
-            (t: any) => t.languageCode?.startsWith('en'),
+          const englishTracks = captionTracks.filter((t: any) =>
+            t.languageCode?.startsWith('en'),
           );
           const englishTrack =
             englishTracks.find((t: any) => t.kind !== 'asr') ??
@@ -2227,7 +2461,9 @@ Return JSON only:
   /**
    * Parse YouTube caption XML
    */
-  private parseTranscriptXml(xml: string): Array<{ start: number; text: string }> {
+  private parseTranscriptXml(
+    xml: string,
+  ): Array<{ start: number; text: string }> {
     const textRegex = /<text start="([\d.]+)"[^>]*>(.*?)<\/text>/gs;
     const transcript: Array<{ start: number; text: string }> = [];
 
@@ -2242,8 +2478,12 @@ Return JSON only:
         .replace(/&#39;/g, "'")
         .replace(/&#x27;/gi, "'")
         .replace(/&nbsp;/gi, ' ')
-        .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
-        .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+        .replace(/&#(\d+);/g, (_, code) =>
+          String.fromCharCode(parseInt(code, 10)),
+        )
+        .replace(/&#x([0-9a-f]+);/gi, (_, hex) =>
+          String.fromCharCode(parseInt(hex, 16)),
+        )
         .replace(/<[^>]*>/g, '')
         .trim();
 
@@ -2254,7 +2494,6 @@ Return JSON only:
 
     return transcript;
   }
-
 
   /**
    * Validate verification response schema
@@ -2333,5 +2572,4 @@ Return JSON only:
       }
     }
   }
-
 }

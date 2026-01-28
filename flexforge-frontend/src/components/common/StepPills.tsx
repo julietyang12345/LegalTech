@@ -11,7 +11,7 @@ interface StepPillsProps {
   isProjectBased?: boolean;
 }
 
-const getStepLabels = (isProjectBased: boolean): Record<SessionStep, string> => ({
+const getStepLabels = (_isProjectBased: boolean): Record<SessionStep, string> => ({
   prePrompt: 'Prep',
   video: 'Watch',
   foundationCards: 'Learn',

@@ -14,7 +14,9 @@ import {
 // ============================================================================
 
 @Entity('curriculum_cache_keys')
-@Index('idx_cache_key_lookup', ['cacheKeyHash'], { where: '"is_active" = true' })
+@Index('idx_cache_key_lookup', ['cacheKeyHash'], {
+  where: '"is_active" = true',
+})
 export class CurriculumCacheKey {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -91,7 +93,9 @@ export class CurriculumCacheVariant {
   @Column({ name: 'cache_key_id', type: 'uuid' })
   cacheKeyId: string;
 
-  @ManyToOne(() => CurriculumCacheKey, (key) => key.variants, { onDelete: 'CASCADE' })
+  @ManyToOne(() => CurriculumCacheKey, (key) => key.variants, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'cache_key_id' })
   cacheKey: CurriculumCacheKey;
 
@@ -126,7 +130,13 @@ export class CurriculumCacheVariant {
   bounceCount: number;
 
   // Computed rate
-  @Column({ name: 'regen_rate', type: 'decimal', precision: 5, scale: 4, nullable: true })
+  @Column({
+    name: 'regen_rate',
+    type: 'decimal',
+    precision: 5,
+    scale: 4,
+    nullable: true,
+  })
   regenRate: number | null;
 
   @Column({
@@ -153,14 +163,16 @@ export class CurriculumCacheVariant {
 
 export enum RegenCategory {
   IMMEDIATE = 'immediate', // < 30 sec (might be misclick)
-  QUICK = 'quick',         // 30s - 2min (glanced, rejected)
+  QUICK = 'quick', // 30s - 2min (glanced, rejected)
   CONSIDERED = 'considered', // > 2min (read it, still rejected - WORST)
 }
 
 @Entity('curriculum_serves')
 @Index('idx_serve_variant', ['variantId'])
 @Index('idx_serve_session', ['sessionId'])
-@Index('idx_serve_user_variant_session', ['userId', 'variantId', 'sessionId'], { unique: true })
+@Index('idx_serve_user_variant_session', ['userId', 'variantId', 'sessionId'], {
+  unique: true,
+})
 export class CurriculumServe {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -271,7 +283,9 @@ export class DayContentCache {
 // ============================================================================
 
 @Entity('day_content_variants')
-@Index('idx_day_variant_cache_key', ['cacheKeyId'], { where: '"is_active" = true' })
+@Index('idx_day_variant_cache_key', ['cacheKeyId'], {
+  where: '"is_active" = true',
+})
 export class DayContentCacheVariant {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -279,7 +293,9 @@ export class DayContentCacheVariant {
   @Column({ name: 'cache_key_id', type: 'uuid' })
   cacheKeyId: string;
 
-  @ManyToOne(() => DayContentCache, (cache) => cache.variants, { onDelete: 'CASCADE' })
+  @ManyToOne(() => DayContentCache, (cache) => cache.variants, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'cache_key_id' })
   cacheEntry: DayContentCache;
 
@@ -307,7 +323,13 @@ export class DayContentCacheVariant {
   consideredRegens: number;
 
   // Computed rate
-  @Column({ name: 'regen_rate', type: 'decimal', precision: 5, scale: 4, nullable: true })
+  @Column({
+    name: 'regen_rate',
+    type: 'decimal',
+    precision: 5,
+    scale: 4,
+    nullable: true,
+  })
   regenRate: number | null;
 
   @Column({
@@ -335,7 +357,11 @@ export class DayContentCacheVariant {
 @Entity('day_content_serves')
 @Index('idx_day_serve_variant', ['variantId'])
 @Index('idx_day_serve_session', ['sessionId'])
-@Index('idx_day_serve_user_variant_session_day', ['userId', 'variantId', 'sessionId', 'dayNumber'], { unique: true })
+@Index(
+  'idx_day_serve_user_variant_session_day',
+  ['userId', 'variantId', 'sessionId', 'dayNumber'],
+  { unique: true },
+)
 export class DayContentServe {
   @PrimaryGeneratedColumn('uuid')
   id: string;

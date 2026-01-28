@@ -11,7 +11,6 @@ import {
   BookOpen,
   CheckCircle,
   Brain,
-  Play,
   RotateCcw,
 } from 'lucide-react';
 import { clsx } from 'clsx';

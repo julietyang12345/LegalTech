@@ -9,7 +9,9 @@ const parseDatabaseUrl = (url: string | undefined) => {
       username: parsed.username,
       password: parsed.password,
       database: parsed.pathname.slice(1), // Remove leading /
-      ssl: url.includes('sslmode=require') || parsed.searchParams.get('sslmode') === 'require',
+      ssl:
+        url.includes('sslmode=require') ||
+        parsed.searchParams.get('sslmode') === 'require',
     };
   } catch {
     return null;
@@ -30,68 +32,72 @@ export default () => {
       host: dbFromUrl?.host || process.env.DB_HOST || 'localhost',
       port: dbFromUrl?.port || parseInt(process.env.DB_PORT, 10) || 5432,
       username: dbFromUrl?.username || process.env.DB_USERNAME || 'flexforge',
-      password: dbFromUrl?.password || process.env.DB_PASSWORD || 'flexforge_dev_password',
-      database: dbFromUrl?.database || process.env.DB_DATABASE || 'flexforge_dev',
+      password:
+        dbFromUrl?.password ||
+        process.env.DB_PASSWORD ||
+        'flexforge_dev_password',
+      database:
+        dbFromUrl?.database || process.env.DB_DATABASE || 'flexforge_dev',
       ssl: dbFromUrl?.ssl || process.env.DB_SSL === 'true',
     },
-  redis: {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT, 10) || 6379,
-    password: process.env.REDIS_PASSWORD || '',
-  },
-  jwt: {
-    secret: process.env.JWT_SECRET || 'default_secret_change_in_production',
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
-  },
-  ai: {
-    anthropic: {
-      apiKey: process.env.ANTHROPIC_API_KEY || '',
+    redis: {
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT, 10) || 6379,
+      password: process.env.REDIS_PASSWORD || '',
     },
-    openai: {
-      apiKey: process.env.OPENAI_API_KEY || '',
+    jwt: {
+      secret: process.env.JWT_SECRET || 'default_secret_change_in_production',
+      expiresIn: process.env.JWT_EXPIRES_IN || '7d',
     },
-    gemini: {
-      apiKey: process.env.GOOGLE_AI_API_KEY || '',
+    ai: {
+      anthropic: {
+        apiKey: process.env.ANTHROPIC_API_KEY || '',
+      },
+      openai: {
+        apiKey: process.env.OPENAI_API_KEY || '',
+      },
+      gemini: {
+        apiKey: process.env.GOOGLE_AI_API_KEY || '',
+      },
+      groq: {
+        apiKey: process.env.GROQ_API_KEY || '',
+      },
+      primaryProvider: process.env.AI_PRIMARY_PROVIDER || 'anthropic',
+      fallbackEnabled: process.env.AI_FALLBACK_ENABLED === 'true',
     },
-    groq: {
-      apiKey: process.env.GROQ_API_KEY || '',
+    google: {
+      cse: {
+        apiKey: process.env.GOOGLE_CSE_API_KEY || '',
+        engineId: process.env.GOOGLE_CSE_ID || '',
+      },
     },
-    primaryProvider: process.env.AI_PRIMARY_PROVIDER || 'anthropic',
-    fallbackEnabled: process.env.AI_FALLBACK_ENABLED === 'true',
-  },
-  google: {
-    cse: {
-      apiKey: process.env.GOOGLE_CSE_API_KEY || '',
-      engineId: process.env.GOOGLE_CSE_ID || '',
+    rateLimit: {
+      ttl: parseInt(process.env.RATE_LIMIT_TTL, 10) || 60,
+      limit: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 100,
     },
-  },
-  rateLimit: {
-    ttl: parseInt(process.env.RATE_LIMIT_TTL, 10) || 60,
-    limit: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 100,
-  },
-  storage: {
-    type: process.env.STORAGE_TYPE || 'local',
-    path: process.env.STORAGE_PATH || './uploads',
-  },
-  email: {
-    sendgrid: {
-      apiKey: process.env.SENDGRID_API_KEY || '',
-      fromEmail: process.env.SENDGRID_FROM_EMAIL || 'noreply@flexforge.com',
+    storage: {
+      type: process.env.STORAGE_TYPE || 'local',
+      path: process.env.STORAGE_PATH || './uploads',
     },
-  },
-  analytics: {
-    posthog: {
-      apiKey: process.env.POSTHOG_API_KEY || '',
-      host: process.env.POSTHOG_HOST || 'https://app.posthog.com',
+    email: {
+      sendgrid: {
+        apiKey: process.env.SENDGRID_API_KEY || '',
+        fromEmail: process.env.SENDGRID_FROM_EMAIL || 'noreply@flexforge.com',
+      },
     },
-  },
-  sentry: {
-    dsn: process.env.SENTRY_DSN || '',
-  },
-  features: {
-    videoIndexing: process.env.ENABLE_VIDEO_INDEXING === 'true',
-    aiTutor: process.env.ENABLE_AI_TUTOR === 'true',
-    socialFeatures: process.env.ENABLE_SOCIAL_FEATURES === 'true',
-  },
+    analytics: {
+      posthog: {
+        apiKey: process.env.POSTHOG_API_KEY || '',
+        host: process.env.POSTHOG_HOST || 'https://app.posthog.com',
+      },
+    },
+    sentry: {
+      dsn: process.env.SENTRY_DSN || '',
+    },
+    features: {
+      videoIndexing: process.env.ENABLE_VIDEO_INDEXING === 'true',
+      aiTutor: process.env.ENABLE_AI_TUTOR === 'true',
+      socialFeatures: process.env.ENABLE_SOCIAL_FEATURES === 'true',
+    },
   };
 };

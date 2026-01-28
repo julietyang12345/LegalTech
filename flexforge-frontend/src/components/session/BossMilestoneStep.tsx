@@ -768,7 +768,7 @@ interface ProjectMilestoneStepProps {
   onComplete: () => void;
 }
 
-function ProjectMilestoneStep({ day, session, onComplete }: ProjectMilestoneStepProps) {
+function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: ProjectMilestoneStepProps) {
   const { saveTaskProgress, getTaskProgress } = useSessionStore();
   const { addSystemMessage } = useCompanionStore();
 

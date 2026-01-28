@@ -89,7 +89,8 @@ export class DocumentationFetchService {
 
   constructor(private configService: ConfigService) {
     this.apiKey = this.configService.get<string>('GOOGLE_CSE_API_KEY') || '';
-    this.engineId = this.configService.get<string>('GOOGLE_CSE_ENGINE_ID') || '';
+    this.engineId =
+      this.configService.get<string>('GOOGLE_CSE_ENGINE_ID') || '';
   }
 
   // ============================================
@@ -126,7 +127,9 @@ export class DocumentationFetchService {
       };
     }
 
-    this.logger.log(`📚 Fetching documentation for "${concept}" from ${docSource.name}`);
+    this.logger.log(
+      `📚 Fetching documentation for "${concept}" from ${docSource.name}`,
+    );
 
     try {
       // Step 1: Search for relevant doc pages
@@ -144,11 +147,13 @@ export class DocumentationFetchService {
       }
 
       // Step 2: Fetch and extract content from each page (parallel)
-      const extractPromises = searchResults.slice(0, limit).map(result =>
-        this.extractDocContent(result.url, result.title, docSource).catch(err => {
-          this.logger.warn(`Failed to extract ${result.url}: ${err.message}`);
-          return null;
-        }),
+      const extractPromises = searchResults.slice(0, limit).map((result) =>
+        this.extractDocContent(result.url, result.title, docSource).catch(
+          (err) => {
+            this.logger.warn(`Failed to extract ${result.url}: ${err.message}`);
+            return null;
+          },
+        ),
       );
 
       const extractedDocs = (await Promise.all(extractPromises)).filter(
@@ -208,14 +213,16 @@ export class DocumentationFetchService {
       );
 
       const items = response.data.items || [];
-      return items.map(item => ({
+      return items.map((item) => ({
         title: item.title,
         url: item.link,
         snippet: item.snippet,
       }));
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 429) {
-        this.logger.warn('Google CSE rate limit reached, using direct URL fallback');
+        this.logger.warn(
+          'Google CSE rate limit reached, using direct URL fallback',
+        );
       } else {
         this.logger.warn(`Google CSE search failed: ${error.message}`);
       }
@@ -231,7 +238,10 @@ export class DocumentationFetchService {
     docSource: DocSource,
     limit: number,
   ): Array<{ title: string; url: string; snippet: string }> {
-    const slug = concept.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    const slug = concept
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '');
     const urls: Array<{ title: string; url: string; snippet: string }> = [];
 
     switch (docSource.id) {
@@ -451,7 +461,9 @@ export class DocumentationFetchService {
     const sections: DocSection[] = [];
 
     // Python docs use <div class="body">
-    const bodyMatch = html.match(/<div[^>]*class="[^"]*body[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+    const bodyMatch = html.match(
+      /<div[^>]*class="[^"]*body[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
+    );
     const content = bodyMatch ? bodyMatch[1] : html;
 
     // Extract sections
@@ -633,13 +645,15 @@ export class DocumentationFetchService {
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
       .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num, 10)))
-      .replace(/&#x([a-fA-F0-9]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+      .replace(/&#x([a-fA-F0-9]+);/g, (_, hex) =>
+        String.fromCharCode(parseInt(hex, 16)),
+      );
   }
 
   private toPascalCase(str: string): string {
     return str
       .split(/[\s\-_]+/)
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join('');
   }
 

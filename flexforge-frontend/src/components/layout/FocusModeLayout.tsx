@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { X, Clock } from 'lucide-react';
-import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { StepPills } from '@/components/common';
 import { CourseSidebar } from '@/components/session/CourseSidebar';

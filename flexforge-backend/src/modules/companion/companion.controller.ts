@@ -66,7 +66,12 @@ export class CompanionController {
     @Request() req,
     @Body()
     body: {
-      type: 'quickWin' | 'streakMilestone' | 'newSkill' | 'personalBest' | 'moduleComplete';
+      type:
+        | 'quickWin'
+        | 'streakMilestone'
+        | 'newSkill'
+        | 'personalBest'
+        | 'moduleComplete';
       skill?: string;
       topic?: string;
     },
@@ -91,15 +96,15 @@ export class CompanionController {
   ) {
     const baseContext = await this.companionService.getUserContext(req.user.id);
     const mood = this.companionService.detectMood(body.message);
-    
+
     const context: CompanionContext = {
       ...baseContext,
       mood,
       currentTopic: body.topic,
     };
-    
+
     const response = this.companionService.getEmotionalResponse(context);
-    
+
     return {
       detectedMood: mood,
       ...response,

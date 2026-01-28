@@ -2,11 +2,17 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AiService, AITask } from '../ai/ai.service';
 import { GenerateCurriculumDto } from './dto/generate-curriculum.dto';
-import { SkillDetectorService, SkillType } from './services/skill-detector.service';
+import {
+  SkillDetectorService,
+  SkillType,
+} from './services/skill-detector.service';
 import { VideoMatchingService } from './services/youtube/video-matching.service';
 import { CurriculumCacheService } from './services/curriculum-cache.service';
 import { UniversityResourceService } from './services/university/university-resource.service';
-import { DocumentationFetchService, DocFetchResult } from './services/docs/documentation-fetch.service';
+import {
+  DocumentationFetchService,
+  DocFetchResult,
+} from './services/docs/documentation-fetch.service';
 import {
   buildCacheableCurriculumPrompt,
   buildCacheableDayDetailCorePrompt,
@@ -55,15 +61,35 @@ export interface DayDeferredResult {
 
 // Abstract skill types that often need AI-assisted query generation
 const ABSTRACT_SKILL_TYPES = new Set([
-  'SOFT_SKILL', 'CRITICAL_THINKING', 'LEADERSHIP', 'COMMUNICATION',
-  'CREATIVITY', 'PROBLEM_SOLVING', 'EMOTIONAL_INTELLIGENCE', 'MINDFULNESS',
+  'SOFT_SKILL',
+  'CRITICAL_THINKING',
+  'LEADERSHIP',
+  'COMMUNICATION',
+  'CREATIVITY',
+  'PROBLEM_SOLVING',
+  'EMOTIONAL_INTELLIGENCE',
+  'MINDFULNESS',
 ]);
 
 // Generic words that signal a weak search query
 const GENERIC_QUERY_WORDS = new Set([
-  'understanding', 'introduction', 'overview', 'thinking', 'principles',
-  'concepts', 'basics', 'fundamentals', 'learning', 'mastering', 'exploring',
-  'developing', 'building', 'creating', 'improving', 'advanced', 'essential',
+  'understanding',
+  'introduction',
+  'overview',
+  'thinking',
+  'principles',
+  'concepts',
+  'basics',
+  'fundamentals',
+  'learning',
+  'mastering',
+  'exploring',
+  'developing',
+  'building',
+  'creating',
+  'improving',
+  'advanced',
+  'essential',
 ]);
 
 @Injectable()
@@ -91,9 +117,9 @@ export class CurriculumService {
     // Step 1: Try deterministic extraction (FREE)
     // Map skill level to user level for YouTube search modifiers
     const levelMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
-      'BEGINNER': 'beginner',
-      'INTERMEDIATE': 'intermediate',
-      'ADVANCED': 'advanced',
+      BEGINNER: 'beginner',
+      INTERMEDIATE: 'intermediate',
+      ADVANCED: 'advanced',
     };
     const userLevel = levelMap[context?.skillLevel || ''] || 'beginner';
 
@@ -129,7 +155,9 @@ export class CurriculumService {
     }
 
     // Step 4: Fall back to AI for better query generation
-    this.logger.log(`🤖 Weak query detected ("${deterministicQuery}"), using AI fallback...`);
+    this.logger.log(
+      `🤖 Weak query detected ("${deterministicQuery}"), using AI fallback...`,
+    );
 
     try {
       const aiQuery = await this.generateSearchQueryWithAI({
@@ -183,28 +211,54 @@ export class CurriculumService {
 
     // Generic words that don't help YouTube search
     const GENERIC = new Set([
-      'understanding', 'introduction', 'intro', 'overview', 'basics', 'fundamentals',
-      'thinking', 'principles', 'guide', 'learn', 'learning', 'session', 'day',
-      'module', 'chapter', 'unit', 'lesson', 'part', 'section', 'step',
-      'what', 'how', 'why', 'when', 'where', 'which', 'who', // question words
+      'understanding',
+      'introduction',
+      'intro',
+      'overview',
+      'basics',
+      'fundamentals',
+      'thinking',
+      'principles',
+      'guide',
+      'learn',
+      'learning',
+      'session',
+      'day',
+      'module',
+      'chapter',
+      'unit',
+      'lesson',
+      'part',
+      'section',
+      'step',
+      'what',
+      'how',
+      'why',
+      'when',
+      'where',
+      'which',
+      'who', // question words
     ]);
 
     // 1) Extract skill context
     let skillContext = '';
     if (skillName) {
       const cleaned = norm(skillName)
-        .replace(/\b(platform|basics|fundamentals|introduction|intro|learning|learn|course|tutorial|and|the|a|an)\b/g, '')
+        .replace(
+          /\b(platform|basics|fundamentals|introduction|intro|learning|learn|course|tutorial|and|the|a|an)\b/g,
+          '',
+        )
         .replace(/\s+/g, ' ')
         .trim();
 
-      const words = cleaned.split(' ').filter(w => w.length > 2);
+      const words = cleaned.split(' ').filter((w) => w.length > 2);
       skillContext = words.slice(0, 2).join(' ');
 
       // Fallback if we stripped everything
       if (!skillContext) {
         const rawWords = norm(skillName)
           .split(' ')
-          .filter(w => w.length > 2 && !GENERIC.has(w));
+          .filter((w) => w.length > 2 && !GENERIC.has(w));
         skillContext = rawWords.slice(0, 2).join(' ');
       }
     }
@@ -213,18 +267,28 @@ export class CurriculumService {
     let dayConcept = '';
 
     // Try keyTopics first (most specific)
-    const keyTopics = Array.isArray(dayContent?.keyTopics) ? dayContent.keyTopics : [];
+    const keyTopics = Array.isArray(dayContent?.keyTopics)
+      ? dayContent.keyTopics
+      : [];
     if (keyTopics.length) {
       dayConcept = stripLead(norm(keyTopics.slice(0, 2).join(' ')));
     }
 
     // Try foundation cards (first 6, not just 1-3)
-    const cards = dayContent?.languageFoundationCards || dayContent?.foundationCards;
+    const cards =
+      dayContent?.languageFoundationCards || dayContent?.foundationCards;
     if (!dayConcept && Array.isArray(cards)) {
       for (const card of cards.slice(0, 6)) {
-        const c = stripLead(norm(card?.concept || card?.vocabulary?.term || ''));
+        const c = stripLead(
+          norm(card?.concept || card?.vocabulary?.term || ''),
+        );
         const words = c.split(' ').filter(Boolean);
-        if (c && words.length >= 1 && words.length <= 6 && !GENERIC.has(words[0])) {
+        if (
+          c &&
+          words.length >= 1 &&
+          words.length <= 6 &&
+          !GENERIC.has(words[0])
+        ) {
           dayConcept = c;
           break;
         }
@@ -233,10 +297,17 @@ export class CurriculumService {
 
     // Try task titles (task1, task2, task3)
     if (!dayConcept) {
-      for (const t of [dayContent?.task1, dayContent?.task2, dayContent?.task3]) {
+      for (const t of [
+        dayContent?.task1,
+        dayContent?.task2,
+        dayContent?.task3,
+      ]) {
         if (!t?.title) continue;
         const title = stripLead(
-          norm(t.title).replace(/^(build|create|implement|write|make|set up|configure)\s*/i, ''),
+          norm(t.title).replace(
+            /^(build|create|implement|write|make|set up|configure)\s*/i,
+            '',
+          ),
         );
         const words = title.split(' ').filter(Boolean);
         if (title && words.length >= 1 && words.length <= 6) {
@@ -249,14 +320,16 @@ export class CurriculumService {
     // 3) Smart fallback from title (filter generic words, keep up to 5 meaningful words)
     const fallbackWords = norm(fallbackTitle)
       .split(' ')
-      .filter(w => w.length > 2 && !GENERIC.has(w));
+      .filter((w) => w.length > 2 && !GENERIC.has(w));
     const fallbackConcept = fallbackWords.slice(0, 5).join(' ');
 
     // 4) Level modifier for better YouTube matches
     const modifier =
-      userLevel === 'beginner' ? 'tutorial explained' :
-      userLevel === 'intermediate' ? 'tutorial example' :
-      'deep dive';
+      userLevel === 'beginner'
+        ? 'tutorial explained'
+        : userLevel === 'intermediate'
+          ? 'tutorial example'
+          : 'deep dive';
 
     // 5) Compose final query
     const base = [skillContext, dayConcept || fallbackConcept]
@@ -279,14 +352,20 @@ export class CurriculumService {
   ): boolean {
     // Level modifiers added by deterministic extractor - ignore these
     const LEVEL_MODIFIERS = new Set([
-      'tutorial', 'explained', 'example', 'deep', 'dive', 'beginner', 'beginners',
+      'tutorial',
+      'explained',
+      'example',
+      'deep',
+      'dive',
+      'beginner',
+      'beginners',
     ]);
 
     const queryLower = query.toLowerCase();
     const allWords = queryLower.split(/\s+/);
 
     // Filter out level modifiers to check the "base" content
-    const words = allWords.filter(w => !LEVEL_MODIFIERS.has(w));
+    const words = allWords.filter((w) => !LEVEL_MODIFIERS.has(w));
 
     // Check 1: Base query too short (< 8 chars or only 1 word after filtering modifiers)
     const baseQuery = words.join(' ');
@@ -295,7 +374,9 @@ export class CurriculumService {
     }
 
     // Check 2: Contains too many generic/abstract words (relative to total)
-    const genericWordCount = words.filter(w => GENERIC_QUERY_WORDS.has(w)).length;
+    const genericWordCount = words.filter((w) =>
+      GENERIC_QUERY_WORDS.has(w),
+    ).length;
     if (genericWordCount >= 2 || (genericWordCount >= 1 && words.length <= 2)) {
       return true;
     }
@@ -307,19 +388,94 @@ export class CurriculumService {
 
     // Check 4: No concrete nouns (heuristic: all words are common English)
     const commonWords = new Set([
-      'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
-      'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
-      'should', 'may', 'might', 'must', 'shall', 'can', 'need', 'dare',
-      'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'as',
-      'into', 'through', 'during', 'before', 'after', 'above', 'below',
-      'between', 'under', 'again', 'further', 'then', 'once', 'here',
-      'there', 'when', 'where', 'why', 'how', 'all', 'each', 'every',
-      'both', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor',
-      'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'just',
-      'and', 'but', 'if', 'or', 'because', 'until', 'while', 'about',
+      'the',
+      'a',
+      'an',
+      'is',
+      'are',
+      'was',
+      'were',
+      'be',
+      'been',
+      'being',
+      'have',
+      'has',
+      'had',
+      'do',
+      'does',
+      'did',
+      'will',
+      'would',
+      'could',
+      'should',
+      'may',
+      'might',
+      'must',
+      'shall',
+      'can',
+      'need',
+      'dare',
+      'to',
+      'of',
+      'in',
+      'for',
+      'on',
+      'with',
+      'at',
+      'by',
+      'from',
+      'as',
+      'into',
+      'through',
+      'during',
+      'before',
+      'after',
+      'above',
+      'below',
+      'between',
+      'under',
+      'again',
+      'further',
+      'then',
+      'once',
+      'here',
+      'there',
+      'when',
+      'where',
+      'why',
+      'how',
+      'all',
+      'each',
+      'every',
+      'both',
+      'few',
+      'more',
+      'most',
+      'other',
+      'some',
+      'such',
+      'no',
+      'nor',
+      'not',
+      'only',
+      'own',
+      'same',
+      'so',
+      'than',
+      'too',
+      'very',
+      'just',
+      'and',
+      'but',
+      'if',
+      'or',
+      'because',
+      'until',
+      'while',
+      'about',
     ]);
-    const concreteWords = words.filter(w =>
-      w.length > 3 && !commonWords.has(w) && !GENERIC_QUERY_WORDS.has(w),
+    const concreteWords = words.filter(
+      (w) => w.length > 3 && !commonWords.has(w) && !GENERIC_QUERY_WORDS.has(w),
     );
     if (concreteWords.length === 0) {
       return true;
@@ -340,11 +496,12 @@ export class CurriculumService {
     skillLevel: string;
     dayObjectives: string[];
   }): Promise<string | null> {
-    const levelModifier = {
-      'BEGINNER': 'beginner tutorial',
-      'INTERMEDIATE': 'explained',
-      'ADVANCED': 'deep dive',
-    }[params.skillLevel] || 'tutorial';
+    const levelModifier =
+      {
+        BEGINNER: 'beginner tutorial',
+        INTERMEDIATE: 'explained',
+        ADVANCED: 'deep dive',
+      }[params.skillLevel] || 'tutorial';
 
     const prompt = `Generate 3 YouTube search queries for finding a video about this topic.
 
@@ -377,7 +534,11 @@ Return JSON only:
         .trim();
       const result = JSON.parse(cleaned);
 
-      if (result.queries && Array.isArray(result.queries) && result.queries.length > 0) {
+      if (
+        result.queries &&
+        Array.isArray(result.queries) &&
+        result.queries.length > 0
+      ) {
         const bestIdx = typeof result.best === 'number' ? result.best : 0;
         const bestQuery = result.queries[bestIdx] || result.queries[0];
 
@@ -396,7 +557,8 @@ Return JSON only:
    */
   private extractTopConcepts(dayContent: any, limit: number): string[] {
     const concepts: string[] = [];
-    const cards = dayContent.languageFoundationCards || dayContent.foundationCards;
+    const cards =
+      dayContent.languageFoundationCards || dayContent.foundationCards;
 
     if (cards && Array.isArray(cards)) {
       for (const card of cards.slice(0, limit + 1)) {
@@ -425,7 +587,10 @@ Return JSON only:
     dayNumber: number,
     skillLevel: string,
   ): string {
-    const normalizedSkill = skillName.toLowerCase().replace(/\s+/g, '-').slice(0, 50);
+    const normalizedSkill = skillName
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .slice(0, 50);
     return `sq:${normalizedSkill}:d${dayNumber}:${skillLevel.toLowerCase()}`;
   }
 
@@ -448,7 +613,9 @@ Return JSON only:
     );
 
     // Step 1: Detect skill type and complexity
-    const skillDetection = await this.skillDetector.detectSkillType(dto.skillName);
+    const skillDetection = await this.skillDetector.detectSkillType(
+      dto.skillName,
+    );
 
     this.logger.log(
       `✅ Skill detected: ${skillDetection.skillType} (${skillDetection.complexity})`,
@@ -488,27 +655,34 @@ Return JSON only:
       sessionLength: dto.sessionLength,
       contentDepth: dto.contentDepth,
     };
-    this.logger.log(`🎯 DEBUG learnerPrefs passed to prompt:`, JSON.stringify(learnerPrefs));
+    this.logger.log(
+      `🎯 DEBUG learnerPrefs passed to prompt:`,
+      JSON.stringify(learnerPrefs),
+    );
 
     // Use user's selected language if provided, otherwise use auto-detected
-    const effectiveLanguage = dto.selectedLanguage || skillDetection.suggestedLanguage;
+    const effectiveLanguage =
+      dto.selectedLanguage || skillDetection.suggestedLanguage;
 
-    const { staticPart, dynamicPart, userPrompt } = buildCacheableCurriculumPrompt({
-      skillName: dto.skillName,
-      durationDays: dto.durationDays,
-      hoursPerDay: dto.hoursPerDay,
-      skillLevel: dto.skillLevel,
-      skillType: skillDetection.skillType,
-      complexity: skillDetection.complexity,
-      userTier,
-      suggestedLanguage: effectiveLanguage,
-      prerequisiteSkills: skillDetection.prerequisiteSkills,
-      learnerPrefs,
-      customSections: skillDetection.customSections,
-    });
+    const { staticPart, dynamicPart, userPrompt } =
+      buildCacheableCurriculumPrompt({
+        skillName: dto.skillName,
+        durationDays: dto.durationDays,
+        hoursPerDay: dto.hoursPerDay,
+        skillLevel: dto.skillLevel,
+        skillType: skillDetection.skillType,
+        complexity: skillDetection.complexity,
+        userTier,
+        suggestedLanguage: effectiveLanguage,
+        prerequisiteSkills: skillDetection.prerequisiteSkills,
+        learnerPrefs,
+        customSections: skillDetection.customSections,
+      });
 
     // Step 4: Generate curriculum OVERVIEW with AI (Phase 1) - with prompt caching
-    this.logger.log('🤖 Generating curriculum overview (Phase 1) with prompt caching...');
+    this.logger.log(
+      '🤖 Generating curriculum overview (Phase 1) with prompt caching...',
+    );
     const aiResponse = await this.aiService.callAnthropicWithCache(
       'claude-sonnet-4-20250514',
       userPrompt,
@@ -543,26 +717,49 @@ Return JSON only:
       this.logger.log('✅ Curriculum overview parsed successfully');
     } catch (error) {
       this.logger.error('❌ Failed to parse curriculum JSON:', error.message);
-      this.logger.error('Raw AI response (first 1000 chars):', aiResponse.content.substring(0, 1000));
-      throw new BadRequestException('Failed to generate curriculum overview. Please try again.');
+      this.logger.error(
+        'Raw AI response (first 1000 chars):',
+        aiResponse.content.substring(0, 1000),
+      );
+      throw new BadRequestException(
+        'Failed to generate curriculum overview. Please try again.',
+      );
     }
 
     // Calculate isProjectBased ONCE and store it - don't re-calculate later
-    const isProjectBased = usesProjectBasedLearning(skillDetection.skillType, dto.outputType);
-    this.logger.log(`🎯 Curriculum type: ${isProjectBased ? 'PROJECT-BASED' : 'PRACTICE-BASED'}`);
+    const isProjectBased = usesProjectBasedLearning(
+      skillDetection.skillType,
+      dto.outputType,
+    );
+    this.logger.log(
+      `🎯 Curriculum type: ${isProjectBased ? 'PROJECT-BASED' : 'PRACTICE-BASED'}`,
+    );
 
     // Validate curriculum structure before proceeding
     // AI sometimes returns 'curriculum' array instead of 'days' - normalize it
     if (!curriculum.days && Array.isArray(curriculum.curriculum)) {
-      this.logger.warn('AI returned "curriculum" array instead of "days" - normalizing');
+      this.logger.warn(
+        'AI returned "curriculum" array instead of "days" - normalizing',
+      );
       curriculum.days = curriculum.curriculum;
       delete curriculum.curriculum;
     }
 
-    if (!curriculum.days || !Array.isArray(curriculum.days) || curriculum.days.length === 0) {
-      this.logger.error('❌ AI returned invalid curriculum structure - missing days array');
-      this.logger.error('Curriculum received:', JSON.stringify(curriculum).substring(0, 500));
-      throw new BadRequestException('Failed to generate curriculum - invalid structure. Please try again.');
+    if (
+      !curriculum.days ||
+      !Array.isArray(curriculum.days) ||
+      curriculum.days.length === 0
+    ) {
+      this.logger.error(
+        '❌ AI returned invalid curriculum structure - missing days array',
+      );
+      this.logger.error(
+        'Curriculum received:',
+        JSON.stringify(curriculum).substring(0, 500),
+      );
+      throw new BadRequestException(
+        'Failed to generate curriculum - invalid structure. Please try again.',
+      );
     }
 
     // Add metadata to curriculum
@@ -632,7 +829,11 @@ Return JSON only:
     }
 
     // Check cache first (skip if forceRegenerate)
-    const cacheKey = this.buildDayCacheKey(curriculum.metadata, dayNumber, 'core');
+    const cacheKey = this.buildDayCacheKey(
+      curriculum.metadata,
+      dayNumber,
+      'core',
+    );
     if (!forceRegenerate) {
       // Use variant-aware caching if userId and sessionId provided
       if (userId && sessionId) {
@@ -643,7 +844,9 @@ Return JSON only:
           dayNumber,
         );
         if (cachedResult) {
-          this.logger.log(`📦 Day ${dayNumber} CORE variant cache HIT (variant=${cachedResult.variantId})`);
+          this.logger.log(
+            `📦 Day ${dayNumber} CORE variant cache HIT (variant=${cachedResult.variantId})`,
+          );
           return {
             coreContent: cachedResult.content,
             tokensUsed: 0,
@@ -657,22 +860,33 @@ Return JSON only:
         const cached = await this.cacheService.getDayContent(cacheKey);
         if (cached) {
           this.logger.log(`📦 Day ${dayNumber} CORE cache HIT (legacy)`);
-          return { coreContent: cached, tokensUsed: 0, cost: 0, fromCache: true };
+          return {
+            coreContent: cached,
+            tokensUsed: 0,
+            cost: 0,
+            fromCache: true,
+          };
         }
       }
     } else {
-      this.logger.log(`🔄 Force regenerating Day ${dayNumber} CORE (bypassing L2 cache)`);
+      this.logger.log(
+        `🔄 Force regenerating Day ${dayNumber} CORE (bypassing L2 cache)`,
+      );
     }
 
-    const previousDay = curriculum.days.find((d: any) => d.day === dayNumber - 1);
+    const previousDay = curriculum.days.find(
+      (d: any) => d.day === dayNumber - 1,
+    );
 
     // Get reflection data from previous day (if any)
-    const previousDayReflection = previousDay?.reflectionData ? {
-      confusedConcepts: previousDay.reflectionData.confusedConcepts,
-      confidence: previousDay.reflectionData.confidence,
-      boostCompleted: previousDay.reflectionData.boostCompleted,
-      whatsFoggy: previousDay.reflectionData.whatsFoggy,
-    } : undefined;
+    const previousDayReflection = previousDay?.reflectionData
+      ? {
+          confusedConcepts: previousDay.reflectionData.confusedConcepts,
+          confidence: previousDay.reflectionData.confidence,
+          boostCompleted: previousDay.reflectionData.boostCompleted,
+          whatsFoggy: previousDay.reflectionData.whatsFoggy,
+        }
+      : undefined;
 
     // Get strategy fields from skeleton
     const contentLayer = dayOverview.contentLayer || 'framework';
@@ -682,16 +896,19 @@ Return JSON only:
     // Enforce video strategy by skill type (override AI decision)
     const skillType = curriculum.metadata?.skillType;
     if (skillType === 'KNOWLEDGE' || skillType === 'LANGUAGE') {
-      videoStrategy = 'skip';  // Text + interaction is always better for concepts
+      videoStrategy = 'skip'; // Text + interaction is always better for concepts
     } else if (skillType === 'PHYSICAL') {
-      videoStrategy = 'recommended';  // Form demonstration requires visual
+      videoStrategy = 'recommended'; // Form demonstration requires visual
     }
 
     // Build search concept for university/docs searches
     const searchConcept = (dayOverview.title || '')
       .replace(/^Day\s*\d+\s*[:.-]\s*/i, '')
       .replace(/&/g, ' ')
-      .replace(/\b(Basic|Basics|Beginner|Beginning|Introduction to|Intro to|Advanced|Intermediate|Fundamentals of|Fundamentals|Essential|Essentials|Getting Started with|Overview of|Deep Dive into|Mastering)\b/gi, '')
+      .replace(
+        /\b(Basic|Basics|Beginner|Beginning|Introduction to|Intro to|Advanced|Intermediate|Fundamentals of|Fundamentals|Essential|Essentials|Getting Started with|Overview of|Deep Dive into|Mastering)\b/gi,
+        '',
+      )
       .replace(/\s+/g, ' ')
       .trim();
 
@@ -712,26 +929,49 @@ Return JSON only:
     let docFetchPromise: Promise<DocFetchResult | null> | null = null;
 
     // Always run university search in parallel with YouTube
-    this.logger.log(`🎓 Starting university resource search for: "${universitySearchQuery}" (objectives: ${dayObjectives.slice(0, 2).join(', ')})`);
+    this.logger.log(
+      `🎓 Starting university resource search for: "${universitySearchQuery}" (objectives: ${dayObjectives.slice(0, 2).join(', ')})`,
+    );
     universityResourcePromise = Promise.all([
-      this.universityResource.searchResources(universitySearchQuery, 'lecture_video', 2, dayObjectives),
-      this.universityResource.searchResources(universitySearchQuery, 'lecture_notes', 2, dayObjectives),
-      this.universityResource.searchResources(universitySearchQuery, 'problem_set', 2, dayObjectives),
-    ]).catch(error => {
-      this.logger.warn(`⚠️ University resource search failed: ${error.message}`);
+      this.universityResource.searchResources(
+        universitySearchQuery,
+        'lecture_video',
+        2,
+        dayObjectives,
+      ),
+      this.universityResource.searchResources(
+        universitySearchQuery,
+        'lecture_notes',
+        2,
+        dayObjectives,
+      ),
+      this.universityResource.searchResources(
+        universitySearchQuery,
+        'problem_set',
+        2,
+        dayObjectives,
+      ),
+    ]).catch((error) => {
+      this.logger.warn(
+        `⚠️ University resource search failed: ${error.message}`,
+      );
       return null;
     });
 
     if (contentSource === 'docs') {
-      this.logger.log(`📚 Starting documentation fetch for: "${searchConcept}"`);
-      docFetchPromise = this.docFetcher.fetchDocumentation(
-        searchConcept,
-        curriculum.metadata.suggestedLanguage,
-        3,
-      ).catch(error => {
-        this.logger.warn(`⚠️ Documentation fetch failed: ${error.message}`);
-        return null;
-      });
+      this.logger.log(
+        `📚 Starting documentation fetch for: "${searchConcept}"`,
+      );
+      docFetchPromise = this.docFetcher
+        .fetchDocumentation(
+          searchConcept,
+          curriculum.metadata.suggestedLanguage,
+          3,
+        )
+        .catch((error) => {
+          this.logger.warn(`⚠️ Documentation fetch failed: ${error.message}`);
+          return null;
+        });
     }
 
     const params: DayDetailParams = {
@@ -765,7 +1005,8 @@ Return JSON only:
       `🌍 Day ${dayNumber} CORE params: isLanguageLearning=${params.isLanguageLearning}, targetLanguage=${params.targetLanguage}`,
     );
 
-    const { staticPart, dynamicPart, userPrompt } = buildCacheableDayDetailCorePrompt(params);
+    const { staticPart, dynamicPart, userPrompt } =
+      buildCacheableDayDetailCorePrompt(params);
 
     const aiResponse = await this.aiService.callAnthropicWithCache(
       'claude-sonnet-4-20250514',
@@ -776,7 +1017,9 @@ Return JSON only:
     let coreContent: any;
     try {
       // DEBUG: Log raw AI response (first 500 chars)
-      this.logger.log(`🤖 Day ${dayNumber} AI response (first 500 chars): ${aiResponse.content.substring(0, 500)}`);
+      this.logger.log(
+        `🤖 Day ${dayNumber} AI response (first 500 chars): ${aiResponse.content.substring(0, 500)}`,
+      );
 
       let cleanedContent = aiResponse.content
         .replace(/```json\n?/g, '')
@@ -796,40 +1039,67 @@ Return JSON only:
       }
 
       // Normalize foundationCards
-      if (coreContent.foundationCards && Array.isArray(coreContent.foundationCards)) {
-        coreContent.foundationCards = coreContent.foundationCards.map((card: any, index: number) => ({
-          ...card,
-          id: card.id || `day${dayNumber}-card-${index + 1}`,
-          order: card.order ?? index + 1,
-        }));
+      if (
+        coreContent.foundationCards &&
+        Array.isArray(coreContent.foundationCards)
+      ) {
+        coreContent.foundationCards = coreContent.foundationCards.map(
+          (card: any, index: number) => ({
+            ...card,
+            id: card.id || `day${dayNumber}-card-${index + 1}`,
+            order: card.order ?? index + 1,
+          }),
+        );
       }
 
       // Normalize languageFoundationCards (for language learning)
-      if (coreContent.languageFoundationCards && Array.isArray(coreContent.languageFoundationCards)) {
-        coreContent.languageFoundationCards = coreContent.languageFoundationCards.map((card: any, index: number) => ({
-          ...card,
-          id: card.id || `day${dayNumber}-vocab-${index + 1}`,
-          order: card.order ?? index + 1,
-        }));
+      if (
+        coreContent.languageFoundationCards &&
+        Array.isArray(coreContent.languageFoundationCards)
+      ) {
+        coreContent.languageFoundationCards =
+          coreContent.languageFoundationCards.map(
+            (card: any, index: number) => ({
+              ...card,
+              id: card.id || `day${dayNumber}-vocab-${index + 1}`,
+              order: card.order ?? index + 1,
+            }),
+          );
       }
 
       // Note: bossMilestone is now generated in DEFERRED content, not CORE
       // Remove any legacy bossMilestone from core if present (old cached data)
       if (coreContent.bossMilestone) {
-        this.logger.log(`ℹ️ Day ${dayNumber} removing legacy bossMilestone from CORE (now in DEFERRED)`);
+        this.logger.log(
+          `ℹ️ Day ${dayNumber} removing legacy bossMilestone from CORE (now in DEFERRED)`,
+        );
         delete coreContent.bossMilestone;
       }
 
-      const cardCount = coreContent.languageFoundationCards?.length || coreContent.foundationCards?.length || 0;
-      this.logger.log(`✅ Day ${dayNumber} CORE parsed: ${cardCount} cards${coreContent.languageFoundationCards ? ' (vocabulary)' : ''}`);
+      const cardCount =
+        coreContent.languageFoundationCards?.length ||
+        coreContent.foundationCards?.length ||
+        0;
+      this.logger.log(
+        `✅ Day ${dayNumber} CORE parsed: ${cardCount} cards${coreContent.languageFoundationCards ? ' (vocabulary)' : ''}`,
+      );
 
       // DEBUG: Log what fields the AI returned
       const presentFields = Object.keys(coreContent).join(', ');
-      this.logger.log(`🔍 Day ${dayNumber} coreContent fields: ${presentFields}`);
+      this.logger.log(
+        `🔍 Day ${dayNumber} coreContent fields: ${presentFields}`,
+      );
     } catch (error) {
-      this.logger.error(`❌ Failed to parse Day ${dayNumber} CORE:`, error.message);
-      this.logger.error(`❌ Raw content that failed to parse: ${aiResponse.content.substring(0, 1000)}`);
-      throw new BadRequestException('Failed to generate core day content. Please try again.');
+      this.logger.error(
+        `❌ Failed to parse Day ${dayNumber} CORE:`,
+        error.message,
+      );
+      this.logger.error(
+        `❌ Raw content that failed to parse: ${aiResponse.content.substring(0, 1000)}`,
+      );
+      throw new BadRequestException(
+        'Failed to generate core day content. Please try again.',
+      );
     }
 
     // Add metadata (using already-declared variables)
@@ -849,17 +1119,21 @@ Return JSON only:
       contentSource: coreContent.contentSource,
       hoursPerDay: curriculum.metadata.hoursPerDay || 1,
       dayNumber,
-      includeAlternatives: false,  // CORE doesn't need alternatives
-      dayObjectives: dayOverview.skills || [],  // For multi-model alignment verification
+      includeAlternatives: false, // CORE doesn't need alternatives
+      dayObjectives: dayOverview.skills || [], // For multi-model alignment verification
     });
 
-    const shouldSearchVideo = videoStrategy !== 'skip' && contentSource !== 'text';
+    const shouldSearchVideo =
+      videoStrategy !== 'skip' && contentSource !== 'text';
 
     if (videoResult) {
       coreContent.video = videoResult.video;
     } else if (coreContent.video) {
       // Video search was skipped but video object exists - add AI explanation
-      const aiExplanation = this.generateAiExplanation(coreContent, searchConcept);
+      const aiExplanation = this.generateAiExplanation(
+        coreContent,
+        searchConcept,
+      );
       coreContent.video = {
         ...coreContent.video,
         useAiExplanation: true,
@@ -880,7 +1154,9 @@ Return JSON only:
     // ====== END VIDEO SEARCH ======
 
     // Await parallel searches (university always runs alongside YouTube now)
-    const universityResults = universityResourcePromise ? await universityResourcePromise : null;
+    const universityResults = universityResourcePromise
+      ? await universityResourcePromise
+      : null;
     const docResult = docFetchPromise ? await docFetchPromise : null;
 
     // Minimum confidence threshold for video sources
@@ -890,72 +1166,107 @@ Return JSON only:
     // Add university resources (lecture videos, notes, problem sets) if available
     // Filter by confidence threshold
     if (universityResults) {
-      const [lectureVideoResult, lectureNotesResult, problemSetsResult] = universityResults;
+      const [lectureVideoResult, lectureNotesResult, problemSetsResult] =
+        universityResults;
       const universityResources: any[] = [];
 
-      if (lectureVideoResult?.success && lectureVideoResult.resources?.length > 0) {
-        const filteredVideos = lectureVideoResult.resources
-          .filter((r: any) => r.confidence >= MIN_UNIVERSITY_CONFIDENCE);
-        universityResources.push(...filteredVideos.map((r: any) => ({
-          type: 'lecture_video',
-          source: r.source,
-          title: r.title,
-          url: r.url,
-          description: r.description,
-          confidence: r.confidence,
-        })));
+      if (
+        lectureVideoResult?.success &&
+        lectureVideoResult.resources?.length > 0
+      ) {
+        const filteredVideos = lectureVideoResult.resources.filter(
+          (r: any) => r.confidence >= MIN_UNIVERSITY_CONFIDENCE,
+        );
+        universityResources.push(
+          ...filteredVideos.map((r: any) => ({
+            type: 'lecture_video',
+            source: r.source,
+            title: r.title,
+            url: r.url,
+            description: r.description,
+            confidence: r.confidence,
+          })),
+        );
         if (filteredVideos.length < lectureVideoResult.resources.length) {
-          this.logger.log(`🎓 Filtered ${lectureVideoResult.resources.length - filteredVideos.length} low-confidence lecture videos`);
+          this.logger.log(
+            `🎓 Filtered ${lectureVideoResult.resources.length - filteredVideos.length} low-confidence lecture videos`,
+          );
         }
       }
 
-      if (lectureNotesResult?.success && lectureNotesResult.resources?.length > 0) {
-        const filteredNotes = lectureNotesResult.resources
-          .filter((r: any) => r.confidence >= MIN_UNIVERSITY_CONFIDENCE);
-        universityResources.push(...filteredNotes.map((r: any) => ({
-          type: 'lecture_notes',
-          source: r.source,
-          title: r.title,
-          url: r.url,
-          description: r.description,
-          confidence: r.confidence,
-        })));
+      if (
+        lectureNotesResult?.success &&
+        lectureNotesResult.resources?.length > 0
+      ) {
+        const filteredNotes = lectureNotesResult.resources.filter(
+          (r: any) => r.confidence >= MIN_UNIVERSITY_CONFIDENCE,
+        );
+        universityResources.push(
+          ...filteredNotes.map((r: any) => ({
+            type: 'lecture_notes',
+            source: r.source,
+            title: r.title,
+            url: r.url,
+            description: r.description,
+            confidence: r.confidence,
+          })),
+        );
       }
 
-      if (problemSetsResult?.success && problemSetsResult.resources?.length > 0) {
-        const filteredProblems = problemSetsResult.resources
-          .filter((r: any) => r.confidence >= MIN_UNIVERSITY_CONFIDENCE);
-        universityResources.push(...filteredProblems.map((r: any) => ({
-          type: 'problem_set',
-          source: r.source,
-          title: r.title,
-          url: r.url,
-          description: r.description,
-          confidence: r.confidence,
-        })));
+      if (
+        problemSetsResult?.success &&
+        problemSetsResult.resources?.length > 0
+      ) {
+        const filteredProblems = problemSetsResult.resources.filter(
+          (r: any) => r.confidence >= MIN_UNIVERSITY_CONFIDENCE,
+        );
+        universityResources.push(
+          ...filteredProblems.map((r: any) => ({
+            type: 'problem_set',
+            source: r.source,
+            title: r.title,
+            url: r.url,
+            description: r.description,
+            confidence: r.confidence,
+          })),
+        );
       }
 
       if (universityResources.length > 0) {
         coreContent.universityResources = universityResources;
-        const topConfidence = Math.max(...universityResources.map((r: any) => r.confidence));
-        this.logger.log(`✅ Day ${dayNumber}: Found ${universityResources.length} university resources (top confidence: ${topConfidence}%)`);
+        const topConfidence = Math.max(
+          ...universityResources.map((r: any) => r.confidence),
+        );
+        this.logger.log(
+          `✅ Day ${dayNumber}: Found ${universityResources.length} university resources (top confidence: ${topConfidence}%)`,
+        );
       }
     }
 
     // Log video source selection summary
     const youtubeConfidence = videoResult?.rawResult?.matchPercent || 0;
-    const universityVideoConfidence = coreContent.universityResources?.find((r: any) => r.type === 'lecture_video')?.confidence || 0;
-    const hasYouTube = youtubeConfidence >= MIN_VIDEO_CONFIDENCE && videoResult?.rawResult?.success;
-    const hasUniversity = universityVideoConfidence >= MIN_UNIVERSITY_CONFIDENCE;
+    const universityVideoConfidence =
+      coreContent.universityResources?.find(
+        (r: any) => r.type === 'lecture_video',
+      )?.confidence || 0;
+    const hasYouTube =
+      youtubeConfidence >= MIN_VIDEO_CONFIDENCE &&
+      videoResult?.rawResult?.success;
+    const hasUniversity =
+      universityVideoConfidence >= MIN_UNIVERSITY_CONFIDENCE;
 
     if (hasYouTube && hasUniversity) {
-      this.logger.log(`📊 Both sources available - YouTube: ${youtubeConfidence}% (preferred), University: ${universityVideoConfidence}%`);
+      this.logger.log(
+        `📊 Both sources available - YouTube: ${youtubeConfidence}% (preferred), University: ${universityVideoConfidence}%`,
+      );
     } else if (hasYouTube) {
       this.logger.log(`📊 YouTube only: ${youtubeConfidence}%`);
     } else if (hasUniversity) {
       this.logger.log(`📊 University only: ${universityVideoConfidence}%`);
     } else {
-      this.logger.log(`📊 No video sources met confidence threshold (YouTube: ${youtubeConfidence}%, University: ${universityVideoConfidence}%)`);
+      this.logger.log(
+        `📊 No video sources met confidence threshold (YouTube: ${youtubeConfidence}%, University: ${universityVideoConfidence}%)`,
+      );
     }
 
     // Add official documentation resources if available
@@ -963,11 +1274,11 @@ Return JSON only:
       coreContent.documentation = {
         source: docResult.source,
         searchQuery: docResult.searchQuery,
-        resources: docResult.docs.map(doc => ({
+        resources: docResult.docs.map((doc) => ({
           title: doc.title,
           url: doc.url,
           source: doc.source,
-          sections: doc.sections.map(section => ({
+          sections: doc.sections.map((section) => ({
             heading: section.heading,
             content: section.content,
             codeExamples: section.codeExamples,
@@ -975,7 +1286,9 @@ Return JSON only:
           })),
         })),
       };
-      this.logger.log(`✅ Day ${dayNumber}: Found ${docResult.docs.length} documentation pages from ${docResult.source}`);
+      this.logger.log(
+        `✅ Day ${dayNumber}: Found ${docResult.docs.length} documentation pages from ${docResult.source}`,
+      );
     }
 
     // Cache the result with variant tracking if userId and sessionId provided
@@ -989,14 +1302,18 @@ Return JSON only:
         dayNumber,
       );
       variantId = cacheResult.variantId;
-      this.logger.log(`✅ Day ${dayNumber} CORE generated and cached with variant=${variantId}`);
+      this.logger.log(
+        `✅ Day ${dayNumber} CORE generated and cached with variant=${variantId}`,
+      );
     } else {
       // Fallback to legacy cache
       await this.cacheService.setDayContent(cacheKey, coreContent);
       this.logger.log(`✅ Day ${dayNumber} CORE generated (legacy cache)`);
     }
 
-    this.logger.log(`✅ Day ${dayNumber} CORE generated. Tokens: ${aiResponse.tokensUsed}`);
+    this.logger.log(
+      `✅ Day ${dayNumber} CORE generated. Tokens: ${aiResponse.tokensUsed}`,
+    );
 
     return {
       coreContent,
@@ -1025,11 +1342,20 @@ Return JSON only:
     }
 
     // Check cache first
-    const cacheKey = this.buildDayCacheKey(curriculum.metadata, dayNumber, 'deferred');
+    const cacheKey = this.buildDayCacheKey(
+      curriculum.metadata,
+      dayNumber,
+      'deferred',
+    );
     const cached = await this.cacheService.getDayContent(cacheKey);
     if (cached) {
       this.logger.log(`📦 Day ${dayNumber} DEFERRED cache HIT`);
-      return { deferredContent: cached, tokensUsed: 0, cost: 0, fromCache: true };
+      return {
+        deferredContent: cached,
+        tokensUsed: 0,
+        cost: 0,
+        fromCache: true,
+      };
     }
 
     const params: DayDetailParams = {
@@ -1087,12 +1413,16 @@ Return JSON only:
 
         // Validate mini foundation cards exist (2-4)
         if (!ip.miniFoundationCards || ip.miniFoundationCards.length < 2) {
-          this.logger.warn(`⚠️ IntensivePractice missing or insufficient mini foundation cards (${ip.miniFoundationCards?.length || 0})`);
+          this.logger.warn(
+            `⚠️ IntensivePractice missing or insufficient mini foundation cards (${ip.miniFoundationCards?.length || 0})`,
+          );
         }
 
         // Validate exactly 2 sections
         if (ip.sections && ip.sections.length !== 2) {
-          this.logger.warn(`⚠️ IntensivePractice has ${ip.sections.length} sections, expected 2`);
+          this.logger.warn(
+            `⚠️ IntensivePractice has ${ip.sections.length} sections, expected 2`,
+          );
         }
       }
 
@@ -1112,27 +1442,42 @@ Return JSON only:
 
         // Ensure solutionAnnotations are strings
         if (bm.solutionAnnotations && Array.isArray(bm.solutionAnnotations)) {
-          deferredContent.bossMilestone.solutionAnnotations = bm.solutionAnnotations
-            .filter((a: any) => a && !String(a).includes('REQUIRED:'));
+          deferredContent.bossMilestone.solutionAnnotations =
+            bm.solutionAnnotations.filter(
+              (a: any) => a && !String(a).includes('REQUIRED:'),
+            );
         }
 
         // Check for placeholder content
-        const hasPlaceholders = bm.starterCode?.includes('REQUIRED:') || bm.solution?.includes('REQUIRED:');
+        const hasPlaceholders =
+          bm.starterCode?.includes('REQUIRED:') ||
+          bm.solution?.includes('REQUIRED:');
         if (hasPlaceholders) {
-          this.logger.warn(`⚠️ Day ${dayNumber} bossMilestone has placeholder content`);
+          this.logger.warn(
+            `⚠️ Day ${dayNumber} bossMilestone has placeholder content`,
+          );
         }
 
-        this.logger.log(`✅ Day ${dayNumber} bossMilestone: starterCode=${bm.starterCode?.length || 0} chars, solution=${bm.solution?.length || 0} chars`);
+        this.logger.log(
+          `✅ Day ${dayNumber} bossMilestone: starterCode=${bm.starterCode?.length || 0} chars, solution=${bm.solution?.length || 0} chars`,
+        );
       }
     } catch (error) {
-      this.logger.error(`❌ Failed to parse Day ${dayNumber} DEFERRED:`, error.message);
-      throw new BadRequestException('Failed to generate deferred day content. Please try again.');
+      this.logger.error(
+        `❌ Failed to parse Day ${dayNumber} DEFERRED:`,
+        error.message,
+      );
+      throw new BadRequestException(
+        'Failed to generate deferred day content. Please try again.',
+      );
     }
 
     // Cache the result
     await this.cacheService.setDayContent(cacheKey, deferredContent);
 
-    this.logger.log(`✅ Day ${dayNumber} DEFERRED generated. Tokens: ${aiResponse.tokensUsed}`);
+    this.logger.log(
+      `✅ Day ${dayNumber} DEFERRED generated. Tokens: ${aiResponse.tokensUsed}`,
+    );
 
     return {
       deferredContent,
@@ -1145,7 +1490,11 @@ Return JSON only:
   /**
    * Build cache key for day content
    */
-  private buildDayCacheKey(metadata: any, dayNumber: number, type: 'core' | 'deferred'): string {
+  private buildDayCacheKey(
+    metadata: any,
+    dayNumber: number,
+    type: 'core' | 'deferred',
+  ): string {
     const parts = [
       metadata.skillName?.toLowerCase().replace(/\s+/g, '-'),
       `d${metadata.durationDays}`,
@@ -1165,11 +1514,17 @@ Return JSON only:
     bossDay: number,
     userTier: string = 'FREE',
   ): Promise<BossDetailResult> {
-    this.logger.log(`🎯 Generating Boss Project for Day ${bossDay} (Phase 2)...`);
+    this.logger.log(
+      `🎯 Generating Boss Project for Day ${bossDay} (Phase 2)...`,
+    );
 
-    const bossOverview = curriculum.bossProjects?.find((b: any) => b.day === bossDay);
+    const bossOverview = curriculum.bossProjects?.find(
+      (b: any) => b.day === bossDay,
+    );
     if (!bossOverview) {
-      throw new BadRequestException(`Boss project for day ${bossDay} not found`);
+      throw new BadRequestException(
+        `Boss project for day ${bossDay} not found`,
+      );
     }
 
     // Get titles of combined days
@@ -1216,10 +1571,17 @@ Return JSON only:
         bossContent = JSON.parse(fixedContent);
       }
 
-      this.logger.log(`✅ Boss Project Day ${bossDay} details parsed successfully`);
+      this.logger.log(
+        `✅ Boss Project Day ${bossDay} details parsed successfully`,
+      );
     } catch (error) {
-      this.logger.error(`❌ Failed to parse Boss Project details:`, error.message);
-      throw new BadRequestException('Failed to generate boss project details. Please try again.');
+      this.logger.error(
+        `❌ Failed to parse Boss Project details:`,
+        error.message,
+      );
+      throw new BadRequestException(
+        'Failed to generate boss project details. Please try again.',
+      );
     }
 
     this.logger.log(
@@ -1239,7 +1601,7 @@ Return JSON only:
    * Includes multi-model alignment verification to ensure video matches day content.
    */
   private async searchAndProcessVideo(params: {
-    content: any;  // dayContent or coreContent
+    content: any; // dayContent or coreContent
     searchConcept: string;
     skillName: string;
     skillLevel: string;
@@ -1248,8 +1610,8 @@ Return JSON only:
     contentSource: 'university' | 'youtube' | 'text' | 'docs';
     hoursPerDay: number;
     dayNumber: number;
-    includeAlternatives?: boolean;  // true for generateDayDetails, false for CORE
-    dayObjectives?: string[];  // Day's learning objectives for alignment verification
+    includeAlternatives?: boolean; // true for generateDayDetails, false for CORE
+    dayObjectives?: string[]; // Day's learning objectives for alignment verification
   }): Promise<{ video: any; rawResult: any } | null> {
     const {
       content,
@@ -1265,36 +1627,52 @@ Return JSON only:
       dayObjectives = [],
     } = params;
 
-    const shouldSearchVideo = videoStrategy !== 'skip' && contentSource !== 'text';
+    const shouldSearchVideo =
+      videoStrategy !== 'skip' && contentSource !== 'text';
 
     this.logger.log(`🎬 VIDEO SEARCH DEBUG Day ${dayNumber}:`);
-    this.logger.log(`   - shouldSearchVideo: ${shouldSearchVideo} (videoStrategy="${videoStrategy}" !== "skip" && contentSource="${contentSource}" !== "text")`);
-    this.logger.log(`   - content.video exists: ${!!content?.video}, type: ${typeof content?.video}`);
+    this.logger.log(
+      `   - shouldSearchVideo: ${shouldSearchVideo} (videoStrategy="${videoStrategy}" !== "skip" && contentSource="${contentSource}" !== "text")`,
+    );
+    this.logger.log(
+      `   - content.video exists: ${!!content?.video}, type: ${typeof content?.video}`,
+    );
 
     if (!shouldSearchVideo || !content.video) {
-      this.logger.log(`🔍 VIDEO SEARCH SKIPPED: shouldSearchVideo=${shouldSearchVideo}, hasContentVideo=${!!content?.video}`);
+      this.logger.log(
+        `🔍 VIDEO SEARCH SKIPPED: shouldSearchVideo=${shouldSearchVideo}, hasContentVideo=${!!content?.video}`,
+      );
       return null;
     }
 
     // Extract search query from day content (hybrid: deterministic + AI fallback for abstract topics)
-    const searchQuery = await this.extractSearchQuery(content, searchConcept, skillName, {
-      dayNumber,
-      skillLevel,
-      skillType,
-      dayObjectives,
-    });
+    const searchQuery = await this.extractSearchQuery(
+      content,
+      searchConcept,
+      skillName,
+      {
+        dayNumber,
+        skillLevel,
+        skillType,
+        dayObjectives,
+      },
+    );
 
     // Calculate video slot based on hours per day
     const sessionMinutes = (hoursPerDay || 1) * 60;
-    const videoSlot = sessionMinutes <= 30 ? 5
-      : sessionMinutes <= 45 ? 6
-      : sessionMinutes <= 60 ? 7
-      : 10;
+    const videoSlot =
+      sessionMinutes <= 30
+        ? 5
+        : sessionMinutes <= 45
+          ? 6
+          : sessionMinutes <= 60
+            ? 7
+            : 10;
 
     const levelMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
-      'BEGINNER': 'beginner',
-      'INTERMEDIATE': 'intermediate',
-      'ADVANCED': 'advanced',
+      BEGINNER: 'beginner',
+      INTERMEDIATE: 'intermediate',
+      ADVANCED: 'advanced',
     };
 
     // Extract day concepts from foundationCards or languageFoundationCards for Gemini verification
@@ -1316,35 +1694,48 @@ Return JSON only:
       }
     }
 
-    this.logger.log(`🎥 Searching video for: "${searchQuery}" (${videoSlot}min slot)`);
+    this.logger.log(
+      `🎥 Searching video for: "${searchQuery}" (${videoSlot}min slot)`,
+    );
     if (dayConcepts.length > 0) {
-      this.logger.log(`   Day concepts for verification: ${dayConcepts.join(', ')}`);
+      this.logger.log(
+        `   Day concepts for verification: ${dayConcepts.join(', ')}`,
+      );
     }
 
     let videoResult: any = null;
     try {
-      videoResult = await this.videoMatcher.findBestVideo({
-        concept: searchQuery,
-        userSlot: videoSlot,
-        userLevel: levelMap[skillLevel] || 'beginner',
-        skillType,
-        contentSource,
-        skillName, // Pass to Gemini for content verification
-        dayConcepts, // Pass day concepts for Gemini to verify coverage
-      }, { deepVerify: true });
+      videoResult = await this.videoMatcher.findBestVideo(
+        {
+          concept: searchQuery,
+          userSlot: videoSlot,
+          userLevel: levelMap[skillLevel] || 'beginner',
+          skillType,
+          contentSource,
+          skillName, // Pass to Gemini for content verification
+          dayConcepts, // Pass day concepts for Gemini to verify coverage
+        },
+        { deepVerify: true },
+      );
     } catch (error: any) {
       this.logger.warn(`⚠️ Video search failed: ${error.message}`);
       videoResult = null;
     }
 
-    this.logger.log(`🔍 VIDEO RESULT: success=${videoResult?.success}, video=${videoResult?.video?.title || 'none'}, matchPercent=${videoResult?.matchPercent || 0}, error=${videoResult?.error || 'none'}`);
+    this.logger.log(
+      `🔍 VIDEO RESULT: success=${videoResult?.success}, video=${videoResult?.video?.title || 'none'}, matchPercent=${videoResult?.matchPercent || 0}, error=${videoResult?.error || 'none'}`,
+    );
 
     // Minimum confidence threshold - reject low quality matches
     const MIN_VIDEO_CONFIDENCE = 40;
-    const meetsMinConfidence = videoResult?.matchPercent && videoResult.matchPercent >= MIN_VIDEO_CONFIDENCE;
+    const meetsMinConfidence =
+      videoResult?.matchPercent &&
+      videoResult.matchPercent >= MIN_VIDEO_CONFIDENCE;
 
     if (videoResult?.success && !meetsMinConfidence) {
-      this.logger.log(`⚠️ Video rejected: matchPercent ${videoResult?.matchPercent}% < ${MIN_VIDEO_CONFIDENCE}% threshold`);
+      this.logger.log(
+        `⚠️ Video rejected: matchPercent ${videoResult?.matchPercent}% < ${MIN_VIDEO_CONFIDENCE}% threshold`,
+      );
     }
 
     // Generate AI explanation as fallback
@@ -1358,24 +1749,30 @@ Return JSON only:
     if (videoResult?.success && videoResult.video && meetsMinConfidence) {
       if (defaultMode === 'ai') {
         // AI is primary, video as backup
-        this.logger.log(`📝 Day ${dayNumber}: AI explanation as default (${adaptiveModality?.reasonShort || 'confidence low'})`);
+        this.logger.log(
+          `📝 Day ${dayNumber}: AI explanation as default (${adaptiveModality?.reasonShort || 'confidence low'})`,
+        );
         processedVideo = {
           useAiExplanation: true,
           concept: searchQuery,
           title: `Understanding ${searchQuery}`,
           explanation: aiExplanation,
-          reason: adaptiveModality?.reason || `AI explanation recommended for "${searchQuery}".`,
+          reason:
+            adaptiveModality?.reason ||
+            `AI explanation recommended for "${searchQuery}".`,
           videoAvailable: adaptiveModality?.videoAvailable ?? true,
           showVideoOption: adaptiveModality?.showVideoOption ?? true,
-          ...(videoResult.video ? {
-            backupVideo: {
-              videoId: videoResult.video.videoId,
-              title: videoResult.video.title,
-              channelName: videoResult.video.channelName,
-              url: `https://www.youtube.com/watch?v=${videoResult.video.videoId}`,
-              matchPercent: videoResult.matchPercent,
-            },
-          } : {}),
+          ...(videoResult.video
+            ? {
+                backupVideo: {
+                  videoId: videoResult.video.videoId,
+                  title: videoResult.video.title,
+                  channelName: videoResult.video.channelName,
+                  url: `https://www.youtube.com/watch?v=${videoResult.video.videoId}`,
+                  matchPercent: videoResult.matchPercent,
+                },
+              }
+            : {}),
           watchPoints: content.video?.watchPoints,
           adaptiveModality: {
             defaultMode: 'ai',
@@ -1407,7 +1804,11 @@ Return JSON only:
                 ? formatTime(alt.watchPlan.primarySegment.endSeconds)
                 : undefined,
               estimatedMinutes: alt.watchPlan?.primarySegment
-                ? Math.ceil((alt.watchPlan.primarySegment.endSeconds - alt.watchPlan.primarySegment.startSeconds) / 60)
+                ? Math.ceil(
+                    (alt.watchPlan.primarySegment.endSeconds -
+                      alt.watchPlan.primarySegment.startSeconds) /
+                      60,
+                  )
                 : 6,
               differentiator: alt.differentiator,
               matchPercent: alt.matchPercent,
@@ -1415,11 +1816,22 @@ Return JSON only:
         }
 
         // Check if this is a university channel
-        const universityChannels = ['MIT OpenCourseWare', 'Harvard CS50', 'freeCodeCamp', 'Khan Academy', 'Stanford Online'];
-        const isUniversityVideo = contentSource === 'university' ||
-          universityChannels.some(ch => video.channelName?.toLowerCase().includes(ch.toLowerCase()));
+        const universityChannels = [
+          'MIT OpenCourseWare',
+          'Harvard CS50',
+          'freeCodeCamp',
+          'Khan Academy',
+          'Stanford Online',
+        ];
+        const isUniversityVideo =
+          contentSource === 'university' ||
+          universityChannels.some((ch) =>
+            video.channelName?.toLowerCase().includes(ch.toLowerCase()),
+          );
 
-        this.logger.log(`✅ Day ${dayNumber} video found: ${video.title} (${videoResult.matchPercent}% match)${alternatives.length > 0 ? ` + ${alternatives.length} alternatives` : ''}`);
+        this.logger.log(
+          `✅ Day ${dayNumber} video found: ${video.title} (${videoResult.matchPercent}% match)${alternatives.length > 0 ? ` + ${alternatives.length} alternatives` : ''}`,
+        );
 
         processedVideo = {
           ...content.video,
@@ -1429,13 +1841,25 @@ Return JSON only:
           title: video.title,
           channelName: video.channelName,
           duration: video.duration,
-          startTime: watchPlan?.primarySegment ? formatTime(watchPlan.primarySegment.startSeconds) : undefined,
-          endTime: watchPlan?.primarySegment ? formatTime(watchPlan.primarySegment.endSeconds) : undefined,
-          watchInstructions: watchPlan?.primarySegment?.description || `Watch this video to learn about ${content.title}`,
-          keyTopics: watchPlan?.keyTopics?.length ? watchPlan.keyTopics : undefined,
+          startTime: watchPlan?.primarySegment
+            ? formatTime(watchPlan.primarySegment.startSeconds)
+            : undefined,
+          endTime: watchPlan?.primarySegment
+            ? formatTime(watchPlan.primarySegment.endSeconds)
+            : undefined,
+          watchInstructions:
+            watchPlan?.primarySegment?.description ||
+            `Watch this video to learn about ${content.title}`,
+          keyTopics: watchPlan?.keyTopics?.length
+            ? watchPlan.keyTopics
+            : undefined,
           summary: watchPlan?.summary,
           estimatedMinutes: watchPlan?.primarySegment
-            ? Math.ceil((watchPlan.primarySegment.endSeconds - watchPlan.primarySegment.startSeconds) / 60)
+            ? Math.ceil(
+                (watchPlan.primarySegment.endSeconds -
+                  watchPlan.primarySegment.startSeconds) /
+                  60,
+              )
             : 6,
           verified: true,
           matchPercent: videoResult.matchPercent,
@@ -1455,7 +1879,9 @@ Return JSON only:
       }
     } else if (videoResult && !videoResult.success) {
       // Video search ran but no video found
-      this.logger.warn(`⚠️ Day ${dayNumber} video not found: ${videoResult?.error || 'No result'}`);
+      this.logger.warn(
+        `⚠️ Day ${dayNumber} video not found: ${videoResult?.error || 'No result'}`,
+      );
       processedVideo = {
         useAiExplanation: true,
         concept: searchQuery,
@@ -1492,7 +1918,9 @@ Return JSON only:
       };
     }
 
-    this.logger.log(`🎬 VIDEO OUTCOME Day ${dayNumber}: useAiExplanation=${processedVideo.useAiExplanation}, hasVideoId=${!!processedVideo.videoId}, hasBackupVideo=${!!processedVideo.backupVideo}`);
+    this.logger.log(
+      `🎬 VIDEO OUTCOME Day ${dayNumber}: useAiExplanation=${processedVideo.useAiExplanation}, hasVideoId=${!!processedVideo.videoId}, hasBackupVideo=${!!processedVideo.backupVideo}`,
+    );
 
     return { video: processedVideo, rawResult: videoResult };
   }
@@ -1505,13 +1933,16 @@ Return JSON only:
     const sections: string[] = [];
 
     // Use languageFoundationCards or foundationCards content if available
-    const cards = dayContent.languageFoundationCards || dayContent.foundationCards;
+    const cards =
+      dayContent.languageFoundationCards || dayContent.foundationCards;
     if (cards && Array.isArray(cards)) {
       for (const card of cards) {
         // For vocabulary cards, format term + definition
         if (card.vocabulary) {
           const { term, definition, romanization } = card.vocabulary;
-          sections.push(`**${term}**${romanization ? ` (${romanization})` : ''}\n${definition}`);
+          sections.push(
+            `**${term}**${romanization ? ` (${romanization})` : ''}\n${definition}`,
+          );
         } else if (card.concept && card.explanation) {
           sections.push(`**${card.concept}**\n${card.explanation}`);
         }
@@ -1531,13 +1962,19 @@ Return JSON only:
     }
 
     if (dayContent.task1?.description) {
-      fallbackSections.push(`### What You'll Learn\n${dayContent.task1.description}`);
+      fallbackSections.push(
+        `### What You'll Learn\n${dayContent.task1.description}`,
+      );
     }
 
     if (dayContent.task1?.steps && Array.isArray(dayContent.task1.steps)) {
-      const steps = dayContent.task1.steps.slice(0, 5).map((s: any, i: number) =>
-        `${i + 1}. ${typeof s === 'string' ? s : s.instruction || s.title || ''}`
-      ).join('\n');
+      const steps = dayContent.task1.steps
+        .slice(0, 5)
+        .map(
+          (s: any, i: number) =>
+            `${i + 1}. ${typeof s === 'string' ? s : s.instruction || s.title || ''}`,
+        )
+        .join('\n');
       fallbackSections.push(`### Key Steps\n${steps}`);
     }
 
@@ -1560,12 +1997,15 @@ Return JSON only:
     for (const obj of dayObjectives.slice(0, 2)) {
       // Clean and extract key nouns/verbs
       const cleaned = obj
-        .replace(/\b(understand|learn|master|apply|create|build|implement|use|know|identify|explain|describe|analyze|develop|practice)\b/gi, '')
+        .replace(
+          /\b(understand|learn|master|apply|create|build|implement|use|know|identify|explain|describe|analyze|develop|practice)\b/gi,
+          '',
+        )
         .replace(/\b(the|a|an|and|or|to|for|with|how|what|why|when)\b/gi, '')
         .replace(/[^\w\s]/g, ' ')
         .trim();
 
-      const words = cleaned.split(/\s+/).filter(w => w.length > 3);
+      const words = cleaned.split(/\s+/).filter((w) => w.length > 3);
       if (words.length > 0) {
         objectiveTerms.push(words.slice(0, 2).join(' '));
       }
@@ -1575,7 +2015,10 @@ Return JSON only:
     let query = searchConcept;
 
     // Add skill context if not already in concept
-    const skillWords = skillName.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+    const skillWords = skillName
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 3);
     for (const sw of skillWords.slice(0, 2)) {
       if (!query.toLowerCase().includes(sw)) {
         query = `${sw} ${query}`;
@@ -1603,7 +2046,9 @@ Return JSON only:
     targetFormat: 'code' | 'quiz' | 'fillBlank',
     dayContext: { dayNumber: number; dayTitle: string; skillName: string },
   ): Promise<{ task: any; tokensUsed: number; cost: number }> {
-    this.logger.log(`🔄 Converting task to ${targetFormat} format for Day ${dayContext.dayNumber}`);
+    this.logger.log(
+      `🔄 Converting task to ${targetFormat} format for Day ${dayContext.dayNumber}`,
+    );
 
     const originalFormat = originalTask.format || 'code';
     if (originalFormat === targetFormat) {
@@ -1713,30 +2158,54 @@ Create a coding challenge that tests the same concepts. Output JSON:
       task = JSON.parse(cleanedContent);
 
       // Ensure quiz questions have unique IDs
-      if (targetFormat === 'quiz' && task.questions && Array.isArray(task.questions)) {
+      if (
+        targetFormat === 'quiz' &&
+        task.questions &&
+        Array.isArray(task.questions)
+      ) {
         task.questions = task.questions.map((q: any, index: number) => ({
           ...q,
-          id: q.id && q.id !== 'q1' ? q.id : `q-${dayContext.dayNumber}-${index}-${Date.now()}`,
+          id:
+            q.id && q.id !== 'q1'
+              ? q.id
+              : `q-${dayContext.dayNumber}-${index}-${Date.now()}`,
         }));
       }
 
       // Ensure fill-blank items have unique IDs
-      if (targetFormat === 'fillBlank' && task.items && Array.isArray(task.items)) {
+      if (
+        targetFormat === 'fillBlank' &&
+        task.items &&
+        Array.isArray(task.items)
+      ) {
         task.items = task.items.map((item: any, index: number) => ({
           ...item,
-          id: item.id && item.id !== 'fb1' ? item.id : `fb-${dayContext.dayNumber}-${index}-${Date.now()}`,
+          id:
+            item.id && item.id !== 'fb1'
+              ? item.id
+              : `fb-${dayContext.dayNumber}-${index}-${Date.now()}`,
           blanks: item.blanks?.map((blank: any, blankIndex: number) => ({
             ...blank,
-            id: blank.id && blank.id !== 'b1' ? blank.id : `b-${index}-${blankIndex}`,
+            id:
+              blank.id && blank.id !== 'b1'
+                ? blank.id
+                : `b-${index}-${blankIndex}`,
           })),
         }));
       }
     } catch (error) {
-      this.logger.error(`❌ Failed to parse alternative task format:`, error.message);
-      throw new BadRequestException('Failed to generate alternative task format');
+      this.logger.error(
+        `❌ Failed to parse alternative task format:`,
+        error.message,
+      );
+      throw new BadRequestException(
+        'Failed to generate alternative task format',
+      );
     }
 
-    this.logger.log(`✅ Task converted to ${targetFormat}. Tokens: ${aiResponse.tokensUsed}`);
+    this.logger.log(
+      `✅ Task converted to ${targetFormat}. Tokens: ${aiResponse.tokensUsed}`,
+    );
 
     return {
       task,
@@ -1779,8 +2248,13 @@ ${params.context.currentCode ? `- Their code:\n\`\`\`\n${params.context.currentC
     if (params.conversationHistory && params.conversationHistory.length > 0) {
       // Only include last 6 messages for context
       const recentHistory = params.conversationHistory.slice(-6);
-      conversationContext = '\n\nRecent conversation:\n' +
-        recentHistory.map(m => `${m.role === 'user' ? 'Student' : 'Tutor'}: ${m.content}`).join('\n');
+      conversationContext =
+        '\n\nRecent conversation:\n' +
+        recentHistory
+          .map(
+            (m) => `${m.role === 'user' ? 'Student' : 'Tutor'}: ${m.content}`,
+          )
+          .join('\n');
     }
 
     const userPrompt = `${conversationContext}
@@ -1909,7 +2383,9 @@ Return JSON only:
       throw new BadRequestException('Failed to generate concept boost');
     }
 
-    this.logger.log(`✅ Concept boost generated. Tokens: ${response.tokensUsed}`);
+    this.logger.log(
+      `✅ Concept boost generated. Tokens: ${response.tokensUsed}`,
+    );
 
     return {
       boost,

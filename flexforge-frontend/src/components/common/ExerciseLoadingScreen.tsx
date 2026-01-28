@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Brain, Sparkles, Zap, Target, BookOpen, Code2, Lightbulb, Puzzle, Rocket, Star } from 'lucide-react';
+import { Brain, Sparkles, Zap, Target, Code2, Lightbulb, Puzzle, Rocket, Star } from 'lucide-react';
 
 interface ExerciseLoadingScreenProps {
   type: 'task' | 'intensive' | 'quiz' | 'code';
@@ -89,12 +89,14 @@ function FloatingIcon({
   );
 }
 
-// Particle component
-function Particle({ delay }: { delay: number }) {
-  const randomX = useMemo(() => Math.random() * 200 - 100, []);
-  const randomY = useMemo(() => Math.random() * 100 - 50, []);
-  const size = useMemo(() => Math.random() * 6 + 2, []);
-
+// Particle component - random values passed as props to avoid impure render
+function Particle({ delay, randomX, randomY, size, repeatDelay }: {
+  delay: number;
+  randomX: number;
+  randomY: number;
+  size: number;
+  repeatDelay: number;
+}) {
   return (
     <motion.div
       className="absolute rounded-full bg-gradient-to-r from-brand-400 to-purple-400"
@@ -110,45 +112,21 @@ function Particle({ delay }: { delay: number }) {
         duration: 2.5,
         delay,
         repeat: Infinity,
-        repeatDelay: Math.random() * 2,
+        repeatDelay,
         ease: 'easeOut',
       }}
     />
   );
 }
 
-// Orbiting dot component
-function OrbitingDot({ delay, radius, duration }: { delay: number; radius: number; duration: number }) {
-  return (
-    <motion.div
-      className="absolute w-3 h-3 rounded-full bg-gradient-to-r from-brand-400 to-purple-500"
-      style={{
-        boxShadow: '0 0 10px rgba(139, 92, 246, 0.5)',
-      }}
-      animate={{
-        rotate: 360,
-      }}
-      transition={{
-        duration,
-        delay,
-        repeat: Infinity,
-        ease: 'linear',
-      }}
-    >
-      <motion.div
-        className="absolute w-3 h-3"
-        style={{
-          left: radius,
-          top: 0,
-        }}
-      >
-        <div className="w-3 h-3 rounded-full bg-gradient-to-r from-brand-400 to-purple-500"
-          style={{ boxShadow: '0 0 10px rgba(139, 92, 246, 0.5)' }}
-        />
-      </motion.div>
-    </motion.div>
-  );
-}
+// Pre-computed particle data to avoid impure Math.random() calls during render
+const PARTICLE_DATA = Array.from({ length: 8 }, (_, i) => ({
+  delay: i * 0.3,
+  randomX: (i * 47 % 200) - 100, // Deterministic pseudo-random based on index
+  randomY: (i * 31 % 100) - 50,
+  size: (i * 17 % 6) + 2,
+  repeatDelay: (i * 23 % 20) / 10, // 0 to 2 range
+}));
 
 // Main brain animation component
 function BrainAnimation() {
@@ -217,8 +195,8 @@ function BrainAnimation() {
 
       {/* Floating particles */}
       <div className="absolute inset-0 flex items-center justify-center">
-        {[...Array(8)].map((_, i) => (
-          <Particle key={i} delay={i * 0.3} />
+        {PARTICLE_DATA.map((particle, i) => (
+          <Particle key={i} {...particle} />
         ))}
       </div>
 

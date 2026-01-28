@@ -27,26 +27,26 @@ export const CACHE_CONFIG = {
 
   // Regen rate thresholds (consistent values) - CURRICULUM
   minServesForJudgment: 10,
-  goodRegenRate: 0.15,       // <= 15% = good
-  badRegenRate: 0.35,        // > 35% = bad, auto-deactivate
-  winnerRegenRate: 0.10,     // <= 10% after 10+ serves = winner
+  goodRegenRate: 0.15, // <= 15% = good
+  badRegenRate: 0.35, // > 35% = bad, auto-deactivate
+  winnerRegenRate: 0.1, // <= 10% after 10+ serves = winner
 
   // Regen timing categories (seconds)
-  immediateRegenSeconds: 30,   // < 30s = might be misclick
-  quickRegenSeconds: 120,      // 30s - 2min = glanced, rejected
+  immediateRegenSeconds: 30, // < 30s = might be misclick
+  quickRegenSeconds: 120, // 30s - 2min = glanced, rejected
   // > 2min = considered (read it, rejected it - WORST signal)
 
   // Anti-spam
-  maxRegensPerSession: 5,      // After 5 regens in one session, stop caching
+  maxRegensPerSession: 5, // After 5 regens in one session, stop caching
 
   // Expiry
   cacheExpiryDays: 90,
 
   // DAY CONTENT specific thresholds (slightly more lenient)
-  dayContentMaxRegensPerDay: 10,    // Max 10 regens per day per session (increased for testing)
-  dayContentGoodRegenRate: 0.20,    // <= 20% = good (day content may have higher acceptable rate)
-  dayContentBadRegenRate: 0.40,     // > 40% = bad, auto-deactivate
-  dayContentWinnerRegenRate: 0.12,  // <= 12% after 10+ serves = winner
+  dayContentMaxRegensPerDay: 10, // Max 10 regens per day per session (increased for testing)
+  dayContentGoodRegenRate: 0.2, // <= 20% = good (day content may have higher acceptable rate)
+  dayContentBadRegenRate: 0.4, // > 40% = bad, auto-deactivate
+  dayContentWinnerRegenRate: 0.12, // <= 12% after 10+ serves = winner
 };
 
 // ============================================================================
@@ -86,7 +86,8 @@ export class CurriculumCacheService implements OnModuleInit {
   private readonly logger = new Logger(CurriculumCacheService.name);
   private aliasMap: Map<string, string> = new Map();
   private normalizedSkillCache: Map<string, string> = new Map(); // AI-normalized skill cache
-  private dayContentCache: Map<string, { content: any; expiresAt: number }> = new Map(); // Day content cache
+  private dayContentCache: Map<string, { content: any; expiresAt: number }> =
+    new Map(); // Day content cache
   private readonly DAY_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
   constructor(
@@ -156,7 +157,10 @@ export class CurriculumCacheService implements OnModuleInit {
     }
 
     // Select best variant
-    const variant = await this.selectVariant(cacheKey.id, cacheKey.winnerVariantId);
+    const variant = await this.selectVariant(
+      cacheKey.id,
+      cacheKey.winnerVariantId,
+    );
 
     if (!variant) {
       return null;
@@ -170,7 +174,7 @@ export class CurriculumCacheService implements OnModuleInit {
 
     this.logger.log(
       `Cache HIT: skill="${dto.skillName}" variant=${variant.id} ` +
-      `(served=${variant.timesServed}, regenRate=${variant.regenRate?.toFixed(2) ?? 'N/A'})`
+        `(served=${variant.timesServed}, regenRate=${variant.regenRate?.toFixed(2) ?? 'N/A'})`,
     );
 
     return {
@@ -194,12 +198,19 @@ export class CurriculumCacheService implements OnModuleInit {
     const normalizedSkill = await this.normalizeSkillName(dto.skillName);
     const hash = this.generateHash(dto, normalizedSkill);
 
-    const { variant } = await this.saveToCache(dto, normalizedSkill, hash, content);
+    const { variant } = await this.saveToCache(
+      dto,
+      normalizedSkill,
+      hash,
+      content,
+    );
 
     // Record serve for the new variant
     await this.recordServe(variant.id, userId, sessionId);
 
-    this.logger.log(`Cache MISS: skill="${dto.skillName}" - created variant=${variant.id}`);
+    this.logger.log(
+      `Cache MISS: skill="${dto.skillName}" - created variant=${variant.id}`,
+    );
 
     return {
       curriculum: content,
@@ -229,7 +240,7 @@ export class CurriculumCacheService implements OnModuleInit {
 
     const now = new Date();
     const secondsBeforeRegen = Math.floor(
-      (now.getTime() - serve.servedAt.getTime()) / 1000
+      (now.getTime() - serve.servedAt.getTime()) / 1000,
     );
 
     // Categorize the regeneration timing
@@ -255,7 +266,7 @@ export class CurriculumCacheService implements OnModuleInit {
 
     this.logger.log(
       `Regen recorded: variant=${previousVariantId} category=${regenCategory} ` +
-      `seconds=${secondsBeforeRegen}`
+        `seconds=${secondsBeforeRegen}`,
     );
   }
 
@@ -270,7 +281,7 @@ export class CurriculumCacheService implements OnModuleInit {
   ): Promise<void> {
     await this.serveRepo.update(
       { variantId, userId, sessionId },
-      { completedDay1: true }
+      { completedDay1: true },
     );
     await this.updateVariantStats(variantId);
     this.logger.log(`Day 1 completion recorded: variant=${variantId}`);
@@ -283,7 +294,7 @@ export class CurriculumCacheService implements OnModuleInit {
   ): Promise<void> {
     await this.serveRepo.update(
       { variantId, userId, sessionId },
-      { bounced: true }
+      { bounced: true },
     );
     await this.updateVariantStats(variantId);
     this.logger.log(`Bounce recorded: variant=${variantId}`);
@@ -334,13 +345,19 @@ export class CurriculumCacheService implements OnModuleInit {
     }
 
     // Priority 1: Serve "good" variants with lowest regen rate
-    const goodVariants = variants.filter((v) => v.qualityStatus === QualityStatus.GOOD);
+    const goodVariants = variants.filter(
+      (v) => v.qualityStatus === QualityStatus.GOOD,
+    );
     if (goodVariants.length > 0) {
-      return goodVariants.sort((a, b) => (a.regenRate ?? 1) - (b.regenRate ?? 1))[0];
+      return goodVariants.sort(
+        (a, b) => (a.regenRate ?? 1) - (b.regenRate ?? 1),
+      )[0];
     }
 
     // Priority 2: Serve "testing" variants
-    const testingVariants = variants.filter((v) => v.qualityStatus === QualityStatus.TESTING);
+    const testingVariants = variants.filter(
+      (v) => v.qualityStatus === QualityStatus.TESTING,
+    );
     if (testingVariants.length > 0) {
       // For variants with < 5 serves, prioritize data gathering (least served first)
       // For variants with >= 5 serves, prefer lower regen rate
@@ -352,7 +369,7 @@ export class CurriculumCacheService implements OnModuleInit {
           return a.timesServed - b.timesServed; // Both need data, serve least-served
         }
         if (!aHasEnoughData) return -1; // a needs data, prioritize it
-        if (!bHasEnoughData) return 1;  // b needs data, prioritize it
+        if (!bHasEnoughData) return 1; // b needs data, prioritize it
 
         // Both have enough data, prefer lower regen rate
         return (a.regenRate ?? 1) - (b.regenRate ?? 1);
@@ -373,9 +390,15 @@ export class CurriculumCacheService implements OnModuleInit {
       .createQueryBuilder('s')
       .select('COUNT(*)', 'served')
       .addSelect('COUNT(*) FILTER (WHERE s.regenerated = true)', 'regenerated')
-      .addSelect("COUNT(*) FILTER (WHERE s.regen_category = 'immediate')", 'immediate')
+      .addSelect(
+        "COUNT(*) FILTER (WHERE s.regen_category = 'immediate')",
+        'immediate',
+      )
       .addSelect("COUNT(*) FILTER (WHERE s.regen_category = 'quick')", 'quick')
-      .addSelect("COUNT(*) FILTER (WHERE s.regen_category = 'considered')", 'considered')
+      .addSelect(
+        "COUNT(*) FILTER (WHERE s.regen_category = 'considered')",
+        'considered',
+      )
       .addSelect('COUNT(*) FILTER (WHERE s.completed_day1 = true)', 'completed')
       .addSelect('COUNT(*) FILTER (WHERE s.bounced = true)', 'bounced')
       .where('s.variant_id = :variantId', { variantId })
@@ -412,7 +435,7 @@ export class CurriculumCacheService implements OnModuleInit {
 
     if (qualityStatus === QualityStatus.BAD) {
       this.logger.warn(
-        `Auto-deactivated variant ${variantId}: regenRate=${(regenRate * 100).toFixed(1)}%`
+        `Auto-deactivated variant ${variantId}: regenRate=${(regenRate * 100).toFixed(1)}%`,
       );
     }
 
@@ -427,10 +450,14 @@ export class CurriculumCacheService implements OnModuleInit {
   // ==========================================================================
 
   private async tryElectWinner(variantId: string): Promise<void> {
-    const variant = await this.variantRepo.findOne({ where: { id: variantId } });
+    const variant = await this.variantRepo.findOne({
+      where: { id: variantId },
+    });
     if (!variant) return;
 
-    const cacheKey = await this.keyRepo.findOne({ where: { id: variant.cacheKeyId } });
+    const cacheKey = await this.keyRepo.findOne({
+      where: { id: variant.cacheKeyId },
+    });
     if (!cacheKey || cacheKey.winnerVariantId) return; // Already has winner
 
     // Check if qualifies for winner status
@@ -439,11 +466,13 @@ export class CurriculumCacheService implements OnModuleInit {
       variant.timesServed >= CACHE_CONFIG.minServesForJudgment &&
       (variant.regenRate ?? 1) <= CACHE_CONFIG.winnerRegenRate
     ) {
-      await this.variantRepo.update(variantId, { qualityStatus: QualityStatus.WINNER });
+      await this.variantRepo.update(variantId, {
+        qualityStatus: QualityStatus.WINNER,
+      });
       await this.keyRepo.update(cacheKey.id, { winnerVariantId: variantId });
 
       this.logger.log(
-        `Winner elected: variant=${variantId} regenRate=${((variant.regenRate ?? 0) * 100).toFixed(1)}%`
+        `Winner elected: variant=${variantId} regenRate=${((variant.regenRate ?? 0) * 100).toFixed(1)}%`,
       );
     }
   }
@@ -465,7 +494,7 @@ export class CurriculumCacheService implements OnModuleInit {
           sessionId,
           servedAt: new Date(),
         },
-        ['userId', 'variantId', 'sessionId']
+        ['userId', 'variantId', 'sessionId'],
       );
 
       // Update last_served_at on variant
@@ -536,12 +565,15 @@ export class CurriculumCacheService implements OnModuleInit {
    */
   private async normalizeSkillName(skillName: string): Promise<string> {
     // Step 1: Basic cleanup
-    let cleaned = skillName
+    const cleaned = skillName
       .toLowerCase()
       .trim()
-      .replace(/&/g, ' and ')  // Replace & with 'and' first
-      .replace(/\b(tutorial|course|learn|learning|guide|introduction|intro|basics|basic|beginner|beginners|advanced|intermediate|how to|for|with|using|the|a|an)\b/gi, '')
-      .replace(/[^a-z0-9\s]/g, ' ')  // Remove special chars
+      .replace(/&/g, ' and ') // Replace & with 'and' first
+      .replace(
+        /\b(tutorial|course|learn|learning|guide|introduction|intro|basics|basic|beginner|beginners|advanced|intermediate|how to|for|with|using|the|a|an)\b/gi,
+        '',
+      )
+      .replace(/[^a-z0-9\s]/g, ' ') // Remove special chars
       .replace(/\s+/g, ' ')
       .trim();
 
@@ -562,7 +594,13 @@ export class CurriculumCacheService implements OnModuleInit {
       }
 
       // Words ending in "s" (but not "ss", "us", "is") → remove "s"
-      if (word.endsWith('s') && !word.endsWith('ss') && !word.endsWith('us') && !word.endsWith('is') && word.length > 2) {
+      if (
+        word.endsWith('s') &&
+        !word.endsWith('ss') &&
+        !word.endsWith('us') &&
+        !word.endsWith('is') &&
+        word.length > 2
+      ) {
         return word.slice(0, -1);
       }
 
@@ -572,22 +610,22 @@ export class CurriculumCacheService implements OnModuleInit {
     // Step 3: Process words - singularize, remove conjunctions, sort, dedupe
     const words = cleaned
       .split(' ')
-      .filter(w => w.length > 0)
+      .filter((w) => w.length > 0)
       .map(singularize)
-      .filter(w => w !== 'and' && w !== 'or')  // Remove conjunctions
-      .sort()  // Sort alphabetically for consistent order
-      .filter((w, i, arr) => arr.indexOf(w) === i);  // Remove duplicates
+      .filter((w) => w !== 'and' && w !== 'or') // Remove conjunctions
+      .sort() // Sort alphabetically for consistent order
+      .filter((w, i, arr) => arr.indexOf(w) === i); // Remove duplicates
 
     const normalized = words.join(' ');
 
     // Check memory cache
     if (this.normalizedSkillCache.has(normalized)) {
-      return this.normalizedSkillCache.get(normalized)!;
+      return this.normalizedSkillCache.get(normalized);
     }
 
     // Check database aliases for additional semantic mappings
     if (this.aliasMap.has(normalized)) {
-      const aliased = this.aliasMap.get(normalized)!;
+      const aliased = this.aliasMap.get(normalized);
       this.normalizedSkillCache.set(normalized, aliased);
       return aliased;
     }
@@ -605,12 +643,15 @@ export class CurriculumCacheService implements OnModuleInit {
     return normalized;
   }
 
-  private generateHash(dto: GenerateCurriculumDto, normalizedSkill: string): string {
+  private generateHash(
+    dto: GenerateCurriculumDto,
+    normalizedSkill: string,
+  ): string {
     const components = [
-      normalizedSkill.toLowerCase().trim(),  // Ensure case-insensitive
+      normalizedSkill.toLowerCase().trim(), // Ensure case-insensitive
       dto.durationDays.toString(),
       dto.hoursPerDay.toFixed(1),
-      dto.skillLevel.toLowerCase(),          // Ensure case-insensitive
+      dto.skillLevel.toLowerCase(), // Ensure case-insensitive
       CACHE_CONFIG.promptVersion,
       CACHE_CONFIG.modelVersion,
     ].join('|');
@@ -648,7 +689,9 @@ export class CurriculumCacheService implements OnModuleInit {
         });
 
         // Increment hit counter (fire and forget)
-        this.dayContentRepo.increment({ id: dbCached.id }, 'cacheHits', 1).catch(() => {});
+        this.dayContentRepo
+          .increment({ id: dbCached.id }, 'cacheHits', 1)
+          .catch(() => {});
 
         this.logger.debug(`Day content L2 cache HIT: ${cacheKey}`);
         return dbCached.content;
@@ -678,7 +721,9 @@ export class CurriculumCacheService implements OnModuleInit {
           cacheKey,
           content,
           isActive: true,
-          expiresAt: new Date(Date.now() + CACHE_CONFIG.cacheExpiryDays * 24 * 60 * 60 * 1000),
+          expiresAt: new Date(
+            Date.now() + CACHE_CONFIG.cacheExpiryDays * 24 * 60 * 60 * 1000,
+          ),
         },
         ['cacheKey'],
       );
@@ -721,12 +766,17 @@ export class CurriculumCacheService implements OnModuleInit {
       }
 
       // Select best variant
-      const variant = await this.selectDayVariant(cacheEntry.id, cacheEntry.winnerVariantId);
+      const variant = await this.selectDayVariant(
+        cacheEntry.id,
+        cacheEntry.winnerVariantId,
+      );
 
       if (!variant) {
         // No variants yet - fall back to legacy content field
         if (cacheEntry.content) {
-          this.logger.debug(`Day content legacy cache HIT (no variants): ${cacheKey}`);
+          this.logger.debug(
+            `Day content legacy cache HIT (no variants): ${cacheKey}`,
+          );
           return {
             content: cacheEntry.content,
             variantId: '',
@@ -740,9 +790,13 @@ export class CurriculumCacheService implements OnModuleInit {
       await this.recordDayServe(variant.id, userId, sessionId, dayNumber);
 
       // Increment cache hit counter
-      this.dayContentRepo.increment({ id: cacheEntry.id }, 'cacheHits', 1).catch(() => {});
+      this.dayContentRepo
+        .increment({ id: cacheEntry.id }, 'cacheHits', 1)
+        .catch(() => {});
 
-      this.logger.debug(`Day content variant cache HIT: ${cacheKey} variant=${variant.id}`);
+      this.logger.debug(
+        `Day content variant cache HIT: ${cacheKey} variant=${variant.id}`,
+      );
 
       return {
         content: variant.content,
@@ -769,14 +823,18 @@ export class CurriculumCacheService implements OnModuleInit {
 
     try {
       // Find or create cache entry
-      let cacheEntry = await this.dayContentRepo.findOne({ where: { cacheKey } });
+      let cacheEntry = await this.dayContentRepo.findOne({
+        where: { cacheKey },
+      });
 
       if (!cacheEntry) {
         cacheEntry = await this.dayContentRepo.save({
           cacheKey,
           content, // Keep legacy content for backward compat
           isActive: true,
-          expiresAt: new Date(Date.now() + CACHE_CONFIG.cacheExpiryDays * 24 * 60 * 60 * 1000),
+          expiresAt: new Date(
+            Date.now() + CACHE_CONFIG.cacheExpiryDays * 24 * 60 * 60 * 1000,
+          ),
         });
       }
 
@@ -796,7 +854,9 @@ export class CurriculumCacheService implements OnModuleInit {
           qualityStatus: QualityStatus.TESTING,
           isActive: true,
         });
-        this.logger.log(`Day content variant created: ${cacheKey} variant=${variant.id}`);
+        this.logger.log(
+          `Day content variant created: ${cacheKey} variant=${variant.id}`,
+        );
       }
 
       // Record first serve
@@ -814,7 +874,9 @@ export class CurriculumCacheService implements OnModuleInit {
         fromCache: false,
       };
     } catch (error) {
-      this.logger.warn(`Day content variant cache save failed: ${error.message}`);
+      this.logger.warn(
+        `Day content variant cache save failed: ${error.message}`,
+      );
       // Return result anyway, just without variantId
       return { content, variantId: '', fromCache: false };
     }
@@ -841,7 +903,7 @@ export class CurriculumCacheService implements OnModuleInit {
 
       const now = new Date();
       const secondsBeforeRegen = Math.floor(
-        (now.getTime() - serve.servedAt.getTime()) / 1000
+        (now.getTime() - serve.servedAt.getTime()) / 1000,
       );
 
       // Categorize the regeneration timing
@@ -866,7 +928,7 @@ export class CurriculumCacheService implements OnModuleInit {
       await this.updateDayVariantStats(previousVariantId);
 
       this.logger.log(
-        `Day content regen recorded: variant=${previousVariantId} after=${secondsBeforeRegen}s category=${regenCategory}`
+        `Day content regen recorded: variant=${previousVariantId} after=${secondsBeforeRegen}s category=${regenCategory}`,
       );
     } catch (error) {
       this.logger.warn(`Day content regen recording failed: ${error.message}`);
@@ -876,7 +938,10 @@ export class CurriculumCacheService implements OnModuleInit {
   /**
    * Get day content regen count for rate limiting
    */
-  async getDayRegenCount(sessionId: string, dayNumber: number): Promise<number> {
+  async getDayRegenCount(
+    sessionId: string,
+    dayNumber: number,
+  ): Promise<number> {
     try {
       const count = await this.dayServeRepo.count({
         where: { sessionId, dayNumber, regenerated: true },
@@ -890,7 +955,10 @@ export class CurriculumCacheService implements OnModuleInit {
   /**
    * Check if day content regen limit reached
    */
-  async isDayRegenLimitReached(sessionId: string, dayNumber: number): Promise<boolean> {
+  async isDayRegenLimitReached(
+    sessionId: string,
+    dayNumber: number,
+  ): Promise<boolean> {
     const count = await this.getDayRegenCount(sessionId, dayNumber);
     return count >= CACHE_CONFIG.dayContentMaxRegensPerDay;
   }
@@ -919,13 +987,19 @@ export class CurriculumCacheService implements OnModuleInit {
     if (variants.length === 0) return null;
 
     // Priority 2: Serve "GOOD" variants (with lowest regen rate first)
-    const goodVariants = variants.filter((v) => v.qualityStatus === QualityStatus.GOOD);
+    const goodVariants = variants.filter(
+      (v) => v.qualityStatus === QualityStatus.GOOD,
+    );
     if (goodVariants.length > 0) {
-      return goodVariants.sort((a, b) => (a.regenRate ?? 1) - (b.regenRate ?? 1))[0];
+      return goodVariants.sort(
+        (a, b) => (a.regenRate ?? 1) - (b.regenRate ?? 1),
+      )[0];
     }
 
     // Priority 3: Serve "TESTING" variants (for data gathering)
-    const testingVariants = variants.filter((v) => v.qualityStatus === QualityStatus.TESTING);
+    const testingVariants = variants.filter(
+      (v) => v.qualityStatus === QualityStatus.TESTING,
+    );
     if (testingVariants.length > 0) {
       return testingVariants.sort((a, b) => {
         const aHasEnoughData = a.timesServed >= 5;
@@ -959,7 +1033,7 @@ export class CurriculumCacheService implements OnModuleInit {
           dayNumber,
           servedAt: new Date(),
         },
-        ['userId', 'variantId', 'sessionId', 'dayNumber']
+        ['userId', 'variantId', 'sessionId', 'dayNumber'],
       );
 
       await this.dayVariantRepo.update(variantId, { lastServedAt: new Date() });
@@ -973,10 +1047,22 @@ export class CurriculumCacheService implements OnModuleInit {
       const stats = await this.dayServeRepo
         .createQueryBuilder('s')
         .select('COUNT(*)', 'served')
-        .addSelect('COUNT(*) FILTER (WHERE s.regenerated = true)', 'regenerated')
-        .addSelect("COUNT(*) FILTER (WHERE s.regen_category = 'immediate')", 'immediate')
-        .addSelect("COUNT(*) FILTER (WHERE s.regen_category = 'quick')", 'quick')
-        .addSelect("COUNT(*) FILTER (WHERE s.regen_category = 'considered')", 'considered')
+        .addSelect(
+          'COUNT(*) FILTER (WHERE s.regenerated = true)',
+          'regenerated',
+        )
+        .addSelect(
+          "COUNT(*) FILTER (WHERE s.regen_category = 'immediate')",
+          'immediate',
+        )
+        .addSelect(
+          "COUNT(*) FILTER (WHERE s.regen_category = 'quick')",
+          'quick',
+        )
+        .addSelect(
+          "COUNT(*) FILTER (WHERE s.regen_category = 'considered')",
+          'considered',
+        )
         .where('s.variant_id = :variantId', { variantId })
         .getRawOne();
 
@@ -1008,7 +1094,7 @@ export class CurriculumCacheService implements OnModuleInit {
 
       if (qualityStatus === QualityStatus.BAD) {
         this.logger.warn(
-          `Day variant auto-deactivated: ${variantId} regenRate=${(regenRate * 100).toFixed(1)}%`
+          `Day variant auto-deactivated: ${variantId} regenRate=${(regenRate * 100).toFixed(1)}%`,
         );
       }
 
@@ -1023,10 +1109,14 @@ export class CurriculumCacheService implements OnModuleInit {
 
   private async tryElectDayWinner(variantId: string): Promise<void> {
     try {
-      const variant = await this.dayVariantRepo.findOne({ where: { id: variantId } });
+      const variant = await this.dayVariantRepo.findOne({
+        where: { id: variantId },
+      });
       if (!variant) return;
 
-      const cacheEntry = await this.dayContentRepo.findOne({ where: { id: variant.cacheKeyId } });
+      const cacheEntry = await this.dayContentRepo.findOne({
+        where: { id: variant.cacheKeyId },
+      });
       if (!cacheEntry || cacheEntry.winnerVariantId) return; // Already has winner
 
       // Check if qualifies for winner status
@@ -1035,11 +1125,15 @@ export class CurriculumCacheService implements OnModuleInit {
         variant.timesServed >= CACHE_CONFIG.minServesForJudgment &&
         (variant.regenRate ?? 1) <= CACHE_CONFIG.dayContentWinnerRegenRate
       ) {
-        await this.dayVariantRepo.update(variantId, { qualityStatus: QualityStatus.WINNER });
-        await this.dayContentRepo.update(cacheEntry.id, { winnerVariantId: variantId });
+        await this.dayVariantRepo.update(variantId, {
+          qualityStatus: QualityStatus.WINNER,
+        });
+        await this.dayContentRepo.update(cacheEntry.id, {
+          winnerVariantId: variantId,
+        });
 
         this.logger.log(
-          `Day winner elected: variant=${variantId} regenRate=${((variant.regenRate ?? 0) * 100).toFixed(1)}%`
+          `Day winner elected: variant=${variantId} regenRate=${((variant.regenRate ?? 0) * 100).toFixed(1)}%`,
         );
       }
     } catch (error) {
@@ -1049,7 +1143,11 @@ export class CurriculumCacheService implements OnModuleInit {
 
   private generateContentHash(content: any): string {
     const contentStr = JSON.stringify(content);
-    return crypto.createHash('sha256').update(contentStr).digest('hex').substring(0, 64);
+    return crypto
+      .createHash('sha256')
+      .update(contentStr)
+      .digest('hex')
+      .substring(0, 64);
   }
 
   // ==========================================================================
@@ -1079,7 +1177,9 @@ export class CurriculumCacheService implements OnModuleInit {
       await this.serveRepo.query('TRUNCATE curriculum_serves CASCADE');
       cleared.push('curriculum_serves');
 
-      await this.variantRepo.query('TRUNCATE curriculum_cache_variants CASCADE');
+      await this.variantRepo.query(
+        'TRUNCATE curriculum_cache_variants CASCADE',
+      );
       cleared.push('curriculum_cache_variants');
 
       await this.keyRepo.query('TRUNCATE curriculum_cache_keys CASCADE');
@@ -1112,8 +1212,14 @@ export class CurriculumCacheService implements OnModuleInit {
         .createQueryBuilder('v')
         .select('COUNT(*)', 'total')
         .addSelect('COUNT(*) FILTER (WHERE v.is_active = true)', 'active')
-        .addSelect("COUNT(*) FILTER (WHERE v.quality_status = 'winner')", 'winners')
-        .addSelect('AVG(v.regen_rate) FILTER (WHERE v.times_served >= 10)', 'avgRate')
+        .addSelect(
+          "COUNT(*) FILTER (WHERE v.quality_status = 'winner')",
+          'winners',
+        )
+        .addSelect(
+          'AVG(v.regen_rate) FILTER (WHERE v.times_served >= 10)',
+          'avgRate',
+        )
         .getRawOne(),
       this.serveRepo.count(),
     ]);

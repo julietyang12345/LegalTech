@@ -8,9 +8,9 @@ import { SkillType } from '../services/skill-detector.service';
  * Language alternative for a direction (genuinely equivalent, not a downgrade)
  */
 export interface LanguageAlternative {
-  language: string;        // "Python"
-  reason: string;          // "Good for data-focused projects"
-  tradeoffs?: string;      // "Slightly slower feedback loop"
+  language: string; // "Python"
+  reason: string; // "Good for data-focused projects"
+  tradeoffs?: string; // "Slightly slower feedback loop"
 }
 
 /**
@@ -18,13 +18,13 @@ export interface LanguageAlternative {
  * AI generates this based on project requirements
  */
 export interface LanguageConfig {
-  recommended: string;           // "TypeScript"
-  recommendedReason: string;     // "Best tooling + sandbox support"
+  recommended: string; // "TypeScript"
+  recommendedReason: string; // "Best tooling + sandbox support"
   alternatives?: LanguageAlternative[];
   // Languages that would fundamentally change the project (don't offer these)
   notRecommended?: {
     language: string;
-    reason: string;              // "Would require different architecture"
+    reason: string; // "Would require different architecture"
   }[];
 }
 
@@ -106,7 +106,7 @@ export interface LearnerPrefs {
   // From feeling step (Step 5) - easier for users than explicit skill/time questions
   contentDepth: 'fast' | 'medium' | 'deep'; // Derived from goal type selection
   familiarity?: 'new' | 'know_basics' | 'skilled'; // How familiar with the topic
-  sessionLength?: 'short' | 'medium' | 'long';     // Daily learning time availability
+  sessionLength?: 'short' | 'medium' | 'long'; // Daily learning time availability
 
   // Platform tolerance (from direction label or refinement)
   // KEY for solving the "Zapier problem" - affects TOOL_SPECIFIC video penalty

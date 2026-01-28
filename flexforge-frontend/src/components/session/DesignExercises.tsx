@@ -1,10 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, X, Palette, Lightbulb } from 'lucide-react';
 import { clsx } from 'clsx';
 import type {
   DesignCritiqueSection,
-  DesignCritiqueItem,
 } from '@/types';
 
 // Progress persistence types

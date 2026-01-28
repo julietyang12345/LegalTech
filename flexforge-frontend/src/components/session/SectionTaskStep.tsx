@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, ChevronRight, Trophy, RotateCcw } from 'lucide-react';
+import { ChevronRight, Trophy, RotateCcw } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ExerciseLoadingScreen } from '@/components/common';
 import {
@@ -127,7 +127,7 @@ export function SectionTaskStep({ day, session, onComplete }: SectionTaskStepPro
   const task = day.task1 as QuizTask | FillBlankTask | MixedTask | SectionsTask;
   const sections = getTaskSections(task);
   const targetLanguage = session.curriculum?.metadata?.targetLanguage as TargetLanguage | undefined;
-  const skillType = session.curriculum?.skillType;
+  const _skillType = session.curriculum?.skillType;
 
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
   const [sectionResults, setSectionResults] = useState<Record<number, SectionResult>>({});

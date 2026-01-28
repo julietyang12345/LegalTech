@@ -31,7 +31,8 @@ const GOOD_VIDEOS: TestVideo[] = [
   {
     videoId: 'good1',
     title: 'React Hooks Tutorial for Beginners',
-    description: 'Learn React hooks from scratch. We cover useState, useEffect, and custom hooks with practical examples.',
+    description:
+      'Learn React hooks from scratch. We cover useState, useEffect, and custom hooks with practical examples.',
     channelId: 'UC29ju8bIPH5as8OGnQzwJyA', // Fireship
     channelName: 'Fireship',
     duration: 600,
@@ -43,7 +44,8 @@ const GOOD_VIDEOS: TestVideo[] = [
   {
     videoId: 'good2',
     title: 'JavaScript Crash Course For Beginners',
-    description: 'Complete JavaScript tutorial for beginners. Build real projects and understand the fundamentals.',
+    description:
+      'Complete JavaScript tutorial for beginners. Build real projects and understand the fundamentals.',
     channelId: 'UC29ju8bIPH5as8OGnQzwJyA',
     channelName: 'Traversy Media',
     duration: 900,
@@ -55,7 +57,8 @@ const GOOD_VIDEOS: TestVideo[] = [
   {
     videoId: 'good3',
     title: 'Python for Data Science - Complete Tutorial',
-    description: 'Step by step Python tutorial covering pandas, numpy, and data visualization.',
+    description:
+      'Step by step Python tutorial covering pandas, numpy, and data visualization.',
     channelId: 'corey',
     channelName: 'Corey Schafer',
     duration: 1200,
@@ -67,7 +70,8 @@ const GOOD_VIDEOS: TestVideo[] = [
   {
     videoId: 'good4',
     title: 'TypeScript Tutorial - The Basics',
-    description: 'Introduction to TypeScript. Learn types, interfaces, and how to set up a TypeScript project.',
+    description:
+      'Introduction to TypeScript. Learn types, interfaces, and how to set up a TypeScript project.',
     channelId: 'benawad',
     channelName: 'Ben Awad',
     duration: 480,
@@ -83,7 +87,8 @@ const BAD_VIDEOS: TestVideo[] = [
   {
     videoId: 'bad1',
     title: 'Zapier AI Tutorial for Beginners: Automation Made Simple',
-    description: 'Learn how to automate your workflow with Zapier. Sign up free and start automating today!',
+    description:
+      'Learn how to automate your workflow with Zapier. Sign up free and start automating today!',
     channelId: 'zapier',
     channelName: 'Zapier',
     duration: 420,
@@ -95,7 +100,8 @@ const BAD_VIDEOS: TestVideo[] = [
   {
     videoId: 'bad2',
     title: 'Make Money Online with AI - Get Rich Quick',
-    description: 'Discover how to make passive income using AI tools. Limited time offer - enroll now!',
+    description:
+      'Discover how to make passive income using AI tools. Limited time offer - enroll now!',
     channelId: 'scammer',
     channelName: 'AI Money Guru',
     duration: 600,
@@ -107,7 +113,8 @@ const BAD_VIDEOS: TestVideo[] = [
   {
     videoId: 'bad3',
     title: 'Notion Tutorial - Product Demo and Tour',
-    description: 'See all the amazing features Notion has to offer. Start free trial today!',
+    description:
+      'See all the amazing features Notion has to offer. Start free trial today!',
     channelId: 'notion',
     channelName: 'Notion',
     duration: 300,
@@ -119,7 +126,8 @@ const BAD_VIDEOS: TestVideo[] = [
   {
     videoId: 'bad4',
     title: 'My Journey Learning to Code - Day in the Life Vlog',
-    description: 'Watch my story of learning to code. Subscribe for more vlogs!',
+    description:
+      'Watch my story of learning to code. Subscribe for more vlogs!',
     channelId: 'vlogger',
     channelName: 'CodeVlogger',
     duration: 900,
@@ -131,7 +139,8 @@ const BAD_VIDEOS: TestVideo[] = [
   {
     videoId: 'bad5',
     title: 'Airtable Official Tutorial - Platform Overview',
-    description: 'Get started with Airtable. This official tutorial shows you everything you need to know.',
+    description:
+      'Get started with Airtable. This official tutorial shows you everything you need to know.',
     channelId: 'airtable',
     channelName: 'Airtable',
     duration: 480,
@@ -150,7 +159,10 @@ const TEST_CONTEXT: ScoringContext = {
 };
 
 // Calculate total score using same logic as service
-function calculateScore(video: ScoringVideo, context: ScoringContext): { total: number; scores: Record<string, number> } {
+function calculateScore(
+  video: ScoringVideo,
+  context: ScoringContext,
+): { total: number; scores: Record<string, number> } {
   const weights = SCORING_WEIGHTS[context.userLevel];
   const mw = MARKETING_WEIGHTS[context.userLevel] ?? 0.4;
 
@@ -179,7 +191,9 @@ function runTests() {
   console.log('='.repeat(60));
   console.log('VIDEO SCORING TEST');
   console.log('='.repeat(60));
-  console.log(`Context: "${TEST_CONTEXT.concept}" | ${TEST_CONTEXT.userLevel} | ${TEST_CONTEXT.userSlot}min`);
+  console.log(
+    `Context: "${TEST_CONTEXT.concept}" | ${TEST_CONTEXT.userLevel} | ${TEST_CONTEXT.userSlot}min`,
+  );
   console.log();
 
   const goodScores: number[] = [];
@@ -193,8 +207,12 @@ function runTests() {
 
     console.log(`✅ ${video.title.substring(0, 50)}...`);
     console.log(`   Channel: ${video.channelName}`);
-    console.log(`   concept=${scores.conceptMatch} trust=${scores.channelTrust} cognitive=${scores.cognitiveLoad}`);
-    console.log(`   duration=${scores.durationFit} engage=${scores.engagement}`);
+    console.log(
+      `   concept=${scores.conceptMatch} trust=${scores.channelTrust} cognitive=${scores.cognitiveLoad}`,
+    );
+    console.log(
+      `   duration=${scores.durationFit} engage=${scores.engagement}`,
+    );
     console.log(`   marketing=-${scores.marketingPenalty}`);
     console.log(`   TOTAL: ${total.toFixed(1)} | ${video.reason}`);
     console.log();
@@ -208,8 +226,12 @@ function runTests() {
 
     console.log(`❌ ${video.title.substring(0, 50)}...`);
     console.log(`   Channel: ${video.channelName}`);
-    console.log(`   concept=${scores.conceptMatch} trust=${scores.channelTrust} cognitive=${scores.cognitiveLoad}`);
-    console.log(`   duration=${scores.durationFit} engage=${scores.engagement}`);
+    console.log(
+      `   concept=${scores.conceptMatch} trust=${scores.channelTrust} cognitive=${scores.cognitiveLoad}`,
+    );
+    console.log(
+      `   duration=${scores.durationFit} engage=${scores.engagement}`,
+    );
     console.log(`   marketing=-${scores.marketingPenalty}`);
     console.log(`   TOTAL: ${total.toFixed(1)} | ${video.reason}`);
     console.log();
@@ -225,15 +247,21 @@ function runTests() {
   const minGood = Math.min(...goodScores);
   const maxBad = Math.max(...badScores);
 
-  console.log(`Good videos avg: ${avgGood.toFixed(1)} (min: ${minGood.toFixed(1)})`);
-  console.log(`Bad videos avg:  ${avgBad.toFixed(1)} (max: ${maxBad.toFixed(1)})`);
+  console.log(
+    `Good videos avg: ${avgGood.toFixed(1)} (min: ${minGood.toFixed(1)})`,
+  );
+  console.log(
+    `Bad videos avg:  ${avgBad.toFixed(1)} (max: ${maxBad.toFixed(1)})`,
+  );
   console.log(`Separation gap:  ${(avgGood - avgBad).toFixed(1)}`);
   console.log();
 
   if (minGood > maxBad) {
     console.log('✅ PASS: All good videos score higher than all bad videos');
   } else {
-    console.log('⚠️  OVERLAP: Some bad videos score higher than some good videos');
+    console.log(
+      '⚠️  OVERLAP: Some bad videos score higher than some good videos',
+    );
     console.log('   Consider adjusting weights or adding more signals');
   }
 
@@ -340,16 +368,20 @@ function runTranscriptTests() {
 
   for (const testCase of TRANSCRIPT_TEST_CASES) {
     // Convert transcript string to array format expected by analyzePromoContent
-    const transcriptArray = testCase.transcript.split('\n').map((text, i) => ({
-      text: text.trim(),
-      start: i * 30, // Simulate 30 seconds per line
-    })).filter(t => t.text.length > 0);
+    const transcriptArray = testCase.transcript
+      .split('\n')
+      .map((text, i) => ({
+        text: text.trim(),
+        start: i * 30, // Simulate 30 seconds per line
+      }))
+      .filter((t) => t.text.length > 0);
 
     const videoDuration = transcriptArray.length * 30;
     const result = analyzePromoContent(transcriptArray, videoDuration);
 
     // Map verdict to promotional boolean
-    const isPromotional = result.verdict === 'reject' || result.promoLevel === 'strong';
+    const isPromotional =
+      result.verdict === 'reject' || result.promoLevel === 'strong';
     const isCorrect = isPromotional === testCase.expectedPromotional;
 
     if (isCorrect) {
@@ -358,12 +390,18 @@ function runTranscriptTests() {
     } else {
       failed++;
       console.log(`❌ ${testCase.name}`);
-      console.log(`   Expected: ${testCase.expectedPromotional ? 'PROMOTIONAL' : 'EDUCATIONAL'}`);
+      console.log(
+        `   Expected: ${testCase.expectedPromotional ? 'PROMOTIONAL' : 'EDUCATIONAL'}`,
+      );
       console.log(`   Got: ${isPromotional ? 'PROMOTIONAL' : 'EDUCATIONAL'}`);
     }
 
-    console.log(`   Verdict: ${result.verdict} | PromoLevel: ${result.promoLevel}`);
-    console.log(`   CTA Density: ${result.ctaDensity.toFixed(2)}/min | Teaching Ratio: ${result.teachingRatio.toFixed(2)}`);
+    console.log(
+      `   Verdict: ${result.verdict} | PromoLevel: ${result.promoLevel}`,
+    );
+    console.log(
+      `   CTA Density: ${result.ctaDensity.toFixed(2)}/min | Teaching Ratio: ${result.teachingRatio.toFixed(2)}`,
+    );
     if (result.dominantTools.length > 0) {
       console.log(`   Tools: [${result.dominantTools.join(', ')}]`);
     }
@@ -379,7 +417,9 @@ function runTranscriptTests() {
   if (failed === 0) {
     console.log('✅ All transcript tests passed!');
   } else {
-    console.log(`⚠️  ${failed} test(s) failed - review promo analysis thresholds`);
+    console.log(
+      `⚠️  ${failed} test(s) failed - review promo analysis thresholds`,
+    );
   }
 }
 

@@ -111,7 +111,7 @@ function detectErrorBoundary(error: string, code: string): BoundaryInfo | null {
  */
 function BoundaryNotification({
   boundary,
-  onDismiss
+  onDismiss: _onDismiss
 }: {
   boundary: BoundaryInfo;
   onDismiss?: () => void;
@@ -570,7 +570,7 @@ const STACKBLITZ_TEMPLATES: Record<string, { template: string; files: Record<str
   },
 };
 
-async function createStackBlitzProject(
+async function _createStackBlitzProject(
   code: string,
   template: string = 'node',
   dependencies?: Record<string, string>
@@ -728,7 +728,6 @@ export function CodeSandbox({
   const openInCodespaces = () => {
     // Create a GitHub gist-like experience via codespaces
     // Uses github.dev which opens VS Code in browser
-    const encodedCode = encodeURIComponent(code);
     // Open github.dev with the code (user can create repo from there)
     window.open(`https://vscode.dev`, '_blank');
     // Copy code to clipboard so user can paste

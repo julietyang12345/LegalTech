@@ -10,7 +10,11 @@ export class AuthService {
   ) {}
 
   async register(email: string, password: string, name?: string) {
-    const user = await this.userService.create({ email, password, fullName: name });
+    const user = await this.userService.create({
+      email,
+      password,
+      fullName: name,
+    });
 
     const payload = { email: user.email, sub: user.id, role: user.role };
     const token = this.jwtService.sign(payload);
@@ -60,7 +64,10 @@ export class AuthService {
       return null;
     }
 
-    const isPasswordValid = await this.userService.validatePassword(user, password);
+    const isPasswordValid = await this.userService.validatePassword(
+      user,
+      password,
+    );
 
     if (!isPasswordValid) {
       return null;

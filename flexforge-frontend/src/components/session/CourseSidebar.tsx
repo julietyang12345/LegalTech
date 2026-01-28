@@ -3,7 +3,6 @@ import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronRight,
-  Lock,
   CheckCircle,
   PlayCircle,
   SkipForward,

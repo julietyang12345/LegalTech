@@ -30,7 +30,7 @@ type OnboardingStep =
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
-  const { user, refreshUser } = useAuthStore();
+  const { refreshUser } = useAuthStore();
 
   // State machine
   const [step, setStep] = useState<OnboardingStep>('goal_input');

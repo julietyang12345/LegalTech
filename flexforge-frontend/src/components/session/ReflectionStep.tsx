@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, Sparkles, Lock, ChevronDown, Lightbulb, Target, Plus, X, TrendingUp, TrendingDown } from 'lucide-react';
-import { Card, Button, ConfidenceSlider, QuickPick, SentenceComplete, AnimatedReveal } from '@/components/common';
+import { BookOpen, Sparkles, Lightbulb, Target, Plus, X, TrendingUp, TrendingDown } from 'lucide-react';
+import { Card, Button, ConfidenceSlider, QuickPick, AnimatedReveal } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { QuickBoostModal } from './QuickBoostModal';
 import { useAuthStore } from '@/stores/authStore';
@@ -32,8 +32,8 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
   const [whatClicked, setWhatClicked] = useState<string | null>(
     savedProgress?.answers?.whatClicked as string | null ?? null
   );
-  const [whatClickedDetails, setWhatClickedDetails] = useState('');
-  const [showClickedDetails, setShowClickedDetails] = useState(false);
+  const [_whatClickedDetails, _setWhatClickedDetails] = useState('');
+  const [_showClickedDetails, _setShowClickedDetails] = useState(false);
 
   const [whatsFoggy, setWhatsFoggy] = useState<string | null>(
     savedProgress?.answers?.whatsFoggy as string | null ?? null
@@ -43,15 +43,15 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
     !!(savedProgress?.answers?.whatsFoggy)
   );
 
-  const [lockInSentence, setLockInSentence] = useState('');
+  const [_lockInSentence, _setLockInSentence] = useState('');
 
   const [warmupPlan, setWarmupPlan] = useState<string | null>(
     savedProgress?.answers?.warmupPlan as string | null ?? null
   );
   const [warmupCustom, setWarmupCustom] = useState('');
 
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+  const [_isAnalyzing, _setIsAnalyzing] = useState(false);
+  const [_aiAnalysis, _setAiAnalysis] = useState<string | null>(null);
 
   // Confused concepts state
   const [confusedConcepts, setConfusedConcepts] = useState<string[]>(
@@ -115,7 +115,7 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
   ];
 
   // Dynamic sentence suggestions based on day content
-  const sentenceSuggestions = [
+  const _sentenceSuggestions = [
     `${day.objectives?.[0] || 'This concept'} helps me...`,
     `The key pattern is...`,
     `I can use this when...`,
@@ -198,20 +198,20 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
     setLessOfAreas(lessOfAreas.filter(a => a !== area));
   };
 
-  const handleAIAnalysis = async () => {
+  const _handleAIAnalysis = async () => {
     if (!canGetAIAnalysis) return;
 
-    setIsAnalyzing(true);
+    _setIsAnalyzing(true);
     await new Promise(resolve => setTimeout(resolve, 1500));
 
-    setAiAnalysis(
+    _setAiAnalysis(
       confidence && confidence >= 4
         ? "🎯 Great confidence! You've got a solid grasp of today's concepts. Tomorrow, try explaining this to someone else to cement it!"
         : confidence && confidence < 3
         ? "💪 It's okay to feel uncertain - that's part of learning! Focus your warm-up on the foggy areas. Consider re-watching the video section."
         : "👍 Good self-awareness! Your reflection shows you're thinking deeply. Keep building on what clicked!"
     );
-    setIsAnalyzing(false);
+    _setIsAnalyzing(false);
   };
 
   const handleComplete = async () => {
@@ -222,7 +222,7 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
         whatClicked: whatClicked || undefined,
         whatsFoggy: whatsFoggy || undefined,
         confusedConcepts: confusedConcepts.length > 0 ? confusedConcepts : undefined,
-        lockInSentence: lockInSentence || undefined,
+        lockInSentence: _lockInSentence || undefined,
         warmupPlan: warmupPlan || undefined,
         boostCompleted,
         boostConcept: boostedConcept || undefined,

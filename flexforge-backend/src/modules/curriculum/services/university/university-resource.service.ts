@@ -24,7 +24,7 @@ export interface UniversityResource {
   title: string;
   url: string;
   description?: string;
-  confidence: number;  // 0-100 relevance score
+  confidence: number; // 0-100 relevance score
 }
 
 export interface UniversitySearchResult {
@@ -58,7 +58,9 @@ export class UniversityResourceService {
     this.engineId = this.configService.get<string>('google.cse.engineId') || '';
 
     if (!this.apiKey || !this.engineId) {
-      this.logger.warn('Google CSE not configured - university search will be limited');
+      this.logger.warn(
+        'Google CSE not configured - university search will be limited',
+      );
     }
   }
 
@@ -73,7 +75,9 @@ export class UniversityResourceService {
     limit: number = 5,
     dayObjectives: string[] = [],
   ): Promise<UniversitySearchResult> {
-    this.logger.log(`🎓 Searching university resources for: "${concept}" (${resourceType})`);
+    this.logger.log(
+      `🎓 Searching university resources for: "${concept}" (${resourceType})`,
+    );
 
     if (!this.apiKey || !this.engineId) {
       return {
@@ -85,15 +89,24 @@ export class UniversityResourceService {
 
     try {
       // Build search query based on resource type
-      const typeKeyword = resourceType === 'lecture_video' ? 'lecture video'
-        : resourceType === 'problem_set' ? 'problem set solutions'
-        : resourceType === 'slides' ? 'slides pdf'
-        : 'lecture notes';
+      const typeKeyword =
+        resourceType === 'lecture_video'
+          ? 'lecture video'
+          : resourceType === 'problem_set'
+            ? 'problem set solutions'
+            : resourceType === 'slides'
+              ? 'slides pdf'
+              : 'lecture notes';
 
       const searchQuery = `${concept} ${typeKeyword}`;
 
       // Search with .edu site restriction
-      const resources = await this.searchGoogleCSE(searchQuery, resourceType, limit, dayObjectives);
+      const resources = await this.searchGoogleCSE(
+        searchQuery,
+        resourceType,
+        limit,
+        dayObjectives,
+      );
 
       if (resources.length === 0) {
         return {
@@ -105,7 +118,6 @@ export class UniversityResourceService {
 
       this.logger.log(`✅ Found ${resources.length} university resources`);
       return { success: true, resources };
-
     } catch (error) {
       this.logger.error(`❌ University search failed: ${error.message}`);
       return {
@@ -127,7 +139,10 @@ export class UniversityResourceService {
   ): Promise<UniversityResource[]> {
     // Extract search concept from query (remove type keywords)
     const searchConcept = query
-      .replace(/\b(lecture video|problem set solutions|slides pdf|lecture notes)\b/gi, '')
+      .replace(
+        /\b(lecture video|problem set solutions|slides pdf|lecture notes)\b/gi,
+        '',
+      )
       .trim()
       .toLowerCase();
 
@@ -138,7 +153,7 @@ export class UniversityResourceService {
           params: {
             key: this.apiKey,
             cx: this.engineId,
-            q: query + ' site:edu',  // Restrict to .edu domains
+            q: query + ' site:edu', // Restrict to .edu domains
             num: Math.min(limit, 10), // Max 10 per request
           },
           timeout: 10000,
@@ -149,7 +164,9 @@ export class UniversityResourceService {
       const resources: UniversityResource[] = [];
 
       for (const item of items) {
-        const source = this.extractUniversityName(item.displayLink || item.link);
+        const source = this.extractUniversityName(
+          item.displayLink || item.link,
+        );
         const confidence = this.calculateConfidence(
           item.title,
           item.snippet || '',
@@ -173,7 +190,6 @@ export class UniversityResourceService {
       resources.sort((a, b) => b.confidence - a.confidence);
 
       return resources;
-
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 429) {
         this.logger.warn('Google CSE rate limit reached (100/day)');
@@ -197,15 +213,23 @@ export class UniversityResourceService {
     let score = 0;
     const titleLower = title.toLowerCase();
     const descLower = description.toLowerCase();
-    const conceptWords = searchConcept.split(/\s+/).filter(w => w.length > 2);
+    const conceptWords = searchConcept.split(/\s+/).filter((w) => w.length > 2);
 
     // Title contains search concept words (+20 max)
-    const titleMatches = conceptWords.filter(w => titleLower.includes(w)).length;
+    const titleMatches = conceptWords.filter((w) =>
+      titleLower.includes(w),
+    ).length;
     score += Math.min(20, titleMatches * 10);
 
     // Top-tier university (+20)
     const topUniversities = ['MIT', 'Stanford', 'Harvard'];
-    const goodUniversities = ['Berkeley', 'CMU', 'Princeton', 'Yale', 'Cornell'];
+    const goodUniversities = [
+      'Berkeley',
+      'CMU',
+      'Princeton',
+      'Yale',
+      'Cornell',
+    ];
     if (topUniversities.includes(source)) {
       score += 20;
     } else if (goodUniversities.includes(source)) {
@@ -219,18 +243,26 @@ export class UniversityResourceService {
       lecture_video: ['lecture', 'video', 'course', 'class'],
       lecture_notes: ['notes', 'lecture', 'slides', 'handout'],
       slides: ['slides', 'presentation', 'ppt'],
-      problem_set: ['problem', 'exercise', 'homework', 'assignment', 'solution'],
+      problem_set: [
+        'problem',
+        'exercise',
+        'homework',
+        'assignment',
+        'solution',
+      ],
       assignment: ['assignment', 'project', 'homework'],
       syllabus: ['syllabus', 'course', 'outline'],
       reading: ['reading', 'chapter', 'textbook'],
     };
     const indicators = typeIndicators[resourceType] || [];
-    if (indicators.some(ind => titleLower.includes(ind))) {
+    if (indicators.some((ind) => titleLower.includes(ind))) {
       score += 10;
     }
 
     // Description contains search concept (+10 max)
-    const descMatches = conceptWords.filter(w => descLower.includes(w)).length;
+    const descMatches = conceptWords.filter((w) =>
+      descLower.includes(w),
+    ).length;
     score += Math.min(10, descMatches * 5);
 
     // Content matches day objectives (+20 max) - KEY FOR RELEVANCE
@@ -244,11 +276,15 @@ export class UniversityResourceService {
 
       for (const objective of dayObjectives) {
         // Extract key terms from objective, excluding generic words AND search concept
-        const objTerms = objective.toLowerCase()
-          .replace(/\b(understand|learn|master|apply|create|build|implement|use|know|identify|explain|describe|analyze|develop|practice|the|a|an|and|or|to|for|with|how|what|why|when|different|various|basic|advanced|effective|key|main|core|essential|important)\b/g, '')
+        const objTerms = objective
+          .toLowerCase()
+          .replace(
+            /\b(understand|learn|master|apply|create|build|implement|use|know|identify|explain|describe|analyze|develop|practice|the|a|an|and|or|to|for|with|how|what|why|when|different|various|basic|advanced|effective|key|main|core|essential|important)\b/g,
+            '',
+          )
           .split(/\s+/)
-          .filter(w => w.length > 3)
-          .filter(w => !conceptWordsToExclude.has(w)); // Exclude search concept words
+          .filter((w) => w.length > 3)
+          .filter((w) => !conceptWordsToExclude.has(w)); // Exclude search concept words
 
         // Check if any SPECIFIC objective terms appear in title or description
         for (const term of objTerms) {
@@ -270,8 +306,13 @@ export class UniversityResourceService {
     }
 
     // Penalty for generic/listing pages (-15)
-    const genericIndicators = ['index', 'search results', 'all courses', 'course catalog'];
-    if (genericIndicators.some(ind => titleLower.includes(ind))) {
+    const genericIndicators = [
+      'index',
+      'search results',
+      'all courses',
+      'course catalog',
+    ];
+    if (genericIndicators.some((ind) => titleLower.includes(ind))) {
       score -= 15;
     }
 

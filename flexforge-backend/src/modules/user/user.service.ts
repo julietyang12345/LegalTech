@@ -16,8 +16,12 @@ export class UserService {
     private configService: ConfigService,
   ) {
     // ADMIN_EMAILS can be comma-separated list: "admin@example.com,owner@example.com"
-    const adminEmailsConfig = this.configService.get<string>('ADMIN_EMAILS') || '';
-    this.adminEmails = adminEmailsConfig.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+    const adminEmailsConfig =
+      this.configService.get<string>('ADMIN_EMAILS') || '';
+    this.adminEmails = adminEmailsConfig
+      .split(',')
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
   }
 
   /**
@@ -137,7 +141,11 @@ export class UserService {
     user.quotaTier = newTier;
 
     // Set feature access based on tier
-    if (newTier === QuotaTier.PRO || newTier === QuotaTier.PREMIUM || newTier === QuotaTier.UNLIMITED) {
+    if (
+      newTier === QuotaTier.PRO ||
+      newTier === QuotaTier.PREMIUM ||
+      newTier === QuotaTier.UNLIMITED
+    ) {
       user.hasStepByStepAccess = true;
     }
 
@@ -244,8 +252,7 @@ export class UserService {
     const tokensRemaining = limits.tokens - user.tokensUsedThisMonth;
     const curriculaRemaining =
       limits.curricula - user.curriculaGeneratedThisMonth;
-    const codeReviewsRemaining =
-      limits.codeReviews - user.codeReviewsThisMonth;
+    const codeReviewsRemaining = limits.codeReviews - user.codeReviewsThisMonth;
 
     return {
       hasQuota: tokensRemaining > 0 && curriculaRemaining > 0,

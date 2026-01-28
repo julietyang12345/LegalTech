@@ -26,24 +26,24 @@ const MESSAGE_TEMPLATES = {
   // ============ GREETINGS ============
   greetings: {
     morning: [
-      "Good morning, {name}! Ready to learn something amazing today? ☀️",
-      "Morning, {name}! Your brain is freshest now - perfect time to tackle something new! 🌅",
-      "Hey {name}! Another beautiful day to grow. What shall we explore? 🌟",
+      'Good morning, {name}! Ready to learn something amazing today? ☀️',
+      'Morning, {name}! Your brain is freshest now - perfect time to tackle something new! 🌅',
+      'Hey {name}! Another beautiful day to grow. What shall we explore? 🌟',
     ],
     afternoon: [
       "Hey {name}! How's your day going? Ready for some learning? 🎯",
-      "Good afternoon, {name}! Taking a break to learn something cool? I love it! ✨",
+      'Good afternoon, {name}! Taking a break to learn something cool? I love it! ✨',
       "Hi {name}! Afternoon brain boost time? Let's do this! 💪",
     ],
     evening: [
-      "Evening, {name}! Winding down with some learning? Great choice! 🌙",
+      'Evening, {name}! Winding down with some learning? Great choice! 🌙',
       "Hey {name}! Night owl learning session? I'm here for it! 🦉",
       "Hi {name}! Nothing like some evening learning. What's on your mind? ✨",
     ],
     returning: [
-      "Welcome back, {name}! I missed you! Ready to pick up where we left off? 🎉",
+      'Welcome back, {name}! I missed you! Ready to pick up where we left off? 🎉',
       "{name}! So glad you're back. Let's continue your journey! 🚀",
-      "Hey {name}, great to see you again! Your progress is waiting for you! 🌟",
+      'Hey {name}, great to see you again! Your progress is waiting for you! 🌟',
     ],
     firstTime: [
       "Welcome to FlexForge, {name}! I'm Flexi, and I'll be your learning companion. I'm so excited to help you grow! 🎉",
@@ -52,7 +52,7 @@ const MESSAGE_TEMPLATES = {
     ],
     streak: [
       "🔥 {name}! {streak} days in a row! You're on fire! Let's keep the streak going!",
-      "Day {streak} of your streak, {name}! Your dedication is inspiring! 🌟",
+      'Day {streak} of your streak, {name}! Your dedication is inspiring! 🌟',
       "{streak} days straight, {name}! That's not luck, that's commitment! 💪",
     ],
   },
@@ -62,12 +62,12 @@ const MESSAGE_TEMPLATES = {
     started: [
       "You've taken the first step, {name}! That's often the hardest part. I'm proud of you! 🌱",
       "And we're off! Every expert was once a beginner. Let's grow together! 🚀",
-      "Chapter 1 begins! This is going to be a great journey, {name}! ✨",
+      'Chapter 1 begins! This is going to be a great journey, {name}! ✨',
     ],
     quarter: [
       "25% done, {name}! You're building real momentum now! 📈",
       "A quarter of the way there! See? You're making this happen! 💪",
-      "Look at you go, {name}! 25% complete and crushing it! 🎯",
+      'Look at you go, {name}! 25% complete and crushing it! 🎯',
     ],
     halfway: [
       "HALFWAY THERE, {name}! 🎉 This is a huge milestone - take a moment to appreciate how far you've come!",
@@ -75,23 +75,23 @@ const MESSAGE_TEMPLATES = {
       "Half done, {name}! You've proven you can do this. The finish line is in sight! 🌟",
     ],
     threeQuarter: [
-      "75%, {name}! You can almost taste the finish! Keep pushing! 🚀",
+      '75%, {name}! You can almost taste the finish! Keep pushing! 🚀',
       "Three-quarters done! You're in the home stretch now! 💪",
-      "75% complete! Your persistence is paying off big time! ⭐",
+      '75% complete! Your persistence is paying off big time! ⭐',
     ],
     almostDone: [
       "SO CLOSE, {name}! Just a little more! You've got this! 🏁",
-      "90%+ done! The finish line is RIGHT THERE! 🎯",
+      '90%+ done! The finish line is RIGHT THERE! 🎯',
       "Almost there! Don't stop now - you're about to achieve something great! 🌟",
     ],
     completed: [
       "🎉 YOU DID IT, {name}! 🎉 I'm so proud of you! This is a real achievement!",
-      "COMPLETE! {name}, you just proved that you can learn anything you set your mind to! 🏆",
-      "Finished! Take a bow, {name}! You earned this moment! 🌟✨🎊",
+      'COMPLETE! {name}, you just proved that you can learn anything you set your mind to! 🏆',
+      'Finished! Take a bow, {name}! You earned this moment! 🌟✨🎊',
     ],
     moduleComplete: [
-      "Module complete! 🎉 {name}, you just added a new skill to your toolkit!",
-      "Another module down! Your knowledge is growing, {name}! 📚",
+      'Module complete! 🎉 {name}, you just added a new skill to your toolkit!',
+      'Another module down! Your knowledge is growing, {name}! 📚',
       "Boom! Module finished! You're becoming quite the expert, {name}! 💪",
     ],
   },
@@ -106,7 +106,7 @@ const MESSAGE_TEMPLATES = {
     afterFail: [
       "That didn't go as planned, but that's okay! Every mistake is just feedback. Let's learn from it and try again. 💪",
       "Oops! But hey, {name}, mistakes are just stepping stones. What do you think went wrong? Let's figure it out together. 🔍",
-      "Not quite, but I love that you tried! Learning happens through attempts, not just successes. Ready to go again? 🌟",
+      'Not quite, but I love that you tried! Learning happens through attempts, not just successes. Ready to go again? 🌟',
     ],
     multipleFails: [
       "I can see you're working really hard at this, {name}. Sometimes we need to step back and build up to it. Want to try some foundational exercises first? 💙",
@@ -114,7 +114,7 @@ const MESSAGE_TEMPLATES = {
       "You're persistent, {name}, and I admire that. Let me try explaining this in a completely different way. 🌈",
     ],
     takingBreak: [
-      "Taking a break is actually scientifically proven to help learning, {name}! Your brain will keep processing in the background. See you soon! 🧠",
+      'Taking a break is actually scientifically proven to help learning, {name}! Your brain will keep processing in the background. See you soon! 🧠',
       "Good call on the break! Rest is part of learning. I'll be here when you're ready. ☕",
       "Breaks are important! Go do something fun, and come back refreshed. I'll keep your spot warm! 🌸",
     ],
@@ -123,25 +123,25 @@ const MESSAGE_TEMPLATES = {
   // ============ CELEBRATION ============
   celebration: {
     quickWin: [
-      "Nice one, {name}! ✨",
-      "Got it! 🎯",
+      'Nice one, {name}! ✨',
+      'Got it! 🎯',
       "That's it! Well done! ⭐",
       "Correct! You're getting the hang of this! 💪",
     ],
     streakMilestone: [
       "🔥 {streak} DAY STREAK! {name}, you're officially a learning machine!",
-      "STREAK MILESTONE: {streak} days! Your consistency is incredible, {name}! 🏆",
-      "{streak} days of dedication, {name}! This is what growth looks like! 🌟",
+      'STREAK MILESTONE: {streak} days! Your consistency is incredible, {name}! 🏆',
+      '{streak} days of dedication, {name}! This is what growth looks like! 🌟',
     ],
     newSkill: [
-      "🎉 NEW SKILL UNLOCKED: {skill}! {name}, you can now add this to your toolkit!",
-      "Skill acquired: {skill}! The world of {skill} is now yours, {name}! 🚀",
-      "You did it! {skill} is now part of your repertoire! How does it feel? 🌟",
+      '🎉 NEW SKILL UNLOCKED: {skill}! {name}, you can now add this to your toolkit!',
+      'Skill acquired: {skill}! The world of {skill} is now yours, {name}! 🚀',
+      'You did it! {skill} is now part of your repertoire! How does it feel? 🌟',
     ],
     personalBest: [
-      "PERSONAL BEST, {name}! You just outdid yourself! 🏆",
+      'PERSONAL BEST, {name}! You just outdid yourself! 🏆',
       "New record! {name}, you're getting better every day! 📈",
-      "You beat your own record! This is what progress looks like! 🎯",
+      'You beat your own record! This is what progress looks like! 🎯',
     ],
   },
 
@@ -149,17 +149,17 @@ const MESSAGE_TEMPLATES = {
   nudges: {
     idle: [
       "Hey {name}! Haven't seen you in a while. Your {topic} curriculum is waiting whenever you're ready! 💙",
-      "Missing you, {name}! Even 5 minutes of learning keeps the momentum going. Want to do a quick review? 📚",
-      "Hey! Just checking in. Remember, small steps count too. Ready for a quick session? 🌱",
+      'Missing you, {name}! Even 5 minutes of learning keeps the momentum going. Want to do a quick review? 📚',
+      'Hey! Just checking in. Remember, small steps count too. Ready for a quick session? 🌱',
     ],
     suggestion: [
       "Based on what you've learned, {name}, I think you'd really enjoy {suggestion}. Want to explore it? 🔍",
-      "Fun fact, {name}: {suggestion} connects really well with what you already know. Interested? 💡",
+      'Fun fact, {name}: {suggestion} connects really well with what you already know. Interested? 💡',
       "Hey {name}, curious about {suggestion}? It's a natural next step from here! 🚀",
     ],
     reviewReminder: [
-      "Pro tip, {name}: reviewing what you learned yesterday helps it stick. Want to do a quick refresher? 🧠",
-      "Your brain consolidates learning through review. Quick 5-minute refresh of {topic}? 📝",
+      'Pro tip, {name}: reviewing what you learned yesterday helps it stick. Want to do a quick refresher? 🧠',
+      'Your brain consolidates learning through review. Quick 5-minute refresh of {topic}? 📝',
       "Spaced repetition is science! Let's reinforce what you learned in {topic}. 🔬",
     ],
   },
@@ -179,34 +179,34 @@ const MESSAGE_TEMPLATES = {
     uncertain: [
       "Not sure where to start, {name}? That's totally fine - let me guide you. What interests you most right now? 🧭",
       "Feeling overwhelmed by options? Let's narrow it down together. Tell me one thing you're curious about. 💭",
-      "Analysis paralysis is real! How about I suggest something based on what I know about you? 🎯",
+      'Analysis paralysis is real! How about I suggest something based on what I know about you? 🎯',
     ],
     proud: [
-      "You SHOULD be proud, {name}! This is real growth! 🏆",
+      'You SHOULD be proud, {name}! This is real growth! 🏆',
       "That pride you're feeling? You earned every bit of it! 🌟",
-      "Remember this feeling, {name}. This is what achievement tastes like! 🎉",
+      'Remember this feeling, {name}. This is what achievement tastes like! 🎉',
     ],
   },
 
   // ============ CONVERSATIONAL ============
   conversation: {
     acknowledgment: [
-      "Got it, {name}! Let me work on that... 💭",
-      "Understood! Give me a moment... ✨",
-      "On it! This is going to be good... 🎯",
+      'Got it, {name}! Let me work on that... 💭',
+      'Understood! Give me a moment... ✨',
+      'On it! This is going to be good... 🎯',
     ],
     thinking: [
-      "Hmm, let me think about the best way to approach this... 🤔",
-      "Great question! Let me put together something helpful... 💡",
-      "Interesting! Let me craft something perfect for you... ✨",
+      'Hmm, let me think about the best way to approach this... 🤔',
+      'Great question! Let me put together something helpful... 💡',
+      'Interesting! Let me craft something perfect for you... ✨',
     ],
     clarification: [
-      "Just to make sure I help you best - did you mean {option1} or {option2}? 🔍",
-      "Quick question to make this perfect for you: {question}? 💭",
-      "I want to get this just right for you, {name}. Can you tell me more about {aspect}? 🎯",
+      'Just to make sure I help you best - did you mean {option1} or {option2}? 🔍',
+      'Quick question to make this perfect for you: {question}? 💭',
+      'I want to get this just right for you, {name}. Can you tell me more about {aspect}? 🎯',
     ],
     smallTalk: [
-      "By the way, {name}, how are you feeling about your learning journey so far? 💙",
+      'By the way, {name}, how are you feeling about your learning journey so far? 💙',
       "Random thought: you've come a long way since we started! Notice any changes in how you think about {topic}? 🌱",
       "Just curious, {name} - what's been the most interesting thing you've learned recently? 🔍",
     ],
@@ -222,7 +222,7 @@ const MESSAGE_TEMPLATES = {
     encourageReturn: [
       "Can't wait to see what you learn next time, {name}! 🚀",
       "Your brain is going to process all this while you're away. See you soon! 🧠",
-      "Until next time, {name}! Remember - every session counts! 💪",
+      'Until next time, {name}! Remember - every session counts! 💪',
     ],
   },
 };
@@ -304,13 +304,13 @@ export class CompanionService {
   getGreeting(context: CompanionContext): CompanionResponse {
     const hour = new Date().getHours();
     let timeOfDay: 'morning' | 'afternoon' | 'evening';
-    
+
     if (hour >= 5 && hour < 12) timeOfDay = 'morning';
     else if (hour >= 12 && hour < 18) timeOfDay = 'afternoon';
     else timeOfDay = 'evening';
 
     let messagePool: string[];
-    
+
     if (context.isFirstTime) {
       messagePool = MESSAGE_TEMPLATES.greetings.firstTime;
     } else if (context.streak && context.streak >= 3) {
@@ -322,7 +322,7 @@ export class CompanionService {
     }
 
     const message = this.selectAndPersonalize(messagePool, context);
-    
+
     return {
       message,
       mood: 'welcoming',
@@ -369,7 +369,7 @@ export class CompanionService {
    */
   getStruggleSupport(context: CompanionContext): CompanionResponse {
     let messagePool: string[];
-    
+
     if (context.consecutiveFailures && context.consecutiveFailures >= 3) {
       messagePool = MESSAGE_TEMPLATES.struggle.multipleFails;
     } else if (context.recentStruggle) {
@@ -389,12 +389,17 @@ export class CompanionService {
    * Get celebration message for achievements
    */
   getCelebration(
-    type: 'quickWin' | 'streakMilestone' | 'newSkill' | 'personalBest' | 'moduleComplete',
+    type:
+      | 'quickWin'
+      | 'streakMilestone'
+      | 'newSkill'
+      | 'personalBest'
+      | 'moduleComplete',
     context: CompanionContext,
     extra?: { skill?: string },
   ): CompanionResponse {
     let messagePool: string[];
-    
+
     if (type === 'quickWin') {
       messagePool = MESSAGE_TEMPLATES.celebration.quickWin;
     } else if (type === 'moduleComplete') {
@@ -419,7 +424,7 @@ export class CompanionService {
    */
   getEmotionalResponse(context: CompanionContext): CompanionResponse {
     const mood = context.mood || 'neutral';
-    
+
     if (mood === 'neutral') {
       return {
         message: '',
@@ -428,10 +433,15 @@ export class CompanionService {
     }
 
     const messagePool = MESSAGE_TEMPLATES.emotional[mood];
-    
+
     return {
       message: this.selectAndPersonalize(messagePool, context),
-      mood: mood === 'frustrated' ? 'supportive' : mood === 'excited' ? 'excited' : 'understanding',
+      mood:
+        mood === 'frustrated'
+          ? 'supportive'
+          : mood === 'excited'
+            ? 'excited'
+            : 'understanding',
     };
   }
 
@@ -458,7 +468,7 @@ export class CompanionService {
     extra?: { suggestion?: string },
   ): CompanionResponse {
     const messagePool = MESSAGE_TEMPLATES.nudges[type];
-    
+
     const contextWithExtra = {
       ...context,
       suggestion: extra?.suggestion || 'something new',
@@ -474,9 +484,15 @@ export class CompanionService {
   /**
    * Get sign-off message
    */
-  getSignOff(context: CompanionContext, encourageReturn: boolean = true): CompanionResponse {
+  getSignOff(
+    context: CompanionContext,
+    encourageReturn: boolean = true,
+  ): CompanionResponse {
     const messagePool = encourageReturn
-      ? [...MESSAGE_TEMPLATES.signOff.sessionEnd, ...MESSAGE_TEMPLATES.signOff.encourageReturn]
+      ? [
+          ...MESSAGE_TEMPLATES.signOff.sessionEnd,
+          ...MESSAGE_TEMPLATES.signOff.encourageReturn,
+        ]
       : MESSAGE_TEMPLATES.signOff.sessionEnd;
 
     return {
@@ -507,8 +523,10 @@ export class CompanionService {
     if (Math.random() < 0.3 && context.userName) {
       const sentences = transformed.split('. ');
       if (sentences.length > 2) {
-        const insertIndex = Math.floor(Math.random() * (sentences.length - 1)) + 1;
-        sentences[insertIndex] = `${context.userName}, ${sentences[insertIndex].toLowerCase()}`;
+        const insertIndex =
+          Math.floor(Math.random() * (sentences.length - 1)) + 1;
+        sentences[insertIndex] =
+          `${context.userName}, ${sentences[insertIndex].toLowerCase()}`;
         transformed = sentences.join('. ');
       }
     }
@@ -565,14 +583,18 @@ Remember: You're a friend helping them learn, not a teacher grading them.
 
   // ============ PRIVATE HELPERS ============
 
-  private selectAndPersonalize(pool: string[], context: CompanionContext & Record<string, any>): string {
+  private selectAndPersonalize(
+    pool: string[],
+    context: CompanionContext & Record<string, any>,
+  ): string {
     const template = pool[Math.floor(Math.random() * pool.length)];
-    
+
     return template.replace(/\{(\w+)\}/g, (match, key) => {
       if (key === 'name') return context.userName || 'friend';
       if (key === 'topic') return context.currentTopic || 'your studies';
       if (key === 'streak') return String(context.streak || 0);
-      if (key === 'skill') return context.skill || context.currentTopic || 'this skill';
+      if (key === 'skill')
+        return context.skill || context.currentTopic || 'this skill';
       if (key === 'suggestion') return context.suggestion || 'something new';
       if (key === 'progress') return String(context.currentProgress || 0);
       return context[key] || match;
@@ -581,17 +603,17 @@ Remember: You're a friend helping them learn, not a teacher grading them.
 
   private getSuggestions(context: CompanionContext): string[] {
     const suggestions: string[] = [];
-    
+
     if (context.currentTopic) {
       suggestions.push(`Continue with ${context.currentTopic}`);
     }
-    
+
     if (!context.isFirstTime) {
       suggestions.push('Review recent progress');
     }
-    
+
     suggestions.push('Explore something new');
-    
+
     return suggestions;
   }
 
@@ -623,17 +645,17 @@ Remember: You're a friend helping them learn, not a teacher grading them.
     if (sessions.length > 0) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      
+
       for (let i = 0; i < 30; i++) {
         const checkDate = new Date(today);
         checkDate.setDate(checkDate.getDate() - i);
-        
-        const hasSession = sessions.some(s => {
+
+        const hasSession = sessions.some((s) => {
           const sessionDate = new Date(s.createdAt);
           sessionDate.setHours(0, 0, 0, 0);
           return sessionDate.getTime() === checkDate.getTime();
         });
-        
+
         if (hasSession) {
           streak++;
         } else if (i > 0) {
@@ -646,7 +668,9 @@ Remember: You're a friend helping them learn, not a teacher grading them.
     let timeSinceLastVisit = 0;
     if (sessions.length > 0) {
       const lastSession = sessions[0];
-      timeSinceLastVisit = (Date.now() - new Date(lastSession.createdAt).getTime()) / (1000 * 60 * 60);
+      timeSinceLastVisit =
+        (Date.now() - new Date(lastSession.createdAt).getTime()) /
+        (1000 * 60 * 60);
     }
 
     return {

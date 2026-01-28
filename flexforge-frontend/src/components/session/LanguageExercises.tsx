@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, X, Volume2, ArrowRight, Shuffle, RotateCcw, Lightbulb, Sparkles, Lock } from 'lucide-react';
+import { Check, X, Volume2, ArrowRight, RotateCcw, Lightbulb, Sparkles, Lock } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useBrowserTTS } from '@/hooks/useBrowserTTS';
 import { useAuthStore } from '@/stores/authStore';
@@ -180,7 +180,7 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
 
   const { speak, isSupported } = useBrowserTTS(targetLanguage || 'chinese');
   const { hasTierAccess } = useAuthStore();
-  const isProUser = hasTierAccess(QuotaTier.PRO);
+  const _isProUser = hasTierAccess(QuotaTier.PRO);
 
   // Fetch AI evaluation remaining on mount
   useEffect(() => {

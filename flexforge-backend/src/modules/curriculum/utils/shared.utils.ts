@@ -78,11 +78,50 @@ export function parseDurationString(duration: string): number {
  * Stopwords that don't carry meaning for video matching.
  */
 const CONCEPT_STOPWORDS = new Set([
-  'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
-  'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'be',
-  'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
-  'would', 'could', 'should', 'may', 'might', 'must', 'shall', 'can',
-  'this', 'that', 'these', 'those', 'it', 'its',
+  'a',
+  'an',
+  'the',
+  'and',
+  'or',
+  'but',
+  'in',
+  'on',
+  'at',
+  'to',
+  'for',
+  'of',
+  'with',
+  'by',
+  'from',
+  'as',
+  'is',
+  'was',
+  'are',
+  'were',
+  'be',
+  'been',
+  'being',
+  'have',
+  'has',
+  'had',
+  'do',
+  'does',
+  'did',
+  'will',
+  'would',
+  'could',
+  'should',
+  'may',
+  'might',
+  'must',
+  'shall',
+  'can',
+  'this',
+  'that',
+  'these',
+  'those',
+  'it',
+  'its',
 ]);
 
 /**
@@ -93,7 +132,7 @@ export function extractConceptWords(concept: string): string[] {
   return concept
     .toLowerCase()
     .split(' ')
-    .filter(w => w.length > 1 && !CONCEPT_STOPWORDS.has(w));
+    .filter((w) => w.length > 1 && !CONCEPT_STOPWORDS.has(w));
 }
 
 /**
@@ -114,16 +153,21 @@ export function cleanSearchQuery(query: string): string {
  * Generic LRU (Least Recently Used) cache with TTL support
  */
 export class LRUCache<T> {
-  private cache = new Map<string, { value: T; cachedAt: number; failed?: boolean }>();
+  private cache = new Map<
+    string,
+    { value: T; cachedAt: number; failed?: boolean }
+  >();
   private readonly maxSize: number;
   private readonly ttl: number;
   private readonly negativeTtl: number;
 
-  constructor(options: {
-    maxSize?: number;
-    ttl?: number;           // TTL for successful entries (ms)
-    negativeTtl?: number;   // TTL for failed entries (ms)
-  } = {}) {
+  constructor(
+    options: {
+      maxSize?: number;
+      ttl?: number; // TTL for successful entries (ms)
+      negativeTtl?: number; // TTL for failed entries (ms)
+    } = {},
+  ) {
     this.maxSize = options.maxSize ?? 500;
     this.ttl = options.ttl ?? 7 * 24 * 60 * 60 * 1000; // 7 days default
     this.negativeTtl = options.negativeTtl ?? 15 * 60 * 1000; // 15 min default

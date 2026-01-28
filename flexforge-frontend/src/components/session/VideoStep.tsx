@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Clock, CheckCircle2, MessageCircle, Lock, Star, Youtube, ExternalLink, RefreshCw, Loader2, BookOpen, Video, Sparkles, Info, ChevronDown, ChevronUp, FileText, Zap } from 'lucide-react';
+import { Play, Clock, CheckCircle2, MessageCircle, Lock, Youtube, RefreshCw, Loader2, BookOpen, Video, Sparkles, Info, ChevronDown, ChevronUp, FileText, Zap } from 'lucide-react';
 import { Card, Button } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { useAuthStore } from '@/stores/authStore';
@@ -94,7 +94,7 @@ function VideoCard({
   isActive?: boolean;
 }) {
   const embedUrl = buildEmbedUrl(video);
-  const youtubeUrl = video?.videoId ? `https://www.youtube.com/watch?v=${video.videoId}` : null;
+  const _youtubeUrl = video?.videoId ? `https://www.youtube.com/watch?v=${video.videoId}` : null;
 
   // No video found - show minimal message without video frame
   if (!embedUrl) {
@@ -570,9 +570,9 @@ export function VideoStep({ day, session }: VideoStepProps) {
   const [activeVideoIndex, setActiveVideoIndex] = useState(0); // 0=main, 1=alt1, 2=alt2, 3+=AI generated
   const [isSearchingNew, setIsSearchingNew] = useState(false);
   const [aiGeneratedVideos, setAiGeneratedVideos] = useState<VideoMatch[]>([]);
-  const [searchError, setSearchError] = useState<string | null>(null);
+  const [_searchError, _setSearchError] = useState<string | null>(null);
   const { hasTierAccess } = useAuthStore();
-  const { activeSession } = useSessionStore();
+  useSessionStore(); // Store subscription for state changes
   const canAskAI = hasTierAccess(QuotaTier.PRO);
 
   const video = day.video;
@@ -590,7 +590,7 @@ export function VideoStep({ day, session }: VideoStepProps) {
   const showAiOption = hasAiContent;
 
   // Adaptive modality state - default to AI summary
-  const adaptiveModality = video?.adaptiveModality;
+  const _adaptiveModality = video?.adaptiveModality;
   const defaultMode: ContentMode = 'ai';
   const [currentMode, setCurrentMode] = useState<ContentMode>(defaultMode);
 
@@ -683,7 +683,7 @@ export function VideoStep({ day, session }: VideoStepProps) {
   };
 
   // Get button text based on remaining options
-  const getTryDifferentText = (): string => {
+  const _getTryDifferentText = (): string => {
     if (isSearchingNew) return 'Searching...';
     if (remainingPreScreened > 0) return 'Try another video';
     return 'Search for another';

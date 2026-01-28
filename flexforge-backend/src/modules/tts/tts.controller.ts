@@ -14,7 +14,9 @@ export class TtsController {
     @Res() res: Response,
   ) {
     if (!text) {
-      return res.status(HttpStatus.BAD_REQUEST).json({ error: 'Text is required' });
+      return res
+        .status(HttpStatus.BAD_REQUEST)
+        .json({ error: 'Text is required' });
     }
 
     try {
@@ -23,7 +25,8 @@ export class TtsController {
 
       const response = await fetch(url, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         },
       });
 
@@ -42,7 +45,9 @@ export class TtsController {
       res.status(HttpStatus.OK).send(Buffer.from(audioBuffer));
     } catch (error) {
       console.error('TTS proxy error:', error.message);
-      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ error: 'TTS failed' });
+      res
+        .status(HttpStatus.INTERNAL_SERVER_ERROR)
+        .json({ error: 'TTS failed' });
     }
   }
 }

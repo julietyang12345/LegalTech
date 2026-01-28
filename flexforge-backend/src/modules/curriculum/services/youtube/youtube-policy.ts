@@ -23,9 +23,9 @@ export type SignalConfidence = 'high' | 'medium' | 'low';
 
 export interface YouTubeChannel {
   name: string;
-  channelId: string;           // Required - stable identifier
-  handle?: string;             // @username (optional, must be verified)
-  aliases?: string[];          // Alternative names to match
+  channelId: string; // Required - stable identifier
+  handle?: string; // @username (optional, must be verified)
+  aliases?: string[]; // Alternative names to match
   policy: ChannelPolicy;
   topics: string[];
 
@@ -787,12 +787,12 @@ export const CONTENT_SIGNALS = {
       'best of',
 
       // Clickbait patterns
-      'you won\'t believe',
+      "you won't believe",
       'secret',
       'hack',
       'trick',
       'nobody talks about',
-      'they don\'t want you to know',
+      "they don't want you to know",
     ],
   },
 
@@ -862,22 +862,25 @@ export const CONTENT_SIGNALS = {
 export function findChannel(identifier: string): YouTubeChannel | null {
   const normalized = identifier.toLowerCase().trim();
 
-  return CHANNEL_DATABASE.find(channel => {
-    // Match by channelId (exact)
-    if (channel.channelId.toLowerCase() === normalized) return true;
+  return (
+    CHANNEL_DATABASE.find((channel) => {
+      // Match by channelId (exact)
+      if (channel.channelId.toLowerCase() === normalized) return true;
 
-    // Match by handle (exact, without @)
-    const handle = channel.handle?.replace('@', '').toLowerCase();
-    if (handle === normalized.replace('@', '')) return true;
+      // Match by handle (exact, without @)
+      const handle = channel.handle?.replace('@', '').toLowerCase();
+      if (handle === normalized.replace('@', '')) return true;
 
-    // Match by name (exact)
-    if (channel.name.toLowerCase() === normalized) return true;
+      // Match by name (exact)
+      if (channel.name.toLowerCase() === normalized) return true;
 
-    // Match by alias (exact)
-    if (channel.aliases?.some(a => a.toLowerCase() === normalized)) return true;
+      // Match by alias (exact)
+      if (channel.aliases?.some((a) => a.toLowerCase() === normalized))
+        return true;
 
-    return false;
-  }) || null;
+      return false;
+    }) || null
+  );
 }
 
 export function getChannelPolicy(identifier: string): {
@@ -909,12 +912,12 @@ export function getChannelPolicy(identifier: string): {
 
 export interface VideoValidationResult {
   isValid: boolean;
-  score: number;             // 70-100 (min 70 for valid)
+  score: number; // 70-100 (min 70 for valid)
   policy: ChannelPolicy;
   contentCompleteness: ContentCompleteness;
   confidence: SignalConfidence;
-  hardFlags: string[];       // Immediate rejection
-  softWarnings: string[];    // Score reduction
+  hardFlags: string[]; // Immediate rejection
+  softWarnings: string[]; // Score reduction
   positiveSignals: string[]; // Score boost
   recommendation: 'use' | 'use_with_caution' | 'skip';
 }
@@ -928,7 +931,7 @@ export function validateVideo(video: {
   description: string;
   channelId: string;
   channelName: string;
-  duration?: number;          // seconds
+  duration?: number; // seconds
   hasChapters?: boolean;
   hasRepository?: boolean;
 }): VideoValidationResult {
@@ -940,8 +943,8 @@ export function validateVideo(video: {
   let score = 70;
 
   // 1. Check channel policy
-  const channelCheck = getChannelPolicy(video.channelId) ||
-                       getChannelPolicy(video.channelName);
+  const channelCheck =
+    getChannelPolicy(video.channelId) || getChannelPolicy(video.channelName);
 
   if (channelCheck.policy === 'block') {
     hardFlags.push(`Channel "${video.channelName}" is blocked`);
@@ -1017,9 +1020,11 @@ export function validateVideo(video: {
 
   // 6. Determine content completeness
   let contentCompleteness: ContentCompleteness = 'complete';
-  if (descLower.includes('full course available') ||
-      descLower.includes('preview') ||
-      titleLower.includes('preview')) {
+  if (
+    descLower.includes('full course available') ||
+    descLower.includes('preview') ||
+    titleLower.includes('preview')
+  ) {
     contentCompleteness = 'preview';
     softWarnings.push('May be a course preview');
     score -= 3;
@@ -1064,21 +1069,23 @@ export function validateVideo(video: {
  * Rank videos by validation score (uses validateVideo)
  * Returns videos sorted by score, with invalid videos filtered out
  */
-export function rankVideos<T extends {
-  title: string;
-  description: string;
-  channelId: string;
-  channelName: string;
-  duration?: number;
-  hasChapters?: boolean;
-  hasRepository?: boolean;
-}>(videos: T[]): Array<T & { validationResult: VideoValidationResult }> {
+export function rankVideos<
+  T extends {
+    title: string;
+    description: string;
+    channelId: string;
+    channelName: string;
+    duration?: number;
+    hasChapters?: boolean;
+    hasRepository?: boolean;
+  },
+>(videos: T[]): Array<T & { validationResult: VideoValidationResult }> {
   return videos
-    .map(video => ({
+    .map((video) => ({
       ...video,
       validationResult: validateVideo(video),
     }))
-    .filter(v => v.validationResult.isValid)
+    .filter((v) => v.validationResult.isValid)
     .sort((a, b) => b.validationResult.score - a.validationResult.score);
 }
 
@@ -1088,7 +1095,7 @@ export function rankVideos<T extends {
 
 export function buildSearchQuery(
   topic: string,
-  skillLevel: 'beginner' | 'intermediate' | 'advanced' = 'beginner'
+  skillLevel: 'beginner' | 'intermediate' | 'advanced' = 'beginner',
 ): string {
   const levelModifier = {
     beginner: 'tutorial for beginners',
@@ -1103,8 +1110,10 @@ export function buildSearchQuery(
  * Get all preferred channels (ALLOW policy only)
  * Topic filtering removed - YouTube search + Layer 2 scoring handles relevance
  */
-export function getPreferredChannelsForTopic(_topic?: string): YouTubeChannel[] {
-  return CHANNEL_DATABASE.filter(c => c.policy === 'allow');
+export function getPreferredChannelsForTopic(
+  _topic?: string,
+): YouTubeChannel[] {
+  return CHANNEL_DATABASE.filter((c) => c.policy === 'allow');
 }
 
 // ============================================

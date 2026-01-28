@@ -1,4 +1,11 @@
-import { IsEnum, IsInt, IsOptional, Min, IsArray, IsString } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  Min,
+  IsArray,
+  IsString,
+} from 'class-validator';
 import {
   SessionStatus,
   SessionMode,

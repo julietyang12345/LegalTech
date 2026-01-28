@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -160,7 +160,7 @@ function TimelineDayItem({
 }
 
 // Improvement Areas Section - shows current improve areas set during reflections
-function ImproveAreasSection({
+function _ImproveAreasSection({
   improvementAreas,
   onClear,
 }: {
@@ -224,7 +224,7 @@ export function PlanPage() {
     navigate('/today');
   };
 
-  const handleClearImproveAreas = async () => {
+  const _handleClearImproveAreas = async () => {
     if (!activeSession) return;
     try {
       await updateSession(activeSession.id, { improvementAreas: [] });

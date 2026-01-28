@@ -4,7 +4,6 @@ import type {
   CreateSessionDto,
   UpdateSessionDto,
   SessionResponse,
-  ProgressStats,
   StartDayCoreResponse,
   LoadDayDeferredResponse,
   PracticeSubmitResponse,

@@ -7,7 +7,6 @@ import {
   Code,
   FileText,
   Brain,
-  Lock,
   Crown,
 } from 'lucide-react';
 import { clsx } from 'clsx';

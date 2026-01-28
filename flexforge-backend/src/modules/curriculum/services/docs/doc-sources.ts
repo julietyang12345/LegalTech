@@ -286,7 +286,10 @@ export function getAllDocDomains(): string[] {
 /**
  * Build a combined search query for multiple doc sites
  */
-export function buildDocSearchQuery(concept: string, language?: string): string {
+export function buildDocSearchQuery(
+  concept: string,
+  language?: string,
+): string {
   const docSource = getDocSourceForSkill(concept, language);
   if (docSource) {
     return `${concept} ${docSource.searchDomain}`;

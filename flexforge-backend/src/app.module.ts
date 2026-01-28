@@ -76,10 +76,12 @@ import { TtsModule } from './modules/tts/tts.module';
     // Rate limiting
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ([{
-        ttl: configService.get('rateLimit.ttl'),
-        limit: configService.get('rateLimit.limit'),
-      }]),
+      useFactory: (configService: ConfigService) => [
+        {
+          ttl: configService.get('rateLimit.ttl'),
+          limit: configService.get('rateLimit.limit'),
+        },
+      ],
       inject: [ConfigService],
     }),
 

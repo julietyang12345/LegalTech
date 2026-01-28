@@ -70,9 +70,9 @@ export function useBrowserTTS(
   options: UseBrowserTTSOptions = {}
 ): UseBrowserTTSReturn {
   const {
-    rate = 1,
-    pitch = 1,
-    volume = 1,
+    rate: _rate = 1,
+    pitch: _pitch = 1,
+    volume: _volume = 1,
     onStart,
     onEnd,
     onError,
@@ -81,7 +81,7 @@ export function useBrowserTTS(
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const _utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   // Check if Web Speech API is supported
   const isSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;

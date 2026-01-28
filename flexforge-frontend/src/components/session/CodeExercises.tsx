@@ -1,14 +1,11 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, X, Lightbulb, ChevronRight, Eye, EyeOff, Play } from 'lucide-react';
+import { Check, X, Lightbulb, Eye, EyeOff, Play } from 'lucide-react';
 import { clsx } from 'clsx';
 import type {
   CodeCompletionSection,
   DebuggingSection,
   OutputPredictionSection,
-  CodeCompletionItem,
-  DebuggingItem,
-  OutputPredictionQuestion,
 } from '@/types';
 
 // Progress persistence types
@@ -78,7 +75,7 @@ function FeedbackToast({ show, correct, message }: FeedbackToastProps) {
 }
 
 // Simple code block component with basic syntax highlighting appearance
-function CodeBlock({ code, language }: { code: string; language?: string }) {
+function CodeBlock({ code, language: _language }: { code: string; language?: string }) {
   return (
     <pre className="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-sm font-mono">
       <code>{code}</code>

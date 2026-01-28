@@ -19,14 +19,13 @@ export function CelebrationToast({
   onClose,
 }: CelebrationToastProps) {
   const [isVisible, setIsVisible] = useState(true);
-  const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
+  // Initialize with window dimensions directly (safe because this is a client-side component)
+  const [windowSize] = useState(() => ({
+    width: typeof window !== 'undefined' ? window.innerWidth : 0,
+    height: typeof window !== 'undefined' ? window.innerHeight : 0,
+  }));
 
   useEffect(() => {
-    setWindowSize({
-      width: window.innerWidth,
-      height: window.innerHeight,
-    });
-
     const timer = setTimeout(() => {
       setIsVisible(false);
       onClose?.();

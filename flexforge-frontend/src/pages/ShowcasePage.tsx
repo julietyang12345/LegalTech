@@ -188,7 +188,7 @@ function ProjectCard({ project }: { project: Project }) {
 }
 
 export function ShowcasePage() {
-  const { user } = useAuthStore();
+  const { user: _user } = useAuthStore();
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<'all' | 'boss'>('all');

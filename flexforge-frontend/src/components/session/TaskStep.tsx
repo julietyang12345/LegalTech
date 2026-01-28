@@ -13,7 +13,7 @@ interface TaskStepProps {
   onComplete: () => void;
 }
 
-export function TaskStep({ day, onComplete }: TaskStepProps) {
+export function TaskStep({ day, onComplete: _onComplete }: TaskStepProps) {
   // TaskStep only receives code format tasks (TaskRouter handles routing)
   const task = day.task1 as Task | undefined;
   const starterCode = task?.starterCode || task?.pro?.starterCode || '';

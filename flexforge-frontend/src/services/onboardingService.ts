@@ -1,6 +1,5 @@
 import api from './api';
 import type {
-  LearningDirection,
   RefinementContext,
   DirectionsResponse,
   CompleteOnboardingDto,

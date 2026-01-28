@@ -2,7 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { CurriculumService } from '../../src/modules/curriculum/curriculum.service';
 import { AiService } from '../../src/modules/ai/ai.service';
-import { SkillDetectorService, SkillType } from '../../src/modules/curriculum/services/skill-detector.service';
+import {
+  SkillDetectorService,
+  SkillType,
+} from '../../src/modules/curriculum/services/skill-detector.service';
 import { VideoMatchingService } from '../../src/modules/curriculum/services/youtube/video-matching.service';
 import { FileGeneratorService } from '../../src/modules/curriculum/services/file-generator.service';
 import { CurriculumCacheService } from '../../src/modules/curriculum/services/curriculum-cache.service';
@@ -34,13 +37,15 @@ describe('Curriculum Generation (e2e)', () => {
         transferability: 'medium',
         contentSource: 'youtube',
       })),
-      bossProjects: [{
-        day: durationDays,
-        title: 'Boss Project: AI Toolkit',
-        description: 'Complete project built across all days',
-        estimatedMinutes: 90,
-        combinesDays: Array.from({ length: durationDays }, (_, i) => i + 1),
-      }],
+      bossProjects: [
+        {
+          day: durationDays,
+          title: 'Boss Project: AI Toolkit',
+          description: 'Complete project built across all days',
+          estimatedMinutes: 90,
+          combinesDays: Array.from({ length: durationDays }, (_, i) => i + 1),
+        },
+      ],
       metadata: {
         recommendedTools: ['VSCode'],
         prerequisites: [],
@@ -167,7 +172,9 @@ describe('Curriculum Generation (e2e)', () => {
       expect(result.curriculum.days).toHaveLength(4);
       expect(result.curriculum.bossProjects).toHaveLength(1);
       expect(result.curriculum.bossProjects[0].day).toBe(4);
-      expect(result.curriculum.bossProjects[0].combinesDays).toEqual([1, 2, 3, 4]);
+      expect(result.curriculum.bossProjects[0].combinesDays).toEqual([
+        1, 2, 3, 4,
+      ]);
 
       // Verify each day has boss project flag
       result.curriculum.days.forEach((day: any) => {
@@ -177,7 +184,9 @@ describe('Curriculum Generation (e2e)', () => {
 
       // Verify metadata is added
       expect(result.curriculum.metadata).toBeDefined();
-      expect(result.curriculum.metadata.skillName).toBe('AI prompt engineering');
+      expect(result.curriculum.metadata.skillName).toBe(
+        'AI prompt engineering',
+      );
     });
 
     it('should generate 7-day curriculum for PREMIUM users', async () => {

@@ -4,17 +4,17 @@ import { OutputType } from '../types/learner-prefs.interface';
 
 // Learner preferences from onboarding (optional - may not exist for users who skipped onboarding)
 export interface LearnerPrefsForPrompt {
-  selectedDirection?: string;      // The direction they picked (more specific than skillName)
+  selectedDirection?: string; // The direction they picked (more specific than skillName)
   selectedDirectionOutcome?: string; // "You'll be able to..." - specific deliverable
-  directionKeywords?: string[];    // Keywords for the selected direction
-  selectedLanguage?: string;       // User's chosen language (overrides auto-detection)
+  directionKeywords?: string[]; // Keywords for the selected direction
+  selectedLanguage?: string; // User's chosen language (overrides auto-detection)
   outputType?: OutputType;
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
   contentDepth?: 'fast' | 'medium' | 'deep';
   // Feeling-based inputs (easier for users than explicit skill level/time questions)
-  familiarity?: 'new' | 'know_basics' | 'skilled';  // How familiar with topic
-  sessionLength?: 'short' | 'medium' | 'long';      // Daily learning time availability
-  improvementAreas?: string[];           // User-specified areas to emphasize (e.g., "conflict resolution", "async/await")
+  familiarity?: 'new' | 'know_basics' | 'skilled'; // How familiar with topic
+  sessionLength?: 'short' | 'medium' | 'long'; // Daily learning time availability
+  improvementAreas?: string[]; // User-specified areas to emphasize (e.g., "conflict resolution", "async/await")
 }
 
 export interface CurriculumPromptParams {
@@ -42,7 +42,12 @@ export interface CurriculumPromptParams {
 // ============================================
 
 // Content layer: What type of learning is this day?
-export type ContentLayer = 'foundation' | 'language_core' | 'framework' | 'tool' | 'project';
+export type ContentLayer =
+  | 'foundation'
+  | 'language_core'
+  | 'framework'
+  | 'tool'
+  | 'project';
 
 // Video strategy: Should we search for video? (AI decides based on topic)
 export type VideoStrategy = 'skip' | 'optional' | 'helpful' | 'recommended';
@@ -58,10 +63,17 @@ export type ContentSource = 'university' | 'youtube' | 'text' | 'docs';
 // ============================================
 
 // Section types available for each skill category
-export type UniversalSectionType = 'quiz' | 'matching' | 'fillBlank' | 'openEnded';
-export type SequenceSectionType = 'reorder';  // Only for skills where ordering matters (language, physical, some knowledge)
+export type UniversalSectionType =
+  | 'quiz'
+  | 'matching'
+  | 'fillBlank'
+  | 'openEnded';
+export type SequenceSectionType = 'reorder'; // Only for skills where ordering matters (language, physical, some knowledge)
 export type LanguageSectionType = 'toneSelect' | 'translation' | 'typing';
-export type CodeSectionType = 'codeCompletion' | 'debugging' | 'outputPrediction';
+export type CodeSectionType =
+  | 'codeCompletion'
+  | 'debugging'
+  | 'outputPrediction';
 export type PhysicalSectionType = 'formCheck' | 'safetyCheck';
 export type DesignSectionType = 'designCritique';
 
@@ -79,13 +91,16 @@ export type SectionType =
 // - Project-based (ANY skill): task1 + bossMilestone → NO intensive (bossMilestone IS the hands-on practice)
 // - Non-project-based (ANY skill): task1 + intensive → NO bossMilestone (intensive IS the hands-on practice)
 //
-export const SECTION_REGISTRY: Record<SkillType, {
-  task1: SectionType[];      // Concept reinforcement sections (always included)
-  intensive: SectionType[];  // Deep practice sections (only when NOT project-based)
-}> = {
+export const SECTION_REGISTRY: Record<
+  SkillType,
+  {
+    task1: SectionType[]; // Concept reinforcement sections (always included)
+    intensive: SectionType[]; // Deep practice sections (only when NOT project-based)
+  }
+> = {
   [SkillType.CODE]: {
     task1: ['quiz', 'outputPrediction', 'fillBlank'],
-    intensive: ['codeCompletion', 'debugging', 'fillBlank'],    // Only used when NOT project-based
+    intensive: ['codeCompletion', 'debugging', 'fillBlank'], // Only used when NOT project-based
   },
   [SkillType.PHYSICAL]: {
     task1: ['quiz', 'reorder', 'matching'],
@@ -94,7 +109,7 @@ export const SECTION_REGISTRY: Record<SkillType, {
   [SkillType.KNOWLEDGE]: {
     // AI chooses: quiz + matching + fillBlank (factual) OR quiz + fillBlank + openEnded (soft skills/leadership)
     task1: ['quiz', 'matching', 'fillBlank', 'openEnded'],
-    intensive: ['fillBlank', 'reorder', 'quiz', 'openEnded'],  // openEnded for soft skills scenarios
+    intensive: ['fillBlank', 'reorder', 'quiz', 'openEnded'], // openEnded for soft skills scenarios
   },
   [SkillType.DESIGN]: {
     task1: ['quiz', 'designCritique', 'matching'],
@@ -102,13 +117,13 @@ export const SECTION_REGISTRY: Record<SkillType, {
   },
   [SkillType.AI_AGENT]: {
     task1: ['quiz', 'fillBlank', 'outputPrediction'],
-    intensive: ['codeCompletion', 'fillBlank', 'quiz'],         // Only used when NOT project-based
+    intensive: ['codeCompletion', 'fillBlank', 'quiz'], // Only used when NOT project-based
   },
 };
 
 // Language learning extends KNOWLEDGE with language-specific sections
 export const LANGUAGE_SECTION_REGISTRY = {
-  task1: ['quiz', 'matching', 'toneSelect'] as SectionType[],  // toneSelect only for tonal languages
+  task1: ['quiz', 'matching', 'toneSelect'] as SectionType[], // toneSelect only for tonal languages
   intensive: ['fillBlank', 'translation', 'reorder', 'typing'] as SectionType[],
 };
 
@@ -128,9 +143,14 @@ export function getSectionsForSkillType(
     hasTones?: boolean;
     isProjectBased?: boolean;
     customSections?: { task1: SectionType[]; intensive: SectionType[] } | null;
-  } = {}
+  } = {},
 ): { task1: SectionType[]; intensive: SectionType[]; skipIntensive: boolean } {
-  const { isLanguageLearning = false, hasTones = false, isProjectBased = false, customSections } = options;
+  const {
+    isLanguageLearning = false,
+    hasTones = false,
+    isProjectBased = false,
+    customSections,
+  } = options;
 
   // If AI provided custom sections for hybrid skills, use those
   if (customSections) {
@@ -146,18 +166,19 @@ export function getSectionsForSkillType(
     return {
       task1: hasTones
         ? LANGUAGE_SECTION_REGISTRY.task1
-        : LANGUAGE_SECTION_REGISTRY.task1.filter(s => s !== 'toneSelect'),
+        : LANGUAGE_SECTION_REGISTRY.task1.filter((s) => s !== 'toneSelect'),
       intensive: LANGUAGE_SECTION_REGISTRY.intensive,
       skipIntensive: false,
     };
   }
 
-  const registry = SECTION_REGISTRY[skillType] || SECTION_REGISTRY[SkillType.KNOWLEDGE];
+  const registry =
+    SECTION_REGISTRY[skillType] || SECTION_REGISTRY[SkillType.KNOWLEDGE];
 
   return {
     task1: registry.task1,
     intensive: registry.intensive,
-    skipIntensive: isProjectBased,  // Project-based: bossMilestone handles hands-on, skip intensive
+    skipIntensive: isProjectBased, // Project-based: bossMilestone handles hands-on, skip intensive
   };
 }
 
@@ -167,8 +188,8 @@ function getTimeStructure(hoursPerDay: number): {
   totalMinutes: number;
   mode: string;
   maxVideo: number;
-  task1: number;      // Quiz/FillBlank time (concept reinforcement)
-  practice: number;   // Practice project time
+  task1: number; // Quiz/FillBlank time (concept reinforcement)
+  practice: number; // Practice project time
   reflect: number;
   structure: string;
 } {
@@ -176,28 +197,48 @@ function getTimeStructure(hoursPerDay: number): {
 
   if (total <= 30) {
     return {
-      totalMinutes: total, mode: 'Quick',
-      maxVideo: 5, task1: 15, practice: 0, reflect: 3,
-      structure: 'Video(5m) → Cards(5m) → Quiz(6m) → BossMilestone(9m) → Reflect(3m)'
+      totalMinutes: total,
+      mode: 'Quick',
+      maxVideo: 5,
+      task1: 15,
+      practice: 0,
+      reflect: 3,
+      structure:
+        'Video(5m) → Cards(5m) → Quiz(6m) → BossMilestone(9m) → Reflect(3m)',
     };
   } else if (total <= 45) {
     return {
-      totalMinutes: total, mode: 'Standard',
-      maxVideo: 6, task1: 12, practice: 12, reflect: 4,
-      structure: 'Video(6m) → Cards(8m) → Quiz(5m) → BossMilestone(7m) → Practice(12m) → Reflect(4m)'
+      totalMinutes: total,
+      mode: 'Standard',
+      maxVideo: 6,
+      task1: 12,
+      practice: 12,
+      reflect: 4,
+      structure:
+        'Video(6m) → Cards(8m) → Quiz(5m) → BossMilestone(7m) → Practice(12m) → Reflect(4m)',
     };
   } else if (total <= 60) {
     return {
-      totalMinutes: total, mode: 'Focused',
-      maxVideo: 7, task1: 15, practice: 18, reflect: 5,
-      structure: 'Video(7m) → Cards(10m) → Quiz(6m) → BossMilestone(9m) → Practice(18m) → Reflect(5m)'
+      totalMinutes: total,
+      mode: 'Focused',
+      maxVideo: 7,
+      task1: 15,
+      practice: 18,
+      reflect: 5,
+      structure:
+        'Video(7m) → Cards(10m) → Quiz(6m) → BossMilestone(9m) → Practice(18m) → Reflect(5m)',
     };
   }
   // Deep Dive: 90+ min
   return {
-    totalMinutes: total, mode: 'DeepDive',
-    maxVideo: 10, task1: 15, practice: 25, reflect: 8,
-    structure: 'Video(10m) → Cards(15m) → Quiz(6m) → BossMilestone(9m) → Practice(25m) → Reflect(8m)'
+    totalMinutes: total,
+    mode: 'DeepDive',
+    maxVideo: 10,
+    task1: 15,
+    practice: 25,
+    reflect: 8,
+    structure:
+      'Video(10m) → Cards(15m) → Quiz(6m) → BossMilestone(9m) → Practice(25m) → Reflect(8m)',
   };
 }
 
@@ -228,19 +269,29 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
   if (prefs.outputType) {
     const outputGuidance: Record<OutputType, string> = {
       // Code/technical skills
-      working_code: 'User wants WORKING CODE as output. Focus on practical implementation, real runnable examples.',
-      ship_project: 'User wants to SHIP A PROJECT. Focus on end-to-end implementation, deployment, best practices.',
-      fix_bug: 'User wants to FIX BUGS. Focus on debugging techniques, common issues, troubleshooting patterns.',
+      working_code:
+        'User wants WORKING CODE as output. Focus on practical implementation, real runnable examples.',
+      ship_project:
+        'User wants to SHIP A PROJECT. Focus on end-to-end implementation, deployment, best practices.',
+      fix_bug:
+        'User wants to FIX BUGS. Focus on debugging techniques, common issues, troubleshooting patterns.',
       // Universal
-      understand_concept: 'User wants to UNDERSTAND CONCEPTS. Include more theory, explanations, and mental models.',
-      teach_others: 'User wants to TEACH OTHERS. Focus on clear explanations, teaching techniques, common misconceptions.',
+      understand_concept:
+        'User wants to UNDERSTAND CONCEPTS. Include more theory, explanations, and mental models.',
+      teach_others:
+        'User wants to TEACH OTHERS. Focus on clear explanations, teaching techniques, common misconceptions.',
       // Knowledge skills
-      pass_exam: 'User wants to PASS AN EXAM. Focus on testable knowledge, practice questions, exam strategies.',
-      apply_practical: 'User wants to USE KNOWLEDGE PRACTICALLY. Focus on real-world applications, conversational use, practical scenarios.',
+      pass_exam:
+        'User wants to PASS AN EXAM. Focus on testable knowledge, practice questions, exam strategies.',
+      apply_practical:
+        'User wants to USE KNOWLEDGE PRACTICALLY. Focus on real-world applications, conversational use, practical scenarios.',
       // Physical skills
-      perform_skill: 'User wants to PERFORM THE SKILL WELL. Focus on proper technique, practice routines, common mistakes to avoid.',
-      compete: 'User wants to COMPETE. Focus on advanced techniques, competitive strategies, performance optimization.',
-      master_basics: 'User wants to MASTER THE BASICS. Focus on foundational movements, core techniques, building muscle memory.',
+      perform_skill:
+        'User wants to PERFORM THE SKILL WELL. Focus on proper technique, practice routines, common mistakes to avoid.',
+      compete:
+        'User wants to COMPETE. Focus on advanced techniques, competitive strategies, performance optimization.',
+      master_basics:
+        'User wants to MASTER THE BASICS. Focus on foundational movements, core techniques, building muscle memory.',
     };
     parts.push(outputGuidance[prefs.outputType] || '');
   }
@@ -249,9 +300,12 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
   if (prefs.usageContext) {
     const contextGuidance: Record<string, string> = {
       work: 'FOR WORK: Use professional examples, enterprise patterns, team collaboration scenarios.',
-      personal: 'FOR PERSONAL PROJECT: Use hobbyist-friendly examples, fun projects, creative applications.',
-      interview: 'FOR INTERVIEW PREP: Include common interview questions, algorithmic thinking, optimization.',
-      school: 'FOR LEARNING: Include foundational concepts, academic rigor, theoretical understanding.',
+      personal:
+        'FOR PERSONAL PROJECT: Use hobbyist-friendly examples, fun projects, creative applications.',
+      interview:
+        'FOR INTERVIEW PREP: Include common interview questions, algorithmic thinking, optimization.',
+      school:
+        'FOR LEARNING: Include foundational concepts, academic rigor, theoretical understanding.',
     };
     parts.push(contextGuidance[prefs.usageContext] || '');
   }
@@ -260,7 +314,8 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
   if (prefs.contentDepth) {
     const depthGuidance: Record<string, string> = {
       fast: 'DEPTH: FAST - Minimal theory, quick practical tasks, essential concepts only.',
-      medium: 'DEPTH: BALANCED - Core concepts with practical application, standard complexity.',
+      medium:
+        'DEPTH: BALANCED - Core concepts with practical application, standard complexity.',
       deep: 'DEPTH: COMPREHENSIVE - Include edge cases, advanced patterns, thorough explanations.',
     };
     parts.push(depthGuidance[prefs.contentDepth] || '');
@@ -270,8 +325,10 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
   if (prefs.familiarity) {
     const familiarityGuidance: Record<string, string> = {
       new: 'SKILL LEVEL: BEGINNER - Start from absolute basics, explain all terminology, no assumed knowledge. Use simple examples.',
-      know_basics: 'SKILL LEVEL: INTERMEDIATE - User knows fundamentals. Skip basics, focus on practical application and common patterns. Address pain points.',
-      skilled: 'SKILL LEVEL: ADVANCED - User is experienced. Focus on advanced techniques, edge cases, optimization. Challenge them.',
+      know_basics:
+        'SKILL LEVEL: INTERMEDIATE - User knows fundamentals. Skip basics, focus on practical application and common patterns. Address pain points.',
+      skilled:
+        'SKILL LEVEL: ADVANCED - User is experienced. Focus on advanced techniques, edge cases, optimization. Challenge them.',
     };
     parts.push(familiarityGuidance[prefs.familiarity] || '');
   }
@@ -302,7 +359,7 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
   // User-specified improvement areas to emphasize
   if (prefs.improvementAreas?.length) {
     parts.push(`IMPROVEMENT AREAS (user wants to get better at):
-${prefs.improvementAreas.map(area => `- ${area}`).join('\n')}
+${prefs.improvementAreas.map((area) => `- ${area}`).join('\n')}
 Incorporate these areas into examples, tasks, and explanations where relevant. Don't change core topics, but use these as a lens for examples and practice scenarios.`);
   }
 
@@ -394,7 +451,7 @@ function getSkillLevelGuidance(skillLevel: SkillLevel): {
  */
 export function usesProjectBasedLearning(
   skillType: SkillType,
-  outputType?: OutputType
+  outputType?: OutputType,
 ): boolean {
   // User intent takes priority - if they want to ship/build something, it's project-based
   if (outputType) {
@@ -425,7 +482,11 @@ export function usesProjectBasedLearning(
   return true;
 }
 
-function getSkillTypeGuidance(skillType: SkillType, complexity: SkillComplexity, safetyLevel?: string): string {
+function getSkillTypeGuidance(
+  skillType: SkillType,
+  complexity: SkillComplexity,
+  safetyLevel?: string,
+): string {
   switch (skillType) {
     case SkillType.CODE:
       return 'CODE SKILLS: Provide actual working code, runnable examples, real IDE-ready projects. Include starter templates and test cases.';
@@ -452,9 +513,20 @@ function getSkillTypeGuidance(skillType: SkillType, complexity: SkillComplexity,
  */
 // Supported languages for language learning
 export type TargetLanguage =
-  | 'chinese' | 'japanese' | 'korean' | 'arabic' | 'spanish'
-  | 'french' | 'german' | 'italian' | 'portuguese' | 'russian'
-  | 'hindi' | 'thai' | 'vietnamese' | 'other';
+  | 'chinese'
+  | 'japanese'
+  | 'korean'
+  | 'arabic'
+  | 'spanish'
+  | 'french'
+  | 'german'
+  | 'italian'
+  | 'portuguese'
+  | 'russian'
+  | 'hindi'
+  | 'thai'
+  | 'vietnamese'
+  | 'other';
 
 // ============================================
 // SHARED HELPERS (Reduce code duplication)
@@ -462,7 +534,16 @@ export type TargetLanguage =
 
 // Language feature constants
 const TONAL_LANGUAGES: TargetLanguage[] = ['chinese', 'thai', 'vietnamese'];
-const GENDERED_LANGUAGES: TargetLanguage[] = ['spanish', 'french', 'german', 'italian', 'portuguese', 'arabic', 'russian', 'hindi'];
+const GENDERED_LANGUAGES: TargetLanguage[] = [
+  'spanish',
+  'french',
+  'german',
+  'italian',
+  'portuguese',
+  'arabic',
+  'russian',
+  'hindi',
+];
 
 function hasTones(lang: TargetLanguage): boolean {
   return TONAL_LANGUAGES.includes(lang);
@@ -479,9 +560,15 @@ function getSkillsString(skeleton: any, dayObjectives?: string[]): string {
 }
 
 // Shared reflection template
-function getReflectionTemplate(type: 'project' | 'practice' | 'language' = 'practice'): object {
+function getReflectionTemplate(
+  type: 'project' | 'practice' | 'language' = 'practice',
+): object {
   const baseQuestions = [
-    { id: 'confidence', question: 'Rate your confidence (1-5)?', type: 'scale' },
+    {
+      id: 'confidence',
+      question: 'Rate your confidence (1-5)?',
+      type: 'scale',
+    },
   ];
 
   if (type === 'project') {
@@ -497,9 +584,22 @@ function getReflectionTemplate(type: 'project' | 'practice' | 'language' = 'prac
   if (type === 'language') {
     return {
       questions: [
-        { id: 'confidence', question: 'Rate your confidence with today\'s vocabulary (1-5)', type: 'scale' },
-        { id: 'hardest', question: 'Which exercise type was hardest?', type: 'choice', options: ['Fill in blank', 'Translation', 'Reordering', 'Typing'] },
-        { id: 'review', question: 'Which words need more review?', type: 'text' },
+        {
+          id: 'confidence',
+          question: "Rate your confidence with today's vocabulary (1-5)",
+          type: 'scale',
+        },
+        {
+          id: 'hardest',
+          question: 'Which exercise type was hardest?',
+          type: 'choice',
+          options: ['Fill in blank', 'Translation', 'Reordering', 'Typing'],
+        },
+        {
+          id: 'review',
+          question: 'Which words need more review?',
+          type: 'text',
+        },
       ],
     };
   }
@@ -509,7 +609,11 @@ function getReflectionTemplate(type: 'project' | 'practice' | 'language' = 'prac
     questions: [
       ...baseQuestions,
       { id: 'application', question: 'How will you apply this?', type: 'text' },
-      { id: 'questions', question: 'What questions do you still have?', type: 'text' },
+      {
+        id: 'questions',
+        question: 'What questions do you still have?',
+        type: 'text',
+      },
     ],
   };
 }
@@ -523,7 +627,7 @@ export interface DayDetailParams {
   previousDayTitle?: string;
   previousDayConcept?: string;
   skillType: SkillType;
-  skillLevel: SkillLevel;  // BEGINNER, INTERMEDIATE, ADVANCED
+  skillLevel: SkillLevel; // BEGINNER, INTERMEDIATE, ADVANCED
   complexity: SkillComplexity;
   userTier: string;
   hoursPerDay: number;
@@ -535,13 +639,13 @@ export interface DayDetailParams {
     confusedConcepts?: string[];
     confidence?: number;
     boostCompleted?: boolean;
-    whatsFoggy?: string;  // 'when' | 'how' | 'connection' | 'everything'
+    whatsFoggy?: string; // 'when' | 'how' | 'connection' | 'everything'
   };
 
   // Language learning specific (when skillType is KNOWLEDGE + human language)
   isLanguageLearning?: boolean;
   targetLanguage?: TargetLanguage;
-  proficiencyLevel?: string;  // HSK1, N5, A1, etc.
+  proficiencyLevel?: string; // HSK1, N5, A1, etc.
 
   // User-specified improvement areas (updated mid-sprint)
   improvementAreas?: string[];
@@ -558,8 +662,10 @@ export interface DayDetailParams {
 // Language-specific features for prompts
 function getLanguageFeatures(lang: TargetLanguage): string {
   const features: Record<TargetLanguage, string> = {
-    chinese: 'hasTones: true, hasScript: true (simplified/traditional), hasRomanization: pinyin',
-    japanese: 'hasScript: true (hiragana/katakana/kanji), hasRomanization: romaji',
+    chinese:
+      'hasTones: true, hasScript: true (simplified/traditional), hasRomanization: pinyin',
+    japanese:
+      'hasScript: true (hiragana/katakana/kanji), hasRomanization: romaji',
     korean: 'hasScript: true (hangul), hasRomanization: romanization',
     arabic: 'hasScript: true, isRTL: true, hasGender: true',
     spanish: 'hasGender: true, hasConjugation: true',
@@ -601,9 +707,17 @@ VOCABULARY CARD FORMAT (use "languageFoundationCards" array):
   "vocabulary": {
     "term": "word in target language",
     "definition": "English meaning",
-    "romanization": "pronunciation guide (pinyin/romaji/etc)",${langHasTones ? `
-    "tone": "number or [numbers] for tonal languages",` : ''}${langHasGender ? `
-    "gender": "masculine | feminine | neuter",` : ''}
+    "romanization": "pronunciation guide (pinyin/romaji/etc)",${
+      langHasTones
+        ? `
+    "tone": "number or [numbers] for tonal languages",`
+        : ''
+    }${
+      langHasGender
+        ? `
+    "gender": "masculine | feminine | neuter",`
+        : ''
+    }
     "partOfSpeech": "noun/verb/adj/phrase",
     "proficiencyLevel": "HSK1/N5/A1/etc",
     "examples": [{"sentence": "example in target language", "romanization": "if applicable", "translation": "English"}]
@@ -680,9 +794,17 @@ Output this JSON structure:
       "vocabulary": {
         "term": "word in ${lang}",
         "definition": "English meaning",
-        "romanization": "pronunciation guide (pinyin/romaji/etc)",${langHasTones ? `
-        "tone": 1,` : ''}${langHasGender ? `
-        "gender": "masculine",` : ''}
+        "romanization": "pronunciation guide (pinyin/romaji/etc)",${
+          langHasTones
+            ? `
+        "tone": 1,`
+            : ''
+        }${
+          langHasGender
+            ? `
+        "gender": "masculine",`
+            : ''
+        }
         "partOfSpeech": "noun/verb/adj",
         "proficiencyLevel": "${profLevel}",
         "examples": [{"sentence": "Example in ${lang}", "romanization": "pronunciation", "translation": "English"}]
@@ -716,14 +838,18 @@ Output this JSON structure:
           {"term": "word3 in ${lang}", "definition": "English meaning 3"},
           {"term": "word4 in ${lang}", "definition": "English meaning 4"}
         ]
-      }${langHasTones ? `,
+      }${
+        langHasTones
+          ? `,
       {
         "type": "toneSelect",
         "title": "Tone Recognition",
         "questions": [
           {"id": "t1", "audioText": "word", "prompt": "Select the correct tone", "options": ["mā (1st)", "má (2nd)", "mǎ (3rd)", "mà (4th)"], "correctIndex": 0, "explanation": "This is first tone (flat)"}
         ]
-      }` : ''}
+      }`
+          : ''
+      }
     ]
   },
   "reflection": {
@@ -761,7 +887,9 @@ export function buildDayDetailDeferredPrompt(params: DayDetailParams): {
   }
 
   // Check if practice-based (non-project-based)
-  const isProjectBased = params.isProjectBased ?? usesProjectBasedLearning(params.skillType, params.outputType);
+  const isProjectBased =
+    params.isProjectBased ??
+    usesProjectBasedLearning(params.skillType, params.outputType);
 
   // For practice-based skills, generate intensive practice sections
   if (!isProjectBased) {
@@ -785,9 +913,24 @@ function buildProjectBasedDeferredPrompt(params: DayDetailParams): {
   const levelGuidance = getSkillLevelGuidance(params.skillLevel);
 
   // Scale code complexity based on skill level
-  const starterCodeLines = params.skillLevel === SkillLevel.ADVANCED ? '15-35' : params.skillLevel === SkillLevel.INTERMEDIATE ? '12-30' : '10-25';
-  const solutionCodeLines = params.skillLevel === SkillLevel.ADVANCED ? '25-60' : params.skillLevel === SkillLevel.INTERMEDIATE ? '20-50' : '15-40';
-  const newCodeLines = params.skillLevel === SkillLevel.ADVANCED ? '10-25' : params.skillLevel === SkillLevel.INTERMEDIATE ? '8-20' : '5-15';
+  const starterCodeLines =
+    params.skillLevel === SkillLevel.ADVANCED
+      ? '15-35'
+      : params.skillLevel === SkillLevel.INTERMEDIATE
+        ? '12-30'
+        : '10-25';
+  const solutionCodeLines =
+    params.skillLevel === SkillLevel.ADVANCED
+      ? '25-60'
+      : params.skillLevel === SkillLevel.INTERMEDIATE
+        ? '20-50'
+        : '15-40';
+  const newCodeLines =
+    params.skillLevel === SkillLevel.ADVANCED
+      ? '10-25'
+      : params.skillLevel === SkillLevel.INTERMEDIATE
+        ? '8-20'
+        : '5-15';
 
   // Get skill-type-specific task1 template (2 section types per skill)
   const task1Template = getTask1SectionTemplate(skillType);
@@ -929,7 +1072,10 @@ ${newKnowledgeNote}`;
  * Get intensive section JSON template per skill type
  * Based on SECTION_REGISTRY.intensive
  */
-function getIntensiveSectionTemplate(skillType: SkillType, _dayNumber: number): string {
+function getIntensiveSectionTemplate(
+  skillType: SkillType,
+  _dayNumber: number,
+): string {
   switch (skillType) {
     case SkillType.CODE:
     case SkillType.AI_AGENT:
@@ -1138,9 +1284,12 @@ function buildPracticeBasedDeferredPrompt(params: DayDetailParams): {
   const itemsPerSection = `${Math.round(3 * levelGuidance.contentMultiplier)}-${Math.round(5 * levelGuidance.contentMultiplier)}`;
 
   // Calculate mini foundation card count based on skill level
-  const miniCardCount = params.skillLevel === SkillLevel.ADVANCED ? '4-5'
-    : params.skillLevel === SkillLevel.INTERMEDIATE ? '3-4'
-    : '2-3';
+  const miniCardCount =
+    params.skillLevel === SkillLevel.ADVANCED
+      ? '4-5'
+      : params.skillLevel === SkillLevel.INTERMEDIATE
+        ? '3-4'
+        : '2-3';
 
   // For custom sections, just list the names (AI knows formats from static instructions)
   // For standard skill types, use the existing functions
@@ -1227,9 +1376,12 @@ function buildLanguageLearningDeferredPrompt(params: DayDetailParams): {
   const typingItems = `${Math.round(3 * levelGuidance.contentMultiplier)}-${Math.round(4 * levelGuidance.contentMultiplier)}`;
 
   // Calculate mini foundation card count based on skill level
-  const miniCardCount = params.skillLevel === SkillLevel.ADVANCED ? '4-5'
-    : params.skillLevel === SkillLevel.INTERMEDIATE ? '3-4'
-    : '2-3';
+  const miniCardCount =
+    params.skillLevel === SkillLevel.ADVANCED
+      ? '4-5'
+      : params.skillLevel === SkillLevel.INTERMEDIATE
+        ? '3-4'
+        : '2-3';
 
   const systemPrompt = `Generate DEFERRED content for Day ${dayNumber}: "${params.skillName}"
 Language: ${lang} | Proficiency: ${profLevel} | Level: ${params.skillLevel}
@@ -1434,13 +1586,18 @@ Output valid JSON only.`;
  * Cacheable curriculum prompt - splits static/dynamic for Anthropic prompt caching
  * Use with AiService.callAnthropicWithCache()
  */
-export function buildCacheableCurriculumPrompt(params: CurriculumPromptParams): {
+export function buildCacheableCurriculumPrompt(
+  params: CurriculumPromptParams,
+): {
   staticPart: string;
   dynamicPart: string;
   userPrompt: string;
 } {
   const time = getTimeStructure(params.hoursPerDay);
-  const isProjectBased = usesProjectBasedLearning(params.skillType, params.learnerPrefs?.outputType);
+  const isProjectBased = usesProjectBasedLearning(
+    params.skillType,
+    params.learnerPrefs?.outputType,
+  );
   const learnerContext = getLearnerContextGuidance(params.learnerPrefs);
   const allDays = Array.from({ length: params.durationDays }, (_, i) => i + 1);
 
@@ -1460,7 +1617,11 @@ export function buildCacheableCurriculumPrompt(params: CurriculumPromptParams): 
 - Daily flow: Video → Cards → Quiz/FillBlank → Practice Project → Reflection`;
 
   // Dynamic part - user-specific context with skill guidance
-  const skillGuidance = getSkillTypeGuidance(params.skillType, params.complexity, params.safetyLevel);
+  const skillGuidance = getSkillTypeGuidance(
+    params.skillType,
+    params.complexity,
+    params.safetyLevel,
+  );
   const levelGuidance = getSkillLevelGuidance(params.skillLevel);
   const dynamicPart = `Generate ${params.durationDays}-day curriculum skeleton for "${params.skillName}".
 Type: ${params.skillType} | Level: ${params.skillLevel} | ${time.totalMinutes}min/day (${time.mode})
@@ -1499,9 +1660,13 @@ Per day: day, title, subtitle, skills[], teaser, estimatedMinutes:${time.totalMi
       "subtitle": "Tagline",
       "skills": ["Skill 1", "Skill 2"],
       "teaser": "What they'll learn",
-      "estimatedMinutes": ${time.totalMinutes},${isProjectBased ? `
+      "estimatedMinutes": ${time.totalMinutes},${
+        isProjectBased
+          ? `
       "hasBossProject": true,
-      "bossMilestonePreview": "What code they'll add today",` : ''}
+      "bossMilestonePreview": "What code they'll add today",`
+          : ''
+      }
       "contentLayer": "foundation|language_core|framework|tool|project",
       "videoStrategy": "skip|optional|helpful|recommended",
       "transferability": "high|medium|low"
@@ -1512,13 +1677,17 @@ Per day: day, title, subtitle, skills[], teaser, estimatedMinutes:${time.totalMi
     "recommendedTools": [],
     "prerequisites": ${JSON.stringify(params.prerequisiteSkills || [])},
     "safetyLevel": "${params.safetyLevel || 'low'}",
-    "isProjectBased": ${isProjectBased}${params.learnerPrefs?.outputType ? `,
-    "outputType": "${params.learnerPrefs.outputType}"` : ''},
+    "isProjectBased": ${isProjectBased}${
+      params.learnerPrefs?.outputType
+        ? `,
+    "outputType": "${params.learnerPrefs.outputType}"`
+        : ''
+    },
     "customSections": ${params.customSections ? JSON.stringify(params.customSections) : 'null'}
   }
 }
 
-${isProjectBased ? 'hasBossProject=true for ALL days. Include bossMilestonePreview showing what code they\'ll build each day.' : 'Each day should have self-contained learning objectives.'}`;
+${isProjectBased ? "hasBossProject=true for ALL days. Include bossMilestonePreview showing what code they'll build each day." : 'Each day should have self-contained learning objectives.'}`;
 
   return { staticPart, dynamicPart, userPrompt };
 }
@@ -1539,7 +1708,9 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
   }
 
   // Use stored isProjectBased from metadata, fall back to calculation if not provided
-  const isProjectBased = params.isProjectBased ?? usesProjectBasedLearning(params.skillType, params.outputType);
+  const isProjectBased =
+    params.isProjectBased ??
+    usesProjectBasedLearning(params.skillType, params.outputType);
 
   // Static part - cacheable
   const staticPart = DAY_DETAIL_STATIC_INSTRUCTIONS;
@@ -1564,19 +1735,21 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
   // Build reflection-based personalization instructions
   let reflectionInstruction = '';
   if (params.previousDayReflection) {
-    const { whatsFoggy,  confusedConcepts, confidence } = params.previousDayReflection;
+    const { whatsFoggy, confusedConcepts, confidence } =
+      params.previousDayReflection;
 
     // Handle "what's foggy" - adjust content based on user's confusion type
     if (whatsFoggy) {
       const foggyInstructions: Record<string, string> = {
-        'when': 'YESTERDAY FEEDBACK: User was unclear on WHEN to apply concepts. Add clear "use this when..." context to examples. Include real-world scenarios showing appropriate timing and situations.',
-        'how': 'YESTERDAY FEEDBACK: User struggled with HOW to apply concepts. Include step-by-step application examples. Show practical implementation with clear before/after demonstrations.',
-        'connection': 'YESTERDAY FEEDBACK: User had trouble seeing HOW CONCEPTS CONNECT. Explicitly show relationships between ideas. Use "this builds on..." and "this relates to..." framing.',
-        'everything': 'YESTERDAY FEEDBACK: User found everything confusing. Start with a brief 2-3 sentence recap of key points. Use simpler examples and build up gradually.',
+        when: 'YESTERDAY FEEDBACK: User was unclear on WHEN to apply concepts. Add clear "use this when..." context to examples. Include real-world scenarios showing appropriate timing and situations.',
+        how: 'YESTERDAY FEEDBACK: User struggled with HOW to apply concepts. Include step-by-step application examples. Show practical implementation with clear before/after demonstrations.',
+        connection:
+          'YESTERDAY FEEDBACK: User had trouble seeing HOW CONCEPTS CONNECT. Explicitly show relationships between ideas. Use "this builds on..." and "this relates to..." framing.',
+        everything:
+          'YESTERDAY FEEDBACK: User found everything confusing. Start with a brief 2-3 sentence recap of key points. Use simpler examples and build up gradually.',
       };
       reflectionInstruction += `\n${foggyInstructions[whatsFoggy] || ''}`;
     }
-
 
     // Handle confused concepts - add targeted review
     if (confusedConcepts?.length) {
@@ -1590,7 +1763,10 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
   }
 
   // Dynamic part - skill name is checked against language detection in static instructions
-  const skillGuidance = getSkillTypeGuidance(params.skillType, params.complexity);
+  const skillGuidance = getSkillTypeGuidance(
+    params.skillType,
+    params.complexity,
+  );
   const levelGuidance = getSkillLevelGuidance(params.skillLevel);
   const dynamicPart = `SKILL: "${params.skillName}"
 Day ${params.dayNumber}: ${params.dayTitle}
@@ -1657,6 +1833,6 @@ function getTask1SectionTemplate(skillType: SkillType): string {
         {"type": "quiz", "level": 1, "title": "Differentiation", "questions": [/* 2-3 compare/contrast Qs */]},
         {"type": "fillBlank", "level": 2, "title": "Apply the Concepts", "items": [/* 2-3 fill-blank items */]}
       ]`;
-      // Note: For soft skills, AI may use openEnded instead of fillBlank
+    // Note: For soft skills, AI may use openEnded instead of fillBlank
   }
 }

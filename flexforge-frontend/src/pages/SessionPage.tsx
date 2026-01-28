@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, CheckCircle, Loader2, Shuffle, HelpCircle, FileText, Sparkles, Target, BookOpen, Trophy, GraduationCap } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCircle, Shuffle, HelpCircle, FileText, Sparkles, Target, BookOpen, Trophy, GraduationCap } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
@@ -411,9 +411,9 @@ export function SessionPage() {
     activeSession,
     currentDay,
     currentStep,
-    completedSteps,
+    completedSteps: _completedSteps,
     fetchActiveSession,
-    setActiveSession,
+    setActiveSession: _setActiveSession,
     startDay,
     setCurrentStep,
     completeStep,

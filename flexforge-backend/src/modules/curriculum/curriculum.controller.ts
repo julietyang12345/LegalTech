@@ -111,7 +111,11 @@ export class CurriculumController {
   ): Promise<CurriculumCacheResponse> {
     try {
       // Try to get from cache first
-      const cached = await this.cacheService.tryGetFromCache(dto, user.id, dto.sessionId);
+      const cached = await this.cacheService.tryGetFromCache(
+        dto,
+        user.id,
+        dto.sessionId,
+      );
 
       if (cached) {
         return {
@@ -124,10 +128,15 @@ export class CurriculumController {
       }
 
       // Check if we should skip caching (too many regens in this session)
-      const skipCaching = await this.cacheService.shouldSkipCaching(dto.sessionId);
+      const skipCaching = await this.cacheService.shouldSkipCaching(
+        dto.sessionId,
+      );
 
       // Generate new curriculum
-      const result = await this.curriculumService.generateCurriculum(dto, user.quotaTier);
+      const result = await this.curriculumService.generateCurriculum(
+        dto,
+        user.quotaTier,
+      );
 
       // Cache if not skipping
       if (!skipCaching) {
@@ -165,7 +174,9 @@ export class CurriculumController {
         warnings: result.warnings,
       };
     } catch (error) {
-      throw new BadRequestException(error.message || 'Failed to generate curriculum');
+      throw new BadRequestException(
+        error.message || 'Failed to generate curriculum',
+      );
     }
   }
 
@@ -187,10 +198,15 @@ export class CurriculumController {
       );
 
       // Check if we should skip caching
-      const skipCaching = await this.cacheService.shouldSkipCaching(dto.sessionId);
+      const skipCaching = await this.cacheService.shouldSkipCaching(
+        dto.sessionId,
+      );
 
       // Generate new curriculum
-      const result = await this.curriculumService.generateCurriculum(dto, user.quotaTier);
+      const result = await this.curriculumService.generateCurriculum(
+        dto,
+        user.quotaTier,
+      );
 
       if (!skipCaching) {
         const cacheResult = await this.cacheService.cacheNewContent(
@@ -225,7 +241,9 @@ export class CurriculumController {
         warnings: result.warnings,
       };
     } catch (error) {
-      throw new BadRequestException(error.message || 'Failed to regenerate curriculum');
+      throw new BadRequestException(
+        error.message || 'Failed to regenerate curriculum',
+      );
     }
   }
 
@@ -262,7 +280,11 @@ export class CurriculumController {
     @CurrentUser() user: User,
   ) {
     try {
-      await this.cacheService.recordDay1Completion(dto.variantId, user.id, dto.sessionId);
+      await this.cacheService.recordDay1Completion(
+        dto.variantId,
+        user.id,
+        dto.sessionId,
+      );
       return { message: 'Completion recorded' };
     } catch (error) {
       // Don't fail the request if recording fails
@@ -276,12 +298,13 @@ export class CurriculumController {
    * Called via navigator.sendBeacon from frontend
    */
   @Post('bounce')
-  async recordBounce(
-    @Body() dto: RecordBounceDto,
-    @CurrentUser() user: User,
-  ) {
+  async recordBounce(@Body() dto: RecordBounceDto, @CurrentUser() user: User) {
     try {
-      await this.cacheService.recordBounce(dto.variantId, user.id, dto.sessionId);
+      await this.cacheService.recordBounce(
+        dto.variantId,
+        user.id,
+        dto.sessionId,
+      );
       return { message: 'Bounce recorded' };
     } catch (error) {
       return { message: 'Bounce noted' };
@@ -316,11 +339,12 @@ export class CurriculumController {
   @Post('refresh-video')
   async refreshVideo(@Body() dto: RefreshVideoDto) {
     try {
-      const levelMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
-        BEGINNER: 'beginner',
-        INTERMEDIATE: 'intermediate',
-        ADVANCED: 'advanced',
-      };
+      const levelMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> =
+        {
+          BEGINNER: 'beginner',
+          INTERMEDIATE: 'intermediate',
+          ADVANCED: 'advanced',
+        };
 
       const videoResult = await this.videoMatcher.findBestVideo(
         {
@@ -344,21 +368,25 @@ export class CurriculumController {
       const watchPlan = videoResult.watchPlan;
 
       // Build alternatives array (up to 2)
-      const alternatives = (videoResult.alternatives || []).slice(0, 2).map(alt => ({
-        videoId: alt.video.videoId,
-        title: alt.video.title,
-        channelName: alt.video.channelName,
-        startTime: this.secondsToTime(alt.watchPlan.primarySegment.startSeconds),
-        endTime: this.secondsToTime(alt.watchPlan.primarySegment.endSeconds),
-        estimatedMinutes: Math.round(
-          (alt.watchPlan.primarySegment.endSeconds -
-            alt.watchPlan.primarySegment.startSeconds) /
-            60,
-        ),
-        differentiator: alt.differentiator,
-        matchPercent: alt.matchPercent,
-        contentType: alt.contentType,
-      }));
+      const alternatives = (videoResult.alternatives || [])
+        .slice(0, 2)
+        .map((alt) => ({
+          videoId: alt.video.videoId,
+          title: alt.video.title,
+          channelName: alt.video.channelName,
+          startTime: this.secondsToTime(
+            alt.watchPlan.primarySegment.startSeconds,
+          ),
+          endTime: this.secondsToTime(alt.watchPlan.primarySegment.endSeconds),
+          estimatedMinutes: Math.round(
+            (alt.watchPlan.primarySegment.endSeconds -
+              alt.watchPlan.primarySegment.startSeconds) /
+              60,
+          ),
+          differentiator: alt.differentiator,
+          matchPercent: alt.matchPercent,
+          contentType: alt.contentType,
+        }));
 
       return {
         message: 'New video found',
@@ -425,7 +453,9 @@ export class CurriculumController {
       );
 
       if (!result.success) {
-        throw new BadRequestException(result.error || 'Failed to get transcript summary');
+        throw new BadRequestException(
+          result.error || 'Failed to get transcript summary',
+        );
       }
 
       return {
@@ -434,7 +464,10 @@ export class CurriculumController {
         keyPoints: result.keyPoints,
       };
     } catch (error) {
-      if (error instanceof ForbiddenException || error instanceof BadRequestException) {
+      if (
+        error instanceof ForbiddenException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
       throw new BadRequestException(

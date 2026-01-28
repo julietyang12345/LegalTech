@@ -32,7 +32,10 @@ async function bootstrap() {
         return;
       }
       // Allow any flexforge.app subdomain
-      if (origin.endsWith('.flexforge.app') || origin.endsWith('.workers.dev')) {
+      if (
+        origin.endsWith('.flexforge.app') ||
+        origin.endsWith('.workers.dev')
+      ) {
         callback(null, true);
         return;
       }
@@ -40,7 +43,12 @@ async function bootstrap() {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-real-ip', 'x-request-id'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'x-real-ip',
+      'x-request-id',
+    ],
   });
 
   // Global validation pipe

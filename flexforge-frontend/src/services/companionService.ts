@@ -1,5 +1,4 @@
 import api from './api';
-import type { CompanionMessage } from '@/types';
 
 export interface CompanionChatResponse {
   message: string;

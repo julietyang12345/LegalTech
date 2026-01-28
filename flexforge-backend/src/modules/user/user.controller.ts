@@ -17,10 +17,10 @@ export class UserController {
   @Get('me')
   async getProfile(@Request() req) {
     const user = await this.userService.findById(req.user.id);
-    
+
     // Don't send password
     const { password, ...result } = user;
-    
+
     return { user: result };
   }
 
@@ -37,7 +37,7 @@ export class UserController {
   ) {
     const user = await this.userService.updateProfile(req.user.id, updates);
     const { password, ...result } = user;
-    
+
     return {
       message: 'Profile updated successfully',
       user: result,
@@ -47,10 +47,17 @@ export class UserController {
   @Patch('preferences')
   async updatePreferences(
     @Request() req,
-    @Body() preferences: { notifications?: boolean; dailyReminders?: boolean; weeklyDigest?: boolean },
+    @Body()
+    preferences: {
+      notifications?: boolean;
+      dailyReminders?: boolean;
+      weeklyDigest?: boolean;
+    },
   ) {
-    const user = await this.userService.updateProfile(req.user.id, { preferences });
-    
+    const user = await this.userService.updateProfile(req.user.id, {
+      preferences,
+    });
+
     return {
       message: 'Preferences updated successfully',
       preferences: user.preferences,

@@ -38,18 +38,19 @@ export class OnboardingService {
 
     // Use cross-referencing when user provides feedback AND we have previous directions
     // Otherwise, generate fresh directions with Claude
-    const response = (refinement?.userFeedback && refinement?.previousDirections)
-      ? await this.aiService.crossReferencedRequest(
-          userPrompt,
-          systemPrompt,
-          refinement.userFeedback,
-          refinement.previousDirections,
-        )
-      : await this.aiService.routeRequest(
-          AITask.SIMPLE_CLASSIFICATION,
-          userPrompt,
-          systemPrompt,
-        );
+    const response =
+      refinement?.userFeedback && refinement?.previousDirections
+        ? await this.aiService.crossReferencedRequest(
+            userPrompt,
+            systemPrompt,
+            refinement.userFeedback,
+            refinement.previousDirections,
+          )
+        : await this.aiService.routeRequest(
+            AITask.SIMPLE_CLASSIFICATION,
+            userPrompt,
+            systemPrompt,
+          );
 
     const parsed = parseAiJson(response.content);
 
@@ -62,7 +63,7 @@ export class OnboardingService {
     }
 
     // Validate and normalize directions
-    let allDirections = parsed.directions
+    const allDirections = parsed.directions
       .slice(0, 8) // Get more initially, we'll filter
       .map((d: any, index: number) => ({
         id: `dir-${index + 1}`,
@@ -73,33 +74,49 @@ export class OnboardingService {
           : [],
         isToolSpecific: Boolean(d.isToolSpecific),
         isFree: d.isFree !== false, // Default to free if not specified
-        paymentNote: d.isToolSpecific && !d.isFree ? String(d.paymentNote || 'May require payment') : undefined,
+        paymentNote:
+          d.isToolSpecific && !d.isFree
+            ? String(d.paymentNote || 'May require payment')
+            : undefined,
         estimatedMinutes: Number(d.estimatedMinutes) || 60,
         skillType: this.parseSkillType(d.skillType),
         // Pass through languageConfig for CODE/AI_AGENT skillTypes
-        languageConfig: d.languageConfig ? {
-          recommended: String(d.languageConfig.recommended || 'TypeScript'),
-          recommendedReason: String(d.languageConfig.recommendedReason || 'Best tooling support'),
-          alternatives: Array.isArray(d.languageConfig.alternatives)
-            ? d.languageConfig.alternatives.slice(0, 3).map((alt: any) => ({
-                language: String(alt.language),
-                reason: String(alt.reason || ''),
-                tradeoffs: alt.tradeoffs ? String(alt.tradeoffs) : undefined,
-              }))
-            : [],
-        } : undefined,
+        languageConfig: d.languageConfig
+          ? {
+              recommended: String(d.languageConfig.recommended || 'TypeScript'),
+              recommendedReason: String(
+                d.languageConfig.recommendedReason || 'Best tooling support',
+              ),
+              alternatives: Array.isArray(d.languageConfig.alternatives)
+                ? d.languageConfig.alternatives.slice(0, 3).map((alt: any) => ({
+                    language: String(alt.language),
+                    reason: String(alt.reason || ''),
+                    tradeoffs: alt.tradeoffs
+                      ? String(alt.tradeoffs)
+                      : undefined,
+                  }))
+                : [],
+            }
+          : undefined,
       })) as LearningDirection[];
 
     // Separate concept vs tool-specific
     // Allow up to 3 tool directions, but at least 2 must be free
-    const conceptDirections = allDirections.filter(d => !d.isToolSpecific);
-    const freeToolDirections = allDirections.filter(d => d.isToolSpecific && d.isFree);
-    const paidToolDirections = allDirections.filter(d => d.isToolSpecific && !d.isFree);
+    const conceptDirections = allDirections.filter((d) => !d.isToolSpecific);
+    const freeToolDirections = allDirections.filter(
+      (d) => d.isToolSpecific && d.isFree,
+    );
+    const paidToolDirections = allDirections.filter(
+      (d) => d.isToolSpecific && !d.isFree,
+    );
 
     // Take up to 2 free tools first, then at most 1 paid tool (total max 3)
     const toolDirections = [
       ...freeToolDirections.slice(0, 2),
-      ...paidToolDirections.slice(0, Math.min(1, 3 - freeToolDirections.slice(0, 2).length)),
+      ...paidToolDirections.slice(
+        0,
+        Math.min(1, 3 - freeToolDirections.slice(0, 2).length),
+      ),
     ].slice(0, 3);
 
     // Combine: concepts first, then tools (max 6 total)
@@ -107,7 +124,9 @@ export class OnboardingService {
       .slice(0, 6)
       .map((d, i) => ({ ...d, id: `dir-${i + 1}` }));
 
-    this.logger.log(`Generated ${directions.length} directions (${toolDirections.length} tool-specific)`);
+    this.logger.log(
+      `Generated ${directions.length} directions (${toolDirections.length} tool-specific)`,
+    );
 
     return {
       directions,
@@ -282,7 +301,8 @@ REFINEMENT CONTEXT (user clarified their intent):`;
       if (refinement.outputType) {
         const outputLabels = {
           working_code: 'They want to write working code',
-          understand_concept: 'They want to understand concepts (not necessarily code)',
+          understand_concept:
+            'They want to understand concepts (not necessarily code)',
           fix_bug: 'They want to fix a specific bug or problem',
           ship_project: 'They want to ship a small project',
         };
@@ -353,8 +373,7 @@ Include at least one tool-specific option if relevant.`;
       goalLower.includes('web') ||
       goalLower.includes('api') ||
       goalLower.includes('frontend');
-    const isPython =
-      goalLower.includes('python') || goalLower.includes('data');
+    const isPython = goalLower.includes('python') || goalLower.includes('data');
 
     if (isAI) {
       return [
