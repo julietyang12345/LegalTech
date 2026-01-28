@@ -89,6 +89,10 @@ function PresenceBar() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Check if curriculum is project-based (has boss projects)
+  const isProjectBased = activeSession?.curriculum?.metadata?.isProjectBased !== false &&
+    (activeSession?.curriculum?.bossProjects?.length ?? 0) > 0;
+
   // Filter steps based on current day
   const availableSteps = STEPS.filter(step => {
     // Skip video for language learning (uses TTS instead)
@@ -103,11 +107,11 @@ function PresenceBar() {
                        (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
       if (!hasCards) return false;
     }
-    // Show bossMilestone if project-based (milestone/hasBossProject) OR practice-based (intensivePractice)
+    // Always show bossMilestone step (renders as either boss milestone OR intensive practice)
+    // The BossMilestoneStep component handles both project-based and practice-based curricula
+    // Don't filter based on content existence - content loads async via deferred
     if (step === 'bossMilestone') {
-      const hasProjectContent = currentDay?.bossMilestone || currentDay?.hasBossProject;
-      const hasPracticeContent = currentDay?.intensivePractice || currentDay?.deferredContent?.intensivePractice;
-      return !!hasProjectContent || !!hasPracticeContent;
+      return true;
     }
     return true;
   });
@@ -136,6 +140,7 @@ function PresenceBar() {
                 currentStep={currentStep}
                 completedSteps={completedSteps}
                 onStepClick={(step) => setCurrentStep(step)}
+                isProjectBased={isProjectBased}
               />
             </div>
           </div>

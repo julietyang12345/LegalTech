@@ -71,7 +71,7 @@ export class SkillDetectorService {
 
 Skill: "${skillName}"
 
-CATEGORIZATION RULES (in order of priority):
+SKILL CATEGORIES (in order of priority):
 
 1. CODE - Use when the skill produces EXECUTABLE CODE as output
    - The learner will write, read, or debug code
@@ -94,7 +94,7 @@ CATEGORIZATION RULES (in order of priority):
    - Sports, instruments, dance, cooking, crafts
    - Home improvement, mechanical work, construction
    - Output type: physical actions, built objects, prepared items
-   - Safety levels: low/medium/high based on injury risk
+   - Set safetyLevel: low/medium/high based on injury risk
 
 5. KNOWLEDGE - Use ONLY when NO practical output is produced
    - Pure academic learning: human languages, history, philosophy, theory
@@ -102,36 +102,34 @@ CATEGORIZATION RULES (in order of priority):
    - Output type: knowledge recall, written explanations only
    - KEY TEST: If the learner will CREATE something (code/design/physical), do NOT use KNOWLEDGE
    - LANGUAGE LEARNING: If learning a human language (Chinese, Spanish, Japanese, etc.):
-     - Set isLanguageLearning: true
-     - Set targetLanguage to one of: chinese, japanese, korean, arabic, spanish, french, german, italian, portuguese, russian, hindi, thai, vietnamese, other
-     - Set proficiencyLevel if mentioned (HSK1-6, JLPT N5-N1, CEFR A1-C2, etc.)
+     Set isLanguageLearning=true, targetLanguage (chinese/japanese/korean/arabic/spanish/french/german/italian/portuguese/russian/hindi/thai/vietnamese/other), proficiencyLevel if mentioned (HSK1-6, JLPT N5-N1, CEFR A1-C2)
 
-CRITICAL: "Learning" or "understanding" something does NOT make it KNOWLEDGE category.
+CRITICAL - "Learning" something does NOT make it KNOWLEDGE:
 - Learning a programming language → CODE (produces code)
-- Learning a human language → KNOWLEDGE (produces speech/writing only)
+- Learning a human language → KNOWLEDGE (speech/writing only)
 - Learning a framework → CODE (produces code)
 - Learning music theory → KNOWLEDGE (theory only)
 - Learning an instrument → PHYSICAL (requires practice)
 
-HYBRID SKILLS: Some skills span multiple categories. If a skill doesn't fit cleanly into one category:
+HYBRID SKILLS: Some skills span multiple categories.
 - Pick the PRIMARY category as skillType
 - Set customSections to mix exercise types from both categories
 - Example: "Data Visualization" = CODE primary + DESIGN elements
   → customSections: {task1: ["quiz", "outputPrediction", "designCritique"], intensive: ["codeCompletion", "designCritique", "quiz"]}
-- Example: "Music Production" = DESIGN primary + CODE elements (for DAWs)
-  → customSections: {task1: ["quiz", "designCritique", "fillBlank"], intensive: ["designCritique", "quiz", "matching"]}
 
-Available section types:
-- Universal: quiz, matching, fillBlank
-- CODE/AI_AGENT: outputPrediction, codeCompletion, debugging
-- PHYSICAL: reorder, formCheck, safetyCheck
-- DESIGN: designCritique
-- KNOWLEDGE: reorder (for sequential topics)
+Section types: Universal (quiz, matching, fillBlank) | CODE/AI_AGENT (outputPrediction, codeCompletion, debugging) | PHYSICAL (reorder, formCheck, safetyCheck) | DESIGN (designCritique)
 
-Complexity Assessment:
-- BEGINNER: No prerequisites, achievable in 2-5 days
-- INTERMEDIATE: Requires background knowledge, 7-14 days
-- ADVANCED: Requires strong foundation, 30+ days
+COMPLEXITY:
+- BEGINNER: No prerequisites needed, foundational concepts
+- INTERMEDIATE: Requires some background knowledge
+- ADVANCED: Requires strong foundation, deep expertise
+
+ESTIMATE DAYS - Analyze the ACTUAL SCOPE of this specific topic:
+- How many core concepts need to be learned?
+- How much practice is realistically needed?
+- Narrow focused topic (3-5 days) vs broad comprehensive topic (5-14 days)
+- Simple automation/API: 3-6 days | Framework basics: 3-9 days | Complete projects: 5-14 days | Complex systems: 10-14 days
+Be realistic - don't inflate estimates. "Python list comprehensions" needs 3 days, not 14.
 
 Return ONLY valid JSON:
 {
@@ -177,8 +175,8 @@ Return ONLY valid JSON:
       if (!result.estimatedDaysNeeded) {
         const defaultDays = {
           [SkillComplexity.BEGINNER]: 5,
-          [SkillComplexity.INTERMEDIATE]: 10,
-          [SkillComplexity.ADVANCED]: 30,
+          [SkillComplexity.INTERMEDIATE]: 7,
+          [SkillComplexity.ADVANCED]: 14,
         };
         result.estimatedDaysNeeded = defaultDays[result.complexity] || 7;
         this.logger.warn(

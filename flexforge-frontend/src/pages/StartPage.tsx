@@ -40,20 +40,17 @@ function SkillLevelSelector({
     {
       value: SkillLevel.BEGINNER,
       emoji: '🌱',
-      label: 'Beginner',
-      description: 'New to this',
+      label: 'New to this',
     },
     {
       value: SkillLevel.INTERMEDIATE,
       emoji: '🌿',
-      label: 'Intermediate',
-      description: 'Know basics',
+      label: 'Know the basics',
     },
     {
       value: SkillLevel.ADVANCED,
       emoji: '🌳',
-      label: 'Advanced',
-      description: 'Master it',
+      label: 'I\'m skilled',
     },
   ];
 
@@ -78,9 +75,6 @@ function SkillLevelSelector({
             value === level.value ? 'text-brand-700' : 'text-gray-900'
           )}>
             {level.label}
-          </span>
-          <span className="text-[10px] sm:text-xs text-gray-500 leading-tight mt-0.5">
-            {level.description}
           </span>
         </button>
       ))}
@@ -147,10 +141,10 @@ function HoursSelector({
   onChange: (hours: number) => void;
 }) {
   const options = [
-    { hours: 0.5, label: '30m', recommended: false },
-    { hours: 0.75, label: '45m', recommended: false },
-    { hours: 1, label: '1h', recommended: true },
-    { hours: 1.5, label: '1.5h', recommended: true },
+    { hours: 0.5, label: 'Short', sublabel: '<30 min' },
+    { hours: 0.75, label: 'Medium', sublabel: '~45 min' },
+    { hours: 1, label: 'Focused', sublabel: '~1 hour', recommended: true },
+    { hours: 1.5, label: 'Deep', sublabel: '1.5 hours', recommended: true },
   ];
 
   return (
@@ -174,9 +168,9 @@ function HoursSelector({
           )}>
             {option.label}
           </span>
-          {option.recommended && (
-            <span className="text-[10px] text-gray-400 font-normal mt-0.5">Best</span>
-          )}
+          <span className="text-[10px] text-gray-400 font-normal mt-0.5">
+            {option.sublabel}
+          </span>
         </button>
       ))}
     </div>

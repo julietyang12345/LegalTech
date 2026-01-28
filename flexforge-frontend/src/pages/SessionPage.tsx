@@ -438,6 +438,13 @@ export function SessionPage() {
     }
   }, [activeSession, currentDay, startDay]);
 
+  // Proactively load deferred content when day starts (if not already loaded)
+  useEffect(() => {
+    if (activeSession && currentDay && !currentDay.reflection && !isDeferredLoading) {
+      loadDayDeferredContent(currentDay.day).catch(console.error);
+    }
+  }, [activeSession, currentDay, isDeferredLoading, loadDayDeferredContent]);
+
   // Get available steps (filter out skipped ones)
   const availableSteps = STEP_ORDER.filter(step => {
     // Skip video for language learning (uses TTS instead)
@@ -624,11 +631,10 @@ export function SessionPage() {
     );
   }
 
-  // Check if deferred content needed but still loading
-  const needsDeferredContent = currentStep === 'reflection';
-  const deferredContentMissing = needsDeferredContent && !currentDay.reflection;
+  // Show loading screen if on reflection step and deferred content is missing
+  const deferredContentMissing = currentStep === 'reflection' && !currentDay.reflection;
 
-  if (deferredContentMissing && isDeferredLoading) {
+  if (deferredContentMissing) {
     return (
       <FocusModeLayout>
         <div className="max-w-lg mx-auto">
