@@ -32,6 +32,7 @@ const PUBLIC_ROUTES = [
   '/health',
   '/api/v1/auth/login',
   '/api/v1/auth/register',
+  '/api/v1/auth/logout',
   '/api/v1/auth/forgot-password',
   '/api/v1/auth/reset-password',
 ];
@@ -87,6 +88,17 @@ app.use(
   })
 );
 
+// Helper to parse cookies from Cookie header
+function parseCookies(cookieHeader: string | undefined): Record<string, string> {
+  if (!cookieHeader) return {};
+  return Object.fromEntries(
+    cookieHeader.split(';').map((cookie) => {
+      const [key, ...rest] = cookie.trim().split('=');
+      return [key, rest.join('=')];
+    })
+  );
+}
+
 // Authentication middleware
 const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: Variables }>(
   async (c, next) => {
@@ -98,13 +110,21 @@ const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: Variabl
       return;
     }
 
-    // Get Authorization header
+    // Try to get token from Authorization header first, then from cookie
+    let token: string | null = null;
+
     const authHeader = c.req.header('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return c.json({ error: 'Unauthorized', message: 'Missing or invalid authorization header' }, 401);
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.slice(7);
+    } else {
+      // Fallback to HTTP-only cookie
+      const cookies = parseCookies(c.req.header('Cookie'));
+      token = cookies['access_token'] || null;
     }
 
-    const token = authHeader.slice(7);
+    if (!token) {
+      return c.json({ error: 'Unauthorized', message: 'Missing authentication token' }, 401);
+    }
 
     try {
       // Verify JWT
@@ -296,7 +316,7 @@ app.all('*', async (c) => {
   const headers = createBackendHeaders(c);
 
   // Forward additional headers
-  const forwardHeaders = ['accept', 'user-agent'];
+  const forwardHeaders = ['accept', 'user-agent', 'referer'];
   for (const header of forwardHeaders) {
     const value = c.req.header(header);
     if (value) {
@@ -318,6 +338,12 @@ app.all('*', async (c) => {
     headers.set('X-User-Role', jwtPayload.role);
   }
 
+  // Forward Cookie header to backend (for session/auth)
+  const cookieHeader = c.req.header('Cookie');
+  if (cookieHeader) {
+    headers.set('Cookie', cookieHeader);
+  }
+
   try {
     const res = await fetch(backendUrl, {
       method: c.req.method,
@@ -325,8 +351,30 @@ app.all('*', async (c) => {
       body: c.req.method !== 'GET' && c.req.method !== 'HEAD' ? c.req.raw.body : undefined,
     });
 
-    // Forward response headers
-    const responseHeaders = new Headers(res.headers);
+    // Forward response headers - manually handle Set-Cookie
+    const responseHeaders = new Headers();
+
+    // Copy all headers except Set-Cookie (handle separately)
+    res.headers.forEach((value, key) => {
+      if (key.toLowerCase() !== 'set-cookie') {
+        responseHeaders.set(key, value);
+      }
+    });
+
+    // Explicitly forward Set-Cookie headers (may be multiple)
+    const anyHeaders = res.headers as any;
+    const setCookies: string[] | undefined = anyHeaders.getSetCookie?.();
+
+    if (setCookies && setCookies.length > 0) {
+      for (const sc of setCookies) {
+        responseHeaders.append('Set-Cookie', sc);
+      }
+    } else {
+      // Fallback: single header
+      const sc = res.headers.get('set-cookie');
+      if (sc) responseHeaders.append('Set-Cookie', sc);
+    }
+
     responseHeaders.set('X-Proxied-By', 'flexforge-edge');
 
     return new Response(res.body, {

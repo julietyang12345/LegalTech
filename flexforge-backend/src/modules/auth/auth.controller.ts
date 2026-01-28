@@ -36,15 +36,25 @@ export class AuthController {
   constructor(
     private authService: AuthService,
     private configService: ConfigService,
-  ) {}
+  ) {
+    console.log('🚀 AuthController loaded - NEW CODE v2');
+  }
+
+  private isProduction(): boolean {
+    const nodeEnv = this.configService.get('NODE_ENV') || this.configService.get('nodeEnv');
+    const isProd = nodeEnv !== 'development' && nodeEnv !== 'test';
+    console.log('🔧 isProduction check - NODE_ENV:', nodeEnv, '→ isProd:', isProd);
+    return isProd;
+  }
 
   private setAuthCookie(res: Response, token: string) {
-    const isProduction = this.configService.get('NODE_ENV') === 'production';
+    const isProduction = this.isProduction();
 
     res.cookie('access_token', token, {
       httpOnly: true,
       secure: isProduction,
-      sameSite: isProduction ? 'strict' : 'lax',
+      sameSite: 'lax',
+      domain: isProduction ? '.flexforge.ai' : undefined,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: '/',
     });
@@ -69,9 +79,12 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+    console.log('🔐 LOGIN: Starting login for', dto.email);
     const result = await this.authService.login(dto.email, dto.password);
+    console.log('🔐 LOGIN: Got token, length:', result.access_token?.length);
 
     this.setAuthCookie(res, result.access_token);
+    console.log('🔐 LOGIN: Cookie set, checking headers:', res.getHeaders()['set-cookie']);
 
     return {
       message: 'Login successful',
@@ -82,10 +95,13 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(@Res({ passthrough: true }) res: Response) {
+    const isProduction = this.isProduction();
+
     res.clearCookie('access_token', {
       httpOnly: true,
-      secure: this.configService.get('NODE_ENV') === 'production',
-      sameSite: this.configService.get('NODE_ENV') === 'production' ? 'strict' : 'lax',
+      secure: isProduction,
+      sameSite: 'lax',
+      domain: isProduction ? '.flexforge.ai' : undefined,
       path: '/',
     });
 

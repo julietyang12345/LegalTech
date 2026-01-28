@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as cookieParser from 'cookie-parser';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -35,11 +35,8 @@ async function bootstrap() {
         callback(null, true);
         return;
       }
-      // Allow any flexforge.app subdomain
-      if (
-        origin.endsWith('.flexforge.app') ||
-        origin.endsWith('.workers.dev')
-      ) {
+      // Allow flexforge.ai subdomains only
+      if (origin.endsWith('.flexforge.ai')) {
         callback(null, true);
         return;
       }
