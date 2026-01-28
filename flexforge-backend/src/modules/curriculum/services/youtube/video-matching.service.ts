@@ -147,7 +147,6 @@ export interface VideoMatchResult {
   matchPercent?: number; // 0-100 for UI confidence display
   alternatives?: VideoAlternative[]; // Other good options (personalization UX)
   platformDependency?: PlatformDependencyInfo; // Tool/platform dependency info
-  useAiExplanation?: boolean; // True if no good video match - use AI summary instead (deprecated, use adaptiveModality)
   /** Adaptive modality decision - whether to show video, AI, or both */
   adaptiveModality?: AdaptiveModalityResult;
   /** Content type classification - CONCEPT (teaches principles) vs TOOL_SPECIFIC (teaches a specific tool) */
@@ -530,9 +529,6 @@ export class VideoMatchingService {
         selectedCandidate.scores.marketingPenalty,
       );
 
-      // Legacy: useAiExplanation for backwards compatibility
-      const useAiExplanation = adaptiveModality.defaultMode === 'ai';
-
       this.logger.log(
         `Adaptive modality: ${adaptiveModality.defaultMode} (confidence=${videoConfidence}, reason="${adaptiveModality.reasonShort}")`,
       );
@@ -549,7 +545,6 @@ export class VideoMatchingService {
         matchPercent,
         alternatives,
         platformDependency,
-        useAiExplanation,
         adaptiveModality,
         contentType: selectedCandidate.contentType,
       };

@@ -655,10 +655,6 @@ Return JSON only:
       sessionLength: dto.sessionLength,
       contentDepth: dto.contentDepth,
     };
-    this.logger.log(
-      `🎯 DEBUG learnerPrefs passed to prompt:`,
-      JSON.stringify(learnerPrefs),
-    );
 
     // Use user's selected language if provided, otherwise use auto-detected
     const effectiveLanguage =
@@ -779,10 +775,6 @@ Return JSON only:
       proficiencyLevel: skillDetection.proficiencyLevel,
     };
 
-    // DEBUG: Log language learning detection result
-    this.logger.log(
-      `🌍 Language learning metadata: isLanguageLearning=${curriculum.metadata.isLanguageLearning}, targetLanguage=${curriculum.metadata.targetLanguage}`,
-    );
 
     // All days are skeletons - full content generated on-demand when user starts each day
     curriculum.days = curriculum.days.map((day: any, index: number) => ({
@@ -1000,10 +992,6 @@ Return JSON only:
       lessOfAreas,
     };
 
-    // DEBUG: Log language learning params before prompt builder
-    this.logger.log(
-      `🌍 Day ${dayNumber} CORE params: isLanguageLearning=${params.isLanguageLearning}, targetLanguage=${params.targetLanguage}`,
-    );
 
     const { staticPart, dynamicPart, userPrompt } =
       buildCacheableDayDetailCorePrompt(params);
@@ -1016,11 +1004,6 @@ Return JSON only:
 
     let coreContent: any;
     try {
-      // DEBUG: Log raw AI response (first 500 chars)
-      this.logger.log(
-        `🤖 Day ${dayNumber} AI response (first 500 chars): ${aiResponse.content.substring(0, 500)}`,
-      );
-
       let cleanedContent = aiResponse.content
         .replace(/```json\n?/g, '')
         .replace(/```\n?/g, '')
@@ -1083,12 +1066,6 @@ Return JSON only:
       this.logger.log(
         `✅ Day ${dayNumber} CORE parsed: ${cardCount} cards${coreContent.languageFoundationCards ? ' (vocabulary)' : ''}`,
       );
-
-      // DEBUG: Log what fields the AI returned
-      const presentFields = Object.keys(coreContent).join(', ');
-      this.logger.log(
-        `🔍 Day ${dayNumber} coreContent fields: ${presentFields}`,
-      );
     } catch (error) {
       this.logger.error(
         `❌ Failed to parse Day ${dayNumber} CORE:`,
@@ -1136,7 +1113,6 @@ Return JSON only:
       );
       coreContent.video = {
         ...coreContent.video,
-        useAiExplanation: true,
         concept: searchConcept,
         title: `Understanding ${searchConcept}`,
         explanation: aiExplanation,
@@ -1630,14 +1606,6 @@ Return JSON only:
     const shouldSearchVideo =
       videoStrategy !== 'skip' && contentSource !== 'text';
 
-    this.logger.log(`🎬 VIDEO SEARCH DEBUG Day ${dayNumber}:`);
-    this.logger.log(
-      `   - shouldSearchVideo: ${shouldSearchVideo} (videoStrategy="${videoStrategy}" !== "skip" && contentSource="${contentSource}" !== "text")`,
-    );
-    this.logger.log(
-      `   - content.video exists: ${!!content?.video}, type: ${typeof content?.video}`,
-    );
-
     if (!shouldSearchVideo || !content.video) {
       this.logger.log(
         `🔍 VIDEO SEARCH SKIPPED: shouldSearchVideo=${shouldSearchVideo}, hasContentVideo=${!!content?.video}`,
@@ -1753,7 +1721,6 @@ Return JSON only:
           `📝 Day ${dayNumber}: AI explanation as default (${adaptiveModality?.reasonShort || 'confidence low'})`,
         );
         processedVideo = {
-          useAiExplanation: true,
           concept: searchQuery,
           title: `Understanding ${searchQuery}`,
           explanation: aiExplanation,
@@ -1835,7 +1802,6 @@ Return JSON only:
 
         processedVideo = {
           ...content.video,
-          useAiExplanation: false,
           url: `https://www.youtube.com/watch?v=${video.videoId}`,
           videoId: video.videoId,
           title: video.title,
@@ -1883,7 +1849,6 @@ Return JSON only:
         `⚠️ Day ${dayNumber} video not found: ${videoResult?.error || 'No result'}`,
       );
       processedVideo = {
-        useAiExplanation: true,
         concept: searchQuery,
         title: `Understanding ${searchQuery}`,
         explanation: aiExplanation,
@@ -1901,7 +1866,6 @@ Return JSON only:
     } else {
       // videoResult is null (search wasn't performed or failed)
       processedVideo = {
-        useAiExplanation: true,
         concept: searchQuery,
         title: `Understanding ${searchQuery}`,
         explanation: aiExplanation,
@@ -1919,7 +1883,7 @@ Return JSON only:
     }
 
     this.logger.log(
-      `🎬 VIDEO OUTCOME Day ${dayNumber}: useAiExplanation=${processedVideo.useAiExplanation}, hasVideoId=${!!processedVideo.videoId}, hasBackupVideo=${!!processedVideo.backupVideo}`,
+      `🎬 VIDEO OUTCOME Day ${dayNumber}: mode=${processedVideo.adaptiveModality?.defaultMode || 'ai'}, hasVideoId=${!!processedVideo.videoId}, hasBackupVideo=${!!processedVideo.backupVideo}`,
     );
 
     return { video: processedVideo, rawResult: videoResult };

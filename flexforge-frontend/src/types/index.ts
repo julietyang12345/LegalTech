@@ -229,7 +229,6 @@ export interface VideoMatch {
   watchPoints?: string[];
 
   // Adaptive modality fields (video vs AI)
-  useAiExplanation?: boolean;   // True when AI is default mode
   concept?: string;             // The concept being explained
   explanation?: string;         // AI-generated explanation (markdown)
   reason?: string;              // Why this mode was chosen
