@@ -6,7 +6,6 @@ import { authService } from '@/services/authService';
 
 interface AuthState {
   user: User | null;
-  token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
@@ -14,7 +13,7 @@ interface AuthState {
   // Actions
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name?: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   fetchProfile: () => Promise<void>;
   refreshUser: () => Promise<void>;
   clearError: () => void;
@@ -35,7 +34,6 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
-      token: null,
       isAuthenticated: false,
       isLoading: false,
       error: null,
@@ -44,9 +42,9 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const response = await authService.login({ email, password });
+          // Token is now stored in HTTP-only cookie by the server
           set({
             user: response.user,
-            token: response.access_token,
             isAuthenticated: true,
             isLoading: false,
           });
@@ -63,9 +61,9 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const response = await authService.register({ email, password, name });
+          // Token is now stored in HTTP-only cookie by the server
           set({
             user: response.user,
-            token: response.access_token,
             isAuthenticated: true,
             isLoading: false,
           });
@@ -78,18 +76,23 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      logout: () => {
+      logout: async () => {
+        try {
+          // Clear the HTTP-only cookie on the server
+          await authService.logout();
+        } catch (_error) {
+          // Continue with local logout even if server call fails
+        }
         set({
           user: null,
-          token: null,
           isAuthenticated: false,
           error: null,
         });
       },
 
       fetchProfile: async () => {
-        const { token } = get();
-        if (!token) return;
+        const { isAuthenticated } = get();
+        if (!isAuthenticated) return;
 
         set({ isLoading: true });
         try {
@@ -123,8 +126,8 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'flexforge-auth',
+      // Only persist user info and auth state, NOT the token (stored in HTTP-only cookie)
       partialize: (state) => ({
-        token: state.token,
         user: state.user,
         isAuthenticated: state.isAuthenticated,
       }),

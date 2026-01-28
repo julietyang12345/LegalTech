@@ -15,7 +15,7 @@ export interface RegisterDto {
 export interface AuthResponse {
   message: string;
   user: User;
-  access_token: string;
+  // Token is now stored in HTTP-only cookie, not returned in response body
 }
 
 export const authService = {
@@ -36,10 +36,5 @@ export const authService = {
 
   async logout(): Promise<void> {
     await api.post('/auth/logout');
-  },
-
-  async refreshToken(): Promise<{ access_token: string }> {
-    const { data } = await api.post<{ access_token: string }>('/auth/refresh');
-    return data;
   },
 };
