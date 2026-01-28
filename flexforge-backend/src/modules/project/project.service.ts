@@ -10,7 +10,10 @@ export class ProjectService {
     private projectRepository: Repository<Project>,
   ) {}
 
-  async create(userId: string, projectData: Partial<Project>): Promise<Project> {
+  async create(
+    userId: string,
+    projectData: Partial<Project>,
+  ): Promise<Project> {
     const project = this.projectRepository.create({
       ...projectData,
       userId,

@@ -84,7 +84,9 @@ export class SessionController {
       return { message: 'No active session', session: null };
     }
 
-    console.log(`[getActive] Returning session ${session.id} with currentDay=${session.currentDay}`);
+    console.log(
+      `[getActive] Returning session ${session.id} with currentDay=${session.currentDay}`,
+    );
     return { session };
   }
 
@@ -195,7 +197,6 @@ export class SessionController {
     };
   }
 
-
   /**
    * POST /api/v1/sessions/:id/days/:dayNumber/practice/submit
    * Submit practice project answer - unlocks next day
@@ -282,7 +283,8 @@ export class SessionController {
     @Request() req,
     @Param('id') id: string,
     @Param('dayNumber') dayNumber: string,
-    @Body() body: {
+    @Body()
+    body: {
       confidence: number;
       whatClicked?: string;
       whatsFoggy?: string;
@@ -315,7 +317,8 @@ export class SessionController {
     @Request() req,
     @Param('id') id: string,
     @Param('dayNumber') dayNumber: string,
-    @Body() body: {
+    @Body()
+    body: {
       concept: string;
       originalExplanation: string;
     },

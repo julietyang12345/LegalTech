@@ -128,7 +128,7 @@ export class ProgressService {
         const topicMatch = p.taskId.match(/-([\w]+)$/);
         return topicMatch ? topicMatch[1] : null;
       })
-      .filter(Boolean) as string[];
+      .filter(Boolean);
 
     const nextDay = session.curriculum.days.find(
       (d) => d.day === latestProgress.dayNumber + 1,
@@ -417,13 +417,17 @@ Return ONLY JSON with questions array.`;
   }
 
   // In-memory rate limit tracking (in production, use Redis)
-  private aiEvaluationUsage: Map<string, { count: number; date: string }> = new Map();
+  private aiEvaluationUsage: Map<string, { count: number; date: string }> =
+    new Map();
   private readonly FREE_USER_DAILY_LIMIT = 1;
 
   /**
    * Check and update AI evaluation rate limit for free users
    */
-  private checkAIEvaluationLimit(userId: string, isPro: boolean): { allowed: boolean; remaining: number } {
+  private checkAIEvaluationLimit(
+    userId: string,
+    isPro: boolean,
+  ): { allowed: boolean; remaining: number } {
     if (isPro) {
       return { allowed: true, remaining: -1 }; // Unlimited for Pro
     }
@@ -443,13 +447,18 @@ Return ONLY JSON with questions array.`;
 
     // Increment usage
     this.aiEvaluationUsage.set(userId, { count: usage.count + 1, date: today });
-    return { allowed: true, remaining: this.FREE_USER_DAILY_LIMIT - usage.count - 1 };
+    return {
+      allowed: true,
+      remaining: this.FREE_USER_DAILY_LIMIT - usage.count - 1,
+    };
   }
 
   /**
    * Get remaining AI evaluations for today
    */
-  async getAIEvaluationRemaining(userId: string): Promise<{ remaining: number; limit: number; isPro: boolean }> {
+  async getAIEvaluationRemaining(
+    userId: string,
+  ): Promise<{ remaining: number; limit: number; isPro: boolean }> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     const isPro = user?.hasTierAccess(QuotaTier.PRO) ?? false;
 
@@ -461,13 +470,17 @@ Return ONLY JSON with questions array.`;
     const usage = this.aiEvaluationUsage.get(userId);
 
     if (!usage || usage.date !== today) {
-      return { remaining: this.FREE_USER_DAILY_LIMIT, limit: this.FREE_USER_DAILY_LIMIT, isPro: false };
+      return {
+        remaining: this.FREE_USER_DAILY_LIMIT,
+        limit: this.FREE_USER_DAILY_LIMIT,
+        isPro: false,
+      };
     }
 
     return {
       remaining: Math.max(0, this.FREE_USER_DAILY_LIMIT - usage.count),
       limit: this.FREE_USER_DAILY_LIMIT,
-      isPro: false
+      isPro: false,
     };
   }
 
@@ -514,7 +527,7 @@ Return ONLY JSON with questions array.`;
     };
     error?: string;
     tokensUsed?: number;
-    remaining?: number;  // Remaining AI evaluations for free users
+    remaining?: number; // Remaining AI evaluations for free users
   }> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     const isPro = user?.hasTierAccess(QuotaTier.PRO) ?? false;
@@ -524,14 +537,18 @@ Return ONLY JSON with questions array.`;
     if (!limitCheck.allowed) {
       return {
         success: false,
-        error: 'Daily AI evaluation limit reached. Upgrade to Pro for unlimited AI feedback.',
+        error:
+          'Daily AI evaluation limit reached. Upgrade to Pro for unlimited AI feedback.',
         remaining: 0,
       };
     }
 
     try {
       const dimensionsDescription = request.evaluationDimensions
-        .map(d => `- ${d.id}: ${d.label} (${d.required ? 'required' : 'optional'}) - ${d.hint}`)
+        .map(
+          (d) =>
+            `- ${d.id}: ${d.label} (${d.required ? 'required' : 'optional'}) - ${d.hint}`,
+        )
         .join('\n');
 
       const prompt = `You are evaluating a learner's open-ended response. Assess the QUALITY OF REASONING, not correctness of any specific answer.
@@ -579,7 +596,9 @@ Return ONLY valid JSON (no markdown, no code blocks, no extra text):
       let jsonContent = response.content.trim();
       // Remove ```json or ``` wrapper if present
       if (jsonContent.startsWith('```')) {
-        jsonContent = jsonContent.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+        jsonContent = jsonContent
+          .replace(/^```(?:json)?\s*/, '')
+          .replace(/\s*```$/, '');
       }
       // Try to extract JSON object if there's extra text
       const jsonMatch = jsonContent.match(/\{[\s\S]*\}/);
@@ -590,7 +609,7 @@ Return ONLY valid JSON (no markdown, no code blocks, no extra text):
       const parsed = JSON.parse(jsonContent);
 
       // Map AI results to our format
-      const dimensionResults = request.evaluationDimensions.map(dim => {
+      const dimensionResults = request.evaluationDimensions.map((dim) => {
         const aiDim = parsed.dimensions?.find((d: any) => d.id === dim.id);
         return {
           dimensionId: dim.id,
@@ -628,8 +647,7 @@ Return ONLY valid JSON (no markdown, no code blocks, no extra text):
   }
 }
 
-
-// More costly version: 
+// More costly version:
 //async generatePersonalizedReview(sessionId: string, userId: string) {
 //   const user = await this.userRepository.findOne({ where: { id: userId } });
 //   if (!user?.hasTierAccess(QuotaTier.PRO)) {

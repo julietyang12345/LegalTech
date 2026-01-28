@@ -1646,6 +1646,9 @@ export interface LearnerPrefs {
   familiarity?: 'new' | 'know_basics' | 'skilled';  // How familiar with topic
   sessionLength?: 'short' | 'medium' | 'long';      // Daily learning time availability
 
+  // Identity verification (user's chosen aspiration and progress)
+  identityProfile?: IdentityProfile;
+
   // Metadata
   completedOnboarding: boolean;
   onboardingCompletedAt?: string;
@@ -1656,6 +1659,81 @@ export interface LearnerPrefs {
 export interface DirectionsResponse {
   directions: LearningDirection[];
   interpretedGoal: string;
+}
+
+// ============================================
+// Identity Verification System Types
+// ============================================
+
+// Aspiration chosen during onboarding
+export interface Aspiration {
+  id: string;
+  name: string;                     // "Builder", "Problem Solver", etc.
+  statement: string;                // "I want to be someone who builds things that work"
+  skillTypes: SkillType[];          // Which skill types this applies to
+}
+
+// Available aspirations by skill type
+export const ASPIRATIONS: Record<string, Aspiration[]> = {
+  // For CODE, AI_AGENT, DESIGN skills
+  technical: [
+    { id: 'builder', name: 'Builder', statement: 'I want to be someone who can build things that work', skillTypes: [SkillType.CODE, SkillType.AI_AGENT, SkillType.DESIGN] },
+    { id: 'problem_solver', name: 'Problem Solver', statement: 'I want to be someone who can figure things out', skillTypes: [SkillType.CODE, SkillType.AI_AGENT] },
+    { id: 'creator', name: 'Creator', statement: 'I want to be someone who brings ideas to life', skillTypes: [SkillType.CODE, SkillType.AI_AGENT, SkillType.DESIGN] },
+  ],
+  // For KNOWLEDGE skills
+  knowledge: [
+    { id: 'deep_thinker', name: 'Deep Thinker', statement: 'I want to be someone who truly understands', skillTypes: [SkillType.KNOWLEDGE] },
+    { id: 'communicator', name: 'Communicator', statement: 'I want to be someone who can explain this to others', skillTypes: [SkillType.KNOWLEDGE] },
+    { id: 'practitioner', name: 'Practitioner', statement: 'I want to be someone who can apply this in real life', skillTypes: [SkillType.KNOWLEDGE] },
+  ],
+  // For PHYSICAL skills
+  physical: [
+    { id: 'athlete', name: 'Athlete', statement: 'I want to be someone who masters movement', skillTypes: [SkillType.PHYSICAL] },
+    { id: 'performer', name: 'Performer', statement: 'I want to be someone who can demonstrate skill', skillTypes: [SkillType.PHYSICAL] },
+    { id: 'coach', name: 'Coach', statement: 'I want to be someone who can teach others', skillTypes: [SkillType.PHYSICAL] },
+  ],
+};
+
+// Helper to get aspirations for a skill type
+export function getAspirationsForSkillType(skillType?: SkillType): Aspiration[] {
+  if (!skillType) return ASPIRATIONS.technical; // Default to technical
+
+  switch (skillType) {
+    case SkillType.CODE:
+    case SkillType.AI_AGENT:
+    case SkillType.DESIGN:
+      return ASPIRATIONS.technical;
+    case SkillType.KNOWLEDGE:
+      return ASPIRATIONS.knowledge;
+    case SkillType.PHYSICAL:
+      return ASPIRATIONS.physical;
+    default:
+      return ASPIRATIONS.technical;
+  }
+}
+
+// Verification milestone - proof of identity transformation
+export interface VerificationMilestone {
+  id: string;
+  label: string;                    // "Shipped first project"
+  proofStatement: string;           // "You made something real"
+  achieved: boolean;
+  achievedAt?: string;
+  evidence?: {                      // Concrete proof
+    projectId?: string;
+    taskId?: string;
+    metric?: number;
+  };
+}
+
+// User's complete identity profile
+export interface IdentityProfile {
+  aspiration: Aspiration;
+  chosenAt: string;
+  milestones: VerificationMilestone[];
+  verificationProgress: number;     // 0-100%
+  identityVerified: boolean;        // All key milestones achieved
 }
 
 // DTO for completing onboarding
@@ -1672,4 +1750,6 @@ export interface CompleteOnboardingDto {
   // Feeling-based inputs (replaces skill level & time questions)
   familiarity?: string;     // 'new' | 'know_basics' | 'skilled'
   sessionLength?: string;   // 'short' | 'medium' | 'long'
+  // Identity aspiration
+  aspiration?: Aspiration;
 }

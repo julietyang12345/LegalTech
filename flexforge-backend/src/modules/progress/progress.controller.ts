@@ -10,7 +10,10 @@ import {
 } from '@nestjs/common';
 import { ProgressService } from './progress.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CompanionService, CompanionContext } from '../companion/companion.service';
+import {
+  CompanionService,
+  CompanionContext,
+} from '../companion/companion.service';
 
 @Controller('progress')
 @UseGuards(JwtAuthGuard)
@@ -21,8 +24,14 @@ export class ProgressController {
   ) {}
 
   @Get('session/:sessionId')
-  async getSessionProgress(@Request() req, @Param('sessionId') sessionId: string) {
-    const progress = await this.progressService.findBySession(sessionId, req.user.id);
+  async getSessionProgress(
+    @Request() req,
+    @Param('sessionId') sessionId: string,
+  ) {
+    const progress = await this.progressService.findBySession(
+      sessionId,
+      req.user.id,
+    );
     return { progress };
   }
 
@@ -37,7 +46,14 @@ export class ProgressController {
     @Request() req,
     @Param('sessionId') sessionId: string,
     @Param('taskId') taskId: string,
-    @Body() updates: { completed?: boolean; confidenceScore?: number; timeSpentMinutes?: number; notes?: string; topic?: string },
+    @Body()
+    updates: {
+      completed?: boolean;
+      confidenceScore?: number;
+      timeSpentMinutes?: number;
+      notes?: string;
+      topic?: string;
+    },
   ) {
     const progress = await this.progressService.updateTask(
       sessionId,
@@ -47,7 +63,9 @@ export class ProgressController {
     );
 
     // Get companion context for personalized response
-    const companionContext = await this.companionService.getUserContext(req.user.id);
+    const companionContext = await this.companionService.getUserContext(
+      req.user.id,
+    );
     const enrichedContext: CompanionContext = {
       ...companionContext,
       currentTopic: updates.topic,
@@ -56,7 +74,10 @@ export class ProgressController {
     // Add companion message based on completion
     let companionMessage = null;
     if (updates.completed) {
-      companionMessage = this.companionService.getCelebration('quickWin', enrichedContext);
+      companionMessage = this.companionService.getCelebration(
+        'quickWin',
+        enrichedContext,
+      );
     } else if (updates.confidenceScore && updates.confidenceScore < 3) {
       companionMessage = this.companionService.getStruggleSupport({
         ...enrichedContext,
@@ -78,7 +99,8 @@ export class ProgressController {
   async submitAnswer(
     @Request() req,
     @Param('sessionId') sessionId: string,
-    @Body() body: {
+    @Body()
+    body: {
       taskId: string;
       answer: string;
       topic?: string;
@@ -87,7 +109,9 @@ export class ProgressController {
     },
   ) {
     // Get companion context for personalized response
-    const companionContext = await this.companionService.getUserContext(req.user.id);
+    const companionContext = await this.companionService.getUserContext(
+      req.user.id,
+    );
     const enrichedContext: CompanionContext = {
       ...companionContext,
       currentTopic: body.topic,
@@ -107,7 +131,10 @@ export class ProgressController {
     // Add companion response based on result
     let companionMessage;
     if (body.isCorrect) {
-      companionMessage = this.companionService.getCelebration('quickWin', enrichedContext);
+      companionMessage = this.companionService.getCelebration(
+        'quickWin',
+        enrichedContext,
+      );
     } else {
       // Track failures for support
       companionMessage = this.companionService.getStruggleSupport({
@@ -133,14 +160,17 @@ export class ProgressController {
     @Param('sessionId') sessionId: string,
   ) {
     const stats = await this.progressService.getStats(sessionId, req.user.id);
-    const companionContext = await this.companionService.getUserContext(req.user.id);
+    const companionContext = await this.companionService.getUserContext(
+      req.user.id,
+    );
 
     const enrichedContext: CompanionContext = {
       ...companionContext,
       currentProgress: stats.completionPercentage,
     };
 
-    const progressMessage = this.companionService.getProgressMessage(enrichedContext);
+    const progressMessage =
+      this.companionService.getProgressMessage(enrichedContext);
 
     return {
       stats,
@@ -155,7 +185,8 @@ export class ProgressController {
   @Post('evaluate-open-ended')
   async evaluateOpenEnded(
     @Request() req,
-    @Body() body: {
+    @Body()
+    body: {
       questionId: string;
       question: string;
       category: string;
