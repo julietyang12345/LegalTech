@@ -16,21 +16,19 @@ BACKEND_URL = "https://api-backend.flexforge.ai"
 
 [[kv_namespaces]]
 binding = "VIDEO_CACHE"
-id = "REPLACE_WITH_VIDEO_CACHE_ID"
-# preview_id = "REPLACE_WITH_VIDEO_CACHE_PREVIEW_ID"
+id = "52adee5fee594ffa95b0b8c6c7453e8a"
 
 [[kv_namespaces]]
 binding = "TRANSCRIPT_CACHE"
-id = "REPLACE_WITH_TRANSCRIPT_CACHE_ID"
-# preview_id = "REPLACE_WITH_TRANSCRIPT_CACHE_PREVIEW_ID"
+id = "e9297e016a7143cba04de82cedf8f859"
 
 [[kv_namespaces]]
 binding = "DOC_CACHE"
-id = "REPLACE_WITH_DOC_CACHE_ID"
-# preview_id = "REPLACE_WITH_DOC_CACHE_PREVIEW_ID"
+id = "0c222cee5064403b89edab4753b7092d"
 
 # Secrets - Set with: npx wrangler secret put <SECRET_NAME>
 # Required secrets:
+# - JWT_SECRET: Same JWT secret as your backend (for token verification)
 # - CF_ACCESS_CLIENT_ID: Cloudflare Access Service Token Client ID
 # - CF_ACCESS_CLIENT_SECRET: Cloudflare Access Service Token Client Secret
 

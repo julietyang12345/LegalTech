@@ -2,28 +2,29 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
-import { User, QuotaTier } from '../../database/entities/user.entity';
+import { User, QuotaTier, UserRole } from '../../database/entities/user.entity';
 import { SessionStatus } from '../../database/entities/session.entity';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
 export class UserService {
-  private readonly unlimitedQuotaEmail: string | undefined;
+  private readonly adminEmails: string[];
 
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
     private configService: ConfigService,
   ) {
-    this.unlimitedQuotaEmail = this.configService.get<string>('UNLIMITED_QUOTA_EMAIL');
+    // ADMIN_EMAILS can be comma-separated list: "admin@example.com,owner@example.com"
+    const adminEmailsConfig = this.configService.get<string>('ADMIN_EMAILS') || '';
+    this.adminEmails = adminEmailsConfig.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
   }
 
   /**
-   * Check if email has unlimited quota access
+   * Check if email is an admin
    */
-  private hasUnlimitedAccess(email: string): boolean {
-    if (!this.unlimitedQuotaEmail) return false;
-    return email.toLowerCase() === this.unlimitedQuotaEmail.toLowerCase();
+  private isAdminEmail(email: string): boolean {
+    return this.adminEmails.includes(email.toLowerCase());
   }
 
   /**
@@ -34,10 +35,13 @@ export class UserService {
     password: string;
     fullName?: string;
   }): Promise<User> {
+    const isAdmin = this.isAdminEmail(userData.email);
+
     const user = this.usersRepository.create({
       email: userData.email,
       password: userData.password,
       fullName: userData.fullName,
+      role: isAdmin ? UserRole.ADMIN : UserRole.MEMBER,
       //quotaTier: QuotaTier.FREE,
       quotaTier: QuotaTier.PRO,
       tokensUsedThisMonth: 0,
@@ -62,8 +66,8 @@ export class UserService {
       relations: ['sessions', 'projects'],
     });
 
-    if (user && this.hasUnlimitedAccess(user.email)) {
-      user.quotaTier = QuotaTier.PREMIUM;
+    if (user && this.isAdminEmail(user.email)) {
+      user.role = UserRole.ADMIN;
     }
     return user;
   }
@@ -76,8 +80,8 @@ export class UserService {
       where: { email },
     });
 
-    if (user && this.hasUnlimitedAccess(user.email)) {
-      user.quotaTier = QuotaTier.PREMIUM;
+    if (user && this.isAdminEmail(user.email)) {
+      user.role = UserRole.ADMIN;
     }
     return user;
   }
@@ -206,8 +210,8 @@ export class UserService {
       await this.usersRepository.save(user);
     }
 
-    // UNLIMITED tier or env-configured email bypasses all quota checks
-    if (user.quotaTier === QuotaTier.UNLIMITED || this.hasUnlimitedAccess(user.email)) {
+    // UNLIMITED tier bypasses all quota checks
+    if (user.quotaTier === QuotaTier.UNLIMITED) {
       return {
         hasQuota: true,
         tokensRemaining: Infinity,

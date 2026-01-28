@@ -17,6 +17,11 @@ export enum QuotaTier {
   UNLIMITED = 'UNLIMITED',
 }
 
+export enum UserRole {
+  MEMBER = 'MEMBER',
+  ADMIN = 'ADMIN',
+}
+
 @Entity('users')
 export class User {
   @PrimaryGeneratedColumn('uuid')
@@ -40,6 +45,13 @@ export class User {
     default: QuotaTier.PRO, // Default to PRO for testing
   })
   quotaTier: QuotaTier;
+
+  @Column({
+    type: 'enum',
+    enum: UserRole,
+    default: UserRole.MEMBER,
+  })
+  role: UserRole;
 
   // Quota tracking
   @Column({ default: 0 })
