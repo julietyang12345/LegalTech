@@ -75,6 +75,18 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  cf-tunnel:
+    container_name: cf-tunnel
+    image: cloudflare/cloudflared:latest
+    restart: always
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+    volumes:
+      - ~/data/cftunnel:/home/nonroot/.cloudflared/
+    networks:
+      - flexforge-network
+
 volumes:
   postgres_data:
   redis_data:

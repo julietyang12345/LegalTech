@@ -1,0 +1,25 @@
+# Cloudflare Workers configuration for FlexForge Frontend (Static Site)
+# See https://developers.cloudflare.com/workers/static-assets/
+
+name = "flexforge-app"
+compatibility_date = "2024-01-01"
+
+# Static assets configuration
+# The frontend is built with Vite and outputs to ./dist
+[assets]
+directory = "./dist"
+
+# SPA routing - all paths serve index.html for client-side routing
+# This is handled automatically by Cloudflare Workers static assets
+
+# Custom domain configuration (set via Cloudflare dashboard)
+# routes = [
+#   { pattern = "app.flexforge.ai", custom_domain = true }
+# ]
+
+# Environment-specific overrides
+[env.production]
+name = "flexforge-app"
+
+[env.staging]
+name = "flexforge-app-staging"

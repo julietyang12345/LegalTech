@@ -7,11 +7,10 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "tail": "wrangler tail",
-    "kv:create": "wrangler kv:namespace create VIDEO_CACHE && wrangler kv:namespace create TRANSCRIPT_CACHE",
+    "kv:create": "wrangler kv:namespace create VIDEO_CACHE && wrangler kv:namespace create TRANSCRIPT_CACHE && wrangler kv:namespace create DOC_CACHE",
     "types": "wrangler types"
   },
   "dependencies": {
-    "@upstash/redis": "^1.34.0",
     "hono": "^4.6.0"
   },
   "devDependencies": {

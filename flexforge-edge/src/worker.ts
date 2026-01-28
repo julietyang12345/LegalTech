@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { Redis } from '@upstash/redis/cloudflare';
 
 // Type definitions for Cloudflare bindings
 type Bindings = {
@@ -8,25 +7,46 @@ type Bindings = {
   TRANSCRIPT_CACHE: KVNamespace;
   DOC_CACHE: KVNamespace;
   BACKEND_URL: string;
-  UPSTASH_REDIS_URL: string;
-  UPSTASH_REDIS_TOKEN: string;
+  // Cloudflare Access Service Token for backend authentication
+  CF_ACCESS_CLIENT_ID: string;
+  CF_ACCESS_CLIENT_SECRET: string;
 };
 
-type Variables = {
-  redis: Redis;
-};
+// Helper to create backend request headers with Cloudflare Access auth
+function createBackendHeaders(c: { env: Bindings; req: { header: (name: string) => string | undefined } }): Headers {
+  const headers = new Headers();
+  headers.set('Content-Type', 'application/json');
 
-const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+  // Add Cloudflare Access service token headers
+  if (c.env.CF_ACCESS_CLIENT_ID && c.env.CF_ACCESS_CLIENT_SECRET) {
+    headers.set('CF-Access-Client-Id', c.env.CF_ACCESS_CLIENT_ID);
+    headers.set('CF-Access-Client-Secret', c.env.CF_ACCESS_CLIENT_SECRET);
+  }
+
+  // Forward user authorization if present
+  const auth = c.req.header('Authorization');
+  if (auth) {
+    headers.set('Authorization', auth);
+  }
+
+  return headers;
+}
+
+const app = new Hono<{ Bindings: Bindings }>();
 
 // CORS configuration
 app.use(
   '*',
   cors({
     origin: [
+      'https://flexforge.ai',
+      'https://www.flexforge.ai',
+      'https://app.flexforge.ai',
       'https://flexforge.app',
       'https://www.flexforge.app',
       'http://localhost:5173',
       'http://localhost:3000',
+      'http://localhost:3001',
     ],
     credentials: true,
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -35,55 +55,6 @@ app.use(
     maxAge: 86400,
   })
 );
-
-// Initialize Redis middleware
-app.use('*', async (c, next) => {
-  if (c.env.UPSTASH_REDIS_URL && c.env.UPSTASH_REDIS_TOKEN) {
-    const redis = new Redis({
-      url: c.env.UPSTASH_REDIS_URL,
-      token: c.env.UPSTASH_REDIS_TOKEN,
-    });
-    c.set('redis', redis);
-  }
-  await next();
-});
-
-// Rate limiting middleware
-app.use('*', async (c, next) => {
-  const redis = c.get('redis');
-  if (!redis) {
-    // Skip rate limiting if Redis is not configured
-    await next();
-    return;
-  }
-
-  const ip = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
-  const key = `rate:${ip}`;
-
-  try {
-    const count = await redis.incr(key);
-
-    if (count === 1) {
-      await redis.expire(key, 60); // 60 second window
-    }
-
-    // Set rate limit headers
-    c.header('X-RateLimit-Limit', '100');
-    c.header('X-RateLimit-Remaining', String(Math.max(0, 100 - count)));
-
-    if (count > 100) {
-      return c.json(
-        { error: 'Rate limited', message: 'Too many requests. Please try again later.' },
-        429
-      );
-    }
-  } catch (error) {
-    // Log error but don't block the request if rate limiting fails
-    console.error('Rate limiting error:', error);
-  }
-
-  await next();
-});
 
 // Health check endpoint
 app.get('/health', (c) => {
@@ -102,13 +73,10 @@ app.get('/api/v1/videos/:videoId/enrichment', async (c) => {
     return c.json(cached);
   }
 
-  // Proxy to backend
+  // Proxy to backend with Cloudflare Access auth
   const backendUrl = `${c.env.BACKEND_URL}/api/v1/videos/${videoId}/enrichment`;
   const res = await fetch(backendUrl, {
-    headers: {
-      Authorization: c.req.header('Authorization') || '',
-      'Content-Type': 'application/json',
-    },
+    headers: createBackendHeaders(c),
   });
 
   if (res.ok) {
@@ -141,13 +109,10 @@ app.get('/api/v1/videos/:videoId/transcript', async (c) => {
     return c.json(cached);
   }
 
-  // Proxy to backend
+  // Proxy to backend with Cloudflare Access auth
   const backendUrl = `${c.env.BACKEND_URL}/api/v1/videos/${videoId}/transcript`;
   const res = await fetch(backendUrl, {
-    headers: {
-      Authorization: c.req.header('Authorization') || '',
-      'Content-Type': 'application/json',
-    },
+    headers: createBackendHeaders(c),
   });
 
   if (res.ok) {
@@ -179,13 +144,10 @@ app.get('/api/v1/docs/:docId', async (c) => {
     return c.json(cached);
   }
 
-  // Proxy to backend
+  // Proxy to backend with Cloudflare Access auth
   const backendUrl = `${c.env.BACKEND_URL}/api/v1/docs/${docId}`;
   const res = await fetch(backendUrl, {
-    headers: {
-      Authorization: c.req.header('Authorization') || '',
-      'Content-Type': 'application/json',
-    },
+    headers: createBackendHeaders(c),
   });
 
   if (res.ok) {
@@ -218,15 +180,16 @@ app.delete('/api/v1/cache/video/:videoId', async (c) => {
   return c.json({ success: true, message: `Cache cleared for video ${videoId}` });
 });
 
-// Proxy all other requests to Fly.io backend
+// Proxy all other requests to backend via Cloudflare Tunnel
 app.all('*', async (c) => {
   const url = new URL(c.req.url);
   const backendUrl = `${c.env.BACKEND_URL}${url.pathname}${url.search}`;
 
-  // Forward headers, preserving important ones
-  const headers = new Headers();
-  const forwardHeaders = ['authorization', 'content-type', 'accept', 'user-agent'];
+  // Build headers with Cloudflare Access auth
+  const headers = createBackendHeaders(c);
 
+  // Forward additional headers
+  const forwardHeaders = ['accept', 'user-agent'];
   for (const header of forwardHeaders) {
     const value = c.req.header(header);
     if (value) {
