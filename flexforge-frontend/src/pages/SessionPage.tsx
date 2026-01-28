@@ -420,6 +420,7 @@ export function SessionPage() {
     isDeferredLoading,
     isRegenerating,
     hasStepEngagement,
+    loadDayDeferredContent,
   } = useSessionStore();
 
   const { celebrate, addSystemMessage } = useCompanionStore();
@@ -482,7 +483,6 @@ export function SessionPage() {
   const {
     submitPracticeProject,
     loadDayCoreContent,
-    loadDayDeferredContent,
     resetSteps,
   } = useSessionStore();
 

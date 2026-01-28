@@ -885,12 +885,23 @@ Return JSON only:
     const contentSource = dayOverview.contentSource || 'youtube';
     let videoStrategy = dayOverview.videoStrategy || 'helpful';
 
-    // Enforce video strategy by skill type (override AI decision)
+    // Enforce video strategy by skill type and content type (override AI decision)
     const skillType = curriculum.metadata?.skillType;
+
+    // Determine if this is a conceptual/theory day (doesn't benefit from video)
+    const isConceptualDay =
+      contentLayer === 'concept' ||
+      contentLayer === 'theory' ||
+      !curriculum.metadata.isProjectBased;
+
     if (skillType === 'KNOWLEDGE' || skillType === 'LANGUAGE') {
       videoStrategy = 'skip'; // Text + interaction is always better for concepts
-    } else if (skillType === 'PHYSICAL') {
+    } else if (isConceptualDay && !dayOverview.requiresDemo) {
+      videoStrategy = 'skip'; // Conceptual content doesn't need video
+    } else if (skillType === 'PHYSICAL' || dayOverview.requiresDemo) {
       videoStrategy = 'recommended'; // Form demonstration requires visual
+    } else {
+      videoStrategy = dayOverview.videoStrategy || 'helpful';
     }
 
     // Build search concept for university/docs searches
@@ -1099,9 +1110,6 @@ Return JSON only:
       includeAlternatives: false, // CORE doesn't need alternatives
       dayObjectives: dayOverview.skills || [], // For multi-model alignment verification
     });
-
-    const shouldSearchVideo =
-      videoStrategy !== 'skip' && contentSource !== 'text';
 
     if (videoResult) {
       coreContent.video = videoResult.video;
