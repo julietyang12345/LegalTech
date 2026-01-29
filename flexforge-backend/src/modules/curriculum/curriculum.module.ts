@@ -42,6 +42,6 @@ import {
     UniversityResourceService,
     DocumentationFetchService,
   ],
-  exports: [CurriculumService, VideoMatchingService, CurriculumCacheService],
+  exports: [CurriculumService, VideoMatchingService, CurriculumCacheService, SkillDetectorService],
 })
 export class CurriculumModule {}

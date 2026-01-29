@@ -54,4 +54,19 @@ export const onboardingService = {
     const { data } = await api.post<{ message: string }>('/onboarding/reset');
     return data;
   },
+
+  /**
+   * Classify a skill to determine if it supports project-based learning
+   * Used by FeelingStep to conditionally show learning style options
+   */
+  async classifySkill(skillName: string): Promise<{
+    supportsProjectBased: boolean;
+    skillType: string;
+  }> {
+    const { data } = await api.post<{
+      supportsProjectBased: boolean;
+      skillType: string;
+    }>('/onboarding/classify-skill', { skillName });
+    return data;
+  },
 };

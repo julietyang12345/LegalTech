@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { IsString } from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { User } from '../../database/entities/user.entity';
@@ -16,6 +17,11 @@ import {
   CompleteOnboardingDto,
   DirectionsResponse,
 } from '../curriculum/types/learner-prefs.interface';
+
+class ClassifySkillDto {
+  @IsString()
+  skillName: string;
+}
 
 @Controller('onboarding')
 @UseGuards(JwtAuthGuard)
@@ -30,7 +36,7 @@ export class OnboardingController {
   @HttpCode(HttpStatus.OK)
   async generateDirections(
     @Body() dto: GenerateDirectionsDto,
-    @CurrentUser() user: User,
+    @CurrentUser() _user: User, // Required for auth guard
   ): Promise<DirectionsResponse> {
     return this.onboardingService.generateDirections(dto.goal, dto.refinement);
   }
@@ -69,5 +75,17 @@ export class OnboardingController {
   ): Promise<{ message: string }> {
     await this.onboardingService.resetOnboarding(user.id);
     return { message: 'Onboarding reset successfully' };
+  }
+
+  /**
+   * Classify a skill to determine if it supports project-based learning.
+   * Used by onboarding UI to conditionally show learning style options.
+   */
+  @Post('classify-skill')
+  @HttpCode(HttpStatus.OK)
+  async classifySkill(
+    @Body() dto: ClassifySkillDto,
+  ): Promise<{ supportsProjectBased: boolean; skillType: string }> {
+    return this.onboardingService.classifySkill(dto.skillName);
   }
 }

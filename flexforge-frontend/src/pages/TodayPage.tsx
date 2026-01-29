@@ -184,8 +184,8 @@ export function TodayPage() {
       // 2. Delete the current session
       await deleteSession(activeSession.id);
 
-      // 3. Navigate back to start to create a new one
-      navigate('/confirm');
+      // 3. Navigate to onboarding to pick a new skill
+      navigate('/onboarding');
     } catch (err) {
       console.error('Failed to regenerate:', err);
       setIsRegenerating(false);

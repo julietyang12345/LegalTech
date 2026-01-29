@@ -1069,10 +1069,15 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
           {/* Setup Instructions */}
           {(milestone?.setupInstructions || activeBoss?.setupInstructions) && (
             <div className="p-3 bg-white/80 border border-blue-100 rounded-lg mb-4">
-              <p className="text-sm text-gray-700">
-                <span className="font-medium">Setup: </span>
-                {milestone?.setupInstructions || activeBoss?.setupInstructions}
-              </p>
+              <p className="text-sm font-medium text-gray-700 mb-2">Setup:</p>
+              <ul className="text-sm text-gray-600 space-y-1">
+                {(milestone?.setupInstructions || activeBoss?.setupInstructions)?.steps?.map((step, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="text-blue-500">{i + 1}.</span>
+                    <span>{step}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 

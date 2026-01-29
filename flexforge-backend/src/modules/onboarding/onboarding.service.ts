@@ -506,6 +506,60 @@ export class OnboardingService {
     this.logger.log(`Reset onboarding for user ${userId}`);
   }
 
+  /**
+   * Classify a skill to determine if it supports project-based learning.
+   * Uses Haiku for cost efficiency - this is a simple yes/no classification.
+   */
+  async classifySkill(
+    skillName: string,
+  ): Promise<{ supportsProjectBased: boolean; skillType: string }> {
+    this.logger.log(`Classifying skill for learning style: "${skillName}"`);
+
+    // Simple prompt for Haiku - just need a yes/no answer
+    const prompt = `Does learning "${skillName}" involve writing code or building software?
+
+Answer with JSON only:
+{"isCode": true/false, "type": "CODE" | "AI_AGENT" | "DESIGN" | "PHYSICAL" | "KNOWLEDGE"}
+
+Examples:
+- "Python programming" → {"isCode": true, "type": "CODE"}
+- "React development" → {"isCode": true, "type": "CODE"}
+- "Using ChatGPT for work" → {"isCode": true, "type": "AI_AGENT"}
+- "Machine learning" → {"isCode": true, "type": "CODE"}
+- "Basic math" → {"isCode": false, "type": "KNOWLEDGE"}
+- "Learning Spanish" → {"isCode": false, "type": "KNOWLEDGE"}
+- "Photography" → {"isCode": false, "type": "DESIGN"}
+- "Playing guitar" → {"isCode": false, "type": "PHYSICAL"}`;
+
+    try {
+      // Use LIGHTWEIGHT_EXTRACTION (Haiku) for cost efficiency
+      const response = await this.aiService.routeRequest(
+        AITask.LIGHTWEIGHT_EXTRACTION,
+        prompt,
+      );
+
+      const parsed = parseAiJson(response.content);
+      const supportsProjectBased = parsed?.isCode === true;
+      const skillType = parsed?.type || 'KNOWLEDGE';
+
+      this.logger.log(
+        `Skill "${skillName}" classified as ${skillType}, supportsProjectBased: ${supportsProjectBased}`,
+      );
+
+      return {
+        supportsProjectBased,
+        skillType,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to classify skill: ${error.message}`);
+      // Default to practice mode (no project option) on error
+      return {
+        supportsProjectBased: false,
+        skillType: 'KNOWLEDGE',
+      };
+    }
+  }
+
   // ============================================
   // PRIVATE METHODS
   // ============================================
