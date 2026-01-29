@@ -201,67 +201,269 @@ export class OnboardingService {
     // Define milestones based on aspiration type
     const milestonesByAspiration: Record<string, VerificationMilestone[]> = {
       builder: [
-        { id: 'first_code', label: 'Made something work', proofStatement: 'You wrote working code', achieved: false },
-        { id: 'first_project', label: 'Shipped first project', proofStatement: 'You built something real', achieved: false },
-        { id: 'three_projects', label: 'Built 3 things', proofStatement: "You're a consistent builder", achieved: false },
-        { id: 'complex_project', label: 'Built something complex', proofStatement: 'You tackled real challenges', achieved: false },
+        {
+          id: 'first_code',
+          label: 'Made something work',
+          proofStatement: 'You wrote working code',
+          achieved: false,
+        },
+        {
+          id: 'first_project',
+          label: 'Shipped first project',
+          proofStatement: 'You built something real',
+          achieved: false,
+        },
+        {
+          id: 'three_projects',
+          label: 'Built 3 things',
+          proofStatement: "You're a consistent builder",
+          achieved: false,
+        },
+        {
+          id: 'complex_project',
+          label: 'Built something complex',
+          proofStatement: 'You tackled real challenges',
+          achieved: false,
+        },
       ],
       problem_solver: [
-        { id: 'first_bug', label: 'Fixed first bug', proofStatement: 'You debugged your first issue', achieved: false },
-        { id: 'without_hints', label: 'Solved without hints', proofStatement: 'You figured it out yourself', achieved: false },
-        { id: 'helped_others', label: 'Helped in reflection', proofStatement: "You're thinking through problems", achieved: false },
-        { id: 'complex_problem', label: 'Solved complex problem', proofStatement: 'You tackled something hard', achieved: false },
+        {
+          id: 'first_bug',
+          label: 'Fixed first bug',
+          proofStatement: 'You debugged your first issue',
+          achieved: false,
+        },
+        {
+          id: 'without_hints',
+          label: 'Solved without hints',
+          proofStatement: 'You figured it out yourself',
+          achieved: false,
+        },
+        {
+          id: 'helped_others',
+          label: 'Helped in reflection',
+          proofStatement: "You're thinking through problems",
+          achieved: false,
+        },
+        {
+          id: 'complex_problem',
+          label: 'Solved complex problem',
+          proofStatement: 'You tackled something hard',
+          achieved: false,
+        },
       ],
       creator: [
-        { id: 'first_creation', label: 'Created something', proofStatement: 'You brought an idea to life', achieved: false },
-        { id: 'unique_feature', label: 'Added unique feature', proofStatement: 'You made it your own', achieved: false },
-        { id: 'three_creations', label: 'Created 3 things', proofStatement: "You're a prolific creator", achieved: false },
-        { id: 'shared_creation', label: 'Shared your creation', proofStatement: 'You put yourself out there', achieved: false },
+        {
+          id: 'first_creation',
+          label: 'Created something',
+          proofStatement: 'You brought an idea to life',
+          achieved: false,
+        },
+        {
+          id: 'unique_feature',
+          label: 'Added unique feature',
+          proofStatement: 'You made it your own',
+          achieved: false,
+        },
+        {
+          id: 'three_creations',
+          label: 'Created 3 things',
+          proofStatement: "You're a prolific creator",
+          achieved: false,
+        },
+        {
+          id: 'shared_creation',
+          label: 'Shared your creation',
+          proofStatement: 'You put yourself out there',
+          achieved: false,
+        },
       ],
       deep_thinker: [
-        { id: 'first_concept', label: 'Understood core concept', proofStatement: 'You grasped the fundamentals', achieved: false },
-        { id: 'connection', label: 'Made a connection', proofStatement: 'You linked ideas together', achieved: false },
-        { id: 'deep_reflection', label: 'Wrote deep reflection', proofStatement: 'You thought critically', achieved: false },
-        { id: 'mastery', label: 'Achieved mastery', proofStatement: 'You truly understand', achieved: false },
+        {
+          id: 'first_concept',
+          label: 'Understood core concept',
+          proofStatement: 'You grasped the fundamentals',
+          achieved: false,
+        },
+        {
+          id: 'connection',
+          label: 'Made a connection',
+          proofStatement: 'You linked ideas together',
+          achieved: false,
+        },
+        {
+          id: 'deep_reflection',
+          label: 'Wrote deep reflection',
+          proofStatement: 'You thought critically',
+          achieved: false,
+        },
+        {
+          id: 'mastery',
+          label: 'Achieved mastery',
+          proofStatement: 'You truly understand',
+          achieved: false,
+        },
       ],
       communicator: [
-        { id: 'first_explanation', label: 'Explained a concept', proofStatement: 'You put it in your own words', achieved: false },
-        { id: 'taught_someone', label: 'Taught someone', proofStatement: 'You shared your knowledge', achieved: false },
-        { id: 'clear_writing', label: 'Wrote clearly', proofStatement: 'You communicated effectively', achieved: false },
-        { id: 'public_share', label: 'Shared publicly', proofStatement: "You're a knowledge sharer", achieved: false },
+        {
+          id: 'first_explanation',
+          label: 'Explained a concept',
+          proofStatement: 'You put it in your own words',
+          achieved: false,
+        },
+        {
+          id: 'taught_someone',
+          label: 'Taught someone',
+          proofStatement: 'You shared your knowledge',
+          achieved: false,
+        },
+        {
+          id: 'clear_writing',
+          label: 'Wrote clearly',
+          proofStatement: 'You communicated effectively',
+          achieved: false,
+        },
+        {
+          id: 'public_share',
+          label: 'Shared publicly',
+          proofStatement: "You're a knowledge sharer",
+          achieved: false,
+        },
       ],
       practitioner: [
-        { id: 'first_application', label: 'Applied in real life', proofStatement: 'You used what you learned', achieved: false },
-        { id: 'solved_real_problem', label: 'Solved real problem', proofStatement: 'You made a real impact', achieved: false },
-        { id: 'consistent_practice', label: 'Practiced consistently', proofStatement: "You're building habits", achieved: false },
-        { id: 'expertise', label: 'Developed expertise', proofStatement: "You're a real practitioner", achieved: false },
+        {
+          id: 'first_application',
+          label: 'Applied in real life',
+          proofStatement: 'You used what you learned',
+          achieved: false,
+        },
+        {
+          id: 'solved_real_problem',
+          label: 'Solved real problem',
+          proofStatement: 'You made a real impact',
+          achieved: false,
+        },
+        {
+          id: 'consistent_practice',
+          label: 'Practiced consistently',
+          proofStatement: "You're building habits",
+          achieved: false,
+        },
+        {
+          id: 'expertise',
+          label: 'Developed expertise',
+          proofStatement: "You're a real practitioner",
+          achieved: false,
+        },
       ],
       athlete: [
-        { id: 'first_attempt', label: 'Made first attempt', proofStatement: 'You started moving', achieved: false },
-        { id: 'consistent_training', label: 'Trained consistently', proofStatement: "You're building strength", achieved: false },
-        { id: 'new_skill', label: 'Learned new skill', proofStatement: 'You expanded your abilities', achieved: false },
-        { id: 'personal_best', label: 'Set personal best', proofStatement: 'You pushed your limits', achieved: false },
+        {
+          id: 'first_attempt',
+          label: 'Made first attempt',
+          proofStatement: 'You started moving',
+          achieved: false,
+        },
+        {
+          id: 'consistent_training',
+          label: 'Trained consistently',
+          proofStatement: "You're building strength",
+          achieved: false,
+        },
+        {
+          id: 'new_skill',
+          label: 'Learned new skill',
+          proofStatement: 'You expanded your abilities',
+          achieved: false,
+        },
+        {
+          id: 'personal_best',
+          label: 'Set personal best',
+          proofStatement: 'You pushed your limits',
+          achieved: false,
+        },
       ],
       performer: [
-        { id: 'first_performance', label: 'Performed once', proofStatement: 'You showed what you can do', achieved: false },
-        { id: 'improved_form', label: 'Improved form', proofStatement: 'You refined your technique', achieved: false },
-        { id: 'public_performance', label: 'Performed publicly', proofStatement: 'You put yourself out there', achieved: false },
-        { id: 'mastered_skill', label: 'Mastered a skill', proofStatement: 'You own this skill', achieved: false },
+        {
+          id: 'first_performance',
+          label: 'Performed once',
+          proofStatement: 'You showed what you can do',
+          achieved: false,
+        },
+        {
+          id: 'improved_form',
+          label: 'Improved form',
+          proofStatement: 'You refined your technique',
+          achieved: false,
+        },
+        {
+          id: 'public_performance',
+          label: 'Performed publicly',
+          proofStatement: 'You put yourself out there',
+          achieved: false,
+        },
+        {
+          id: 'mastered_skill',
+          label: 'Mastered a skill',
+          proofStatement: 'You own this skill',
+          achieved: false,
+        },
       ],
       coach: [
-        { id: 'gave_feedback', label: 'Gave feedback', proofStatement: 'You helped someone improve', achieved: false },
-        { id: 'taught_technique', label: 'Taught technique', proofStatement: 'You shared your knowledge', achieved: false },
-        { id: 'mentored_someone', label: 'Mentored someone', proofStatement: "You're guiding others", achieved: false },
-        { id: 'developed_others', label: 'Developed others', proofStatement: "You're making coaches", achieved: false },
+        {
+          id: 'gave_feedback',
+          label: 'Gave feedback',
+          proofStatement: 'You helped someone improve',
+          achieved: false,
+        },
+        {
+          id: 'taught_technique',
+          label: 'Taught technique',
+          proofStatement: 'You shared your knowledge',
+          achieved: false,
+        },
+        {
+          id: 'mentored_someone',
+          label: 'Mentored someone',
+          proofStatement: "You're guiding others",
+          achieved: false,
+        },
+        {
+          id: 'developed_others',
+          label: 'Developed others',
+          proofStatement: "You're making coaches",
+          achieved: false,
+        },
       ],
     };
 
-    return milestonesByAspiration[aspirationId] || [
-      { id: 'first_step', label: 'Took first step', proofStatement: 'You started your journey', achieved: false },
-      { id: 'consistent', label: 'Stayed consistent', proofStatement: 'You showed up', achieved: false },
-      { id: 'progress', label: 'Made progress', proofStatement: "You're moving forward", achieved: false },
-      { id: 'achieved', label: 'Achieved your goal', proofStatement: 'You did it', achieved: false },
-    ];
+    return (
+      milestonesByAspiration[aspirationId] || [
+        {
+          id: 'first_step',
+          label: 'Took first step',
+          proofStatement: 'You started your journey',
+          achieved: false,
+        },
+        {
+          id: 'consistent',
+          label: 'Stayed consistent',
+          proofStatement: 'You showed up',
+          achieved: false,
+        },
+        {
+          id: 'progress',
+          label: 'Made progress',
+          proofStatement: "You're moving forward",
+          achieved: false,
+        },
+        {
+          id: 'achieved',
+          label: 'Achieved your goal',
+          proofStatement: 'You did it',
+          achieved: false,
+        },
+      ]
+    );
   }
 
   /**

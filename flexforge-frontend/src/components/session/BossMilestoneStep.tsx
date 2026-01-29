@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, ArrowRight, CheckCircle2, Lightbulb, ChevronDown, ChevronUp, BookOpen, ChevronRight, ChevronLeft, RotateCcw } from 'lucide-react';
+import { Trophy, ArrowRight, CheckCircle2, Lightbulb, ChevronDown, ChevronUp, BookOpen, ChevronRight, ChevronLeft, RotateCcw, ExternalLink, Monitor, Copy, Check } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Card, Button, ProgressBar, ExerciseLoadingScreen } from '@/components/common';
 import { StepLayout } from './StepLayout';
-import { CodeSandbox } from './CodeSandbox';
 import {
   QuizSectionExercise,
   MatchingSectionExercise,
@@ -43,18 +42,33 @@ const isProjectBasedCurriculum = (session: Session): boolean => {
     (session.curriculum.bossProjects?.length ?? 0) > 0;
 };
 
-// Coding languages that support live preview
-const CODING_LANGUAGES = ['javascript', 'js', 'typescript', 'ts', 'html', 'css', 'html/css', 'web', 'python', 'react', 'vue', 'node'];
-
-// Map language to CodeSandbox template
-function getTemplateForLanguage(language: string): 'vanilla' | 'react' | 'vue' | 'node' | 'python' {
+// External tool suggestions based on language
+const getExternalToolSuggestions = (language: string): { name: string; url: string; description: string }[] => {
   const lang = language.toLowerCase();
-  if (lang.includes('react')) return 'react';
-  if (lang.includes('vue')) return 'vue';
-  if (lang.includes('node') || lang === 'nodejs') return 'node';
-  if (lang === 'python' || lang === 'py') return 'python';
-  return 'vanilla';
-}
+
+  if (lang.includes('python')) {
+    return [
+      { name: 'VS Code', url: 'https://code.visualstudio.com/', description: 'Recommended IDE with Python extension' },
+      { name: 'PyCharm', url: 'https://www.jetbrains.com/pycharm/', description: 'Professional Python IDE' },
+      { name: 'Replit', url: 'https://replit.com/', description: 'Online Python environment' },
+    ];
+  }
+
+  if (lang.includes('react') || lang.includes('vue') || lang.includes('node')) {
+    return [
+      { name: 'VS Code', url: 'https://code.visualstudio.com/', description: 'Recommended IDE' },
+      { name: 'CodeSandbox', url: 'https://codesandbox.io/', description: 'Online IDE for web projects' },
+      { name: 'StackBlitz', url: 'https://stackblitz.com/', description: 'Online IDE for web projects' },
+    ];
+  }
+
+  // Default for JavaScript, HTML, CSS, etc.
+  return [
+    { name: 'VS Code', url: 'https://code.visualstudio.com/', description: 'Recommended IDE' },
+    { name: 'CodePen', url: 'https://codepen.io/', description: 'Online editor for HTML/CSS/JS' },
+    { name: 'JSFiddle', url: 'https://jsfiddle.net/', description: 'Online JavaScript playground' },
+  ];
+};
 
 // Track saved milestones in localStorage
 const getMilestoneKey = (sessionId: string, bossDay: number) =>
@@ -775,26 +789,25 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
   // Load saved progress for boss milestone
   const savedProgress = getTaskProgress(day.day, 'bossMilestone');
 
-  const [code, setCode] = useState(savedProgress?.answers?.code as unknown as string || '');
+  const [notes, setNotes] = useState(savedProgress?.answers?.notes as unknown as string || '');
   const [isSubmitted, setIsSubmitted] = useState(savedProgress?.showResults ?? false);
   const [showHints, setShowHints] = useState(false);
   const [showSolution, setShowSolution] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
 
-  // Save progress when code changes (for engagement tracking)
+  // Save progress when notes change (for engagement tracking)
   useEffect(() => {
-    if (code.length > 0) {
+    if (notes.length > 0) {
       saveTaskProgress(day.day, 'bossMilestone', {
-        answers: { code } as unknown as Record<string, number | null>,
+        answers: { notes } as unknown as Record<string, number | null>,
         currentIndex: 0,
         showResults: isSubmitted,
       });
     }
-  }, [code, isSubmitted, day.day, saveTaskProgress]);
+  }, [notes, isSubmitted, day.day, saveTaskProgress]);
 
   const language = session.curriculum.metadata?.suggestedLanguage || 'javascript';
-  const isCodingProject = CODING_LANGUAGES.some(lang =>
-    language.toLowerCase().includes(lang)
-  );
+  const externalTools = getExternalToolSuggestions(language);
 
   // Find the current boss project (the one this day belongs to)
   const currentBoss = session.curriculum.bossProjects?.find(
@@ -1021,32 +1034,99 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
         </Card>
       )}
 
-      {/* Code Sandbox for coding projects */}
-      {isCodingProject ? (
-        <CodeSandbox
-          code={code || starterCode}
-          language={language}
-          onCodeChange={setCode}
-          title={`${activeBoss?.title || 'Boss Project'} - Day ${day.day}`}
-          template={getTemplateForLanguage(language)}
-          dependencies={activeBoss?.dependencies as Record<string, string> | undefined}
-          setupInstructions={milestone?.setupInstructions || activeBoss?.setupInstructions}
-        />
-      ) : (
-        <Card>
-          <div className="p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Your work
-            </label>
-            <textarea
-              placeholder="Describe your progress or paste your work here..."
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              className="w-full min-h-[150px] p-3 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
-            />
+      {/* External Tools Required Banner */}
+      <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+              <Monitor className="w-5 h-5 text-blue-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Requires External Tools</h3>
+              <p className="text-sm text-gray-600">Complete this task in your preferred code editor</p>
+            </div>
           </div>
-        </Card>
-      )}
+
+          {/* Suggested Tools */}
+          <div className="mb-4">
+            <p className="text-xs font-medium text-gray-500 mb-2">Suggested tools:</p>
+            <div className="flex flex-wrap gap-2">
+              {externalTools.map((tool) => (
+                <a
+                  key={tool.name}
+                  href={tool.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                >
+                  {tool.name}
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              ))}
+            </div>
+          </div>
+
+          {/* Setup Instructions */}
+          {(milestone?.setupInstructions || activeBoss?.setupInstructions) && (
+            <div className="p-3 bg-white/80 border border-blue-100 rounded-lg mb-4">
+              <p className="text-sm text-gray-700">
+                <span className="font-medium">Setup: </span>
+                {milestone?.setupInstructions || activeBoss?.setupInstructions}
+              </p>
+            </div>
+          )}
+
+          {/* Starter Code with Copy Button */}
+          {starterCode && starterCode.trim() !== '// Start coding here...\n\n' && (
+            <div className="relative">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-gray-500">Starter code:</p>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(starterCode);
+                    setCopiedCode(true);
+                    setTimeout(() => setCopiedCode(false), 2000);
+                  }}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+                >
+                  {copiedCode ? (
+                    <>
+                      <Check className="w-3 h-3 text-green-500" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      Copy code
+                    </>
+                  )}
+                </button>
+              </div>
+              <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg overflow-x-auto text-sm font-mono whitespace-pre-wrap max-h-48">
+                {starterCode}
+              </pre>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Reflection / Notes */}
+      <Card>
+        <div className="p-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Your notes & reflection
+          </label>
+          <p className="text-xs text-gray-500 mb-3">
+            What did you learn? Any challenges? Paste code snippets you're proud of.
+          </p>
+          <textarea
+            placeholder="Write your notes here..."
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            className="w-full min-h-[120px] p-3 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
+          />
+        </div>
+      </Card>
 
       {/* Submit button */}
       {!isSubmitted && !currentDayAlreadySaved ? (
@@ -1059,12 +1139,15 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
             variant="accent"
             size="lg"
             onClick={handleSubmit}
-            disabled={code.length < 10}
+            disabled={notes.length < 5}
             className="w-full"
             leftIcon={<Trophy className="w-5 h-5" />}
           >
-            Save Milestone
+            Mark as Complete
           </Button>
+          <p className="text-xs text-center text-gray-400 mt-2">
+            Add a quick note about what you accomplished
+          </p>
         </motion.div>
       ) : (
         <motion.div
@@ -1075,10 +1158,10 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
             <div className="p-4 text-center">
               <CheckCircle2 className="w-8 h-8 text-green-500 mx-auto mb-2" />
               <h3 className="font-semibold text-green-800">
-                {currentDayAlreadySaved && !isSubmitted ? 'Milestone Already Saved!' : 'Milestone Saved!'}
+                {currentDayAlreadySaved && !isSubmitted ? 'Already Completed!' : 'Milestone Complete!'}
               </h3>
               <p className="text-sm text-green-600">
-                This code is now part of your "{activeBoss?.title}" project
+                Great progress on "{activeBoss?.title}"!
               </p>
             </div>
           </Card>

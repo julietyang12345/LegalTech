@@ -702,6 +702,7 @@ export class SessionService {
       coreLoaded: true,
       status: 'in_progress',
       variantId: result.variantId, // Store variant ID for regen tracking
+      foundationCardConcepts: result.foundationCardConcepts, // Store for deferred generation
     };
 
     // Update currentDay if user is starting a new day
@@ -783,11 +784,15 @@ export class SessionService {
       };
     }
 
-    // Generate deferred content
+    // Generate deferred content with foundation card concepts for consistent personalization
+    // Pass foundationCardConcepts from core content and session's improvement areas
     const result = await this.curriculumService.generateDayDeferredDetails(
       session.curriculum,
       dayNumber,
       tierString,
+      dayOverview.foundationCardConcepts, // From core generation
+      session.improvementAreas,
+      session.lessOfAreas,
     );
 
     let totalTokensUsed = result.tokensUsed;

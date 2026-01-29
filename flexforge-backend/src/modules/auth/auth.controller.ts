@@ -41,9 +41,15 @@ export class AuthController {
   }
 
   private isProduction(): boolean {
-    const nodeEnv = this.configService.get('NODE_ENV') || this.configService.get('nodeEnv');
+    const nodeEnv =
+      this.configService.get('NODE_ENV') || this.configService.get('nodeEnv');
     const isProd = nodeEnv !== 'development' && nodeEnv !== 'test';
-    console.log('🔧 isProduction check - NODE_ENV:', nodeEnv, '→ isProd:', isProd);
+    console.log(
+      '🔧 isProduction check - NODE_ENV:',
+      nodeEnv,
+      '→ isProd:',
+      isProd,
+    );
     return isProd;
   }
 
@@ -61,7 +67,10 @@ export class AuthController {
   }
 
   @Post('register')
-  async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: Response) {
+  async register(
+    @Body() dto: RegisterDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const result = await this.authService.register(
       dto.email,
       dto.password,
@@ -78,13 +87,19 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     console.log('🔐 LOGIN: Starting login for', dto.email);
     const result = await this.authService.login(dto.email, dto.password);
     console.log('🔐 LOGIN: Got token, length:', result.access_token?.length);
 
     this.setAuthCookie(res, result.access_token);
-    console.log('🔐 LOGIN: Cookie set, checking headers:', res.getHeaders()['set-cookie']);
+    console.log(
+      '🔐 LOGIN: Cookie set, checking headers:',
+      res.getHeaders()['set-cookie'],
+    );
 
     return {
       message: 'Login successful',

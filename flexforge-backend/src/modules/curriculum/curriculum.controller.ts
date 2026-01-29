@@ -77,9 +77,7 @@ export class CurriculumController {
         reasoning: result.reasoning,
       };
     } catch (error) {
-      throw new BadRequestException(
-        error.message || 'Failed to estimate days',
-      );
+      throw new BadRequestException(error.message || 'Failed to estimate days');
     }
   }
 

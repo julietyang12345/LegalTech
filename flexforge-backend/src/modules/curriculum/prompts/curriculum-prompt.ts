@@ -1,9 +1,16 @@
 import { SkillLevel } from '../../../database/entities/session.entity';
 import { SkillType, SkillComplexity } from '../services/skill-detector.service';
 import { OutputType } from '../types/learner-prefs.interface';
+import { ContentGenerationContext } from './content-generation-context';
+import {
+  buildPersonalizationInstructions,
+  buildContinuityInstructions,
+  buildFullContextInstructions,
+} from './shared-instructions';
 
 // Learner preferences from onboarding (optional - may not exist for users who skipped onboarding)
-export interface LearnerPrefsForPrompt {
+// Internal interface - only used within this file
+interface LearnerPrefsForPrompt {
   selectedDirection?: string; // The direction they picked (more specific than skillName)
   selectedDirectionOutcome?: string; // "You'll be able to..." - specific deliverable
   directionKeywords?: string[]; // Keywords for the selected direction
@@ -17,7 +24,8 @@ export interface LearnerPrefsForPrompt {
   improvementAreas?: string[]; // User-specified areas to emphasize (e.g., "conflict resolution", "async/await")
 }
 
-export interface CurriculumPromptParams {
+// Internal interface - only used within this file
+interface CurriculumPromptParams {
   skillName: string;
   durationDays: number;
   hoursPerDay: number;
@@ -38,45 +46,34 @@ export interface CurriculumPromptParams {
 }
 
 // ============================================
-// CONTENT LAYER & STRATEGY TYPES (AI-decided per day)
+// CONTENT LAYER & STRATEGY TYPES (used in AI prompt templates)
 // ============================================
-
-// Content layer: What type of learning is this day?
-export type ContentLayer =
-  | 'foundation'
-  | 'language_core'
-  | 'framework'
-  | 'tool'
-  | 'project';
-
-// Video strategy: Should we search for video? (AI decides based on topic)
-export type VideoStrategy = 'skip' | 'optional' | 'helpful' | 'recommended';
-
-// Transferability: Does this skill transfer to other contexts?
-export type Transferability = 'high' | 'medium' | 'low';
-
-// Content source: Where to get the content
-export type ContentSource = 'university' | 'youtube' | 'text' | 'docs';
+// These types document what values the AI should use in responses:
+// - ContentLayer: 'foundation' | 'language_core' | 'framework' | 'tool' | 'project'
+// - VideoStrategy: 'skip' | 'optional' | 'helpful' | 'recommended'
+// - Transferability: 'high' | 'medium' | 'low'
+// - ContentSource: 'university' | 'youtube' | 'text' | 'docs'
 
 // ============================================
 // SECTION REGISTRY (Unified Section-Based Task System)
 // ============================================
 
-// Section types available for each skill category
-export type UniversalSectionType =
+// Section types available for each skill category (internal types)
+type UniversalSectionType =
   | 'quiz'
   | 'matching'
   | 'fillBlank'
   | 'openEnded';
-export type SequenceSectionType = 'reorder'; // Only for skills where ordering matters (language, physical, some knowledge)
-export type LanguageSectionType = 'toneSelect' | 'translation' | 'typing';
-export type CodeSectionType =
+type SequenceSectionType = 'reorder'; // Only for skills where ordering matters (language, physical, some knowledge)
+type LanguageSectionType = 'toneSelect' | 'translation' | 'typing';
+type CodeSectionType =
   | 'codeCompletion'
   | 'debugging'
   | 'outputPrediction';
-export type PhysicalSectionType = 'formCheck' | 'safetyCheck';
-export type DesignSectionType = 'designCritique';
+type PhysicalSectionType = 'formCheck' | 'safetyCheck';
+type DesignSectionType = 'designCritique';
 
+// Exported union type for use in other modules
 export type SectionType =
   | UniversalSectionType
   | SequenceSectionType
@@ -559,65 +556,6 @@ function getSkillsString(skeleton: any, dayObjectives?: string[]): string {
   return Array.isArray(skills) ? skills.join(', ') : String(skills);
 }
 
-// Shared reflection template
-function getReflectionTemplate(
-  type: 'project' | 'practice' | 'language' = 'practice',
-): object {
-  const baseQuestions = [
-    {
-      id: 'confidence',
-      question: 'Rate your confidence (1-5)?',
-      type: 'scale',
-    },
-  ];
-
-  if (type === 'project') {
-    return {
-      questions: [
-        ...baseQuestions,
-        { id: 'clicked', question: 'What clicked today?', type: 'text' },
-        { id: 'foggy', question: "What's still unclear?", type: 'text' },
-      ],
-    };
-  }
-
-  if (type === 'language') {
-    return {
-      questions: [
-        {
-          id: 'confidence',
-          question: "Rate your confidence with today's vocabulary (1-5)",
-          type: 'scale',
-        },
-        {
-          id: 'hardest',
-          question: 'Which exercise type was hardest?',
-          type: 'choice',
-          options: ['Fill in blank', 'Translation', 'Reordering', 'Typing'],
-        },
-        {
-          id: 'review',
-          question: 'Which words need more review?',
-          type: 'text',
-        },
-      ],
-    };
-  }
-
-  // practice (intensive)
-  return {
-    questions: [
-      ...baseQuestions,
-      { id: 'application', question: 'How will you apply this?', type: 'text' },
-      {
-        id: 'questions',
-        question: 'What questions do you still have?',
-        type: 'text',
-      },
-    ],
-  };
-}
-
 export interface DayDetailParams {
   skillName: string;
   dayNumber: number;
@@ -875,15 +813,21 @@ REQUIREMENTS:
  * - Project-based skills: bossMilestone + reflection
  * - Practice-based skills: intensivePractice + reflection
  * Called after core loads, while user watches video
+ *
+ * Can accept either DayDetailParams (legacy) or ContentGenerationContext (unified).
+ * When using ContentGenerationContext, all personalization is passed through consistently.
  */
-export function buildDayDetailDeferredPrompt(params: DayDetailParams): {
+export function buildDayDetailDeferredPrompt(
+  params: DayDetailParams,
+  ctx?: ContentGenerationContext,
+): {
   systemPrompt: string;
   userPrompt: string;
 } {
   // Use language learning deferred prompt if applicable
   // Only check isLanguageLearning - targetLanguage defaults to 'other' inside the function
   if (params.isLanguageLearning) {
-    return buildLanguageLearningDeferredPrompt(params);
+    return buildLanguageLearningDeferredPrompt(params, ctx);
   }
 
   // Check if practice-based (non-project-based)
@@ -893,17 +837,20 @@ export function buildDayDetailDeferredPrompt(params: DayDetailParams): {
 
   // For practice-based skills, generate intensive practice sections
   if (!isProjectBased) {
-    return buildPracticeBasedDeferredPrompt(params);
+    return buildPracticeBasedDeferredPrompt(params, ctx);
   }
 
   // For project-based skills, generate bossMilestone + reflection
-  return buildProjectBasedDeferredPrompt(params);
+  return buildProjectBasedDeferredPrompt(params, ctx);
 }
 
 /**
  * Project-based DEFERRED prompt - bossMilestone for project-based skills
  */
-function buildProjectBasedDeferredPrompt(params: DayDetailParams): {
+function buildProjectBasedDeferredPrompt(
+  params: DayDetailParams,
+  ctx?: ContentGenerationContext,
+): {
   systemPrompt: string;
   userPrompt: string;
 } {
@@ -935,14 +882,18 @@ function buildProjectBasedDeferredPrompt(params: DayDetailParams): {
   // Get skill-type-specific task1 template (2 section types per skill)
   const task1Template = getTask1SectionTemplate(skillType);
 
+  // Build unified context instructions if context is provided
+  const contextInstructions = ctx ? buildFullContextInstructions(ctx) : '';
+
   const systemPrompt = `Generate DEFERRED content for Day ${dayNumber}: "${params.skillName}"
 Type: ${params.skillType} | Level: ${params.skillLevel}${params.suggestedLanguage ? ` | Lang: ${params.suggestedLanguage}` : ''}
 Topics: ${skillsStr}
 ${levelGuidance.complexityGuidance}
-
+${contextInstructions}
 TASK1: 4-6 questions testing today's foundationCards ONLY (no new knowledge)
 - Level 1 "Differentiation" (2-3 Qs): "X or Y?", compare/contrast, edge cases
 - Level 2 "Application" (2-3 Qs): "which approach fits?", "why would B fail?"
+${ctx?.generatedContent?.foundationCardConcepts?.length ? `- Reference these concepts: ${ctx.generatedContent.foundationCardConcepts.join(', ')}` : ''}
 
 BOSS MILESTONE (${newCodeLines} new lines):
 - starterCode: ${starterCodeLines} lines REAL RUNNABLE code with TODOs marking where user adds code
@@ -956,6 +907,7 @@ BOSS MILESTONE (${newCodeLines} new lines):
   - runCommand: How to run the code (e.g., "node index.js", "npm start", "npm run dev")
 - DO NOT use placeholder text - generate ACTUAL code
 - Validation: user runs code, sees expectedOutput
+${ctx?.continuity?.bossProjectTarget ? `- Boss Project: "${ctx.continuity.bossProjectTarget}" - conceptConnection should reference a foundationCard concept` : ''}
 
 Output valid JSON.`;
 
@@ -1271,7 +1223,10 @@ function getIntensiveSectionTemplate(
  * Practice-based DEFERRED prompt - intensive practice for non-project-based skills
  * Uses skill-specific section types from SECTION_REGISTRY.intensive or custom sections
  */
-function buildPracticeBasedDeferredPrompt(params: DayDetailParams): {
+function buildPracticeBasedDeferredPrompt(
+  params: DayDetailParams,
+  ctx?: ContentGenerationContext,
+): {
   systemPrompt: string;
   userPrompt: string;
 } {
@@ -1304,14 +1259,18 @@ function buildPracticeBasedDeferredPrompt(params: DayDetailParams): {
   // Get skill-type-specific task1 template (2 section types per skill)
   const task1Template = getTask1SectionTemplate(skillType);
 
+  // Build unified context instructions if context is provided
+  const contextInstructions = ctx ? buildFullContextInstructions(ctx) : '';
+
   const systemPrompt = `Generate DEFERRED content for Day ${dayNumber}: "${params.skillName}"
 Type: ${skillType}${params.customSections ? ' (hybrid)' : ''} | Level: ${params.skillLevel}
 Topics: ${skillsStr}
 ${levelGuidance.complexityGuidance}
-
+${contextInstructions}
 TASK1: 4-6 questions testing today's foundationCards ONLY (no new knowledge)
 - Level 1 "Differentiation" (2-3 Qs): "X or Y?", compare/contrast, edge cases
 - Level 2 "Application" (2-3 Qs): "which approach fits?", "why would B fail?"
+${ctx?.generatedContent?.foundationCardConcepts?.length ? `- Reference these concepts: ${ctx.generatedContent.foundationCardConcepts.join(', ')}` : ''}
 
 INTENSIVE PRACTICE:
 - miniFoundationCards: ${miniCardCount} cards, NEW concepts not in foundation cards
@@ -1359,7 +1318,10 @@ Output valid JSON.`;
 /**
  * Language Learning DEFERRED prompt - intensive practice exercises
  */
-function buildLanguageLearningDeferredPrompt(params: DayDetailParams): {
+function buildLanguageLearningDeferredPrompt(
+  params: DayDetailParams,
+  ctx?: ContentGenerationContext,
+): {
   systemPrompt: string;
   userPrompt: string;
 } {
@@ -1383,12 +1345,16 @@ function buildLanguageLearningDeferredPrompt(params: DayDetailParams): {
         ? '3-4'
         : '2-3';
 
+  // Build unified context instructions if context is provided
+  const contextInstructions = ctx ? buildFullContextInstructions(ctx) : '';
+
   const systemPrompt = `Generate DEFERRED content for Day ${dayNumber}: "${params.skillName}"
 Language: ${lang} | Proficiency: ${profLevel} | Level: ${params.skillLevel}
 Topics: ${skillsStr}
 ${levelGuidance.complexityGuidance}
-
+${contextInstructions}
 TASK1: Quiz/fillBlank testing today's vocabulary ONLY (no new words)
+${ctx?.generatedContent?.foundationCardConcepts?.length ? `- Reference these vocabulary words: ${ctx.generatedContent.foundationCardConcepts.join(', ')}` : ''}
 
 INTENSIVE PRACTICE:
 - miniFoundationCards: ${miniCardCount} cards, NEW vocabulary not in foundation cards
@@ -1722,45 +1688,48 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
   });
   const sectionTypes = sections.task1.join(' + ');
 
-  // Build improvement areas instruction if provided
-  const improvementAreasInstruction = params.improvementAreas?.length
-    ? `\nIMPROVEMENT AREAS: ${params.improvementAreas.join(', ')}. Incorporate these into examples and scenarios where relevant.`
-    : '';
+  // Build personalization instructions using shared builder
+  // Create a temporary context for the shared instruction builder
+  const tempContext: ContentGenerationContext = {
+    skillName: params.skillName,
+    skillType: params.skillType,
+    skillLevel: params.skillLevel,
+    complexity: params.complexity,
+    suggestedLanguage: params.suggestedLanguage,
+    outputType: params.outputType,
+    isProjectBased,
+    userTier: params.userTier,
+    hoursPerDay: params.hoursPerDay,
+    dayNumber: params.dayNumber,
+    dayTitle: params.dayTitle,
+    dayObjectives: params.dayObjectives,
+    skeleton: params.skeleton,
+    isLanguageLearning: params.isLanguageLearning,
+    targetLanguage: params.targetLanguage,
+    proficiencyLevel: params.proficiencyLevel,
+    customSections: params.customSections,
+    personalization: {
+      improvementAreas: params.improvementAreas,
+      lessOfAreas: params.lessOfAreas,
+      confusedConcepts: params.previousDayReflection?.confusedConcepts,
+      whatsFoggy: params.previousDayReflection?.whatsFoggy as
+        | 'when'
+        | 'how'
+        | 'connection'
+        | 'everything'
+        | undefined,
+      confidence: params.previousDayReflection?.confidence,
+      boostCompleted: params.previousDayReflection?.boostCompleted,
+    },
+    continuity: {
+      previousDayTitle: params.previousDayTitle,
+      previousDayConcept: params.previousDayConcept,
+    },
+  };
 
-  // Build less of areas instruction if provided
-  const lessOfAreasInstruction = params.lessOfAreas?.length
-    ? `\nREDUCE CONTENT FOR: ${params.lessOfAreas.join(', ')}. Minimize examples, scenarios, and explanations involving these areas. Focus on other aspects instead.`
-    : '';
-
-  // Build reflection-based personalization instructions
-  let reflectionInstruction = '';
-  if (params.previousDayReflection) {
-    const { whatsFoggy, confusedConcepts, confidence } =
-      params.previousDayReflection;
-
-    // Handle "what's foggy" - adjust content based on user's confusion type
-    if (whatsFoggy) {
-      const foggyInstructions: Record<string, string> = {
-        when: 'YESTERDAY FEEDBACK: User was unclear on WHEN to apply concepts. Add clear "use this when..." context to examples. Include real-world scenarios showing appropriate timing and situations.',
-        how: 'YESTERDAY FEEDBACK: User struggled with HOW to apply concepts. Include step-by-step application examples. Show practical implementation with clear before/after demonstrations.',
-        connection:
-          'YESTERDAY FEEDBACK: User had trouble seeing HOW CONCEPTS CONNECT. Explicitly show relationships between ideas. Use "this builds on..." and "this relates to..." framing.',
-        everything:
-          'YESTERDAY FEEDBACK: User found everything confusing. Start with a brief 2-3 sentence recap of key points. Use simpler examples and build up gradually.',
-      };
-      reflectionInstruction += `\n${foggyInstructions[whatsFoggy] || ''}`;
-    }
-
-    // Handle confused concepts - add targeted review
-    if (confusedConcepts?.length) {
-      reflectionInstruction += `\nREVIEW NEEDED: User was confused about [${confusedConcepts.join(', ')}]. If today's content builds on these, include a brief clarifying example.`;
-    }
-
-    // Handle low confidence - add encouragement and scaffolding
-    if (confidence && confidence < 3) {
-      reflectionInstruction += `\nSCAFFOLDING: User had low confidence yesterday (${confidence}/5). Use encouraging framing and break down complex steps.`;
-    }
-  }
+  const personalizationInstructions =
+    buildPersonalizationInstructions(tempContext);
+  const continuityInstructions = buildContinuityInstructions(tempContext);
 
   // Dynamic part - skill name is checked against language detection in static instructions
   const skillGuidance = getSkillTypeGuidance(
@@ -1777,7 +1746,8 @@ Type: ${params.skillType} | Level: ${params.skillLevel} | Sections: ${sectionTyp
 ${skillGuidance}
 
 ${levelGuidance.complexityGuidance}
-CONTENT QUANTITY: ${levelGuidance.foundationCardCount} foundation cards covering the Topics above, ${levelGuidance.quizQuestionCount} quiz/exercise questions total${improvementAreasInstruction}${lessOfAreasInstruction}${reflectionInstruction}`;
+CONTENT QUANTITY: ${levelGuidance.foundationCardCount} foundation cards covering the Topics above, ${levelGuidance.quizQuestionCount} quiz/exercise questions total
+${personalizationInstructions}${continuityInstructions}`;
 
   // User prompt for regular (non-language) skills - CORE content only (task1 moved to deferred)
   const userPrompt = `Day ${params.dayNumber}: "${params.dayTitle}" for skill "${params.skillName}"

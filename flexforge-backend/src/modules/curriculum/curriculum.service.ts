@@ -22,6 +22,11 @@ import {
   DayDetailParams,
   BossDetailParams,
 } from './prompts/curriculum-prompt';
+import {
+  ContentGenerationContext,
+  buildContentGenerationContext,
+  extractFoundationCardConcepts,
+} from './prompts/content-generation-context';
 import { formatTime } from './utils/shared.utils';
 
 export interface CurriculumResult {
@@ -50,6 +55,8 @@ export interface DayCoreResult {
   cost: number;
   fromCache?: boolean;
   variantId?: string;
+  /** Concepts from foundation cards, passed to deferred generation for consistency */
+  foundationCardConcepts?: string[];
 }
 
 export interface DayDeferredResult {
@@ -95,6 +102,9 @@ const GENERIC_QUERY_WORDS = new Set([
 @Injectable()
 export class CurriculumService {
   private readonly logger = new Logger(CurriculumService.name);
+
+  // Minimum confidence threshold for accepting video matches
+  private readonly MIN_VIDEO_CONFIDENCE = 40;
 
   // Cache for AI-generated search queries: key = "skillName:dayNumber:level"
   private searchQueryCache = new Map<string, string>();
@@ -775,7 +785,6 @@ Return JSON only:
       proficiencyLevel: skillDetection.proficiencyLevel,
     };
 
-
     // All days are skeletons - full content generated on-demand when user starts each day
     curriculum.days = curriculum.days.map((day: any, index: number) => ({
       ...day,
@@ -962,7 +971,9 @@ Return JSON only:
         return null;
       });
     } else {
-      this.logger.log(`⏭️ Skipping university resource search (videoStrategy=skip)`);
+      this.logger.log(
+        `⏭️ Skipping university resource search (videoStrategy=skip)`,
+      );
     }
 
     if (contentSource === 'docs') {
@@ -1006,7 +1017,6 @@ Return JSON only:
       // User-specified areas to reduce content for
       lessOfAreas,
     };
-
 
     const { staticPart, dynamicPart, userPrompt } =
       buildCacheableDayDetailCorePrompt(params);
@@ -1152,8 +1162,7 @@ Return JSON only:
       : null;
     const docResult = docFetchPromise ? await docFetchPromise : null;
 
-    // Minimum confidence threshold for video sources
-    const MIN_VIDEO_CONFIDENCE = 40;
+    // Minimum confidence thresholds for content sources
     const MIN_UNIVERSITY_CONFIDENCE = 30;
 
     // Add university resources (lecture videos, notes, problem sets) if available
@@ -1243,7 +1252,7 @@ Return JSON only:
         (r: any) => r.type === 'lecture_video',
       )?.confidence || 0;
     const hasYouTube =
-      youtubeConfidence >= MIN_VIDEO_CONFIDENCE &&
+      youtubeConfidence >= this.MIN_VIDEO_CONFIDENCE &&
       videoResult?.rawResult?.success;
     const hasUniversity =
       universityVideoConfidence >= MIN_UNIVERSITY_CONFIDENCE;
@@ -1308,12 +1317,19 @@ Return JSON only:
       `✅ Day ${dayNumber} CORE generated. Tokens: ${aiResponse.tokensUsed}`,
     );
 
+    // Extract foundation card concepts for passing to deferred generation
+    const foundationCardConcepts = extractFoundationCardConcepts(coreContent);
+    this.logger.log(
+      `📚 Extracted ${foundationCardConcepts.length} foundation card concepts for deferred generation`,
+    );
+
     return {
       coreContent,
       tokensUsed: aiResponse.tokensUsed,
       cost: aiResponse.cost,
       fromCache: false,
       variantId,
+      foundationCardConcepts,
     };
   }
 
@@ -1321,11 +1337,18 @@ Return JSON only:
    * Generate DEFERRED day content (background load)
    * Returns: reflection
    * Called after core loads, while user watches video
+   *
+   * @param foundationCardConcepts - Concepts from core content for consistent personalization
+   * @param improvementAreas - User-specified areas to emphasize
+   * @param lessOfAreas - User-specified areas to reduce content for
    */
   async generateDayDeferredDetails(
     curriculum: any,
     dayNumber: number,
     userTier: string = 'FREE',
+    foundationCardConcepts?: string[],
+    improvementAreas?: string[],
+    lessOfAreas?: string[],
   ): Promise<DayDeferredResult> {
     this.logger.log(`⏳ Generating Day ${dayNumber} DEFERRED content...`);
 
@@ -1351,6 +1374,35 @@ Return JSON only:
       };
     }
 
+    // Get reflection data from previous day for personalization
+    const previousDay = curriculum.days.find(
+      (d: any) => d.day === dayNumber - 1,
+    );
+    const previousDayReflection = previousDay?.reflectionData
+      ? {
+          confusedConcepts: previousDay.reflectionData.confusedConcepts,
+          confidence: previousDay.reflectionData.confidence,
+          boostCompleted: previousDay.reflectionData.boostCompleted,
+          whatsFoggy: previousDay.reflectionData.whatsFoggy,
+        }
+      : undefined;
+
+    // Build unified content generation context
+    const ctx = buildContentGenerationContext(curriculum, dayNumber, {
+      userTier,
+      improvementAreas,
+      lessOfAreas,
+      previousDayReflection,
+    });
+
+    // Add foundation card concepts from core content
+    if (foundationCardConcepts?.length) {
+      ctx.generatedContent = { foundationCardConcepts };
+      this.logger.log(
+        `📚 Using ${foundationCardConcepts.length} foundation concepts for deferred content`,
+      );
+    }
+
     const params: DayDetailParams = {
       skillName: curriculum.metadata.skillName,
       dayNumber,
@@ -1369,9 +1421,17 @@ Return JSON only:
       isLanguageLearning: curriculum.metadata.isLanguageLearning,
       targetLanguage: curriculum.metadata.targetLanguage,
       proficiencyLevel: curriculum.metadata.proficiencyLevel,
+      // Personalization
+      improvementAreas,
+      lessOfAreas,
+      previousDayReflection,
     };
 
-    const { systemPrompt, userPrompt } = buildDayDetailDeferredPrompt(params);
+    // Pass context to deferred prompt builder for unified personalization
+    const { systemPrompt, userPrompt } = buildDayDetailDeferredPrompt(
+      params,
+      ctx,
+    );
 
     const aiResponse = await this.aiService.routeRequest(
       AITask.CURRICULUM_GENERATION,
@@ -1711,15 +1771,14 @@ Return JSON only:
       `🔍 VIDEO RESULT: success=${videoResult?.success}, video=${videoResult?.video?.title || 'none'}, matchPercent=${videoResult?.matchPercent || 0}, error=${videoResult?.error || 'none'}`,
     );
 
-    // Minimum confidence threshold - reject low quality matches
-    const MIN_VIDEO_CONFIDENCE = 40;
+    // Check if video meets minimum confidence threshold
     const meetsMinConfidence =
       videoResult?.matchPercent &&
-      videoResult.matchPercent >= MIN_VIDEO_CONFIDENCE;
+      videoResult.matchPercent >= this.MIN_VIDEO_CONFIDENCE;
 
     if (videoResult?.success && !meetsMinConfidence) {
       this.logger.log(
-        `⚠️ Video rejected: matchPercent ${videoResult?.matchPercent}% < ${MIN_VIDEO_CONFIDENCE}% threshold`,
+        `⚠️ Video rejected: matchPercent ${videoResult?.matchPercent}% < ${this.MIN_VIDEO_CONFIDENCE}% threshold`,
       );
     }
 
@@ -1775,7 +1834,7 @@ Return JSON only:
         let alternatives: any[] = [];
         if (includeAlternatives && videoResult.alternatives) {
           alternatives = videoResult.alternatives
-            .filter((alt: any) => alt.matchPercent >= MIN_VIDEO_CONFIDENCE)
+            .filter((alt: any) => alt.matchPercent >= this.MIN_VIDEO_CONFIDENCE)
             .map((alt: any) => ({
               videoId: alt.video.videoId,
               title: alt.video.title,
@@ -1982,9 +2041,10 @@ Return JSON only:
       for (const card of cards.slice(0, 5)) {
         if (card.concept) {
           // Create a concise learning point from the concept
-          const point = card.concept.length > 60
-            ? card.concept.substring(0, 57) + '...'
-            : card.concept;
+          const point =
+            card.concept.length > 60
+              ? card.concept.substring(0, 57) + '...'
+              : card.concept;
           points.push(point);
         }
       }
