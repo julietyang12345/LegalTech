@@ -927,39 +927,43 @@ Return JSON only:
     );
 
     // Start parallel searches for university resources and documentation
-    // Always search university alongside YouTube - pick best result by confidence
+    // Skip university search if video is skipped (no need for lecture videos/notes)
     let universityResourcePromise: Promise<any> | null = null;
     let docFetchPromise: Promise<DocFetchResult | null> | null = null;
 
-    // Always run university search in parallel with YouTube
-    this.logger.log(
-      `🎓 Starting university resource search for: "${universitySearchQuery}" (objectives: ${dayObjectives.slice(0, 2).join(', ')})`,
-    );
-    universityResourcePromise = Promise.all([
-      this.universityResource.searchResources(
-        universitySearchQuery,
-        'lecture_video',
-        2,
-        dayObjectives,
-      ),
-      this.universityResource.searchResources(
-        universitySearchQuery,
-        'lecture_notes',
-        2,
-        dayObjectives,
-      ),
-      this.universityResource.searchResources(
-        universitySearchQuery,
-        'problem_set',
-        2,
-        dayObjectives,
-      ),
-    ]).catch((error) => {
-      this.logger.warn(
-        `⚠️ University resource search failed: ${error.message}`,
+    // Only run university search if video is not skipped
+    if (videoStrategy !== 'skip') {
+      this.logger.log(
+        `🎓 Starting university resource search for: "${universitySearchQuery}" (objectives: ${dayObjectives.slice(0, 2).join(', ')})`,
       );
-      return null;
-    });
+      universityResourcePromise = Promise.all([
+        this.universityResource.searchResources(
+          universitySearchQuery,
+          'lecture_video',
+          2,
+          dayObjectives,
+        ),
+        this.universityResource.searchResources(
+          universitySearchQuery,
+          'lecture_notes',
+          2,
+          dayObjectives,
+        ),
+        this.universityResource.searchResources(
+          universitySearchQuery,
+          'problem_set',
+          2,
+          dayObjectives,
+        ),
+      ]).catch((error) => {
+        this.logger.warn(
+          `⚠️ University resource search failed: ${error.message}`,
+        );
+        return null;
+      });
+    } else {
+      this.logger.log(`⏭️ Skipping university resource search (videoStrategy=skip)`);
+    }
 
     if (contentSource === 'docs') {
       this.logger.log(

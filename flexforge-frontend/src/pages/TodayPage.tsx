@@ -139,7 +139,7 @@ function NoSessionState() {
       </p>
       <Button
         size="xl"
-        onClick={() => navigate('/start')}
+        onClick={() => navigate('/confirm')}
         rightIcon={<ChevronRight className="w-5 h-5" />}
       >
         Create Your First Curriculum
@@ -185,7 +185,7 @@ export function TodayPage() {
       await deleteSession(activeSession.id);
 
       // 3. Navigate back to start to create a new one
-      navigate('/start');
+      navigate('/confirm');
     } catch (err) {
       console.error('Failed to regenerate:', err);
       setIsRegenerating(false);

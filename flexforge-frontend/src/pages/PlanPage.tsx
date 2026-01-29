@@ -242,7 +242,7 @@ export function PlanPage() {
           <p className="text-gray-600 mb-6">
             Create a curriculum to see your learning timeline here.
           </p>
-          <Button onClick={() => navigate('/start')} leftIcon={<Plus className="w-4 h-4" />}>
+          <Button onClick={() => navigate('/confirm')} leftIcon={<Plus className="w-4 h-4" />}>
             Create Curriculum
           </Button>
         </Card>
@@ -324,7 +324,7 @@ export function PlanPage() {
         <div className="mt-8 pt-6 border-t border-gray-200 text-center">
           <Button
             variant="ghost"
-            onClick={() => navigate('/start')}
+            onClick={() => navigate('/confirm')}
             leftIcon={<Plus className="w-4 h-4" />}
           >
             Create another curriculum

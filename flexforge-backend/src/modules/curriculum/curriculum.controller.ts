@@ -10,6 +10,7 @@ import {
 import { QuotaTier } from '../../database/entities/user.entity';
 import { CurriculumService } from './curriculum.service';
 import { CurriculumCacheService } from './services/curriculum-cache.service';
+import { SkillDetectorService } from './services/skill-detector.service';
 import { GenerateCurriculumDto } from './dto/generate-curriculum.dto';
 import {
   GenerateCurriculumWithCacheDto,
@@ -33,6 +34,7 @@ export class CurriculumController {
     private curriculumService: CurriculumService,
     private cacheService: CurriculumCacheService,
     private videoMatcher: VideoMatchingService,
+    private skillDetector: SkillDetectorService,
   ) {}
 
   /**
@@ -55,6 +57,28 @@ export class CurriculumController {
     } catch (error) {
       throw new BadRequestException(
         error.message || 'Failed to generate curriculum',
+      );
+    }
+  }
+
+  /**
+   * POST /api/v1/curriculum/estimate-days
+   * Get AI estimation for how many days a skill will take to learn
+   */
+  @Post('estimate-days')
+  async estimateDays(@Body() body: { skillName: string }) {
+    try {
+      const result = await this.skillDetector.detectSkillType(body.skillName);
+
+      return {
+        skillType: result.skillType,
+        complexity: result.complexity,
+        estimatedDaysNeeded: result.estimatedDaysNeeded,
+        reasoning: result.reasoning,
+      };
+    } catch (error) {
+      throw new BadRequestException(
+        error.message || 'Failed to estimate days',
       );
     }
   }

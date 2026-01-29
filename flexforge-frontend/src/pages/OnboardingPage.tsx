@@ -155,7 +155,7 @@ export default function OnboardingPage() {
       await refreshUser();
 
       // Navigate to start page
-      navigate('/start', { replace: true });
+      navigate('/confirm', { replace: true });
     } catch (err: any) {
       console.error('Failed to complete onboarding:', err);
       setError(err.response?.data?.message || 'Failed to save preferences. Please try again.');

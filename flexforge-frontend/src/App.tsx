@@ -14,7 +14,7 @@ import {
   LoginPage,
   RegisterPage,
   OnboardingPage,
-  StartPage,
+  ConfirmationPage,
   TodayPage,
   SessionPage,
   PlanPage,
@@ -54,10 +54,10 @@ function App() {
 
           {/* Protected routes - require login + onboarding */}
           <Route
-            path="/start"
+            path="/confirm"
             element={
               <ProtectedRoute>
-                <StartPage />
+                <ConfirmationPage />
               </ProtectedRoute>
             }
           />

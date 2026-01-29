@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Brain, Sparkles, Zap, Target, Code2, Lightbulb, Puzzle, Rocket, Star } from 'lucide-react';
 
 interface ExerciseLoadingScreenProps {
-  type: 'task' | 'intensive' | 'quiz' | 'code';
+  type: 'task' | 'intensive' | 'quiz' | 'code' | 'reflection';
   skillName?: string;
   dayNumber?: number;
 }
@@ -37,6 +37,13 @@ const LOADING_MESSAGES: Record<string, string[]> = {
     'Loading code snippets...',
     'Setting up your dev playground...',
     'Initializing the code editor...',
+  ],
+  reflection: [
+    'Preparing your reflection questions...',
+    'Loading today\'s learning summary...',
+    'Getting your wrap-up ready...',
+    'Crafting thoughtful prompts...',
+    'Almost ready for reflection...',
   ],
 };
 
@@ -326,7 +333,11 @@ export function ExerciseLoadingScreen({ type, skillName, dayNumber }: ExerciseLo
         className="text-center mb-6"
       >
         <h2 className="text-xl font-bold text-gray-800 mb-1">
-          {type === 'intensive' ? 'Intensive Practice' : 'Preparing Exercises'}
+          {type === 'intensive' && 'Intensive Practice'}
+          {type === 'reflection' && 'Preparing Reflection'}
+          {type === 'quiz' && 'Loading Quiz'}
+          {type === 'code' && 'Setting Up Code Challenge'}
+          {type === 'task' && 'Preparing Exercises'}
         </h2>
         {skillName && (
           <p className="text-gray-500 text-sm">

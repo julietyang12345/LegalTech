@@ -19,7 +19,7 @@ export function RegisterPage() {
     
     try {
       await register(email, password, name);
-      navigate('/start', { replace: true });
+      navigate('/confirm', { replace: true });
     } catch (_err) {
       // Error is handled by store
     }

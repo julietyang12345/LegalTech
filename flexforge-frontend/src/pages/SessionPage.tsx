@@ -224,9 +224,30 @@ function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session:
   const [loadingFormatType, setLoadingFormatType] = useState<TaskFormat | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const { getAlternativeTaskFormat } = useSessionStore();
+  const { getAlternativeTaskFormat, isDeferredLoading } = useSessionStore();
 
-  if (!task) return null;
+  // Show loading screen when task1 is not yet available (deferred content still loading)
+  if (!task) {
+    return (
+      <div className="max-w-lg mx-auto">
+        <ExerciseLoadingScreen
+          type="task"
+          skillName={session.skillName}
+          dayNumber={day.day}
+        />
+        {!isDeferredLoading && (
+          <div className="text-center mt-4">
+            <button
+              onClick={onComplete}
+              className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              Skip for now
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // For section-based formats (sections, mixed), use unified SectionTaskStep
   // This handles ALL skill types with appropriate section rendering
@@ -421,6 +442,7 @@ export function SessionPage() {
     isRegenerating,
     hasStepEngagement,
     loadDayDeferredContent,
+    loadDayCoreContent,
   } = useSessionStore();
 
   const { celebrate, addSystemMessage } = useCompanionStore();
@@ -439,12 +461,6 @@ export function SessionPage() {
     }
   }, [activeSession, currentDay, startDay]);
 
-  // Proactively load deferred content when day starts (if not already loaded)
-  useEffect(() => {
-    if (activeSession && currentDay && !currentDay.reflection && !isDeferredLoading) {
-      loadDayDeferredContent(currentDay.day).catch(console.error);
-    }
-  }, [activeSession, currentDay, isDeferredLoading, loadDayDeferredContent]);
 
   // Get available steps (filter out skipped ones)
   const availableSteps = STEP_ORDER.filter(step => {
@@ -482,7 +498,6 @@ export function SessionPage() {
 
   const {
     submitPracticeProject,
-    loadDayCoreContent,
     resetSteps,
   } = useSessionStore();
 
@@ -631,22 +646,6 @@ export function SessionPage() {
     );
   }
 
-  // Show loading screen if on reflection step and deferred content is missing
-  const deferredContentMissing = currentStep === 'reflection' && !currentDay.reflection;
-
-  if (deferredContentMissing) {
-    return (
-      <FocusModeLayout>
-        <div className="max-w-lg mx-auto">
-          <ExerciseLoadingScreen
-            type="task"
-            skillName={activeSession.skillName}
-            dayNumber={currentDay.day}
-          />
-        </div>
-      </FocusModeLayout>
-    );
-  }
 
   // Regenerating day content
   if (isRegenerating) {
