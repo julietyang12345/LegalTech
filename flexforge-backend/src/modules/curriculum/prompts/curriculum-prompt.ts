@@ -22,6 +22,8 @@ interface LearnerPrefsForPrompt {
   familiarity?: 'new' | 'know_basics' | 'skilled'; // How familiar with topic
   sessionLength?: 'short' | 'medium' | 'long'; // Daily learning time availability
   improvementAreas?: string[]; // User-specified areas to emphasize (e.g., "conflict resolution", "async/await")
+  // Explicit learning style choice from onboarding (projects vs practice)
+  learningStyle?: 'projects' | 'practice';
 }
 
 // Internal interface - only used within this file
@@ -439,18 +441,25 @@ function getSkillLevelGuidance(skillLevel: SkillLevel): {
  * Determines if learning should be project-based (boss projects) or practice-based (practice projects)
  *
  * Priority (user intent first!):
- * 1. User's goal from questionnaire (outputType) - TAKES PRIORITY:
+ * 1. User's explicit learningStyle choice ('projects' or 'practice') - HIGHEST PRIORITY
+ * 2. User's goal from questionnaire (outputType):
  *    - ship_project, working_code → project-based (even for KNOWLEDGE skills)
  *    - understand_concept, fix_bug, pass_exam, etc → practice-based
- * 2. Skill type default (if no user preference):
+ * 3. Skill type default (if no user preference):
  *    - KNOWLEDGE/PHYSICAL → practice-based
  *    - CODE/AI_AGENT/DESIGN → project-based
  */
 export function usesProjectBasedLearning(
   skillType: SkillType,
   outputType?: OutputType,
+  learningStyle?: 'projects' | 'practice',
 ): boolean {
-  // User intent takes priority - if they want to ship/build something, it's project-based
+  // User's explicit choice takes highest priority
+  if (learningStyle) {
+    return learningStyle === 'projects';
+  }
+
+  // User intent from outputType - if they want to ship/build something, it's project-based
   if (outputType) {
     switch (outputType) {
       // These output types indicate project-based learning
@@ -571,6 +580,7 @@ export interface DayDetailParams {
   hoursPerDay: number;
   suggestedLanguage?: string;
   outputType?: OutputType;
+  learningStyle?: 'projects' | 'practice'; // Explicit user choice from onboarding
   isProjectBased?: boolean; // Pass directly from metadata - don't re-calculate
   // Reflection data from previous day (for personalized prePrompt)
   previousDayReflection?: {
@@ -833,7 +843,7 @@ export function buildDayDetailDeferredPrompt(
   // Check if practice-based (non-project-based)
   const isProjectBased =
     params.isProjectBased ??
-    usesProjectBasedLearning(params.skillType, params.outputType);
+    usesProjectBasedLearning(params.skillType, params.outputType, params.learningStyle);
 
   // For practice-based skills, generate intensive practice sections
   if (!isProjectBased) {
@@ -1563,6 +1573,7 @@ export function buildCacheableCurriculumPrompt(
   const isProjectBased = usesProjectBasedLearning(
     params.skillType,
     params.learnerPrefs?.outputType,
+    params.learnerPrefs?.learningStyle,
   );
   const learnerContext = getLearnerContextGuidance(params.learnerPrefs);
   const allDays = Array.from({ length: params.durationDays }, (_, i) => i + 1);
@@ -1676,7 +1687,7 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
   // Use stored isProjectBased from metadata, fall back to calculation if not provided
   const isProjectBased =
     params.isProjectBased ??
-    usesProjectBasedLearning(params.skillType, params.outputType);
+    usesProjectBasedLearning(params.skillType, params.outputType, params.learningStyle);
 
   // Static part - cacheable
   const staticPart = DAY_DETAIL_STATIC_INSTRUCTIONS;

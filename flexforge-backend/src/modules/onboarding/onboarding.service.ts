@@ -169,13 +169,15 @@ export class OnboardingService {
       selectedDirectionOutcome: dto.selectedDirectionOutcome,
       directionKeywords: dto.directionKeywords,
       selectedLanguage: dto.selectedLanguage,
+      outputType: dto.outputType,
       contentDepth: dto.contentDepth,
       platformTolerance: dto.platformTolerance,
-      outputType: dto.outputType,
       usageContext: dto.usageContext,
       // Feeling-based inputs (easier than explicit skill level/time)
       familiarity: dto.familiarity,
       sessionLength: dto.sessionLength,
+      // Learning style preference (projects vs practice)
+      learningStyle: dto.learningStyle,
       // Identity verification
       identityProfile,
       completedOnboarding: true,
@@ -587,17 +589,6 @@ Note: languageConfig is ONLY for CODE/AI_AGENT skillTypes. Omit for KNOWLEDGE/PH
       prompt += `
 
 REFINEMENT CONTEXT (user clarified their intent):`;
-
-      if (refinement.outputType) {
-        const outputLabels = {
-          working_code: 'They want to write working code',
-          understand_concept:
-            'They want to understand concepts (not necessarily code)',
-          fix_bug: 'They want to fix a specific bug or problem',
-          ship_project: 'They want to ship a small project',
-        };
-        prompt += `\n- Output type: ${outputLabels[refinement.outputType]}`;
-      }
 
       if (refinement.usageContext) {
         const contextLabels = {

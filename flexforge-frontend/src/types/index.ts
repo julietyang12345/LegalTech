@@ -1751,4 +1751,6 @@ export interface CompleteOnboardingDto {
   sessionLength?: string;   // 'short' | 'medium' | 'long'
   // Identity aspiration
   aspiration?: Aspiration;
+  // Learning style preference
+  learningStyle?: 'projects' | 'practice'; // 'projects' = boss project, 'practice' = exercises only
 }

@@ -94,24 +94,23 @@ export interface LearningDirection {
 }
 
 /**
- * Output types for different skill categories.
- * - Code skills (CODE, AI_AGENT, DESIGN): working_code, ship_project, fix_bug
- * - Knowledge skills (KNOWLEDGE): understand_concept, pass_exam, teach_others
- * - Physical skills (PHYSICAL): perform_skill, compete, master_basics
+ * Output types - what the user wants to achieve from learning.
+ * Universal across all skill types (code, knowledge, physical).
+ *
+ * - apply_skill: Use the skill proficiently. Practical application, make it work.
+ * - ship_project: Ship something real. End-to-end, deployment, best practices.
+ * - understand_concept: Deep understanding. Theory, mental models, "why" explanations.
+ * - pass_exam: Pass an exam. Memorizable facts, practice questions, exam strategies.
+ * - teach_others: Teach others. Analogies, clear explanations, common misconceptions.
+ * - compete: Compete with others. Advanced techniques, competitive strategies.
+ * - master_basics: Master fundamentals. Core techniques, solid foundation.
  */
 export type OutputType =
-  // Code/technical skills
-  | 'working_code'
+  | 'apply_skill'
   | 'ship_project'
-  | 'fix_bug'
-  // Universal
   | 'understand_concept'
-  | 'teach_others'
-  // Knowledge skills (languages, academic, etc.)
   | 'pass_exam'
-  | 'apply_practical'
-  // Physical skills (sports, music, dance, etc.)
-  | 'perform_skill'
+  | 'teach_others'
   | 'compete'
   | 'master_basics';
 
@@ -144,7 +143,7 @@ export interface LearnerPrefs {
   selectedLanguage?: string; // User's chosen language (or recommended default)
 
   // From refinement (Step 3b, if used)
-  outputType?: OutputType;
+  outputType?: OutputType; // What user wants to achieve (affects content style)
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
 
   // From feeling step (Step 5) - easier for users than explicit skill/time questions
@@ -152,9 +151,14 @@ export interface LearnerPrefs {
   familiarity?: 'new' | 'know_basics' | 'skilled'; // How familiar with the topic
   sessionLength?: 'short' | 'medium' | 'long'; // Daily learning time availability
 
+  // Learning style preference - explicitly choose projects vs practice
+  // 'projects' = build a real project across days (boss project)
+  // 'practice' = daily quizzes, exercises, challenges (no boss project)
+  learningStyle?: 'projects' | 'practice';
+
   // Platform tolerance (from direction label or refinement)
   // KEY for solving the "Zapier problem" - affects TOOL_SPECIFIC video penalty
-  platformTolerance: 'any' | 'preferGeneric' | 'genericOnly';
+  platformTolerance?: 'any' | 'preferGeneric' | 'genericOnly';
 
   // Identity verification (user's chosen aspiration and progress)
   identityProfile?: IdentityProfile;
@@ -204,13 +208,13 @@ export interface CompleteOnboardingDto {
   selectedDirectionOutcome: string; // "You'll be able to..." from the direction
   directionKeywords: string[];
   contentDepth: 'fast' | 'medium' | 'deep';
-  platformTolerance: 'any' | 'preferGeneric' | 'genericOnly';
+  platformTolerance?: 'any' | 'preferGeneric' | 'genericOnly';
 
   // Language selection (for CODE/AI_AGENT directions)
   selectedLanguage?: string; // User's chosen language (or recommended default)
 
   // Optional refinement data
-  outputType?: OutputType;
+  outputType?: OutputType; // What user wants to achieve (working_code, pass_exam, teach_others, etc.)
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
 
   // Feeling-based inputs (easier than explicit skill level/time questions)
@@ -219,6 +223,9 @@ export interface CompleteOnboardingDto {
 
   // Identity aspiration (who do you want to become?)
   aspiration?: Aspiration;
+
+  // Learning style preference - explicitly choose projects vs practice
+  learningStyle?: 'projects' | 'practice';
 }
 
 // ============================================

@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { clsx } from 'clsx';
 import { Button } from '../common/Button';
 import { ArrowRight, ArrowLeft } from 'lucide-react';
-import { SkillType, type RefinementContext, type LearningDirection } from '@/types';
+import { type RefinementContext, type LearningDirection } from '@/types';
 
 interface RefinementPanelProps {
   originalGoal: string;
@@ -12,7 +12,6 @@ interface RefinementPanelProps {
   isLoading?: boolean;
 }
 
-type OutputType = NonNullable<RefinementContext['outputType']>;
 type UsageContext = NonNullable<RefinementContext['usageContext']>;
 
 interface ChipOption<T> {
@@ -28,65 +27,8 @@ export function RefinementPanel({
   onBack,
   isLoading,
 }: RefinementPanelProps) {
-  const [outputType, setOutputType] = useState<OutputType>();
   const [usageContext, setUsageContext] = useState<UsageContext>();
   const [userFeedback, setUserFeedback] = useState<string>('');
-
-  // Determine the dominant skill type from directions
-  const dominantSkillType = useMemo((): SkillType => {
-    if (directions.length === 0) return SkillType.CODE;
-
-    // Count skill types
-    const counts: Record<string, number> = {};
-    directions.forEach((d) => {
-      const type = d.skillType || SkillType.CODE;
-      counts[type] = (counts[type] || 0) + 1;
-    });
-
-    // Return the most common one
-    let maxCount = 0;
-    let dominant: SkillType = SkillType.CODE;
-    for (const [type, count] of Object.entries(counts)) {
-      if (count > maxCount) {
-        maxCount = count;
-        dominant = type as SkillType;
-      }
-    }
-    return dominant;
-  }, [directions]);
-
-  // Get output options based on skill type
-  const outputOptions = useMemo((): ChipOption<OutputType>[] => {
-    switch (dominantSkillType) {
-      case SkillType.KNOWLEDGE:
-        // Language learning, academic, theory
-        return [
-          { value: 'understand_concept', label: 'Understand deeply', emoji: '💡' },
-          { value: 'pass_exam', label: 'Pass an exam', emoji: '📝' },
-          { value: 'apply_practical', label: 'Use practically', emoji: '🎯' },
-          { value: 'teach_others', label: 'Teach others', emoji: '👥' },
-        ];
-      case SkillType.PHYSICAL:
-        // Sports, music, dance, crafts
-        return [
-          { value: 'master_basics', label: 'Master basics', emoji: '🌱' },
-          { value: 'perform_skill', label: 'Perform well', emoji: '⭐' },
-          { value: 'compete', label: 'Compete', emoji: '🏆' },
-          { value: 'teach_others', label: 'Teach others', emoji: '👥' },
-        ];
-      case SkillType.CODE:
-      case SkillType.AI_AGENT:
-      case SkillType.DESIGN:
-      default:
-        // Technical/coding skills
-        return [
-          { value: 'working_code', label: 'Working code', emoji: '💻' },
-          { value: 'understand_concept', label: 'Understand concept', emoji: '💡' },
-          { value: 'fix_bug', label: 'Fix a bug', emoji: '🐛' },
-          { value: 'ship_project', label: 'Ship a project', emoji: '🚀' },
-        ];
-    }
-  }, [dominantSkillType]);
 
   const usageOptions: ChipOption<UsageContext>[] = [
     { value: 'work', label: 'At work', emoji: '💼' },
@@ -97,7 +39,6 @@ export function RefinementPanel({
 
   const handleSubmit = () => {
     const refinement: RefinementContext = {};
-    if (outputType) refinement.outputType = outputType;
     if (usageContext) refinement.usageContext = usageContext;
     if (userFeedback.trim()) refinement.userFeedback = userFeedback.trim();
     // Pass previous directions to avoid regenerating them
@@ -107,7 +48,7 @@ export function RefinementPanel({
     onSubmit(refinement);
   };
 
-  const hasAnyInput = outputType || usageContext || userFeedback.trim();
+  const hasAnyInput = usageContext || userFeedback.trim();
 
   return (
     <div className="max-w-xl mx-auto">
@@ -135,18 +76,9 @@ export function RefinementPanel({
         <span className="text-gray-800">{originalGoal}</span>
       </div>
 
-      {/* Questions - simplified to just 3 */}
+      {/* Questions */}
       <div className="space-y-6">
-        {/* Q1: What you want to end up with */}
-        <QuestionSection title="What do you want to end up with?" emoji="🎯">
-          <ChipGroup
-            options={outputOptions}
-            selected={outputType}
-            onSelect={setOutputType}
-          />
-        </QuestionSection>
-
-        {/* Q2: Context */}
+        {/* Q1: Context */}
         <QuestionSection title="What's this for?" emoji="📍">
           <ChipGroup
             options={usageOptions}
@@ -155,7 +87,7 @@ export function RefinementPanel({
           />
         </QuestionSection>
 
-        {/* Q3: Free-text - most important */}
+        {/* Q2: Free-text - most important */}
         <QuestionSection title="Tell us more" emoji="💬">
           <textarea
             value={userFeedback}

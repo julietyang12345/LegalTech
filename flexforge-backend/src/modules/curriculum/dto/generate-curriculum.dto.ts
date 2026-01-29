@@ -9,7 +9,6 @@ import {
   Max,
 } from 'class-validator';
 import { SkillLevel } from '../../../database/entities/session.entity';
-import { OutputType } from '../types/learner-prefs.interface';
 
 export class GenerateCurriculumDto {
   @IsString()
@@ -28,10 +27,6 @@ export class GenerateCurriculumDto {
   @IsEnum(SkillLevel)
   skillLevel: SkillLevel;
 
-  @IsOptional()
-  @IsString()
-  outputType?: OutputType;
-
   // From onboarding directions
   @IsOptional()
   @IsString()
@@ -49,6 +44,18 @@ export class GenerateCurriculumDto {
   @IsString()
   selectedLanguage?: string; // User's chosen language (overrides auto-detection)
 
+  // Output type - what user wants to achieve (affects content style)
+  @IsOptional()
+  @IsString()
+  outputType?:
+    | 'apply_skill'
+    | 'ship_project'
+    | 'understand_concept'
+    | 'pass_exam'
+    | 'teach_others'
+    | 'compete'
+    | 'master_basics';
+
   // Feeling-based inputs (from onboarding)
   @IsOptional()
   @IsString()
@@ -61,4 +68,9 @@ export class GenerateCurriculumDto {
   @IsOptional()
   @IsString()
   contentDepth?: 'fast' | 'medium' | 'deep';
+
+  // Explicit learning style choice from onboarding (overrides all other project-based logic)
+  @IsOptional()
+  @IsString()
+  learningStyle?: 'projects' | 'practice';
 }

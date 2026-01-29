@@ -8,7 +8,6 @@
 
 import { SkillLevel } from '../../../database/entities/session.entity';
 import { SkillType, SkillComplexity } from '../services/skill-detector.service';
-import { OutputType } from '../types/learner-prefs.interface';
 import { SectionType, TargetLanguage } from './curriculum-prompt';
 
 /**
@@ -71,8 +70,6 @@ export interface ContentGenerationContext {
   complexity: SkillComplexity;
   /** Programming/spoken language for the content */
   suggestedLanguage?: string;
-  /** User's intended output (ship_project, understand_concept, etc.) */
-  outputType?: OutputType;
   /** Whether this curriculum uses boss projects or practice exercises */
   isProjectBased: boolean;
   /** User tier (FREE, PRO, PREMIUM) */
@@ -173,7 +170,6 @@ export function buildContentGenerationContext(
     skillLevel: metadata.skillLevel,
     complexity: metadata.complexity,
     suggestedLanguage: metadata.suggestedLanguage,
-    outputType: metadata.outputType,
     isProjectBased: metadata.isProjectBased ?? false,
     userTier: params.userTier,
     hoursPerDay: metadata.hoursPerDay || 1,

@@ -129,15 +129,18 @@ export class SessionService {
         const generated = await this.curriculumService.generateCurriculum(
           {
             ...createSessionDto,
-            outputType: learnerPrefs?.outputType,
             selectedDirection: learnerPrefs?.selectedDirection,
             selectedDirectionOutcome: learnerPrefs?.selectedDirectionOutcome,
             directionKeywords: learnerPrefs?.directionKeywords,
             selectedLanguage: learnerPrefs?.selectedLanguage,
+            // Output type - what user wants to achieve
+            outputType: learnerPrefs?.outputType,
             // Feeling-based inputs from onboarding
             familiarity: learnerPrefs?.familiarity,
             sessionLength: learnerPrefs?.sessionLength,
             contentDepth: learnerPrefs?.contentDepth,
+            // Explicit learning style choice (projects vs practice)
+            learningStyle: learnerPrefs?.learningStyle,
           },
           tierString,
         );

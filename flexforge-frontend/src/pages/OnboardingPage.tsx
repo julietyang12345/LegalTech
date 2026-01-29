@@ -115,7 +115,9 @@ export default function OnboardingPage() {
     depth: LearnerPrefs['contentDepth'],
     familiarity: string,
     sessionLength: string,
-    toolPreference: string
+    learningStyle: 'projects' | 'practice',
+    toolPreference: 'any' | 'preferGeneric' | 'genericOnly',
+    outputType: CompleteOnboardingDto['outputType']
   ) => {
     if (!selectedDirection) return;
 
@@ -123,30 +125,27 @@ export default function OnboardingPage() {
     setStep('completing');
 
     try {
-      // Map tool preference to platform tolerance
-      const toolPreferenceMap: Record<string, 'any' | 'preferGeneric' | 'genericOnly'> = {
-        specific_tools: 'any',
-        mixed: 'preferGeneric',
-        concepts_only: 'genericOnly',
-      };
-
       const dto: CompleteOnboardingDto = {
         originalGoal: goal,
         selectedDirection: selectedDirection.title,
         selectedDirectionOutcome: selectedDirection.outcome,
         directionKeywords: selectedDirection.keywords,
         contentDepth: depth,
-        platformTolerance: toolPreferenceMap[toolPreference] || 'preferGeneric',
+        // Tool preference (maps to platformTolerance)
+        platformTolerance: toolPreference,
         // Language selection (for CODE/AI_AGENT directions)
         selectedLanguage: selectedLanguage,
+        // Output type - what user wants to achieve
+        outputType,
         // Include refinement context if used
-        outputType: refinementContext?.outputType,
         usageContext: refinementContext?.usageContext,
         // Feeling-based inputs
         familiarity,
         sessionLength,
         // Identity aspiration
         aspiration: selectedAspiration || undefined,
+        // Learning style - projects vs practice
+        learningStyle,
       };
 
       await onboardingService.completeOnboarding(dto);

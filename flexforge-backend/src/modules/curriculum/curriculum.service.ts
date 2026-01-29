@@ -655,15 +655,18 @@ Return JSON only:
     // Step 3: Build curriculum prompt with caching support (skeleton only)
     // Include full learner preferences from onboarding directions
     const learnerPrefs = {
-      outputType: dto.outputType,
       selectedDirection: dto.selectedDirection,
       selectedDirectionOutcome: dto.selectedDirectionOutcome,
       directionKeywords: dto.directionKeywords,
       selectedLanguage: dto.selectedLanguage,
+      // Output type - what user wants to achieve
+      outputType: dto.outputType,
       // Feeling-based inputs from onboarding
       familiarity: dto.familiarity,
       sessionLength: dto.sessionLength,
       contentDepth: dto.contentDepth,
+      // Explicit learning style choice (projects vs practice)
+      learningStyle: dto.learningStyle,
     };
 
     // Use user's selected language if provided, otherwise use auto-detected
@@ -733,10 +736,7 @@ Return JSON only:
     }
 
     // Calculate isProjectBased ONCE and store it - don't re-calculate later
-    const isProjectBased = usesProjectBasedLearning(
-      skillDetection.skillType,
-      dto.outputType,
-    );
+    const isProjectBased = usesProjectBasedLearning(dto.learningStyle);
     this.logger.log(
       `🎯 Curriculum type: ${isProjectBased ? 'PROJECT-BASED' : 'PRACTICE-BASED'}`,
     );
@@ -777,8 +777,8 @@ Return JSON only:
       skillType: skillDetection.skillType,
       complexity: skillDetection.complexity,
       suggestedLanguage: effectiveLanguage, // User's selected language (or auto-detected if not chosen)
+      learningStyle: dto.learningStyle, // User's explicit choice (projects vs practice)
       isProjectBased, // Store this - use it consistently, don't re-calculate
-      outputType: dto.outputType, // Store user's intent
       // Language learning specific (from skill detection)
       isLanguageLearning: skillDetection.isLanguageLearning,
       targetLanguage: skillDetection.targetLanguage,
@@ -1006,7 +1006,7 @@ Return JSON only:
       userTier,
       hoursPerDay: curriculum.metadata.hoursPerDay,
       suggestedLanguage: curriculum.metadata.suggestedLanguage,
-      outputType: curriculum.metadata.outputType,
+      learningStyle: curriculum.metadata.learningStyle, // User's explicit choice from onboarding
       isProjectBased: curriculum.metadata.isProjectBased, // Use stored value, don't re-calculate
       // Language learning specific
       isLanguageLearning: curriculum.metadata.isLanguageLearning,
@@ -1415,7 +1415,7 @@ Return JSON only:
       userTier,
       hoursPerDay: curriculum.metadata.hoursPerDay,
       suggestedLanguage: curriculum.metadata.suggestedLanguage,
-      outputType: curriculum.metadata.outputType,
+      learningStyle: curriculum.metadata.learningStyle, // User's explicit choice from onboarding
       isProjectBased: curriculum.metadata.isProjectBased, // Use stored value, don't re-calculate
       // Language learning specific
       isLanguageLearning: curriculum.metadata.isLanguageLearning,
