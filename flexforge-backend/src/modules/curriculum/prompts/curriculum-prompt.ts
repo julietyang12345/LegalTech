@@ -1768,25 +1768,29 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
     params.complexity,
   );
   const levelGuidance = getSkillLevelGuidance(params.skillLevel);
+  const skillsStr = getSkillsString(params.skeleton, params.dayObjectives);
   const dynamicPart = `SKILL: "${params.skillName}"
 Day ${params.dayNumber}: ${params.dayTitle}
+${skillsStr ? `Topics: ${skillsStr}` : ''}
 ${params.previousDayTitle ? `Previous: ${params.previousDayTitle}` : ''}
 Type: ${params.skillType} | Level: ${params.skillLevel} | Sections: ${sectionTypes}
 ${skillGuidance}
 
 ${levelGuidance.complexityGuidance}
-CONTENT QUANTITY: ${levelGuidance.foundationCardCount} foundation cards, ${levelGuidance.quizQuestionCount} quiz/exercise questions total${improvementAreasInstruction}${lessOfAreasInstruction}${reflectionInstruction}`;
+CONTENT QUANTITY: ${levelGuidance.foundationCardCount} foundation cards covering the Topics above, ${levelGuidance.quizQuestionCount} quiz/exercise questions total${improvementAreasInstruction}${lessOfAreasInstruction}${reflectionInstruction}`;
 
   // User prompt for regular (non-language) skills - CORE content only (task1 moved to deferred)
   const userPrompt = `Day ${params.dayNumber}: "${params.dayTitle}" for skill "${params.skillName}"
 Skill Type: ${params.skillType} | Level: ${params.skillLevel}
+${skillsStr ? `Key topics: ${skillsStr}` : ''}
 
 Generate CORE content (task1 is generated separately in deferred content):
 
 1. foundationCards (${levelGuidance.foundationCardCount} cards):
    - Each card: 200-300 words, answers ONE question
-   - Card 1: INTRO/RECAP connecting to previous
-   - Cards 2-5: Core concepts with realWorldContext
+   - Card 1: INTRO/RECAP connecting to previous day
+   - Remaining cards: Cover the key topics listed AND extend with related concepts that fit the day title "${params.dayTitle}"
+   - Don't limit to just the listed topics - add valuable related concepts the learner needs
    - microQuestion: Understanding check (理解型) - "which is correct?", "which example matches?"
    - caseStudy (1-2 cards, optional): For decision-making concepts only
      * scenario: "You're building X and encounter Y..." (2-3 sentences)

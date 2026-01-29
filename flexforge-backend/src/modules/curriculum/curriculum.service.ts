@@ -1117,17 +1117,22 @@ Return JSON only:
 
     if (videoResult) {
       coreContent.video = videoResult.video;
-    } else if (coreContent.video) {
-      // Video search was skipped but video object exists - add AI explanation
+    } else {
+      // Video search was skipped - create AI explanation and key learning points
       const aiExplanation = this.generateAiExplanation(
         coreContent,
         searchConcept,
       );
+      const keyLearningPoints = this.generateKeyLearningPoints(
+        coreContent,
+        dayOverview,
+      );
       coreContent.video = {
-        ...coreContent.video,
+        ...(coreContent.video || {}),
         concept: searchConcept,
         title: `Understanding ${searchConcept}`,
         explanation: aiExplanation,
+        keyLearningPoints, // Curated learning points when video is skipped
         reason: 'AI explanation provided for this topic.',
         videoAvailable: false,
         showVideoOption: false,
@@ -1957,6 +1962,49 @@ Return JSON only:
     return fallbackSections.length > 0
       ? fallbackSections.join('\n\n')
       : `Learn about ${concept} through the practice exercises below.`;
+  }
+
+  /**
+   * Generate key learning points when video is skipped.
+   * Extracts main concepts from foundation cards and day objectives.
+   * Returns an array of concise, actionable learning points.
+   */
+  private generateKeyLearningPoints(
+    dayContent: any,
+    dayOverview: any,
+  ): string[] {
+    const points: string[] = [];
+
+    // Extract from foundation cards (main concepts)
+    const cards =
+      dayContent.languageFoundationCards || dayContent.foundationCards;
+    if (cards && Array.isArray(cards)) {
+      for (const card of cards.slice(0, 5)) {
+        if (card.concept) {
+          // Create a concise learning point from the concept
+          const point = card.concept.length > 60
+            ? card.concept.substring(0, 57) + '...'
+            : card.concept;
+          points.push(point);
+        }
+      }
+    }
+
+    // If no cards, use day objectives/skills
+    if (points.length === 0 && dayOverview?.skills) {
+      for (const skill of dayOverview.skills.slice(0, 5)) {
+        if (typeof skill === 'string' && skill.length > 0) {
+          points.push(skill);
+        }
+      }
+    }
+
+    // Fallback to day title parsing
+    if (points.length === 0 && dayOverview?.title) {
+      points.push(`Understand ${dayOverview.title}`);
+    }
+
+    return points;
   }
 
   /**

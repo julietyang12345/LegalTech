@@ -226,6 +226,7 @@ export interface VideoMatch {
   preferredChannels?: string[];
   topicFocus?: string;
   watchPoints?: string[];
+  keyLearningPoints?: string[];  // AI-generated key points when video is skipped
 
   // Adaptive modality fields (video vs AI)
   concept?: string;             // The concept being explained

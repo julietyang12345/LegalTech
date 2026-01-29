@@ -199,10 +199,12 @@ function AIExplanation({
   const concept = video.concept || video.title || 'this concept';
   const adaptiveInfo = video.adaptiveModality;
 
-  // Get cards to display
-  const conceptCards = foundationCards && foundationCards.length > 0
-    ? foundationCards.filter(card => card.concept && card.explanation)
-    : [];
+  // Show key learning points only when video was skipped (not manually chosen AI mode)
+  const wasVideoSkipped = video.videoAvailable === false;
+  const keyLearningPoints = wasVideoSkipped ? video.keyLearningPoints : undefined;
+
+  // Get cards to display - foundationCards already have required concept/explanation fields
+  const conceptCards = foundationCards || [];
 
   return (
     <div className="space-y-3">
@@ -230,6 +232,33 @@ function AIExplanation({
                 Watch video instead
               </button>
             )}
+          </div>
+        </Card>
+      )}
+
+      {/* Key Learning Points - only when video was skipped */}
+      {keyLearningPoints && keyLearningPoints.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2 bg-amber-100 rounded-lg shrink-0">
+                <Zap className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">Key Learning Points</h3>
+                <p className="text-sm text-gray-600">Focus on these core concepts</p>
+              </div>
+            </div>
+            <ul className="space-y-2">
+              {keyLearningPoints.map((point, index) => (
+                <li key={index} className="flex items-start gap-2 text-sm text-gray-700">
+                  <span className="w-5 h-5 flex items-center justify-center bg-amber-100 text-amber-700 rounded-full text-xs font-medium shrink-0 mt-0.5">
+                    {index + 1}
+                  </span>
+                  <span>{point}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </Card>
       )}
