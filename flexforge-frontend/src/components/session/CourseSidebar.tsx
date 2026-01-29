@@ -475,21 +475,31 @@ export function CourseSidebar({ onDayClick }: CourseSidebarProps) {
             exit={{ opacity: 0 }}
             className="flex flex-col h-full"
           >
-            {/* Header with progress */}
+            {/* Header with skill name and progress */}
             <div className="p-4 border-b border-gray-100">
-              <h2 className="font-bold text-gray-900 text-lg truncate">
-                {activeSession.skillName}
-              </h2>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {activeSession.durationDays} day curriculum
-              </p>
+              {/* Skill name card */}
+              <div className="bg-gradient-to-br from-brand-500 to-brand-600 rounded-xl p-3 mb-3 shadow-sm">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-9 h-9 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0">
+                    <Target className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h2 className="font-semibold text-white text-sm leading-tight line-clamp-2">
+                      {activeSession.skillName}
+                    </h2>
+                    <p className="text-brand-100 text-xs mt-0.5">
+                      {activeSession.durationDays} days
+                    </p>
+                  </div>
+                </div>
+              </div>
 
               {/* Progress bar */}
-              <div className="mt-3">
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="text-gray-500">Progress</span>
-                  <span className="font-medium text-brand-600">
-                    {completedCount} of {days.length} days
+              <div>
+                <div className="flex justify-between text-xs mb-1.5">
+                  <span className="text-gray-500 font-medium">Progress</span>
+                  <span className="font-semibold text-brand-600">
+                    {completedCount}/{days.length}
                   </span>
                 </div>
                 <div className="h-2 bg-gray-100 rounded-full overflow-hidden">

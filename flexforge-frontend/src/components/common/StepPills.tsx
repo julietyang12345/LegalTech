@@ -9,12 +9,13 @@ interface StepPillsProps {
   onStepClick?: (step: SessionStep) => void;
   className?: string;
   isProjectBased?: boolean;
+  videoUnavailable?: boolean;
 }
 
-const getStepLabels = (isProjectBased: boolean): Record<SessionStep, string> => ({
+const getStepLabels = (isProjectBased: boolean, videoUnavailable: boolean): Record<SessionStep, string> => ({
   prePrompt: 'Prep',
-  video: 'Watch',
-  foundationCards: 'Learn',
+  video: videoUnavailable ? 'Learn' : 'Watch',
+  foundationCards: 'Cards',
   task1: 'Practice',
   bossMilestone: isProjectBased ? 'Boss' : 'Intensive',
   openTask: 'Challenge',
@@ -28,8 +29,9 @@ export function StepPills({
   onStepClick,
   className,
   isProjectBased = true,
+  videoUnavailable = false,
 }: StepPillsProps) {
-  const stepLabels = getStepLabels(isProjectBased);
+  const stepLabels = getStepLabels(isProjectBased, videoUnavailable);
   return (
     <div className={clsx('flex items-center gap-0.5 sm:gap-1 flex-shrink min-w-0', className)}>
       {steps.map((step, index) => {
@@ -86,8 +88,9 @@ export function StepPillsExpanded({
   showLabels = true,
   className,
   isProjectBased = true,
+  videoUnavailable = false,
 }: StepPillsExpandedProps) {
-  const stepLabels = getStepLabels(isProjectBased);
+  const stepLabels = getStepLabels(isProjectBased, videoUnavailable);
   return (
     <div className={clsx('flex items-center gap-2 overflow-x-auto no-scrollbar px-1', className)}>
       {steps.map((step, index) => {

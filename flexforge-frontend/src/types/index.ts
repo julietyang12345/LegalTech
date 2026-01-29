@@ -236,6 +236,7 @@ export interface VideoMatch {
   showAiOption?: boolean;       // Should show "prefer AI" button?
   backupVideo?: BackupVideo;    // Video info when AI is default
   aiExplanation?: string;       // Pre-generated AI explanation when video is default
+  aiConceptBreakdown?: Array<{ concept: string; explanation: string }>; // Haiku-generated concept breakdown
   adaptiveModality?: AdaptiveModalityInfo;
 
   // Content type classification

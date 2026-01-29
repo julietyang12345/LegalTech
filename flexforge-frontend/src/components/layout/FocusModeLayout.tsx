@@ -93,14 +93,15 @@ function PresenceBar() {
   const isProjectBased = activeSession?.curriculum?.metadata?.isProjectBased !== false &&
     (activeSession?.curriculum?.bossProjects?.length ?? 0) > 0;
 
+  // Check if video is available for this day
+  const hasVideo = !!(currentDay?.video?.videoId || currentDay?.video?.backupVideo?.videoId);
+  const isLanguageLearning = activeSession?.curriculum?.metadata?.isLanguageLearning;
+  const videoStrategy = (currentDay as any)?.videoStrategy;
+  const videoUnavailable = isLanguageLearning || videoStrategy === 'skip' || !hasVideo;
+
   // Filter steps based on current day
   const availableSteps = STEPS.filter(step => {
-    // Skip video for language learning (uses TTS instead)
-    if (step === 'video') {
-      const isLanguageLearning = activeSession?.curriculum?.metadata?.isLanguageLearning;
-      const videoStrategy = (currentDay as any)?.videoStrategy;
-      if (isLanguageLearning || videoStrategy === 'skip') return false;
-    }
+    // Video step is always shown - VideoStep handles both video and "Learn & Understand" modes
     // Skip foundationCards if not present (check both regular and language-specific cards)
     if (step === 'foundationCards') {
       const hasCards = (currentDay?.foundationCards && currentDay.foundationCards.length > 0) ||
@@ -141,6 +142,7 @@ function PresenceBar() {
                 completedSteps={completedSteps}
                 onStepClick={(step) => setCurrentStep(step)}
                 isProjectBased={isProjectBased}
+                videoUnavailable={videoUnavailable}
               />
             </div>
           </div>

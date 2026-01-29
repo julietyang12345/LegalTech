@@ -181,6 +181,163 @@ function VideoCard({
 // Concept card emojis based on index
 const CONCEPT_EMOJIS = ['💡', '🎯', '⚡', '🔑', '✨', '🧩', '📌', '🌟'];
 
+// Learn & Understand content - shown when no video object exists but we have foundation cards
+function LearnUnderstandContent({
+  day,
+  onSwitchToVideo,
+  showVideoOption,
+}: {
+  day: CurriculumDay;
+  onSwitchToVideo?: () => void;
+  showVideoOption: boolean;
+}) {
+  const [expandedCard, setExpandedCard] = useState<number | null>(0);
+
+  const conceptCards = day.foundationCards || [];
+  const objectives = day.objectives || [];
+
+  return (
+    <div className="space-y-3">
+      {/* Header info card */}
+      <Card className="overflow-hidden">
+        <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-purple-100 rounded-lg shrink-0">
+              <Sparkles className="w-5 h-5 text-purple-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Learn & Understand</h3>
+              <p className="text-sm text-gray-600 mt-0.5">
+                Master the key concepts before practicing
+              </p>
+            </div>
+          </div>
+          {showVideoOption && onSwitchToVideo && (
+            <button
+              onClick={onSwitchToVideo}
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-600 bg-white hover:bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-lg transition-colors shrink-0"
+            >
+              <Video className="w-3.5 h-3.5" />
+              Watch video instead
+            </button>
+          )}
+        </div>
+      </Card>
+
+      {/* Learning objectives */}
+      {objectives.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2 bg-amber-100 rounded-lg shrink-0">
+                <Zap className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">What You'll Learn</h3>
+                <p className="text-sm text-gray-600">Today's learning objectives</p>
+              </div>
+            </div>
+            <ul className="space-y-2">
+              {objectives.map((objective, index) => (
+                <li key={index} className="flex items-start gap-2 text-sm text-gray-700">
+                  <span className="w-5 h-5 flex items-center justify-center bg-amber-100 text-amber-700 rounded-full text-xs font-medium shrink-0 mt-0.5">
+                    {index + 1}
+                  </span>
+                  <span>{objective}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Card>
+      )}
+
+      {/* Concept cards - expandable */}
+      {conceptCards.length > 0 ? (
+        conceptCards.map((card, index) => {
+          const isExpanded = expandedCard === index;
+          const emoji = CONCEPT_EMOJIS[index % CONCEPT_EMOJIS.length];
+
+          return (
+            <Card
+              key={index}
+              className={`transition-all duration-200 ${
+                isExpanded ? 'ring-2 ring-purple-400' : ''
+              }`}
+            >
+              {/* Card header */}
+              <button
+                onClick={() => setExpandedCard(isExpanded ? null : index)}
+                className="w-full p-4 flex items-center justify-between text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{emoji}</span>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">{card.concept}</h3>
+                    <p className="text-sm text-gray-500">
+                      {isExpanded ? 'Click to collapse' : 'Click to expand'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {!isExpanded && (
+                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-50 text-purple-600">
+                      {index + 1} of {conceptCards.length}
+                    </span>
+                  )}
+                  {isExpanded ? (
+                    <ChevronUp className="w-5 h-5 text-gray-400" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-gray-400" />
+                  )}
+                </div>
+              </button>
+
+              {/* Expanded content */}
+              {isExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="px-4 pb-4 pt-0">
+                    <div className="p-4 bg-gray-50 rounded-xl">
+                      <p className="text-gray-700 leading-relaxed">{card.explanation}</p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </Card>
+          );
+        })
+      ) : (
+        // Fallback when no foundation cards available
+        <Card className="p-6">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-purple-100 rounded-xl">
+              <BookOpen className="w-6 h-6 text-purple-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                {day.title}
+              </h3>
+              <p className="text-gray-600 mb-4">
+                Today you'll learn about {objectives.join(', ') || 'the key concepts'}.
+                Continue to the interactive exercises to master these concepts step by step.
+              </p>
+              <div className="flex items-center gap-2 text-sm text-purple-600">
+                <Sparkles className="w-4 h-4" />
+                <span>Continue to practice exercises</span>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // AI Explanation component - shown when AI mode is selected
 // Uses expandable card format similar to ConceptCheck
 function AIExplanation({
@@ -203,8 +360,8 @@ function AIExplanation({
   const wasVideoSkipped = video.videoAvailable === false;
   const keyLearningPoints = wasVideoSkipped ? video.keyLearningPoints : undefined;
 
-  // Get cards to display - foundationCards already have required concept/explanation fields
-  const conceptCards = foundationCards || [];
+  // Get cards to display - prefer AI-generated concept breakdown, fallback to foundationCards
+  const conceptCards = video.aiConceptBreakdown || foundationCards || [];
 
   return (
     <div className="space-y-3">
@@ -232,6 +389,25 @@ function AIExplanation({
                 Watch video instead
               </button>
             )}
+          </div>
+        </Card>
+      )}
+
+      {/* AI Explanation - rich text explanation when video is skipped */}
+      {wasVideoSkipped && video.explanation && (
+        <Card className="overflow-hidden">
+          <div className="p-4">
+            <div className="flex items-start gap-3 mb-3">
+              <div className="p-2 bg-purple-100 rounded-lg shrink-0">
+                <BookOpen className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">{concept}</h3>
+              </div>
+            </div>
+            <div className="text-gray-700 leading-relaxed whitespace-pre-line">
+              {video.explanation}
+            </div>
           </div>
         </Card>
       )}
@@ -753,9 +929,9 @@ export function VideoStep({ day, session }: VideoStepProps) {
         />
       )}
 
-      {/* AI Explanation Mode */}
+      {/* AI Explanation Mode - "Learn & Understand" */}
       {currentMode === 'ai' && (
-        showAiOption && video ? (
+        video ? (
           <AIExplanation
             video={video}
             onSwitchToVideo={showVideoOption ? handleSwitchToVideo : undefined}
@@ -763,27 +939,12 @@ export function VideoStep({ day, session }: VideoStepProps) {
             foundationCards={day.foundationCards}
           />
         ) : (
-          // Fallback when no AI explanation available
-          <Card className="p-6">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-purple-100 rounded-xl">
-                <BookOpen className="w-6 h-6 text-purple-600" />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  {day.title}
-                </h3>
-                <p className="text-gray-600 mb-4">
-                  Today you'll learn about {day.objectives?.join(', ') || 'the key concepts'}.
-                  Dive into the foundation cards below to master these concepts step by step.
-                </p>
-                <div className="flex items-center gap-2 text-sm text-purple-600">
-                  <Sparkles className="w-4 h-4" />
-                  <span>Continue to the interactive learning cards</span>
-                </div>
-              </div>
-            </div>
-          </Card>
+          // No video object - render Learn & Understand from foundation cards directly
+          <LearnUnderstandContent
+            day={day}
+            onSwitchToVideo={showVideoOption ? handleSwitchToVideo : undefined}
+            showVideoOption={!!showVideoOption}
+          />
         )
       )}
 
