@@ -142,7 +142,6 @@ export interface CurriculumMetadata {
   complexity: SkillComplexity;
   suggestedLanguage?: string;
   isProjectBased?: boolean;
-  outputType?: 'working_code' | 'understand_concept' | 'fix_bug' | 'ship_project';
 
   // Language learning specific (when skillType is KNOWLEDGE + language skill)
   isLanguageLearning?: boolean;
@@ -338,6 +337,9 @@ export interface CurriculumDay {
 
   // Intensive practice (for practice-based learning, spread from deferredContent by sessionStore)
   intensivePractice?: IntensivePractice;
+
+  // Open task (real-world practice challenge, spread from deferredContent by sessionStore)
+  openTask?: OpenTask;
 }
 
 export interface ConceptQuestion {
@@ -1436,10 +1438,29 @@ export interface IntensivePractice {
   sections: TaskSection[];                     // Exactly 2 sections
 }
 
+// Open Task - real-world practice challenge (for practice-based learning)
+export interface OpenTask {
+  id: string;
+  sectionType: 'openTask';
+  sectionTitle: string;           // "Real-World Challenge"
+  sectionSubtitle: string;        // "Take your learning beyond the screen"
+  title: string;                  // "Have a 1-on-1 with a team member"
+  description: string;            // What to do and why
+  icon: string;                   // Emoji: 💬, 🎯, 🤝, etc.
+  context: string;                // "At work", "With a friend", etc.
+  difficulty: 'easy' | 'medium' | 'challenging';
+  conceptConnection: string;      // Which foundationCard concept this applies
+  estimatedMinutes: number;
+  tips: string[];                 // Practical tips for success
+  completionType: 'self-reported';
+  reflectionPrompts: string[];    // Questions for after completion
+}
+
 export interface DayDeferredContent {
   task1?: QuizTask | FillBlankTask | SectionsTask;  // Moved from core (loads in background)
   task2?: Task;
   intensivePractice?: IntensivePractice;  // For practice-based learning
+  openTask?: OpenTask;                     // Real-world practice challenge (practice-based)
   reflection: {
     questions: ReflectionQuestion[];
   };
@@ -1534,6 +1555,7 @@ export type SessionStep =
   | 'foundationCards'
   | 'task1'
   | 'bossMilestone'
+  | 'openTask'
   | 'reflection';
 
 export interface StepState {
@@ -1588,24 +1610,23 @@ export interface LearningDirection {
 }
 
 /**
- * Output types for different skill categories.
- * - Code skills (CODE, AI_AGENT, DESIGN): working_code, ship_project, fix_bug
- * - Knowledge skills (KNOWLEDGE): understand_concept, pass_exam, teach_others
- * - Physical skills (PHYSICAL): perform_skill, compete, master_basics
+ * Output types - what the user wants to achieve from learning.
+ * Universal across all skill types (code, knowledge, physical).
+ *
+ * - apply_skill: Use the skill proficiently. Practical application, make it work.
+ * - ship_project: Ship something real. End-to-end, deployment, best practices.
+ * - understand_concept: Deep understanding. Theory, mental models, "why" explanations.
+ * - pass_exam: Pass an exam. Memorizable facts, practice questions, exam strategies.
+ * - teach_others: Teach others. Analogies, clear explanations, common misconceptions.
+ * - compete: Compete with others. Advanced techniques, competitive strategies.
+ * - master_basics: Master fundamentals. Core techniques, solid foundation.
  */
 export type OutputType =
-  // Code/technical skills
-  | 'working_code'
+  | 'apply_skill'
   | 'ship_project'
-  | 'fix_bug'
-  // Universal
   | 'understand_concept'
-  | 'teach_others'
-  // Knowledge skills (languages, academic, etc.)
   | 'pass_exam'
-  | 'apply_practical'
-  // Physical skills (sports, music, dance, etc.)
-  | 'perform_skill'
+  | 'teach_others'
   | 'compete'
   | 'master_basics';
 
@@ -1744,7 +1765,7 @@ export interface CompleteOnboardingDto {
   contentDepth: 'fast' | 'medium' | 'deep';
   platformTolerance?: 'any' | 'preferGeneric' | 'genericOnly';
   selectedLanguage?: string; // User's chosen language (for CODE/AI_AGENT)
-  outputType?: OutputType;
+  outputType?: OutputType; // What user wants to achieve (working_code, pass_exam, teach_others, etc.)
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
   // Feeling-based inputs (replaces skill level & time questions)
   familiarity?: string;     // 'new' | 'know_basics' | 'skilled'

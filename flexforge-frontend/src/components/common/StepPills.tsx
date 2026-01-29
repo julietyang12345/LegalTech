@@ -17,6 +17,7 @@ const getStepLabels = (isProjectBased: boolean): Record<SessionStep, string> => 
   foundationCards: 'Learn',
   task1: 'Practice',
   bossMilestone: isProjectBased ? 'Boss' : 'Intensive',
+  openTask: 'Challenge',
   reflection: 'Reflect',
 });
 

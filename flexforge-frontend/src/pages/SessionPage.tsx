@@ -19,6 +19,7 @@ import { FoundationCardsStep } from '@/components/session/FoundationCardsStep';
 import { QuizTaskStep, FillBlankTaskStep } from '@/components/session/AlternativeTaskSteps';
 import { SectionTaskStep } from '@/components/session/SectionTaskStep';
 import { BossMilestoneStep } from '@/components/session/BossMilestoneStep';
+import { OpenTaskStep } from '@/components/session/OpenTaskStep';
 import { ReflectionStep } from '@/components/session/ReflectionStep';
 
 import type { SessionStep as SessionStepType } from '@/types';
@@ -384,6 +385,7 @@ const STEP_COMPONENTS: Record<SessionStepType, React.ComponentType<any>> = {
   foundationCards: FoundationCardsStep,
   task1: TaskRouter,
   bossMilestone: BossMilestoneStep,
+  openTask: OpenTaskStep,
   reflection: ReflectionStep,
 };
 
@@ -394,6 +396,7 @@ const STEP_ORDER: SessionStepType[] = [
   'foundationCards',
   'task1',
   'bossMilestone',
+  'openTask',
   'reflection',
 ];
 
@@ -482,6 +485,10 @@ export function SessionPage() {
       const hasCards = (currentDay?.foundationCards && currentDay.foundationCards.length > 0) ||
                        (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
       if (!hasCards) return false;
+    }
+    // Skip openTask if not present (only for practice-based curricula)
+    if (step === 'openTask') {
+      if (!currentDay?.openTask) return false;
     }
     return true;
   });

@@ -1,6 +1,5 @@
 import { SkillLevel } from '../../../database/entities/session.entity';
 import { SkillType, SkillComplexity } from '../services/skill-detector.service';
-import { OutputType } from '../types/learner-prefs.interface';
 import { ContentGenerationContext } from './content-generation-context';
 import {
   buildPersonalizationInstructions,
@@ -10,12 +9,22 @@ import {
 
 // Learner preferences from onboarding (optional - may not exist for users who skipped onboarding)
 // Internal interface - only used within this file
+// Output type for content generation (matches OutputType in learner-prefs.interface.ts)
+type OutputType =
+  | 'apply_skill'
+  | 'ship_project'
+  | 'understand_concept'
+  | 'pass_exam'
+  | 'teach_others'
+  | 'compete'
+  | 'master_basics';
+
 interface LearnerPrefsForPrompt {
   selectedDirection?: string; // The direction they picked (more specific than skillName)
   selectedDirectionOutcome?: string; // "You'll be able to..." - specific deliverable
   directionKeywords?: string[]; // Keywords for the selected direction
   selectedLanguage?: string; // User's chosen language (overrides auto-detection)
-  outputType?: OutputType;
+  outputType?: OutputType; // What user wants to achieve (affects content style)
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
   contentDepth?: 'fast' | 'medium' | 'deep';
   // Feeling-based inputs (easier for users than explicit skill level/time questions)
@@ -264,37 +273,6 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
     parts.push(`KEY TOPICS: ${prefs.directionKeywords.join(', ')}`);
   }
 
-  // Output type affects curriculum structure
-  if (prefs.outputType) {
-    const outputGuidance: Record<OutputType, string> = {
-      // Code/technical skills
-      working_code:
-        'User wants WORKING CODE as output. Focus on practical implementation, real runnable examples.',
-      ship_project:
-        'User wants to SHIP A PROJECT. Focus on end-to-end implementation, deployment, best practices.',
-      fix_bug:
-        'User wants to FIX BUGS. Focus on debugging techniques, common issues, troubleshooting patterns.',
-      // Universal
-      understand_concept:
-        'User wants to UNDERSTAND CONCEPTS. Include more theory, explanations, and mental models.',
-      teach_others:
-        'User wants to TEACH OTHERS. Focus on clear explanations, teaching techniques, common misconceptions.',
-      // Knowledge skills
-      pass_exam:
-        'User wants to PASS AN EXAM. Focus on testable knowledge, practice questions, exam strategies.',
-      apply_practical:
-        'User wants to USE KNOWLEDGE PRACTICALLY. Focus on real-world applications, conversational use, practical scenarios.',
-      // Physical skills
-      perform_skill:
-        'User wants to PERFORM THE SKILL WELL. Focus on proper technique, practice routines, common mistakes to avoid.',
-      compete:
-        'User wants to COMPETE. Focus on advanced techniques, competitive strategies, performance optimization.',
-      master_basics:
-        'User wants to MASTER THE BASICS. Focus on foundational movements, core techniques, building muscle memory.',
-    };
-    parts.push(outputGuidance[prefs.outputType] || '');
-  }
-
   // Usage context affects examples and focus
   if (prefs.usageContext) {
     const contextGuidance: Record<string, string> = {
@@ -318,6 +296,41 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
       deep: 'DEPTH: COMPREHENSIVE - Include edge cases, advanced patterns, thorough explanations.',
     };
     parts.push(depthGuidance[prefs.contentDepth] || '');
+  }
+
+  // Output type affects content style and task format
+  if (prefs.outputType) {
+    const outputGuidance: Record<OutputType, string> = {
+      apply_skill: `OUTPUT GOAL: USE IT PROFICIENTLY
+- Practical examples, real-world application
+- Focus on "how to use" over deep theory
+- Tasks: "Build this", "Apply this", practical scenarios`,
+      ship_project: `OUTPUT GOAL: SHIP SOMETHING REAL
+- End-to-end focus, real-world patterns
+- Include deployment, testing, best practices
+- Tasks: Project milestones, production considerations`,
+      understand_concept: `OUTPUT GOAL: DEEP UNDERSTANDING
+- Explain "why" not just "how"
+- Mental models, underlying principles
+- Tasks: "Explain why", conceptual questions`,
+      pass_exam: `OUTPUT GOAL: PASS AN EXAM
+- Memorizable definitions, formal facts
+- Edge cases, common exam traps
+- Tasks: MCQ, "what's the output", drills`,
+      teach_others: `OUTPUT GOAL: TEACH OTHERS
+- Analogies, intuitive explanations
+- Address common misconceptions
+- Tasks: "Explain to a beginner", teaching scenarios`,
+      compete: `OUTPUT GOAL: COMPETE WITH OTHERS
+- Advanced techniques, optimization
+- Competitive strategies, edge over others
+- Tasks: Challenging scenarios, performance focus`,
+      master_basics: `OUTPUT GOAL: MASTER FUNDAMENTALS
+- Core techniques, solid foundation
+- Consistency over complexity
+- Tasks: Fundamentals drill, build muscle memory`,
+    };
+    parts.push(outputGuidance[prefs.outputType] || '');
   }
 
   // Familiarity affects starting point, complexity, and assumed knowledge
@@ -438,54 +451,16 @@ function getSkillLevelGuidance(skillLevel: SkillLevel): {
 }
 
 /**
- * Determines if learning should be project-based (boss projects) or practice-based (practice projects)
+ * Determines if learning should be project-based (boss projects) or practice-based (exercises only)
  *
- * Priority (user intent first!):
- * 1. User's explicit learningStyle choice ('projects' or 'practice') - HIGHEST PRIORITY
- * 2. User's goal from questionnaire (outputType):
- *    - ship_project, working_code → project-based (even for KNOWLEDGE skills)
- *    - understand_concept, fix_bug, pass_exam, etc → practice-based
- * 3. Skill type default (if no user preference):
- *    - KNOWLEDGE/PHYSICAL → practice-based
- *    - CODE/AI_AGENT/DESIGN → project-based
+ * Uses the user's explicit learningStyle choice from onboarding.
+ * Defaults to 'practice' if not specified (safer default for new users).
  */
 export function usesProjectBasedLearning(
-  skillType: SkillType,
-  outputType?: OutputType,
   learningStyle?: 'projects' | 'practice',
 ): boolean {
-  // User's explicit choice takes highest priority
-  if (learningStyle) {
-    return learningStyle === 'projects';
-  }
-
-  // User intent from outputType - if they want to ship/build something, it's project-based
-  if (outputType) {
-    switch (outputType) {
-      // These output types indicate project-based learning
-      case 'ship_project':
-      case 'working_code':
-        return true;
-      // These output types indicate practice-based learning
-      case 'understand_concept':
-      case 'fix_bug':
-      case 'teach_others':
-      case 'pass_exam':
-      case 'apply_practical':
-      case 'perform_skill':
-      case 'compete':
-      case 'master_basics':
-        return false;
-    }
-  }
-
-  // KNOWLEDGE and PHYSICAL default to practice-based (unless user specified otherwise above)
-  if (skillType === SkillType.KNOWLEDGE || skillType === SkillType.PHYSICAL) {
-    return false;
-  }
-
-  // Default: CODE/AI_AGENT/DESIGN without preference → project-based
-  return true;
+  // User's explicit choice - default to practice-based if not specified
+  return learningStyle === 'projects';
 }
 
 function getSkillTypeGuidance(
@@ -579,7 +554,6 @@ export interface DayDetailParams {
   userTier: string;
   hoursPerDay: number;
   suggestedLanguage?: string;
-  outputType?: OutputType;
   learningStyle?: 'projects' | 'practice'; // Explicit user choice from onboarding
   isProjectBased?: boolean; // Pass directly from metadata - don't re-calculate
   // Reflection data from previous day (for personalized prePrompt)
@@ -843,7 +817,7 @@ export function buildDayDetailDeferredPrompt(
   // Check if practice-based (non-project-based)
   const isProjectBased =
     params.isProjectBased ??
-    usesProjectBasedLearning(params.skillType, params.outputType, params.learningStyle);
+    usesProjectBasedLearning(params.learningStyle);
 
   // For practice-based skills, generate intensive practice sections
   if (!isProjectBased) {
@@ -1291,6 +1265,26 @@ INTENSIVE PRACTICE:
 ${sectionInstructions}
 Items per section: ${itemsPerSection}
 
+OPEN TASK:
+- A specific, actionable task to do outside the app
+- Must directly apply one of today's foundationCard concepts${ctx?.generatedContent?.foundationCardConcepts?.length ? `: ${ctx.generatedContent.foundationCardConcepts.join(', ')}` : ''}
+- No correct answer - user self-reports completion
+- Choose task type based on skill:
+  * Soft skills (leadership, communication, negotiation): Real interaction tasks
+    e.g., "Have a 1-on-1 with a team member", "Practice active listening in your next meeting"
+  * Academic skills (math, science, history, concepts): Teaching tasks (Feynman technique)
+    e.g., "Explain [concept] to a friend or family member in simple terms"
+    This reinforces learning - if you can teach it, you understand it
+- Include:
+  - title: Short, action-oriented - NO prefix
+  - description: 2-3 sentences explaining what to do and why
+  - icon: Emoji (💬 chat, 🎯 goal, 🤝 collab, 📝 write, 🔍 observe, 🎤 speak, 👂 listen, 🧑‍🏫 teach)
+  - context: Where/when (e.g., "With a friend or family member", "At work", "During dinner")
+  - difficulty: "easy" (5-10 min) | "medium" (15-20 min) | "challenging" (30+ min)
+  - conceptConnection: Which foundationCard concept this applies
+  - tips: 2-3 practical tips for success
+  - reflectionPrompts: 2-3 questions for after completion
+
 Output valid JSON.`;
 
   const userPrompt = `{
@@ -1312,6 +1306,29 @@ Output valid JSON.`;
       {"id": "mini1", "concept": "New Concept", "explanation": "100-150 words..."}
     ],
     "sections": ${sectionTemplate}
+  },
+  "openTask": {
+    "id": "day${dayNumber}-opentask",
+    "sectionType": "openTask",
+    "sectionTitle": "Real-World Challenge",
+    "sectionSubtitle": "Take your learning beyond the screen",
+    "title": "[Action verb + specific activity]",
+    "description": "2-3 sentences: what to do, with whom, and the goal",
+    "icon": "🎯",
+    "context": "At work / With a friend / During your next meeting",
+    "difficulty": "easy|medium|challenging",
+    "conceptConnection": "[Reference specific foundationCard concept]",
+    "estimatedMinutes": 15,
+    "tips": [
+      "Practical tip for success #1",
+      "Practical tip for success #2"
+    ],
+    "completionType": "self-reported",
+    "reflectionPrompts": [
+      "What did you notice during this interaction?",
+      "How did applying [concept] change the outcome?",
+      "What would you do differently next time?"
+    ]
   },
   "reflection": {
     "questions": [
@@ -1570,11 +1587,7 @@ export function buildCacheableCurriculumPrompt(
   userPrompt: string;
 } {
   const time = getTimeStructure(params.hoursPerDay);
-  const isProjectBased = usesProjectBasedLearning(
-    params.skillType,
-    params.learnerPrefs?.outputType,
-    params.learnerPrefs?.learningStyle,
-  );
+  const isProjectBased = usesProjectBasedLearning(params.learnerPrefs?.learningStyle);
   const learnerContext = getLearnerContextGuidance(params.learnerPrefs);
   const allDays = Array.from({ length: params.durationDays }, (_, i) => i + 1);
 
@@ -1654,12 +1667,7 @@ Per day: day, title, subtitle, skills[], teaser, estimatedMinutes:${time.totalMi
     "recommendedTools": [],
     "prerequisites": ${JSON.stringify(params.prerequisiteSkills || [])},
     "safetyLevel": "${params.safetyLevel || 'low'}",
-    "isProjectBased": ${isProjectBased}${
-      params.learnerPrefs?.outputType
-        ? `,
-    "outputType": "${params.learnerPrefs.outputType}"`
-        : ''
-    },
+    "isProjectBased": ${isProjectBased},
     "customSections": ${params.customSections ? JSON.stringify(params.customSections) : 'null'}
   }
 }
@@ -1687,7 +1695,7 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
   // Use stored isProjectBased from metadata, fall back to calculation if not provided
   const isProjectBased =
     params.isProjectBased ??
-    usesProjectBasedLearning(params.skillType, params.outputType, params.learningStyle);
+    usesProjectBasedLearning(params.learningStyle);
 
   // Static part - cacheable
   const staticPart = DAY_DETAIL_STATIC_INSTRUCTIONS;
@@ -1707,7 +1715,6 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
     skillLevel: params.skillLevel,
     complexity: params.complexity,
     suggestedLanguage: params.suggestedLanguage,
-    outputType: params.outputType,
     isProjectBased,
     userTier: params.userTier,
     hoursPerDay: params.hoursPerDay,
