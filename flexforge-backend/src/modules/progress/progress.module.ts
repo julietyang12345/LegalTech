@@ -7,12 +7,14 @@ import { ProgressService } from './progress.service';
 import { ProgressController } from './progress.controller';
 import { AiModule } from '../ai/ai.module';
 import { CompanionModule } from '../companion/companion.module';
+import { AnalyticsModule } from '../analytics/analytics.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Progress, Session, User]),
     AiModule,
     CompanionModule,
+    AnalyticsModule,
   ],
   controllers: [ProgressController],
   providers: [ProgressService],

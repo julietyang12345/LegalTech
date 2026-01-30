@@ -20,6 +20,7 @@ import {
   DayContentCacheVariant,
   DayContentServe,
 } from './database/entities/curriculum-cache.entity';
+import { AuditLog } from './database/entities/audit-log.entity';
 
 // Modules
 import { AuthModule } from './modules/auth/auth.module';
@@ -32,6 +33,7 @@ import { ProjectModule } from './modules/project/project.module';
 import { CompanionModule } from './modules/companion/companion.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { TtsModule } from './modules/tts/tts.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 
 @Module({
   imports: [
@@ -63,6 +65,7 @@ import { TtsModule } from './modules/tts/tts.module';
           DayContentCache,
           DayContentCacheVariant,
           DayContentServe,
+          AuditLog,
         ],
         synchronize: configService.get('nodeEnv') === 'development',
         logging: configService.get('nodeEnv') === 'development',
@@ -96,6 +99,7 @@ import { TtsModule } from './modules/tts/tts.module';
     ProjectModule,
     OnboardingModule,
     TtsModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

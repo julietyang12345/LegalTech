@@ -9,6 +9,7 @@ import { Progress } from '../../database/entities/progress.entity';
 import { Session } from '../../database/entities/session.entity';
 import { User, QuotaTier } from '../../database/entities/user.entity';
 import { AiService, AITask } from '../ai/ai.service';
+import { AnalyticsService } from '../analytics/analytics.service';
 
 export class UpdateProgressDto {
   completed?: boolean;
@@ -28,6 +29,7 @@ export class ProgressService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private aiService: AiService,
+    private analyticsService: AnalyticsService,
   ) {}
 
   async findBySession(sessionId: string, userId: string): Promise<Progress[]> {
@@ -89,6 +91,16 @@ export class ProgressService {
     progress.attempts = (progress.attempts || 0) + 1;
 
     const savedProgress = await this.progressRepository.save(progress);
+
+    // Track step completion for analytics
+    if (updateProgressDto.completed) {
+      await this.analyticsService.stepCompleted(
+        userId,
+        sessionId,
+        taskId,
+        dayNumber,
+      );
+    }
 
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (

@@ -21,6 +21,7 @@ import { UpdateSessionDto } from './dto/update-session.dto';
 import { CurriculumService } from '../curriculum/curriculum.service';
 import { CurriculumCacheService } from '../curriculum/services/curriculum-cache.service';
 import { UserService } from '../user/user.service';
+import { AnalyticsService } from '../analytics/analytics.service';
 
 @Injectable()
 export class SessionService {
@@ -32,6 +33,7 @@ export class SessionService {
     private curriculumService: CurriculumService,
     private cacheService: CurriculumCacheService,
     private userService: UserService,
+    private analyticsService: AnalyticsService,
   ) {}
 
   /**
@@ -191,6 +193,14 @@ export class SessionService {
 
     const savedSession = await this.sessionsRepository.save(session);
 
+    // Track session started
+    await this.analyticsService.sessionStarted(
+      userId,
+      savedSession.id,
+      savedSession.skillName,
+      1, // Day 1
+    );
+
     if (fromPreview) {
       this.logger.log(
         `✅ Session created: ${savedSession.id} (from preview, instant)`,
@@ -256,6 +266,12 @@ export class SessionService {
     // Handle status changes
     if (updateSessionDto.status === SessionStatus.COMPLETED) {
       session.completedAt = new Date();
+      // Track session completion
+      await this.analyticsService.sessionCompleted(
+        userId,
+        id,
+        session.currentDay,
+      );
     }
 
     // Handle mode changes (Life Happens button)

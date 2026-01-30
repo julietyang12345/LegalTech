@@ -6,12 +6,14 @@ import { SessionService } from './session.service';
 import { SessionController } from './session.controller';
 import { CurriculumModule } from '../curriculum/curriculum.module';
 import { UserModule } from '../user/user.module';
+import { AnalyticsModule } from '../analytics/analytics.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Session, User]),
     CurriculumModule,
     UserModule,
+    AnalyticsModule,
   ],
   controllers: [SessionController],
   providers: [SessionService],
