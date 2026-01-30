@@ -374,13 +374,15 @@ export function FoundationCardsStep({ day, session, onComplete }: FoundationCard
 function ExplanationContent({ explanation, cardId }: { explanation: string; cardId: string }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Split into sentences for better formatting
-  const sentences = explanation
-    .split(/(?<=[.!?])\s+/)
-    .filter(s => s.trim().length > 0);
+  // Split by paragraphs (double newline) for logical grouping by theme
+  // Fall back to single paragraph if no breaks
+  const paragraphs = explanation
+    .split(/\n\n+/)
+    .map(p => p.trim())
+    .filter(p => p.length > 0);
 
-  const keyInsight = sentences[0] || '';
-  const details = sentences.slice(1);
+  const keyInsight = paragraphs[0] || '';
+  const details = paragraphs.slice(1);
 
   return (
     <div className="px-6 pb-4 space-y-3">
@@ -391,7 +393,7 @@ function ExplanationContent({ explanation, cardId }: { explanation: string; card
         </p>
       </div>
 
-      {/* Collapsible details */}
+      {/* Collapsible details - shown as paragraphs grouped by theme */}
       {details.length > 0 && (
         <>
           <button
@@ -404,7 +406,7 @@ function ExplanationContent({ explanation, cardId }: { explanation: string; card
                 isExpanded && 'rotate-180'
               )}
             />
-            {isExpanded ? 'Hide details' : `Show details (${details.length} points)`}
+            {isExpanded ? 'Hide details' : 'Show more'}
           </button>
 
           <AnimatePresence>
@@ -416,14 +418,13 @@ function ExplanationContent({ explanation, cardId }: { explanation: string; card
                 transition={{ duration: 0.2 }}
                 className="overflow-hidden"
               >
-                <ul className="space-y-2 pl-1 pt-1">
-                  {details.map((sentence, idx) => (
-                    <li key={idx} className="flex items-start gap-2 text-sm text-gray-600">
-                      <span className="text-violet-400 mt-1">•</span>
-                      <span className="leading-relaxed">{sentence.trim()}</span>
-                    </li>
+                <div className="space-y-3 pt-1">
+                  {details.map((paragraph, idx) => (
+                    <p key={idx} className="text-sm text-gray-600 leading-relaxed">
+                      {paragraph}
+                    </p>
                   ))}
-                </ul>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -522,6 +523,14 @@ function CaseStudyComponent({ caseStudy, onAnswer, answered }: CaseStudyComponen
     onAnswer(isCorrect);
   };
 
+  // Normalize options to handle both string[] and {label, consequence}[] formats
+  const normalizedOptions = caseStudy.options.map((option) => {
+    if (typeof option === 'string') {
+      return { label: option, consequence: '' };
+    }
+    return option;
+  });
+
   return (
     <div className="border-t border-gray-100 pt-4">
       {/* Scenario */}
@@ -535,7 +544,7 @@ function CaseStudyComponent({ caseStudy, onAnswer, answered }: CaseStudyComponen
 
       {/* Options */}
       <div className="space-y-2">
-        {caseStudy.options.map((option, index) => {
+        {normalizedOptions.map((option, index) => {
           const isSelected = selectedIndex === index;
           const isBestChoice = index === caseStudy.bestChoice;
 
@@ -563,7 +572,7 @@ function CaseStudyComponent({ caseStudy, onAnswer, answered }: CaseStudyComponen
                 </span>
                 <div className="flex-1">
                   <p className="font-medium text-gray-800">{option.label}</p>
-                  {showResult && (
+                  {showResult && option.consequence && (
                     <p className={clsx(
                       'text-sm mt-1',
                       isBestChoice ? 'text-green-700' : 'text-amber-700'

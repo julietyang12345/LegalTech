@@ -231,6 +231,10 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
   const handlePrevious = () => {
     if (currentSectionIndex > 0) {
       setCurrentSectionIndex(prev => prev - 1);
+    } else if (hasMiniCards) {
+      // Go back to mini foundation cards
+      setMiniCardsCompleted(false);
+      setMiniCardIndex(miniFoundationCards.length - 1); // Go to last card
     }
   };
 
@@ -692,48 +696,83 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
       subtitle={intensivePractice.title}
     >
       <div className="max-w-2xl mx-auto">
-        {/* Section progress indicators */}
-        <div className="flex gap-2 mb-6">
-          {sections.map((_, index) => {
-            const result = sectionResults[index];
-            const isActive = index === currentSectionIndex;
-            const isCompleted = result?.completed;
+        {/* Section navigation - clickable tabs at top */}
+        <div className="flex items-center gap-1 sm:gap-2 mb-4">
+          {/* Back button */}
+          <button
+            onClick={handlePrevious}
+            disabled={currentSectionIndex === 0 && !hasMiniCards}
+            className={clsx(
+              'p-2 rounded-lg transition-colors flex-shrink-0',
+              currentSectionIndex === 0 && !hasMiniCards
+                ? 'text-gray-300 cursor-not-allowed'
+                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 active:bg-gray-200'
+            )}
+            title={currentSectionIndex === 0 && hasMiniCards ? 'Back to Concepts' : 'Previous Section'}
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
 
-            return (
-              <div
-                key={index}
-                className={clsx(
-                  'flex-1 h-2 rounded-full transition-all',
-                  isCompleted
-                    ? 'bg-green-500'
-                    : isActive
-                    ? 'bg-blue-500'
-                    : 'bg-gray-200'
-                )}
-              />
-            );
-          })}
+          {/* Section progress indicators - scrollable on mobile */}
+          <div className="flex gap-1.5 sm:gap-2 flex-1 overflow-x-auto scrollbar-hide">
+            {sections.map((section, index) => {
+              const result = sectionResults[index];
+              const isActive = index === currentSectionIndex;
+              const isCompleted = result?.completed;
+              // Shorter labels for mobile
+              const sectionLabel = section.type === 'fillBlank' ? 'Fill' :
+                                   section.type === 'aiCodeReview' ? 'Review' :
+                                   section.type === 'outputPrediction' ? 'Output' :
+                                   section.type === 'codeCompletion' ? 'Code' :
+                                   section.type === 'matching' ? 'Match' :
+                                   section.type.charAt(0).toUpperCase() + section.type.slice(1);
+
+              return (
+                <button
+                  key={index}
+                  onClick={() => setCurrentSectionIndex(index)}
+                  className={clsx(
+                    'py-2 px-2.5 sm:px-3 rounded-lg text-xs font-medium transition-all flex-shrink-0 flex items-center gap-1',
+                    isCompleted
+                      ? 'bg-green-100 text-green-700 hover:bg-green-200 active:bg-green-300'
+                      : isActive
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200 active:bg-gray-300'
+                  )}
+                >
+                  <span className="truncate max-w-[60px] sm:max-w-none">{sectionLabel}</span>
+                  {isCompleted && <CheckCircle2 className="w-3 h-3 flex-shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Forward button */}
+          <button
+            onClick={handleNext}
+            className={clsx(
+              'p-2 rounded-lg transition-colors flex-shrink-0',
+              currentSectionCompleted
+                ? 'text-blue-600 hover:bg-blue-50 active:bg-blue-100'
+                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 active:bg-gray-200'
+            )}
+            title={currentSectionIndex < sections.length - 1 ? 'Next Section' : 'Finish'}
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Section label with skip option */}
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500">
-              Section {currentSectionIndex + 1} of {sections.length}
-            </span>
-            <span className="text-sm px-2 py-0.5 bg-gray-100 rounded-full capitalize">
-              {currentSection.type === 'fillBlank' ? 'Fill in Blank' : currentSection.type}
-            </span>
-          </div>
-          {!currentSectionCompleted && (
+        {/* Skip section link */}
+        {!currentSectionCompleted && (
+          <div className="text-right mb-2">
             <button
               onClick={handleNext}
               className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
             >
-              Skip section
+              Skip this section →
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Current section */}
         <AnimatePresence mode="wait">
@@ -747,36 +786,6 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
             {renderSection(currentSection)}
           </motion.div>
         </AnimatePresence>
-
-        {/* Navigation buttons */}
-        <div className="mt-6 flex justify-between">
-          <button
-            onClick={handlePrevious}
-            disabled={currentSectionIndex === 0}
-            className={clsx(
-              'px-4 py-2 rounded-lg flex items-center gap-2 transition-colors',
-              currentSectionIndex === 0
-                ? 'text-gray-300 cursor-not-allowed'
-                : 'text-gray-600 hover:bg-gray-100'
-            )}
-          >
-            <ChevronLeft className="w-5 h-5" />
-            Previous
-          </button>
-
-          <button
-            onClick={handleNext}
-            className={clsx(
-              'px-4 py-2 rounded-lg flex items-center gap-2 transition-colors',
-              currentSectionCompleted
-                ? 'bg-blue-500 text-white hover:bg-blue-600'
-                : 'text-gray-600 hover:bg-gray-100'
-            )}
-          >
-            {currentSectionIndex < sections.length - 1 ? 'Next' : 'Finish'}
-            <ChevronRight className="w-5 h-5" />
-          </button>
-        </div>
       </div>
     </StepLayout>
   );

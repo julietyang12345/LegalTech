@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, X, Lightbulb, Eye, EyeOff, Play } from 'lucide-react';
+import { Check, X, Lightbulb, Eye, EyeOff, Play, ArrowRight, ChevronLeft } from 'lucide-react';
 import { clsx } from 'clsx';
 import type {
   CodeCompletionSection,
@@ -138,17 +138,20 @@ export function CodeCompletionExercise({ section, onComplete, savedProgress, onP
 
     setTimeout(() => {
       setShowFeedback(false);
-      if (currentIndex < items.length - 1) {
-        setCurrentIndex(prev => prev + 1);
-        setUserCode('');
-        setShowHint(false);
-        setCurrentHintIndex(0);
-        setShowSolution(false);
-      } else {
-        const correctCount = Object.values(newResults).filter(Boolean).length;
-        onComplete(correctCount, items.length, newResults as Record<string, number | string | boolean>);
-      }
     }, 2000);
+  };
+
+  const handleNext = () => {
+    if (currentIndex < items.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+      setUserCode('');
+      setShowHint(false);
+      setCurrentHintIndex(0);
+      setShowSolution(false);
+    } else {
+      const correctCount = Object.values(results).filter(Boolean).length;
+      onComplete(correctCount, items.length, results as Record<string, number | string | boolean>);
+    }
   };
 
   const showNextHint = () => {
@@ -263,6 +266,23 @@ export function CodeCompletionExercise({ section, onComplete, savedProgress, onP
             )}
           </motion.div>
         )}
+
+        {/* Next button */}
+        {hasAnswered && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-4 flex justify-end"
+          >
+            <button
+              onClick={handleNext}
+              className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors flex items-center gap-2"
+            >
+              {currentIndex < items.length - 1 ? 'Next' : 'Finish'}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
       </div>
 
       <FeedbackToast show={showFeedback} correct={isCorrect} />
@@ -327,15 +347,18 @@ export function DebuggingExercise({ section, onComplete, savedProgress, onProgre
 
     setTimeout(() => {
       setShowFeedback(false);
-      if (currentIndex < items.length - 1) {
-        setCurrentIndex(prev => prev + 1);
-        setUserCode(items[currentIndex + 1]?.buggyCode || '');
-        setShowHint(false);
-      } else {
-        const correctCount = Object.values(newResults).filter(Boolean).length;
-        onComplete(correctCount, items.length, newResults as Record<string, number | string | boolean>);
-      }
     }, 2000);
+  };
+
+  const handleNext = () => {
+    if (currentIndex < items.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+      setUserCode(items[currentIndex + 1]?.buggyCode || '');
+      setShowHint(false);
+    } else {
+      const correctCount = Object.values(results).filter(Boolean).length;
+      onComplete(correctCount, items.length, results as Record<string, number | string | boolean>);
+    }
   };
 
   if (!currentItem) return null;
@@ -408,6 +431,23 @@ export function DebuggingExercise({ section, onComplete, savedProgress, onProgre
             )}
           </motion.div>
         )}
+
+        {/* Next button */}
+        {hasAnswered && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-4 flex justify-end"
+          >
+            <button
+              onClick={handleNext}
+              className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors flex items-center gap-2"
+            >
+              {currentIndex < items.length - 1 ? 'Next' : 'Finish'}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
       </div>
 
       <FeedbackToast show={showFeedback} correct={isCorrect} />
@@ -459,17 +499,26 @@ export function OutputPredictionExercise({ section, onComplete, savedProgress, o
 
     setTimeout(() => {
       setShowFeedback(false);
-      if (currentIndex < questions.length - 1) {
-        setCurrentIndex(prev => prev + 1);
-      } else {
-        const correctCount = Object.entries(newAnswers)
-          .filter(([id, ans]) => {
-            const q = questions.find(q => q.id === id);
-            return q && ans === q.correctIndex;
-          }).length;
-        onComplete(correctCount, questions.length, newAnswers as Record<string, number | string | boolean>);
-      }
     }, 2000);
+  };
+
+  const handleNext = () => {
+    if (currentIndex < questions.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+    } else {
+      const correctCount = Object.entries(answers)
+        .filter(([id, ans]) => {
+          const q = questions.find(q => q.id === id);
+          return q && ans === q.correctIndex;
+        }).length;
+      onComplete(correctCount, questions.length, answers as Record<string, number | string | boolean>);
+    }
+  };
+
+  const handlePrevQuestion = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(prev => prev - 1);
+    }
   };
 
   if (!currentQuestion) return null;
@@ -519,6 +568,37 @@ export function OutputPredictionExercise({ section, onComplete, savedProgress, o
             {currentQuestion.explanation}
           </motion.p>
         )}
+
+        {/* Question navigation */}
+        {hasAnswered && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-4 flex justify-between items-center gap-2"
+          >
+            <button
+              onClick={handlePrevQuestion}
+              disabled={currentIndex === 0}
+              className={clsx(
+                'px-3 sm:px-4 py-2.5 rounded-lg transition-colors flex items-center gap-1.5 sm:gap-2 text-sm',
+                currentIndex === 0
+                  ? 'text-gray-300 cursor-not-allowed'
+                  : 'text-gray-600 hover:bg-gray-100 active:bg-gray-200'
+              )}
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span className="hidden xs:inline">Previous</span>
+              <span className="xs:hidden">Prev</span>
+            </button>
+            <button
+              onClick={handleNext}
+              className="px-3 sm:px-4 py-2.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 active:bg-brand-700 transition-colors flex items-center gap-1.5 sm:gap-2 text-sm"
+            >
+              {currentIndex < questions.length - 1 ? 'Next' : 'Finish'}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
       </div>
 
       <FeedbackToast show={showFeedback} correct={isCorrect} />
@@ -527,7 +607,9 @@ export function OutputPredictionExercise({ section, onComplete, savedProgress, o
 }
 
 // ============================================
-// AI Code Review Exercise
+// AI Code Review Exercise (Two-Step Flow)
+// Step 1: Select which line/location has an issue
+// Step 2: Choose the reason why it's vulnerable
 // ============================================
 
 const ISSUE_TYPE_LABELS: Record<AICodeReviewIssue['type'], { label: string; color: string; icon: string }> = {
@@ -539,12 +621,6 @@ const ISSUE_TYPE_LABELS: Record<AICodeReviewIssue['type'], { label: string; colo
   'edge-case': { label: 'Edge Case', color: 'text-amber-600 bg-amber-50 border-amber-200', icon: '⚠️' },
 };
 
-const SEVERITY_STYLES: Record<AICodeReviewIssue['severity'], string> = {
-  critical: 'ring-2 ring-red-400',
-  warning: 'ring-2 ring-amber-400',
-  minor: 'ring-1 ring-gray-300',
-};
-
 interface AICodeReviewExerciseProps {
   section: AICodeReviewSection;
   onComplete: (score: number, total: number, answers?: Record<string, number | string | boolean>) => void;
@@ -553,18 +629,21 @@ interface AICodeReviewExerciseProps {
 }
 
 export function AICodeReviewExercise({ section, onComplete, savedProgress, onProgressChange }: AICodeReviewExerciseProps) {
-  const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
-  const [selectedIssues, setSelectedIssues] = useState<Set<string>>(new Set());
-  const [showResults, setShowResults] = useState(false);
-  const [allResults, setAllResults] = useState<Record<string, string[]>>(() => {
+  const [currentItemIndex, setCurrentItemIndex] = useState(savedProgress?.currentIndex ?? 0);
+  const [currentIssueIndex, setCurrentIssueIndex] = useState(0);
+  const [step, setStep] = useState<'location' | 'reason'>('location');
+  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
+  const [selectedReasonIndex, setSelectedReasonIndex] = useState<number | null>(null);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [results, setResults] = useState<Record<string, { locationCorrect: boolean; reasonCorrect: boolean }>>(() => {
     if (!savedProgress?.answers) return {};
-    const result: Record<string, string[]> = {};
+    const result: Record<string, { locationCorrect: boolean; reasonCorrect: boolean }> = {};
     Object.entries(savedProgress.answers).forEach(([k, v]) => {
       if (typeof v === 'string') {
         try {
           result[k] = JSON.parse(v);
         } catch {
-          result[k] = [];
+          // ignore
         }
       }
     });
@@ -572,27 +651,59 @@ export function AICodeReviewExercise({ section, onComplete, savedProgress, onPro
   });
 
   const items = section.items;
-  const currentItem = items[currentIndex];
-  const hasAnswered = currentItem?.id in allResults;
+  const currentItem = items[currentItemIndex];
+  const currentIssue = currentItem?.issues[currentIssueIndex];
+  const totalIssues = items.reduce((sum, item) => sum + item.issues.length, 0);
+  const completedIssues = Object.keys(results).length;
 
-  const handleToggleIssue = (issueId: string) => {
-    if (showResults) return;
-    setSelectedIssues(prev => {
-      const next = new Set(prev);
-      if (next.has(issueId)) {
-        next.delete(issueId);
-      } else {
-        next.add(issueId);
-      }
-      return next;
-    });
+  // Get all locations for step 1 (includes correct + decoy locations)
+  const getLocationOptions = () => {
+    if (!currentItem) return [];
+    // Use all issues' locations as options
+    return currentItem.issues.map(issue => issue.location);
   };
 
-  const handleSubmit = () => {
-    const selectedArray = Array.from(selectedIssues);
-    const newResults = { ...allResults, [currentItem.id]: selectedArray };
-    setAllResults(newResults);
-    setShowResults(true);
+  const handleLocationSelect = (location: string) => {
+    if (showFeedback) return;
+    setSelectedLocation(location);
+
+    // Check if selected location matches current issue
+    const isCorrect = location === currentIssue?.location;
+
+    if (isCorrect) {
+      // Move to step 2: choose reason
+      setStep('reason');
+    } else {
+      // Wrong location - show feedback
+      setShowFeedback(true);
+      const newResults = {
+        ...results,
+        [currentIssue.id]: { locationCorrect: false, reasonCorrect: false }
+      };
+      setResults(newResults);
+
+      // Report progress
+      if (onProgressChange) {
+        const serialized: Record<string, string> = {};
+        Object.entries(newResults).forEach(([k, v]) => {
+          serialized[k] = JSON.stringify(v);
+        });
+        onProgressChange(serialized, currentItemIndex);
+      }
+    }
+  };
+
+  const handleReasonSelect = (optionIndex: number) => {
+    if (showFeedback) return;
+    setSelectedReasonIndex(optionIndex);
+    setShowFeedback(true);
+
+    const isCorrect = optionIndex === currentIssue?.correctIndex;
+    const newResults = {
+      ...results,
+      [currentIssue.id]: { locationCorrect: true, reasonCorrect: isCorrect }
+    };
+    setResults(newResults);
 
     // Report progress
     if (onProgressChange) {
@@ -600,44 +711,49 @@ export function AICodeReviewExercise({ section, onComplete, savedProgress, onPro
       Object.entries(newResults).forEach(([k, v]) => {
         serialized[k] = JSON.stringify(v);
       });
-      onProgressChange(serialized, currentIndex);
+      onProgressChange(serialized, currentItemIndex);
     }
   };
 
   const handleNext = () => {
-    if (currentIndex < items.length - 1) {
-      setCurrentIndex(prev => prev + 1);
-      setSelectedIssues(new Set());
-      setShowResults(false);
+    moveToNextIssue(results);
+  };
+
+  const moveToNextIssue = (currentResults: Record<string, { locationCorrect: boolean; reasonCorrect: boolean }>) => {
+    setShowFeedback(false);
+    setSelectedLocation(null);
+    setSelectedReasonIndex(null);
+    setStep('location');
+
+    if (currentIssueIndex < currentItem.issues.length - 1) {
+      // Next issue in same code block
+      setCurrentIssueIndex(prev => prev + 1);
+    } else if (currentItemIndex < items.length - 1) {
+      // Next code block
+      setCurrentItemIndex(prev => prev + 1);
+      setCurrentIssueIndex(0);
     } else {
-      // Calculate score: percentage of issues found across all items
-      let totalIssues = 0;
-      let foundIssues = 0;
-      items.forEach(item => {
-        totalIssues += item.issues.length;
-        const found = allResults[item.id] || [];
-        foundIssues += item.issues.filter(issue => found.includes(issue.id)).length;
-      });
+      // All done - calculate score
+      const correctCount = Object.values(currentResults).filter(r => r.locationCorrect && r.reasonCorrect).length;
       const serialized: Record<string, string> = {};
-      Object.entries(allResults).forEach(([k, v]) => {
+      Object.entries(currentResults).forEach(([k, v]) => {
         serialized[k] = JSON.stringify(v);
       });
-      onComplete(foundIssues, totalIssues, serialized);
+      onComplete(correctCount, totalIssues, serialized);
     }
   };
 
-  if (!currentItem) return null;
+  if (!currentItem || !currentIssue) return null;
 
-  const foundCount = Array.from(selectedIssues).filter(id =>
-    currentItem.issues.some(issue => issue.id === id)
-  ).length;
+  const typeInfo = ISSUE_TYPE_LABELS[currentIssue.type];
+  const locationOptions = getLocationOptions();
 
   return (
     <div className="space-y-4">
       <ExerciseHeader
         title={section.title}
-        instructions={section.instructions || "Review this AI-generated code and identify potential issues"}
-        progress={{ current: currentIndex + 1, total: items.length }}
+        instructions={section.instructions || "Review this AI-generated code and identify issues"}
+        progress={{ current: completedIssues + 1, total: totalIssues }}
       />
 
       <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
@@ -662,116 +778,163 @@ export function AICodeReviewExercise({ section, onComplete, savedProgress, onPro
           <CodeBlock code={currentItem.code} language={currentItem.language} />
         </div>
 
-        {/* Issue selection */}
-        <div className="p-4 border-t bg-gray-50">
-          <p className="text-sm font-medium text-gray-700 mb-3">
-            {showResults
-              ? `You found ${foundCount} of ${currentItem.issues.length} issues`
-              : 'Select all issues you find in this code:'}
-          </p>
-
-          <div className="grid gap-2">
-            {currentItem.issues.map(issue => {
-              const typeInfo = ISSUE_TYPE_LABELS[issue.type];
-              const isSelected = selectedIssues.has(issue.id);
-              const isCorrect = showResults && isSelected;
-              const isMissed = showResults && !isSelected;
-
-              return (
-                <button
-                  key={issue.id}
-                  onClick={() => handleToggleIssue(issue.id)}
-                  disabled={showResults}
-                  className={clsx(
-                    'p-3 rounded-lg border text-left transition-all',
-                    !showResults && isSelected && 'bg-brand-50 border-brand-300',
-                    !showResults && !isSelected && 'hover:bg-gray-100 border-gray-200',
-                    showResults && isCorrect && 'bg-green-50 border-green-300',
-                    showResults && isMissed && 'bg-red-50 border-red-300',
-                    SEVERITY_STYLES[issue.severity]
-                  )}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={clsx(
-                      'px-2 py-0.5 rounded text-xs font-medium border',
-                      typeInfo.color
-                    )}>
-                      {typeInfo.icon} {typeInfo.label}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-800">{issue.location}</p>
-                      {showResults && (
-                        <motion.p
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto' }}
-                          className="text-sm text-gray-600 mt-1"
-                        >
-                          {issue.explanation}
-                        </motion.p>
-                      )}
-                    </div>
-                    {!showResults && (
-                      <div className={clsx(
-                        'w-5 h-5 rounded border-2 flex items-center justify-center',
-                        isSelected ? 'bg-brand-500 border-brand-500' : 'border-gray-300'
-                      )}>
-                        {isSelected && <Check className="w-3 h-3 text-white" />}
-                      </div>
-                    )}
-                    {showResults && (
-                      <div className={clsx(
-                        'w-5 h-5 rounded-full flex items-center justify-center',
-                        isCorrect ? 'bg-green-500' : 'bg-red-500'
-                      )}>
-                        {isCorrect ? <Check className="w-3 h-3 text-white" /> : <X className="w-3 h-3 text-white" />}
-                      </div>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {currentItem.hint && !showResults && selectedIssues.size === 0 && (
-            <div className="mt-3 p-2 bg-amber-50 rounded-lg">
-              <p className="text-sm text-amber-700">
-                <Lightbulb className="w-4 h-4 inline mr-1" />
-                {currentItem.hint}
+        {/* Step 1: Select Location */}
+        {step === 'location' && (
+          <div className="p-4 border-t bg-gray-50">
+            <div className="flex items-center gap-2 mb-3">
+              <div className={clsx('px-2 py-0.5 rounded text-xs font-medium border', typeInfo.color)}>
+                {typeInfo.icon} {typeInfo.label}
+              </div>
+              <p className="text-sm font-medium text-gray-700">
+                Find the {typeInfo.label.toLowerCase()} issue - which line has the problem?
               </p>
             </div>
-          )}
 
-          {showResults && currentItem.correctVersion && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              className="mt-4"
-            >
-              <p className="text-sm font-medium text-gray-700 mb-2">Corrected version:</p>
-              <CodeBlock code={currentItem.correctVersion} language={currentItem.language} />
-            </motion.div>
-          )}
-        </div>
+            <div className="grid gap-2">
+              {locationOptions.map((location, index) => {
+                const isSelected = selectedLocation === location;
+                const isCorrectLocation = location === currentIssue.location;
+                const showResult = showFeedback && isSelected;
 
-        {/* Actions */}
-        <div className="p-4 border-t flex justify-end gap-2">
-          {!showResults ? (
-            <button
-              onClick={handleSubmit}
-              disabled={selectedIssues.size === 0}
-              className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-50"
-            >
-              Submit Review
-            </button>
-          ) : (
-            <button
-              onClick={handleNext}
-              className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600"
-            >
-              {currentIndex < items.length - 1 ? 'Next Code' : 'Finish'}
-            </button>
-          )}
-        </div>
+                return (
+                  <button
+                    key={index}
+                    onClick={() => handleLocationSelect(location)}
+                    disabled={showFeedback}
+                    className={clsx(
+                      'p-3 rounded-lg border text-left transition-all font-mono text-sm',
+                      !showFeedback && 'hover:bg-brand-50 hover:border-brand-300 border-gray-200',
+                      showResult && isCorrectLocation && 'bg-green-100 border-green-500',
+                      showResult && !isCorrectLocation && 'bg-red-100 border-red-500',
+                      showFeedback && !isSelected && isCorrectLocation && 'bg-green-50 border-green-300'
+                    )}
+                  >
+                    {location}
+                  </button>
+                );
+              })}
+            </div>
+
+            {showFeedback && selectedLocation !== currentIssue.location && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg"
+              >
+                <p className="text-sm text-red-800">
+                  <strong>Not quite.</strong> The issue is at <span className="font-mono">{currentIssue.location}</span>
+                </p>
+              </motion.div>
+            )}
+
+            {/* Next button for location step */}
+            {showFeedback && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="mt-4 flex justify-end"
+              >
+                <button
+                  onClick={handleNext}
+                  className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors flex items-center gap-2"
+                >
+                  {currentIssueIndex < currentItem.issues.length - 1 || currentItemIndex < items.length - 1 ? 'Next' : 'Finish'}
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </motion.div>
+            )}
+
+            {currentItem.hint && !showFeedback && (
+              <div className="mt-3 p-2 bg-amber-50 rounded-lg">
+                <p className="text-sm text-amber-700">
+                  <Lightbulb className="w-4 h-4 inline mr-1" />
+                  {currentItem.hint}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 2: Select Reason */}
+        {step === 'reason' && currentIssue.options && (
+          <div className="p-4 border-t bg-gray-50">
+            <div className="flex items-center gap-2 mb-1">
+              <div className={clsx('px-2 py-0.5 rounded text-xs font-medium border', typeInfo.color)}>
+                {typeInfo.icon} {typeInfo.label}
+              </div>
+              <p className="text-sm text-gray-500 font-mono">{currentIssue.location}</p>
+            </div>
+            <p className="text-sm font-medium text-gray-700 mb-3">
+              Why is this line problematic?
+            </p>
+
+            <div className="grid gap-2">
+              {currentIssue.options.map((option, index) => {
+                const isSelected = selectedReasonIndex === index;
+                const isCorrect = index === currentIssue.correctIndex;
+                const showResult = showFeedback;
+
+                return (
+                  <button
+                    key={index}
+                    onClick={() => handleReasonSelect(index)}
+                    disabled={showFeedback}
+                    className={clsx(
+                      'p-3 rounded-lg border text-left transition-all text-sm',
+                      !showFeedback && 'hover:bg-brand-50 hover:border-brand-300 border-gray-200',
+                      showResult && isSelected && isCorrect && 'bg-green-100 border-green-500',
+                      showResult && isSelected && !isCorrect && 'bg-red-100 border-red-500',
+                      showResult && !isSelected && isCorrect && 'bg-green-50 border-green-300'
+                    )}
+                  >
+                    {option}
+                  </button>
+                );
+              })}
+            </div>
+
+            {showFeedback && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={clsx(
+                  'mt-3 p-3 rounded-lg border',
+                  selectedReasonIndex === currentIssue.correctIndex
+                    ? 'bg-green-50 border-green-200'
+                    : 'bg-amber-50 border-amber-200'
+                )}
+              >
+                <p className={clsx(
+                  'text-sm',
+                  selectedReasonIndex === currentIssue.correctIndex ? 'text-green-800' : 'text-amber-800'
+                )}>
+                  {selectedReasonIndex === currentIssue.correctIndex ? (
+                    <><strong>Correct!</strong> {currentIssue.explanation}</>
+                  ) : (
+                    <><strong>Not quite.</strong> {currentIssue.explanation}</>
+                  )}
+                </p>
+              </motion.div>
+            )}
+
+            {/* Next button for reason step */}
+            {showFeedback && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="mt-4 flex justify-end"
+              >
+                <button
+                  onClick={handleNext}
+                  className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors flex items-center gap-2"
+                >
+                  {currentIssueIndex < currentItem.issues.length - 1 || currentItemIndex < items.length - 1 ? 'Next' : 'Finish'}
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </motion.div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

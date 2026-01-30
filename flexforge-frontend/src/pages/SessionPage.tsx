@@ -500,9 +500,10 @@ export function SessionPage() {
                        (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
       if (!hasCards) return false;
     }
-    // Skip openTask if not present (only for practice-based curricula)
+    // Always show openTask step (renders as Real-World Challenge)
+    // The OpenTaskStep component handles empty/loading states
     if (step === 'openTask') {
-      if (!currentDay?.openTask) return false;
+      return true;
     }
     return true;
   });

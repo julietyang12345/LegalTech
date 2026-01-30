@@ -975,17 +975,21 @@ Use DIFFERENT scenarios than task1 (new contexts, different domains).`;
       // Advanced: + code completion (write code from scratch)
       if (codeWritingEnabled) {
         return `SECTION TYPES TO INCLUDE:
-1. aiCodeReview - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations (3-4 items)
-   Each item: code (AI-generated), context (what it should do), issues (array of {type, location, severity, explanation})
+1. aiCodeReview - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations (2-3 items)
+   Each item: code (AI-generated with line numbers), context, issues array
+   Each issue: {type, location (include code snippet like "line 3: if (x === y)"), severity, options (4 MCQ choices), correctIndex, explanation}
    Issue types: bug, security, assumption, scalability, hallucination, edge-case
+   TWO-STEP FLOW: User first selects the problematic line, then chooses WHY from options
 2. fillBlank - Complete code with NEW syntax/methods related to today's topic (3-4 items)
 3. codeCompletion - Complete partial code introducing NEW patterns/methods (3-4 items)
 ${newKnowledgeNote}`;
       }
       return `SECTION TYPES TO INCLUDE:
-1. aiCodeReview - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations (3-4 items)
-   Each item: code (AI-generated), context (what it should do), issues (array of {type, location, severity, explanation})
+1. aiCodeReview - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations (2-3 items)
+   Each item: code (AI-generated with line numbers), context, issues array
+   Each issue: {type, location (include code snippet like "line 3: if (x === y)"), severity, options (4 MCQ choices), correctIndex, explanation}
    Issue types: bug, security, assumption, scalability, hallucination, edge-case
+   TWO-STEP FLOW: User first selects the problematic line, then chooses WHY from options
 2. fillBlank - Complete code with NEW syntax/methods related to today's topic (3-4 items)
 ${newKnowledgeNote}`;
 
@@ -1021,17 +1025,21 @@ ${newKnowledgeNote}`;
       // Advanced: + code completion (write code from scratch)
       if (codeWritingEnabled) {
         return `SECTION TYPES TO INCLUDE:
-1. aiCodeReview - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations (3-4 items)
-   Each item: code (AI-generated), context (what it should do), issues (array of {type, location, severity, explanation})
+1. aiCodeReview - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations (2-3 items)
+   Each item: code (AI-generated with line numbers), context, issues array
+   Each issue: {type, location (include code snippet like "line 3: response = api.call()"), severity, options (4 MCQ choices), correctIndex, explanation}
    Issue types: bug, security, assumption, scalability, hallucination, edge-case
+   TWO-STEP FLOW: User first selects the problematic line, then chooses WHY from options
 2. fillBlank - Statements introducing NEW AI concepts/terminology (3-4 items)
 3. codeCompletion - Complete AI/API code with NEW parameters/methods (3-4 items)
 ${newKnowledgeNote}`;
       }
       return `SECTION TYPES TO INCLUDE:
-1. aiCodeReview - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations (3-4 items)
-   Each item: code (AI-generated), context (what it should do), issues (array of {type, location, severity, explanation})
+1. aiCodeReview - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations (2-3 items)
+   Each item: code (AI-generated with line numbers), context, issues array
+   Each issue: {type, location (include code snippet like "line 3: response = api.call()"), severity, options (4 MCQ choices), correctIndex, explanation}
    Issue types: bug, security, assumption, scalability, hallucination, edge-case
+   TWO-STEP FLOW: User first selects the problematic line, then chooses WHY from options
 2. fillBlank - Statements introducing NEW AI concepts/terminology (3-4 items)
 ${newKnowledgeNote}`;
 
@@ -1054,6 +1062,7 @@ function getIntensiveSectionTemplate(
   codeWritingEnabled = false,
 ): string {
   // AI Code Review template (used for CODE and AI_AGENT)
+  // Two-step flow: 1) User selects which line has issue, 2) User chooses why it's problematic
   const aiCodeReviewTemplate = `{
         "type": "aiCodeReview",
         "title": "Review AI-Generated Code",
@@ -1061,20 +1070,27 @@ function getIntensiveSectionTemplate(
         "items": [
           {
             "id": "acr1",
-            "code": "// AI-generated code to review...",
+            "code": "function login(user, pass) {\\n  const stored = db.getUser(user);\\n  if (stored.password === pass) {\\n    return createToken(user);\\n  }\\n}",
             "context": "This code should handle user authentication",
             "promptUsed": "Write a function to authenticate users",
             "issues": [
               {
                 "id": "issue1",
                 "type": "security",
-                "location": "line 5",
+                "location": "line 3: if (stored.password === pass)",
                 "severity": "critical",
-                "explanation": "Password is not hashed before storage"
+                "options": [
+                  "Password is compared in plain text without hashing",
+                  "The comparison operator should use !== instead",
+                  "The variable name 'pass' is too short",
+                  "Missing null check for stored user"
+                ],
+                "correctIndex": 0,
+                "explanation": "Passwords should never be stored or compared in plain text. Use bcrypt.compare() or similar to compare hashed passwords securely."
               }
             ],
-            "correctVersion": "// Corrected code...",
-            "hint": "Look at how sensitive data is handled",
+            "correctVersion": "// Corrected code with bcrypt...",
+            "hint": "Think about how passwords should be stored and compared",
             "language": "javascript"
           }
         ],
@@ -1617,6 +1633,10 @@ FOUNDATION CARDS (5-6) - Include Level 1 Understanding:
 - Cards 2-5: Core concepts with realWorldContext
 - Each card: 200-300 words, answers ONE question, not exhaustive
 - Format: "What is X?" → "It solves B, not A"
+- EXPLANATION STRUCTURE: Split into 2-3 paragraphs separated by \\n\\n (double newline):
+  - Paragraph 1: Key insight / main point (always visible)
+  - Paragraph 2+: Detailed explnation of the concept, supportingexamples, or nuances (collapsible)
+  - Group by theme/logic, NOT by sentence. Each paragraph should be a complete thought.
 - microQuestion: Understanding check built into each card
   - "Which statement about X is correct?"
   - "Which example matches this concept?"
@@ -1856,7 +1876,7 @@ Generate CORE content as JSON with this structure:
   "foundationCards": [
     {
       "concept": "Main concept title",
-      "explanation": "200-300 word explanation answering ONE question",
+      "explanation": "Key insight paragraph here.\\n\\nSupporting details, examples, or nuances in second paragraph.\\n\\nOptional third paragraph for additional context.",
       "realWorldContext": "Why this matters in practice",
       "microQuestion": {
         "type": "understanding",
@@ -1873,6 +1893,7 @@ REQUIREMENTS:
 - foundationCards: REQUIRED - ${levelGuidance.foundationCardCount} cards covering the key topics
   - Card 1: INTRO/RECAP connecting to previous day
   - Each card: 200-300 words, answers ONE question
+  - explanation: Split into 2-3 paragraphs with \\n\\n between them (key insight first, then details)
   - microQuestion: Understanding check on each card
   - caseStudy (optional, 1-2 cards): For decision-making concepts only
 - prePrompt: REQUIRED

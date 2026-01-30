@@ -14,6 +14,7 @@ const STEPS: SessionStep[] = [
   'foundationCards',
   'task1',
   'bossMilestone',
+  'openTask',
   'reflection',
 ];
 

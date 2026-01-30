@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, X, Volume2, ArrowRight, RotateCcw, Lightbulb, Sparkles, Lock } from 'lucide-react';
+import { Check, X, Volume2, ArrowRight, ChevronLeft, RotateCcw, Lightbulb, Sparkles, Lock } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useBrowserTTS } from '@/hooks/useBrowserTTS';
 import { useAuthStore } from '@/stores/authStore';
@@ -211,8 +211,21 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
 
     setTimeout(() => {
       setShowFeedback(false);
-      advanceOrComplete(correct ? 1 : 0);
     }, 1500);
+  };
+
+  // Handle MCQ next button
+  const handleMcqNext = () => {
+    const correct = mcqAnswers[currentQuestion.id] === currentQuestion.correctIndex;
+    advanceOrComplete(correct ? 1 : 0);
+  };
+
+  // Handle previous question
+  const handlePrevQuestion = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(prev => prev - 1);
+      setTextInput('');
+    }
   };
 
   // Handle open-ended submission - always basic evaluation first
@@ -543,7 +556,7 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
               ))}
             </div>
 
-            {/* Action buttons */}
+            {/* AI Feedback option */}
             <div className="mt-4 flex gap-2">
               {/* Get AI Feedback button - show if basic evaluation and has remaining */}
               {openEndedResults[currentQuestion.id].evaluationType === 'basic' && aiEvaluationsRemaining !== 0 && (
@@ -567,13 +580,29 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
                   Daily AI limit reached. Upgrade to Pro for unlimited.
                 </div>
               )}
+            </div>
 
-              {/* Continue button */}
+            {/* Question navigation */}
+            <div className="mt-4 flex justify-between items-center gap-2">
+              <button
+                onClick={handlePrevQuestion}
+                disabled={currentIndex === 0}
+                className={clsx(
+                  'px-3 sm:px-4 py-2.5 rounded-lg transition-colors flex items-center gap-1.5 sm:gap-2 text-sm',
+                  currentIndex === 0
+                    ? 'text-gray-300 cursor-not-allowed'
+                    : 'text-gray-600 hover:bg-gray-100 active:bg-gray-200'
+                )}
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span className="hidden xs:inline">Previous</span>
+                <span className="xs:hidden">Prev</span>
+              </button>
               <button
                 onClick={handleContinue}
-                className="flex-1 py-2 px-4 rounded-lg font-medium bg-brand-500 text-white hover:bg-brand-600 transition-colors flex items-center justify-center gap-2"
+                className="px-3 sm:px-4 py-2.5 rounded-lg font-medium bg-brand-500 text-white hover:bg-brand-600 active:bg-brand-700 transition-colors flex items-center justify-center gap-1.5 sm:gap-2 text-sm"
               >
-                Continue
+                {currentIndex < questions.length - 1 ? 'Next' : 'Finish'}
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
@@ -589,6 +618,37 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
           >
             {currentQuestion.explanation}
           </motion.p>
+        )}
+
+        {/* MCQ Question Navigation */}
+        {!isOpenEnded && hasAnswered && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-4 flex justify-between items-center gap-2"
+          >
+            <button
+              onClick={handlePrevQuestion}
+              disabled={currentIndex === 0}
+              className={clsx(
+                'px-3 sm:px-4 py-2.5 rounded-lg transition-colors flex items-center gap-1.5 sm:gap-2 text-sm',
+                currentIndex === 0
+                  ? 'text-gray-300 cursor-not-allowed'
+                  : 'text-gray-600 hover:bg-gray-100 active:bg-gray-200'
+              )}
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span className="hidden xs:inline">Previous</span>
+              <span className="xs:hidden">Prev</span>
+            </button>
+            <button
+              onClick={handleMcqNext}
+              className="px-3 sm:px-4 py-2.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 active:bg-brand-700 transition-colors flex items-center gap-1.5 sm:gap-2 text-sm"
+            >
+              {currentIndex < questions.length - 1 ? 'Next' : 'Finish'}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </motion.div>
         )}
       </div>
 
@@ -775,17 +835,20 @@ export function ToneSelectSectionExercise({ section, targetLanguage, onComplete,
 
     setTimeout(() => {
       setShowFeedback(false);
-      if (currentIndex < questions.length - 1) {
-        setCurrentIndex(prev => prev + 1);
-      } else {
-        const correctCount = Object.entries(newAnswers)
-          .filter(([id, ans]) => {
-            const q = questions.find(q => q.id === id);
-            return q && ans === q.correctIndex;
-          }).length;
-        onComplete(correctCount, questions.length, newAnswers as Record<string, number | string | boolean>);
-      }
     }, 1500);
+  };
+
+  const handleNext = () => {
+    if (currentIndex < questions.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+    } else {
+      const correctCount = Object.entries(answers)
+        .filter(([id, ans]) => {
+          const q = questions.find(q => q.id === id);
+          return q && ans === q.correctIndex;
+        }).length;
+      onComplete(correctCount, questions.length, answers as Record<string, number | string | boolean>);
+    }
   };
 
   const playAudio = useCallback(() => {
@@ -852,6 +915,23 @@ export function ToneSelectSectionExercise({ section, targetLanguage, onComplete,
           >
             {currentQuestion.explanation}
           </motion.p>
+        )}
+
+        {/* Next button */}
+        {hasAnswered && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-4 flex justify-end"
+          >
+            <button
+              onClick={handleNext}
+              className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors flex items-center gap-2"
+            >
+              {currentIndex < questions.length - 1 ? 'Next' : 'Finish'}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </motion.div>
         )}
       </div>
 
@@ -925,19 +1005,30 @@ export function FillBlankSectionExercise({ section, onComplete, savedProgress, o
 
     setTimeout(() => {
       setShowFeedback(false);
-      if (currentIndex < items.length - 1) {
-        setCurrentIndex(prev => prev + 1);
-        setInputValue('');
-        setShowHint(false);
-      } else {
-        const correctCount = Object.values({ ...results, [currentItem.id]: correct }).filter(Boolean).length;
-        const finalAnswers: Record<string, number | string | boolean> = { ...newAnswers };
-        Object.entries(newResults).forEach(([k, v]) => {
-          finalAnswers[`${k}_result`] = v;
-        });
-        onComplete(correctCount, items.length, finalAnswers);
-      }
     }, 2000);
+  };
+
+  const handleNext = () => {
+    if (currentIndex < items.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+      setInputValue('');
+      setShowHint(false);
+    } else {
+      const correctCount = Object.values(results).filter(Boolean).length;
+      const finalAnswers: Record<string, number | string | boolean> = { ...answers };
+      Object.entries(results).forEach(([k, v]) => {
+        finalAnswers[`${k}_result`] = v;
+      });
+      onComplete(correctCount, items.length, finalAnswers);
+    }
+  };
+
+  const handlePrevQuestion = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(prev => prev - 1);
+      setInputValue('');
+      setShowHint(false);
+    }
   };
 
   if (!currentItem) return null;
@@ -1019,6 +1110,37 @@ export function FillBlankSectionExercise({ section, onComplete, savedProgress, o
             </p>
           </motion.div>
         )}
+
+        {/* Question navigation */}
+        {hasAnswered && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-4 flex justify-between items-center gap-2"
+          >
+            <button
+              onClick={handlePrevQuestion}
+              disabled={currentIndex === 0}
+              className={clsx(
+                'px-3 sm:px-4 py-2.5 rounded-lg transition-colors flex items-center gap-1.5 sm:gap-2 text-sm',
+                currentIndex === 0
+                  ? 'text-gray-300 cursor-not-allowed'
+                  : 'text-gray-600 hover:bg-gray-100 active:bg-gray-200'
+              )}
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span className="hidden xs:inline">Previous</span>
+              <span className="xs:hidden">Prev</span>
+            </button>
+            <button
+              onClick={handleNext}
+              className="px-3 sm:px-4 py-2.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 active:bg-brand-700 transition-colors flex items-center gap-1.5 sm:gap-2 text-sm"
+            >
+              {currentIndex < items.length - 1 ? 'Next' : 'Finish'}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
       </div>
 
       <FeedbackToast show={showFeedback} correct={isCorrect} />
@@ -1091,19 +1213,22 @@ export function TranslationSectionExercise({ section, onComplete, savedProgress,
 
     setTimeout(() => {
       setShowFeedback(false);
-      if (currentIndex < items.length - 1) {
-        setCurrentIndex(prev => prev + 1);
-        setInputValue('');
-        setShowHint(false);
-      } else {
-        const correctCount = Object.values(newResults).filter(Boolean).length;
-        const finalAnswers: Record<string, number | string | boolean> = { ...newAnswers };
-        Object.entries(newResults).forEach(([k, v]) => {
-          finalAnswers[`${k}_result`] = v;
-        });
-        onComplete(correctCount, items.length, finalAnswers);
-      }
     }, 2000);
+  };
+
+  const handleNext = () => {
+    if (currentIndex < items.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+      setInputValue('');
+      setShowHint(false);
+    } else {
+      const correctCount = Object.values(results).filter(Boolean).length;
+      const finalAnswers: Record<string, number | string | boolean> = { ...answers };
+      Object.entries(results).forEach(([k, v]) => {
+        finalAnswers[`${k}_result`] = v;
+      });
+      onComplete(correctCount, items.length, finalAnswers);
+    }
   };
 
   if (!currentItem) return null;
@@ -1181,6 +1306,23 @@ export function TranslationSectionExercise({ section, onComplete, savedProgress,
             </p>
           </motion.div>
         )}
+
+        {/* Next button */}
+        {hasAnswered && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-4 flex justify-end"
+          >
+            <button
+              onClick={handleNext}
+              className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors flex items-center gap-2"
+            >
+              {currentIndex < items.length - 1 ? 'Next' : 'Finish'}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
       </div>
 
       <FeedbackToast show={showFeedback} correct={isCorrect} />
@@ -1253,13 +1395,16 @@ export function ReorderSectionExercise({ section, onComplete, savedProgress, onP
 
     setTimeout(() => {
       setShowFeedback(false);
-      if (currentIndex < items.length - 1) {
-        setCurrentIndex(prev => prev + 1);
-      } else {
-        const correctCount = Object.values(newResults).filter(Boolean).length;
-        onComplete(correctCount, items.length, newResults as Record<string, number | string | boolean>);
-      }
     }, 2000);
+  };
+
+  const handleNext = () => {
+    if (currentIndex < items.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+    } else {
+      const correctCount = Object.values(results).filter(Boolean).length;
+      onComplete(correctCount, items.length, results as Record<string, number | string | boolean>);
+    }
   };
 
   const resetOrder = () => {
@@ -1363,6 +1508,23 @@ export function ReorderSectionExercise({ section, onComplete, savedProgress, onP
             </p>
           </motion.div>
         )}
+
+        {/* Next button */}
+        {hasAnswered && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-4 flex justify-end"
+          >
+            <button
+              onClick={handleNext}
+              className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors flex items-center gap-2"
+            >
+              {currentIndex < items.length - 1 ? 'Next' : 'Finish'}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
       </div>
 
       <FeedbackToast show={showFeedback} correct={isCorrect} />
@@ -1434,14 +1596,17 @@ export function TypingSectionExercise({ section, targetLanguage, onComplete, sav
 
     setTimeout(() => {
       setShowFeedback(false);
-      if (currentIndex < items.length - 1) {
-        setCurrentIndex(prev => prev + 1);
-        setInputValue('');
-      } else {
-        const correctCount = Object.values(newResults).filter(Boolean).length;
-        onComplete(correctCount, items.length, newResults as Record<string, number | string | boolean>);
-      }
     }, 2000);
+  };
+
+  const handleNext = () => {
+    if (currentIndex < items.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+      setInputValue('');
+    } else {
+      const correctCount = Object.values(results).filter(Boolean).length;
+      onComplete(correctCount, items.length, results as Record<string, number | string | boolean>);
+    }
   };
 
   if (!currentItem) return null;
@@ -1511,6 +1676,23 @@ export function TypingSectionExercise({ section, targetLanguage, onComplete, sav
                 ? 'Correct!'
                 : `Correct answer: ${currentItem.acceptedAnswers[0]}`}
             </p>
+          </motion.div>
+        )}
+
+        {/* Next button */}
+        {hasAnswered && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-4 flex justify-end"
+          >
+            <button
+              onClick={handleNext}
+              className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors flex items-center gap-2"
+            >
+              {currentIndex < items.length - 1 ? 'Next' : 'Finish'}
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </motion.div>
         )}
       </div>

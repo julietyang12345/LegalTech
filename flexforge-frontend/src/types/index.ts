@@ -375,7 +375,7 @@ export interface CaseStudyOption {
 export interface EmbeddedCaseStudy {
   scenario: string;           // "You're building X and encounter Y..." (2-3 sentences)
   question: string;           // "What would you do?"
-  options: CaseStudyOption[]; // 3-4 choices
+  options: (string | CaseStudyOption)[]; // 3-4 choices (can be strings or objects)
   bestChoice: number;         // Index of best option (0-based)
   explanation: string;        // Why this is best approach
 }
@@ -774,7 +774,9 @@ export interface AICodeReviewIssue {
   type: 'bug' | 'security' | 'assumption' | 'scalability' | 'hallucination' | 'edge-case';
   location: string;              // "line 12" or "the auth check"
   severity: 'critical' | 'warning' | 'minor';
-  explanation: string;
+  options: string[];             // Multiple choice options for why this is an issue
+  correctIndex: number;          // Index of the correct explanation
+  explanation: string;           // Detailed explanation shown after answering
 }
 
 export interface AICodeReviewItem {
