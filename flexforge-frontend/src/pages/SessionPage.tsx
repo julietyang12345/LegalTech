@@ -467,9 +467,10 @@ export function SessionPage() {
 
   // Get available steps (filter out skipped ones)
   const availableSteps = STEP_ORDER.filter(step => {
-    // Video step is always shown - VideoStep component handles both:
-    // - Video mode when video is available
-    // - "Learn & Understand" mode when video is skipped/unavailable
+    // Skip video step when video is skipped - foundation cards ARE the learning content
+    if (step === 'video') {
+      if (currentDay?.video?.skipped) return false;
+    }
     // Always show bossMilestone step (renders as either boss milestone OR intensive practice)
     // The BossMilestoneStep component handles both project-based and practice-based curricula
     // Don't filter based on content existence - content loads async via deferred

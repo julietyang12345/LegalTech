@@ -97,11 +97,15 @@ function PresenceBar() {
   const hasVideo = !!(currentDay?.video?.videoId || currentDay?.video?.backupVideo?.videoId);
   const isLanguageLearning = activeSession?.curriculum?.metadata?.isLanguageLearning;
   const videoStrategy = (currentDay as any)?.videoStrategy;
-  const videoUnavailable = isLanguageLearning || videoStrategy === 'skip' || !hasVideo;
+  const videoSkipped = currentDay?.video?.skipped === true;
+  const videoUnavailable = isLanguageLearning || videoStrategy === 'skip' || !hasVideo || videoSkipped;
 
   // Filter steps based on current day
   const availableSteps = STEPS.filter(step => {
-    // Video step is always shown - VideoStep handles both video and "Learn & Understand" modes
+    // Skip video step when video is skipped - foundation cards ARE the learning content
+    if (step === 'video') {
+      if (videoSkipped) return false;
+    }
     // Skip foundationCards if not present (check both regular and language-specific cards)
     if (step === 'foundationCards') {
       const hasCards = (currentDay?.foundationCards && currentDay.foundationCards.length > 0) ||

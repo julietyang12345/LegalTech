@@ -241,6 +241,9 @@ export interface VideoMatch {
 
   // Content type classification
   contentType?: VideoContentType;  // CONCEPT, TOOL_SPECIFIC, or MIXED
+
+  // Skip video step entirely - foundation cards are the learning content
+  skipped?: boolean;
 }
 
 export interface VideoContentType {
