@@ -69,7 +69,7 @@ export class SessionService {
     }
 
     // Generate curriculum with tier-specific access
-    const tierString = user.quotaTier.toUpperCase();
+    const tierString = user.getEffectiveTier().toUpperCase();
 
     this.logger.log(
       `Creating session for user ${userId} (${tierString} tier): ${createSessionDto.skillName}`,
@@ -572,7 +572,7 @@ export class SessionService {
   }> {
     const session = await this.findOne(sessionId, userId);
     const user = await this.userService.findById(userId);
-    const tierString = user.quotaTier.toUpperCase();
+    const tierString = user.getEffectiveTier().toUpperCase();
     // Use user's tier-based daily limit (admins get PRO limits)
     const dailyLimits = user.getDailyLimits();
     const regenLimit = dailyLimits.dayContentRegens;
@@ -780,7 +780,7 @@ export class SessionService {
   ): AsyncGenerator<{ event: string; data: any }> {
     const session = await this.findOne(sessionId, userId);
     const user = await this.userService.findById(userId);
-    const tierString = user.quotaTier.toUpperCase();
+    const tierString = user.getEffectiveTier().toUpperCase();
 
     const dayOverview = session.curriculum.days.find(
       (d: any) => d.day === dayNumber,
@@ -882,7 +882,7 @@ export class SessionService {
   }> {
     const session = await this.findOne(sessionId, userId);
     const user = await this.userService.findById(userId);
-    const tierString = user.quotaTier.toUpperCase();
+    const tierString = user.getEffectiveTier().toUpperCase();
 
     const dayOverview = session.curriculum.days.find(
       (d: any) => d.day === dayNumber,
@@ -1004,7 +1004,7 @@ export class SessionService {
   ): AsyncGenerator<{ event: string; data: any }> {
     const session = await this.findOne(sessionId, userId);
     const user = await this.userService.findById(userId);
-    const tierString = user.quotaTier.toUpperCase();
+    const tierString = user.getEffectiveTier().toUpperCase();
 
     const dayOverview = session.curriculum.days.find(
       (d: any) => d.day === dayNumber,

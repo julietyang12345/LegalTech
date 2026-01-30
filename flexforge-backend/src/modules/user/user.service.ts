@@ -218,14 +218,17 @@ export class UserService {
       await this.usersRepository.save(user);
     }
 
+    // Use effective tier (admins get UNLIMITED)
+    const effectiveTier = user.getEffectiveTier();
+
     // UNLIMITED tier bypasses all quota checks
-    if (user.quotaTier === QuotaTier.UNLIMITED) {
+    if (effectiveTier === QuotaTier.UNLIMITED) {
       return {
         hasQuota: true,
         tokensRemaining: Infinity,
         curriculaRemaining: Infinity,
         codeReviewsRemaining: Infinity,
-        tier: QuotaTier.UNLIMITED,
+        tier: effectiveTier,
       };
     }
 
@@ -248,7 +251,7 @@ export class UserService {
       },
     };
 
-    const limits = quotaLimits[user.quotaTier];
+    const limits = quotaLimits[effectiveTier];
     const tokensRemaining = limits.tokens - user.tokensUsedThisMonth;
     const curriculaRemaining =
       limits.curricula - user.curriculaGeneratedThisMonth;
@@ -259,7 +262,7 @@ export class UserService {
       tokensRemaining: Math.max(0, tokensRemaining),
       curriculaRemaining: Math.max(0, curriculaRemaining),
       codeReviewsRemaining: Math.max(0, codeReviewsRemaining),
-      tier: user.quotaTier,
+      tier: effectiveTier,
     };
   }
 
@@ -455,7 +458,8 @@ export class UserService {
       },
     };
 
-    return tierFeatures[user.quotaTier];
+    // Use effective tier (admins get UNLIMITED features)
+    return tierFeatures[user.getEffectiveTier()];
   }
 
   /**

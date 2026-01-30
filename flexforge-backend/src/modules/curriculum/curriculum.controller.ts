@@ -157,7 +157,7 @@ export class CurriculumController {
       // Generate new curriculum
       const result = await this.curriculumService.generateCurriculum(
         dto,
-        user.quotaTier,
+        user.getEffectiveTier(),
       );
 
       // Cache if not skipping
@@ -227,7 +227,7 @@ export class CurriculumController {
       // Generate new curriculum
       const result = await this.curriculumService.generateCurriculum(
         dto,
-        user.quotaTier,
+        user.getEffectiveTier(),
       );
 
       if (!skipCaching) {
@@ -464,7 +464,7 @@ export class CurriculumController {
       [QuotaTier.UNLIMITED]: 3,
     };
 
-    if (tierHierarchy[user.quotaTier] < tierHierarchy[QuotaTier.PRO]) {
+    if (tierHierarchy[user.getEffectiveTier()] < tierHierarchy[QuotaTier.PRO]) {
       throw new ForbiddenException('Transcript summary is a PRO feature');
     }
 
