@@ -317,7 +317,12 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
                 </div>
                 <p className="text-xs text-gray-500">
                   {codeWritingEnabled ? (
-                    <>Write code from scratch + review AI-generated code</>
+                    <>
+                      Write code from scratch + review AI-generated code
+                      <span className="block mt-1 text-amber-600">
+                        Note: This increases course length and difficulty
+                      </span>
+                    </>
                   ) : (
                     <>
                       <span className="flex items-center gap-1">

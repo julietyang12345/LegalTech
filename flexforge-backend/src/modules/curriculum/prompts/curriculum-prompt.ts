@@ -1842,23 +1842,43 @@ ${personalizationInstructions}${continuityInstructions}`;
 Skill Type: ${params.skillType} | Level: ${params.skillLevel}
 ${skillsStr ? `Key topics: ${skillsStr}` : ''}
 
-Generate CORE content (task1 is generated separately in deferred content):
+Generate CORE content as JSON with this structure:
+{
+  "prePrompt": {
+    "text": "Welcome message for today's learning",
+    "primeQuestions": ["Question 1?", "Question 2?"],
+    "yesterdayRecap": "Brief recap of previous day or welcome for day 1"
+  },
+  "video": {
+    "watchPoints": ["Key point 1", "Key point 2"],
+    "searchQuery": "YouTube search query for this topic"
+  },
+  "foundationCards": [
+    {
+      "concept": "Main concept title",
+      "explanation": "200-300 word explanation answering ONE question",
+      "realWorldContext": "Why this matters in practice",
+      "microQuestion": {
+        "type": "understanding",
+        "question": "Which statement is correct?",
+        "options": ["Option A", "Option B", "Option C"],
+        "correctIndex": 0,
+        "explanation": "Why this is correct"
+      }
+    }
+  ]
+}
 
-1. foundationCards (${levelGuidance.foundationCardCount} cards):
-   - Each card: 200-300 words, answers ONE question
-   - Card 1: INTRO/RECAP connecting to previous day
-   - Remaining cards: Cover the key topics listed AND extend with related concepts that fit the day title "${params.dayTitle}"
-   - Don't limit to just the listed topics - add valuable related concepts the learner needs
-   - microQuestion: Understanding check (理解型) - "which is correct?", "which example matches?"
-   - caseStudy (1-2 cards, optional): For decision-making concepts only
-     * scenario: "You're building X and encounter Y..." (2-3 sentences)
-     * question: "What would you do?"
-     * options: [{label, consequence}] (3-4 choices)
-     * bestChoice: index, explanation: why
+REQUIREMENTS:
+- foundationCards: REQUIRED - ${levelGuidance.foundationCardCount} cards covering the key topics
+  - Card 1: INTRO/RECAP connecting to previous day
+  - Each card: 200-300 words, answers ONE question
+  - microQuestion: Understanding check on each card
+  - caseStudy (optional, 1-2 cards): For decision-making concepts only
+- prePrompt: REQUIRED
+- video: REQUIRED (even if just searchQuery)
 
-ALWAYS INCLUDE:
-- prePrompt: {text, primeQuestions[], yesterdayRecap}
-- video: {watchPoints[], searchQuery}`;
+Output valid JSON only.`;
 
   return { staticPart, dynamicPart, userPrompt };
 }

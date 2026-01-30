@@ -14,7 +14,7 @@ interface StepPillsProps {
 
 const getStepLabels = (isProjectBased: boolean, videoUnavailable: boolean): Record<SessionStep, string> => ({
   prePrompt: 'Prep',
-  video: videoUnavailable ? 'Learn' : 'Watch',
+  video: videoUnavailable ? 'AI Learn' : 'Watch',
   foundationCards: 'Cards',
   task1: 'Practice',
   bossMilestone: isProjectBased ? 'Boss' : 'Intensive',

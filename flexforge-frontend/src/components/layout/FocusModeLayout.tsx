@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { X, Clock } from 'lucide-react';
@@ -76,12 +76,12 @@ function PresenceBar() {
   const [showTimer, setShowTimer] = useState(true);
 
   // Timer effect
-  useState(() => {
+  useEffect(() => {
     const interval = setInterval(() => {
       setElapsedSeconds(s => s + 1);
     }, 1000);
     return () => clearInterval(interval);
-  });
+  }, []);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -102,21 +102,15 @@ function PresenceBar() {
 
   // Filter steps based on current day
   const availableSteps = STEPS.filter(step => {
-    // Skip video step when video is skipped - foundation cards ARE the learning content
+    // Skip video step when video is unavailable - foundationCards step handles learning content
     if (step === 'video') {
-      if (videoSkipped) return false;
+      if (videoUnavailable) return false;
     }
     // Skip foundationCards if not present (check both regular and language-specific cards)
     if (step === 'foundationCards') {
       const hasCards = (currentDay?.foundationCards && currentDay.foundationCards.length > 0) ||
                        (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
       if (!hasCards) return false;
-    }
-    // Always show bossMilestone step (renders as either boss milestone OR intensive practice)
-    // The BossMilestoneStep component handles both project-based and practice-based curricula
-    // Don't filter based on content existence - content loads async via deferred
-    if (step === 'bossMilestone') {
-      return true;
     }
     return true;
   });

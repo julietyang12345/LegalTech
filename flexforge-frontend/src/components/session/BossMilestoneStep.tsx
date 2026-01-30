@@ -18,6 +18,7 @@ import {
   CodeCompletionExercise,
   DebuggingExercise,
   OutputPredictionExercise,
+  AICodeReviewExercise,
 } from './CodeExercises';
 import {
   FormCheckExercise,
@@ -364,6 +365,15 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
       case 'outputPrediction':
         return (
           <OutputPredictionExercise
+            section={section}
+            onComplete={handleSectionComplete}
+            savedProgress={savedProgress}
+            onProgressChange={handleSectionProgressChange}
+          />
+        );
+      case 'aiCodeReview':
+        return (
+          <AICodeReviewExercise
             section={section}
             onComplete={handleSectionComplete}
             savedProgress={savedProgress}

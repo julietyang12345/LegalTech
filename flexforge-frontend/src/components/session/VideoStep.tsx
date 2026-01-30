@@ -94,7 +94,6 @@ function VideoCard({
   isActive?: boolean;
 }) {
   const embedUrl = buildEmbedUrl(video);
-  const _youtubeUrl = video?.videoId ? `https://www.youtube.com/watch?v=${video.videoId}` : null;
 
   // No video found - show minimal message without video frame
   if (!embedUrl) {
@@ -181,7 +180,7 @@ function VideoCard({
 // Concept card emojis based on index
 const CONCEPT_EMOJIS = ['💡', '🎯', '⚡', '🔑', '✨', '🧩', '📌', '🌟'];
 
-// Learn & Understand content - shown when no video object exists but we have foundation cards
+// Learn & Understand content - shown in AI mode when user toggles from video
 function LearnUnderstandContent({
   day,
   onSwitchToVideo,
@@ -735,7 +734,13 @@ function TranscriptSummary({
                 <div className="p-4 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl border border-purple-100">
                   <div className="flex items-start gap-3">
                     <Sparkles className="w-5 h-5 text-purple-500 shrink-0 mt-0.5" />
-                    <p className="text-sm text-gray-700 leading-relaxed">{summary}</p>
+                    <div className="space-y-2">
+                      {summary.split(/\n\n+/).map((paragraph, idx) => (
+                        <p key={idx} className="text-sm text-gray-700 leading-relaxed">
+                          {paragraph.trim()}
+                        </p>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -775,29 +780,21 @@ export function VideoStep({ day, session }: VideoStepProps) {
   const [activeVideoIndex, setActiveVideoIndex] = useState(0); // 0=main, 1=alt1, 2=alt2, 3+=AI generated
   const [isSearchingNew, setIsSearchingNew] = useState(false);
   const [aiGeneratedVideos, setAiGeneratedVideos] = useState<VideoMatch[]>([]);
-  const [_searchError, _setSearchError] = useState<string | null>(null);
+  const [currentMode, setCurrentMode] = useState<ContentMode>('ai');
   const { hasTierAccess } = useAuthStore();
   useSessionStore(); // Store subscription for state changes
   const canAskAI = hasTierAccess(QuotaTier.PRO);
 
   const video = day.video;
 
-  // Determine what options are available
-  // Only show video tab if we have an actual playable video
-  // adaptiveModality.defaultMode='ai' means AI is primary, but video tab still shows if backupVideo exists
+  // Video step only renders when video is available (filtered in FocusModeLayout)
   const hasActualVideo = !!(video?.videoId || video?.backupVideo?.videoId);
-  const videoUnavailable = video?.videoAvailable === false || (!video?.videoId && !video?.backupVideo?.videoId);
-  const showVideoOption = hasActualVideo && !videoUnavailable;
+  const showVideoOption = hasActualVideo;
 
   // Check for AI explanation from multiple sources (for backwards compatibility)
   const hasAiContent = !!(video?.aiExplanation || video?.explanation ||
     (day.foundationCards && day.foundationCards.length > 0));
   const showAiOption = hasAiContent;
-
-  // Adaptive modality state - default to AI summary
-  const _adaptiveModality = video?.adaptiveModality;
-  const defaultMode: ContentMode = 'ai';
-  const [currentMode, setCurrentMode] = useState<ContentMode>(defaultMode);
 
   // Support both single alternative and array of alternatives
   const alternatives: VideoAlternative[] = video?.alternatives || (video?.alternative ? [video.alternative] : []);
@@ -813,7 +810,6 @@ export function VideoStep({ day, session }: VideoStepProps) {
 
   const currentVideo = getCurrentVideo() || video || null;
   const isOnMainVideo = activeVideoIndex === 0;
-  const remainingPreScreened = Math.max(0, alternatives.length - activeVideoIndex); // How many pre-screened left after current
 
   // Get all used video IDs for exclusion
   const getUsedVideoIds = (): string[] => {
@@ -887,13 +883,6 @@ export function VideoStep({ day, session }: VideoStepProps) {
     setActiveVideoIndex(0);
   };
 
-  // Get button text based on remaining options
-  const _getTryDifferentText = (): string => {
-    if (isSearchingNew) return 'Searching...';
-    if (remainingPreScreened > 0) return 'Try another video';
-    return 'Search for another';
-  };
-
   // Dynamic title/subtitle based on mode
   const stepTitle = currentMode === 'ai' ? 'Learn & Understand 📚' : 'Watch & Learn 📺';
   const stepSubtitle = currentMode === 'ai'
@@ -920,7 +909,7 @@ export function VideoStep({ day, session }: VideoStepProps) {
       subtitle={stepSubtitle}
     >
       {/* Mode toggle - only show if both options available */}
-      {(showVideoOption || showAiOption) && (showVideoOption !== showAiOption || (showVideoOption && showAiOption)) && (
+      {showVideoOption && showAiOption && (
         <ModeToggle
           currentMode={currentMode}
           onModeChange={handleModeChange}

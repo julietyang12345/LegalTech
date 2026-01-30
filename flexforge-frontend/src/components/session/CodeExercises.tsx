@@ -6,6 +6,8 @@ import type {
   CodeCompletionSection,
   DebuggingSection,
   OutputPredictionSection,
+  AICodeReviewSection,
+  AICodeReviewIssue,
 } from '@/types';
 
 // Progress persistence types
@@ -520,6 +522,257 @@ export function OutputPredictionExercise({ section, onComplete, savedProgress, o
       </div>
 
       <FeedbackToast show={showFeedback} correct={isCorrect} />
+    </div>
+  );
+}
+
+// ============================================
+// AI Code Review Exercise
+// ============================================
+
+const ISSUE_TYPE_LABELS: Record<AICodeReviewIssue['type'], { label: string; color: string; icon: string }> = {
+  bug: { label: 'Bug', color: 'text-red-600 bg-red-50 border-red-200', icon: '🐛' },
+  security: { label: 'Security', color: 'text-orange-600 bg-orange-50 border-orange-200', icon: '🔒' },
+  assumption: { label: 'Assumption', color: 'text-purple-600 bg-purple-50 border-purple-200', icon: '🤔' },
+  scalability: { label: 'Scalability', color: 'text-blue-600 bg-blue-50 border-blue-200', icon: '📈' },
+  hallucination: { label: 'Hallucination', color: 'text-pink-600 bg-pink-50 border-pink-200', icon: '👻' },
+  'edge-case': { label: 'Edge Case', color: 'text-amber-600 bg-amber-50 border-amber-200', icon: '⚠️' },
+};
+
+const SEVERITY_STYLES: Record<AICodeReviewIssue['severity'], string> = {
+  critical: 'ring-2 ring-red-400',
+  warning: 'ring-2 ring-amber-400',
+  minor: 'ring-1 ring-gray-300',
+};
+
+interface AICodeReviewExerciseProps {
+  section: AICodeReviewSection;
+  onComplete: (score: number, total: number, answers?: Record<string, number | string | boolean>) => void;
+  savedProgress?: SectionSavedProgress;
+  onProgressChange?: (answers: Record<string, number | string | boolean>, currentIndex: number) => void;
+}
+
+export function AICodeReviewExercise({ section, onComplete, savedProgress, onProgressChange }: AICodeReviewExerciseProps) {
+  const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
+  const [selectedIssues, setSelectedIssues] = useState<Set<string>>(new Set());
+  const [showResults, setShowResults] = useState(false);
+  const [allResults, setAllResults] = useState<Record<string, string[]>>(() => {
+    if (!savedProgress?.answers) return {};
+    const result: Record<string, string[]> = {};
+    Object.entries(savedProgress.answers).forEach(([k, v]) => {
+      if (typeof v === 'string') {
+        try {
+          result[k] = JSON.parse(v);
+        } catch {
+          result[k] = [];
+        }
+      }
+    });
+    return result;
+  });
+
+  const items = section.items;
+  const currentItem = items[currentIndex];
+  const hasAnswered = currentItem?.id in allResults;
+
+  const handleToggleIssue = (issueId: string) => {
+    if (showResults) return;
+    setSelectedIssues(prev => {
+      const next = new Set(prev);
+      if (next.has(issueId)) {
+        next.delete(issueId);
+      } else {
+        next.add(issueId);
+      }
+      return next;
+    });
+  };
+
+  const handleSubmit = () => {
+    const selectedArray = Array.from(selectedIssues);
+    const newResults = { ...allResults, [currentItem.id]: selectedArray };
+    setAllResults(newResults);
+    setShowResults(true);
+
+    // Report progress
+    if (onProgressChange) {
+      const serialized: Record<string, string> = {};
+      Object.entries(newResults).forEach(([k, v]) => {
+        serialized[k] = JSON.stringify(v);
+      });
+      onProgressChange(serialized, currentIndex);
+    }
+  };
+
+  const handleNext = () => {
+    if (currentIndex < items.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+      setSelectedIssues(new Set());
+      setShowResults(false);
+    } else {
+      // Calculate score: percentage of issues found across all items
+      let totalIssues = 0;
+      let foundIssues = 0;
+      items.forEach(item => {
+        totalIssues += item.issues.length;
+        const found = allResults[item.id] || [];
+        foundIssues += item.issues.filter(issue => found.includes(issue.id)).length;
+      });
+      const serialized: Record<string, string> = {};
+      Object.entries(allResults).forEach(([k, v]) => {
+        serialized[k] = JSON.stringify(v);
+      });
+      onComplete(foundIssues, totalIssues, serialized);
+    }
+  };
+
+  if (!currentItem) return null;
+
+  const foundCount = Array.from(selectedIssues).filter(id =>
+    currentItem.issues.some(issue => issue.id === id)
+  ).length;
+
+  return (
+    <div className="space-y-4">
+      <ExerciseHeader
+        title={section.title}
+        instructions={section.instructions || "Review this AI-generated code and identify potential issues"}
+        progress={{ current: currentIndex + 1, total: items.length }}
+      />
+
+      <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+        {/* Context */}
+        <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 border-b">
+          <div className="flex items-start gap-2">
+            <span className="text-lg">🤖</span>
+            <div>
+              <p className="text-sm font-medium text-purple-800">AI-Generated Code</p>
+              <p className="text-sm text-purple-700">{currentItem.context}</p>
+            </div>
+          </div>
+          {currentItem.promptUsed && (
+            <div className="mt-2 text-xs text-purple-600 italic">
+              Prompt: "{currentItem.promptUsed}"
+            </div>
+          )}
+        </div>
+
+        {/* Code */}
+        <div className="p-4">
+          <CodeBlock code={currentItem.code} language={currentItem.language} />
+        </div>
+
+        {/* Issue selection */}
+        <div className="p-4 border-t bg-gray-50">
+          <p className="text-sm font-medium text-gray-700 mb-3">
+            {showResults
+              ? `You found ${foundCount} of ${currentItem.issues.length} issues`
+              : 'Select all issues you find in this code:'}
+          </p>
+
+          <div className="grid gap-2">
+            {currentItem.issues.map(issue => {
+              const typeInfo = ISSUE_TYPE_LABELS[issue.type];
+              const isSelected = selectedIssues.has(issue.id);
+              const isCorrect = showResults && isSelected;
+              const isMissed = showResults && !isSelected;
+
+              return (
+                <button
+                  key={issue.id}
+                  onClick={() => handleToggleIssue(issue.id)}
+                  disabled={showResults}
+                  className={clsx(
+                    'p-3 rounded-lg border text-left transition-all',
+                    !showResults && isSelected && 'bg-brand-50 border-brand-300',
+                    !showResults && !isSelected && 'hover:bg-gray-100 border-gray-200',
+                    showResults && isCorrect && 'bg-green-50 border-green-300',
+                    showResults && isMissed && 'bg-red-50 border-red-300',
+                    SEVERITY_STYLES[issue.severity]
+                  )}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={clsx(
+                      'px-2 py-0.5 rounded text-xs font-medium border',
+                      typeInfo.color
+                    )}>
+                      {typeInfo.icon} {typeInfo.label}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-800">{issue.location}</p>
+                      {showResults && (
+                        <motion.p
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          className="text-sm text-gray-600 mt-1"
+                        >
+                          {issue.explanation}
+                        </motion.p>
+                      )}
+                    </div>
+                    {!showResults && (
+                      <div className={clsx(
+                        'w-5 h-5 rounded border-2 flex items-center justify-center',
+                        isSelected ? 'bg-brand-500 border-brand-500' : 'border-gray-300'
+                      )}>
+                        {isSelected && <Check className="w-3 h-3 text-white" />}
+                      </div>
+                    )}
+                    {showResults && (
+                      <div className={clsx(
+                        'w-5 h-5 rounded-full flex items-center justify-center',
+                        isCorrect ? 'bg-green-500' : 'bg-red-500'
+                      )}>
+                        {isCorrect ? <Check className="w-3 h-3 text-white" /> : <X className="w-3 h-3 text-white" />}
+                      </div>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {currentItem.hint && !showResults && selectedIssues.size === 0 && (
+            <div className="mt-3 p-2 bg-amber-50 rounded-lg">
+              <p className="text-sm text-amber-700">
+                <Lightbulb className="w-4 h-4 inline mr-1" />
+                {currentItem.hint}
+              </p>
+            </div>
+          )}
+
+          {showResults && currentItem.correctVersion && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              className="mt-4"
+            >
+              <p className="text-sm font-medium text-gray-700 mb-2">Corrected version:</p>
+              <CodeBlock code={currentItem.correctVersion} language={currentItem.language} />
+            </motion.div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="p-4 border-t flex justify-end gap-2">
+          {!showResults ? (
+            <button
+              onClick={handleSubmit}
+              disabled={selectedIssues.size === 0}
+              className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-50"
+            >
+              Submit Review
+            </button>
+          ) : (
+            <button
+              onClick={handleNext}
+              className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600"
+            >
+              {currentIndex < items.length - 1 ? 'Next Code' : 'Finish'}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

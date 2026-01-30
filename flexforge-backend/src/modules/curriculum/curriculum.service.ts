@@ -846,28 +846,44 @@ Return JSON only:
           dayNumber,
         );
         if (cachedResult) {
-          this.logger.log(
-            `📦 Day ${dayNumber} CORE variant cache HIT (variant=${cachedResult.variantId})`,
-          );
-          return {
-            coreContent: cachedResult.content,
-            tokensUsed: 0,
-            cost: 0,
-            fromCache: true,
-            variantId: cachedResult.variantId,
-          };
+          // foundationCards are REQUIRED - if missing, bypass cache and regenerate
+          const cachedCards =
+            cachedResult.content?.foundationCards ||
+            cachedResult.content?.languageFoundationCards;
+
+          if (!cachedCards || cachedCards.length === 0) {
+            // Continue to regeneration - foundationCards are missing
+          } else {
+            this.logger.log(
+              `📦 Day ${dayNumber} CORE variant cache HIT (variant=${cachedResult.variantId})`,
+            );
+            return {
+              coreContent: cachedResult.content,
+              tokensUsed: 0,
+              cost: 0,
+              fromCache: true,
+              variantId: cachedResult.variantId,
+            };
+          }
         }
       } else {
         // Fallback to legacy cache for backward compatibility
         const cached = await this.cacheService.getDayContent(cacheKey);
         if (cached) {
-          this.logger.log(`📦 Day ${dayNumber} CORE cache HIT (legacy)`);
-          return {
-            coreContent: cached,
-            tokensUsed: 0,
-            cost: 0,
-            fromCache: true,
-          };
+          // foundationCards are REQUIRED - if missing, bypass cache and regenerate
+          const cachedCards = cached?.foundationCards || cached?.languageFoundationCards;
+
+          if (!cachedCards || cachedCards.length === 0) {
+            // Continue to regeneration - foundationCards are missing
+          } else {
+            this.logger.log(`📦 Day ${dayNumber} CORE cache HIT (legacy)`);
+            return {
+              coreContent: cached,
+              tokensUsed: 0,
+              cost: 0,
+              fromCache: true,
+            };
+          }
         }
       }
     } else {

@@ -648,50 +648,57 @@ export const useSessionStore = create<SessionState>()(
       throw new Error('Rate limit reached');
     }
 
-    // Set regenerating state to show full loading screen
+    // Clear all local progress for this day immediately
+    const sessionId = activeSession.id;
+    set((state) => {
+      // Remove all taskProgress entries for this day
+      const newTaskProgress = { ...state.taskProgress };
+      Object.keys(newTaskProgress).forEach((key) => {
+        if (key.startsWith(`${sessionId}-day${dayNumber}-`)) {
+          delete newTaskProgress[key];
+        }
+      });
+
+      // Remove all alternativeTaskCache entries for this day
+      const newAlternativeTaskCache = { ...state.alternativeTaskCache };
+      Object.keys(newAlternativeTaskCache).forEach((key) => {
+        if (key.startsWith(`${dayNumber}-`)) {
+          delete newAlternativeTaskCache[key];
+        }
+      });
+
+      return {
+        taskProgress: newTaskProgress,
+        alternativeTaskCache: newAlternativeTaskCache,
+        // Reset step progress
+        currentStep: 'prePrompt',
+        completedSteps: [],
+        stepStartTime: new Date(),
+        // Clear current day content so section loaders show
+        currentDay: state.currentDay ? { ...state.currentDay, detailsLoaded: false } : null,
+        coreContent: null,
+        deferredContent: null,
+        isCoreLoaded: false,
+        isDeferredLoaded: false,
+      };
+    });
+
+    // Set regenerating state to show loading screen
     set({ isRegenerating: true, error: null });
 
-    try {
-      // Force regenerate core content (bypasses all caches)
-      // Uses non-streaming POST endpoint for forceRegenerate
-      await loadDayCoreContent(dayNumber, true);
-
-      // Start deferred loading in background
+    // Start loading content in background (don't await)
+    loadDayCoreContent(dayNumber, true).then(() => {
       loadDayDeferredContent(dayNumber).catch((err) => {
         console.error('Deferred content loading failed:', err);
       });
+    }).catch((err) => {
+      console.error('Core content loading failed:', err);
+    });
 
-      // Clear all local progress for this day
-      const sessionId = activeSession.id;
-      set((state) => {
-        // Remove all taskProgress entries for this day
-        const newTaskProgress = { ...state.taskProgress };
-        Object.keys(newTaskProgress).forEach((key) => {
-          if (key.startsWith(`${sessionId}-day${dayNumber}-`)) {
-            delete newTaskProgress[key];
-          }
-        });
+    // Show loading screen for 10 seconds, then let section loaders handle the rest
+    await new Promise(resolve => setTimeout(resolve, 10000));
 
-        // Remove all alternativeTaskCache entries for this day
-        const newAlternativeTaskCache = { ...state.alternativeTaskCache };
-        Object.keys(newAlternativeTaskCache).forEach((key) => {
-          if (key.startsWith(`${dayNumber}-`)) {
-            delete newAlternativeTaskCache[key];
-          }
-        });
-
-        return {
-          taskProgress: newTaskProgress,
-          alternativeTaskCache: newAlternativeTaskCache,
-          // Reset step progress
-          currentStep: 'prePrompt',
-          completedSteps: [],
-          stepStartTime: new Date(),
-        };
-      });
-    } finally {
-      set({ isRegenerating: false });
-    }
+    set({ isRegenerating: false });
   },
 
   // ═══════════════════════════════════════════════════

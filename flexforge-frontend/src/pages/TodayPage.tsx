@@ -8,12 +8,12 @@ import { useCompanionStore } from '@/stores/companionStore';
 import { Button, Card, StreakBadge, ProgressBar, GeneratingScreen } from '@/components/common';
 import { sessionService } from '@/services/sessionService';
 
-// Loading steps for day content generation (~1.5 minutes total)
+// Loading steps for day content generation (~10 seconds total)
 const DAY_LOADING_STEPS = [
-  { icon: Sparkles, text: 'Generating day content...', duration: 20000 },
-  { icon: Target, text: 'Creating practice exercises...', duration: 20000 },
-  { icon: BookOpen, text: 'Curating learning resources...', duration: 25000 },
-  { icon: CheckCircle, text: 'Finalizing your lesson...', duration: 20000 },
+  { icon: Sparkles, text: 'Loading your lesson...', duration: 2500 },
+  { icon: Target, text: 'Preparing exercises...', duration: 2500 },
+  { icon: BookOpen, text: 'Getting resources ready...', duration: 2500 },
+  { icon: CheckCircle, text: 'Almost there...', duration: 2500 },
 ];
 
 
@@ -205,16 +205,23 @@ export function TodayPage() {
     );
   }, [user?.name, addSystemMessage]);
 
+  const [isStarting, setIsStarting] = useState(false);
+
   const handleStartSession = async () => {
     if (!activeSession) return;
 
-    try {
-      // Load core content first (fast), deferred loads in background
-      await loadDayContentSplit(activeSession.currentDay);
-      navigate(`/session/${activeSession.id}`);
-    } catch (err) {
-      console.error('Failed to start learning:', err);
-    }
+    setIsStarting(true);
+
+    // Start loading content in background (don't await - let it continue)
+    loadDayContentSplit(activeSession.currentDay).catch((err) => {
+      console.error('[TodayPage] Failed to load day content:', err);
+    });
+
+    // Show loading screen for ~10 seconds, then navigate
+    // SessionPage will show section loaders while content continues loading
+    await new Promise(resolve => setTimeout(resolve, 10000));
+
+    navigate(`/session/${activeSession.id}`);
   };
 
   // Check if current day can be started
@@ -233,14 +240,14 @@ export function TodayPage() {
     );
   }
 
-  // Day content generation loading screen
-  if (isDayLoading && activeSession) {
+  // Day content loading screen (~3 seconds before navigating)
+  if ((isStarting || isDayLoading) && activeSession) {
     return (
       <GeneratingScreen
         steps={DAY_LOADING_STEPS}
         title={`Preparing Day ${activeSession.currentDay}`}
-        subtitle={`Creating your ${activeSession.skillName} lesson`}
-        timeEstimate="This usually takes about 1-2 minutes"
+        subtitle={`Loading your ${activeSession.skillName} lesson`}
+        timeEstimate=""
       />
     );
   }

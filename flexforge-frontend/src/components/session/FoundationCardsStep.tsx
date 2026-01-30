@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
-import { Layers, ChevronLeft, ChevronRight, Volume2 } from 'lucide-react';
+import { Layers, ChevronLeft, ChevronRight, ChevronDown, Volume2 } from 'lucide-react';
 import { Card, MultipleChoiceQuestion, Button, ExerciseLoadingScreen } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { VocabularyCard } from './VocabularyCard';
@@ -225,49 +225,54 @@ export function FoundationCardsStep({ day, session, onComplete }: FoundationCard
               />
             ) : (
               /* Standard Foundation Card */
-              <Card className="overflow-hidden">
-                {/* Visual + Concept header */}
-                <div className="p-6 border-b border-gray-100 bg-gradient-to-br from-gray-50 to-white">
-                  <div className="flex items-start gap-4">
-                    <span className="text-4xl">{currentCard.visual || '💡'}</span>
-                    <div className="flex-1">
-                      <h2 className="text-xl font-bold text-gray-900 leading-tight">
-                        {currentCard.concept}
-                      </h2>
+              <Card className="overflow-hidden border-0 shadow-lg">
+                {/* Concept header - glassmorphism style */}
+                <div className="relative">
+                  {/* Decorative background blur circles */}
+                  <div className="absolute -top-8 -right-8 w-24 h-24 bg-gradient-to-br from-indigo-200/40 to-purple-200/40 rounded-full blur-2xl" />
+                  <div className="absolute -top-4 -left-4 w-16 h-16 bg-gradient-to-br from-blue-200/30 to-cyan-200/30 rounded-full blur-xl" />
+
+                  <div className="relative p-6 pb-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1">
+                        <h2 className="text-xl font-bold text-gray-900 leading-tight">
+                          {currentCard.concept}
+                        </h2>
+                      </div>
+                      {/* Audio button for language learning - show when language learning or targetLanguage set */}
+                      {(isLanguageLearning || targetLanguage || hasAudioText(currentCard)) && (
+                        <button
+                          onClick={playCardAudio}
+                          className={clsx(
+                            'p-3 rounded-full transition-all flex-shrink-0',
+                            isSpeaking
+                              ? 'bg-purple-100 text-purple-600 scale-110'
+                              : 'bg-purple-50 text-purple-600 hover:bg-purple-100'
+                          )}
+                          title="Hear pronunciation"
+                        >
+                          <Volume2 className={clsx('w-5 h-5', isSpeaking && 'animate-pulse')} />
+                        </button>
+                      )}
                     </div>
-                    {/* Audio button for language learning - show when language learning or targetLanguage set */}
-                    {(isLanguageLearning || targetLanguage || hasAudioText(currentCard)) && (
-                      <button
-                        onClick={playCardAudio}
-                        className={clsx(
-                          'p-3 rounded-full transition-all flex-shrink-0',
-                          isSpeaking
-                            ? 'bg-purple-100 text-purple-600 scale-110'
-                            : 'bg-purple-50 text-purple-600 hover:bg-purple-100'
-                        )}
-                        title="Hear pronunciation"
-                      >
-                        <Volume2 className={clsx('w-5 h-5', isSpeaking && 'animate-pulse')} />
-                      </button>
-                    )}
                   </div>
                 </div>
 
-                {/* Explanation */}
-                <div className="p-6 pb-3">
-                  <p className="text-gray-700 leading-relaxed text-lg">
-                    {currentCard.explanation}
-                  </p>
-                </div>
+                {/* Explanation - split into key insight + collapsible details */}
+                <ExplanationContent explanation={currentCard.explanation} cardId={currentCard.id} />
 
                 {/* Real World Context - Why This Matters */}
                 {currentCard.realWorldContext && (
                   <div className="mx-6 mb-4 p-3 rounded-lg bg-gradient-to-r from-brand-50 to-focus-50 border border-brand-100">
                     <div className="flex items-start gap-2">
                       <span className="text-brand-500 flex-shrink-0">🎯</span>
-                      <p className="text-sm text-brand-800 font-medium">
-                        {currentCard.realWorldContext}
-                      </p>
+                      <div className="space-y-2">
+                        {currentCard.realWorldContext.split(/\n\n+/).map((paragraph, idx) => (
+                          <p key={idx} className="text-sm text-brand-800 font-medium">
+                            {paragraph.trim()}
+                          </p>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -362,6 +367,69 @@ export function FoundationCardsStep({ day, session, onComplete }: FoundationCard
         </motion.div>
       )}
     </StepLayout>
+  );
+}
+
+// Explanation content with collapsible details
+function ExplanationContent({ explanation, cardId }: { explanation: string; cardId: string }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Split into sentences for better formatting
+  const sentences = explanation
+    .split(/(?<=[.!?])\s+/)
+    .filter(s => s.trim().length > 0);
+
+  const keyInsight = sentences[0] || '';
+  const details = sentences.slice(1);
+
+  return (
+    <div className="px-6 pb-4 space-y-3">
+      {/* Key Insight - always visible */}
+      <div className="p-4 bg-gradient-to-r from-violet-50 to-indigo-50 rounded-xl border border-violet-100">
+        <p className="text-gray-800 font-medium leading-relaxed">
+          {keyInsight}
+        </p>
+      </div>
+
+      {/* Collapsible details */}
+      {details.length > 0 && (
+        <>
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="flex items-center gap-2 text-sm text-violet-600 hover:text-violet-700 font-medium transition-colors"
+          >
+            <ChevronDown
+              className={clsx(
+                'w-4 h-4 transition-transform duration-200',
+                isExpanded && 'rotate-180'
+              )}
+            />
+            {isExpanded ? 'Hide details' : `Show details (${details.length} points)`}
+          </button>
+
+          <AnimatePresence>
+            {isExpanded && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <ul className="space-y-2 pl-1 pt-1">
+                  {details.map((sentence, idx) => (
+                    <li key={idx} className="flex items-start gap-2 text-sm text-gray-600">
+                      <span className="text-violet-400 mt-1">•</span>
+                      <span className="leading-relaxed">{sentence.trim()}</span>
+                    </li>
+                  ))}
+                </ul>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
+      )}
+    </div>
   );
 }
 

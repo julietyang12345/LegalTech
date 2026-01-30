@@ -584,19 +584,25 @@ export class SessionService {
 
     // Check if core content already loaded (skip if forceRegenerate)
     if (!forceRegenerate && dayOverview.coreLoaded && dayOverview.coreContent) {
-      // Get current regen count for UI
-      const regenCount = await this.cacheService.getDayRegenCount(
-        sessionId,
-        dayNumber,
-      );
-      return {
-        coreContent: dayOverview.coreContent,
-        tokensUsed: 0,
-        fromCache: true,
-        variantId: dayOverview.variantId,
-        regenCount,
-        regenLimit,
-      };
+      // foundationCards are REQUIRED - if missing, force regenerate
+      const cachedCards = dayOverview.coreContent.foundationCards || dayOverview.coreContent.languageFoundationCards;
+      if (!cachedCards || cachedCards.length === 0) {
+        // Continue to regeneration - foundationCards are missing
+      } else {
+        // Get current regen count for UI
+        const regenCount = await this.cacheService.getDayRegenCount(
+          sessionId,
+          dayNumber,
+        );
+        return {
+          coreContent: dayOverview.coreContent,
+          tokensUsed: 0,
+          fromCache: true,
+          variantId: dayOverview.variantId,
+          regenCount,
+          regenLimit,
+        };
+      }
     }
 
     if (forceRegenerate) {

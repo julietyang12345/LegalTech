@@ -444,8 +444,9 @@ export function SessionPage() {
     isDeferredLoading,
     isRegenerating,
     hasStepEngagement,
-    loadDayDeferredContent,
     loadDayCoreContent,
+    loadDayDeferredContent,
+    isCoreLoaded,
   } = useSessionStore();
 
   const { celebrate, addSystemMessage } = useCompanionStore();
@@ -464,12 +465,27 @@ export function SessionPage() {
     }
   }, [activeSession, currentDay, startDay]);
 
+  // Continue loading content if not fully loaded (TodayPage started it, we continue)
+  useEffect(() => {
+    if (activeSession && !isCoreLoaded) {
+      // Content loading started by TodayPage, continues here
+      // Each section will show its own loader until content arrives
+      loadDayCoreContent(activeSession.currentDay).then(() => {
+        loadDayDeferredContent(activeSession.currentDay).catch(console.error);
+      }).catch(console.error);
+    }
+  }, [activeSession, isCoreLoaded, loadDayCoreContent, loadDayDeferredContent]);
+
 
   // Get available steps (filter out skipped ones)
   const availableSteps = STEP_ORDER.filter(step => {
-    // Skip video step when video is skipped - foundation cards ARE the learning content
+    // When video is skipped, show "Learn & Understand" step instead (handled in VideoStep)
+    // Don't filter out video step - it will render AI content from foundation cards
     if (step === 'video') {
-      if (currentDay?.video?.skipped) return false;
+      // Only skip if no content at all (no video AND no foundation cards)
+      const hasFoundationCards = (currentDay?.foundationCards && currentDay.foundationCards.length > 0) ||
+                                  (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
+      if (!currentDay?.video && !hasFoundationCards) return false;
     }
     // Always show bossMilestone step (renders as either boss milestone OR intensive practice)
     // The BossMilestoneStep component handles both project-based and practice-based curricula
@@ -557,28 +573,21 @@ export function SessionPage() {
         // 1. Mark current day as complete (unlocks next day)
         await submitPracticeProject(currentDay.day, 'Day completed via reflection', 4);
 
-        // 2. Load next day content
-        const nextDayNumber = currentDay.day + 1;
-        await loadDayCoreContent(nextDayNumber);
-
-        // Start deferred loading in background
-        loadDayDeferredContent(nextDayNumber).catch(console.error);
-
-        // 3. Reset steps and engagement for new day
+        // 2. Reset steps and engagement for new day
         resetSteps();
         setStepEngagement({ foundationCards: false, task1: false, bossMilestone: false, reflection: false });
 
         addSystemMessage(
-          `🎉 Day ${currentDay.day} complete! Let's start Day ${nextDayNumber}!`,
+          `🎉 Day ${currentDay.day} complete! Ready for the next day!`,
           'celebratory'
         );
 
-        // Stay on session page - it will now show next day
+        // 3. Navigate to today page - user clicks "Start Learning" to load next day
         setIsAdvancingDay(false);
+        navigate('/today');
       } catch (error) {
         console.error('Failed to advance day:', error);
         setIsAdvancingDay(false);
-        // Fallback to today page
         navigate('/today');
       }
     } else {
@@ -652,12 +661,19 @@ export function SessionPage() {
     );
   }
 
-  // Show loading for current step content if day is still loading
-  const isDayContentLoading = !currentDay;
+  // Create a placeholder day when loading - allows step components to show their own loaders
+  const displayDay: CurriculumDay = currentDay || {
+    day: activeSession.currentDay,
+    title: 'Loading...',
+    objectives: [],
+    estimatedMinutes: 0,
+    status: 'in_progress' as any,
+    detailsLoaded: false,
+  };
 
-
-  // Regenerating day content
-  if (isRegenerating && currentDay) {
+  // Regenerating day content - show loading screen regardless of currentDay state
+  if (isRegenerating) {
+    const dayNum = currentDay?.day || activeSession.currentDay;
     return (
       <GeneratingScreen
         steps={[
@@ -666,7 +682,7 @@ export function SessionPage() {
           { icon: BookOpen, text: 'Finding a new video...', duration: 22000 },
           { icon: Trophy, text: 'Preparing your refreshed session...', duration: 15000 },
         ]}
-        title={`Regenerating Day ${currentDay.day}`}
+        title={`Regenerating Day ${dayNum}`}
         subtitle={`Creating fresh ${activeSession.skillName} content just for you`}
         timeEstimate="This usually takes about 90 seconds"
       />
@@ -708,16 +724,6 @@ export function SessionPage() {
     );
   }
 
-  // Section-level loading component
-  const SectionLoading = () => (
-    <div className="max-w-lg mx-auto">
-      <ExerciseLoadingScreen
-        type="task"
-        skillName={activeSession.skillName}
-        dayNumber={activeSession.currentDay}
-      />
-    </div>
-  );
 
   // Wrap onComplete to track engagement for specific steps
   const handleStepComplete = () => {
@@ -739,21 +745,17 @@ export function SessionPage() {
       {/* Step content with animation */}
       <AnimatePresence mode="wait">
         <motion.div
-          key={isDayContentLoading ? 'loading' : currentStep}
+          key={currentStep}
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -20 }}
           transition={{ duration: 0.2 }}
         >
-          {isDayContentLoading ? (
-            <SectionLoading />
-          ) : (
-            <StepComponent
-              day={currentDay}
-              session={activeSession}
-              onComplete={handleStepComplete}
-            />
-          )}
+          <StepComponent
+            day={displayDay}
+            session={activeSession}
+            onComplete={handleStepComplete}
+          />
         </motion.div>
       </AnimatePresence>
 
@@ -765,7 +767,7 @@ export function SessionPage() {
             <Button
               variant="ghost"
               onClick={handlePrevious}
-              disabled={isFirstStep || isDayContentLoading}
+              disabled={isFirstStep || !currentDay}
               leftIcon={<ChevronLeft className="w-5 h-5" />}
             >
               Previous
@@ -795,10 +797,10 @@ export function SessionPage() {
             <Button
               variant={isLastStep ? 'accent' : 'primary'}
               onClick={handleContinue}
-              disabled={isDayContentLoading}
+              disabled={!currentDay}
               rightIcon={<ChevronRight className="w-5 h-5" />}
             >
-              {isDayContentLoading ? 'Loading...' : isLastStep ? 'Complete Session 🎉' : 'Continue'}
+              {!currentDay ? 'Loading...' : isLastStep ? 'Complete Session 🎉' : 'Continue'}
             </Button>
           </div>
         </div>

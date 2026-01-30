@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Lightbulb, RotateCcw, AlertTriangle, X } from 'lucide-react';
-import { Card, Button } from '@/components/common';
+import { Card, Button, ExerciseLoadingScreen } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
@@ -13,11 +13,29 @@ interface PrePromptStepProps {
   onComplete: () => void;
 }
 
-export function PrePromptStep({ day }: PrePromptStepProps) {
-  const { regenerateDayContent } = useSessionStore();
+export function PrePromptStep({ day, session }: PrePromptStepProps) {
+  const { regenerateDayContent, isCoreLoaded } = useSessionStore();
   const { addSystemMessage } = useCompanionStore();
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
+
+  // Show loading when core content not yet loaded
+  if (!isCoreLoaded && !day.prePrompt) {
+    return (
+      <StepLayout
+        icon={Lightbulb}
+        iconGradient="from-brand-400 to-brand-500"
+        title="Get Ready 🧠"
+        subtitle="Loading today's content..."
+      >
+        <ExerciseLoadingScreen
+          type="task"
+          skillName={session.skillName}
+          dayNumber={day.day}
+        />
+      </StepLayout>
+    );
+  }
 
   const handleRegenerateDay = async () => {
     setIsRegenerating(true);
