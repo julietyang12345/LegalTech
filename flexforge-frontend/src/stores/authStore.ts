@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { QuotaTier } from '@/types';
+import { QuotaTier, getEffectiveTier } from '@/types';
 import type { User } from '@/types';
 import { authService } from '@/services/authService';
 
@@ -114,7 +114,9 @@ export const useAuthStore = create<AuthState>()(
       hasTierAccess: (requiredTier: QuotaTier) => {
         const { user } = get();
         if (!user) return false;
-        return tierHierarchy[user.quotaTier] >= tierHierarchy[requiredTier];
+        // Use effective tier (admins get PRO tier)
+        const effectiveTier = getEffectiveTier(user);
+        return tierHierarchy[effectiveTier] >= tierHierarchy[requiredTier];
       },
 
       // Check if user needs to complete onboarding

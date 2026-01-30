@@ -573,7 +573,9 @@ export class SessionService {
     const session = await this.findOne(sessionId, userId);
     const user = await this.userService.findById(userId);
     const tierString = user.quotaTier.toUpperCase();
-    const regenLimit = CACHE_CONFIG.dayContentMaxRegensPerDay;
+    // Use user's tier-based daily limit (admins get PRO limits)
+    const dailyLimits = user.getDailyLimits();
+    const regenLimit = dailyLimits.dayContentRegens;
 
     // Check if day is unlockable
     const dayOverview = session.curriculum.days.find(
@@ -622,10 +624,11 @@ export class SessionService {
     }
 
     if (forceRegenerate) {
-      // Check rate limit before allowing regeneration
+      // Check rate limit before allowing regeneration (use user-specific limit)
       const isLimitReached = await this.cacheService.isDayRegenLimitReached(
         sessionId,
         dayNumber,
+        regenLimit,
       );
       if (isLimitReached) {
         throw new HttpException(

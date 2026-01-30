@@ -54,12 +54,18 @@ export enum SkillComplexity {
 // User Types
 // ============================================
 
+export enum UserRole {
+  MEMBER = 'MEMBER',
+  ADMIN = 'ADMIN',
+}
+
 export interface User {
   id: string;
   email: string;
   name?: string;
   avatarUrl?: string;
   quotaTier: QuotaTier;
+  role?: UserRole;
   currentStreak: number;
   longestStreak: number;
   totalSessionsCompleted: number;
@@ -75,6 +81,55 @@ export interface User {
     weeklyDigest?: boolean;
     learner?: LearnerPrefs;
   };
+}
+
+/**
+ * Get effective tier - admins always get UNLIMITED tier benefits
+ */
+export function getEffectiveTier(user: User): QuotaTier {
+  if (user.role === UserRole.ADMIN) {
+    return QuotaTier.UNLIMITED;
+  }
+  return user.quotaTier;
+}
+
+/**
+ * Get daily limits based on effective tier
+ */
+export function getDailyLimits(user: User): {
+  dayContentRegens: number;
+  curriculumRegens: number;
+  aiTutorConversations: number;
+} {
+  const effectiveTier = getEffectiveTier(user);
+
+  switch (effectiveTier) {
+    case QuotaTier.FREE:
+      return {
+        dayContentRegens: 2,
+        curriculumRegens: 2,
+        aiTutorConversations: 5,
+      };
+    case QuotaTier.PRO:
+      return {
+        dayContentRegens: 10,
+        curriculumRegens: 10,
+        aiTutorConversations: Infinity,
+      };
+    case QuotaTier.PREMIUM:
+    case QuotaTier.UNLIMITED:
+      return {
+        dayContentRegens: Infinity,
+        curriculumRegens: Infinity,
+        aiTutorConversations: Infinity,
+      };
+    default:
+      return {
+        dayContentRegens: 2,
+        curriculumRegens: 2,
+        aiTutorConversations: 5,
+      };
+  }
 }
 
 export interface AuthState {

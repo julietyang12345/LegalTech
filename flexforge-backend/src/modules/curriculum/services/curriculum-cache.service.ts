@@ -954,13 +954,18 @@ export class CurriculumCacheService implements OnModuleInit {
 
   /**
    * Check if day content regen limit reached
+   * @param sessionId - The session ID
+   * @param dayNumber - The day number
+   * @param userLimit - Optional user-specific limit (defaults to CACHE_CONFIG value)
    */
   async isDayRegenLimitReached(
     sessionId: string,
     dayNumber: number,
+    userLimit?: number,
   ): Promise<boolean> {
     const count = await this.getDayRegenCount(sessionId, dayNumber);
-    return count >= CACHE_CONFIG.dayContentMaxRegensPerDay;
+    const limit = userLimit ?? CACHE_CONFIG.dayContentMaxRegensPerDay;
+    return count >= limit;
   }
 
   // ---- Private Day Variant Methods ----

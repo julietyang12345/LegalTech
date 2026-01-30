@@ -42,7 +42,7 @@ export class User {
   @Column({
     type: 'enum',
     enum: QuotaTier,
-    default: QuotaTier.PRO, // Default to PRO for testing
+    default: QuotaTier.FREE, // Default to FREE - all users start free
   })
   quotaTier: QuotaTier;
 
@@ -132,9 +132,29 @@ export class User {
   updatedAt: Date;
 
   // Helper methods
+
+  /**
+   * Get effective tier - admins always get UNLIMITED tier benefits
+   */
+  getEffectiveTier(): QuotaTier {
+    if (this.role === UserRole.ADMIN) {
+      return QuotaTier.UNLIMITED;
+    }
+    return this.quotaTier;
+  }
+
+  /**
+   * Check if user is admin
+   */
+  isAdmin(): boolean {
+    return this.role === UserRole.ADMIN;
+  }
+
   hasTierAccess(requiredTier: QuotaTier): boolean {
+    const effectiveTier = this.getEffectiveTier();
+
     // UNLIMITED tier has access to everything
-    if (this.quotaTier === QuotaTier.UNLIMITED) return true;
+    if (effectiveTier === QuotaTier.UNLIMITED) return true;
 
     const tierLevels = {
       [QuotaTier.FREE]: 1,
@@ -143,22 +163,24 @@ export class User {
       [QuotaTier.UNLIMITED]: 4,
     };
 
-    return tierLevels[this.quotaTier] >= tierLevels[requiredTier];
+    return tierLevels[effectiveTier] >= tierLevels[requiredTier];
   }
 
   getMonthlyQuotaLimits() {
-    switch (this.quotaTier) {
+    const effectiveTier = this.getEffectiveTier();
+
+    switch (effectiveTier) {
       case QuotaTier.FREE:
         return {
           curricula: 3,
           aiTokens: 50000,
-          aiTutorQuestions: 0,
+          aiTutorQuestions: 5, // 5 per day (checked daily, not monthly)
         };
       case QuotaTier.PRO:
         return {
           curricula: 20,
           aiTokens: 500000,
-          aiTutorQuestions: 20,
+          aiTutorQuestions: Infinity, // Unlimited for PRO
         };
       case QuotaTier.PREMIUM:
         return {
@@ -176,7 +198,43 @@ export class User {
         return {
           curricula: 3,
           aiTokens: 50000,
-          aiTutorQuestions: 0,
+          aiTutorQuestions: 5,
+        };
+    }
+  }
+
+  /**
+   * Get daily limits for regeneration and AI features
+   * FREE users have limited regenerations, PRO+ users have generous limits
+   */
+  getDailyLimits() {
+    const effectiveTier = this.getEffectiveTier();
+
+    switch (effectiveTier) {
+      case QuotaTier.FREE:
+        return {
+          dayContentRegens: 2, // 2 day content regenerations per day
+          curriculumRegens: 2, // 2 curriculum regenerations per day
+          aiTutorConversations: 5, // 5 AI tutor conversations per day
+        };
+      case QuotaTier.PRO:
+        return {
+          dayContentRegens: 10, // More generous for PRO
+          curriculumRegens: 10,
+          aiTutorConversations: Infinity, // Unlimited
+        };
+      case QuotaTier.PREMIUM:
+      case QuotaTier.UNLIMITED:
+        return {
+          dayContentRegens: Infinity,
+          curriculumRegens: Infinity,
+          aiTutorConversations: Infinity,
+        };
+      default:
+        return {
+          dayContentRegens: 2,
+          curriculumRegens: 2,
+          aiTutorConversations: 5,
         };
     }
   }
