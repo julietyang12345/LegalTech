@@ -178,6 +178,8 @@ export class OnboardingService {
       sessionLength: dto.sessionLength,
       // Learning style preference (projects vs practice)
       learningStyle: dto.learningStyle,
+      // Advanced mode: code writing exercises
+      codeWritingEnabled: dto.codeWritingEnabled,
       // Identity verification
       identityProfile,
       completedOnboarding: true,

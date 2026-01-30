@@ -73,4 +73,9 @@ export class GenerateCurriculumDto {
   @IsOptional()
   @IsString()
   learningStyle?: 'projects' | 'practice';
+
+  // Advanced mode: enables code writing exercises (codeCompletion) in intensive practice
+  // Default: false (AI code review only)
+  @IsOptional()
+  codeWritingEnabled?: boolean;
 }

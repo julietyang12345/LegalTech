@@ -779,6 +779,7 @@ Return JSON only:
       suggestedLanguage: effectiveLanguage, // User's selected language (or auto-detected if not chosen)
       learningStyle: dto.learningStyle, // User's explicit choice (projects vs practice)
       isProjectBased, // Store this - use it consistently, don't re-calculate
+      codeWritingEnabled: dto.codeWritingEnabled, // Advanced mode: include code completion exercises
       // Language learning specific (from skill detection)
       isLanguageLearning: skillDetection.isLanguageLearning,
       targetLanguage: skillDetection.targetLanguage,
@@ -1008,6 +1009,7 @@ Return JSON only:
       suggestedLanguage: curriculum.metadata.suggestedLanguage,
       learningStyle: curriculum.metadata.learningStyle, // User's explicit choice from onboarding
       isProjectBased: curriculum.metadata.isProjectBased, // Use stored value, don't re-calculate
+      codeWritingEnabled: curriculum.metadata.codeWritingEnabled, // Advanced mode: code completion
       // Language learning specific
       isLanguageLearning: curriculum.metadata.isLanguageLearning,
       targetLanguage: curriculum.metadata.targetLanguage,
@@ -1455,6 +1457,7 @@ Return JSON only:
       suggestedLanguage: curriculum.metadata.suggestedLanguage,
       learningStyle: curriculum.metadata.learningStyle,
       isProjectBased: curriculum.metadata.isProjectBased,
+      codeWritingEnabled: curriculum.metadata.codeWritingEnabled,
       isLanguageLearning: curriculum.metadata.isLanguageLearning,
       targetLanguage: curriculum.metadata.targetLanguage,
       proficiencyLevel: curriculum.metadata.proficiencyLevel,
@@ -1793,6 +1796,7 @@ Return JSON only:
       suggestedLanguage: curriculum.metadata.suggestedLanguage,
       learningStyle: curriculum.metadata.learningStyle, // User's explicit choice from onboarding
       isProjectBased: curriculum.metadata.isProjectBased, // Use stored value, don't re-calculate
+      codeWritingEnabled: curriculum.metadata.codeWritingEnabled, // Advanced mode: code completion
       // Language learning specific
       isLanguageLearning: curriculum.metadata.isLanguageLearning,
       targetLanguage: curriculum.metadata.targetLanguage,
@@ -2058,6 +2062,7 @@ Return JSON only:
       suggestedLanguage: curriculum.metadata.suggestedLanguage,
       learningStyle: curriculum.metadata.learningStyle,
       isProjectBased: curriculum.metadata.isProjectBased,
+      codeWritingEnabled: curriculum.metadata.codeWritingEnabled,
       isLanguageLearning: curriculum.metadata.isLanguageLearning,
       targetLanguage: curriculum.metadata.targetLanguage,
       proficiencyLevel: curriculum.metadata.proficiencyLevel,

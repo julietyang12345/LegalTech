@@ -185,13 +185,48 @@ export const useSessionStore = create<SessionState>()(
   alternativeTaskCache: {},
 
   createSession: async (dto: CreateSessionDto) => {
+    const { streamCleanup, deferredStreamCleanup } = get();
+
+    // Cleanup any active streams before creating new session
+    if (streamCleanup) streamCleanup();
+    if (deferredStreamCleanup) deferredStreamCleanup();
+
     set({ isLoading: true, error: null });
     try {
       const response = await sessionService.create(dto);
+      // Reset ALL day-related state when creating a new session
       set((state) => ({
         activeSession: response.session,
         sessions: [response.session, ...state.sessions],
         isLoading: false,
+        // Reset day state for fresh start
+        currentDay: null,
+        currentDayNumber: null,
+        currentStep: 'prePrompt' as const,
+        completedSteps: [],
+        stepStartTime: null,
+        sessionProgress: [],
+        // Reset loading state
+        isDayLoading: false,
+        dayLoadingNumber: null,
+        isCoreLoaded: false,
+        isDeferredLoading: false,
+        isDeferredLoaded: false,
+        deferredContent: null,
+        isRegenerating: false,
+        // Reset streaming state
+        streamingCards: [],
+        isStreaming: false,
+        streamCleanup: null,
+        isDeferredStreaming: false,
+        deferredStreamCleanup: null,
+        // Reset variant tracking
+        currentDayVariantId: null,
+        regenCount: 0,
+        // Reset task progress for new session
+        taskProgress: {},
+        alternativeTaskLoading: false,
+        alternativeTaskCache: {},
       }));
       return response.session;
     } catch (error: any) {

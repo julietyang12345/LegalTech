@@ -117,7 +117,8 @@ export default function OnboardingPage() {
     sessionLength: string,
     learningStyle: 'projects' | 'practice',
     toolPreference: 'any' | 'preferGeneric' | 'genericOnly',
-    outputType: CompleteOnboardingDto['outputType']
+    outputType: CompleteOnboardingDto['outputType'],
+    codeWritingEnabled: boolean
   ) => {
     if (!selectedDirection) return;
 
@@ -146,6 +147,8 @@ export default function OnboardingPage() {
         aspiration: selectedAspiration || undefined,
         // Learning style - projects vs practice
         learningStyle,
+        // Advanced mode: code writing exercises
+        codeWritingEnabled,
       };
 
       await onboardingService.completeOnboarding(dto);

@@ -768,6 +768,35 @@ export interface CodeCompletionSection {
   items: CodeCompletionItem[];
 }
 
+// AI Code Review - review AI-generated code for issues (combines review + debug)
+export interface AICodeReviewIssue {
+  id: string;
+  type: 'bug' | 'security' | 'assumption' | 'scalability' | 'hallucination' | 'edge-case';
+  location: string;              // "line 12" or "the auth check"
+  severity: 'critical' | 'warning' | 'minor';
+  explanation: string;
+}
+
+export interface AICodeReviewItem {
+  id: string;
+  code: string;                    // AI-generated code to review
+  context: string;                 // "This API endpoint handles user auth..."
+  promptUsed?: string;             // Optional: "Write a function that..."
+  issues: AICodeReviewIssue[];     // Issues to find
+  correctVersion?: string;         // Optional: fixed code (for learning)
+  hint?: string;
+  language?: string;
+}
+
+export interface AICodeReviewSection {
+  type: 'aiCodeReview';
+  title: string;
+  instructions?: string;           // "Review this AI-generated code and identify issues"
+  items: AICodeReviewItem[];
+  passingScore: number;            // e.g., 0.7 = find 70% of issues
+}
+
+// Legacy debugging - kept for backwards compatibility
 export interface DebuggingItem {
   id: string;
   buggyCode: string;
@@ -885,6 +914,7 @@ export type TaskSection =
   // Code-specific sections
   | CodeCompletionSection
   | DebuggingSection
+  | AICodeReviewSection
   | OutputPredictionSection
   // Physical-specific sections
   | FormCheckSection
@@ -1778,4 +1808,6 @@ export interface CompleteOnboardingDto {
   aspiration?: Aspiration;
   // Learning style preference
   learningStyle?: 'projects' | 'practice'; // 'projects' = boss project, 'practice' = exercises only
+  // Advanced mode: enables code writing exercises (codeCompletion) in intensive practice
+  codeWritingEnabled?: boolean;
 }

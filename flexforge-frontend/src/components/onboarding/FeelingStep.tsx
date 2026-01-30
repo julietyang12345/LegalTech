@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { clsx } from 'clsx';
 import { Button } from '../common/Button';
-import { ArrowRight, Check, Rocket, BookOpen, Loader2 } from 'lucide-react';
+import { ArrowRight, Check, Rocket, BookOpen, Loader2, Code2, Eye } from 'lucide-react';
 import { onboardingService } from '@/services/onboardingService';
 import type { LearnerPrefs } from '@/types';
 
@@ -10,7 +10,7 @@ type ToolPreference = 'any' | 'preferGeneric' | 'genericOnly';
 
 interface FeelingStepProps {
   selectedDirection: string;
-  onSelect: (depth: ContentDepth, familiarity: string, sessionLength: string, learningStyle: LearningStyle, toolPreference: ToolPreference, outputType: OutputType) => void;
+  onSelect: (depth: ContentDepth, familiarity: string, sessionLength: string, learningStyle: LearningStyle, toolPreference: ToolPreference, outputType: OutputType, codeWritingEnabled: boolean) => void;
   isLoading?: boolean;
 }
 
@@ -42,6 +42,7 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
   const [outputType, setOutputType] = useState<OutputType | null>(null);
   const [learningStyle, setLearningStyle] = useState<LearningStyle | null>(null);
   const [toolPreference, setToolPreference] = useState<ToolPreference | null>(null);
+  const [codeWritingEnabled, setCodeWritingEnabled] = useState(false);
 
   // Classify skill on mount to determine if project-based learning is available
   useEffect(() => {
@@ -107,7 +108,7 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
 
   const handleContinue = () => {
     if (familiarity && sessionLength && outputType && learningStyle && toolPreference) {
-      onSelect(mapOutputToDepth(outputType), familiarity, sessionLength, learningStyle, toolPreference, outputType);
+      onSelect(mapOutputToDepth(outputType), familiarity, sessionLength, learningStyle, toolPreference, outputType, codeWritingEnabled);
     }
   };
 
@@ -232,32 +233,7 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
           <div>
             <h3 className="text-sm font-medium text-gray-700 mb-3">How do you want to learn?</h3>
             <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => setLearningStyle('projects')}
-                className={clsx(
-                  'relative p-4 rounded-xl border-2 text-left transition-all',
-                  'hover:border-brand-300',
-                  learningStyle === 'projects'
-                    ? 'border-brand-500 bg-brand-50'
-                    : 'border-gray-200 bg-white'
-                )}
-              >
-                {learningStyle === 'projects' && (
-                  <div className="absolute top-2 right-2 w-5 h-5 bg-brand-500 rounded-full flex items-center justify-center">
-                    <Check className="w-3 h-3 text-white" />
-                  </div>
-                )}
-                <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center mb-3">
-                  <Rocket className="w-5 h-5 text-purple-600" />
-                </div>
-                <div className="text-sm font-semibold text-gray-900 mb-1">
-                  Build a Project
-                </div>
-                <div className="text-xs text-gray-500">
-                  Work on one real project across all days. Great for hands-on learners.
-                </div>
-              </button>
-
+              {/* Practice - default/recommended option on the left */}
               <button
                 onClick={() => setLearningStyle('practice')}
                 className={clsx(
@@ -283,6 +259,75 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
                   Daily quizzes, exercises, challenges. Great for mastering concepts.
                 </div>
               </button>
+
+              {/* Project-based - for specific goal-oriented learners */}
+              <button
+                onClick={() => setLearningStyle('projects')}
+                className={clsx(
+                  'relative p-4 rounded-xl border-2 text-left transition-all',
+                  'hover:border-gray-300',
+                  learningStyle === 'projects'
+                    ? 'border-brand-500 bg-brand-50'
+                    : 'border-gray-200 bg-white'
+                )}
+              >
+                {learningStyle === 'projects' && (
+                  <div className="absolute top-2 right-2 w-5 h-5 bg-brand-500 rounded-full flex items-center justify-center">
+                    <Check className="w-3 h-3 text-white" />
+                  </div>
+                )}
+                <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center mb-3">
+                  <Rocket className="w-5 h-5 text-gray-500" />
+                </div>
+                <div className="text-sm font-semibold text-gray-900 mb-1">
+                  I know what to build
+                </div>
+                <div className="text-xs text-gray-500">
+                  Already have a specific project in mind? End the course with it complete.
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Advanced Mode Toggle - only for practice mode on code skills */}
+        {supportsProjectBased && learningStyle === 'practice' && (
+          <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+            <div className="flex items-start gap-3">
+              <button
+                onClick={() => setCodeWritingEnabled(!codeWritingEnabled)}
+                className={clsx(
+                  'mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-all',
+                  codeWritingEnabled
+                    ? 'bg-brand-500 border-brand-500'
+                    : 'bg-white border-gray-300 hover:border-gray-400'
+                )}
+              >
+                {codeWritingEnabled && <Check className="w-3 h-3 text-white" />}
+              </button>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <Code2 className="w-4 h-4 text-gray-600" />
+                  <span className="text-sm font-medium text-gray-900">
+                    Include code writing exercises
+                  </span>
+                  <span className="text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-medium">
+                    Advanced
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500">
+                  {codeWritingEnabled ? (
+                    <>Write code from scratch + review AI-generated code</>
+                  ) : (
+                    <>
+                      <span className="flex items-center gap-1">
+                        <Eye className="w-3 h-3 inline" />
+                        Default: Review AI-generated code, identify bugs & issues
+                      </span>
+                    </>
+                  )}
+                </p>
+              </div>
             </div>
           </div>
         )}

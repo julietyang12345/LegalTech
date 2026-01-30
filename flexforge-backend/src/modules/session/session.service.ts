@@ -141,6 +141,8 @@ export class SessionService {
             contentDepth: learnerPrefs?.contentDepth,
             // Explicit learning style choice (projects vs practice)
             learningStyle: learnerPrefs?.learningStyle,
+            // Advanced mode: code writing exercises
+            codeWritingEnabled: learnerPrefs?.codeWritingEnabled,
           },
           tierString,
         );

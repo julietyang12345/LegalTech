@@ -80,6 +80,7 @@ type LanguageSectionType = 'toneSelect' | 'translation' | 'typing';
 type CodeSectionType =
   | 'codeCompletion'
   | 'debugging'
+  | 'aiCodeReview' // Review AI-generated code for bugs, security issues, assumptions
   | 'outputPrediction';
 type PhysicalSectionType = 'formCheck' | 'safetyCheck';
 type DesignSectionType = 'designCritique';
@@ -104,11 +105,13 @@ export const SECTION_REGISTRY: Record<
   {
     task1: SectionType[]; // Concept reinforcement sections (always included)
     intensive: SectionType[]; // Deep practice sections (only when NOT project-based)
+    intensiveAdvanced?: SectionType[]; // Advanced sections (when user enables code writing)
   }
 > = {
   [SkillType.CODE]: {
     task1: ['quiz', 'outputPrediction', 'fillBlank'],
-    intensive: ['codeCompletion', 'debugging', 'fillBlank'], // Only used when NOT project-based
+    intensive: ['aiCodeReview', 'fillBlank'], // Default: review AI-generated code for issues
+    intensiveAdvanced: ['codeCompletion'], // Advanced: write code from scratch (opt-in)
   },
   [SkillType.PHYSICAL]: {
     task1: ['quiz', 'reorder', 'matching'],
@@ -125,7 +128,8 @@ export const SECTION_REGISTRY: Record<
   },
   [SkillType.AI_AGENT]: {
     task1: ['quiz', 'fillBlank', 'outputPrediction'],
-    intensive: ['codeCompletion', 'fillBlank', 'quiz'], // Only used when NOT project-based
+    intensive: ['aiCodeReview', 'fillBlank', 'quiz'], // Default: review AI-generated code
+    intensiveAdvanced: ['codeCompletion'], // Advanced: write code from scratch (opt-in)
   },
 };
 
@@ -150,6 +154,7 @@ export function getSectionsForSkillType(
     isLanguageLearning?: boolean;
     hasTones?: boolean;
     isProjectBased?: boolean;
+    codeWritingEnabled?: boolean; // Advanced mode: include codeCompletion exercises
     customSections?: { task1: SectionType[]; intensive: SectionType[] } | null;
   } = {},
 ): { task1: SectionType[]; intensive: SectionType[]; skipIntensive: boolean } {
@@ -157,6 +162,7 @@ export function getSectionsForSkillType(
     isLanguageLearning = false,
     hasTones = false,
     isProjectBased = false,
+    codeWritingEnabled = false,
     customSections,
   } = options;
 
@@ -183,9 +189,15 @@ export function getSectionsForSkillType(
   const registry =
     SECTION_REGISTRY[skillType] || SECTION_REGISTRY[SkillType.KNOWLEDGE];
 
+  // Combine intensive + intensiveAdvanced when codeWritingEnabled
+  let intensiveSections = registry.intensive;
+  if (codeWritingEnabled && registry.intensiveAdvanced) {
+    intensiveSections = [...registry.intensive, ...registry.intensiveAdvanced];
+  }
+
   return {
     task1: registry.task1,
-    intensive: registry.intensive,
+    intensive: intensiveSections,
     skipIntensive: isProjectBased, // Project-based: bossMilestone handles hands-on, skip intensive
   };
 }
@@ -556,6 +568,7 @@ export interface DayDetailParams {
   suggestedLanguage?: string;
   learningStyle?: 'projects' | 'practice'; // Explicit user choice from onboarding
   isProjectBased?: boolean; // Pass directly from metadata - don't re-calculate
+  codeWritingEnabled?: boolean; // Advanced mode: include codeCompletion exercises in intensive
   // Reflection data from previous day (for personalized prePrompt)
   previousDayReflection?: {
     confusedConcepts?: string[];
@@ -944,9 +957,12 @@ Output valid JSON.`;
 
 /**
  * Get intensive section instructions per skill type
- * Based on SECTION_REGISTRY.intensive
+ * Based on SECTION_REGISTRY.intensive + intensiveAdvanced (when codeWritingEnabled)
  */
-function getIntensiveSectionInstructions(skillType: SkillType): string {
+function getIntensiveSectionInstructions(
+  skillType: SkillType,
+  codeWritingEnabled = false,
+): string {
   const newKnowledgeNote = `
 IMPORTANT - Each section MUST include:
 "newKnowledge": [{"term": "new concept", "meaning": "brief explanation"}]
@@ -955,10 +971,22 @@ Use DIFFERENT scenarios than task1 (new contexts, different domains).`;
 
   switch (skillType) {
     case SkillType.CODE:
+      // Default: AI code review (review AI-generated code for issues)
+      // Advanced: + code completion (write code from scratch)
+      if (codeWritingEnabled) {
+        return `SECTION TYPES TO INCLUDE:
+1. aiCodeReview - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations (3-4 items)
+   Each item: code (AI-generated), context (what it should do), issues (array of {type, location, severity, explanation})
+   Issue types: bug, security, assumption, scalability, hallucination, edge-case
+2. fillBlank - Complete code with NEW syntax/methods related to today's topic (3-4 items)
+3. codeCompletion - Complete partial code introducing NEW patterns/methods (3-4 items)
+${newKnowledgeNote}`;
+      }
       return `SECTION TYPES TO INCLUDE:
-1. codeCompletion - Complete partial code introducing NEW patterns/methods (3-4 items)
-2. debugging - Find and fix bugs, including edge cases not covered in task1 (3-4 items)
-3. fillBlank - Complete code with NEW syntax/methods related to today's topic (3-4 items)
+1. aiCodeReview - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations (3-4 items)
+   Each item: code (AI-generated), context (what it should do), issues (array of {type, location, severity, explanation})
+   Issue types: bug, security, assumption, scalability, hallucination, edge-case
+2. fillBlank - Complete code with NEW syntax/methods related to today's topic (3-4 items)
 ${newKnowledgeNote}`;
 
     case SkillType.PHYSICAL:
@@ -989,10 +1017,22 @@ ${newKnowledgeNote}`;
 ${newKnowledgeNote}`;
 
     case SkillType.AI_AGENT:
-      return `SECTION TYPES TO INCLUDE:
-1. codeCompletion - Complete AI/API code with NEW parameters/methods (3-4 items)
+      // Default: AI code review (review AI-generated code for issues)
+      // Advanced: + code completion (write code from scratch)
+      if (codeWritingEnabled) {
+        return `SECTION TYPES TO INCLUDE:
+1. aiCodeReview - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations (3-4 items)
+   Each item: code (AI-generated), context (what it should do), issues (array of {type, location, severity, explanation})
+   Issue types: bug, security, assumption, scalability, hallucination, edge-case
 2. fillBlank - Statements introducing NEW AI concepts/terminology (3-4 items)
-3. quiz - Questions on ADVANCED patterns not covered in task1 (3-4 questions)
+3. codeCompletion - Complete AI/API code with NEW parameters/methods (3-4 items)
+${newKnowledgeNote}`;
+      }
+      return `SECTION TYPES TO INCLUDE:
+1. aiCodeReview - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations (3-4 items)
+   Each item: code (AI-generated), context (what it should do), issues (array of {type, location, severity, explanation})
+   Issue types: bug, security, assumption, scalability, hallucination, edge-case
+2. fillBlank - Statements introducing NEW AI concepts/terminology (3-4 items)
 ${newKnowledgeNote}`;
 
     default:
@@ -1006,17 +1046,42 @@ ${newKnowledgeNote}`;
 
 /**
  * Get intensive section JSON template per skill type
- * Based on SECTION_REGISTRY.intensive
+ * Based on SECTION_REGISTRY.intensive + intensiveAdvanced (when codeWritingEnabled)
  */
 function getIntensiveSectionTemplate(
   skillType: SkillType,
   _dayNumber: number,
+  codeWritingEnabled = false,
 ): string {
-  switch (skillType) {
-    case SkillType.CODE:
-    case SkillType.AI_AGENT:
-      return `[
-      {
+  // AI Code Review template (used for CODE and AI_AGENT)
+  const aiCodeReviewTemplate = `{
+        "type": "aiCodeReview",
+        "title": "Review AI-Generated Code",
+        "instructions": "Review this AI-generated code and identify any issues",
+        "items": [
+          {
+            "id": "acr1",
+            "code": "// AI-generated code to review...",
+            "context": "This code should handle user authentication",
+            "promptUsed": "Write a function to authenticate users",
+            "issues": [
+              {
+                "id": "issue1",
+                "type": "security",
+                "location": "line 5",
+                "severity": "critical",
+                "explanation": "Password is not hashed before storage"
+              }
+            ],
+            "correctVersion": "// Corrected code...",
+            "hint": "Look at how sensitive data is handled",
+            "language": "javascript"
+          }
+        ],
+        "passingScore": 0.7
+      }`;
+
+  const codeCompletionTemplate = `{
         "type": "codeCompletion",
         "title": "Complete the Code",
         "items": [
@@ -1029,22 +1094,9 @@ function getIntensiveSectionTemplate(
             "language": "javascript"
           }
         ]
-      },
-      {
-        "type": "debugging",
-        "title": "Fix the Bug",
-        "items": [
-          {
-            "id": "db1",
-            "buggyCode": "// Code with bug...",
-            "fixedCode": "// Corrected code...",
-            "hint": "Look at...",
-            "explanation": "The bug was...",
-            "language": "javascript"
-          }
-        ]
-      },
-      {
+      }`;
+
+  const fillBlankTemplate = `{
         "type": "fillBlank",
         "title": "Complete the Statement",
         "instructions": "Fill in the correct term",
@@ -1056,7 +1108,23 @@ function getIntensiveSectionTemplate(
             "blank": {"correctAnswers": ["answer"], "hint": "Hint"}
           }
         ]
+      }`;
+
+  switch (skillType) {
+    case SkillType.CODE:
+    case SkillType.AI_AGENT:
+      // Default: aiCodeReview + fillBlank
+      // Advanced: + codeCompletion
+      if (codeWritingEnabled) {
+        return `[
+      ${aiCodeReviewTemplate},
+      ${fillBlankTemplate},
+      ${codeCompletionTemplate}
+    ]`;
       }
+      return `[
+      ${aiCodeReviewTemplate},
+      ${fillBlankTemplate}
     ]`;
 
     case SkillType.PHYSICAL:
@@ -1232,13 +1300,14 @@ function buildPracticeBasedDeferredPrompt(
 
   // For custom sections, just list the names (AI knows formats from static instructions)
   // For standard skill types, use the existing functions
+  const codeWritingEnabled = params.codeWritingEnabled ?? false;
   const sectionInstructions = params.customSections
     ? `INCLUDE THESE SECTION TYPES: ${params.customSections.intensive.join(', ')}\n(${itemsPerSection} items per section, use formats from section registry)`
-    : getIntensiveSectionInstructions(skillType);
+    : getIntensiveSectionInstructions(skillType, codeWritingEnabled);
 
   const sectionTemplate = params.customSections
     ? `[/* Generate sections: ${params.customSections.intensive.join(', ')} */]`
-    : getIntensiveSectionTemplate(skillType, dayNumber);
+    : getIntensiveSectionTemplate(skillType, dayNumber, codeWritingEnabled);
 
   // Get skill-type-specific task1 template (2 section types per skill)
   const task1Template = getTask1SectionTemplate(skillType);
@@ -1703,6 +1772,7 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
   // Get default sections for this skill type (AI may override for language learning)
   const sections = getSectionsForSkillType(params.skillType, {
     isProjectBased,
+    codeWritingEnabled: params.codeWritingEnabled,
     customSections: params.customSections,
   });
   const sectionTypes = sections.task1.join(' + ');

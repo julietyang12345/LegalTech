@@ -156,6 +156,11 @@ export interface LearnerPrefs {
   // 'practice' = daily quizzes, exercises, challenges (no boss project)
   learningStyle?: 'projects' | 'practice';
 
+  // Advanced mode: enables code writing exercises (codeCompletion) in intensive practice
+  // Default: false (AI code review only - identify issues in AI-generated code)
+  // When true: also includes codeCompletion exercises (write code from scratch)
+  codeWritingEnabled?: boolean;
+
   // Platform tolerance (from direction label or refinement)
   // KEY for solving the "Zapier problem" - affects TOOL_SPECIFIC video penalty
   platformTolerance?: 'any' | 'preferGeneric' | 'genericOnly';
@@ -226,6 +231,9 @@ export interface CompleteOnboardingDto {
 
   // Learning style preference - explicitly choose projects vs practice
   learningStyle?: 'projects' | 'practice';
+
+  // Advanced mode: enables code writing exercises in intensive practice
+  codeWritingEnabled?: boolean;
 }
 
 // ============================================
