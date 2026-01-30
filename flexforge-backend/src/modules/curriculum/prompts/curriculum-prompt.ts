@@ -430,9 +430,12 @@ function getSkillLevelGuidance(skillLevel: SkillLevel): {
         foundationCardCount: '6-7',
         quizQuestionCount: '10-12',
         complexityGuidance: `INTERMEDIATE LEVEL COMPLEXITY:
-- Concepts: Include nuanced situations, common pitfalls, and "why this works" explanations
-- Questions: Require applying knowledge to scenarios, not just recall. Include "which approach fits better" and "what would happen if" questions
+- Concepts: Include nuanced situations and common pitfalls. fewer basic definitions - user already knows terminology
+- Motivation: FEWER "why this matters" sections - user is already motivated. Focus on practical application
+- Questions: Require applying knowledge to scenarios, not just recall. Include "which approach fits better" questions
+- Multiple Solutions: Show 2-3 valid approaches when applicable, with brief pros/cons for each
 - Examples: Use realistic scenarios that combine 2-3 concepts together
+- Hints: Provide hints only for complex questions (not every question)
 - Depth: Cover when and why to use techniques, not just what they are. Address common mistakes`,
         contentMultiplier: 1.2,
       };
@@ -441,9 +444,13 @@ function getSkillLevelGuidance(skillLevel: SkillLevel): {
         foundationCardCount: '7-9',
         quizQuestionCount: '12-15',
         complexityGuidance: `ADVANCED LEVEL COMPLEXITY:
-- Concepts: Focus on sophisticated techniques, subtle distinctions, and expert-level insights
+- Basics: SKIP entirely - assume user knows all fundamentals and terminology. Jump straight to advanced content
+- Concepts: Focus on sophisticated techniques, subtle distinctions, edge cases, and expert-level insights
+- Trade-offs: More discussion about trade-offs, performance implications, and when NOT to use a technique
 - Questions: Require analysis, evaluating trade-offs, handling ambiguous situations, and explaining reasoning
-- Examples: Use complex real-world scenarios with multiple valid approaches and nuanced considerations
+- Multiple Solutions: Present problems with multiple valid solutions and discuss why experts might choose different approaches
+- Examples: Use complex real-world scenarios with nuanced considerations and potential pitfalls
+- Hints: MINIMAL hints - only for the most challenging questions. Let user struggle productively
 - Depth: Cover advanced strategies, when to break conventional rules, and how experts think about the topic`,
         contentMultiplier: 1.5,
       };
