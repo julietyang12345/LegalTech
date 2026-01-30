@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { CurriculumDay, OpenTask } from '@/types';
+import { ExerciseLoadingScreen } from '@/components/common';
+import { useSessionStore } from '@/stores/sessionStore';
 
 interface OpenTaskStepProps {
   day: CurriculumDay;
@@ -25,12 +27,26 @@ const DIFFICULTY_CONFIG = {
   challenging: { label: '30+ min', color: 'text-rose-600 bg-rose-50' },
 };
 
-export function OpenTaskStep({ day, onComplete }: OpenTaskStepProps) {
+export function OpenTaskStep({ day, session, onComplete }: OpenTaskStepProps) {
   const openTask = day.openTask as OpenTask | undefined;
   const [isCompleted, setIsCompleted] = useState(false);
   const [showTips, setShowTips] = useState(false);
   const [showReflection, setShowReflection] = useState(false);
   const [reflectionAnswers, setReflectionAnswers] = useState<Record<number, string>>({});
+  const { isDeferredLoading } = useSessionStore();
+
+  // Show loading UI while deferred content is being loaded
+  if (!openTask && isDeferredLoading) {
+    return (
+      <div className="max-w-lg mx-auto">
+        <ExerciseLoadingScreen
+          type="task"
+          skillName={session?.skillName || 'your skill'}
+          dayNumber={day.day}
+        />
+      </div>
+    );
+  }
 
   if (!openTask) {
     return (

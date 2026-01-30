@@ -636,8 +636,9 @@ export function SessionPage() {
   };
 
 
-  // Loading state
-  if (!activeSession || !currentDay) {
+  // Loading state - only block if no session at all
+  // Once we have activeSession, show page with section-level loading spinners
+  if (!activeSession) {
     return (
       <FocusModeLayout>
         <div className="flex items-center justify-center min-h-[60vh]">
@@ -651,9 +652,12 @@ export function SessionPage() {
     );
   }
 
+  // Show loading for current step content if day is still loading
+  const isDayContentLoading = !currentDay;
+
 
   // Regenerating day content
-  if (isRegenerating) {
+  if (isRegenerating && currentDay) {
     return (
       <GeneratingScreen
         steps={[
@@ -670,7 +674,7 @@ export function SessionPage() {
   }
 
   // Loading next day content
-  if (isAdvancingDay) {
+  if (isAdvancingDay && currentDay) {
     const nextDayNumber = currentDay.day + 1;
     const nextDayData = activeSession.curriculum.days.find(d => d.day === nextDayNumber);
     return (
@@ -704,6 +708,17 @@ export function SessionPage() {
     );
   }
 
+  // Section-level loading component
+  const SectionLoading = () => (
+    <div className="max-w-lg mx-auto">
+      <ExerciseLoadingScreen
+        type="task"
+        skillName={activeSession.skillName}
+        dayNumber={activeSession.currentDay}
+      />
+    </div>
+  );
+
   // Wrap onComplete to track engagement for specific steps
   const handleStepComplete = () => {
     // Mark engagement based on current step
@@ -724,17 +739,21 @@ export function SessionPage() {
       {/* Step content with animation */}
       <AnimatePresence mode="wait">
         <motion.div
-          key={currentStep}
+          key={isDayContentLoading ? 'loading' : currentStep}
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -20 }}
           transition={{ duration: 0.2 }}
         >
-          <StepComponent
-            day={currentDay}
-            session={activeSession}
-            onComplete={handleStepComplete}
-          />
+          {isDayContentLoading ? (
+            <SectionLoading />
+          ) : (
+            <StepComponent
+              day={currentDay}
+              session={activeSession}
+              onComplete={handleStepComplete}
+            />
+          )}
         </motion.div>
       </AnimatePresence>
 
@@ -746,7 +765,7 @@ export function SessionPage() {
             <Button
               variant="ghost"
               onClick={handlePrevious}
-              disabled={isFirstStep}
+              disabled={isFirstStep || isDayContentLoading}
               leftIcon={<ChevronLeft className="w-5 h-5" />}
             >
               Previous
@@ -776,9 +795,10 @@ export function SessionPage() {
             <Button
               variant={isLastStep ? 'accent' : 'primary'}
               onClick={handleContinue}
+              disabled={isDayContentLoading}
               rightIcon={<ChevronRight className="w-5 h-5" />}
             >
-              {isLastStep ? 'Complete Session 🎉' : 'Continue'}
+              {isDayContentLoading ? 'Loading...' : isLastStep ? 'Complete Session 🎉' : 'Continue'}
             </Button>
           </div>
         </div>

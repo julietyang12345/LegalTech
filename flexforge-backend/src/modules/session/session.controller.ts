@@ -10,10 +10,10 @@ import {
   Request,
   Header,
   Res,
-  Sse,
-  MessageEvent,
+  // Sse,  // SSE STREAMING DISABLED
+  // MessageEvent,  // SSE STREAMING DISABLED
 } from '@nestjs/common';
-import { Observable } from 'rxjs';
+// import { Observable } from 'rxjs';  // SSE STREAMING DISABLED
 import { SessionService } from './session.service';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { UpdateSessionDto } from './dto/update-session.dto';
@@ -175,49 +175,9 @@ export class SessionController {
     };
   }
 
-  /**
-   * GET /api/v1/sessions/:id/days/:dayNumber/start-core-stream
-   * Start a day with SSE streaming - foundation cards appear in real-time
-   * Events: prePrompt, foundationCard (multiple), video, complete, error
-   */
-  @Sse(':id/days/:dayNumber/start-core-stream')
-  startDayCoreStream(
-    @Request() req,
-    @Param('id') id: string,
-    @Param('dayNumber') dayNumber: string,
-  ): Observable<MessageEvent> {
-    const userId = req.user.id;
-    const dayNum = parseInt(dayNumber, 10);
-
-    // Create Observable that properly streams from async generator
-    return new Observable<MessageEvent>((subscriber) => {
-      const streamGenerator = this.sessionService.startDayCoreStream(
-        id,
-        userId,
-        dayNum,
-        false, // forceRegenerate
-      );
-
-      (async () => {
-        try {
-          for await (const chunk of streamGenerator) {
-            subscriber.next({
-              data: chunk,
-              type: chunk.event,
-            } as MessageEvent);
-          }
-          subscriber.complete();
-        } catch (error) {
-          console.error('[SSE Stream Error]', error);
-          subscriber.next({
-            data: { event: 'error', data: { error: error.message } },
-            type: 'error',
-          } as MessageEvent);
-          subscriber.complete();
-        }
-      })();
-    });
-  }
+  // SSE STREAMING DISABLED - using regular API calls instead
+  // @Sse(':id/days/:dayNumber/start-core-stream')
+  // startDayCoreStream(...) { ... }
 
   /**
    * POST /api/v1/sessions/:id/days/:dayNumber/load-deferred
@@ -244,48 +204,44 @@ export class SessionController {
     };
   }
 
-  /**
-   * GET /api/v1/sessions/:id/days/:dayNumber/load-deferred-stream
-   * Load deferred content with SSE streaming
-   * Events: task1, bossMilestone, intensivePractice, openTask, reflection, complete, error
-   */
-  @Sse(':id/days/:dayNumber/load-deferred-stream')
-  loadDayDeferredStream(
-    @Request() req,
-    @Param('id') id: string,
-    @Param('dayNumber') dayNumber: string,
-  ): Observable<MessageEvent> {
-    const userId = req.user.id;
-    const dayNum = parseInt(dayNumber, 10);
-
-    // Create Observable that properly streams from async generator
-    return new Observable<MessageEvent>((subscriber) => {
-      const streamGenerator = this.sessionService.loadDayDeferredStream(
-        id,
-        userId,
-        dayNum,
-      );
-
-      (async () => {
-        try {
-          for await (const chunk of streamGenerator) {
-            subscriber.next({
-              data: chunk,
-              type: chunk.event,
-            } as MessageEvent);
-          }
-          subscriber.complete();
-        } catch (error) {
-          console.error('[SSE Deferred Stream Error]', error);
-          subscriber.next({
-            data: { event: 'error', data: { error: error.message } },
-            type: 'error',
-          } as MessageEvent);
-          subscriber.complete();
-        }
-      })();
-    });
-  }
+  // SSE STREAMING DISABLED - using regular API calls instead
+  // @Sse(':id/days/:dayNumber/load-deferred-stream')
+  // loadDayDeferredStream(
+  //   @Request() req,
+  //   @Param('id') id: string,
+  //   @Param('dayNumber') dayNumber: string,
+  // ): Observable<MessageEvent> {
+  //   const userId = req.user.id;
+  //   const dayNum = parseInt(dayNumber, 10);
+  //
+  //   // Create Observable that properly streams from async generator
+  //   return new Observable<MessageEvent>((subscriber) => {
+  //     const streamGenerator = this.sessionService.loadDayDeferredStream(
+  //       id,
+  //       userId,
+  //       dayNum,
+  //     );
+  //
+  //     (async () => {
+  //       try {
+  //         for await (const chunk of streamGenerator) {
+  //           subscriber.next({
+  //             data: chunk,
+  //             type: chunk.event,
+  //           } as MessageEvent);
+  //         }
+  //         subscriber.complete();
+  //       } catch (error) {
+  //         console.error('[SSE Deferred Stream Error]', error);
+  //         subscriber.next({
+  //           data: { event: 'error', data: { error: error.message } },
+  //           type: 'error',
+  //         } as MessageEvent);
+  //         subscriber.complete();
+  //       }
+  //     })();
+  //   });
+  // }
 
   /**
    * POST /api/v1/sessions/:id/days/:dayNumber/practice/submit

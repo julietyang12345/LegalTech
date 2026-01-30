@@ -77,20 +77,20 @@ interface SessionState {
 
   // Split loading actions (core + deferred)
   loadDayCoreContent: (dayNumber: number, forceRegenerate?: boolean) => Promise<DayCoreContent>;
-  loadDayCoreContentStream: (dayNumber: number, forceRegenerate?: boolean) => Promise<DayCoreContent>;
+  // loadDayCoreContentStream: (dayNumber: number, forceRegenerate?: boolean) => Promise<DayCoreContent>; // SSE disabled
   loadDayDeferredContent: (dayNumber: number) => Promise<DayDeferredContent>;
-  loadDayDeferredContentStream: (dayNumber: number) => Promise<DayDeferredContent>;
+  // loadDayDeferredContentStream: (dayNumber: number) => Promise<DayDeferredContent>; // SSE disabled
   loadDayContentSplit: (dayNumber: number) => Promise<CurriculumDay>;
   getDeferredContent: () => DayDeferredContent | null;
   resetSplitLoadingState: () => void;
   regenerateDayContent: (dayNumber: number) => Promise<void>;
 
-  // Streaming state
-  streamingCards: any[];
-  isStreaming: boolean;
-  streamCleanup: (() => void) | null;
-  isDeferredStreaming: boolean;
-  deferredStreamCleanup: (() => void) | null;
+  // Streaming state (SSE disabled)
+  // streamingCards: any[];
+  // isStreaming: boolean;
+  // streamCleanup: (() => void) | null;
+  // isDeferredStreaming: boolean;
+  // deferredStreamCleanup: (() => void) | null;
 
   // Alternative task format actions
   getAlternativeTaskFormat: (dayNumber: number, format: 'code' | 'quiz' | 'fillBlank') => Promise<any>;
@@ -165,12 +165,12 @@ export const useSessionStore = create<SessionState>()(
   // Regeneration state
   isRegenerating: false,
 
-  // Streaming state
-  streamingCards: [] as any[],
-  isStreaming: false,
-  streamCleanup: null as (() => void) | null,
-  isDeferredStreaming: false,
-  deferredStreamCleanup: null as (() => void) | null,
+  // Streaming state (SSE disabled)
+  // streamingCards: [] as any[],
+  // isStreaming: false,
+  // streamCleanup: null as (() => void) | null,
+  // isDeferredStreaming: false,
+  // deferredStreamCleanup: null as (() => void) | null,
 
   // Day content variant tracking
   currentDayVariantId: null as string | null,
@@ -185,11 +185,10 @@ export const useSessionStore = create<SessionState>()(
   alternativeTaskCache: {},
 
   createSession: async (dto: CreateSessionDto) => {
-    const { streamCleanup, deferredStreamCleanup } = get();
-
-    // Cleanup any active streams before creating new session
-    if (streamCleanup) streamCleanup();
-    if (deferredStreamCleanup) deferredStreamCleanup();
+    // SSE disabled - no stream cleanup needed
+    // const { streamCleanup, deferredStreamCleanup } = get();
+    // if (streamCleanup) streamCleanup();
+    // if (deferredStreamCleanup) deferredStreamCleanup();
 
     set({ isLoading: true, error: null });
     try {
@@ -214,12 +213,12 @@ export const useSessionStore = create<SessionState>()(
         isDeferredLoaded: false,
         deferredContent: null,
         isRegenerating: false,
-        // Reset streaming state
-        streamingCards: [],
-        isStreaming: false,
-        streamCleanup: null,
-        isDeferredStreaming: false,
-        deferredStreamCleanup: null,
+        // Streaming state disabled (SSE)
+        // streamingCards: [],
+        // isStreaming: false,
+        // streamCleanup: null,
+        // isDeferredStreaming: false,
+        // deferredStreamCleanup: null,
         // Reset variant tracking
         currentDayVariantId: null,
         regenCount: 0,
@@ -550,148 +549,8 @@ export const useSessionStore = create<SessionState>()(
     }
   },
 
-  /**
-   * Load day core content with STREAMING - cards appear one by one
-   * Provides better UX by showing content as it generates
-   */
-  loadDayCoreContentStream: async (dayNumber: number, forceRegenerate?: boolean) => {
-    const { activeSession, streamCleanup } = get();
-    if (!activeSession) throw new Error('No active session');
-
-    // Cleanup previous stream if any
-    if (streamCleanup) {
-      streamCleanup();
-    }
-
-    set({
-      isDayLoading: true,
-      dayLoadingNumber: dayNumber,
-      isCoreLoaded: false,
-      isDeferredLoaded: false,
-      deferredContent: null,
-      error: null,
-      isStreaming: true,
-      streamingCards: [],
-    });
-
-    return new Promise<DayCoreContent>((resolve, reject) => {
-      let coreContent: DayCoreContent | null = null;
-      let prePromptData: any = null;
-      let videoData: any = null;
-      const cards: any[] = [];
-
-      const cleanup = sessionService.startDayCoreStream(
-        activeSession.id,
-        dayNumber,
-        // onEvent - called for each streamed event
-        (event) => {
-          switch (event.type) {
-            case 'prePrompt':
-              prePromptData = event.data;
-              // Update current day with prePrompt immediately
-              set((state) => {
-                const partialContent = { prePrompt: prePromptData };
-                return {
-                  currentDay: state.currentDay
-                    ? { ...state.currentDay, ...partialContent }
-                    : { day: dayNumber, ...partialContent } as any,
-                };
-              });
-              break;
-
-            case 'foundationCard':
-              cards.push(event.data);
-              // Update streamingCards for progressive rendering
-              set((state) => ({
-                streamingCards: [...cards],
-                currentDay: state.currentDay
-                  ? { ...state.currentDay, foundationCards: [...cards] }
-                  : { day: dayNumber, foundationCards: [...cards] } as any,
-              }));
-              break;
-
-            case 'video':
-              videoData = event.data;
-              set((state) => ({
-                currentDay: state.currentDay
-                  ? { ...state.currentDay, video: videoData }
-                  : { day: dayNumber, video: videoData } as any,
-              }));
-              break;
-          }
-        },
-        // onComplete - called when streaming finishes
-        (result) => {
-          coreContent = result.coreContent;
-          const variantId = result.variantId;
-
-          // Final state update with complete content
-          set((state) => {
-            if (!state.activeSession) return state;
-
-            const updatedDays = state.activeSession.curriculum.days.map((d) => {
-              if (d.day !== dayNumber) return d;
-              const newStatus = (d.status === DayStatus.COMPLETED || d.status === DayStatus.SKIPPED)
-                ? d.status
-                : DayStatus.IN_PROGRESS;
-              return {
-                ...d,
-                ...coreContent,
-                detailsLoaded: false,
-                status: newStatus,
-              };
-            });
-
-            const newCurrentDay = dayNumber > state.activeSession.currentDay
-              ? dayNumber
-              : state.activeSession.currentDay;
-
-            return {
-              activeSession: {
-                ...state.activeSession,
-                currentDay: newCurrentDay,
-                curriculum: {
-                  ...state.activeSession.curriculum,
-                  days: updatedDays,
-                },
-              },
-              currentDay: { ...updatedDays.find((d) => d.day === dayNumber)! },
-              currentDayNumber: dayNumber,
-              isDayLoading: false,
-              dayLoadingNumber: null,
-              isCoreLoaded: true,
-              isStreaming: false,
-              streamingCards: [],
-              streamCleanup: null,
-              currentDayVariantId: variantId || null,
-              // Reset step state for fresh content
-              currentStep: 'prePrompt' as const,
-              completedSteps: [],
-              stepStartTime: new Date(),
-            };
-          });
-
-          resolve(coreContent!);
-        },
-        // onError
-        (error) => {
-          set({
-            error: error || 'Streaming failed',
-            isDayLoading: false,
-            dayLoadingNumber: null,
-            isCoreLoaded: false,
-            isStreaming: false,
-            streamingCards: [],
-            streamCleanup: null,
-          });
-          reject(new Error(error));
-        }
-      );
-
-      // Store cleanup function
-      set({ streamCleanup: cleanup });
-    });
-  },
+  // SSE STREAMING DISABLED - using regular loading instead
+  // loadDayCoreContentStream: async (dayNumber: number, forceRegenerate?: boolean) => { ... },
 
   loadDayDeferredContent: async (dayNumber: number) => {
     const { activeSession } = get();
@@ -744,147 +603,18 @@ export const useSessionStore = create<SessionState>()(
     }
   },
 
-  /**
-   * Load deferred content with STREAMING - task1, bossMilestone, etc. appear progressively
-   */
-  loadDayDeferredContentStream: async (dayNumber: number) => {
-    const { activeSession, deferredStreamCleanup } = get();
-    if (!activeSession) throw new Error('No active session');
-
-    // Cleanup previous stream if any
-    if (deferredStreamCleanup) {
-      deferredStreamCleanup();
-    }
-
-    set({
-      isDeferredLoading: true,
-      isDeferredStreaming: true,
-      error: null,
-    });
-
-    return new Promise<DayDeferredContent>((resolve, reject) => {
-      let deferredContent: DayDeferredContent | null = null;
-      const partialContent: Partial<DayDeferredContent> = {};
-
-      const cleanup = sessionService.loadDayDeferredStream(
-        activeSession.id,
-        dayNumber,
-        // onEvent - called for each streamed event
-        (event) => {
-          switch (event.type) {
-            case 'task1':
-              partialContent.task1 = event.data;
-              set((state) => ({
-                currentDay: state.currentDay
-                  ? { ...state.currentDay, task1: event.data }
-                  : state.currentDay,
-                deferredContent: { ...state.deferredContent, task1: event.data } as DayDeferredContent,
-              }));
-              break;
-
-            case 'bossMilestone':
-              // bossMilestone goes on CurriculumDay, not DayDeferredContent
-              set((state) => ({
-                currentDay: state.currentDay
-                  ? { ...state.currentDay, bossMilestone: event.data }
-                  : state.currentDay,
-              }));
-              break;
-
-            case 'intensivePractice':
-              partialContent.intensivePractice = event.data;
-              set((state) => ({
-                currentDay: state.currentDay
-                  ? { ...state.currentDay, intensivePractice: event.data }
-                  : state.currentDay,
-                deferredContent: { ...state.deferredContent, intensivePractice: event.data } as DayDeferredContent,
-              }));
-              break;
-
-            case 'openTask':
-              partialContent.openTask = event.data;
-              set((state) => ({
-                currentDay: state.currentDay
-                  ? { ...state.currentDay, openTask: event.data }
-                  : state.currentDay,
-                deferredContent: { ...state.deferredContent, openTask: event.data } as DayDeferredContent,
-              }));
-              break;
-
-            case 'reflection':
-              partialContent.reflection = event.data;
-              set((state) => ({
-                currentDay: state.currentDay
-                  ? { ...state.currentDay, reflection: event.data }
-                  : state.currentDay,
-                deferredContent: { ...state.deferredContent, reflection: event.data } as DayDeferredContent,
-              }));
-              break;
-          }
-        },
-        // onComplete
-        (result) => {
-          deferredContent = result.deferredContent;
-
-          set((state) => {
-            if (!state.activeSession) return state;
-
-            const updatedDays = state.activeSession.curriculum.days.map((d) =>
-              d.day === dayNumber
-                ? {
-                    ...d,
-                    ...deferredContent,
-                    detailsLoaded: true,
-                  }
-                : d
-            );
-
-            return {
-              activeSession: {
-                ...state.activeSession,
-                curriculum: {
-                  ...state.activeSession.curriculum,
-                  days: updatedDays,
-                },
-              },
-              currentDay: state.currentDay?.day === dayNumber
-                ? { ...state.currentDay, ...deferredContent, detailsLoaded: true }
-                : state.currentDay,
-              deferredContent: deferredContent as DayDeferredContent,
-              isDeferredLoading: false,
-              isDeferredLoaded: true,
-              isDeferredStreaming: false,
-              deferredStreamCleanup: null,
-            };
-          });
-
-          resolve(deferredContent!);
-        },
-        // onError
-        (error) => {
-          set({
-            error: error || 'Deferred streaming failed',
-            isDeferredLoading: false,
-            isDeferredStreaming: false,
-            deferredStreamCleanup: null,
-          });
-          reject(new Error(error));
-        }
-      );
-
-      set({ deferredStreamCleanup: cleanup });
-    });
-  },
+  // SSE STREAMING DISABLED - using regular loading instead
+  // loadDayDeferredContentStream: async (dayNumber: number) => { ... },
 
   loadDayContentSplit: async (dayNumber: number) => {
-    const { loadDayCoreContentStream, loadDayDeferredContentStream, activeSession } = get();
+    const { loadDayCoreContent, loadDayDeferredContent, activeSession } = get();
     if (!activeSession) throw new Error('No active session');
 
-    // Load core content with streaming (cards appear progressively)
-    await loadDayCoreContentStream(dayNumber);
+    // Load core content (non-streaming - simpler and more reliable)
+    await loadDayCoreContent(dayNumber);
 
-    // Start deferred loading in background with streaming (don't await - let it run)
-    loadDayDeferredContentStream(dayNumber).catch((err) => {
+    // Start deferred loading in background (don't await - let it run)
+    loadDayDeferredContent(dayNumber).catch((err) => {
       console.error('Deferred content loading failed:', err);
     });
 

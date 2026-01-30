@@ -47,6 +47,7 @@ async function bootstrap() {
     allowedHeaders: [
       'Content-Type',
       'Authorization',
+      'Accept',
       'x-real-ip',
       'x-request-id',
     ],
