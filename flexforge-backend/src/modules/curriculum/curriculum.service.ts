@@ -1345,6 +1345,415 @@ Return JSON only:
   }
 
   /**
+   * Stream event types for real-time UI updates
+   */
+  static readonly STREAM_EVENTS = {
+    PRE_PROMPT: 'prePrompt',
+    FOUNDATION_CARD: 'foundationCard',
+    VIDEO: 'video',
+    COMPLETE: 'complete',
+    ERROR: 'error',
+  } as const;
+
+  /**
+   * Generate CORE day content with STREAMING
+   * Yields foundation cards as they're parsed for real-time UI updates
+   * Same logic as generateDayCoreDetails but streams partial results
+   */
+  async *generateDayCoreDetailsStream(
+    curriculum: any,
+    dayNumber: number,
+    userTier: string = 'FREE',
+    forceRegenerate?: boolean,
+    userId?: string,
+    sessionId?: string,
+    improvementAreas?: string[],
+    lessOfAreas?: string[],
+  ): AsyncGenerator<{
+    event: string;
+    data: any;
+  }> {
+    this.logger.log(`🚀 Streaming Day ${dayNumber} CORE content...`);
+
+    const dayOverview = curriculum.days.find((d: any) => d.day === dayNumber);
+    if (!dayOverview) {
+      yield {
+        event: CurriculumService.STREAM_EVENTS.ERROR,
+        data: { error: `Day ${dayNumber} not found in curriculum` },
+      };
+      return;
+    }
+
+    // Check cache first
+    const cacheKey = this.buildDayCacheKey(
+      curriculum.metadata,
+      dayNumber,
+      'core',
+    );
+    if (!forceRegenerate && userId && sessionId) {
+      const cachedResult = await this.cacheService.getDayContentWithVariant(
+        cacheKey,
+        userId,
+        sessionId,
+        dayNumber,
+      );
+      if (cachedResult) {
+        this.logger.log(`📦 Day ${dayNumber} CORE cache HIT (streaming)`);
+        // Yield cached content piece by piece for consistent UX
+        if (cachedResult.content.prePrompt) {
+          yield {
+            event: CurriculumService.STREAM_EVENTS.PRE_PROMPT,
+            data: cachedResult.content.prePrompt,
+          };
+        }
+        const cards =
+          cachedResult.content.languageFoundationCards ||
+          cachedResult.content.foundationCards ||
+          [];
+        for (const card of cards) {
+          yield {
+            event: CurriculumService.STREAM_EVENTS.FOUNDATION_CARD,
+            data: card,
+          };
+        }
+        if (cachedResult.content.video) {
+          yield {
+            event: CurriculumService.STREAM_EVENTS.VIDEO,
+            data: cachedResult.content.video,
+          };
+        }
+        yield {
+          event: CurriculumService.STREAM_EVENTS.COMPLETE,
+          data: {
+            coreContent: cachedResult.content,
+            tokensUsed: 0,
+            fromCache: true,
+            variantId: cachedResult.variantId,
+          },
+        };
+        return;
+      }
+    }
+
+    // Build params for prompt (same as non-streaming)
+    const previousDay = curriculum.days.find(
+      (d: any) => d.day === dayNumber - 1,
+    );
+    const previousDayReflection = previousDay?.reflectionData
+      ? {
+          confusedConcepts: previousDay.reflectionData.confusedConcepts,
+          confidence: previousDay.reflectionData.confidence,
+          boostCompleted: previousDay.reflectionData.boostCompleted,
+          whatsFoggy: previousDay.reflectionData.whatsFoggy,
+        }
+      : undefined;
+
+    const contentLayer = dayOverview.contentLayer || 'framework';
+    const contentSource = dayOverview.contentSource || 'youtube';
+    let videoStrategy = dayOverview.videoStrategy || 'helpful';
+    const skillType = curriculum.metadata?.skillType;
+
+    const isConceptualDay =
+      contentLayer === 'concept' ||
+      contentLayer === 'theory' ||
+      !curriculum.metadata.isProjectBased;
+
+    if (skillType === 'KNOWLEDGE' || skillType === 'LANGUAGE') {
+      videoStrategy = 'skip';
+    } else if (isConceptualDay && !dayOverview.requiresDemo) {
+      videoStrategy = 'skip';
+    } else if (skillType === 'PHYSICAL' || dayOverview.requiresDemo) {
+      videoStrategy = 'recommended';
+    } else {
+      videoStrategy = dayOverview.videoStrategy || 'helpful';
+    }
+
+    const params = {
+      skillName: curriculum.metadata.skillName,
+      dayNumber,
+      dayTitle: dayOverview.title,
+      dayObjectives: dayOverview.skills,
+      skeleton: dayOverview,
+      previousDayTitle: previousDay?.title,
+      previousDayReflection,
+      skillType: curriculum.metadata.skillType,
+      skillLevel: curriculum.metadata.skillLevel,
+      complexity: curriculum.metadata.complexity,
+      userTier,
+      hoursPerDay: curriculum.metadata.hoursPerDay,
+      suggestedLanguage: curriculum.metadata.suggestedLanguage,
+      learningStyle: curriculum.metadata.learningStyle,
+      isProjectBased: curriculum.metadata.isProjectBased,
+      isLanguageLearning: curriculum.metadata.isLanguageLearning,
+      targetLanguage: curriculum.metadata.targetLanguage,
+      proficiencyLevel: curriculum.metadata.proficiencyLevel,
+      improvementAreas,
+      lessOfAreas,
+    };
+
+    const { staticPart, dynamicPart, userPrompt } =
+      buildCacheableDayDetailCorePrompt(params);
+
+    // Stream from Anthropic
+    let fullContent = '';
+    let lastYieldedCardIndex = -1;
+    let prePromptYielded = false;
+
+    try {
+      for await (const chunk of this.aiService.callAnthropicWithCacheStream(
+        'claude-sonnet-4-20250514',
+        userPrompt,
+        { staticPart, dynamicPart },
+      )) {
+        if (chunk.type === 'text' && chunk.text) {
+          fullContent += chunk.text;
+
+          // Try to parse partial JSON and yield new content
+          // Look for prePrompt first
+          if (!prePromptYielded) {
+            const prePromptMatch = fullContent.match(
+              /"prePrompt"\s*:\s*(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})/s,
+            );
+            if (prePromptMatch) {
+              try {
+                const prePrompt = JSON.parse(prePromptMatch[1]);
+                yield {
+                  event: CurriculumService.STREAM_EVENTS.PRE_PROMPT,
+                  data: prePrompt,
+                };
+                prePromptYielded = true;
+              } catch {
+                // Not complete yet, wait for more
+              }
+            }
+          }
+
+          // Look for foundation cards (stream each as it completes)
+          const cardArrayMatch = fullContent.match(
+            /"(?:foundation|languageFoundation)Cards"\s*:\s*\[/,
+          );
+          if (cardArrayMatch) {
+            // Find all complete card objects
+            const cardsSection = fullContent.slice(cardArrayMatch.index);
+            const cardMatches = cardsSection.matchAll(
+              /\{\s*"id"\s*:\s*"[^"]+(?:"[^"]*"[^{}]*|\{[^{}]*\}[^{}]*)*\}/g,
+            );
+
+            let cardIndex = 0;
+            for (const match of cardMatches) {
+              if (cardIndex > lastYieldedCardIndex) {
+                try {
+                  // Validate it's a complete card by attempting parse
+                  const card = JSON.parse(match[0]);
+                  if (card.id && (card.concept || card.vocabulary)) {
+                    yield {
+                      event: CurriculumService.STREAM_EVENTS.FOUNDATION_CARD,
+                      data: card,
+                    };
+                    lastYieldedCardIndex = cardIndex;
+                    this.logger.log(
+                      `📤 Streamed card ${cardIndex + 1}: ${card.concept || card.vocabulary?.term}`,
+                    );
+                  }
+                } catch {
+                  // Card not complete yet
+                  break;
+                }
+              }
+              cardIndex++;
+            }
+          }
+        }
+
+        if (chunk.type === 'done') {
+          // Parse final content
+          let coreContent: any;
+          try {
+            let cleanedContent = fullContent
+              .replace(/```json\n?/g, '')
+              .replace(/```\n?/g, '')
+              .trim();
+
+            const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              cleanedContent = jsonMatch[0];
+            }
+
+            try {
+              coreContent = JSON.parse(cleanedContent);
+            } catch {
+              const fixedContent = cleanedContent.replace(/,(\s*[}\]])/g, '$1');
+              coreContent = JSON.parse(fixedContent);
+            }
+
+            // Normalize cards
+            if (coreContent.foundationCards) {
+              coreContent.foundationCards = coreContent.foundationCards.map(
+                (card: any, index: number) => ({
+                  ...card,
+                  id: card.id || `day${dayNumber}-card-${index + 1}`,
+                  order: card.order ?? index + 1,
+                }),
+              );
+            }
+            if (coreContent.languageFoundationCards) {
+              coreContent.languageFoundationCards =
+                coreContent.languageFoundationCards.map(
+                  (card: any, index: number) => ({
+                    ...card,
+                    id: card.id || `day${dayNumber}-vocab-${index + 1}`,
+                    order: card.order ?? index + 1,
+                  }),
+                );
+            }
+
+            // Add metadata
+            coreContent.contentLayer = contentLayer;
+            coreContent.videoStrategy = videoStrategy;
+            coreContent.contentSource = contentSource;
+
+            // Handle video (same as non-streaming)
+            const videoResult = await this.searchAndProcessVideo({
+              content: coreContent,
+              searchConcept: dayOverview.title,
+              skillName: curriculum.metadata.skillName,
+              skillLevel: curriculum.metadata.skillLevel,
+              skillType: curriculum.metadata.skillType,
+              videoStrategy: coreContent.videoStrategy,
+              contentSource: coreContent.contentSource,
+              hoursPerDay: curriculum.metadata.hoursPerDay || 1,
+              dayNumber,
+              includeAlternatives: false,
+              dayObjectives: dayOverview.skills || [],
+            });
+
+            if (videoResult) {
+              coreContent.video = videoResult.video;
+            } else {
+              // Video skipped - use AI explanation from cards
+              const searchConcept = (dayOverview.title || '')
+                .replace(/^Day\s*\d+\s*[:.-]\s*/i, '')
+                .trim();
+              const aiExplanation = this.generateAiExplanation(
+                coreContent,
+                searchConcept,
+              );
+              const keyLearningPoints = this.generateKeyLearningPoints(
+                coreContent,
+                dayOverview,
+              );
+              const conceptBreakdown = (coreContent.foundationCards || [])
+                .slice(0, 5)
+                .map((card: any) => ({
+                  concept: card.concept,
+                  explanation: card.explanation,
+                }));
+
+              coreContent.video = {
+                concept: searchConcept,
+                title: `Understanding ${searchConcept}`,
+                explanation: aiExplanation,
+                keyLearningPoints,
+                aiConceptBreakdown: conceptBreakdown,
+                reason: 'AI-curated learning content for focused study.',
+                videoAvailable: false,
+                showVideoOption: false,
+                adaptiveModality: {
+                  defaultMode: 'ai',
+                  videoConfidence: 0,
+                  reason: 'Video search skipped for this content type',
+                  reasonShort: 'Text content',
+                },
+              };
+            }
+
+            yield {
+              event: CurriculumService.STREAM_EVENTS.VIDEO,
+              data: coreContent.video,
+            };
+
+            // Cache the result
+            let variantId: string | undefined;
+            if (userId && sessionId) {
+              const cacheResult =
+                await this.cacheService.cacheDayContentWithVariant(
+                  cacheKey,
+                  coreContent,
+                  userId,
+                  sessionId,
+                  dayNumber,
+                );
+              variantId = cacheResult.variantId;
+            } else {
+              await this.cacheService.setDayContent(cacheKey, coreContent);
+            }
+
+            const foundationCardConcepts =
+              extractFoundationCardConcepts(coreContent);
+            const tokensUsed =
+              (chunk.usage?.inputTokens || 0) +
+              (chunk.usage?.outputTokens || 0);
+
+            yield {
+              event: CurriculumService.STREAM_EVENTS.COMPLETE,
+              data: {
+                coreContent,
+                tokensUsed,
+                cost: this.calculateStreamingCost(chunk.usage),
+                fromCache: false,
+                variantId,
+                foundationCardConcepts,
+              },
+            };
+
+            this.logger.log(
+              `✅ Day ${dayNumber} CORE streamed. Tokens: ${tokensUsed}`,
+            );
+          } catch (error) {
+            this.logger.error(
+              `❌ Failed to parse streamed Day ${dayNumber} CORE:`,
+              error.message,
+            );
+            yield {
+              event: CurriculumService.STREAM_EVENTS.ERROR,
+              data: { error: 'Failed to parse generated content' },
+            };
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.error(`❌ Streaming error Day ${dayNumber}:`, error.message);
+      yield {
+        event: CurriculumService.STREAM_EVENTS.ERROR,
+        data: { error: error.message || 'Streaming failed' },
+      };
+    }
+  }
+
+  /**
+   * Calculate cost from streaming usage stats
+   */
+  private calculateStreamingCost(usage: any): number {
+    if (!usage) return 0;
+    const inputCost = 3.0;
+    const outputCost = 15.0;
+    const cacheWriteCost = 3.75;
+    const cacheReadCost = 0.3;
+
+    const normalInputTokens =
+      (usage.inputTokens || 0) -
+      (usage.cacheWriteTokens || 0) -
+      (usage.cacheReadTokens || 0);
+
+    return (
+      (normalInputTokens / 1_000_000) * inputCost +
+      ((usage.outputTokens || 0) / 1_000_000) * outputCost +
+      ((usage.cacheWriteTokens || 0) / 1_000_000) * cacheWriteCost +
+      ((usage.cacheReadTokens || 0) / 1_000_000) * cacheReadCost
+    );
+  }
+
+  /**
    * Generate DEFERRED day content (background load)
    * Returns: reflection
    * Called after core loads, while user watches video
@@ -1562,6 +1971,369 @@ Return JSON only:
       cost: aiResponse.cost,
       fromCache: false,
     };
+  }
+
+  /**
+   * Stream events for deferred content
+   */
+  static readonly DEFERRED_STREAM_EVENTS = {
+    TASK1: 'task1',
+    BOSS_MILESTONE: 'bossMilestone',
+    INTENSIVE_PRACTICE: 'intensivePractice',
+    OPEN_TASK: 'openTask',
+    REFLECTION: 'reflection',
+    COMPLETE: 'complete',
+    ERROR: 'error',
+  } as const;
+
+  /**
+   * Generate DEFERRED day content with STREAMING
+   * Yields task1, bossMilestone/intensivePractice, openTask, reflection as they parse
+   */
+  async *generateDayDeferredDetailsStream(
+    curriculum: any,
+    dayNumber: number,
+    userTier: string = 'FREE',
+    foundationCardConcepts?: string[],
+    improvementAreas?: string[],
+    lessOfAreas?: string[],
+  ): AsyncGenerator<{
+    event: string;
+    data: any;
+  }> {
+    this.logger.log(`⏳ Streaming Day ${dayNumber} DEFERRED content...`);
+
+    const dayOverview = curriculum.days.find((d: any) => d.day === dayNumber);
+    if (!dayOverview) {
+      yield {
+        event: CurriculumService.DEFERRED_STREAM_EVENTS.ERROR,
+        data: { error: `Day ${dayNumber} not found in curriculum` },
+      };
+      return;
+    }
+
+    // Check cache first
+    const cacheKey = this.buildDayCacheKey(
+      curriculum.metadata,
+      dayNumber,
+      'deferred',
+    );
+    const cached = await this.cacheService.getDayContent(cacheKey);
+    if (cached) {
+      this.logger.log(`📦 Day ${dayNumber} DEFERRED cache HIT (streaming)`);
+      // Yield cached content piece by piece
+      if (cached.task1) {
+        yield {
+          event: CurriculumService.DEFERRED_STREAM_EVENTS.TASK1,
+          data: cached.task1,
+        };
+      }
+      if (cached.bossMilestone) {
+        yield {
+          event: CurriculumService.DEFERRED_STREAM_EVENTS.BOSS_MILESTONE,
+          data: cached.bossMilestone,
+        };
+      }
+      if (cached.intensivePractice) {
+        yield {
+          event: CurriculumService.DEFERRED_STREAM_EVENTS.INTENSIVE_PRACTICE,
+          data: cached.intensivePractice,
+        };
+      }
+      if (cached.openTask) {
+        yield {
+          event: CurriculumService.DEFERRED_STREAM_EVENTS.OPEN_TASK,
+          data: cached.openTask,
+        };
+      }
+      if (cached.reflection) {
+        yield {
+          event: CurriculumService.DEFERRED_STREAM_EVENTS.REFLECTION,
+          data: cached.reflection,
+        };
+      }
+      yield {
+        event: CurriculumService.DEFERRED_STREAM_EVENTS.COMPLETE,
+        data: {
+          deferredContent: cached,
+          tokensUsed: 0,
+          cost: 0,
+          fromCache: true,
+        },
+      };
+      return;
+    }
+
+    // Build params for prompt (same as non-streaming)
+    const previousDay = curriculum.days.find(
+      (d: any) => d.day === dayNumber - 1,
+    );
+    const previousDayReflection = previousDay?.reflectionData
+      ? {
+          confusedConcepts: previousDay.reflectionData.confusedConcepts,
+          confidence: previousDay.reflectionData.confidence,
+          boostCompleted: previousDay.reflectionData.boostCompleted,
+          whatsFoggy: previousDay.reflectionData.whatsFoggy,
+        }
+      : undefined;
+
+    const ctx = buildContentGenerationContext(curriculum, dayNumber, {
+      userTier,
+      improvementAreas,
+      lessOfAreas,
+      previousDayReflection,
+    });
+
+    if (foundationCardConcepts?.length) {
+      ctx.generatedContent = { foundationCardConcepts };
+    }
+
+    const params: DayDetailParams = {
+      skillName: curriculum.metadata.skillName,
+      dayNumber,
+      dayTitle: dayOverview.title,
+      dayObjectives: dayOverview.skills,
+      skeleton: dayOverview,
+      skillType: curriculum.metadata.skillType,
+      skillLevel: curriculum.metadata.skillLevel,
+      complexity: curriculum.metadata.complexity,
+      userTier,
+      hoursPerDay: curriculum.metadata.hoursPerDay,
+      suggestedLanguage: curriculum.metadata.suggestedLanguage,
+      learningStyle: curriculum.metadata.learningStyle,
+      isProjectBased: curriculum.metadata.isProjectBased,
+      isLanguageLearning: curriculum.metadata.isLanguageLearning,
+      targetLanguage: curriculum.metadata.targetLanguage,
+      proficiencyLevel: curriculum.metadata.proficiencyLevel,
+      improvementAreas,
+      lessOfAreas,
+      previousDayReflection,
+    };
+
+    const { systemPrompt, userPrompt } = buildDayDetailDeferredPrompt(
+      params,
+      ctx,
+    );
+
+    // Stream from Anthropic
+    let fullContent = '';
+    const yieldedEvents = new Set<string>();
+
+    try {
+      for await (const chunk of this.aiService.callAnthropicWithCacheStream(
+        'claude-sonnet-4-20250514',
+        userPrompt,
+        { staticPart: systemPrompt, dynamicPart: '' },
+      )) {
+        if (chunk.type === 'text' && chunk.text) {
+          fullContent += chunk.text;
+
+          // Try to parse and yield task1
+          if (!yieldedEvents.has('task1')) {
+            const task1Match = fullContent.match(
+              /"task1"\s*:\s*(\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})/s,
+            );
+            if (task1Match) {
+              try {
+                const task1 = JSON.parse(task1Match[1]);
+                if (task1.id && task1.sections) {
+                  yield {
+                    event: CurriculumService.DEFERRED_STREAM_EVENTS.TASK1,
+                    data: task1,
+                  };
+                  yieldedEvents.add('task1');
+                  this.logger.log(`📤 Streamed task1 for Day ${dayNumber}`);
+                }
+              } catch {
+                // Not complete yet
+              }
+            }
+          }
+
+          // Try to parse and yield bossMilestone
+          if (!yieldedEvents.has('bossMilestone')) {
+            const bossMatch = fullContent.match(
+              /"bossMilestone"\s*:\s*(\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})/s,
+            );
+            if (bossMatch) {
+              try {
+                const boss = JSON.parse(bossMatch[1]);
+                if (boss.title || boss.microTask) {
+                  yield {
+                    event: CurriculumService.DEFERRED_STREAM_EVENTS.BOSS_MILESTONE,
+                    data: boss,
+                  };
+                  yieldedEvents.add('bossMilestone');
+                  this.logger.log(`📤 Streamed bossMilestone for Day ${dayNumber}`);
+                }
+              } catch {
+                // Not complete yet
+              }
+            }
+          }
+
+          // Try to parse and yield intensivePractice
+          if (!yieldedEvents.has('intensivePractice')) {
+            const intensiveMatch = fullContent.match(
+              /"intensivePractice"\s*:\s*(\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})/s,
+            );
+            if (intensiveMatch) {
+              try {
+                const intensive = JSON.parse(intensiveMatch[1]);
+                if (intensive.id || intensive.miniFoundationCards) {
+                  yield {
+                    event: CurriculumService.DEFERRED_STREAM_EVENTS.INTENSIVE_PRACTICE,
+                    data: intensive,
+                  };
+                  yieldedEvents.add('intensivePractice');
+                  this.logger.log(`📤 Streamed intensivePractice for Day ${dayNumber}`);
+                }
+              } catch {
+                // Not complete yet
+              }
+            }
+          }
+
+          // Try to parse and yield openTask
+          if (!yieldedEvents.has('openTask')) {
+            const openTaskMatch = fullContent.match(
+              /"openTask"\s*:\s*(\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})/s,
+            );
+            if (openTaskMatch) {
+              try {
+                const openTask = JSON.parse(openTaskMatch[1]);
+                if (openTask.id || openTask.title) {
+                  yield {
+                    event: CurriculumService.DEFERRED_STREAM_EVENTS.OPEN_TASK,
+                    data: openTask,
+                  };
+                  yieldedEvents.add('openTask');
+                  this.logger.log(`📤 Streamed openTask for Day ${dayNumber}`);
+                }
+              } catch {
+                // Not complete yet
+              }
+            }
+          }
+
+          // Try to parse and yield reflection
+          if (!yieldedEvents.has('reflection')) {
+            const reflectionMatch = fullContent.match(
+              /"reflection"\s*:\s*(\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})/s,
+            );
+            if (reflectionMatch) {
+              try {
+                const reflection = JSON.parse(reflectionMatch[1]);
+                if (reflection.questions) {
+                  yield {
+                    event: CurriculumService.DEFERRED_STREAM_EVENTS.REFLECTION,
+                    data: reflection,
+                  };
+                  yieldedEvents.add('reflection');
+                  this.logger.log(`📤 Streamed reflection for Day ${dayNumber}`);
+                }
+              } catch {
+                // Not complete yet
+              }
+            }
+          }
+        }
+
+        if (chunk.type === 'done') {
+          // Parse final content
+          let deferredContent: any;
+          try {
+            let cleanedContent = fullContent
+              .replace(/```json\n?/g, '')
+              .replace(/```\n?/g, '')
+              .trim();
+
+            const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              cleanedContent = jsonMatch[0];
+            }
+
+            try {
+              deferredContent = JSON.parse(cleanedContent);
+            } catch {
+              const fixedContent = cleanedContent.replace(/,(\s*[}\]])/g, '$1');
+              deferredContent = JSON.parse(fixedContent);
+            }
+
+            // Yield any content not yet yielded
+            if (!yieldedEvents.has('task1') && deferredContent.task1) {
+              yield {
+                event: CurriculumService.DEFERRED_STREAM_EVENTS.TASK1,
+                data: deferredContent.task1,
+              };
+            }
+            if (!yieldedEvents.has('bossMilestone') && deferredContent.bossMilestone) {
+              yield {
+                event: CurriculumService.DEFERRED_STREAM_EVENTS.BOSS_MILESTONE,
+                data: deferredContent.bossMilestone,
+              };
+            }
+            if (!yieldedEvents.has('intensivePractice') && deferredContent.intensivePractice) {
+              yield {
+                event: CurriculumService.DEFERRED_STREAM_EVENTS.INTENSIVE_PRACTICE,
+                data: deferredContent.intensivePractice,
+              };
+            }
+            if (!yieldedEvents.has('openTask') && deferredContent.openTask) {
+              yield {
+                event: CurriculumService.DEFERRED_STREAM_EVENTS.OPEN_TASK,
+                data: deferredContent.openTask,
+              };
+            }
+            if (!yieldedEvents.has('reflection') && deferredContent.reflection) {
+              yield {
+                event: CurriculumService.DEFERRED_STREAM_EVENTS.REFLECTION,
+                data: deferredContent.reflection,
+              };
+            }
+
+            // Cache the result
+            await this.cacheService.setDayContent(cacheKey, deferredContent);
+
+            const tokensUsed =
+              (chunk.usage?.inputTokens || 0) +
+              (chunk.usage?.outputTokens || 0);
+
+            yield {
+              event: CurriculumService.DEFERRED_STREAM_EVENTS.COMPLETE,
+              data: {
+                deferredContent,
+                tokensUsed,
+                cost: this.calculateStreamingCost(chunk.usage),
+                fromCache: false,
+              },
+            };
+
+            this.logger.log(
+              `✅ Day ${dayNumber} DEFERRED streamed. Tokens: ${tokensUsed}`,
+            );
+          } catch (error) {
+            this.logger.error(
+              `❌ Failed to parse streamed Day ${dayNumber} DEFERRED:`,
+              error.message,
+            );
+            yield {
+              event: CurriculumService.DEFERRED_STREAM_EVENTS.ERROR,
+              data: { error: 'Failed to parse deferred content' },
+            };
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.error(
+        `❌ Streaming error Day ${dayNumber} DEFERRED:`,
+        error.message,
+      );
+      yield {
+        event: CurriculumService.DEFERRED_STREAM_EVENTS.ERROR,
+        data: { error: error.message || 'Streaming failed' },
+      };
+    }
   }
 
   /**

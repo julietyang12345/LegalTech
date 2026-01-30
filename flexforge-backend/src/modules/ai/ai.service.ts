@@ -302,6 +302,68 @@ export class AiService {
   }
 
   /**
+   * Call Anthropic with prompt caching and STREAMING enabled
+   * Yields text chunks as they're generated for real-time UI updates
+   * Use for long-running generations like foundation cards
+   */
+  async *callAnthropicWithCacheStream(
+    model: string,
+    prompt: string,
+    cacheableSystem: CacheablePrompt,
+  ): AsyncGenerator<{ type: 'text' | 'done'; text?: string; usage?: any }> {
+    // Build system with cache_control for static parts
+    const systemBlocks: Array<{
+      type: 'text';
+      text: string;
+      cache_control?: { type: 'ephemeral' };
+    }> = [];
+
+    if (cacheableSystem.staticPart) {
+      systemBlocks.push({
+        type: 'text',
+        text: cacheableSystem.staticPart,
+        cache_control: { type: 'ephemeral' },
+      });
+    }
+
+    if (cacheableSystem.dynamicPart) {
+      systemBlocks.push({
+        type: 'text',
+        text: cacheableSystem.dynamicPart,
+      });
+    }
+
+    const stream = await this.anthropic.messages.stream({
+      model,
+      max_tokens: 16384,
+      system: systemBlocks,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    // Yield text chunks as they arrive
+    for await (const event of stream) {
+      if (
+        event.type === 'content_block_delta' &&
+        event.delta.type === 'text_delta'
+      ) {
+        yield { type: 'text', text: event.delta.text };
+      }
+    }
+
+    // Get final message for usage stats
+    const finalMessage = await stream.finalMessage();
+    yield {
+      type: 'done',
+      usage: {
+        inputTokens: finalMessage.usage.input_tokens,
+        outputTokens: finalMessage.usage.output_tokens,
+        cacheReadTokens: (finalMessage as any).usage?.cache_read_input_tokens || 0,
+        cacheWriteTokens: (finalMessage as any).usage?.cache_creation_input_tokens || 0,
+      },
+    };
+  }
+
+  /**
    * Call Anthropic with prompt caching enabled
    * Static parts are cached for 5 minutes, saving up to 90% on repeated calls
    */

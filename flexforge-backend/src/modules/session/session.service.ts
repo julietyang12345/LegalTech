@@ -742,6 +742,104 @@ export class SessionService {
   }
 
   /**
+   * Start a day with STREAMING - yields content as it's generated
+   * Use for real-time UI updates (foundation cards appear one by one)
+   */
+  async *startDayCoreStream(
+    sessionId: string,
+    userId: string,
+    dayNumber: number,
+    forceRegenerate?: boolean,
+  ): AsyncGenerator<{ event: string; data: any }> {
+    const session = await this.findOne(sessionId, userId);
+    const user = await this.userService.findById(userId);
+    const tierString = user.quotaTier.toUpperCase();
+
+    const dayOverview = session.curriculum.days.find(
+      (d: any) => d.day === dayNumber,
+    );
+    if (!dayOverview) {
+      yield { event: 'error', data: { error: `Day ${dayNumber} not found` } };
+      return;
+    }
+
+    // Check if already loaded (quick return cached)
+    if (!forceRegenerate && dayOverview.coreLoaded && dayOverview.coreContent) {
+      this.logger.log(`📦 Day ${dayNumber} already loaded, streaming cached`);
+      // Yield cached content piece by piece
+      if (dayOverview.coreContent.prePrompt) {
+        yield { event: 'prePrompt', data: dayOverview.coreContent.prePrompt };
+      }
+      const cards =
+        dayOverview.coreContent.languageFoundationCards ||
+        dayOverview.coreContent.foundationCards ||
+        [];
+      for (const card of cards) {
+        yield { event: 'foundationCard', data: card };
+      }
+      if (dayOverview.coreContent.video) {
+        yield { event: 'video', data: dayOverview.coreContent.video };
+      }
+      yield {
+        event: 'complete',
+        data: {
+          coreContent: dayOverview.coreContent,
+          tokensUsed: 0,
+          fromCache: true,
+          variantId: dayOverview.variantId,
+        },
+      };
+      return;
+    }
+
+    // Stream from curriculum service
+    let finalResult: any = null;
+    for await (const chunk of this.curriculumService.generateDayCoreDetailsStream(
+      session.curriculum,
+      dayNumber,
+      tierString,
+      forceRegenerate,
+      userId,
+      sessionId,
+      session.improvementAreas,
+      session.lessOfAreas,
+    )) {
+      yield chunk;
+
+      // Capture final result for saving
+      if (chunk.event === 'complete') {
+        finalResult = chunk.data;
+      }
+    }
+
+    // Save to session after streaming completes
+    if (finalResult?.coreContent) {
+      const dayIndex = session.curriculum.days.findIndex(
+        (d: any) => d.day === dayNumber,
+      );
+      session.curriculum.days[dayIndex] = {
+        ...session.curriculum.days[dayIndex],
+        coreContent: finalResult.coreContent,
+        coreLoaded: true,
+        status: 'in_progress',
+        variantId: finalResult.variantId,
+        foundationCardConcepts: finalResult.foundationCardConcepts,
+      };
+
+      if (dayNumber > session.currentDay) {
+        session.currentDay = dayNumber;
+      }
+
+      await this.userService.incrementUsage(userId, finalResult.tokensUsed, 0);
+      await this.sessionsRepository.save(session);
+
+      this.logger.log(
+        `🚀 Day ${dayNumber} CORE streamed and saved (variant=${finalResult.variantId})`,
+      );
+    }
+  }
+
+  /**
    * Load DEFERRED day content (background)
    * Returns: reflection
    */
@@ -866,6 +964,94 @@ export class SessionService {
       fromCache: result.fromCache || false,
       bossProject: activeBossProject,
     };
+  }
+
+  /**
+   * Load DEFERRED day content with STREAMING
+   * Yields task1, bossMilestone, intensivePractice, openTask, reflection as they parse
+   */
+  async *loadDayDeferredStream(
+    sessionId: string,
+    userId: string,
+    dayNumber: number,
+  ): AsyncGenerator<{ event: string; data: any }> {
+    const session = await this.findOne(sessionId, userId);
+    const user = await this.userService.findById(userId);
+    const tierString = user.quotaTier.toUpperCase();
+
+    const dayOverview = session.curriculum.days.find(
+      (d: any) => d.day === dayNumber,
+    );
+    if (!dayOverview) {
+      yield { event: 'error', data: { error: `Day ${dayNumber} not found` } };
+      return;
+    }
+
+    // Check if already loaded
+    if (dayOverview.deferredLoaded && dayOverview.deferredContent) {
+      this.logger.log(`📦 Day ${dayNumber} DEFERRED already loaded, streaming cached`);
+      const cached = dayOverview.deferredContent;
+      if (cached.task1) {
+        yield { event: 'task1', data: cached.task1 };
+      }
+      if (cached.bossMilestone) {
+        yield { event: 'bossMilestone', data: cached.bossMilestone };
+      }
+      if (cached.intensivePractice) {
+        yield { event: 'intensivePractice', data: cached.intensivePractice };
+      }
+      if (cached.openTask) {
+        yield { event: 'openTask', data: cached.openTask };
+      }
+      if (cached.reflection) {
+        yield { event: 'reflection', data: cached.reflection };
+      }
+      yield {
+        event: 'complete',
+        data: {
+          deferredContent: cached,
+          tokensUsed: 0,
+          fromCache: true,
+        },
+      };
+      return;
+    }
+
+    // Stream from curriculum service
+    let finalResult: any = null;
+    for await (const chunk of this.curriculumService.generateDayDeferredDetailsStream(
+      session.curriculum,
+      dayNumber,
+      tierString,
+      dayOverview.foundationCardConcepts,
+      session.improvementAreas,
+      session.lessOfAreas,
+    )) {
+      yield chunk;
+
+      if (chunk.event === 'complete') {
+        finalResult = chunk.data;
+      }
+    }
+
+    // Save to session after streaming completes
+    if (finalResult?.deferredContent) {
+      const dayIndex = session.curriculum.days.findIndex(
+        (d: any) => d.day === dayNumber,
+      );
+      session.curriculum.days[dayIndex] = {
+        ...session.curriculum.days[dayIndex],
+        deferredContent: finalResult.deferredContent,
+        deferredLoaded: true,
+      };
+
+      await this.userService.incrementUsage(userId, finalResult.tokensUsed, 0);
+      await this.sessionsRepository.save(session);
+
+      this.logger.log(
+        `⏳ Day ${dayNumber} DEFERRED streamed and saved for session ${sessionId}`,
+      );
+    }
   }
 
   /**
