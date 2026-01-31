@@ -831,7 +831,7 @@ Return JSON only:
     }
 
     // Check cache first (skip if forceRegenerate)
-    const cacheKey = this.buildDayCacheKey(
+    const cacheKey = await this.buildDayCacheKey(
       curriculum.metadata,
       dayNumber,
       'core',
@@ -1374,7 +1374,7 @@ Return JSON only:
     }
 
     // Check cache first
-    const cacheKey = this.buildDayCacheKey(
+    const cacheKey = await this.buildDayCacheKey(
       curriculum.metadata,
       dayNumber,
       'core',
@@ -1753,7 +1753,7 @@ Return JSON only:
     }
 
     // Check cache first
-    const cacheKey = this.buildDayCacheKey(
+    const cacheKey = await this.buildDayCacheKey(
       curriculum.metadata,
       dayNumber,
       'deferred',
@@ -1989,7 +1989,7 @@ Return JSON only:
     }
 
     // Check cache first
-    const cacheKey = this.buildDayCacheKey(
+    const cacheKey = await this.buildDayCacheKey(
       curriculum.metadata,
       dayNumber,
       'deferred',
@@ -2315,17 +2315,38 @@ Return JSON only:
 
   /**
    * Build cache key for day content
+   * IMPORTANT: Uses AI-normalized skill name for consistent caching across
+   * different languages, typos, and phrasings.
    */
-  private buildDayCacheKey(
+  private async buildDayCacheKey(
     metadata: any,
     dayNumber: number,
     type: 'core' | 'deferred',
-  ): string {
+  ): Promise<string> {
+    // CRITICAL: Validate skillName to prevent cache collisions
+    if (!metadata?.skillName) {
+      this.logger.error(
+        `⚠️ buildDayCacheKey called with missing skillName! metadata: ${JSON.stringify(metadata)}`,
+      );
+      throw new BadRequestException(
+        'Cannot build day cache key: skillName is missing from curriculum metadata',
+      );
+    }
+
+    // Use the same AI normalization as curriculum cache for consistency
+    // This ensures "Python bot tutorial" and "파이썬" map to the same cache
+    const normalizedSkill = await this.cacheService.normalizeSkillForDayCache(
+      metadata.skillName,
+    );
+
+    // Replace spaces with dashes for URL-friendly cache key
+    const skillKey = normalizedSkill.replace(/\s+/g, '-');
+
     const parts = [
-      metadata.skillName?.toLowerCase().replace(/\s+/g, '-'),
-      `d${metadata.durationDays}`,
-      `h${metadata.hoursPerDay}`,
-      metadata.skillLevel?.toLowerCase(),
+      skillKey,
+      `d${metadata.durationDays || 0}`,
+      `h${metadata.hoursPerDay || 0}`,
+      (metadata.skillLevel || 'beginner').toLowerCase(),
       `day${dayNumber}`,
       type,
     ];

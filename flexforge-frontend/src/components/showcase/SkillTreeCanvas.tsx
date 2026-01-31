@@ -700,8 +700,42 @@ function SkillTreeCanvasInner({
     const menuSkill = getMenuSkillData();
     if (!menuSkill) return;
 
-    // For menu actions, we use the single skill
-    handleBottomAIAction(action === 'analyze-skill' ? 'analyze' : action === 'find-related' ? 'related' : 'path');
+    // Map menu action to bottom action type
+    const bottomAction: BottomAIAction = action === 'analyze-skill' ? 'analyze' : action === 'find-related' ? 'related' : 'path';
+
+    setAiLoading(true);
+    setAiError(null);
+    setAiResults(null);
+
+    // Show particle animation
+    setShowParticles(true);
+    setTimeout(() => setShowParticles(false), 1500);
+
+    // Use the specific menu skill for this action
+    const selectedSkillNames = [menuSkill.name];
+    console.log(`[SkillTree] Menu AI Action: ${bottomAction}, skill: ${menuSkill.name}`);
+
+    try {
+      const result = await sessionService.getSkillCombos({
+        selectedSkills: selectedSkillNames,
+        action: bottomAction,
+      });
+      setAiResults({
+        type: bottomAction,
+        combos: result.combos,
+        suggestions: result.suggestedSkills,
+      });
+      recordAIIdeasUsage();
+    } catch (err: any) {
+      console.error('Failed to generate AI ideas:', err);
+      if (err?.response?.status === 403) {
+        setAiError('Daily limit reached. Upgrade to Premium for unlimited generations.');
+      } else {
+        setAiError('Failed to generate ideas. Please try again.');
+      }
+    } finally {
+      setAiLoading(false);
+    }
   }, [getMenuSkillData]);
 
   // Handle AI action from bottom panel
@@ -717,8 +751,15 @@ function SkillTreeCanvasInner({
     setShowParticles(true);
     setTimeout(() => setShowParticles(false), 1500);
 
+    // Extract skill names from selected nodes
+    const selectedSkillNames = selectedNodes.map(n => n.data.label as string);
+    console.log(`[SkillTree] AI Action: ${action}, skills: [${selectedSkillNames.join(', ')}]`);
+
     try {
-      const result = await sessionService.getSkillCombos();
+      const result = await sessionService.getSkillCombos({
+        selectedSkills: selectedSkillNames,
+        action: action,
+      });
       setAiResults({
         type: action,
         combos: result.combos,

@@ -624,193 +624,6 @@ function getLanguageFeatures(lang: TargetLanguage): string {
   return features[lang] || '';
 }
 
-// Cacheable version of language learning prompt
-function buildCacheableLanguageLearningPrompt(params: DayDetailParams): {
-  staticPart: string;
-  dynamicPart: string;
-  userPrompt: string;
-} {
-  const lang = params.targetLanguage || 'other';
-  const langFeatures = getLanguageFeatures(lang);
-  const profLevel = params.proficiencyLevel || 'beginner';
-  const langHasTones = hasTones(lang);
-  const langHasGender = hasGender(lang);
-  const levelGuidance = getSkillLevelGuidance(params.skillLevel);
-
-  const staticPart = `Generate VOCABULARY-BASED learning content for language learning.
-This is LANGUAGE LEARNING - generate vocabulary cards, NOT code.
-
-VOCABULARY CARD FORMAT (use "languageFoundationCards" array):
-{
-  "id": "day1-vocab-1",
-  "concept": "Word/phrase in English",
-  "visual": "relevant emoji",
-  "explanation": "Usage context and tips",
-  "vocabulary": {
-    "term": "word in target language",
-    "definition": "English meaning",
-    "romanization": "pronunciation guide (pinyin/romaji/etc)",${
-      langHasTones
-        ? `
-    "tone": "number or [numbers] for tonal languages",`
-        : ''
-    }${
-      langHasGender
-        ? `
-    "gender": "masculine | feminine | neuter",`
-        : ''
-    }
-    "partOfSpeech": "noun/verb/adj/phrase",
-    "proficiencyLevel": "HSK1/N5/A1/etc",
-    "examples": [{"sentence": "example in target language", "romanization": "if applicable", "translation": "English"}]
-  },
-  "microQuestion": {"question": "Quick check", "type": "gotit"},
-  "order": 1
-}
-
-LISTENING QUESTIONS (for quiz in task1):
-Include audioText for questions that should be spoken:
-{"question": "What does this mean?", "audioText": "text to speak", "options": [...], "correctIndex": 0, "explanation": "..."}
-
-TASK1 - QUICK PRACTICE (3-4 types, 8-10 questions total):
-1. "quiz" - MCQ: hear/see word, pick meaning (include audioText for listening, at least 2 questions)
-2. "matching" - Match words to definitions (4-6 pairs)
-3. "toneSelect" - For tonal languages: hear word, select correct tone${langHasTones ? ' (REQUIRED)' : ' (skip if not tonal)'}
-
-PRACTICE PROJECT - INTENSIVE PRACTICE (deferred, 3-4 types):
-1. "fillBlank" - Complete sentence with correct word
-2. "translation" - Translate between languages (both directions)
-3. "reorder" - Arrange scrambled words into correct sentence
-4. "typing" - Type the word/phrase you see or hear
-
-STRUCTURE (all fields required):
-- prePrompt: {text, primeQuestions[], yesterdayRecap}
-- video: null (no video for language learning - use TTS and practice instead)
-- videoStrategy: "skip"
-- contentLayer: "language_core"
-- languageFoundationCards: ${levelGuidance.foundationCardCount} vocabulary cards (REQUIRED)
-- task1: Quick practice with 3-4 question types mixed, ${levelGuidance.quizQuestionCount} questions total
-- reflection: {questions[]}
-
-${levelGuidance.complexityGuidance}
-
-CONTENT RULES:
-- task1: ONLY use vocabulary from today's languageFoundationCards. No new words.
-
-Output valid JSON only.`;
-
-  // Dynamic part - day-specific
-  const dynamicPart = `Day ${params.dayNumber} of "${params.skillName}"
-Title: ${params.dayTitle}
-Target Language: ${lang}
-Proficiency: ${profLevel}
-Features: ${langFeatures}
-${params.previousDayTitle ? `Previous: ${params.previousDayTitle}` : ''}
-${langHasTones ? 'Include tone numbers in vocabulary.' : ''}
-${langHasGender ? 'Include gender (masculine/feminine/neuter) in vocabulary.' : ''}`;
-
-  const skillsStr = getSkillsString(params.skeleton, params.dayObjectives);
-  const dayNumber = params.dayNumber;
-
-  // Use explicit JSON template to guide AI
-  const userPrompt = `Generate vocabulary learning content for Day ${dayNumber}: "${params.dayTitle}"
-Topics: ${skillsStr}
-Language: ${lang}
-Level: ${profLevel}
-
-Output this JSON structure:
-{
-  "prePrompt": {
-    "text": "Welcome message about today's vocabulary",
-    "primeQuestions": ["Question 1?", "Question 2?"],
-    "yesterdayRecap": "${params.previousDayTitle ? 'Yesterday we learned: ' + params.previousDayTitle : 'Welcome to your first lesson!'}"
-  },
-  "videoStrategy": "skip",
-    "contentLayer": "language_core",
-  "languageFoundationCards": [
-    {
-      "id": "day${dayNumber}-vocab-1",
-      "concept": "Word/phrase in English",
-      "visual": "relevant emoji",
-      "explanation": "When and how to use this word/phrase",
-      "vocabulary": {
-        "term": "word in ${lang}",
-        "definition": "English meaning",
-        "romanization": "pronunciation guide (pinyin/romaji/etc)",${
-          langHasTones
-            ? `
-        "tone": 1,`
-            : ''
-        }${
-          langHasGender
-            ? `
-        "gender": "masculine",`
-            : ''
-        }
-        "partOfSpeech": "noun/verb/adj",
-        "proficiencyLevel": "${profLevel}",
-        "examples": [{"sentence": "Example in ${lang}", "romanization": "pronunciation", "translation": "English"}]
-      },
-      "microQuestion": {"question": "Got it?", "type": "gotit"},
-      "order": 1
-    }
-  ],
-  "task1": {
-    "id": "day${dayNumber}-task1",
-    "title": "Quick Practice",
-    "description": "Test your understanding with mixed exercises",
-    "estimatedMinutes": 5,
-    "format": "mixed",
-    "passingScore": 0.7,
-    "sections": [
-      {
-        "type": "quiz",
-        "title": "Listening & Recognition",
-        "questions": [
-          {"id": "q1", "question": "What does this mean?", "audioText": "word in ${lang}", "options": ["meaning1", "meaning2", "meaning3", "meaning4"], "correctIndex": 0, "explanation": "Explanation"},
-          {"id": "q2", "question": "Select the correct meaning", "options": ["A", "B", "C", "D"], "correctIndex": 1, "explanation": "Explanation"}
-        ]
-      },
-      {
-        "type": "matching",
-        "title": "Match Words to Meanings",
-        "pairs": [
-          {"term": "word1 in ${lang}", "definition": "English meaning 1"},
-          {"term": "word2 in ${lang}", "definition": "English meaning 2"},
-          {"term": "word3 in ${lang}", "definition": "English meaning 3"},
-          {"term": "word4 in ${lang}", "definition": "English meaning 4"}
-        ]
-      }${
-        langHasTones
-          ? `,
-      {
-        "type": "toneSelect",
-        "title": "Tone Recognition",
-        "questions": [
-          {"id": "t1", "audioText": "word", "prompt": "Select the correct tone", "options": ["mā (1st)", "má (2nd)", "mǎ (3rd)", "mà (4th)"], "correctIndex": 0, "explanation": "This is first tone (flat)"}
-        ]
-      }`
-          : ''
-      }
-    ]
-  },
-  "reflection": {
-    "questions": [
-      {"id": "confidence", "question": "Rate your confidence with today's vocabulary (1-5)", "type": "scale"},
-      {"id": "clicked", "question": "Which word stuck with you the most?", "type": "text"},
-      {"id": "foggy", "question": "Which word is still unclear?", "type": "text"}
-    ]
-  }
-}
-
-REQUIREMENTS:
-- Generate ${levelGuidance.foundationCardCount} vocabulary cards in languageFoundationCards
-- task1.sections must include: quiz (${Math.round(4 * levelGuidance.contentMultiplier)}-${Math.round(5 * levelGuidance.contentMultiplier)} questions, 2+ with audioText), matching (${Math.round(5 * levelGuidance.contentMultiplier)}-${Math.round(7 * levelGuidance.contentMultiplier)} pairs)${langHasTones ? `, toneSelect (${Math.round(3 * levelGuidance.contentMultiplier)} questions)` : ''}
-- All vocabulary must be appropriate for ${profLevel} level`;
-
-  return { staticPart, dynamicPart, userPrompt };
-}
-
 /**
  * DAY DETAIL DEFERRED PROMPT: Secondary content loaded in background
  * Generates:
@@ -828,11 +641,11 @@ export function buildDayDetailDeferredPrompt(
   systemPrompt: string;
   userPrompt: string;
 } {
-  // Use language learning deferred prompt if applicable
-  // Only check isLanguageLearning - targetLanguage defaults to 'other' inside the function
-  if (params.isLanguageLearning) {
-    return buildLanguageLearningDeferredPrompt(params, ctx);
-  }
+  // NOTE: Language learning now uses the GENERIC prompts with language caveats
+  // instead of a completely separate prompt. This ensures "Italian grammar" gets
+  // grammar content (using generic structure) rather than vocabulary-focused content.
+  // The isLanguageLearning flag adds language-specific enhancements (audio, pronunciation)
+  // but doesn't change the fundamental content structure.
 
   // Check if practice-based (non-project-based)
   const isProjectBased =
@@ -850,6 +663,7 @@ export function buildDayDetailDeferredPrompt(
 
 /**
  * Project-based DEFERRED prompt - bossMilestone for project-based skills
+ * Now also handles language learning with language caveats while keeping generic structure
  */
 function buildProjectBasedDeferredPrompt(
   params: DayDetailParams,
@@ -884,16 +698,71 @@ function buildProjectBasedDeferredPrompt(
         : '5-15';
 
   // Get skill-type-specific task1 template (2 section types per skill)
-  const task1Template = getTask1SectionTemplate(skillType);
+  // For language learning, use language-specific sections with audioText
+  const langHasTonesProjectBased = params.isLanguageLearning && params.targetLanguage
+    ? hasTones(params.targetLanguage)
+    : false;
+  const langHasGenderProjectBased = params.isLanguageLearning && params.targetLanguage
+    ? hasGender(params.targetLanguage)
+    : false;
+  const langProjectBased = params.targetLanguage || 'target language';
+
+  // Detailed language task1 template with full examples
+  const languageTask1TemplateProjectBased = `[
+        {
+          "type": "quiz",
+          "level": 1,
+          "title": "Listening & Recognition",
+          "questions": [
+            {"id": "q1", "question": "What does this mean?", "audioText": "word/phrase in ${langProjectBased}", "options": ["meaning1", "meaning2", "meaning3", "meaning4"], "correctIndex": 0, "explanation": "Explanation with romanization"},
+            {"id": "q2", "question": "Select the correct translation", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "Why this is correct"}
+          ]
+        },
+        {
+          "type": "fillBlank",
+          "level": 2,
+          "title": "Apply Your Learning",
+          "items": [
+            {"id": "fb1", "sentence": "Sentence with ___BLANK___", "translation": "English meaning", "blank": {"correctAnswers": ["answer"], "hint": "Grammar/form hint"}, "audioText": "Full sentence for TTS"}
+          ]
+        }${langHasTonesProjectBased ? `,
+        {
+          "type": "toneSelect",
+          "title": "Tone Recognition",
+          "questions": [
+            {"id": "t1", "audioText": "word in ${langProjectBased}", "prompt": "Select the correct tone", "options": ["Tone 1", "Tone 2", "Tone 3", "Tone 4"], "correctIndex": 0, "explanation": "This is [tone name] - [description]"}
+          ]
+        }` : ''}
+      ]`;
+
+  const task1Template = params.isLanguageLearning
+    ? languageTask1TemplateProjectBased
+    : getTask1SectionTemplate(skillType);
 
   // Build unified context instructions if context is provided
   const contextInstructions = ctx ? buildFullContextInstructions(ctx) : '';
+
+  // Language learning caveats - comprehensive requirements
+  const languageCaveats = params.isLanguageLearning
+    ? `
+LANGUAGE LEARNING MODE - Target: ${params.targetLanguage || 'specified language'} | Level: ${params.proficiencyLevel || 'beginner'}
+Focus on: "${params.skillName}" (generate content matching this topic)
+
+REQUIRED FOR ALL LANGUAGE CONTENT:
+- "audioText": Native ${langProjectBased} text for TTS pronunciation
+- "translation": English meaning for all target language content
+- "romanization": Pronunciation guide for non-Latin scripts
+- Focus on the SPECIFIC topic (grammar = conjugation/tenses/structure, NOT vocabulary lists)${langHasTonesProjectBased ? `
+- "tone"/"toneMarkers": Tone numbers for all words (TONAL LANGUAGE)` : ''}${langHasGenderProjectBased ? `
+- "gender": Grammatical gender where applicable (GENDERED LANGUAGE)` : ''}
+`
+    : '';
 
   const systemPrompt = `Generate DEFERRED content for Day ${dayNumber}: "${params.skillName}"
 Type: ${params.skillType} | Level: ${params.skillLevel}${params.suggestedLanguage ? ` | Lang: ${params.suggestedLanguage}` : ''}
 Topics: ${skillsStr}
 ${levelGuidance.complexityGuidance}
-${contextInstructions}
+${contextInstructions}${languageCaveats}
 TASK1: 4-6 questions testing today's foundationCards ONLY (no new knowledge)
 - Level 1 "Differentiation" (2-3 Qs): "X or Y?", compare/contrast, edge cases
 - Level 2 "Application" (2-3 Qs): "which approach fits?", "why would B fail?"
@@ -1297,6 +1166,8 @@ function getIntensiveSectionTemplate(
 /**
  * Practice-based DEFERRED prompt - intensive practice for non-project-based skills
  * Uses skill-specific section types from SECTION_REGISTRY.intensive or custom sections
+ * Now also handles language learning with language caveats (audio, pronunciation) while
+ * keeping the generic content structure (grammar, concepts, etc. based on skill name)
  */
 function buildPracticeBasedDeferredPrompt(
   params: DayDetailParams,
@@ -1323,26 +1194,197 @@ function buildPracticeBasedDeferredPrompt(
 
   // For custom sections, just list the names (AI knows formats from static instructions)
   // For standard skill types, use the existing functions
+  // For language learning, use language-specific sections
   const codeWritingEnabled = params.codeWritingEnabled ?? false;
+
+  // Language-specific: calculate items per section type (from original buildLanguageLearningDeferredPrompt)
+  const langHasTonesForTemplate = params.isLanguageLearning && params.targetLanguage
+    ? hasTones(params.targetLanguage)
+    : false;
+  const langHasGenderForTemplate = params.isLanguageLearning && params.targetLanguage
+    ? hasGender(params.targetLanguage)
+    : false;
+
+  // Calculated item counts for language learning sections
+  const fillBlankItems = `${Math.round(5 * levelGuidance.contentMultiplier)}-${Math.round(6 * levelGuidance.contentMultiplier)}`;
+  const translationItems = `${Math.round(4 * levelGuidance.contentMultiplier)}-${Math.round(5 * levelGuidance.contentMultiplier)}`;
+  const reorderItems = `${Math.round(3 * levelGuidance.contentMultiplier)}-${Math.round(4 * levelGuidance.contentMultiplier)}`;
+  const typingItems = `${Math.round(3 * levelGuidance.contentMultiplier)}-${Math.round(4 * levelGuidance.contentMultiplier)}`;
+
+  // Language learning section instructions with specific item counts
+  // MUST match frontend interfaces: TranslationItem, LanguageFillBlankItem, ReorderItem, TypingItem
+  const languageSectionInstructions = params.isLanguageLearning
+    ? `LANGUAGE INTENSIVE SECTIONS (pick EXACTLY 2):
+1. fillBlank (${fillBlankItems} items) - Complete sentences with correct words/forms
+   Format: {id, sentence: "...___BLANK___...", romanization?: "pronunciation", translation: "English meaning", blank: {correctAnswers: [], hint?}}
+2. translation (${translationItems} items) - Translate between languages (both directions)
+   Format: {id, direction: "toTarget"|"toEnglish", prompt: "text to translate", romanization?: "for toEnglish", acceptedAnswers: [], hint?}
+3. reorder (${reorderItems} items) - Arrange scrambled words into correct sentence
+   Format: {id, scrambled: [], correctOrder: [], translation: "English meaning", hint?}
+4. typing (${typingItems} items) - Type what you see or hear
+   Format: {id, prompt: "instruction", displayText?: "text to show", audioText?: "for TTS", acceptedAnswers: [], romanization?}${langHasTonesForTemplate ? `
+5. toneSelect (3-4 items) - Hear word/phrase, select correct tone
+   Format: {id, audioText, prompt, options[], correctIndex, explanation}` : ''}
+
+IMPORTANT: Use "audioText" for TTS pronunciation in typing items.${langHasTonesForTemplate ? ' Include tone markers.' : ''}${langHasGenderForTemplate ? ' Include gender where applicable.' : ''}`
+    : '';
+
   const sectionInstructions = params.customSections
     ? `INCLUDE THESE SECTION TYPES: ${params.customSections.intensive.join(', ')}\n(${itemsPerSection} items per section, use formats from section registry)`
-    : getIntensiveSectionInstructions(skillType, codeWritingEnabled);
+    : params.isLanguageLearning
+      ? languageSectionInstructions
+      : getIntensiveSectionInstructions(skillType, codeWritingEnabled);
+
+  // Language-specific section template with detailed examples
+  // MUST match frontend interfaces: TranslationItem, LanguageFillBlankItem, ReorderItem, TypingItem
+  const lang = params.targetLanguage || 'target language';
+  const languageSectionTemplate = `[
+      {
+        "type": "fillBlank",
+        "title": "Complete the Sentence",
+        "instructions": "Fill in the correct word or form",
+        "items": [
+          {
+            "id": "fb1",
+            "sentence": "Sentence in ${lang} with ___BLANK___ to complete",
+            "romanization": "pronunciation of full sentence",
+            "translation": "English translation of the sentence",
+            "blank": {"correctAnswers": ["correct answer", "alternate spelling"], "hint": "Hint about grammar/form"}
+          }
+        ]
+      },
+      {
+        "type": "translation",
+        "title": "Translation Practice",
+        "instructions": "Translate between languages",
+        "items": [
+          {
+            "id": "tr1",
+            "direction": "toTarget",
+            "prompt": "English text to translate to ${lang}",
+            "acceptedAnswers": ["primary answer in ${lang}", "alternate acceptable answer"],
+            "hint": "Grammar or vocabulary hint"
+          },
+          {
+            "id": "tr2",
+            "direction": "toEnglish",
+            "prompt": "Text in ${lang} to translate to English",
+            "romanization": "pronunciation guide",
+            "acceptedAnswers": ["primary English translation", "alternate translation"],
+            "hint": "Context hint"
+          }
+        ]
+      },
+      {
+        "type": "reorder",
+        "title": "Word Order Practice",
+        "instructions": "Arrange the words in the correct order",
+        "items": [
+          {
+            "id": "ro1",
+            "scrambled": ["word3", "word1", "word2"],
+            "correctOrder": ["word1", "word2", "word3"],
+            "translation": "English meaning of the sentence",
+            "hint": "Think about ${lang} sentence structure"
+          }
+        ]
+      },
+      {
+        "type": "typing",
+        "title": "Typing Practice",
+        "instructions": "Type what you see or hear",
+        "items": [
+          {
+            "id": "ty1",
+            "prompt": "Type the following in ${lang}",
+            "displayText": "Text to display for visual typing",
+            "audioText": "Text in ${lang} for TTS pronunciation",
+            "acceptedAnswers": ["exact answer", "acceptable variation"],
+            "romanization": "pronunciation guide"
+          }
+        ]
+      }
+    ]`;
 
   const sectionTemplate = params.customSections
     ? `[/* Generate sections: ${params.customSections.intensive.join(', ')} */]`
-    : getIntensiveSectionTemplate(skillType, dayNumber, codeWritingEnabled);
+    : params.isLanguageLearning
+      ? languageSectionTemplate
+      : getIntensiveSectionTemplate(skillType, dayNumber, codeWritingEnabled);
 
   // Get skill-type-specific task1 template (2 section types per skill)
-  const task1Template = getTask1SectionTemplate(skillType);
+  // For language learning, use quiz + fillBlank (with audioText) - detailed format
+  const languageTask1Template = `[
+        {
+          "type": "quiz",
+          "level": 1,
+          "title": "Listening & Recognition",
+          "questions": [
+            {"id": "q1", "question": "What does this mean?", "audioText": "word/phrase in ${lang}", "options": ["meaning1", "meaning2", "meaning3", "meaning4"], "correctIndex": 0, "explanation": "Explanation with romanization"},
+            {"id": "q2", "question": "Select the correct translation", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "Why this is correct"}
+          ]
+        },
+        {
+          "type": "fillBlank",
+          "level": 2,
+          "title": "Apply Your Learning",
+          "items": [
+            {"id": "fb1", "sentence": "Sentence with ___BLANK___", "translation": "English meaning", "blank": {"correctAnswers": ["answer"], "hint": "Hint"}, "audioText": "Full sentence for TTS"}
+          ]
+        }${langHasTonesForTemplate ? `,
+        {
+          "type": "toneSelect",
+          "title": "Tone Recognition",
+          "questions": [
+            {"id": "t1", "audioText": "word in ${lang}", "prompt": "Select the correct tone", "options": ["Tone 1", "Tone 2", "Tone 3", "Tone 4"], "correctIndex": 0, "explanation": "This is [tone name] - [description]"}
+          ]
+        }` : ''}
+      ]`;
+
+  const task1Template = params.isLanguageLearning
+    ? languageTask1Template
+    : getTask1SectionTemplate(skillType);
 
   // Build unified context instructions if context is provided
   const contextInstructions = ctx ? buildFullContextInstructions(ctx) : '';
+
+  // Language learning caveats - add enhancements without changing content focus
+  // This ensures "Italian grammar" generates GRAMMAR content with language enhancements
+  const langHasTones = params.isLanguageLearning && params.targetLanguage
+    ? hasTones(params.targetLanguage)
+    : false;
+  const langHasGender = params.isLanguageLearning && params.targetLanguage
+    ? hasGender(params.targetLanguage)
+    : false;
+
+  const languageCaveats = params.isLanguageLearning
+    ? `
+LANGUAGE LEARNING MODE - Target: ${params.targetLanguage || 'specified language'} | Level: ${params.proficiencyLevel || 'beginner'}
+Focus on: "${params.skillName}" (generate content that matches this topic - grammar, vocabulary, phrases, etc.)
+
+REQUIRED FOR ALL LANGUAGE CONTENT:
+- "audioText": Native ${params.targetLanguage || 'target language'} text for TTS pronunciation
+- "translation": English meaning for all target language content
+- "romanization": Pronunciation guide (pinyin/romaji/etc) for non-Latin scripts${langHasTones ? `
+- "tone"/"toneMarkers": Tone numbers for all words (TONAL LANGUAGE)` : ''}${langHasGender ? `
+- "gender": Grammatical gender (masculine/feminine/neuter) where applicable` : ''}
+
+MINI FOUNDATION CARDS FORMAT (for intensive practice):
+{
+  "id": "mini1",
+  "concept": "New word/phrase/pattern in English",
+  "explanation": "100-150 words covering: meaning, pronunciation, usage context, example sentences in ${params.targetLanguage || 'target language'} with translations",
+  "audioText": "Key word/phrase for TTS",
+  "romanization": "pronunciation guide"${langHasTones ? ',\n  "tone": "tone number(s)"' : ''}${langHasGender ? ',\n  "gender": "grammatical gender"' : ''}
+}
+`
+    : '';
 
   const systemPrompt = `Generate DEFERRED content for Day ${dayNumber}: "${params.skillName}"
 Type: ${skillType}${params.customSections ? ' (hybrid)' : ''} | Level: ${params.skillLevel}
 Topics: ${skillsStr}
 ${levelGuidance.complexityGuidance}
-${contextInstructions}
+${contextInstructions}${languageCaveats}
 TASK1: 4-6 questions testing today's foundationCards ONLY (no new knowledge)
 - Level 1 "Differentiation" (2-3 Qs): "X or Y?", compare/contrast, edge cases
 - Level 2 "Application" (2-3 Qs): "which approach fits?", "why would B fail?"
@@ -1379,27 +1421,62 @@ OPEN TASK:
 
 Output valid JSON.`;
 
-  const userPrompt = `{
-  "day": ${dayNumber},
-  "task1": {
-    "id": "day${dayNumber}-task1",
-    "title": "Practice",
-    "estimatedMinutes": 8,
-    "format": "sections",
-    "passingScore": 0.7,
-    "sections": ${task1Template}
-  },
-  "intensivePractice": {
-    "id": "day${dayNumber}-intensive",
-    "title": "Intensive Practice: ${params.dayTitle}",
-    "description": "New concepts and deep practice",
-    "estimatedMinutes": 12,
-    "miniFoundationCards": [/* ${miniCardCount} cards */
+  // Language-specific miniFoundationCards template
+  const languageMiniCardsTemplate = `[/* ${miniCardCount} NEW words/phrases/patterns */
+      {
+        "id": "mini1",
+        "concept": "New word/phrase in English",
+        "explanation": "100-150 words: meaning, pronunciation (${lang}), usage context, 2-3 example sentences with translations",
+        "audioText": "Word/phrase in ${lang} for TTS",
+        "romanization": "pronunciation guide"${langHasTonesForTemplate ? ',\n        "tone": "tone number(s)"' : ''}${langHasGenderForTemplate ? ',\n        "gender": "masculine/feminine/neuter"' : ''}
+      }
+    ]`;
+
+  const genericMiniCardsTemplate = `[/* ${miniCardCount} cards */
       {"id": "mini1", "concept": "New Concept", "explanation": "100-150 words..."}
+    ]`;
+
+  // Language-specific reflection questions
+  const languageReflectionQuestions = `[
+      {"id": "confidence", "question": "Rate your confidence with today's ${lang} content (1-5)", "type": "scale"},
+      {"id": "hardest", "question": "Hardest exercise type?", "type": "choice", "options": ["Fill in blank", "Translation", "Reordering", "Typing"${langHasTonesForTemplate ? ', "Tone recognition"' : ''}]},
+      {"id": "clicked", "question": "What clicked for you today?", "type": "text"},
+      {"id": "review", "question": "What needs more review?", "type": "text"}
+    ]`;
+
+  const genericReflectionQuestions = `[
+      {"id": "confidence", "question": "Rate your confidence (1-5)?", "type": "scale"},
+      {"id": "application", "question": "How will you apply this?", "type": "text"},
+      {"id": "questions", "question": "What questions remain?", "type": "text"}
+    ]`;
+
+  // Language-specific open task (practice speaking/writing)
+  const languageOpenTaskTemplate = `{
+    "id": "day${dayNumber}-opentask",
+    "sectionType": "openTask",
+    "sectionTitle": "Real-World Practice",
+    "sectionSubtitle": "Use ${lang} outside the app",
+    "title": "Practice ${lang} in a real conversation or writing",
+    "description": "Find an opportunity to use what you learned today. This could be speaking with a language partner, writing a message, or practicing pronunciation out loud.",
+    "icon": "🗣️",
+    "context": "With a language partner / Speaking aloud / Writing practice",
+    "difficulty": "easy",
+    "conceptConnection": "Today's ${params.dayTitle} content",
+    "estimatedMinutes": 10,
+    "tips": [
+      "Don't worry about being perfect - focus on using the new patterns",
+      "Record yourself to hear your pronunciation",
+      "Write down any words you couldn't remember to review later"
     ],
-    "sections": ${sectionTemplate}
-  },
-  "openTask": {
+    "completionType": "self-reported",
+    "reflectionPrompts": [
+      "What did you try to say or write?",
+      "What was challenging about using ${lang} in practice?",
+      "What would you like to practice more?"
+    ]
+  }`;
+
+  const genericOpenTaskTemplate = `{
     "id": "day${dayNumber}-opentask",
     "sectionType": "openTask",
     "sectionTitle": "Real-World Challenge",
@@ -1421,98 +1498,29 @@ Output valid JSON.`;
       "How did applying [concept] change the outcome?",
       "What would you do differently next time?"
     ]
-  },
-  "reflection": {
-    "questions": [
-      {"id": "confidence", "question": "Rate your confidence (1-5)?", "type": "scale"},
-      {"id": "application", "question": "How will you apply this?", "type": "text"},
-      {"id": "questions", "question": "What questions remain?", "type": "text"}
-    ]
-  }
-}`;
-
-  return { systemPrompt, userPrompt };
-}
-
-/**
- * Language Learning DEFERRED prompt - intensive practice exercises
- */
-function buildLanguageLearningDeferredPrompt(
-  params: DayDetailParams,
-  ctx?: ContentGenerationContext,
-): {
-  systemPrompt: string;
-  userPrompt: string;
-} {
-  const lang = params.targetLanguage || 'other';
-  const profLevel = params.proficiencyLevel || 'beginner';
-  const dayNumber = params.dayNumber;
-  const skillsStr = getSkillsString(params.skeleton, params.dayObjectives);
-  const levelGuidance = getSkillLevelGuidance(params.skillLevel);
-
-  // Calculate items per section based on skill level
-  const fillBlankItems = `${Math.round(5 * levelGuidance.contentMultiplier)}-${Math.round(6 * levelGuidance.contentMultiplier)}`;
-  const translationItems = `${Math.round(4 * levelGuidance.contentMultiplier)}-${Math.round(5 * levelGuidance.contentMultiplier)}`;
-  const reorderItems = `${Math.round(3 * levelGuidance.contentMultiplier)}-${Math.round(4 * levelGuidance.contentMultiplier)}`;
-  const typingItems = `${Math.round(3 * levelGuidance.contentMultiplier)}-${Math.round(4 * levelGuidance.contentMultiplier)}`;
-
-  // Calculate mini foundation card count based on skill level
-  const miniCardCount =
-    params.skillLevel === SkillLevel.ADVANCED
-      ? '4-5'
-      : params.skillLevel === SkillLevel.INTERMEDIATE
-        ? '3-4'
-        : '2-3';
-
-  // Build unified context instructions if context is provided
-  const contextInstructions = ctx ? buildFullContextInstructions(ctx) : '';
-
-  const systemPrompt = `Generate DEFERRED content for Day ${dayNumber}: "${params.skillName}"
-Language: ${lang} | Proficiency: ${profLevel} | Level: ${params.skillLevel}
-Topics: ${skillsStr}
-${levelGuidance.complexityGuidance}
-${contextInstructions}
-TASK1: Quiz/fillBlank testing today's vocabulary ONLY (no new words)
-${ctx?.generatedContent?.foundationCardConcepts?.length ? `- Reference these vocabulary words: ${ctx.generatedContent.foundationCardConcepts.join(', ')}` : ''}
-
-INTENSIVE PRACTICE:
-- miniFoundationCards: ${miniCardCount} cards, NEW vocabulary not in foundation cards
-  Format: {id, concept: "Word/Phrase", explanation: "100-150 words with term, meaning, pronunciation, usage"}
-  NO microQuestion - tested in exercises
-- sections: EXACTLY 2 from: fillBlank (${fillBlankItems}), translation (${translationItems}), reorder (${reorderItems}), typing (${typingItems})
-  Use BOTH today's + mini card vocabulary
-
-Output valid JSON.`;
+  }`;
 
   const userPrompt = `{
   "day": ${dayNumber},
   "task1": {
     "id": "day${dayNumber}-task1",
-    "title": "Vocabulary Check",
-    "estimatedMinutes": 6,
+    "title": "${params.isLanguageLearning ? 'Practice Check' : 'Practice'}",
+    "estimatedMinutes": ${params.isLanguageLearning ? 6 : 8},
     "format": "sections",
     "passingScore": 0.7,
-    "sections": [
-      {"type": "quiz", "title": "Recognition", "questions": [/* 3-4 Qs */]},
-      {"type": "fillBlank", "title": "Usage", "items": [/* 2-3 items */]}
-    ]
+    "sections": ${task1Template}
   },
   "intensivePractice": {
     "id": "day${dayNumber}-intensive",
     "title": "Intensive Practice: ${params.dayTitle}",
-    "description": "New vocabulary and deep practice",
+    "description": "${params.isLanguageLearning ? 'New ' + lang + ' content and deep practice' : 'New concepts and deep practice'}",
     "estimatedMinutes": 12,
-    "miniFoundationCards": [/* ${miniCardCount} cards */
-      {"id": "mini1", "concept": "New Word in ${lang}", "explanation": "100-150 words with meaning, pronunciation, usage..."}
-    ],
-    "sections": [/* 2 sections from: fillBlank, translation, reorder, typing */]
+    "miniFoundationCards": ${params.isLanguageLearning ? languageMiniCardsTemplate : genericMiniCardsTemplate},
+    "sections": ${sectionTemplate}
   },
+  "openTask": ${params.isLanguageLearning ? languageOpenTaskTemplate : genericOpenTaskTemplate},
   "reflection": {
-    "questions": [
-      {"id": "confidence", "question": "Rate your vocabulary confidence (1-5)", "type": "scale"},
-      {"id": "hardest", "question": "Hardest exercise type?", "type": "choice", "options": ["Fill in blank", "Translation", "Reordering", "Typing"]},
-      {"id": "review", "question": "Words needing review?", "type": "text"}
-    ]
+    "questions": ${params.isLanguageLearning ? languageReflectionQuestions : genericReflectionQuestions}
   }
 }`;
 
@@ -1775,19 +1783,13 @@ ${isProjectBased ? "hasBossProject=true for ALL days. Include bossMilestonePrevi
 
 /**
  * Cacheable day detail core prompt
- * Uses UNIFIED SECTIONS FORMAT for ALL skill types
+ * Uses UNIFIED SECTIONS FORMAT for ALL skill types (including language learning)
  */
 export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
   staticPart: string;
   dynamicPart: string;
   userPrompt: string;
 } {
-  // Use dedicated language learning prompt if detected by skill detector
-  // Only check isLanguageLearning - targetLanguage defaults to 'other' inside the function
-  if (params.isLanguageLearning) {
-    return buildCacheableLanguageLearningPrompt(params);
-  }
-
   // Use stored isProjectBased from metadata, fall back to calculation if not provided
   const isProjectBased =
     params.isProjectBased ??
@@ -1796,13 +1798,51 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
   // Static part - cacheable
   const staticPart = DAY_DETAIL_STATIC_INSTRUCTIONS;
 
-  // Get default sections for this skill type (AI may override for language learning)
+  // Get sections - use language registry if language learning
+  const langHasTones = params.isLanguageLearning && params.targetLanguage
+    ? hasTones(params.targetLanguage)
+    : false;
   const sections = getSectionsForSkillType(params.skillType, {
+    isLanguageLearning: params.isLanguageLearning,
+    hasTones: langHasTones,
     isProjectBased,
     codeWritingEnabled: params.codeWritingEnabled,
     customSections: params.customSections,
   });
   const sectionTypes = sections.task1.join(' + ');
+
+  // Language learning specific instructions
+  const langHasGender = params.isLanguageLearning && params.targetLanguage
+    ? hasGender(params.targetLanguage)
+    : false;
+  const langFeatures = params.isLanguageLearning && params.targetLanguage
+    ? getLanguageFeatures(params.targetLanguage)
+    : '';
+
+  // Check if skill name suggests vocabulary-focused learning vs concept/grammar learning
+  // Vocabulary: "Italian vocabulary", "Spanish words", "learn Japanese words"
+  // Concept: "Italian grammar", "Spanish conjugation", "Japanese sentence structure"
+  const skillNameLower = params.skillName.toLowerCase();
+  const isVocabularyFocused = params.isLanguageLearning && (
+    skillNameLower.includes('vocabulary') ||
+    skillNameLower.includes('vocab') ||
+    skillNameLower.includes(' words') ||
+    skillNameLower.includes('phrases') ||
+    (skillNameLower.includes('learn') && !skillNameLower.includes('grammar') && !skillNameLower.includes('conjugat'))
+  );
+  const isConceptFocused = params.isLanguageLearning && !isVocabularyFocused;
+
+  const languageInstructions = params.isLanguageLearning
+    ? `\nLANGUAGE LEARNING: Target language is ${params.targetLanguage || 'specified'}. Level: ${params.proficiencyLevel || 'beginner'}.
+Features: ${langFeatures}
+- contentLayer: "language_core"
+- Video strategy: skip (use audio/TTS instead)
+- Include target language text with pronunciation/romanization in examples
+- Include "audioText" field in quiz questions for listening practice (TTS will speak it)
+- Include commonMistakes in explanations where relevant
+${isConceptFocused ? `- CONCEPT-FOCUSED (${params.skillName}): Use regular foundationCards to explain grammar/concepts. Do NOT use vocabulary cards. Focus on rules, patterns, conjugation tables, sentence structure - NOT vocabulary lists.` : ''}
+${langHasTones ? '- TONAL LANGUAGE: Include tone numbers/markers. Add toneSelect section in task1.' : ''}${langHasGender ? '\n- GENDERED LANGUAGE: Include grammatical gender (masculine/feminine/neuter) where applicable.' : ''}`
+    : '';
 
   // Build personalization instructions using shared builder
   // Create a temporary context for the shared instruction builder
@@ -1858,13 +1898,148 @@ Day ${params.dayNumber}: ${params.dayTitle}
 ${skillsStr ? `Topics: ${skillsStr}` : ''}
 ${params.previousDayTitle ? `Previous: ${params.previousDayTitle}` : ''}
 Type: ${params.skillType} | Level: ${params.skillLevel} | Sections: ${sectionTypes}
-${skillGuidance}
+${skillGuidance}${languageInstructions}
 
 ${levelGuidance.complexityGuidance}
 CONTENT QUANTITY: ${levelGuidance.foundationCardCount} foundation cards covering the Topics above, ${levelGuidance.quizQuestionCount} quiz/exercise questions total
 ${personalizationInstructions}${continuityInstructions}`;
 
-  // User prompt for regular (non-language) skills - CORE content only (task1 moved to deferred)
+  // User prompt - CORE content only (task1 moved to deferred)
+  // For language learning, video is null/skip and contentLayer is language_core
+  const videoSection = params.isLanguageLearning
+    ? `"video": null,
+  "videoStrategy": "skip",
+  "contentLayer": "language_core"`
+    : `"video": {
+    "watchPoints": ["Key point 1", "Key point 2"],
+    "searchQuery": "YouTube search query for this topic"
+  }`;
+
+  const videoRequirement = params.isLanguageLearning
+    ? '- video: null (language learning uses audio/TTS instead)\n- contentLayer: "language_core"'
+    : '- video: REQUIRED (even if just searchQuery)';
+
+  // For vocabulary-focused language learning, use languageFoundationCards with vocabulary object
+  // For concept-focused (grammar, conjugation) or non-language skills, use regular foundationCards
+  const cardsArrayName = isVocabularyFocused ? 'languageFoundationCards' : 'foundationCards';
+
+  // Language-specific card structure matching frontend VocabularyItem/GrammarRule interfaces
+  // For vocabulary-focused: use languageFoundationCards with vocabulary object (VocabularyItem)
+  // For grammar-focused: use foundationCards with grammar object (GrammarRule)
+  const languageCardStructure = isVocabularyFocused
+    ? `{
+      "id": "day${params.dayNumber}-vocab-1",
+      "concept": "Word/phrase in English (brief description)",
+      "visual": "relevant emoji",
+      "explanation": "Usage context and tips.\\n\\nWhen and how to use it.",
+      "vocabulary": {
+        "id": "vocab-day${params.dayNumber}-1",
+        "term": "word/phrase in ${params.targetLanguage}",
+        "definition": "English meaning",
+        "romanization": "pronunciation guide (pinyin/romaji/etc)"${langHasTones ? `,
+        "tone": 1` : ''}${langHasGender ? `,
+        "gender": "masculine"` : ''},
+        "partOfSpeech": "noun/verb/adjective/phrase",
+        "proficiencyLevel": "${params.proficiencyLevel || 'beginner'}",
+        "examples": [
+          {
+            "sentence": "Full example sentence in ${params.targetLanguage}",
+            "romanization": "pronunciation of sentence",
+            "translation": "English translation"
+          }
+        ]
+      },
+      "audioText": "The term in ${params.targetLanguage} for TTS",
+      "microQuestion": {
+        "type": "understanding",
+        "question": "Which is the correct meaning of [term]?",
+        "options": ["Correct meaning", "Similar but wrong", "Unrelated"],
+        "correctIndex": 0,
+        "explanation": "Why this is correct"
+      },
+      "order": 1
+    }`
+    : isConceptFocused
+    ? `{
+      "concept": "Grammar rule name (e.g., Present Tense Conjugation)",
+      "explanation": "Explain the grammar rule clearly.\\n\\nProvide conjugation tables or sentence patterns.\\n\\nInclude examples in ${params.targetLanguage}.",
+      "realWorldContext": "When and how to use this in conversation",
+      "grammar": {
+        "rule": "Brief description of the grammar rule",
+        "pattern": "Subject + Verb + Object (structural pattern)",
+        "patternInTarget": "Pattern shown in ${params.targetLanguage}",${langHasGender ? `
+        "genderNotes": "How gender affects this pattern",` : ''}
+        "formality": "neutral",
+        "proficiencyLevel": "${params.proficiencyLevel || 'beginner'}",
+        "examples": [
+          {
+            "sentence": "Example sentence in ${params.targetLanguage}",
+            "breakdown": "Word-by-word breakdown",
+            "translation": "English translation",
+            "romanization": "pronunciation guide",
+            "notes": "Why this example demonstrates the rule"
+          }
+        ],
+        "commonMistakes": [
+          {
+            "wrong": "Incorrect usage",
+            "correct": "Correct usage",
+            "why": "Explanation of the mistake"
+          }
+        ]
+      },
+      "audioText": "Example sentence in ${params.targetLanguage} for TTS",
+      "microQuestion": {
+        "type": "understanding",
+        "question": "Which sentence uses correct grammar?",
+        "options": ["Correct sentence in ${params.targetLanguage}", "Wrong option", "Another wrong option"],
+        "correctIndex": 0,
+        "explanation": "Why this follows the grammar rule"
+      }
+    }`
+    : `{
+      "concept": "Main concept title",
+      "explanation": "Key insight paragraph here.\\n\\nSupporting details, examples, or nuances in second paragraph.\\n\\nOptional third paragraph for additional context.",
+      "realWorldContext": "Why this matters in practice",
+      "microQuestion": {
+        "type": "understanding",
+        "question": "Which statement is correct?",
+        "options": ["Option A", "Option B", "Option C"],
+        "correctIndex": 0,
+        "explanation": "Why this is correct"
+      }
+    }`;
+
+  // Additional requirements based on content type (matching frontend VocabularyItem/GrammarRule interfaces)
+  const languageRequirements = isVocabularyFocused
+    ? `
+- languageFoundationCards: REQUIRED - ${levelGuidance.foundationCardCount} cards
+  - Each card MUST have "vocabulary" object matching VocabularyItem interface:
+    - REQUIRED: id, term, definition, partOfSpeech, proficiencyLevel, examples[]
+    - REQUIRED: romanization (pronunciation guide)${langHasTones ? '\n    - REQUIRED: tone (number or array for multi-syllable) - TONAL LANGUAGE' : ''}${langHasGender ? '\n    - REQUIRED: gender ("masculine"|"feminine"|"neuter") - GENDERED LANGUAGE' : ''}
+    - examples[]: Array with {sentence, romanization, translation}
+  - Include "audioText" field with term for TTS pronunciation
+  - Use microQuestion to test vocabulary recognition`
+    : isConceptFocused
+    ? `
+- foundationCards: REQUIRED - ${levelGuidance.foundationCardCount} cards covering ${params.skillName}
+  - FOCUS ON GRAMMAR/CONCEPTS - NOT vocabulary lists
+  - Each card MUST have "grammar" object matching GrammarRule interface:
+    - REQUIRED: rule, pattern, proficiencyLevel, examples[]
+    - OPTIONAL: patternInTarget, genderNotes, formality, commonMistakes[]
+    - examples[]: Array with {sentence, breakdown, translation, romanization, notes}
+    - commonMistakes[]: Array with {wrong, correct, why}
+  - Include "audioText" for TTS pronunciation of example sentences
+  - explanation: Conjugation tables, pattern rules, structural explanations
+  - microQuestion: Test understanding of the grammar rule`
+    : `
+- foundationCards: REQUIRED - ${levelGuidance.foundationCardCount} cards covering the key topics
+  - Card 1: INTRO/RECAP connecting to previous day
+  - Each card: 200-300 words, answers ONE question
+  - explanation: Split into 2-3 paragraphs with \\n\\n between them (key insight first, then details)
+  - microQuestion: Understanding check on each card
+  - caseStudy (optional, 1-2 cards): For decision-making concepts only`;
+
   const userPrompt = `Day ${params.dayNumber}: "${params.dayTitle}" for skill "${params.skillName}"
 Skill Type: ${params.skillType} | Level: ${params.skillLevel}
 ${skillsStr ? `Key topics: ${skillsStr}` : ''}
@@ -1876,35 +2051,15 @@ Generate CORE content as JSON with this structure:
     "primeQuestions": ["Question 1?", "Question 2?"],
     "yesterdayRecap": "Brief recap of previous day or welcome for day 1"
   },
-  "video": {
-    "watchPoints": ["Key point 1", "Key point 2"],
-    "searchQuery": "YouTube search query for this topic"
-  },
-  "foundationCards": [
-    {
-      "concept": "Main concept title",
-      "explanation": "Key insight paragraph here.\\n\\nSupporting details, examples, or nuances in second paragraph.\\n\\nOptional third paragraph for additional context.",
-      "realWorldContext": "Why this matters in practice",
-      "microQuestion": {
-        "type": "understanding",
-        "question": "Which statement is correct?",
-        "options": ["Option A", "Option B", "Option C"],
-        "correctIndex": 0,
-        "explanation": "Why this is correct"
-      }
-    }
+  ${videoSection},
+  "${cardsArrayName}": [
+    ${languageCardStructure}
   ]
 }
 
-REQUIREMENTS:
-- foundationCards: REQUIRED - ${levelGuidance.foundationCardCount} cards covering the key topics
-  - Card 1: INTRO/RECAP connecting to previous day
-  - Each card: 200-300 words, answers ONE question
-  - explanation: Split into 2-3 paragraphs with \\n\\n between them (key insight first, then details)
-  - microQuestion: Understanding check on each card
-  - caseStudy (optional, 1-2 cards): For decision-making concepts only
+REQUIREMENTS:${languageRequirements}
 - prePrompt: REQUIRED
-- video: REQUIRED (even if just searchQuery)
+${videoRequirement}
 
 Output valid JSON only.`;
 

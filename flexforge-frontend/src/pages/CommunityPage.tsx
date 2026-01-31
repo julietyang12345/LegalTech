@@ -761,7 +761,7 @@ function PostCard({
   );
 }
 
-// Create post modal
+// Create post modal with project/task selector and preview
 function CreatePostModal({
   isOpen,
   onClose,
@@ -791,11 +791,17 @@ function CreatePostModal({
     currentState: 'started' | 'in-progress' | 'paused' | 'completed';
   } | null;
 }) {
+  const { activeSession, currentDay } = useSessionStore();
   const [postType, setPostType] = useState<PostType>('project');
-  const [shareScope, setShareScope] = useState<'course' | 'task'>(initialShareData?.scope || 'course');
+  const [shareScope, setShareScope] = useState<'course' | 'task'>(initialShareData?.scope || 'task');
   const [selectedProject, setSelectedProject] = useState<Project | null>(preselectedProject || null);
   const [showCodeEditor, setShowCodeEditor] = useState(!!initialShareData?.code);
   const [codeSnippet, setCodeSnippet] = useState(initialShareData?.code || '');
+  const [showPreview, setShowPreview] = useState(false);
+  const [linkType, setLinkType] = useState<'none' | 'project' | 'session'>('none');
+  const [selectedDay, setSelectedDay] = useState<number>(initialShareData?.dayNumber || currentDay?.day || 1);
+  const { user } = useAuthStore();
+
   const [formData, setFormData] = useState({
     title: initialShareData?.taskTitle || preselectedProject?.title || '',
     currentState: (initialShareData?.currentState || 'in-progress') as Post['currentState'],
@@ -809,25 +815,52 @@ function CreatePostModal({
   });
 
   // Course data for preview
-  const courseData: LinkedCourse | null = initialShareData ? {
-    sessionId: initialShareData.sessionId,
-    skillName: initialShareData.skillName,
-    skillLevel: initialShareData.skillLevel,
-    durationDays: initialShareData.durationDays,
-    currentDay: initialShareData.currentDay,
-    progress: initialShareData.progress,
+  const courseData: LinkedCourse | null = (initialShareData || activeSession) ? {
+    sessionId: initialShareData?.sessionId || activeSession?.id || '',
+    skillName: initialShareData?.skillName || activeSession?.skillName || '',
+    skillLevel: initialShareData?.skillLevel || activeSession?.skillLevel || 'beginner',
+    durationDays: initialShareData?.durationDays || activeSession?.durationDays || 5,
+    currentDay: initialShareData?.currentDay || activeSession?.currentDay || 1,
+    progress: initialShareData?.progress || Math.round(((activeSession?.currentDay || 1) / (activeSession?.durationDays || 5)) * 100),
   } : null;
+
+  // Generate mock days for selection (in real app, fetch from session)
+  const availableDays = Array.from({ length: courseData?.currentDay || 1 }, (_, i) => i + 1);
 
   const handleSubmit = () => {
     console.log('Create post:', {
       type: postType,
       linkedProject: selectedProject,
       shareScope,
-      linkedCourse: courseData,
+      linkedCourse: linkType === 'session' ? courseData : null,
+      selectedDay: linkType === 'session' ? selectedDay : null,
       codeSnippet,
       ...formData,
     });
     onClose();
+  };
+
+  // Build preview post object
+  const previewPost: Post = {
+    id: 'preview',
+    type: postType,
+    authorId: user?.id || '',
+    authorName: user?.name || 'You',
+    createdAt: new Date(),
+    title: formData.title,
+    currentState: formData.currentState,
+    whatDone: formData.whatDone,
+    feedbackWanted: formData.feedbackWanted,
+    linkedProject: selectedProject || undefined,
+    linkedCourse: linkType === 'session' ? courseData || undefined : undefined,
+    dayNumber: linkType === 'session' ? selectedDay : undefined,
+    codeSnippet: codeSnippet || undefined,
+    question: formData.question,
+    whatTrying: formData.whatTrying,
+    whatTried: formData.whatTried,
+    whereStuck: formData.whereStuck,
+    progressNote: formData.progressNote,
+    comments: [],
   };
 
   if (!isOpen) return null;
@@ -839,320 +872,465 @@ function CreatePostModal({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="relative bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-auto"
+        className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-auto"
       >
         <div className="p-6">
+          {/* Header with preview toggle */}
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold text-gray-900">New Post in {groupName}</h2>
-            <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Post type selector */}
-          <div className="flex gap-2 mb-6">
-            {(['project', 'question', 'progress'] as const).map((type) => (
+            <h2 className="text-lg font-semibold text-gray-900">
+              {showPreview ? 'Preview Post' : `New Post in ${groupName}`}
+            </h2>
+            <div className="flex items-center gap-2">
               <button
-                key={type}
-                onClick={() => setPostType(type)}
+                onClick={() => setShowPreview(!showPreview)}
                 className={clsx(
-                  'flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-colors',
-                  postType === type
+                  'px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5',
+                  showPreview
                     ? 'bg-brand-100 text-brand-700'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 )}
               >
-                {type === 'project' && 'Project'}
-                {type === 'question' && 'Question'}
-                {type === 'progress' && 'Progress Log'}
+                <Eye className="w-3.5 h-3.5" />
+                {showPreview ? 'Edit' : 'Preview'}
               </button>
-            ))}
+              <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
-          {/* Form fields */}
-          <div className="space-y-4">
-            {postType === 'project' && (
-              <>
-                {/* Link existing project */}
-                {projects.length > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Link a project (optional)
-                    </label>
-                    <div className="flex gap-2 flex-wrap">
-                      {projects.slice(0, 5).map((project) => (
-                        <button
-                          key={project.id}
-                          onClick={() => {
-                            setSelectedProject(selectedProject?.id === project.id ? null : project);
-                            if (project.title && !formData.title) {
-                              setFormData({ ...formData, title: project.title });
-                            }
-                          }}
-                          className={clsx(
-                            'px-3 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1',
-                            selectedProject?.id === project.id
-                              ? 'border-brand-500 bg-brand-50 text-brand-700'
-                              : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                          )}
-                        >
-                          {project.isBossProject && <Trophy className="w-3 h-3 text-purple-600" />}
-                          {project.title}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+          {/* Preview Mode */}
+          {showPreview ? (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-500 mb-4">This is how your post will appear:</p>
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <PostCard
+                  post={previewPost}
+                  isExpanded={false}
+                  onToggle={() => {}}
+                  currentUserId={user?.id}
+                />
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Post type selector */}
+              <div className="flex gap-2 mb-6">
+                {(['project', 'question', 'progress'] as const).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setPostType(type)}
+                    className={clsx(
+                      'flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-colors',
+                      postType === type
+                        ? 'bg-brand-100 text-brand-700'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    )}
+                  >
+                    {type === 'project' && <Folder className="w-4 h-4 inline mr-1.5" />}
+                    {type === 'question' && <HelpCircle className="w-4 h-4 inline mr-1.5" />}
+                    {type === 'progress' && <Clock className="w-4 h-4 inline mr-1.5" />}
+                    {type === 'project' && 'Project'}
+                    {type === 'question' && 'Question'}
+                    {type === 'progress' && 'Progress'}
+                  </button>
+                ))}
+              </div>
 
-                {/* Course/Task sharing from session */}
-                {initialShareData && courseData && (
-                  <div className="space-y-3">
-                    {/* Scope selector */}
+              {/* Form fields */}
+              <div className="space-y-4">
+                {(postType === 'project' || postType === 'question') && (
+                  <>
+                    {/* Link type selector */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        What do you want to share?
+                        Link to your work (optional)
                       </label>
-                      <div className="flex gap-2">
+                      <div className="grid grid-cols-3 gap-2">
                         <button
-                          onClick={() => setShareScope('course')}
+                          onClick={() => {
+                            setLinkType('none');
+                            setSelectedProject(null);
+                          }}
                           className={clsx(
-                            'flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors border',
-                            shareScope === 'course'
-                              ? 'bg-brand-50 border-brand-300 text-brand-700'
-                              : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                            'py-2.5 px-3 rounded-lg text-sm font-medium transition-colors border text-center',
+                            linkType === 'none'
+                              ? 'bg-gray-100 border-gray-300 text-gray-700'
+                              : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
                           )}
                         >
-                          <Trophy className="w-4 h-4 inline mr-1.5" />
-                          Whole Course
+                          No link
                         </button>
                         <button
-                          onClick={() => setShareScope('task')}
+                          onClick={() => setLinkType('project')}
+                          disabled={projects.length === 0}
                           className={clsx(
-                            'flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors border',
-                            shareScope === 'task'
-                              ? 'bg-brand-50 border-brand-300 text-brand-700'
-                              : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                            'py-2.5 px-3 rounded-lg text-sm font-medium transition-colors border flex items-center justify-center gap-1.5',
+                            linkType === 'project'
+                              ? 'bg-purple-50 border-purple-300 text-purple-700'
+                              : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300',
+                            projects.length === 0 && 'opacity-50 cursor-not-allowed'
                           )}
                         >
-                          <Code className="w-4 h-4 inline mr-1.5" />
-                          Just This Task
+                          <Trophy className="w-4 h-4" />
+                          Project
+                        </button>
+                        <button
+                          onClick={() => setLinkType('session')}
+                          disabled={!activeSession}
+                          className={clsx(
+                            'py-2.5 px-3 rounded-lg text-sm font-medium transition-colors border flex items-center justify-center gap-1.5',
+                            linkType === 'session'
+                              ? 'bg-brand-50 border-brand-300 text-brand-700'
+                              : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300',
+                            !activeSession && 'opacity-50 cursor-not-allowed'
+                          )}
+                        >
+                          <Code className="w-4 h-4" />
+                          Course Task
                         </button>
                       </div>
-                      <p className="text-xs text-gray-500 mt-1.5">
-                        {shareScope === 'course'
-                          ? 'Others can view your course progress and curriculum'
-                          : 'Only share this specific task and your notes'}
-                      </p>
                     </div>
 
-                    {/* Course preview */}
-                    <CoursePreviewCard
-                      course={courseData}
-                      dayNumber={shareScope === 'task' ? initialShareData.dayNumber : undefined}
-                    />
-                  </div>
+                    {/* Project selector */}
+                    {linkType === 'project' && projects.length > 0 && (
+                      <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
+                        <label className="block text-sm font-medium text-purple-700 mb-2">
+                          Select a project
+                        </label>
+                        <div className="flex gap-2 flex-wrap">
+                          {projects.map((project) => (
+                            <button
+                              key={project.id}
+                              onClick={() => {
+                                setSelectedProject(selectedProject?.id === project.id ? null : project);
+                                if (project.title && !formData.title) {
+                                  setFormData({ ...formData, title: project.title });
+                                }
+                              }}
+                              className={clsx(
+                                'px-3 py-2 text-sm rounded-lg border transition-colors flex items-center gap-2',
+                                selectedProject?.id === project.id
+                                  ? 'border-purple-500 bg-white text-purple-700 shadow-sm'
+                                  : 'border-purple-200 bg-white/50 text-purple-600 hover:border-purple-300'
+                              )}
+                            >
+                              {project.isBossProject && <Trophy className="w-4 h-4" />}
+                              <span className="truncate max-w-[150px]">{project.title}</span>
+                              {selectedProject?.id === project.id && <Check className="w-4 h-4" />}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Session/Task selector */}
+                    {linkType === 'session' && courseData && (
+                      <div className="p-4 bg-brand-50 rounded-xl border border-brand-100 space-y-4">
+                        {/* Course info */}
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-brand-100 flex items-center justify-center">
+                            <Trophy className="w-5 h-5 text-brand-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-brand-900">{courseData.skillName}</p>
+                            <p className="text-xs text-brand-600">Day {courseData.currentDay} of {courseData.durationDays}</p>
+                          </div>
+                        </div>
+
+                        {/* Share scope */}
+                        <div>
+                          <label className="block text-xs font-medium text-brand-700 mb-2">
+                            What to share?
+                          </label>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setShareScope('task')}
+                              className={clsx(
+                                'flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors border',
+                                shareScope === 'task'
+                                  ? 'bg-white border-brand-400 text-brand-700 shadow-sm'
+                                  : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-white'
+                              )}
+                            >
+                              <Code className="w-4 h-4 inline mr-1.5" />
+                              Specific Task
+                            </button>
+                            <button
+                              onClick={() => setShareScope('course')}
+                              className={clsx(
+                                'flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors border',
+                                shareScope === 'course'
+                                  ? 'bg-white border-brand-400 text-brand-700 shadow-sm'
+                                  : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-white'
+                              )}
+                            >
+                              <Trophy className="w-4 h-4 inline mr-1.5" />
+                              Full Course
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Day selector (for task scope) */}
+                        {shareScope === 'task' && (
+                          <div>
+                            <label className="block text-xs font-medium text-brand-700 mb-2">
+                              Select day
+                            </label>
+                            <div className="flex gap-2 flex-wrap">
+                              {availableDays.map((day) => (
+                                <button
+                                  key={day}
+                                  onClick={() => setSelectedDay(day)}
+                                  className={clsx(
+                                    'w-10 h-10 rounded-lg text-sm font-medium transition-colors border',
+                                    selectedDay === day
+                                      ? 'bg-white border-brand-400 text-brand-700 shadow-sm'
+                                      : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-white'
+                                  )}
+                                >
+                                  {day}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
 
-                {/* Code snippet */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-gray-700">
-                      Code snippet (optional)
-                    </label>
-                    {!showCodeEditor && (
-                      <button
-                        onClick={() => setShowCodeEditor(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
-                      >
-                        <Code className="w-3.5 h-3.5 text-gray-500" />
-                        Add Code
-                      </button>
-                    )}
-                  </div>
-                  {showCodeEditor && (
-                    <div className="relative">
-                      <textarea
-                        value={codeSnippet}
-                        onChange={(e) => setCodeSnippet(e.target.value)}
-                        placeholder="Paste your code here..."
-                        className="w-full px-3 py-2 bg-gray-900 text-gray-100 font-mono text-sm border border-gray-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-y min-h-[120px]"
-                        rows={6}
-                      />
-                      <button
-                        onClick={() => {
-                          setCodeSnippet('');
-                          setShowCodeEditor(false);
-                        }}
-                        className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-200"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    What are you building/working on? *
-                  </label>
-                  <Input
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    placeholder="e.g., Todo app with React"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Current state *</label>
-                  <div className="flex gap-2 flex-wrap">
-                    {(['started', 'in-progress', 'paused', 'completed'] as const).map((state) => (
-                      <button
-                        key={state}
-                        onClick={() => setFormData({ ...formData, currentState: state })}
-                        className={clsx(
-                          'px-3 py-1.5 text-sm rounded-lg transition-colors',
-                          formData.currentState === state
-                            ? 'bg-brand-100 text-brand-700'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                {postType === 'project' && (
+                  <>
+                    {/* Code snippet */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Code snippet (optional)
+                        </label>
+                        {!showCodeEditor && (
+                          <button
+                            onClick={() => setShowCodeEditor(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
+                          >
+                            <Code className="w-3.5 h-3.5 text-gray-500" />
+                            Add Code
+                          </button>
                         )}
-                      >
-                        {state.replace('-', ' ')}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    What have you done so far? *
-                  </label>
-                  <textarea
-                    value={formData.whatDone}
-                    onChange={(e) => setFormData({ ...formData, whatDone: e.target.value })}
-                    placeholder="Describe your progress..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
-                    rows={3}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    What feedback do you want? (optional)
-                  </label>
-                  <textarea
-                    value={formData.feedbackWanted}
-                    onChange={(e) => setFormData({ ...formData, feedbackWanted: e.target.value })}
-                    placeholder="Be specific about what you'd like help with..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
-                    rows={2}
-                  />
-                </div>
-              </>
-            )}
-
-            {postType === 'question' && (
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    What are you trying to do? *
-                  </label>
-                  <textarea
-                    value={formData.whatTrying}
-                    onChange={(e) => setFormData({ ...formData, whatTrying: e.target.value })}
-                    placeholder="Describe your goal..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
-                    rows={2}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    What have you already tried? *
-                  </label>
-                  <textarea
-                    value={formData.whatTried}
-                    onChange={(e) => setFormData({ ...formData, whatTried: e.target.value })}
-                    placeholder="List what you've attempted..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
-                    rows={2}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Where are you stuck? *
-                  </label>
-                  <textarea
-                    value={formData.whereStuck}
-                    onChange={(e) => setFormData({ ...formData, whereStuck: e.target.value })}
-                    placeholder="Be specific about the blocker..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
-                    rows={2}
-                  />
-                </div>
-
-                {/* Code snippet for questions */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-gray-700">
-                      Share code? (optional)
-                    </label>
-                    {!showCodeEditor && (
-                      <button
-                        onClick={() => setShowCodeEditor(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
-                      >
-                        <Code className="w-3.5 h-3.5 text-gray-500" />
-                        Add Code
-                      </button>
-                    )}
-                  </div>
-                  {showCodeEditor && (
-                    <div className="relative">
-                      <textarea
-                        value={codeSnippet}
-                        onChange={(e) => setCodeSnippet(e.target.value)}
-                        placeholder="Paste your code here..."
-                        className="w-full px-3 py-2 bg-gray-900 text-gray-100 font-mono text-sm border border-gray-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-y min-h-[120px]"
-                        rows={6}
-                      />
-                      <button
-                        onClick={() => {
-                          setCodeSnippet('');
-                          setShowCodeEditor(false);
-                        }}
-                        className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-200"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
+                      </div>
+                      {showCodeEditor && (
+                        <div className="relative">
+                          <textarea
+                            value={codeSnippet}
+                            onChange={(e) => setCodeSnippet(e.target.value)}
+                            placeholder="Paste your code here..."
+                            className="w-full px-3 py-2 bg-gray-900 text-gray-100 font-mono text-sm border border-gray-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-y min-h-[100px]"
+                            rows={5}
+                          />
+                          <button
+                            onClick={() => {
+                              setCodeSnippet('');
+                              setShowCodeEditor(false);
+                            }}
+                            className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-200"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              </>
-            )}
 
-            {postType === 'progress' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  What did you work on today?
-                </label>
-                <textarea
-                  value={formData.progressNote}
-                  onChange={(e) => setFormData({ ...formData, progressNote: e.target.value })}
-                  placeholder="Today I..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
-                  rows={3}
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Progress logs have reactions only (no comments by default)
-                </p>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        What are you building/working on? *
+                      </label>
+                      <Input
+                        value={formData.title}
+                        onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                        placeholder="e.g., Todo app with React"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Current state *</label>
+                      <div className="flex gap-2 flex-wrap">
+                        {(['started', 'in-progress', 'paused', 'completed'] as const).map((state) => (
+                          <button
+                            key={state}
+                            onClick={() => setFormData({ ...formData, currentState: state })}
+                            className={clsx(
+                              'px-3 py-1.5 text-sm rounded-lg transition-colors capitalize',
+                              formData.currentState === state
+                                ? 'bg-brand-100 text-brand-700'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            )}
+                          >
+                            {state.replace('-', ' ')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        What have you done so far? *
+                      </label>
+                      <textarea
+                        value={formData.whatDone}
+                        onChange={(e) => setFormData({ ...formData, whatDone: e.target.value })}
+                        placeholder="Describe your progress..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
+                        rows={3}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        What feedback do you want? (optional)
+                      </label>
+                      <textarea
+                        value={formData.feedbackWanted}
+                        onChange={(e) => setFormData({ ...formData, feedbackWanted: e.target.value })}
+                        placeholder="Be specific about what you'd like help with..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
+                        rows={2}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {postType === 'question' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Your question *
+                      </label>
+                      <Input
+                        value={formData.question}
+                        onChange={(e) => setFormData({ ...formData, question: e.target.value })}
+                        placeholder="What do you need help with?"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        What are you trying to do? *
+                      </label>
+                      <textarea
+                        value={formData.whatTrying}
+                        onChange={(e) => setFormData({ ...formData, whatTrying: e.target.value })}
+                        placeholder="Describe your goal..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
+                        rows={2}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        What have you already tried? *
+                      </label>
+                      <textarea
+                        value={formData.whatTried}
+                        onChange={(e) => setFormData({ ...formData, whatTried: e.target.value })}
+                        placeholder="List what you've attempted..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
+                        rows={2}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Where are you stuck? *
+                      </label>
+                      <textarea
+                        value={formData.whereStuck}
+                        onChange={(e) => setFormData({ ...formData, whereStuck: e.target.value })}
+                        placeholder="Be specific about the blocker..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
+                        rows={2}
+                      />
+                    </div>
+
+                    {/* Code snippet for questions */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Share code? (optional)
+                        </label>
+                        {!showCodeEditor && (
+                          <button
+                            onClick={() => setShowCodeEditor(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
+                          >
+                            <Code className="w-3.5 h-3.5 text-gray-500" />
+                            Add Code
+                          </button>
+                        )}
+                      </div>
+                      {showCodeEditor && (
+                        <div className="relative">
+                          <textarea
+                            value={codeSnippet}
+                            onChange={(e) => setCodeSnippet(e.target.value)}
+                            placeholder="Paste your code here..."
+                            className="w-full px-3 py-2 bg-gray-900 text-gray-100 font-mono text-sm border border-gray-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-y min-h-[100px]"
+                            rows={5}
+                          />
+                          <button
+                            onClick={() => {
+                              setCodeSnippet('');
+                              setShowCodeEditor(false);
+                            }}
+                            className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-200"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {postType === 'progress' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      What did you work on today?
+                    </label>
+                    <textarea
+                      value={formData.progressNote}
+                      onChange={(e) => setFormData({ ...formData, progressNote: e.target.value })}
+                      placeholder="Today I..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
+                      rows={3}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Progress logs have reactions only (no comments by default)
+                    </p>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
 
-          <div className="flex gap-3 mt-6">
+          {/* Footer */}
+          <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
             <Button variant="secondary" onClick={onClose} className="flex-1">
               Cancel
             </Button>
+            {showPreview ? (
+              <Button onClick={() => setShowPreview(false)} variant="secondary" className="flex-1">
+                <ChevronRight className="w-4 h-4 rotate-180" />
+                Back to Edit
+              </Button>
+            ) : (
+              <Button
+                onClick={() => setShowPreview(true)}
+                variant="secondary"
+                className="flex-1"
+              >
+                <Eye className="w-4 h-4" />
+                Preview
+              </Button>
+            )}
             <Button onClick={handleSubmit} className="flex-1">
+              <Send className="w-4 h-4" />
               Post
             </Button>
           </div>

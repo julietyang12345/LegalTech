@@ -11,6 +11,7 @@ import { QuotaTier } from '../../database/entities/user.entity';
 import { CurriculumService } from './curriculum.service';
 import { CurriculumCacheService } from './services/curriculum-cache.service';
 import { SkillDetectorService } from './services/skill-detector.service';
+import { UserService } from '../user/user.service';
 import { GenerateCurriculumDto } from './dto/generate-curriculum.dto';
 import {
   GenerateCurriculumWithCacheDto,
@@ -35,6 +36,7 @@ export class CurriculumController {
     private cacheService: CurriculumCacheService,
     private videoMatcher: VideoMatchingService,
     private skillDetector: SkillDetectorService,
+    private userService: UserService,
   ) {}
 
   /**
@@ -84,6 +86,7 @@ export class CurriculumController {
   /**
    * POST /api/v1/curriculum/ai-tutor
    * Ask the AI tutor for help with a task
+   * Daily limits: FREE=5, PRO=10, PREMIUM/ADMIN=unlimited
    */
   @Post('ai-tutor')
   async askAiTutor(
@@ -99,15 +102,37 @@ export class CurriculumController {
       };
       conversationHistory?: Array<{ role: string; content: string }>;
     },
+    @CurrentUser() user: User,
   ) {
+    // Check daily AI tutor limit
+    const dailyLimit = await this.userService.checkDailyAiTutorLimit(user.id);
+    if (!dailyLimit.allowed) {
+      throw new ForbiddenException(
+        `Daily AI tutor limit reached (${dailyLimit.limit}/day). ` +
+          (user.getEffectiveTier() === QuotaTier.FREE
+            ? 'Upgrade to Pro for more messages.'
+            : user.getEffectiveTier() === QuotaTier.PRO
+              ? 'Upgrade to Premium for unlimited messages.'
+              : 'Try again tomorrow.'),
+      );
+    }
+
     try {
       const result = await this.curriculumService.askAiTutor(body);
+
+      // Increment daily usage after successful response
+      await this.userService.incrementDailyAiTutorUsage(user.id);
 
       return {
         reply: result.reply,
         metadata: {
           tokensUsed: result.tokensUsed,
           cost: result.cost,
+        },
+        dailyUsage: {
+          used: dailyLimit.used + 1,
+          limit: dailyLimit.limit,
+          remaining: Math.max(0, dailyLimit.remaining - 1),
         },
       };
     } catch (error) {

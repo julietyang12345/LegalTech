@@ -125,6 +125,15 @@ export class User {
       lastGeneratedAt: string;
       countToday: number;
     };
+    // Daily usage tracking
+    dailyCurriculumUsage?: {
+      lastDate: string;
+      count: number;
+    };
+    dailyAiTutorUsage?: {
+      lastDate: string;
+      count: number;
+    };
   };
 
   // Relations
@@ -214,7 +223,7 @@ export class User {
 
   /**
    * Get daily limits for regeneration and AI features
-   * FREE users have limited regenerations, PRO+ users have generous limits
+   * Curriculum generation and AI tutor are daily-limited by tier
    */
   getDailyLimits() {
     const effectiveTier = this.getEffectiveTier();
@@ -222,25 +231,35 @@ export class User {
     switch (effectiveTier) {
       case QuotaTier.FREE:
         return {
+          curriculumGenerations: 2, // 2 new curricula per day
           dayContentRegens: 2, // 2 day content regenerations per day
           curriculumRegens: 2, // 2 curriculum regenerations per day
-          aiTutorConversations: 5, // 5 AI tutor conversations per day
+          aiTutorConversations: 5, // 5 AI tutor messages per day
         };
       case QuotaTier.PRO:
         return {
+          curriculumGenerations: 5, // 5 new curricula per day
           dayContentRegens: 10, // More generous for PRO
           curriculumRegens: 10,
-          aiTutorConversations: Infinity, // Unlimited
+          aiTutorConversations: 10, // 10 AI tutor messages per day
         };
       case QuotaTier.PREMIUM:
+        return {
+          curriculumGenerations: 10, // 10 new curricula per day
+          dayContentRegens: Infinity,
+          curriculumRegens: Infinity,
+          aiTutorConversations: Infinity, // Unlimited
+        };
       case QuotaTier.UNLIMITED:
         return {
+          curriculumGenerations: Infinity,
           dayContentRegens: Infinity,
           curriculumRegens: Infinity,
           aiTutorConversations: Infinity,
         };
       default:
         return {
+          curriculumGenerations: 2,
           dayContentRegens: 2,
           curriculumRegens: 2,
           aiTutorConversations: 5,

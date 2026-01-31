@@ -555,92 +555,135 @@ export class CurriculumCacheService implements OnModuleInit {
   }
 
   /**
-   * Normalize skill name for consistent caching.
-   * Handles: case, word order, pluralization, symbols, filler words.
+   * Normalize skill name for consistent caching using AI (Haiku).
+   * Handles: different languages, typos, phrasings, abbreviations.
    *
    * Examples:
-   * - "Algorithms and Data Structures" → "algorithm data structure"
-   * - "data structures & algorithms" → "algorithm data structure"
-   * - "Data Structure and Algorithm" → "algorithm data structure"
+   * - "how to use Python to build a bot" → "python"
+   * - "파이썬" (Korean) → "python"
+   * - "Javascrip" (typo) → "javascript"
+   * - "JS" → "javascript"
+   * - "Data Structures & Algorithms" → "data structures and algorithms"
+   * - "learn react hooks" → "react"
    */
   private async normalizeSkillName(skillName: string): Promise<string> {
-    // Step 1: Basic cleanup
-    const cleaned = skillName
+    // Quick cleanup for cache key lookup
+    const cacheKey = skillName.toLowerCase().trim();
+
+    // Check memory cache first (fast path)
+    if (this.normalizedSkillCache.has(cacheKey)) {
+      return this.normalizedSkillCache.get(cacheKey)!;
+    }
+
+    // Check database aliases
+    if (this.aliasMap.has(cacheKey)) {
+      const aliased = this.aliasMap.get(cacheKey)!;
+      this.normalizedSkillCache.set(cacheKey, aliased);
+      return aliased;
+    }
+
+    // Use Haiku AI to semantically normalize the skill name
+    try {
+      const normalized = await this.normalizeWithAI(skillName);
+
+      // Cache the result
+      this.normalizedSkillCache.set(cacheKey, normalized);
+
+      // LRU eviction
+      if (this.normalizedSkillCache.size > 1000) {
+        const firstKey = this.normalizedSkillCache.keys().next().value;
+        if (firstKey) this.normalizedSkillCache.delete(firstKey);
+      }
+
+      this.logger.log(`🤖 AI Normalized: "${skillName}" → "${normalized}"`);
+      return normalized;
+    } catch (error) {
+      // Fallback to basic normalization if AI fails
+      this.logger.warn(
+        `AI normalization failed for "${skillName}", using fallback: ${error.message}`,
+      );
+      return this.basicNormalize(skillName);
+    }
+  }
+
+  /**
+   * Use Haiku AI to extract the canonical skill name.
+   * Fast and cheap - handles languages, typos, and semantic understanding.
+   */
+  private async normalizeWithAI(skillName: string): Promise<string> {
+    const prompt = `Extract the core programming/technology skill from this input. Handle any language, typos, or phrasings.
+
+Input: "${skillName}"
+
+Rules:
+1. Return ONLY the canonical English skill name in lowercase
+2. Remove filler words (learn, tutorial, how to, basics, etc.)
+3. Fix typos (Pythn → python, Javascrip → javascript)
+4. Translate non-English to English (파이썬 → python, питон → python)
+5. Expand abbreviations only if ambiguous context (JS in web context → javascript)
+6. Keep compound skills together (data structures and algorithms, machine learning)
+7. For specific tools/frameworks, return just the tool name (React hooks → react)
+8. Maximum 4 words
+
+Examples:
+- "how to use Python to build a bot" → "python"
+- "파이썬 기초" → "python"
+- "Javascrip tutorial" → "javascript"
+- "Data Structures & Algorithms" → "data structures and algorithms"
+- "learn react hooks for beginners" → "react"
+- "ML with TensorFlow" → "tensorflow machine learning"
+- "build REST APIs with Node" → "nodejs rest api"
+
+Return ONLY the normalized skill name, nothing else.`;
+
+    const response = await this.aiService.routeRequest(
+      AITask.LIGHTWEIGHT_EXTRACTION, // Fast Haiku for skill name extraction
+      prompt,
+      'You are a skill name normalizer. Return only the canonical skill name.',
+    );
+
+    // Clean up the response
+    const normalized = response.content
       .toLowerCase()
       .trim()
-      .replace(/&/g, ' and ') // Replace & with 'and' first
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    // Validate - should be 1-4 words
+    const words = normalized.split(' ');
+    if (words.length === 0 || words.length > 4 || normalized.length > 50) {
+      throw new Error(`Invalid AI response: "${normalized}"`);
+    }
+
+    return normalized;
+  }
+
+  /**
+   * Basic fallback normalization (no AI)
+   */
+  private basicNormalize(skillName: string): string {
+    return skillName
+      .toLowerCase()
+      .trim()
+      .replace(/&/g, ' and ')
       .replace(
         /\b(tutorial|course|learn|learning|guide|introduction|intro|basics|basic|beginner|beginners|advanced|intermediate|how to|for|with|using|the|a|an)\b/gi,
         '',
       )
-      .replace(/[^a-z0-9\s]/g, ' ') // Remove special chars
+      .replace(/[^a-z0-9\s]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
 
-    // Step 2: Simple rule-based singularization
-    const singularize = (word: string): string => {
-      // Special cases
-      if (word === 'apis') return 'api';
-      if (word === 'uis') return 'ui';
-
-      // Words ending in "ies" → "y" (queries → query, libraries → library)
-      if (word.endsWith('ies') && word.length > 4) {
-        return word.slice(0, -3) + 'y';
-      }
-
-      // Words ending in "ses", "xes", "zes", "ches", "shes" → remove "es"
-      if (/(?:s|x|z|ch|sh)es$/.test(word)) {
-        return word.slice(0, -2);
-      }
-
-      // Words ending in "s" (but not "ss", "us", "is") → remove "s"
-      if (
-        word.endsWith('s') &&
-        !word.endsWith('ss') &&
-        !word.endsWith('us') &&
-        !word.endsWith('is') &&
-        word.length > 2
-      ) {
-        return word.slice(0, -1);
-      }
-
-      return word;
-    };
-
-    // Step 3: Process words - singularize, remove conjunctions, sort, dedupe
-    const words = cleaned
-      .split(' ')
-      .filter((w) => w.length > 0)
-      .map(singularize)
-      .filter((w) => w !== 'and' && w !== 'or') // Remove conjunctions
-      .sort() // Sort alphabetically for consistent order
-      .filter((w, i, arr) => arr.indexOf(w) === i); // Remove duplicates
-
-    const normalized = words.join(' ');
-
-    // Check memory cache
-    if (this.normalizedSkillCache.has(normalized)) {
-      return this.normalizedSkillCache.get(normalized);
-    }
-
-    // Check database aliases for additional semantic mappings
-    if (this.aliasMap.has(normalized)) {
-      const aliased = this.aliasMap.get(normalized);
-      this.normalizedSkillCache.set(normalized, aliased);
-      return aliased;
-    }
-
-    // Cache and return
-    this.normalizedSkillCache.set(normalized, normalized);
-
-    // LRU eviction
-    if (this.normalizedSkillCache.size > 1000) {
-      const firstKey = this.normalizedSkillCache.keys().next().value;
-      if (firstKey) this.normalizedSkillCache.delete(firstKey);
-    }
-
-    this.logger.debug(`Normalized: "${skillName}" → "${normalized}"`);
-    return normalized;
+  /**
+   * Public method to normalize skill names for day content cache keys.
+   * Uses the same normalization as curriculum caching to ensure consistency.
+   * This ensures "how to use Python to build a bot" and "Python bot tutorial"
+   * map to the same normalized key when they should share cached content.
+   */
+  async normalizeSkillForDayCache(skillName: string): Promise<string> {
+    return this.normalizeSkillName(skillName);
   }
 
   private generateHash(

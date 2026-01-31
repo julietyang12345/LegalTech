@@ -512,6 +512,116 @@ export class UserService {
   }
 
   /**
+   * Check daily curriculum generation limit
+   * Returns { allowed: boolean, remaining: number, limit: number }
+   */
+  async checkDailyCurriculumLimit(userId: string): Promise<{
+    allowed: boolean;
+    remaining: number;
+    limit: number;
+    used: number;
+  }> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const dailyLimits = user.getDailyLimits();
+    const limit = dailyLimits.curriculumGenerations;
+
+    // Check if it's a new day
+    const today = new Date().toISOString().split('T')[0];
+    const dailyUsage = user.preferences?.dailyCurriculumUsage;
+    const lastDate = dailyUsage?.lastDate?.split('T')[0];
+    const used = lastDate === today ? (dailyUsage?.count || 0) : 0;
+
+    const remaining = Math.max(0, limit - used);
+    const allowed = limit === Infinity || used < limit;
+
+    return { allowed, remaining, limit, used };
+  }
+
+  /**
+   * Increment daily curriculum generation count
+   */
+  async incrementDailyCurriculumUsage(userId: string): Promise<void> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const dailyUsage = user.preferences?.dailyCurriculumUsage;
+    const lastDate = dailyUsage?.lastDate?.split('T')[0];
+    const currentCount = lastDate === today ? (dailyUsage?.count || 0) : 0;
+
+    user.preferences = {
+      ...user.preferences,
+      dailyCurriculumUsage: {
+        lastDate: new Date().toISOString(),
+        count: currentCount + 1,
+      },
+    };
+
+    await this.usersRepository.save(user);
+  }
+
+  /**
+   * Check daily AI tutor message limit
+   * Returns { allowed: boolean, remaining: number, limit: number }
+   */
+  async checkDailyAiTutorLimit(userId: string): Promise<{
+    allowed: boolean;
+    remaining: number;
+    limit: number;
+    used: number;
+  }> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const dailyLimits = user.getDailyLimits();
+    const limit = dailyLimits.aiTutorConversations;
+
+    // Check if it's a new day
+    const today = new Date().toISOString().split('T')[0];
+    const dailyUsage = user.preferences?.dailyAiTutorUsage;
+    const lastDate = dailyUsage?.lastDate?.split('T')[0];
+    const used = lastDate === today ? (dailyUsage?.count || 0) : 0;
+
+    const remaining = Math.max(0, limit - used);
+    const allowed = limit === Infinity || used < limit;
+
+    return { allowed, remaining, limit, used };
+  }
+
+  /**
+   * Increment daily AI tutor message count
+   */
+  async incrementDailyAiTutorUsage(userId: string): Promise<void> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const dailyUsage = user.preferences?.dailyAiTutorUsage;
+    const lastDate = dailyUsage?.lastDate?.split('T')[0];
+    const currentCount = lastDate === today ? (dailyUsage?.count || 0) : 0;
+
+    user.preferences = {
+      ...user.preferences,
+      dailyAiTutorUsage: {
+        lastDate: new Date().toISOString(),
+        count: currentCount + 1,
+      },
+    };
+
+    await this.usersRepository.save(user);
+  }
+
+  /**
    * Get planned skills for a user
    */
   async getPlannedSkills(
