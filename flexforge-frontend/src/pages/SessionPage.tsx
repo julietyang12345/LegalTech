@@ -441,7 +441,6 @@ export function SessionPage() {
     startDay,
     setCurrentStep,
     completeStep,
-    isDeferredLoading,
     isRegenerating,
     hasStepEngagement,
     loadDayCoreContent,
@@ -479,13 +478,11 @@ export function SessionPage() {
 
   // Get available steps (filter out skipped ones)
   const availableSteps = STEP_ORDER.filter(step => {
-    // When video is skipped, show "Learn & Understand" step instead (handled in VideoStep)
-    // Don't filter out video step - it will render AI content from foundation cards
+    // Skip video step if no actual video - foundation cards will be shown in their own step
+    // This avoids duplicate "Learn & Understand" content
     if (step === 'video') {
-      // Only skip if no content at all (no video AND no foundation cards)
-      const hasFoundationCards = (currentDay?.foundationCards && currentDay.foundationCards.length > 0) ||
-                                  (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
-      if (!currentDay?.video && !hasFoundationCards) return false;
+      const hasActualVideo = !!(currentDay?.video?.videoId || currentDay?.video?.backupVideo?.videoId);
+      if (!hasActualVideo) return false;
     }
     // Always show bossMilestone step (renders as either boss milestone OR intensive practice)
     // The BossMilestoneStep component handles both project-based and practice-based curricula
