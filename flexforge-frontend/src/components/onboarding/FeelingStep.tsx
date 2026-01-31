@@ -327,7 +327,10 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
                     <>
                       <span className="flex items-center gap-1">
                         <Eye className="w-3 h-3 inline" />
-                        Default: Review AI-generated code, identify bugs & issues
+                        Review AI-generated code, identify bugs & issues
+                      </span>
+                      <span className="block mt-1 text-gray-400">
+                        Enabling this requires more time and effort every day
                       </span>
                     </>
                   )}

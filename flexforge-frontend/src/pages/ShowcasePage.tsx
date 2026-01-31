@@ -1,21 +1,20 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import {
-  Trophy,
-  ExternalLink,
-  Github,
-  Eye,
   Lock,
   Sparkles,
   Zap,
-  ChevronRight,
+  Users,
+  Target,
+  Brain,
+  Rocket,
+  ArrowRight,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import { useAuthStore } from '@/stores/authStore';
-import { projectService } from '@/services/projectService';
 import { sessionService } from '@/services/sessionService';
 import { Button, Card } from '@/components/common';
-import type { Project, Session } from '@/types';
+import type { Session } from '@/types';
 
 // Skill progress derived from sessions
 interface SkillProgress {
@@ -23,7 +22,6 @@ interface SkillProgress {
   status: 'complete' | 'progress' | 'locked';
   daysCompleted: number;
   totalDays: number;
-  projects: number;
   sessionId?: string;
 }
 
@@ -31,14 +29,12 @@ interface SkillProgress {
 function SkillNode({
   name,
   status,
-  projects,
   daysCompleted,
   totalDays,
   onClick,
 }: {
   name: string;
   status: 'complete' | 'progress' | 'locked';
-  projects: number;
   daysCompleted?: number;
   totalDays?: number;
   onClick: () => void;
@@ -60,7 +56,7 @@ function SkillNode({
       onClick={onClick}
       disabled={status === 'locked'}
       className={clsx(
-        'w-24 h-24 rounded-xl flex flex-col items-center justify-center relative overflow-hidden',
+        'w-full aspect-square rounded-xl flex flex-col items-center justify-center relative overflow-hidden',
         'border-2 transition-all duration-200',
         statusStyles[status],
         status !== 'locked' && 'cursor-pointer hover:shadow-lg'
@@ -84,8 +80,6 @@ function SkillNode({
       <span className="text-xs font-medium text-center px-1 leading-tight">{name}</span>
       {status === 'progress' && totalDays ? (
         <span className="text-[10px] opacity-75">Day {daysCompleted}/{totalDays}</span>
-      ) : projects > 0 ? (
-        <span className="text-[10px] opacity-75">{projects} projects</span>
       ) : status === 'complete' && totalDays ? (
         <span className="text-[10px] opacity-75">{totalDays} days</span>
       ) : null}
@@ -104,8 +98,8 @@ function WhatYouCanBuild({ skills }: { skills: string[] }) {
     { skill: 'AI Integration', capability: 'Add AI to your apps' },
   ];
 
-  const unlockedCapabilities = capabilities.filter(c => 
-    skills.some(s => c.skill.toLowerCase().includes(s.toLowerCase()) || 
+  const unlockedCapabilities = capabilities.filter(c =>
+    skills.some(s => c.skill.toLowerCase().includes(s.toLowerCase()) ||
                     s.toLowerCase().includes(c.skill.toLowerCase()))
   );
 
@@ -116,7 +110,7 @@ function WhatYouCanBuild({ skills }: { skills: string[] }) {
           <Zap className="w-5 h-5 text-focus-600" />
           <h3 className="font-semibold text-gray-900">What You Can Build Now</h3>
         </div>
-        
+
         {unlockedCapabilities.length === 0 ? (
           <p className="text-gray-600 text-sm">
             Complete your first session to unlock capabilities!
@@ -142,76 +136,44 @@ function WhatYouCanBuild({ skills }: { skills: string[] }) {
   );
 }
 
-// Project card
-function ProjectCard({ project }: { project: Project }) {
+// Vision card component
+function VisionCard({
+  icon: Icon,
+  title,
+  description,
+  status,
+}: {
+  icon: typeof Target;
+  title: string;
+  description: string;
+  status: 'live' | 'building' | 'planned';
+}) {
+  const statusStyles = {
+    live: 'bg-green-100 text-green-700',
+    building: 'bg-yellow-100 text-yellow-700',
+    planned: 'bg-gray-100 text-gray-500',
+  };
+
+  const statusLabels = {
+    live: 'Live',
+    building: 'Building',
+    planned: 'Planned',
+  };
+
   return (
-    <Card variant="hover" className="overflow-hidden">
-      {/* Screenshot */}
-      {project.screenshotUrl ? (
-        <img
-          src={project.screenshotUrl}
-          alt={project.title}
-          className="w-full h-40 object-cover"
-        />
-      ) : (
-        <div className="w-full h-40 bg-gradient-to-br from-brand-100 to-brand-200 
-                       flex items-center justify-center">
-          <span className="text-4xl">🚀</span>
+    <Card variant="hover" className="p-5">
+      <div className="flex items-start gap-4">
+        <div className="w-10 h-10 rounded-lg bg-brand-100 flex items-center justify-center flex-shrink-0">
+          <Icon className="w-5 h-5 text-brand-600" />
         </div>
-      )}
-
-      <div className="p-4">
-        <div className="flex items-start justify-between mb-2">
-          <h3 className="font-semibold text-gray-900">{project.title}</h3>
-          {project.isBossProject && (
-            <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded-full">
-              Boss
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="font-semibold text-gray-900">{title}</h3>
+            <span className={clsx('px-2 py-0.5 text-xs font-medium rounded-full', statusStyles[status])}>
+              {statusLabels[status]}
             </span>
-          )}
-        </div>
-
-        {project.description && (
-          <p className="text-sm text-gray-600 mb-3 line-clamp-2">
-            {project.description}
-          </p>
-        )}
-
-        {/* Skills tags */}
-        <div className="flex flex-wrap gap-1 mb-3">
-          {project.skillsTags?.slice(0, 3).map((tag, i) => (
-            <span
-              key={i}
-              className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-
-        {/* Links */}
-        <div className="flex gap-2">
-          {project.demoUrl && (
-            <a
-              href={project.demoUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-sm text-brand-600 hover:text-brand-700"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Demo
-            </a>
-          )}
-          {project.githubUrl && (
-            <a
-              href={project.githubUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-700"
-            >
-              <Github className="w-4 h-4" />
-              Code
-            </a>
-          )}
+          </div>
+          <p className="text-sm text-gray-600">{description}</p>
         </div>
       </div>
     </Card>
@@ -219,12 +181,10 @@ function ProjectCard({ project }: { project: Project }) {
 }
 
 export function ShowcasePage() {
-  const { user: _user } = useAuthStore();
-  const [projects, setProjects] = useState<Project[]>([]);
+  const navigate = useNavigate();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [skills, setSkills] = useState<SkillProgress[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeFilter, setActiveFilter] = useState<'all' | 'boss'>('all');
 
   useEffect(() => {
     loadData();
@@ -232,13 +192,7 @@ export function ShowcasePage() {
 
   const loadData = async () => {
     try {
-      // Load projects and sessions in parallel
-      const [projectsResponse, sessionsResponse] = await Promise.all([
-        projectService.getAll(),
-        sessionService.getAll(),
-      ]);
-
-      setProjects(projectsResponse.projects);
+      const sessionsResponse = await sessionService.getAll();
       setSessions(sessionsResponse.sessions);
 
       // Convert sessions to skill progress
@@ -246,17 +200,11 @@ export function ShowcasePage() {
         const isComplete = session.status === 'COMPLETED';
         const isInProgress = session.status === 'ACTIVE';
 
-        // Count projects associated with this session's skill
-        const sessionProjects = projectsResponse.projects.filter(
-          p => p.sessionId === session.id
-        ).length;
-
         return {
           name: session.skillName || 'Unknown Skill',
           status: isComplete ? 'complete' : isInProgress ? 'progress' : 'locked',
-          daysCompleted: session.currentDay - 1, // currentDay is next day to work on
+          daysCompleted: session.currentDay - 1,
           totalDays: session.durationDays,
-          projects: sessionProjects,
           sessionId: session.id,
         };
       });
@@ -273,35 +221,35 @@ export function ShowcasePage() {
     .filter(s => s.status !== 'locked')
     .map(s => s.name);
 
-  const filteredProjects = activeFilter === 'boss'
-    ? projects.filter(p => p.isBossProject)
-    : projects;
-
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="max-w-5xl mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Your Showcase</h1>
         <p className="text-gray-600">
-          Your skills and projects in one place. Share your public profile to show what you've built.
+          Track your learning journey and see what we're building together.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Left column - Skill Tree */}
-        <div className="lg:col-span-1 space-y-6">
+        <div className="space-y-6">
           {/* RPG Skill Tree */}
           <Card>
             <div className="p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Sparkles className="w-5 h-5 text-brand-500" />
-                <h2 className="font-semibold text-gray-900">Skill Tree</h2>
+                <h2 className="font-semibold text-gray-900">Your Skill Tree</h2>
               </div>
 
               {/* Simple grid layout for skills */}
-              <div className="grid grid-cols-2 gap-3">
-                {skills.length === 0 && !isLoading ? (
-                  <div className="col-span-2 text-center py-8 text-gray-500 text-sm">
+              <div className="grid grid-cols-3 gap-3">
+                {isLoading ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="aspect-square rounded-xl bg-gray-100 animate-pulse" />
+                  ))
+                ) : skills.length === 0 ? (
+                  <div className="col-span-3 text-center py-8 text-gray-500 text-sm">
                     Start a learning session to build your skill tree!
                   </div>
                 ) : (
@@ -310,12 +258,11 @@ export function ShowcasePage() {
                       key={skill.sessionId || i}
                       name={skill.name}
                       status={skill.status}
-                      projects={skill.projects}
                       daysCompleted={skill.daysCompleted}
                       totalDays={skill.totalDays}
                       onClick={() => {
                         if (skill.sessionId && skill.status === 'progress') {
-                          window.location.href = '/today';
+                          navigate('/session');
                         }
                       }}
                     />
@@ -344,86 +291,67 @@ export function ShowcasePage() {
 
           {/* What You Can Build */}
           <WhatYouCanBuild skills={unlockedSkills} />
-
-          {/* Public Profile Preview */}
-          <Card>
-            <div className="p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Eye className="w-5 h-5 text-gray-500" />
-                <h3 className="font-semibold text-gray-900">Public Profile</h3>
-              </div>
-              <p className="text-sm text-gray-600 mb-4">
-                Share your learning journey and projects with the world.
-              </p>
-              <Button variant="secondary" size="sm" className="w-full">
-                Preview Profile
-                <ChevronRight className="w-4 h-4" />
-              </Button>
-            </div>
-          </Card>
         </div>
 
-        {/* Right column - Projects */}
-        <div className="lg:col-span-2">
-          {/* Filter tabs */}
-          <div className="flex gap-2 mb-6">
-            <button
-              onClick={() => setActiveFilter('all')}
-              className={clsx(
-                'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-                activeFilter === 'all'
-                  ? 'bg-brand-100 text-brand-700'
-                  : 'text-gray-600 hover:bg-gray-100'
-              )}
-            >
-              All Projects ({projects.length})
-            </button>
-            <button
-              onClick={() => setActiveFilter('boss')}
-              className={clsx(
-                'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-                activeFilter === 'boss'
-                  ? 'bg-purple-100 text-purple-700'
-                  : 'text-gray-600 hover:bg-gray-100'
-              )}
-            >
-              Boss Projects ({projects.filter(p => p.isBossProject).length})
-            </button>
+        {/* Right column - What We're Building */}
+        <div className="space-y-6">
+          <Card className="bg-gradient-to-br from-brand-50 to-purple-50 border border-brand-200">
+            <div className="p-6">
+              <div className="flex items-center gap-2 mb-2">
+                <Rocket className="w-5 h-5 text-brand-600" />
+                <h2 className="font-semibold text-gray-900">What We're Building</h2>
+              </div>
+              <p className="text-gray-600 text-sm mb-4">
+                FlexForge is an AI-powered learning platform that creates personalized
+                curricula to help you master any skill through structured daily sessions,
+                curated videos, and hands-on projects.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <span className="px-2 py-1 bg-white/50 rounded text-xs text-gray-600">AI Curriculum</span>
+                <span className="px-2 py-1 bg-white/50 rounded text-xs text-gray-600">Video Learning</span>
+                <span className="px-2 py-1 bg-white/50 rounded text-xs text-gray-600">Boss Projects</span>
+                <span className="px-2 py-1 bg-white/50 rounded text-xs text-gray-600">Skill Tree</span>
+              </div>
+            </div>
+          </Card>
+
+          <div className="space-y-3">
+            <h3 className="font-semibold text-gray-900 px-1">Our Roadmap</h3>
+
+            <VisionCard
+              icon={Target}
+              title="Personalized Learning Paths"
+              description="AI-generated curricula tailored to your goals, skill level, and available time."
+              status="live"
+            />
+
+            <VisionCard
+              icon={Brain}
+              title="AI Tutor"
+              description="Get help when you're stuck with context-aware explanations and hints."
+              status="live"
+            />
+
+            <VisionCard
+              icon={Users}
+              title="Learning Community"
+              description="Join topic-based groups, share your projects, ask questions, and learn together."
+              status="building"
+            />
           </div>
 
-          {/* Projects grid */}
-          {isLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="animate-pulse">
-                  <div className="h-40 bg-gray-200 rounded-t-xl" />
-                  <div className="p-4 bg-white rounded-b-xl shadow-card">
-                    <div className="h-5 bg-gray-200 rounded w-3/4 mb-2" />
-                    <div className="h-4 bg-gray-200 rounded w-full" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : filteredProjects.length === 0 ? (
-            <Card className="p-8 text-center">
-              <Trophy className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                No projects yet
-              </h3>
-              <p className="text-gray-600 mb-4">
-                Complete your first learning session to start building your portfolio!
-              </p>
-              <Button onClick={() => window.location.href = '/today'}>
-                Start Learning
-              </Button>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {filteredProjects.map((project) => (
-                <ProjectCard key={project.id} project={project} />
-              ))}
-            </div>
-          )}
+          {/* CTA to Community */}
+          <Card className="p-6 text-center">
+            <Users className="w-10 h-10 mx-auto text-brand-500 mb-3" />
+            <h3 className="font-semibold text-gray-900 mb-2">Join the Community</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Share your projects, ask questions, and connect with other learners.
+            </p>
+            <Button onClick={() => navigate('/community')} className="inline-flex items-center gap-2">
+              Explore Community
+              <ArrowRight className="w-4 h-4" />
+            </Button>
+          </Card>
         </div>
       </div>
     </div>

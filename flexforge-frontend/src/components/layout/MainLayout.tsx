@@ -5,6 +5,7 @@ import {
   CalendarDays,
   Trophy,
   BookOpen,
+  Users,
   Settings,
   User,
   LogOut,
@@ -17,6 +18,7 @@ const NAV_ITEMS = [
   { path: '/plan', label: 'Plan', icon: CalendarDays },
   { path: '/showcase', label: 'Showcase', icon: Trophy },
   { path: '/vault', label: 'Vault', icon: BookOpen },
+  { path: '/community', label: 'Community', icon: Users },
 ];
 
 function NavItem({ path, label, icon: Icon }: { path: string; label: string; icon: typeof Home }) {

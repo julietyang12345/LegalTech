@@ -20,6 +20,7 @@ import {
   PlanPage,
   ShowcasePage,
   VaultPage,
+  CommunityPage,
 } from '@/pages';
 
 // React Query client
@@ -74,6 +75,7 @@ function App() {
             <Route path="/plan" element={<PlanPage />} />
             <Route path="/showcase" element={<ShowcasePage />} />
             <Route path="/vault" element={<VaultPage />} />
+            <Route path="/community" element={<CommunityPage />} />
           </Route>
 
           {/* Focus mode - full screen session */}

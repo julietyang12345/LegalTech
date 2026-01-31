@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronDown,
@@ -48,20 +48,15 @@ export function OpenTaskStep({ day, session, onComplete }: OpenTaskStepProps) {
     );
   }
 
+  // Auto-skip if no open task - hide this section entirely
+  useEffect(() => {
+    if (!openTask && !isDeferredLoading) {
+      onComplete();
+    }
+  }, [openTask, isDeferredLoading, onComplete]);
+
   if (!openTask) {
-    return (
-      <div className="max-w-2xl mx-auto px-4 py-8 text-center">
-        <div className="bg-gray-50 rounded-2xl p-8">
-          <p className="text-gray-500">No real-world challenge for today.</p>
-          <button
-            onClick={onComplete}
-            className="mt-4 text-brand-500 hover:text-brand-600 font-medium"
-          >
-            Continue →
-          </button>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   const difficulty = DIFFICULTY_CONFIG[openTask.difficulty] || DIFFICULTY_CONFIG.medium;

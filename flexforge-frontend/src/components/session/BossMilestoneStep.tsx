@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, ArrowRight, CheckCircle2, Lightbulb, ChevronDown, ChevronUp, BookOpen, ChevronRight, ChevronLeft, RotateCcw, ExternalLink, Monitor, Copy, Check } from 'lucide-react';
+import { Trophy, ArrowRight, CheckCircle2, Lightbulb, ChevronDown, ChevronUp, BookOpen, ChevronRight, ChevronLeft, RotateCcw, ExternalLink, Monitor, Copy, Check, Share2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Card, Button, ProgressBar, ExerciseLoadingScreen } from '@/components/common';
 import { StepLayout } from './StepLayout';
+import { useCommunityShareStore } from '@/stores/communityShareStore';
 import {
   QuizSectionExercise,
   MatchingSectionExercise,
@@ -802,8 +804,10 @@ interface ProjectMilestoneStepProps {
 }
 
 function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: ProjectMilestoneStepProps) {
+  const navigate = useNavigate();
   const { saveTaskProgress, getTaskProgress } = useSessionStore();
   const { addSystemMessage } = useCompanionStore();
+  const { setShareData } = useCommunityShareStore();
 
   // Load saved progress for boss milestone
   const savedProgress = getTaskProgress(day.day, 'bossMilestone');
@@ -904,6 +908,32 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
         : `Milestone saved! Progress: ${newProgress}%. ${daysUntilBoss > 0 ? `${daysUntilBoss} day${daysUntilBoss !== 1 ? 's' : ''} until boss day!` : 'Boss day is today!'}`,
       'encouraging'
     );
+  };
+
+  const handleShareToCommunity = () => {
+    const totalDays = session.durationDays || session.curriculum.days.length;
+    const completedDays = session.currentDay - 1;
+    const progress = Math.round((completedDays / totalDays) * 100);
+
+    setShareData({
+      // Default to sharing the whole course
+      scope: 'course',
+      // Session/Course info
+      sessionId: session.id,
+      skillName: session.skillName,
+      skillLevel: session.skillLevel || 'beginner',
+      durationDays: totalDays,
+      currentDay: session.currentDay,
+      progress,
+      // Task-specific
+      dayNumber: day.day,
+      taskTitle: milestone?.title || activeBoss?.title || `Day ${day.day} Task`,
+      taskDescription: milestone?.microTask || milestone?.description,
+      code: starterCode && starterCode.trim() !== '// Start coding here...\n\n' ? starterCode : undefined,
+      notes: notes || undefined,
+      currentState: isSubmitted || currentDayAlreadySaved ? 'completed' : 'in-progress',
+    });
+    navigate('/community?share=true');
   };
 
   return (
@@ -1177,6 +1207,7 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
+          className="space-y-3"
         >
           <Card className="bg-green-50 border border-green-200">
             <div className="p-4 text-center">
@@ -1189,6 +1220,17 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
               </p>
             </div>
           </Card>
+
+          {/* Share to Community */}
+          <Button
+            variant="secondary"
+            size="md"
+            onClick={handleShareToCommunity}
+            className="w-full"
+            leftIcon={<Share2 className="w-4 h-4" />}
+          >
+            Share to Community
+          </Button>
         </motion.div>
       )}
 

@@ -8,3 +8,4 @@ export { SessionPage } from './SessionPage';
 export { PlanPage } from './PlanPage';
 export { ShowcasePage } from './ShowcasePage';
 export { VaultPage } from './VaultPage';
+export { CommunityPage } from './CommunityPage';
