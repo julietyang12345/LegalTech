@@ -265,24 +265,22 @@ export const useSessionStore = create<SessionState>()(
   },
 
   setActiveSession: (session) => {
-    // When setting a new session (resume flow), reset loading state so content loads fresh
-    // but preserve step progress (persisted in localStorage) so user can resume where they left off
+    // Check if current day's content is already cached in the session
+    const currentDayData = session?.curriculum?.days?.find(d => d.day === session.currentDay);
+    const isContentCached = currentDayData?.coreLoaded || currentDayData?.coreContent;
+    const isDeferredCached = currentDayData?.detailsLoaded || currentDayData?.deferredContent;
+
     set({
       activeSession: session,
-      // Reset loading state for fresh content load
-      isCoreLoaded: false,
+      currentDay: currentDayData || null,
+      // Only set isCoreLoaded if content is already cached
+      isCoreLoaded: !!isContentCached,
       isDeferredLoading: false,
-      isDeferredLoaded: false,
-      deferredContent: null,
+      isDeferredLoaded: !!isDeferredCached,
+      deferredContent: isDeferredCached ? (currentDayData?.deferredContent as any) : null,
       isDayLoading: false,
       dayLoadingNumber: null,
     });
-    if (session && session.curriculum?.days) {
-      const currentDayData = session.curriculum.days.find(d => d.day === session.currentDay);
-      set({ currentDay: currentDayData || null });
-    } else if (session) {
-      set({ currentDay: null });
-    }
   },
 
   updateSession: async (id, updates) => {

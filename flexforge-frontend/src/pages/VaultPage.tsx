@@ -127,10 +127,12 @@ function StatusBadge({ status }: { status: SessionStatus }) {
 // Session card component
 function SessionCard({
   session,
+  isActiveSession,
   onResume,
   onDelete,
 }: {
   session: Session;
+  isActiveSession: boolean;
   onResume: () => void;
   onDelete: () => void;
 }) {
@@ -174,7 +176,13 @@ function SessionCard({
                 </span>
               </div>
             </div>
-            <StatusBadge status={session.status} />
+            <StatusBadge status={
+              // Show actual status for active session or completed
+              // All other sessions display as PAUSED on vault page
+              isActiveSession || session.status === SessionStatus.COMPLETED
+                ? session.status
+                : SessionStatus.PAUSED
+            } />
           </div>
 
           {/* Progress bar */}
@@ -554,7 +562,7 @@ function saveBookmarks(bookmarks: CourseBookmark[]) {
 
 export function VaultPage() {
   const navigate = useNavigate();
-  const { setActiveSession } = useSessionStore();
+  const { activeSession, setActiveSession, updateSession } = useSessionStore();
   const [activeTab, setActiveTab] = useState<VaultTab>('courses');
   const [searchQuery, setSearchQuery] = useState('');
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -562,6 +570,7 @@ export function VaultPage() {
   const [error, setError] = useState<string | null>(null);
   const [bookmarks, setBookmarks] = useState<CourseBookmark[]>([]);
   const [selectedBookmark, setSelectedBookmark] = useState<CourseBookmark | null>(null);
+  const [sessionToResume, setSessionToResume] = useState<Session | null>(null);
 
   // Fetch sessions and bookmarks on mount
   useEffect(() => {
@@ -586,20 +595,44 @@ export function VaultPage() {
     session.skillName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Handle resume session
-  const handleResumeSession = async (session: Session) => {
+  // Show confirmation dialog before resuming
+  const handleResumeClick = (session: Session) => {
+    // If this is already the active session, just navigate
+    if (activeSession?.id === session.id) {
+      navigate('/today');
+      return;
+    }
+    // Show confirmation dialog
+    setSessionToResume(session);
+  };
+
+  // Handle confirmed resume session
+  const handleConfirmResume = async () => {
+    if (!sessionToResume) return;
+
     try {
-      // First, fetch the full session data with curriculum
-      const fullSessionResponse = await sessionService.getById(session.id);
+      // If there's a different active session, pause it first
+      if (activeSession && activeSession.id !== sessionToResume.id) {
+        await updateSession(activeSession.id, { status: SessionStatus.PAUSED });
+      }
+
+      // If this session is paused, set it to active in the backend
+      if (sessionToResume.status === SessionStatus.PAUSED) {
+        await updateSession(sessionToResume.id, { status: SessionStatus.ACTIVE });
+      }
+
+      // Fetch the full session data with curriculum
+      const fullSessionResponse = await sessionService.getById(sessionToResume.id);
       const fullSession = fullSessionResponse.session;
 
-      // If session is paused or completed, we can still view it
-      // For paused sessions, set it as active session to resume
+      // Set as active session and navigate
       setActiveSession(fullSession);
-      navigate('/session');
+      setSessionToResume(null);
+      navigate('/today');
     } catch (err) {
       console.error('Failed to resume session:', err);
       setError('Failed to resume session. Please try again.');
+      setSessionToResume(null);
     }
   };
 
@@ -624,11 +657,27 @@ export function VaultPage() {
   // Handle resume course from bookmark
   const handleResumeCourseFromBookmark = async (bookmark: CourseBookmark) => {
     try {
-      // Always fetch full session data with curriculum
+      // Fetch full session data with curriculum
       const response = await sessionService.getById(bookmark.sessionId);
-      setActiveSession(response.session);
+      const session = response.session;
+
+      // If there's a different active session, pause it first
+      if (activeSession && activeSession.id !== session.id) {
+        await updateSession(activeSession.id, { status: SessionStatus.PAUSED });
+      }
+
+      // If this session is paused, set it to active in the backend
+      if (session.status === SessionStatus.PAUSED) {
+        await updateSession(session.id, { status: SessionStatus.ACTIVE });
+        // Refetch to get updated status
+        const updatedResponse = await sessionService.getById(session.id);
+        setActiveSession(updatedResponse.session);
+      } else {
+        setActiveSession(session);
+      }
+
       setSelectedBookmark(null);
-      navigate('/session');
+      navigate('/today');
     } catch {
       setError('Could not find the course for this bookmark');
       setSelectedBookmark(null);
@@ -727,7 +776,8 @@ export function VaultPage() {
                   <SessionCard
                     key={session.id}
                     session={session}
-                    onResume={() => handleResumeSession(session)}
+                    isActiveSession={activeSession?.id === session.id}
+                    onResume={() => handleResumeClick(session)}
                     onDelete={() => handleDeleteSession(session.id)}
                   />
                 ))}
@@ -803,6 +853,58 @@ export function VaultPage() {
             onResumeCourse={() => handleResumeCourseFromBookmark(selectedBookmark)}
             onDelete={() => handleDeleteBookmark(selectedBookmark.id)}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Resume Confirmation Modal */}
+      <AnimatePresence>
+        {sessionToResume && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/50"
+              onClick={() => setSessionToResume(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6"
+            >
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Switch Course?
+              </h3>
+              <p className="text-gray-600 mb-4">
+                {activeSession ? (
+                  <>
+                    Your current course <span className="font-medium">{activeSession.skillName}</span> will be paused.
+                    You can resume it anytime from the Vault.
+                  </>
+                ) : (
+                  <>Resume <span className="font-medium">{sessionToResume.skillName}</span>?</>
+                )}
+              </p>
+              <div className="flex items-center gap-3 justify-end">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setSessionToResume(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleConfirmResume}
+                  className="flex items-center gap-1.5"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  {sessionToResume.status === SessionStatus.COMPLETED ? 'Review' : 'Resume'}
+                </Button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

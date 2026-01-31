@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Calendar, Trophy, ChevronRight, Sparkles, Loader2, RefreshCw, Target, BookOpen, CheckCircle, X, Clock, Check, Lock, SkipForward, Pause } from 'lucide-react';
+import { Play, Calendar, Trophy, ChevronRight, Sparkles, Loader2, RefreshCw, Target, BookOpen, CheckCircle, X, Clock, Check, Lock, SkipForward } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
 import { Button, Card, StreakBadge, ProgressBar, GeneratingScreen } from '@/components/common';
 import { sessionService } from '@/services/sessionService';
-import { DayStatus, CurriculumDay, SessionStatus, type Session } from '@/types';
+import { DayStatus, CurriculumDay } from '@/types';
 
 // Loading steps for day content generation (~10 seconds total)
 const DAY_LOADING_STEPS = [
@@ -175,44 +175,6 @@ function CurriculumModal({
 }
 
 
-// Paused Course Card
-function PausedCourseCard({
-  session,
-  onResume,
-  isResuming,
-}: {
-  session: Session;
-  onResume: (session: Session) => void;
-  isResuming: boolean;
-}) {
-  const progress = Math.round(((session.currentDay - 1) / session.durationDays) * 100);
-
-  return (
-    <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-          <Pause className="w-5 h-5 text-gray-500" />
-        </div>
-        <div className="min-w-0">
-          <h4 className="font-medium text-gray-900 truncate">{session.skillName}</h4>
-          <p className="text-sm text-gray-500">
-            Day {session.currentDay} of {session.durationDays} • {progress}% complete
-          </p>
-        </div>
-      </div>
-      <Button
-        size="sm"
-        variant="secondary"
-        onClick={() => onResume(session)}
-        disabled={isResuming}
-        leftIcon={isResuming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-      >
-        Resume
-      </Button>
-    </div>
-  );
-}
-
 // Yesterday's Fog - memory bridge before starting
 function YesterdaysFog({ yesterdayTopic, question }: { yesterdayTopic: string; question: string }) {
   const [revealed, setRevealed] = useState(false);
@@ -349,10 +311,7 @@ export function TodayPage() {
   const { user } = useAuthStore();
   const {
     activeSession,
-    sessions,
     fetchActiveSession,
-    fetchSessions,
-    updateSession,
     loadDayContentSplit,
     deleteSession,
     isLoading,
@@ -362,41 +321,10 @@ export function TodayPage() {
   const { addSystemMessage } = useCompanionStore();
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [showCurriculum, setShowCurriculum] = useState(false);
-  const [isResuming, setIsResuming] = useState(false);
-
-  // Filter for paused sessions (exclude the active one)
-  const pausedSessions = sessions.filter(
-    s => s.status === SessionStatus.PAUSED && s.id !== activeSession?.id
-  );
-
-  // Handle resuming a paused course
-  const handleResumeCourse = async (sessionToResume: Session) => {
-    setIsResuming(true);
-    try {
-      // Pause the current active session if there is one
-      if (activeSession && activeSession.id !== sessionToResume.id) {
-        await updateSession(activeSession.id, { status: SessionStatus.PAUSED });
-      }
-
-      // Resume the selected session
-      await updateSession(sessionToResume.id, { status: SessionStatus.ACTIVE });
-
-      // Fetch the full active session (update endpoint doesn't return curriculum)
-      await fetchActiveSession();
-
-      // Refresh sessions list to update paused courses display
-      await fetchSessions();
-    } catch (err) {
-      console.error('Failed to resume course:', err);
-    } finally {
-      setIsResuming(false);
-    }
-  };
 
   useEffect(() => {
     fetchActiveSession();
-    fetchSessions();
-  }, [fetchActiveSession, fetchSessions]);
+  }, [fetchActiveSession]);
 
   // Handle regeneration - start a new course
   const handleRegenerateCurriculum = async () => {
@@ -441,6 +369,22 @@ export function TodayPage() {
   const handleStartSession = async () => {
     if (!activeSession) return;
 
+    // Check if content is already cached/loaded for this day
+    const currentDayData = activeSession.curriculum?.days?.find(
+      d => d.day === activeSession.currentDay
+    );
+    // Backend sets coreLoaded=true and stores coreContent when content is generated
+    const isContentCached = currentDayData?.detailsLoaded ||
+                            currentDayData?.coreLoaded ||
+                            currentDayData?.coreContent;
+
+    if (isContentCached) {
+      // Content already loaded - navigate immediately
+      navigate(`/session/${activeSession.id}`);
+      return;
+    }
+
+    // Content not cached - show loading screen
     setIsStarting(true);
 
     // Start loading content in background (don't await - let it continue)
@@ -483,19 +427,8 @@ export function TodayPage() {
     );
   }
 
-  // No session state (but show loading if resuming a course)
+  // No session state
   if (!activeSession) {
-    if (isResuming) {
-      return (
-        <div className="max-w-2xl mx-auto px-4 py-12">
-          <div className="animate-pulse space-y-6">
-            <div className="h-24 bg-gray-200 rounded-xl" />
-            <div className="h-40 bg-gray-200 rounded-xl" />
-            <div className="h-32 bg-gray-200 rounded-xl" />
-          </div>
-        </div>
-      );
-    }
     return (
       <div className="max-w-2xl mx-auto px-4 py-12">
         <NoSessionState />
@@ -652,30 +585,6 @@ export function TodayPage() {
           </div>
         </Card>
       </motion.div>
-
-      {/* Paused Courses Section */}
-      {pausedSessions.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
-        >
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium text-gray-700">Other Courses</h3>
-              <span className="text-xs text-gray-500">{pausedSessions.length} paused</span>
-            </div>
-            {pausedSessions.map((session) => (
-              <PausedCourseCard
-                key={session.id}
-                session={session}
-                onResume={handleResumeCourse}
-                isResuming={isResuming}
-              />
-            ))}
-          </div>
-        </motion.div>
-      )}
 
       {/* Boss Project Countdown - only show for project-based curricula */}
       {activeSession.curriculum.metadata?.isProjectBased !== false && nextBoss && daysUntilBoss <= 4 && (

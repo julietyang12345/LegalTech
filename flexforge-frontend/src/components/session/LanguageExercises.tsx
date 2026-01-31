@@ -981,11 +981,11 @@ export function FillBlankSectionExercise({ section, onComplete, savedProgress, o
   const hasAnswered = currentItem?.id in results;
 
   const checkAnswer = () => {
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() || !currentItem?.blank) return;
 
-    const correct = currentItem.blank.correctAnswers.some(
+    const correct = currentItem.blank.correctAnswers?.some(
       ans => ans.toLowerCase().trim() === inputValue.toLowerCase().trim()
-    );
+    ) ?? false;
 
     const newAnswers = { ...answers, [currentItem.id]: inputValue };
     const newResults = { ...results, [currentItem.id]: correct };
@@ -1031,7 +1031,7 @@ export function FillBlankSectionExercise({ section, onComplete, savedProgress, o
     }
   };
 
-  if (!currentItem) return null;
+  if (!currentItem || !currentItem.blank) return null;
 
   // Replace ___BLANK___ with input field indicator
   const sentenceParts = currentItem.sentence.split('___BLANK___');
@@ -1082,7 +1082,7 @@ export function FillBlankSectionExercise({ section, onComplete, savedProgress, o
               </button>
             </div>
 
-            {currentItem.blank.hint && (
+            {currentItem?.blank?.hint && (
               <button
                 onClick={() => setShowHint(true)}
                 className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
@@ -1106,7 +1106,7 @@ export function FillBlankSectionExercise({ section, onComplete, savedProgress, o
             <p className={results[currentItem.id] ? 'text-green-800' : 'text-red-800'}>
               {results[currentItem.id]
                 ? 'Correct!'
-                : `Correct answer: ${currentItem.blank.correctAnswers[0]}`}
+                : `Correct answer: ${currentItem?.blank?.correctAnswers?.[0] || 'N/A'}`}
             </p>
           </motion.div>
         )}

@@ -621,10 +621,39 @@ export interface LanguageLearningConfig {
   ttsSpeed?: number;              // 0.75, 1.0, 1.25
 }
 
+// Grammar rule structure for grammar-focused language learning
+export interface GrammarRule {
+  rule: string;                   // The grammar rule in simple terms
+  pattern: string;                // Pattern structure (e.g., "Subject + Verb + Object")
+  patternInTarget?: string;       // Pattern shown in target language
+  genderNotes?: string;           // How gender affects this pattern (for gendered languages)
+  formality?: 'formal' | 'informal' | 'neutral';
+  proficiencyLevel?: string;      // A1/A2/B1/etc
+  examples: GrammarExample[];     // 1-3 example sentences with breakdown
+  commonMistakes?: CommonMistake[];
+}
+
+export interface GrammarExample {
+  sentence: string;               // Full sentence in target language
+  breakdown?: string;             // Word-by-word breakdown
+  translation: string;            // English translation
+  notes?: string;                 // Why this example demonstrates the rule
+  romanization?: string;          // Optional romanization
+}
+
+export interface CommonMistake {
+  wrong: string;                  // Incorrect usage
+  correct: string;                // Correct usage
+  why: string;                    // Explanation
+}
+
 // Foundation card extended for language learning
 export interface LanguageFoundationCard extends FoundationCard {
   // Language-specific content
-  vocabulary?: VocabularyItem;    // If card teaches a word
+  vocabulary?: VocabularyItem;    // If card teaches a word (vocabulary-focused)
+  grammar?: GrammarRule;          // If card teaches a grammar rule (grammar-focused)
+
+  // Legacy field (kept for backward compatibility)
   grammarPattern?: {
     pattern: string;              // e.g., "Subject + 了 + Verb"
     meaning: string;

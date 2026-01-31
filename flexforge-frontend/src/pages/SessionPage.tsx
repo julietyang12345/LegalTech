@@ -498,11 +498,12 @@ export function SessionPage() {
 
   // Get available steps (filter out skipped ones)
   const availableSteps = STEP_ORDER.filter(step => {
-    // Skip video step if no actual video - foundation cards will be shown in their own step
+    // Skip video step if no actual video OR if video was skipped
     // This avoids duplicate "Learn & Understand" content
     if (step === 'video') {
       const hasActualVideo = !!(currentDay?.video?.videoId || currentDay?.video?.backupVideo?.videoId);
-      if (!hasActualVideo) return false;
+      const videoSkipped = currentDay?.video?.skipped === true;
+      if (!hasActualVideo || videoSkipped) return false;
     }
     // Always show bossMilestone step (renders as either boss milestone OR intensive practice)
     // The BossMilestoneStep component handles both project-based and practice-based curricula
@@ -524,6 +525,18 @@ export function SessionPage() {
     }
     return true;
   });
+
+  // If current step is not in available steps, skip to next available
+  useEffect(() => {
+    if (availableSteps.length > 0 && !availableSteps.includes(currentStep)) {
+      // Find the first available step that comes after the current step in STEP_ORDER
+      const currentOrderIndex = STEP_ORDER.indexOf(currentStep);
+      const nextAvailable = availableSteps.find(step =>
+        STEP_ORDER.indexOf(step) > currentOrderIndex
+      );
+      setCurrentStep(nextAvailable || availableSteps[0]);
+    }
+  }, [currentStep, availableSteps, setCurrentStep]);
 
   const currentStepIndex = availableSteps.indexOf(currentStep);
   const isFirstStep = currentStepIndex === 0;
