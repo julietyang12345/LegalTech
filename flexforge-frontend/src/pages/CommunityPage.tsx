@@ -23,7 +23,6 @@ import {
   Code,
   UserPlus,
   UserMinus,
-  Bell,
   Eye,
   Lock,
 } from 'lucide-react';
@@ -34,6 +33,7 @@ import { useCommunityShareStore } from '@/stores/communityShareStore';
 import { projectService } from '@/services/projectService';
 import { Button, Card, Input } from '@/components/common';
 import type { Project } from '@/types';
+
 
 // =============================================================================
 // TYPES
@@ -108,22 +108,6 @@ interface Group {
   norms?: string;
 }
 
-// Notification types
-type NotificationType = 'comment' | 'course_request' | 'course_granted';
-
-interface Notification {
-  id: string;
-  type: NotificationType;
-  fromUserId: string;
-  fromUserName: string;
-  postId?: string;
-  postTitle?: string;
-  courseId?: string;
-  courseName?: string;
-  message?: string;
-  createdAt: Date;
-  isRead: boolean;
-}
 
 // =============================================================================
 // MOCK DATA (Replace with API calls)
@@ -250,40 +234,6 @@ const MOCK_POSTS: Post[] = [
   },
 ];
 
-const MOCK_NOTIFICATIONS: Notification[] = [
-  {
-    id: 'n1',
-    type: 'comment',
-    fromUserId: 'user2',
-    fromUserName: 'Sarah Kim',
-    postId: 'p0',
-    postTitle: 'Learning React Hooks',
-    message: 'Your cleanup looks correct! The return function runs when...',
-    createdAt: new Date('2024-03-27'),
-    isRead: false,
-  },
-  {
-    id: 'n2',
-    type: 'course_request',
-    fromUserId: 'user5',
-    fromUserName: 'Taylor Swift',
-    courseId: 'session-123',
-    courseName: 'React',
-    createdAt: new Date('2024-03-26'),
-    isRead: false,
-  },
-  {
-    id: 'n3',
-    type: 'comment',
-    fromUserId: 'user1',
-    fromUserName: 'Alex Chen',
-    postId: 'p1',
-    postTitle: 'Building a Todo App',
-    message: 'I had the same issue! Make sure you\'re calling JSON.stringify...',
-    createdAt: new Date('2024-03-25'),
-    isRead: true,
-  },
-];
 
 // =============================================================================
 // COMPONENTS
@@ -552,7 +502,7 @@ function CommentItem({ comment, canMarkHelpful, onMarkHelpful }: {
   return (
     <div className={clsx(
       'p-3 rounded-lg',
-      comment.isHelpful ? 'bg-green-50 border border-green-200' : 'bg-gray-50'
+      comment.isHelpful ? 'bg-gray-100 border border-gray-300' : 'bg-gray-50'
     )}>
       <div className="flex items-start gap-3">
         <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
@@ -565,7 +515,7 @@ function CommentItem({ comment, canMarkHelpful, onMarkHelpful }: {
             <span className="text-sm font-medium text-gray-900">{comment.authorName}</span>
             <span className="text-xs text-gray-500">{timeAgo}</span>
             {comment.isHelpful && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-100 text-green-700 text-xs rounded">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-gray-200 text-gray-700 text-xs rounded">
                 <Check className="w-3 h-3" />
                 Helpful
               </span>
@@ -576,7 +526,7 @@ function CommentItem({ comment, canMarkHelpful, onMarkHelpful }: {
           {canMarkHelpful && !comment.isHelpful && (
             <button
               onClick={onMarkHelpful}
-              className="mt-2 text-xs text-gray-500 hover:text-green-600 flex items-center gap-1"
+              className="mt-2 text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
             >
               <Check className="w-3 h-3" />
               Mark as helpful
@@ -698,9 +648,9 @@ function PostCard({
               </div>
             )}
             {post.feedbackWanted && (
-              <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
-                <span className="text-xs font-medium text-purple-700 uppercase tracking-wide">Feedback wanted</span>
-                <p className="text-sm text-purple-900 mt-1">{post.feedbackWanted}</p>
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Feedback wanted</span>
+                <p className="text-sm text-gray-700 mt-1">{post.feedbackWanted}</p>
               </div>
             )}
           </div>
@@ -725,9 +675,9 @@ function PostCard({
                 </div>
               )}
               {post.whereStuck && (
-                <div className="p-3 bg-orange-50 rounded-lg border border-orange-100">
-                  <span className="font-medium text-orange-700">Where I'm stuck: </span>
-                  <span className="text-orange-900">{post.whereStuck}</span>
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <span className="font-medium text-gray-700">Where I'm stuck: </span>
+                  <span className="text-gray-600">{post.whereStuck}</span>
                 </div>
               )}
             </div>
@@ -1227,121 +1177,6 @@ function getTimeAgo(date: Date): string {
   return date.toLocaleDateString();
 }
 
-// Notification Panel
-function NotificationPanel({
-  isOpen,
-  onClose,
-  notifications,
-  onMarkRead,
-  onGrantCourseAccess,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  notifications: Notification[];
-  onMarkRead: (id: string) => void;
-  onGrantCourseAccess: (notificationId: string, courseId: string) => void;
-}) {
-  if (!isOpen) return null;
-
-  const unreadCount = notifications.filter(n => !n.isRead).length;
-
-  return (
-    <>
-      <div className="fixed inset-0 z-40" onClick={onClose} />
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -10 }}
-        className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden"
-      >
-        <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="font-semibold text-gray-900">
-            Notifications {unreadCount > 0 && `(${unreadCount})`}
-          </h3>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="max-h-96 overflow-auto">
-          {notifications.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
-              <Bell className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-              <p className="text-sm">No notifications yet</p>
-            </div>
-          ) : (
-            notifications.map((notification) => (
-              <div
-                key={notification.id}
-                className={clsx(
-                  'p-4 border-b border-gray-50 hover:bg-gray-50 transition-colors',
-                  !notification.isRead && 'bg-blue-50/50'
-                )}
-                onClick={() => onMarkRead(notification.id)}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={clsx(
-                    'w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0',
-                    notification.type === 'comment' && 'bg-blue-100',
-                    notification.type === 'course_request' && 'bg-purple-100',
-                    notification.type === 'course_granted' && 'bg-green-100'
-                  )}>
-                    {notification.type === 'comment' && <MessageCircle className="w-4 h-4 text-blue-600" />}
-                    {notification.type === 'course_request' && <Eye className="w-4 h-4 text-purple-600" />}
-                    {notification.type === 'course_granted' && <Check className="w-4 h-4 text-green-600" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-900">
-                      <span className="font-medium">{notification.fromUserName}</span>
-                      {notification.type === 'comment' && ' commented on '}
-                      {notification.type === 'course_request' && ' requested to view your '}
-                      {notification.type === 'course_granted' && ' granted access to '}
-                      <span className="font-medium">
-                        {notification.postTitle || notification.courseName}
-                      </span>
-                    </p>
-                    {notification.message && (
-                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                        "{notification.message}"
-                      </p>
-                    )}
-                    <p className="text-xs text-gray-400 mt-1">
-                      {getTimeAgo(notification.createdAt)}
-                    </p>
-
-                    {/* Action buttons for course requests */}
-                    {notification.type === 'course_request' && notification.courseId && (
-                      <div className="flex gap-2 mt-2">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onGrantCourseAccess(notification.id, notification.courseId!);
-                          }}
-                          className="px-3 py-1 text-xs bg-brand-500 text-white rounded-lg hover:bg-brand-600"
-                        >
-                          Grant Access
-                        </button>
-                        <button
-                          onClick={(e) => e.stopPropagation()}
-                          className="px-3 py-1 text-xs text-gray-500 hover:text-gray-700"
-                        >
-                          Ignore
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  {!notification.isRead && (
-                    <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0" />
-                  )}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </motion.div>
-    </>
-  );
-}
 
 // Shared content viewer modal - shows course/task to other users
 function SharedContentViewer({
@@ -1516,9 +1351,9 @@ function SharedContentViewer({
 
                   {/* Feedback wanted */}
                   {post.feedbackWanted && (
-                    <div className="p-3 bg-purple-50 border border-purple-100 rounded-lg">
-                      <span className="text-xs font-medium text-purple-700 uppercase tracking-wide">Feedback Wanted</span>
-                      <p className="text-sm text-purple-900 mt-1">{post.feedbackWanted}</p>
+                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Feedback Wanted</span>
+                      <p className="text-sm text-gray-700 mt-1">{post.feedbackWanted}</p>
                     </div>
                   )}
                 </div>
@@ -1557,8 +1392,6 @@ export function CommunityPage() {
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [viewingPost, setViewingPost] = useState<Post | null>(null);
   const [joinedGroups, setJoinedGroups] = useState<Set<string>>(new Set());
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
 
   // Handle share from session (via URL param)
   useEffect(() => {
@@ -1624,23 +1457,6 @@ export function CommunityPage() {
 
   const isGroupJoined = (groupId: string) => joinedGroups.has(groupId);
 
-  const unreadNotificationCount = notifications.filter(n => !n.isRead).length;
-
-  const handleMarkNotificationRead = (id: string) => {
-    setNotifications(prev =>
-      prev.map(n => n.id === id ? { ...n, isRead: true } : n)
-    );
-  };
-
-  const handleGrantCourseAccess = (notificationId: string, _courseId: string) => {
-    // Mark notification as read and update it
-    setNotifications(prev =>
-      prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n)
-    );
-    // TODO: API call to grant access
-    console.log('Grant course access:', notificationId);
-  };
-
   const handleRequestFullCourse = () => {
     // TODO: API call to send request
     console.log('Request full course access');
@@ -1655,8 +1471,8 @@ export function CommunityPage() {
   if (selectedGroup && !showCreatePost) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-8">
-        {/* Top bar with back button and notifications */}
-        <div className="flex items-center justify-between mb-6">
+        {/* Top bar with back button */}
+        <div className="mb-6">
           <button
             onClick={() => setSelectedGroup(null)}
             className="flex items-center gap-1 text-gray-600 hover:text-gray-900"
@@ -1664,33 +1480,6 @@ export function CommunityPage() {
             <ChevronRight className="w-4 h-4 rotate-180" />
             Back to Groups
           </button>
-
-          {/* Notification Icon */}
-          <div className="relative">
-            <button
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg relative"
-            >
-              <Bell className="w-5 h-5" />
-              {unreadNotificationCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-medium rounded-full flex items-center justify-center">
-                  {unreadNotificationCount}
-                </span>
-              )}
-            </button>
-
-            <AnimatePresence>
-              {showNotifications && (
-                <NotificationPanel
-                  isOpen={showNotifications}
-                  onClose={() => setShowNotifications(false)}
-                  notifications={notifications}
-                  onMarkRead={handleMarkNotificationRead}
-                  onGrantCourseAccess={handleGrantCourseAccess}
-                />
-              )}
-            </AnimatePresence>
-          </div>
         </div>
 
         {/* Group header */}
@@ -1804,53 +1593,24 @@ export function CommunityPage() {
     );
   }
 
-  // Main view with tabs
+  // Main view
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
+    <div className="max-w-3xl mx-auto px-4 py-8">
       {/* Header */}
-      <div className="mb-6 flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Community</h1>
-          <p className="text-gray-600">
-            Join topic-based groups, share your projects, and learn together.
-          </p>
-        </div>
-
-        {/* Notification Icon */}
-        <div className="relative">
-          <button
-            onClick={() => setShowNotifications(!showNotifications)}
-            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg relative"
-          >
-            <Bell className="w-6 h-6" />
-            {unreadNotificationCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-medium rounded-full flex items-center justify-center">
-                {unreadNotificationCount}
-              </span>
-            )}
-          </button>
-
-          <AnimatePresence>
-            {showNotifications && (
-              <NotificationPanel
-                isOpen={showNotifications}
-                onClose={() => setShowNotifications(false)}
-                notifications={notifications}
-                onMarkRead={handleMarkNotificationRead}
-                onGrantCourseAccess={handleGrantCourseAccess}
-              />
-            )}
-          </AnimatePresence>
-        </div>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900 mb-1">Community</h1>
+        <p className="text-gray-600">
+          Share your projects and learn together.
+        </p>
       </div>
 
       {/* View toggle */}
-      <div className="flex gap-2 mb-6">
-        <button
-          onClick={() => setViewMode('groups')}
-          className={clsx(
-            'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-            viewMode === 'groups'
+          <div className="flex gap-2 mb-5">
+            <button
+              onClick={() => setViewMode('groups')}
+              className={clsx(
+                'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                viewMode === 'groups'
               ? 'bg-brand-100 text-brand-700'
               : 'text-gray-600 hover:bg-gray-100'
           )}
@@ -1861,7 +1621,7 @@ export function CommunityPage() {
         <button
           onClick={() => setViewMode('my-projects')}
           className={clsx(
-            'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+            'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
             viewMode === 'my-projects'
               ? 'bg-brand-100 text-brand-700'
               : 'text-gray-600 hover:bg-gray-100'

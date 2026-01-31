@@ -16,6 +16,7 @@ import {
   useReactFlow,
   ReactFlowProvider,
   Panel,
+  NodeResizer,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -57,12 +58,12 @@ const GROUP_COLORS = [
   { name: 'Cyan', value: 'bg-cyan-100 border-cyan-300', accent: '#06b6d4' },
 ];
 
-// Custom Skill Node
+// Custom Skill Node - smaller, hanging from branch
 function SkillNode({ data, selected }: { data: SkillNodeData; selected: boolean }) {
   const statusStyles = {
-    complete: 'bg-gradient-to-br from-green-400 to-emerald-500 text-white border-green-400 shadow-green-200',
-    progress: 'bg-gradient-to-br from-brand-400 to-purple-500 text-white border-brand-400 shadow-brand-200',
-    locked: 'bg-gray-100 text-gray-400 border-gray-200',
+    complete: 'bg-gradient-to-br from-green-400 to-emerald-500 text-white border-green-400',
+    progress: 'bg-gradient-to-br from-brand-400 to-purple-500 text-white border-brand-400',
+    locked: 'bg-gray-100 text-gray-400 border-gray-300',
   };
 
   const progressPercent = data.totalDays > 0
@@ -70,69 +71,77 @@ function SkillNode({ data, selected }: { data: SkillNodeData; selected: boolean 
     : 0;
 
   return (
-    <>
-      <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-2 !h-2" />
+    <div className="flex flex-col items-center">
+      {/* Branch connector - the "string" hanging from branch */}
+      <div className="w-0.5 h-4 bg-amber-700/60" />
+      <Handle type="target" position={Position.Top} className="!bg-amber-700 !w-1.5 !h-1.5 !-top-1" />
+
       <div
         className={clsx(
-          'w-24 h-24 rounded-xl flex flex-col items-center justify-center relative overflow-hidden',
-          'border-2 transition-all duration-200 cursor-grab active:cursor-grabbing',
+          'w-14 h-14 rounded-lg flex flex-col items-center justify-center relative overflow-hidden',
+          'border transition-all duration-200',
           statusStyles[data.status],
-          selected && 'ring-2 ring-brand-500 ring-offset-2',
-          data.status !== 'locked' && 'shadow-lg'
+          selected && 'ring-2 ring-brand-500 ring-offset-1',
+          data.status !== 'locked' && 'shadow-md hover:shadow-lg hover:scale-105 cursor-pointer',
+          data.status === 'locked' && 'cursor-not-allowed opacity-70'
         )}
       >
         {/* Progress bar for in-progress skills */}
         {data.status === 'progress' && (
           <div
-            className="absolute bottom-0 left-0 h-1.5 bg-white/30 transition-all"
+            className="absolute bottom-0 left-0 h-1 bg-white/30 transition-all"
             style={{ width: `${progressPercent}%` }}
           />
         )}
 
-        <div className="absolute top-1 right-1 opacity-50">
-          <GripVertical className="w-3 h-3" />
-        </div>
-
         {data.status === 'locked' ? (
-          <Lock className="w-6 h-6 mb-1" />
+          <Lock className="w-3 h-3" />
         ) : data.status === 'complete' ? (
-          <span className="text-2xl mb-1">✓</span>
-        ) : (
-          <span className="text-2xl mb-1">🔨</span>
-        )}
-        <span className="text-xs font-semibold text-center px-2 leading-tight line-clamp-2">
+          <span className="text-xs">✓</span>
+        ) : null}
+        <span className="text-[7px] font-medium text-center px-0.5 leading-tight line-clamp-2">
           {data.name}
         </span>
-        {data.status === 'progress' && data.totalDays ? (
-          <span className="text-[10px] opacity-80 mt-0.5">
-            Day {data.daysCompleted}/{data.totalDays}
-          </span>
-        ) : data.status === 'complete' && data.totalDays ? (
-          <span className="text-[10px] opacity-80 mt-0.5">{data.totalDays} days</span>
-        ) : null}
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-gray-400 !w-2 !h-2" />
-    </>
+
+      {/* Day progress shown below the box */}
+      {data.status === 'progress' && data.totalDays ? (
+        <span className="text-[8px] text-gray-500 mt-0.5">
+          {data.daysCompleted}/{data.totalDays}d
+        </span>
+      ) : null}
+
+      <Handle type="source" position={Position.Bottom} className="!bg-amber-700 !w-1.5 !h-1.5 !bottom-0" />
+    </div>
   );
 }
 
-// Custom Group Node
+// Custom Group Node - resizable
 function GroupNode({ data, selected }: { data: GroupNodeData; selected: boolean }) {
   return (
-    <div
-      className={clsx(
-        'min-w-[200px] min-h-[150px] rounded-2xl border-2 border-dashed p-4',
-        data.color,
-        selected && 'ring-2 ring-brand-500 ring-offset-2',
-        'cursor-grab active:cursor-grabbing'
-      )}
-    >
-      <div className="flex items-center gap-2 mb-2">
-        <GripVertical className="w-4 h-4 text-gray-400" />
-        <span className="font-semibold text-gray-700">{data.label}</span>
+    <>
+      <NodeResizer
+        minWidth={120}
+        minHeight={80}
+        isVisible={selected}
+        lineClassName="!border-brand-400"
+        handleClassName="!w-2 !h-2 !bg-brand-500 !border-brand-600"
+      />
+      <div
+        className={clsx(
+          'w-full h-full rounded-xl border-2 border-dashed p-3',
+          data.color,
+          selected && 'ring-2 ring-brand-500 ring-offset-1',
+          'cursor-grab active:cursor-grabbing'
+        )}
+      >
+        <div className="flex items-center gap-1.5 mb-1">
+          <GripVertical className="w-3 h-3 text-gray-400" />
+          <span className="text-sm font-semibold text-gray-700">{data.label}</span>
+        </div>
+        <p className="text-[10px] text-gray-500">Drag skills here</p>
       </div>
-      <p className="text-xs text-gray-500">Drag skills here to group them</p>
-    </div>
+    </>
   );
 }
 
@@ -344,13 +353,21 @@ function SkillTreeCanvasInner({
       }
     }
 
-    // Default grid layout
-    return skills.map((skill, index) => ({
-      id: `skill-${skill.sessionId || index}`,
-      type: 'skill',
-      position: { x: (index % 4) * 140 + 50, y: Math.floor(index / 4) * 140 + 50 },
-      data: { ...skill, type: 'skill' as const },
-    }));
+    // Default tree-like layout - skills arranged in tiers
+    return skills.map((skill, index) => {
+      // Arrange in a tree pattern: row 0 has 1, row 1 has 2, row 2 has 3, etc.
+      const cols = 5; // Max items per row
+      const row = Math.floor(index / cols);
+      const col = index % cols;
+      const rowOffset = (cols - Math.min(skills.length - row * cols, cols)) * 45; // Center each row
+
+      return {
+        id: `skill-${skill.sessionId || index}`,
+        type: 'skill',
+        position: { x: col * 90 + 80 + rowOffset, y: row * 100 + 40 },
+        data: { ...skill, type: 'skill' as const },
+      };
+    });
   }, [skills]);
 
   const getInitialEdges = useCallback((): Edge[] => {
@@ -387,10 +404,10 @@ function SkillTreeCanvasInner({
     [setEdges]
   );
 
-  const onNodeDoubleClick = useCallback(
+  const onNodeClick = useCallback(
     (_: React.MouseEvent, node: FlowNode) => {
       const data = node.data as unknown as SkillNodeData;
-      if (node.type === 'skill' && data.status === 'progress' && data.sessionId) {
+      if (node.type === 'skill' && data.sessionId && data.status !== 'locked') {
         onSkillClick(data.sessionId);
       }
     },
@@ -430,7 +447,7 @@ function SkillTreeCanvasInner({
         type: 'group',
         position: addGroupModal,
         data: { label, color, type: 'group' },
-        style: { width: 250, height: 200 },
+        style: { width: 150, height: 100 },
       };
 
       setNodes((nds) => [newNode, ...nds]);
@@ -461,26 +478,95 @@ function SkillTreeCanvasInner({
 
   const resetLayout = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
+    const cols = 5;
     setNodes(
-      skills.map((skill, index) => ({
-        id: `skill-${skill.sessionId || index}`,
-        type: 'skill',
-        position: { x: (index % 4) * 140 + 50, y: Math.floor(index / 4) * 140 + 50 },
-        data: { ...skill, type: 'skill' as const },
-      }))
+      skills.map((skill, index) => {
+        const row = Math.floor(index / cols);
+        const col = index % cols;
+        const rowOffset = (cols - Math.min(skills.length - row * cols, cols)) * 45;
+
+        return {
+          id: `skill-${skill.sessionId || index}`,
+          type: 'skill',
+          position: { x: col * 90 + 80 + rowOffset, y: row * 100 + 40 },
+          data: { ...skill, type: 'skill' as const },
+        };
+      })
     );
     setEdges([]);
   }, [skills, setNodes, setEdges]);
 
+  // Tree trunk SVG component
+  const TreeTrunk = () => (
+    <svg
+      className="absolute bottom-0 left-1/2 -translate-x-1/2 pointer-events-none z-0"
+      width="120"
+      height="180"
+      viewBox="0 0 120 180"
+    >
+      {/* Main trunk */}
+      <path
+        d="M60 180 L60 60 Q60 40 50 30 M60 60 Q60 40 70 30"
+        fill="none"
+        stroke="#92400e"
+        strokeWidth="12"
+        strokeLinecap="round"
+      />
+      {/* Trunk texture */}
+      <path
+        d="M55 180 L55 80 M65 180 L65 80"
+        fill="none"
+        stroke="#78350f"
+        strokeWidth="2"
+        opacity="0.3"
+      />
+      {/* Left branch */}
+      <path
+        d="M60 100 Q40 90 20 70"
+        fill="none"
+        stroke="#92400e"
+        strokeWidth="6"
+        strokeLinecap="round"
+      />
+      {/* Right branch */}
+      <path
+        d="M60 100 Q80 90 100 70"
+        fill="none"
+        stroke="#92400e"
+        strokeWidth="6"
+        strokeLinecap="round"
+      />
+      {/* Upper left branch */}
+      <path
+        d="M60 70 Q35 60 15 50"
+        fill="none"
+        stroke="#92400e"
+        strokeWidth="4"
+        strokeLinecap="round"
+      />
+      {/* Upper right branch */}
+      <path
+        d="M60 70 Q85 60 105 50"
+        fill="none"
+        stroke="#92400e"
+        strokeWidth="4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+
   return (
-    <div className="w-full h-[500px] rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
+    <div className="w-full h-[500px] rounded-xl overflow-hidden border border-gray-200 bg-gradient-to-b from-sky-100 via-sky-50 to-green-100 relative">
+      {/* Tree trunk decoration */}
+      <TreeTrunk />
+
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onNodeDoubleClick={onNodeDoubleClick}
+        onNodeClick={onNodeClick}
         onPaneContextMenu={onPaneContextMenu}
         onNodeContextMenu={onNodeContextMenu}
         nodeTypes={nodeTypes}
@@ -496,7 +582,7 @@ function SkillTreeCanvasInner({
           style: { stroke: '#94a3b8', strokeWidth: 2 },
         }}
       >
-        <Background gap={20} size={1} color="#e2e8f0" />
+        <Background gap={20} size={1} color="#bae6fd" className="opacity-30" />
         <Controls className="!bg-white !border-gray-200 !rounded-lg !shadow-sm" />
         <MiniMap
           className="!bg-white !border-gray-200 !rounded-lg"
@@ -509,9 +595,9 @@ function SkillTreeCanvasInner({
         />
 
         <Panel position="top-left" className="flex gap-2">
-          <Card className="px-3 py-2 flex items-center gap-2 text-sm text-gray-600">
-            <Sparkles className="w-4 h-4 text-brand-500" />
-            <span>Right-click to add groups</span>
+          <Card className="px-2.5 py-1.5 flex items-center gap-1.5 text-xs text-gray-600 bg-white/80 backdrop-blur-sm">
+            <Sparkles className="w-3.5 h-3.5 text-brand-500" />
+            <span>Click skill to open • Right-click to add groups</span>
           </Card>
         </Panel>
 

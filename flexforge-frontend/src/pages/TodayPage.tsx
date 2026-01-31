@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Play, Calendar, Trophy, ChevronRight, Sparkles, Loader2, RefreshCw, Target, BookOpen, CheckCircle } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Play, Calendar, Trophy, ChevronRight, Sparkles, Loader2, RefreshCw, Target, BookOpen, CheckCircle, X, Clock, Check, Lock, SkipForward, Pause } from 'lucide-react';
+import { clsx } from 'clsx';
 import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
 import { Button, Card, StreakBadge, ProgressBar, GeneratingScreen } from '@/components/common';
 import { sessionService } from '@/services/sessionService';
+import { DayStatus, CurriculumDay, SessionStatus, type Session } from '@/types';
 
 // Loading steps for day content generation (~10 seconds total)
 const DAY_LOADING_STEPS = [
@@ -16,6 +18,200 @@ const DAY_LOADING_STEPS = [
   { icon: CheckCircle, text: 'Almost there...', duration: 2500 },
 ];
 
+// Timeline Day Item for curriculum modal
+function TimelineDayItem({
+  day,
+  dayData,
+  isLast,
+  isCurrentDay,
+}: {
+  day: number;
+  dayData: CurriculumDay;
+  isLast: boolean;
+  isCurrentDay: boolean;
+}) {
+  const status = dayData?.status || DayStatus.LOCKED;
+  const isLocked = status === DayStatus.LOCKED;
+  const isInProgress = status === DayStatus.IN_PROGRESS;
+  const isCompleted = status === DayStatus.COMPLETED;
+  const isSkipped = status === DayStatus.SKIPPED;
+
+  const title = dayData?.title?.includes(':')
+    ? dayData.title.split(':')[1]?.trim()
+    : dayData?.title || 'Loading...';
+
+  const teaser = (dayData as any)?.teaser ||
+                 (dayData as any)?.subtitle ||
+                 dayData?.objectives?.[0] ||
+                 '';
+
+  const estimatedMinutes = dayData?.estimatedMinutes || 45;
+
+  const getCircleStyles = () => {
+    if (isCompleted || isSkipped) return 'bg-gray-800 text-white border-gray-800';
+    if (isInProgress || isCurrentDay) return 'bg-gray-900 text-white border-gray-900';
+    return 'bg-gray-100 text-gray-400 border-gray-200';
+  };
+
+  const getLineStyles = () => {
+    if (isCompleted || isSkipped) return 'bg-gray-400';
+    return 'bg-gray-200';
+  };
+
+  return (
+    <div className="relative flex gap-4">
+      <div className="flex flex-col items-center">
+        <div
+          className={clsx(
+            'w-8 h-8 rounded-full flex items-center justify-center font-semibold text-xs border-2 z-10 flex-shrink-0',
+            getCircleStyles()
+          )}
+        >
+          {isCompleted ? (
+            <Check className="w-4 h-4" />
+          ) : isSkipped ? (
+            <SkipForward className="w-3 h-3" />
+          ) : isLocked ? (
+            <Lock className="w-3 h-3" />
+          ) : (
+            day
+          )}
+        </div>
+        {!isLast && (
+          <div className={clsx('w-0.5 flex-1 min-h-[16px]', getLineStyles())} />
+        )}
+      </div>
+
+      <div className={clsx('flex-1 pb-4', isLocked && 'opacity-50')}>
+        <div
+          className={clsx(
+            'p-3 rounded-lg border transition-all',
+            (isInProgress || isCurrentDay) && 'bg-gray-100 border-gray-300',
+            isCompleted && 'bg-gray-50 border-gray-200',
+            !isInProgress && !isCurrentDay && !isCompleted && 'bg-white border-gray-200'
+          )}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-xs font-medium text-gray-500">Day {day}</span>
+                {isSkipped && (
+                  <span className="px-1.5 py-0.5 text-xs bg-gray-200 text-gray-600 rounded">
+                    Mastered
+                  </span>
+                )}
+              </div>
+              <h3 className="font-medium text-gray-900 text-sm line-clamp-1">{title}</h3>
+              {teaser && (
+                <p className="text-gray-500 text-xs mt-0.5 line-clamp-1">{teaser}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-1 text-gray-400 flex-shrink-0">
+              <Clock className="w-3 h-3" />
+              <span className="text-xs">{estimatedMinutes}m</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Curriculum Modal
+function CurriculumModal({
+  isOpen,
+  onClose,
+  session,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  session: any;
+}) {
+  if (!isOpen || !session) return null;
+
+  const { curriculum, currentDay, skillName, durationDays } = session;
+  const progress = Math.round(((currentDay - 1) / durationDays) * 100);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="relative bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col"
+      >
+        {/* Header */}
+        <div className="p-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+          <div>
+            <h2 className="font-semibold text-gray-900">{durationDays}-Day Learning Path</h2>
+            <p className="text-sm text-gray-500">{skillName} • {progress}% complete</p>
+          </div>
+          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Progress bar */}
+        <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0">
+          <ProgressBar value={currentDay - 1} max={durationDays} />
+        </div>
+
+        {/* Timeline */}
+        <div className="flex-1 overflow-auto p-4">
+          {curriculum.days.map((dayData: CurriculumDay, index: number) => (
+            <TimelineDayItem
+              key={dayData.day}
+              day={dayData.day}
+              dayData={dayData}
+              isLast={index === curriculum.days.length - 1}
+              isCurrentDay={dayData.day === currentDay}
+            />
+          ))}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+
+// Paused Course Card
+function PausedCourseCard({
+  session,
+  onResume,
+  isResuming,
+}: {
+  session: Session;
+  onResume: (session: Session) => void;
+  isResuming: boolean;
+}) {
+  const progress = Math.round(((session.currentDay - 1) / session.durationDays) * 100);
+
+  return (
+    <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+          <Pause className="w-5 h-5 text-gray-500" />
+        </div>
+        <div className="min-w-0">
+          <h4 className="font-medium text-gray-900 truncate">{session.skillName}</h4>
+          <p className="text-sm text-gray-500">
+            Day {session.currentDay} of {session.durationDays} • {progress}% complete
+          </p>
+        </div>
+      </div>
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={() => onResume(session)}
+        disabled={isResuming}
+        leftIcon={isResuming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+      >
+        Resume
+      </Button>
+    </div>
+  );
+}
 
 // Yesterday's Fog - memory bridge before starting
 function YesterdaysFog({ yesterdayTopic, question }: { yesterdayTopic: string; question: string }) {
@@ -153,7 +349,10 @@ export function TodayPage() {
   const { user } = useAuthStore();
   const {
     activeSession,
+    sessions,
     fetchActiveSession,
+    fetchSessions,
+    updateSession,
     loadDayContentSplit,
     deleteSession,
     isLoading,
@@ -162,10 +361,40 @@ export function TodayPage() {
   } = useSessionStore();
   const { addSystemMessage } = useCompanionStore();
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [showCurriculum, setShowCurriculum] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
+
+  // Filter for paused sessions (exclude the active one)
+  const pausedSessions = sessions.filter(
+    s => s.status === SessionStatus.PAUSED && s.id !== activeSession?.id
+  );
+
+  // Handle resuming a paused course
+  const handleResumeCourse = async (sessionToResume: Session) => {
+    setIsResuming(true);
+    try {
+      // Pause the current active session if there is one
+      if (activeSession && activeSession.id !== sessionToResume.id) {
+        await updateSession(activeSession.id, { status: SessionStatus.PAUSED });
+      }
+
+      // Resume the selected session
+      await updateSession(sessionToResume.id, { status: SessionStatus.ACTIVE });
+
+      // Refresh to get the new active session
+      await fetchActiveSession();
+      await fetchSessions();
+    } catch (err) {
+      console.error('Failed to resume course:', err);
+    } finally {
+      setIsResuming(false);
+    }
+  };
 
   useEffect(() => {
     fetchActiveSession();
-  }, [fetchActiveSession]);
+    fetchSessions();
+  }, [fetchActiveSession, fetchSessions]);
 
   // Handle regeneration - start a new course
   const handleRegenerateCurriculum = async () => {
@@ -398,6 +627,30 @@ export function TodayPage() {
         </Card>
       </motion.div>
 
+      {/* Paused Courses Section */}
+      {pausedSessions.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+        >
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium text-gray-700">Other Courses</h3>
+              <span className="text-xs text-gray-500">{pausedSessions.length} paused</span>
+            </div>
+            {pausedSessions.map((session) => (
+              <PausedCourseCard
+                key={session.id}
+                session={session}
+                onResume={handleResumeCourse}
+                isResuming={isResuming}
+              />
+            ))}
+          </div>
+        </motion.div>
+      )}
+
       {/* Boss Project Countdown - only show for project-based curricula */}
       {activeSession.curriculum.metadata?.isProjectBased !== false && nextBoss && daysUntilBoss <= 4 && (
         <motion.div
@@ -426,17 +679,35 @@ export function TodayPage() {
           <div className="p-4">
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm font-medium text-gray-700">Sprint Progress</span>
-              <span className="text-sm text-gray-500">
-                {activeSession.durationDays ? Math.round((activeSession.currentDay / activeSession.durationDays) * 100) : 0}%
-              </span>
+              <button
+                onClick={() => setShowCurriculum(true)}
+                className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                View Full Curriculum
+              </button>
             </div>
             <ProgressBar
               value={activeSession.currentDay}
               max={activeSession.durationDays}
             />
+            <p className="text-xs text-gray-500 mt-2">
+              Day {activeSession.currentDay} of {activeSession.durationDays} • {activeSession.durationDays ? Math.round((activeSession.currentDay / activeSession.durationDays) * 100) : 0}% complete
+            </p>
           </div>
         </Card>
       </motion.div>
+
+      {/* Curriculum Modal */}
+      <AnimatePresence>
+        {showCurriculum && (
+          <CurriculumModal
+            isOpen={showCurriculum}
+            onClose={() => setShowCurriculum(false)}
+            session={activeSession}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

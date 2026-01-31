@@ -1,25 +1,78 @@
+import { useState } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
 import {
   Home,
-  CalendarDays,
   Trophy,
   BookOpen,
   Users,
   Settings,
   User,
   LogOut,
+  Bell,
+  MessageCircle,
+  Eye,
+  Check,
+  X,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
-import { StreakBadge } from '@/components/common';
 
 const NAV_ITEMS = [
   { path: '/today', label: 'Today', icon: Home },
-  { path: '/plan', label: 'Plan', icon: CalendarDays },
   { path: '/showcase', label: 'Showcase', icon: Trophy },
   { path: '/vault', label: 'Vault', icon: BookOpen },
   { path: '/community', label: 'Community', icon: Users },
 ];
+
+// Notification types
+type NotificationType = 'comment' | 'course_request' | 'course_granted';
+
+interface Notification {
+  id: string;
+  type: NotificationType;
+  fromUserName: string;
+  postTitle?: string;
+  courseName?: string;
+  message?: string;
+  createdAt: Date;
+  isRead: boolean;
+}
+
+// Mock notifications
+const MOCK_NOTIFICATIONS: Notification[] = [
+  {
+    id: 'n1',
+    type: 'comment',
+    fromUserName: 'Sarah Kim',
+    postTitle: 'Learning React Hooks',
+    message: 'Your cleanup looks correct!',
+    createdAt: new Date(Date.now() - 1000 * 60 * 30), // 30 min ago
+    isRead: false,
+  },
+  {
+    id: 'n2',
+    type: 'course_request',
+    fromUserName: 'Taylor Swift',
+    courseName: 'React',
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
+    isRead: false,
+  },
+];
+
+function getTimeAgo(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
 
 function NavItem({ path, label, icon: Icon }: { path: string; label: string; icon: typeof Home }) {
   return (
@@ -40,9 +93,135 @@ function NavItem({ path, label, icon: Icon }: { path: string; label: string; ico
   );
 }
 
+function NotificationPanel({
+  isOpen,
+  onClose,
+  notifications,
+  onMarkRead,
+  onGrantAccess,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  notifications: Notification[];
+  onMarkRead: (id: string) => void;
+  onGrantAccess: (id: string) => void;
+}) {
+  if (!isOpen) return null;
+
+  const unreadCount = notifications.filter(n => !n.isRead).length;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden"
+      >
+        <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900">
+            Notifications {unreadCount > 0 && `(${unreadCount})`}
+          </h3>
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="max-h-96 overflow-auto">
+          {notifications.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">
+              <Bell className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+              <p className="text-sm">No notifications yet</p>
+            </div>
+          ) : (
+            notifications.map((notification) => (
+              <div
+                key={notification.id}
+                className={clsx(
+                  'p-4 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer',
+                  !notification.isRead && 'bg-gray-100/50'
+                )}
+                onClick={() => onMarkRead(notification.id)}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-gray-100">
+                    {notification.type === 'comment' && <MessageCircle className="w-4 h-4 text-gray-600" />}
+                    {notification.type === 'course_request' && <Eye className="w-4 h-4 text-gray-600" />}
+                    {notification.type === 'course_granted' && <Check className="w-4 h-4 text-gray-600" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-900">
+                      <span className="font-medium">{notification.fromUserName}</span>
+                      {notification.type === 'comment' && ' commented on '}
+                      {notification.type === 'course_request' && ' requested to view your '}
+                      {notification.type === 'course_granted' && ' granted access to '}
+                      <span className="font-medium">
+                        {notification.postTitle || notification.courseName}
+                      </span>
+                    </p>
+                    {notification.message && (
+                      <p className="text-xs text-gray-500 mt-1 line-clamp-1">
+                        "{notification.message}"
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-400 mt-1">
+                      {getTimeAgo(notification.createdAt)}
+                    </p>
+
+                    {notification.type === 'course_request' && (
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onGrantAccess(notification.id);
+                          }}
+                          className="px-3 py-1 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-800"
+                        >
+                          Grant Access
+                        </button>
+                        <button
+                          onClick={(e) => e.stopPropagation()}
+                          className="px-3 py-1 text-xs text-gray-500 hover:text-gray-700"
+                        >
+                          Ignore
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {!notification.isRead && (
+                    <div className="w-2 h-2 bg-gray-800 rounded-full flex-shrink-0" />
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
 function TopNav() {
   const { user, logout } = useAuthStore();
   const location = useLocation();
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
+
+  const unreadCount = notifications.filter(n => !n.isRead).length;
+
+  const handleMarkRead = (id: string) => {
+    setNotifications(prev =>
+      prev.map(n => n.id === id ? { ...n, isRead: true } : n)
+    );
+  };
+
+  const handleGrantAccess = (id: string) => {
+    setNotifications(prev =>
+      prev.map(n => n.id === id ? { ...n, isRead: true } : n)
+    );
+    console.log('Grant access for notification:', id);
+  };
 
   // Hide on focus mode
   if (location.pathname.startsWith('/session/')) {
@@ -69,20 +248,45 @@ function TopNav() {
           </nav>
 
           {/* Right side */}
-          <div className="flex items-center gap-4">
-            {user && <StreakBadge count={user.currentStreak} />}
+          <div className="flex items-center gap-2">
+            {/* Notification Bell */}
+            <div className="relative">
+              <button
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg relative"
+              >
+                <Bell className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[10px] font-medium rounded-full flex items-center justify-center">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+
+              <AnimatePresence>
+                {showNotifications && (
+                  <NotificationPanel
+                    isOpen={showNotifications}
+                    onClose={() => setShowNotifications(false)}
+                    notifications={notifications}
+                    onMarkRead={handleMarkRead}
+                    onGrantAccess={handleGrantAccess}
+                  />
+                )}
+              </AnimatePresence>
+            </div>
 
             {/* User menu */}
             <div className="relative group">
-              <button className="flex items-center gap-2 p-3 rounded-full hover:bg-gray-100 transition-colors">
-                <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center">
-                  <User className="w-4 h-4 text-brand-600" />
+              <button className="flex items-center gap-2 p-2 rounded-full hover:bg-gray-100 transition-colors">
+                <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                  <User className="w-4 h-4 text-gray-600" />
                 </div>
               </button>
 
               {/* Dropdown */}
-              <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg 
-                            border border-gray-200 py-2 opacity-0 invisible 
+              <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg
+                            border border-gray-200 py-2 opacity-0 invisible
                             group-hover:opacity-100 group-hover:visible transition-all">
                 <div className="px-4 py-2 border-b border-gray-100">
                   <p className="font-medium text-gray-900">{user?.name || 'User'}</p>
