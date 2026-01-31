@@ -116,6 +116,15 @@ export class User {
     dailyReminders?: boolean;
     weeklyDigest?: boolean;
     learner?: LearnerPrefs; // AI-assisted onboarding preferences
+    plannedSkills?: Array<{
+      skill: string;
+      icon: string;
+      addedAt: string;
+    }>; // Skills user plans to learn (shown on skill tree)
+    skillComboGeneration?: {
+      lastGeneratedAt: string;
+      countToday: number;
+    };
   };
 
   // Relations

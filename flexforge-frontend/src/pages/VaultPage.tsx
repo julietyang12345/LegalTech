@@ -2,13 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  BookOpen,
   Search,
   Bookmark,
-  Code,
-  FileText,
-  Brain,
-  Crown,
   GraduationCap,
   Trash2,
   Play,
@@ -19,16 +14,56 @@ import {
   AlertCircle,
   MoreVertical,
   X,
+  BookOpen,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { Button, Card, Input } from '@/components/common';
 import { sessionService } from '@/services/sessionService';
-import { QuotaTier, SessionStatus, type Session } from '@/types';
+import { SessionStatus, type Session } from '@/types';
 
 // Tab types
-type VaultTab = 'courses' | 'summaries' | 'bookmarks' | 'code' | 'reflections' | 'review';
+type VaultTab = 'courses' | 'bookmarks';
+
+// Bookmark interface
+export interface CourseBookmark {
+  id: string;
+  sessionId: string;
+  skillName: string;
+  dayNumber: number;
+  section: 'video' | 'task1' | 'task2' | 'boss' | 'reflection';
+  sectionTitle: string;
+  note?: string;
+  createdAt: string;
+  // Content snapshots
+  content?: {
+    // Video content
+    videoTitle?: string;
+    videoDescription?: string;
+    // Task content
+    taskTitle?: string;
+    taskDescription?: string;
+    taskQuestions?: Array<{
+      question: string;
+      options?: string[];
+      correctAnswer?: string;
+    }>;
+    // Boss milestone content
+    bossTitle?: string;
+    bossDescription?: string;
+    bossRequirements?: string[];
+    // Foundation cards
+    foundationCards?: Array<{
+      front: string;
+      back: string;
+    }>;
+    // Code snippet
+    codeSnippet?: string;
+  };
+}
+
+// Bookmark storage key
+const BOOKMARKS_STORAGE_KEY = 'flexforge_bookmarks';
 
 // Tab component
 function TabButton({
@@ -41,7 +76,7 @@ function TabButton({
 }: {
   tab: VaultTab;
   activeTab: VaultTab;
-  icon: typeof BookOpen;
+  icon: typeof GraduationCap;
   label: string;
   count?: number;
   onClick: () => void;
@@ -221,7 +256,7 @@ function SessionCard({
 }
 
 // Empty state component
-function EmptyState({ icon: Icon, title, description }: { icon: typeof BookOpen; title: string; description: string }) {
+function EmptyState({ icon: Icon, title, description }: { icon: typeof GraduationCap; title: string; description: string }) {
   return (
     <Card className="p-8 text-center">
       <Icon className="w-12 h-12 mx-auto text-gray-400 mb-4" />
@@ -231,36 +266,304 @@ function EmptyState({ icon: Icon, title, description }: { icon: typeof BookOpen;
   );
 }
 
-// Paywall component for PRO features
-function ProPaywall({ feature }: { feature: string }) {
+// Get section icon and label
+function getSectionInfo(section: CourseBookmark['section']) {
+  const config = {
+    video: { icon: Play, label: 'Video Lesson' },
+    task1: { icon: BookOpen, label: 'Practice Task 1' },
+    task2: { icon: BookOpen, label: 'Practice Task 2' },
+    boss: { icon: GraduationCap, label: 'Boss Project' },
+    reflection: { icon: BookOpen, label: 'Reflection' },
+  };
+  return config[section] || config.video;
+}
+
+// Bookmark card component
+function BookmarkCard({
+  bookmark,
+  onClick,
+  onDelete,
+}: {
+  bookmark: CourseBookmark;
+  onClick: () => void;
+  onDelete: () => void;
+}) {
+  const { icon: Icon, label } = getSectionInfo(bookmark.section);
+  const createdDate = new Date(bookmark.createdAt).toLocaleDateString();
+
   return (
-    <Card className="p-8 text-center bg-gradient-to-br from-brand-50 to-purple-50">
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-brand-500 to-purple-500 flex items-center justify-center">
-        <Crown className="w-8 h-8 text-white" />
+    <Card
+      variant="hover"
+      className="p-4 cursor-pointer"
+      onClick={onClick}
+    >
+      <div className="flex items-start gap-4">
+        <div className="w-10 h-10 rounded-lg bg-brand-100 flex items-center justify-center flex-shrink-0">
+          <Icon className="w-5 h-5 text-brand-600" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h3 className="font-medium text-gray-900">{bookmark.sectionTitle}</h3>
+              <p className="text-sm text-gray-500 mt-0.5">
+                {bookmark.skillName} · Day {bookmark.dayNumber} · {label}
+              </p>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+          {bookmark.note && (
+            <p className="text-sm text-gray-600 mt-2 line-clamp-2">{bookmark.note}</p>
+          )}
+          <p className="text-xs text-gray-400 mt-2">{createdDate}</p>
+        </div>
       </div>
-      <h2 className="text-xl font-bold text-gray-900 mb-2">Unlock {feature}</h2>
-      <p className="text-gray-600 mb-6 max-w-md mx-auto">
-        This feature is available for PRO users. Upgrade to access AI-summarized content,
-        saved snippets, and spaced repetition review.
-      </p>
-      <Button>Upgrade to PRO - $15/mo</Button>
     </Card>
   );
 }
 
+// Bookmark detail modal
+function BookmarkModal({
+  bookmark,
+  onClose,
+  onResumeCourse,
+  onDelete,
+}: {
+  bookmark: CourseBookmark;
+  onClose: () => void;
+  onResumeCourse: () => void;
+  onDelete: () => void;
+}) {
+  const { icon: Icon, label } = getSectionInfo(bookmark.section);
+  const createdDate = new Date(bookmark.createdAt).toLocaleDateString();
+  const content = bookmark.content;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
+      >
+        {/* Header */}
+        <div className="p-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-brand-100 flex items-center justify-center">
+              <Bookmark className="w-5 h-5 text-brand-600" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-gray-900">{bookmark.sectionTitle}</h2>
+              <p className="text-sm text-gray-500">{bookmark.skillName} · Day {bookmark.dayNumber}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content - Scrollable */}
+        <div className="p-6 space-y-6 overflow-y-auto flex-1">
+          {/* Section type badge */}
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-brand-100 text-brand-700 text-sm font-medium rounded-full">
+              <Icon className="w-4 h-4" />
+              {label}
+            </span>
+            <span className="text-xs text-gray-400">Bookmarked {createdDate}</span>
+          </div>
+
+          {/* Video Content */}
+          {bookmark.section === 'video' && content?.videoTitle && (
+            <div className="space-y-3">
+              <h3 className="font-semibold text-gray-900">{content.videoTitle}</h3>
+              {content.videoDescription && (
+                <p className="text-gray-600">{content.videoDescription}</p>
+              )}
+            </div>
+          )}
+
+          {/* Foundation Cards */}
+          {content?.foundationCards && content.foundationCards.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-brand-500" />
+                Foundation Cards ({content.foundationCards.length})
+              </h3>
+              <div className="grid gap-3">
+                {content.foundationCards.map((card, i) => (
+                  <div key={i} className="p-4 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200">
+                    <div className="mb-3">
+                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Question</span>
+                      <p className="text-gray-900 mt-1">{card.front}</p>
+                    </div>
+                    <div className="pt-3 border-t border-gray-200">
+                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Answer</span>
+                      <p className="text-gray-700 mt-1">{card.back}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Task Content */}
+          {(bookmark.section === 'task1' || bookmark.section === 'task2') && content?.taskTitle && (
+            <div className="space-y-4">
+              <h3 className="font-semibold text-gray-900">{content.taskTitle}</h3>
+              {content.taskDescription && (
+                <p className="text-gray-600">{content.taskDescription}</p>
+              )}
+
+              {/* Task Questions */}
+              {content.taskQuestions && content.taskQuestions.length > 0 && (
+                <div className="space-y-4">
+                  <h4 className="text-sm font-medium text-gray-700">Questions</h4>
+                  {content.taskQuestions.map((q, i) => (
+                    <div key={i} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                      <p className="font-medium text-gray-900 mb-3">
+                        {i + 1}. {q.question}
+                      </p>
+                      {q.options && q.options.length > 0 && (
+                        <div className="space-y-2 ml-4">
+                          {q.options.map((opt, j) => (
+                            <div
+                              key={j}
+                              className={clsx(
+                                'p-2 rounded-lg text-sm',
+                                q.correctAnswer === opt
+                                  ? 'bg-green-100 text-green-800 border border-green-200'
+                                  : 'bg-white text-gray-600 border border-gray-100'
+                              )}
+                            >
+                              {opt}
+                              {q.correctAnswer === opt && (
+                                <CheckCircle2 className="inline w-4 h-4 ml-2 text-green-600" />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Boss Milestone Content */}
+          {bookmark.section === 'boss' && content?.bossTitle && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <GraduationCap className="w-6 h-6 text-purple-600" />
+                <h3 className="font-semibold text-gray-900">{content.bossTitle}</h3>
+              </div>
+              {content.bossDescription && (
+                <p className="text-gray-600">{content.bossDescription}</p>
+              )}
+
+              {/* Requirements */}
+              {content.bossRequirements && content.bossRequirements.length > 0 && (
+                <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
+                  <h4 className="text-sm font-medium text-purple-800 mb-2">Requirements</h4>
+                  <ul className="space-y-2">
+                    {content.bossRequirements.map((req, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-purple-700">
+                        <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                        {req}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Code Snippet */}
+          {content?.codeSnippet && (
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium text-gray-700">Code</h4>
+              <pre className="p-4 bg-gray-900 text-gray-100 rounded-xl overflow-x-auto text-sm font-mono">
+                {content.codeSnippet}
+              </pre>
+            </div>
+          )}
+
+          {/* User Note */}
+          {bookmark.note && (
+            <div className="p-4 bg-yellow-50 rounded-xl border border-yellow-200">
+              <h4 className="text-sm font-medium text-yellow-800 mb-1">Your Note</h4>
+              <p className="text-yellow-900">{bookmark.note}</p>
+            </div>
+          )}
+
+          {/* Empty state if no content */}
+          {!content && (
+            <div className="text-center py-8 text-gray-500">
+              <Bookmark className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <p>Content preview not available for this bookmark.</p>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="p-4 border-t border-gray-100 flex gap-3 flex-shrink-0 bg-white">
+          <Button
+            variant="secondary"
+            onClick={onDelete}
+            className="flex items-center gap-2"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete
+          </Button>
+          <Button
+            onClick={onResumeCourse}
+            className="flex-1 flex items-center justify-center gap-2"
+          >
+            <Play className="w-4 h-4" />
+            Resume This Course
+          </Button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// Bookmark storage helpers
+function loadBookmarks(): CourseBookmark[] {
+  try {
+    const stored = localStorage.getItem(BOOKMARKS_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveBookmarks(bookmarks: CourseBookmark[]) {
+  localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify(bookmarks));
+}
+
+
 export function VaultPage() {
   const navigate = useNavigate();
-  const { hasTierAccess } = useAuthStore();
   const { setActiveSession } = useSessionStore();
   const [activeTab, setActiveTab] = useState<VaultTab>('courses');
   const [searchQuery, setSearchQuery] = useState('');
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [bookmarks, setBookmarks] = useState<CourseBookmark[]>([]);
+  const [selectedBookmark, setSelectedBookmark] = useState<CourseBookmark | null>(null);
 
-  const hasProAccess = hasTierAccess(QuotaTier.PRO);
-
-  // Fetch sessions on mount
+  // Fetch sessions and bookmarks on mount
   useEffect(() => {
     const fetchSessions = async () => {
       try {
@@ -275,6 +578,7 @@ export function VaultPage() {
     };
 
     fetchSessions();
+    setBookmarks(loadBookmarks());
   }, []);
 
   // Filter sessions by search query
@@ -285,11 +589,17 @@ export function VaultPage() {
   // Handle resume session
   const handleResumeSession = async (session: Session) => {
     try {
-      // Set this session as active
-      setActiveSession(session);
+      // First, fetch the full session data with curriculum
+      const fullSessionResponse = await sessionService.getById(session.id);
+      const fullSession = fullSessionResponse.session;
+
+      // If session is paused or completed, we can still view it
+      // For paused sessions, set it as active session to resume
+      setActiveSession(fullSession);
       navigate('/session');
     } catch (err) {
       console.error('Failed to resume session:', err);
+      setError('Failed to resume session. Please try again.');
     }
   };
 
@@ -302,6 +612,35 @@ export function VaultPage() {
       setError(err.message || 'Failed to delete session');
     }
   };
+
+  // Handle delete bookmark
+  const handleDeleteBookmark = (bookmarkId: string) => {
+    const updated = bookmarks.filter(b => b.id !== bookmarkId);
+    setBookmarks(updated);
+    saveBookmarks(updated);
+    setSelectedBookmark(null);
+  };
+
+  // Handle resume course from bookmark
+  const handleResumeCourseFromBookmark = async (bookmark: CourseBookmark) => {
+    try {
+      // Always fetch full session data with curriculum
+      const response = await sessionService.getById(bookmark.sessionId);
+      setActiveSession(response.session);
+      setSelectedBookmark(null);
+      navigate('/session');
+    } catch {
+      setError('Could not find the course for this bookmark');
+      setSelectedBookmark(null);
+    }
+  };
+
+  // Filter bookmarks by search query
+  const filteredBookmarks = bookmarks.filter(bookmark =>
+    bookmark.skillName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    bookmark.sectionTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    bookmark.note?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -337,39 +676,12 @@ export function VaultPage() {
           onClick={() => setActiveTab('courses')}
         />
         <TabButton
-          tab="summaries"
-          activeTab={activeTab}
-          icon={FileText}
-          label="Summaries"
-          onClick={() => setActiveTab('summaries')}
-        />
-        <TabButton
           tab="bookmarks"
           activeTab={activeTab}
           icon={Bookmark}
           label="Bookmarks"
+          count={bookmarks.length}
           onClick={() => setActiveTab('bookmarks')}
-        />
-        <TabButton
-          tab="code"
-          activeTab={activeTab}
-          icon={Code}
-          label="Code Snippets"
-          onClick={() => setActiveTab('code')}
-        />
-        <TabButton
-          tab="reflections"
-          activeTab={activeTab}
-          icon={BookOpen}
-          label="Reflections"
-          onClick={() => setActiveTab('reflections')}
-        />
-        <TabButton
-          tab="review"
-          activeTab={activeTab}
-          icon={Brain}
-          label="Review Queue"
-          onClick={() => setActiveTab('review')}
         />
       </div>
 
@@ -450,63 +762,49 @@ export function VaultPage() {
           </>
         )}
 
-        {/* Summaries Tab - PRO feature */}
-        {activeTab === 'summaries' && (
-          hasProAccess ? (
-            <EmptyState
-              icon={FileText}
-              title="No summaries yet"
-              description="AI-generated summaries from your video lessons will appear here."
-            />
-          ) : (
-            <ProPaywall feature="Summaries" />
-          )
-        )}
-
         {/* Bookmarks Tab */}
         {activeTab === 'bookmarks' && (
-          <EmptyState
-            icon={Bookmark}
-            title="No bookmarks yet"
-            description="Bookmark video moments during your sessions to save them here."
-          />
+          <>
+            {filteredBookmarks.length > 0 ? (
+              <div className="space-y-3">
+                {filteredBookmarks.map(bookmark => (
+                  <BookmarkCard
+                    key={bookmark.id}
+                    bookmark={bookmark}
+                    onClick={() => setSelectedBookmark(bookmark)}
+                    onDelete={() => handleDeleteBookmark(bookmark.id)}
+                  />
+                ))}
+              </div>
+            ) : searchQuery ? (
+              <EmptyState
+                icon={Search}
+                title="No bookmarks found"
+                description={`No bookmarks match "${searchQuery}". Try a different search term.`}
+              />
+            ) : (
+              <EmptyState
+                icon={Bookmark}
+                title="No bookmarks yet"
+                description="Bookmark sections during your learning sessions to save them here for quick reference."
+              />
+            )}
+          </>
         )}
 
-        {/* Code Snippets Tab - PRO feature */}
-        {activeTab === 'code' && (
-          hasProAccess ? (
-            <EmptyState
-              icon={Code}
-              title="No code snippets yet"
-              description="Save code snippets from your practice projects to reference later."
-            />
-          ) : (
-            <ProPaywall feature="Code Snippets" />
-          )
-        )}
-
-        {/* Reflections Tab */}
-        {activeTab === 'reflections' && (
-          <EmptyState
-            icon={BookOpen}
-            title="No reflections yet"
-            description="Your daily reflections from completed sessions will appear here."
-          />
-        )}
-
-        {/* Review Queue Tab - PRO feature */}
-        {activeTab === 'review' && (
-          hasProAccess ? (
-            <EmptyState
-              icon={Brain}
-              title="Review queue empty"
-              description="Complete more lessons to build your spaced repetition review queue."
-            />
-          ) : (
-            <ProPaywall feature="Spaced Repetition Review" />
-          )
-        )}
       </motion.div>
+
+      {/* Bookmark Modal */}
+      <AnimatePresence>
+        {selectedBookmark && (
+          <BookmarkModal
+            bookmark={selectedBookmark}
+            onClose={() => setSelectedBookmark(null)}
+            onResumeCourse={() => handleResumeCourseFromBookmark(selectedBookmark)}
+            onDelete={() => handleDeleteBookmark(selectedBookmark.id)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

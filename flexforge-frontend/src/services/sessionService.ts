@@ -319,6 +319,35 @@ export const sessionService = {
     };
   },
 
+  // ═══════════════════════════════════════════════════
+  // SKILL COMBOS (Premium)
+  // ═══════════════════════════════════════════════════
+
+  /**
+   * Get AI-generated skill combos based on user's learned skills
+   * Pro: 1/day, Premium: unlimited
+   */
+  async getSkillCombos(): Promise<{
+    message: string;
+    combos: Array<{
+      project: string;
+      description: string;
+      skills: string[];
+      icon: string;
+    }>;
+    suggestedSkills: Array<{
+      skill: string;
+      unlocks: string[];
+      icon: string;
+    }>;
+    tokensUsed: number;
+    remainingToday: number;
+    limit: number;
+  }> {
+    const { data } = await api.get('/sessions/skill-combos');
+    return data;
+  },
+
   /**
    * Find a new video for a day using Layer 3 deep verification
    * Called when user exhausts the alternative and clicks "Find New Video" again

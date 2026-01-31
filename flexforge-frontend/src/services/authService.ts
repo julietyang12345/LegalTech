@@ -37,4 +37,33 @@ export const authService = {
   async logout(): Promise<void> {
     await api.post('/auth/logout');
   },
+
+  // Planned Skills (wishlist)
+  async getPlannedSkills(): Promise<{
+    plannedSkills: Array<{ skill: string; icon: string; addedAt: string }>;
+  }> {
+    const { data } = await api.get('/users/planned-skills');
+    return data;
+  },
+
+  async addPlannedSkill(
+    skill: string,
+    icon: string,
+  ): Promise<{
+    message: string;
+    plannedSkills: Array<{ skill: string; icon: string; addedAt: string }>;
+  }> {
+    const { data } = await api.post('/users/planned-skills', { skill, icon });
+    return data;
+  },
+
+  async removePlannedSkill(skill: string): Promise<{
+    message: string;
+    plannedSkills: Array<{ skill: string; icon: string; addedAt: string }>;
+  }> {
+    const { data } = await api.delete(
+      `/users/planned-skills/${encodeURIComponent(skill)}`,
+    );
+    return data;
+  },
 };

@@ -265,10 +265,23 @@ export const useSessionStore = create<SessionState>()(
   },
 
   setActiveSession: (session) => {
-    set({ activeSession: session });
-    if (session) {
+    // When setting a new session (resume flow), reset loading state so content loads fresh
+    // but preserve step progress (persisted in localStorage) so user can resume where they left off
+    set({
+      activeSession: session,
+      // Reset loading state for fresh content load
+      isCoreLoaded: false,
+      isDeferredLoading: false,
+      isDeferredLoaded: false,
+      deferredContent: null,
+      isDayLoading: false,
+      dayLoadingNumber: null,
+    });
+    if (session && session.curriculum?.days) {
       const currentDayData = session.curriculum.days.find(d => d.day === session.currentDay);
       set({ currentDay: currentDayData || null });
+    } else if (session) {
+      set({ currentDay: null });
     }
   },
 
@@ -276,11 +289,29 @@ export const useSessionStore = create<SessionState>()(
     set({ isLoading: true });
     try {
       const response = await sessionService.update(id, updates);
-      set((state) => ({
-        activeSession: state.activeSession?.id === id ? response.session : state.activeSession,
-        sessions: state.sessions.map(s => s.id === id ? response.session : s),
-        isLoading: false,
-      }));
+      set((state) => {
+        // If we're setting a session to ACTIVE, it becomes the new activeSession
+        // If we're pausing/completing/abandoning the current active session, clear activeSession
+        let newActiveSession = state.activeSession;
+
+        if (updates.status === 'ACTIVE') {
+          // This session is becoming active
+          newActiveSession = response.session;
+        } else if (state.activeSession?.id === id) {
+          // We're updating the current active session (e.g., pausing it)
+          if (updates.status === 'PAUSED' || updates.status === 'COMPLETED' || updates.status === 'ABANDONED') {
+            newActiveSession = null;
+          } else {
+            newActiveSession = response.session;
+          }
+        }
+
+        return {
+          activeSession: newActiveSession,
+          sessions: state.sessions.map(s => s.id === id ? response.session : s),
+          isLoading: false,
+        };
+      });
     } catch (error: any) {
       set({
         error: error.response?.data?.message || 'Failed to update session',
@@ -311,7 +342,7 @@ export const useSessionStore = create<SessionState>()(
   // Focus mode actions
   startDay: (dayNumber) => {
     const { activeSession, currentDayNumber, completedSteps, currentStep } = get();
-    if (!activeSession) return;
+    if (!activeSession?.curriculum?.days) return;
 
     const dayData = activeSession.curriculum.days.find(d => d.day === dayNumber);
 
@@ -853,7 +884,7 @@ export const useSessionStore = create<SessionState>()(
 
   getDayStatus: (dayNumber: number) => {
     const { activeSession } = get();
-    if (!activeSession) return DayStatus.LOCKED;
+    if (!activeSession?.curriculum?.days) return DayStatus.LOCKED;
 
     const day = activeSession.curriculum.days.find((d) => d.day === dayNumber);
     return day?.status || DayStatus.LOCKED;
@@ -861,7 +892,7 @@ export const useSessionStore = create<SessionState>()(
 
   canStartDay: (dayNumber: number) => {
     const { activeSession } = get();
-    if (!activeSession) return false;
+    if (!activeSession?.curriculum?.days) return false;
 
     const day = activeSession.curriculum.days.find((d) => d.day === dayNumber);
     if (!day) return false;
@@ -879,7 +910,7 @@ export const useSessionStore = create<SessionState>()(
   // Helpers
   getCurrentDayData: () => {
     const { activeSession } = get();
-    if (!activeSession) return null;
+    if (!activeSession?.curriculum?.days) return null;
     return activeSession.curriculum.days.find(d => d.day === activeSession.currentDay) || null;
   },
 

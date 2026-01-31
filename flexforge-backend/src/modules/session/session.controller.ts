@@ -94,6 +94,19 @@ export class SessionController {
   }
 
   /**
+   * GET /api/v1/sessions/skill-combos
+   * Get AI-generated skill combo suggestions (Premium feature)
+   */
+  @Get('skill-combos')
+  async getSkillCombos(@Request() req) {
+    const result = await this.sessionService.generateSkillCombos(req.user.id);
+    return {
+      message: 'Skill combos generated',
+      ...result,
+    };
+  }
+
+  /**
    * GET /api/v1/sessions/:id
    * Get single session by ID
    */

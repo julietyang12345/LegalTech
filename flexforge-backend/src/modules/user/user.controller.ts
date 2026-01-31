@@ -1,8 +1,11 @@
 import {
   Controller,
   Get,
+  Post,
+  Delete,
   Patch,
   Body,
+  Param,
   UseGuards,
   Request,
 } from '@nestjs/common';
@@ -61,6 +64,52 @@ export class UserController {
     return {
       message: 'Preferences updated successfully',
       preferences: user.preferences,
+    };
+  }
+
+  /**
+   * GET /api/v1/users/planned-skills
+   * Get user's planned skills (wishlist)
+   */
+  @Get('planned-skills')
+  async getPlannedSkills(@Request() req) {
+    const plannedSkills = await this.userService.getPlannedSkills(req.user.id);
+    return { plannedSkills };
+  }
+
+  /**
+   * POST /api/v1/users/planned-skills
+   * Add a skill to plan/wishlist
+   */
+  @Post('planned-skills')
+  async addPlannedSkill(
+    @Request() req,
+    @Body() body: { skill: string; icon: string },
+  ) {
+    const plannedSkills = await this.userService.addPlannedSkill(
+      req.user.id,
+      body.skill,
+      body.icon,
+    );
+    return {
+      message: 'Skill added to plan',
+      plannedSkills,
+    };
+  }
+
+  /**
+   * DELETE /api/v1/users/planned-skills/:skill
+   * Remove a skill from plan/wishlist
+   */
+  @Delete('planned-skills/:skill')
+  async removePlannedSkill(@Request() req, @Param('skill') skill: string) {
+    const plannedSkills = await this.userService.removePlannedSkill(
+      req.user.id,
+      decodeURIComponent(skill),
+    );
+    return {
+      message: 'Skill removed from plan',
+      plannedSkills,
     };
   }
 }

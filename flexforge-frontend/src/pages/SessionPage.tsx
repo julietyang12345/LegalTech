@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, CheckCircle, Shuffle, HelpCircle, FileText, Sparkles, Target, BookOpen, Trophy, GraduationCap } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCircle, Shuffle, HelpCircle, FileText, Sparkles, Target, BookOpen, Trophy, GraduationCap, Bookmark } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
@@ -23,6 +23,25 @@ import { OpenTaskStep } from '@/components/session/OpenTaskStep';
 import { ReflectionStep } from '@/components/session/ReflectionStep';
 
 import type { SessionStep as SessionStepType } from '@/types';
+import type { CourseBookmark } from './VaultPage';
+
+// Bookmark storage
+const BOOKMARKS_STORAGE_KEY = 'flexforge_bookmarks';
+
+function addBookmark(bookmark: Omit<CourseBookmark, 'id' | 'createdAt'>) {
+  const stored = localStorage.getItem(BOOKMARKS_STORAGE_KEY);
+  const bookmarks: CourseBookmark[] = stored ? JSON.parse(stored) : [];
+
+  const newBookmark: CourseBookmark = {
+    ...bookmark,
+    id: `bm_${Date.now()}`,
+    createdAt: new Date().toISOString(),
+  };
+
+  bookmarks.unshift(newBookmark);
+  localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify(bookmarks));
+  return newBookmark;
+}
 
 // Draggable AI Tutor Button for mobile
 function DraggableAiTutorButton({
@@ -415,6 +434,7 @@ export function SessionPage() {
   const [incompleteItems, setIncompleteItems] = useState<{ step: string; label: string; icon: string }[]>([]);
   const [showAiTutor, setShowAiTutor] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showBookmarkToast, setShowBookmarkToast] = useState(false);
 
   const { hasTierAccess } = useAuthStore();
   const canUseAITutor = hasTierAccess(QuotaTier.PRO);
@@ -612,6 +632,121 @@ export function SessionPage() {
     return true;
   };
 
+  // Handle bookmark current section
+  const handleBookmark = () => {
+    if (!activeSession || !currentDay) return;
+
+    // Map step to section type
+    const sectionMap: Record<SessionStepType, CourseBookmark['section']> = {
+      prePrompt: 'video',
+      video: 'video',
+      foundationCards: 'video',
+      task1: 'task1',
+      bossMilestone: 'boss',
+      openTask: 'task2',
+      reflection: 'reflection',
+    };
+
+    // Get section title based on current step
+    const getSectionTitle = (): string => {
+      switch (currentStep) {
+        case 'video':
+          return currentDay.video?.title || currentDay.title || 'Video Lesson';
+        case 'foundationCards':
+          return 'Foundation Cards';
+        case 'task1':
+          return (currentDay.task1 as any)?.title || 'Practice Task';
+        case 'bossMilestone':
+          return currentDay.bossMilestone?.title || 'Boss Project';
+        case 'openTask':
+          return 'Real-World Challenge';
+        case 'reflection':
+          return 'Daily Reflection';
+        default:
+          return currentDay.title || 'Learning Section';
+      }
+    };
+
+    // Capture content based on current step
+    const getContent = (): CourseBookmark['content'] => {
+      const content: CourseBookmark['content'] = {};
+
+      switch (currentStep) {
+        case 'video':
+          if (currentDay.video) {
+            content.videoTitle = currentDay.video.title || currentDay.title;
+            content.videoDescription = (currentDay.video as any).description;
+          }
+          break;
+
+        case 'foundationCards':
+          // Capture foundation cards
+          const cards = currentDay.foundationCards || currentDay.languageFoundationCards;
+          if (cards && cards.length > 0) {
+            content.foundationCards = cards.slice(0, 10).map((card: any) => ({
+              front: card.front || card.question || card.term,
+              back: card.back || card.answer || card.definition,
+            }));
+          }
+          break;
+
+        case 'task1':
+          const task1 = currentDay.task1 as any;
+          if (task1) {
+            content.taskTitle = task1.title;
+            content.taskDescription = task1.description;
+            // Capture questions if available
+            if (task1.questions && task1.questions.length > 0) {
+              content.taskQuestions = task1.questions.slice(0, 5).map((q: any) => ({
+                question: q.question || q.text,
+                options: q.options || q.choices,
+                correctAnswer: q.correctAnswer || q.answer,
+              }));
+            }
+            // Capture code if available
+            if (task1.code || task1.starterCode) {
+              content.codeSnippet = task1.code || task1.starterCode;
+            }
+          }
+          break;
+
+        case 'bossMilestone':
+          const boss = currentDay.bossMilestone as any;
+          if (boss) {
+            content.bossTitle = boss.title;
+            content.bossDescription = boss.description;
+            content.bossRequirements = boss.requirements?.slice(0, 5);
+            if (boss.starterCode) {
+              content.codeSnippet = boss.starterCode;
+            }
+          }
+          break;
+
+        case 'openTask':
+          const openTask = currentDay.openTask as any;
+          if (openTask) {
+            content.taskTitle = openTask.title || 'Real-World Challenge';
+            content.taskDescription = openTask.description || openTask.challenge;
+          }
+          break;
+      }
+
+      return Object.keys(content).length > 0 ? content : undefined;
+    };
+
+    addBookmark({
+      sessionId: activeSession.id,
+      skillName: activeSession.skillName,
+      dayNumber: currentDay.day,
+      section: sectionMap[currentStep] || 'video',
+      sectionTitle: getSectionTitle(),
+      content: getContent(),
+    });
+
+    setShowBookmarkToast(true);
+    setTimeout(() => setShowBookmarkToast(false), 2000);
+  };
+
   const handleContinue = async () => {
     if (isLastStep) {
       // Check for incomplete work before completing
@@ -762,21 +897,44 @@ export function SessionPage() {
         <div className="max-w-focus mx-auto px-4">
           {/* Navigation buttons */}
           <div className="flex justify-between items-center">
-            <Button
-              variant="ghost"
-              onClick={handlePrevious}
-              disabled={isFirstStep || !currentDay}
-              leftIcon={<ChevronLeft className="w-5 h-5" />}
-            >
-              Previous
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                onClick={handlePrevious}
+                disabled={isFirstStep || !currentDay}
+                leftIcon={<ChevronLeft className="w-5 h-5" />}
+              >
+                Previous
+              </Button>
 
-            {/* AI Tutor Button - Desktop only (inline) */}
-            <div className="hidden md:block">
+              {/* Mobile bookmark button */}
+              <button
+                onClick={handleBookmark}
+                disabled={!currentDay}
+                className="md:hidden p-2 rounded-lg text-brand-500 hover:bg-brand-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Bookmark this section"
+              >
+                <Bookmark className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Center buttons - Desktop only */}
+            <div className="hidden md:flex items-center gap-2">
+              {/* Bookmark Button */}
+              <button
+                onClick={handleBookmark}
+                disabled={!currentDay}
+                className="group flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-300 bg-white hover:bg-gray-50 border border-gray-200 hover:border-brand-300 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Bookmark className="w-4 h-4 text-brand-500 group-hover:text-brand-600" />
+                <span className="text-gray-700 group-hover:text-gray-900">Bookmark</span>
+              </button>
+
+              {/* AI Tutor Button */}
               {canUseAITutor ? (
                 <button
                   onClick={() => setShowAiTutor(true)}
-                  className="group flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 bg-white hover:bg-gray-50 border border-gray-200 hover:border-purple-300 hover:shadow-md hover:shadow-purple-100"
+                  className="group flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-300 bg-white hover:bg-gray-50 border border-gray-200 hover:border-purple-300 hover:shadow-md hover:shadow-purple-100"
                 >
                   <Sparkles className="w-4 h-4 text-purple-500 group-hover:text-purple-600" />
                   <span className="text-gray-700 group-hover:text-gray-900">Ask AI Tutor</span>
@@ -784,7 +942,7 @@ export function SessionPage() {
               ) : (
                 <button
                   onClick={() => setShowUpgradeModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 text-sm text-gray-500 bg-gray-50 hover:bg-gray-100 rounded-xl border border-gray-200 transition-colors"
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500 bg-gray-50 hover:bg-gray-100 rounded-xl border border-gray-200 transition-colors"
                 >
                   <Sparkles className="w-4 h-4" />
                   Ask AI Tutor (PRO)
@@ -905,6 +1063,21 @@ export function SessionPage() {
                 </button>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+
+        {/* Bookmark Toast */}
+        {showBookmarkToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50"
+          >
+            <div className="flex items-center gap-2 px-4 py-3 bg-gray-900 text-white rounded-xl shadow-lg">
+              <Bookmark className="w-4 h-4 text-brand-400" />
+              <span className="text-sm font-medium">Bookmarked! Find it in your Vault.</span>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

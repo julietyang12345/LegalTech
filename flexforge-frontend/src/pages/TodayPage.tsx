@@ -127,7 +127,7 @@ function CurriculumModal({
   onClose: () => void;
   session: any;
 }) {
-  if (!isOpen || !session) return null;
+  if (!isOpen || !session || !session.curriculum?.days) return null;
 
   const { curriculum, currentDay, skillName, durationDays } = session;
   const progress = Math.round(((currentDay - 1) / durationDays) * 100);
@@ -381,8 +381,10 @@ export function TodayPage() {
       // Resume the selected session
       await updateSession(sessionToResume.id, { status: SessionStatus.ACTIVE });
 
-      // Refresh to get the new active session
+      // Fetch the full active session (update endpoint doesn't return curriculum)
       await fetchActiveSession();
+
+      // Refresh sessions list to update paused courses display
       await fetchSessions();
     } catch (err) {
       console.error('Failed to resume course:', err);
@@ -481,11 +483,35 @@ export function TodayPage() {
     );
   }
 
-  // No session state
+  // No session state (but show loading if resuming a course)
   if (!activeSession) {
+    if (isResuming) {
+      return (
+        <div className="max-w-2xl mx-auto px-4 py-12">
+          <div className="animate-pulse space-y-6">
+            <div className="h-24 bg-gray-200 rounded-xl" />
+            <div className="h-40 bg-gray-200 rounded-xl" />
+            <div className="h-32 bg-gray-200 rounded-xl" />
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="max-w-2xl mx-auto px-4 py-12">
         <NoSessionState />
+      </div>
+    );
+  }
+
+  // Session exists but curriculum not loaded yet (e.g., during resume)
+  if (!activeSession.curriculum?.days) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-12">
+        <div className="animate-pulse space-y-6">
+          <div className="h-24 bg-gray-200 rounded-xl" />
+          <div className="h-40 bg-gray-200 rounded-xl" />
+          <div className="h-32 bg-gray-200 rounded-xl" />
+        </div>
       </div>
     );
   }

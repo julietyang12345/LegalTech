@@ -34,10 +34,11 @@ import { Button, Card, Input } from '@/components/common';
 // Types
 interface SkillData {
   name: string;
-  status: 'complete' | 'progress' | 'locked';
+  status: 'complete' | 'progress' | 'locked' | 'planned';
   daysCompleted: number;
   totalDays: number;
   sessionId?: string;
+  icon?: string;
 }
 
 interface GroupData {
@@ -64,22 +65,26 @@ function SkillNode({ data, selected }: { data: SkillNodeData; selected: boolean 
     complete: 'bg-gradient-to-br from-green-400 to-emerald-500 text-white border-green-400',
     progress: 'bg-gradient-to-br from-brand-400 to-purple-500 text-white border-brand-400',
     locked: 'bg-gray-100 text-gray-400 border-gray-300',
+    planned: 'bg-blue-50 text-blue-600 border-2 border-dashed border-blue-400',
   };
 
   const progressPercent = data.totalDays > 0
     ? Math.round((data.daysCompleted || 0) / data.totalDays * 100)
     : 0;
 
+  const isPlanned = data.status === 'planned';
+
   return (
     <div className="flex flex-col items-center">
       {/* Branch connector - the "string" hanging from branch */}
-      <div className="w-0.5 h-4 bg-amber-700/60" />
-      <Handle type="target" position={Position.Top} className="!bg-amber-700 !w-1.5 !h-1.5 !-top-1" />
+      <div className={clsx("w-0.5 h-4", isPlanned ? "bg-blue-300/60" : "bg-amber-700/60")} />
+      <Handle type="target" position={Position.Top} className={clsx("!w-1.5 !h-1.5 !-top-1", isPlanned ? "!bg-blue-400" : "!bg-amber-700")} />
 
       <div
         className={clsx(
           'w-14 h-14 rounded-lg flex flex-col items-center justify-center relative overflow-hidden',
-          'border transition-all duration-200',
+          'transition-all duration-200',
+          !isPlanned && 'border',
           statusStyles[data.status],
           selected && 'ring-2 ring-brand-500 ring-offset-1',
           data.status !== 'locked' && 'shadow-md hover:shadow-lg hover:scale-105 cursor-pointer',
@@ -98,8 +103,13 @@ function SkillNode({ data, selected }: { data: SkillNodeData; selected: boolean 
           <Lock className="w-3 h-3" />
         ) : data.status === 'complete' ? (
           <span className="text-xs">✓</span>
+        ) : data.status === 'planned' ? (
+          <span className="text-sm">{data.icon || '📋'}</span>
         ) : null}
-        <span className="text-[7px] font-medium text-center px-0.5 leading-tight line-clamp-2">
+        <span className={clsx(
+          "text-[7px] font-medium text-center px-0.5 leading-tight line-clamp-2",
+          isPlanned && "text-blue-700"
+        )}>
           {data.name}
         </span>
       </div>
@@ -110,8 +120,13 @@ function SkillNode({ data, selected }: { data: SkillNodeData; selected: boolean 
           {data.daysCompleted}/{data.totalDays}d
         </span>
       ) : null}
+      {data.status === 'planned' && (
+        <span className="text-[8px] text-blue-500 mt-0.5">
+          Goal
+        </span>
+      )}
 
-      <Handle type="source" position={Position.Bottom} className="!bg-amber-700 !w-1.5 !h-1.5 !bottom-0" />
+      <Handle type="source" position={Position.Bottom} className={clsx("!w-1.5 !h-1.5 !bottom-0", isPlanned ? "!bg-blue-400" : "!bg-amber-700")} />
     </div>
   );
 }
@@ -314,7 +329,7 @@ function SkillTreeCanvasInner({
   onSkillClick,
 }: {
   skills: SkillData[];
-  onSkillClick: (sessionId: string) => void;
+  onSkillClick: (sessionId: string, status?: string) => void;
 }) {
   const { screenToFlowPosition } = useReactFlow();
 
@@ -407,8 +422,12 @@ function SkillTreeCanvasInner({
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: FlowNode) => {
       const data = node.data as unknown as SkillNodeData;
-      if (node.type === 'skill' && data.sessionId && data.status !== 'locked') {
-        onSkillClick(data.sessionId);
+      if (node.type === 'skill' && data.status !== 'locked') {
+        // For planned skills, pass the name. For others, pass sessionId
+        const identifier = data.status === 'planned' ? data.name : data.sessionId;
+        if (identifier) {
+          onSkillClick(identifier, data.status);
+        }
       }
     },
     [onSkillClick]
@@ -636,7 +655,7 @@ export function SkillTreeCanvas({
   onSkillClick,
 }: {
   skills: SkillData[];
-  onSkillClick: (sessionId: string) => void;
+  onSkillClick: (sessionId: string, status?: string) => void;
 }) {
   return (
     <ReactFlowProvider>

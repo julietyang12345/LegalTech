@@ -487,4 +487,102 @@ export class UserService {
     user.karmaPoints = (user.karmaPoints || 0) + points;
     await this.usersRepository.save(user);
   }
+
+  /**
+   * Update skill combo generation tracking
+   */
+  async updateSkillComboGeneration(
+    userId: string,
+    countToday: number,
+  ): Promise<void> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    user.preferences = {
+      ...user.preferences,
+      skillComboGeneration: {
+        lastGeneratedAt: new Date().toISOString(),
+        countToday,
+      },
+    };
+
+    await this.usersRepository.save(user);
+  }
+
+  /**
+   * Get planned skills for a user
+   */
+  async getPlannedSkills(
+    userId: string,
+  ): Promise<Array<{ skill: string; icon: string; addedAt: string }>> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user.preferences?.plannedSkills || [];
+  }
+
+  /**
+   * Add a planned skill
+   */
+  async addPlannedSkill(
+    userId: string,
+    skill: string,
+    icon: string,
+  ): Promise<Array<{ skill: string; icon: string; addedAt: string }>> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const plannedSkills = user.preferences?.plannedSkills || [];
+
+    // Check if skill already exists
+    if (plannedSkills.some((s) => s.skill.toLowerCase() === skill.toLowerCase())) {
+      return plannedSkills;
+    }
+
+    const newPlannedSkill = {
+      skill,
+      icon,
+      addedAt: new Date().toISOString(),
+    };
+
+    user.preferences = {
+      ...user.preferences,
+      plannedSkills: [...plannedSkills, newPlannedSkill],
+    };
+
+    await this.usersRepository.save(user);
+    return user.preferences.plannedSkills;
+  }
+
+  /**
+   * Remove a planned skill
+   */
+  async removePlannedSkill(
+    userId: string,
+    skill: string,
+  ): Promise<Array<{ skill: string; icon: string; addedAt: string }>> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const plannedSkills = user.preferences?.plannedSkills || [];
+    const filtered = plannedSkills.filter(
+      (s) => s.skill.toLowerCase() !== skill.toLowerCase(),
+    );
+
+    user.preferences = {
+      ...user.preferences,
+      plannedSkills: filtered,
+    };
+
+    await this.usersRepository.save(user);
+    return user.preferences.plannedSkills;
+  }
 }

@@ -7,6 +7,7 @@ import { SessionController } from './session.controller';
 import { CurriculumModule } from '../curriculum/curriculum.module';
 import { UserModule } from '../user/user.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
+import { AiModule } from '../ai/ai.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { AnalyticsModule } from '../analytics/analytics.module';
     CurriculumModule,
     UserModule,
     AnalyticsModule,
+    AiModule,
   ],
   controllers: [SessionController],
   providers: [SessionService],

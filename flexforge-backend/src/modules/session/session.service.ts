@@ -22,6 +22,7 @@ import { CurriculumService } from '../curriculum/curriculum.service';
 import { CurriculumCacheService } from '../curriculum/services/curriculum-cache.service';
 import { UserService } from '../user/user.service';
 import { AnalyticsService } from '../analytics/analytics.service';
+import { AiService, AITask } from '../ai/ai.service';
 
 @Injectable()
 export class SessionService {
@@ -34,6 +35,7 @@ export class SessionService {
     private cacheService: CurriculumCacheService,
     private userService: UserService,
     private analyticsService: AnalyticsService,
+    private aiService: AiService,
   ) {}
 
   /**
@@ -1336,6 +1338,127 @@ export class SessionService {
       boost: result.boost,
       tokensUsed: result.tokensUsed,
     };
+  }
+
+  /**
+   * Generate AI-powered skill combos based on user's learned skills
+   * Pro: 1 per day, Premium: unlimited
+   * Uses Haiku for fast, cheap generation
+   */
+  async generateSkillCombos(
+    userId: string,
+  ): Promise<{
+    combos: Array<{
+      project: string;
+      description: string;
+      skills: string[];
+      icon: string;
+    }>;
+    suggestedSkills: Array<{
+      skill: string;
+      unlocks: string[];
+      icon: string;
+    }>;
+    tokensUsed: number;
+    remainingToday: number;
+    limit: number;
+  }> {
+    const user = await this.userService.findById(userId);
+
+    // Minimum Pro tier required
+    if (!user.hasTierAccess(QuotaTier.PRO)) {
+      throw new ForbiddenException(
+        'AI-generated skill combos require Pro tier or higher',
+      );
+    }
+
+    const isPremium = user.hasTierAccess(QuotaTier.PREMIUM);
+    const dailyLimit = isPremium ? Infinity : 1; // Pro: 1/day, Premium: unlimited
+
+    // Check daily limit for Pro users
+    const today = new Date().toISOString().split('T')[0];
+    const comboGen = user.preferences?.skillComboGeneration;
+    const lastGenDate = comboGen?.lastGeneratedAt?.split('T')[0];
+    const countToday = lastGenDate === today ? (comboGen?.countToday || 0) : 0;
+
+    if (!isPremium && countToday >= dailyLimit) {
+      throw new ForbiddenException(
+        `Daily limit reached (${dailyLimit}/day for Pro). Upgrade to Premium for unlimited.`,
+      );
+    }
+
+    // Get user's completed and in-progress skills
+    const sessions = await this.findAllByUser(userId);
+    const userSkills = sessions
+      .filter(
+        (s) =>
+          s.status === SessionStatus.COMPLETED ||
+          s.status === SessionStatus.ACTIVE,
+      )
+      .map((s) => s.skillName);
+
+    if (userSkills.length === 0) {
+      return {
+        combos: [],
+        suggestedSkills: [],
+        tokensUsed: 0,
+        remainingToday: isPremium ? Infinity : dailyLimit - countToday,
+        limit: dailyLimit,
+      };
+    }
+
+    const prompt = `Based on the user's learned skills: ${userSkills.join(', ')}
+
+Generate personalized project ideas that combine these skills. Return a JSON object with:
+1. "combos": Array of 3-5 projects the user CAN build NOW with their current skills
+2. "suggestedSkills": Array of 2-3 skills they should learn next to unlock more projects
+
+Each combo needs: project (name), description (15 words max), skills (array of skill names used), icon (single emoji)
+Each suggestedSkill needs: skill (name), unlocks (array of 3 project names this enables), icon (single emoji)
+
+Focus on practical, achievable projects. Be creative but realistic.
+
+Return ONLY valid JSON, no markdown or explanation.`;
+
+    const systemPrompt = `You are a creative coding project advisor. Generate inspiring but achievable project ideas based on user's skills. Always return valid JSON.`;
+
+    try {
+      // Use GPT-4o-mini for fast, cheap generation
+      const response = await this.aiService.routeRequest(
+        AITask.QUIZ_GENERATION,
+        prompt,
+        systemPrompt,
+      );
+
+      // Parse the JSON response
+      const cleanContent = response.content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
+      const parsed = JSON.parse(cleanContent);
+
+      // Update daily generation count
+      const newCount = countToday + 1;
+      await this.userService.updateSkillComboGeneration(userId, newCount);
+
+      // Increment token usage
+      await this.userService.incrementUsage(userId, response.tokensUsed, 0);
+
+      this.logger.log(
+        `🎨 Generated ${parsed.combos?.length || 0} skill combos for user ${userId} (${newCount}/${dailyLimit} today)`,
+      );
+
+      return {
+        combos: parsed.combos || [],
+        suggestedSkills: parsed.suggestedSkills || [],
+        tokensUsed: response.tokensUsed,
+        remainingToday: isPremium ? Infinity : dailyLimit - newCount,
+        limit: dailyLimit,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to generate skill combos: ${error.message}`);
+      throw error;
+    }
   }
 
   /**
