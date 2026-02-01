@@ -57,6 +57,15 @@ export interface CourseBookmark {
       front: string;
       back: string;
     }>;
+    // Reflection questions
+    reflectionQuestions?: Array<{
+      id: number;
+      question: string;
+    }>;
+    // Open task content
+    openTaskTitle?: string;
+    openTaskDescription?: string;
+    openTaskChallenge?: string;
     // Code snippet
     codeSnippet?: string;
   };
@@ -490,6 +499,42 @@ function BookmarkModal({
                       </li>
                     ))}
                   </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Reflection Questions */}
+          {bookmark.section === 'reflection' && content?.reflectionQuestions && content.reflectionQuestions.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-brand-500" />
+                Reflection Questions ({content.reflectionQuestions.length})
+              </h3>
+              <div className="space-y-3">
+                {content.reflectionQuestions.map((q, i) => (
+                  <div key={q.id || i} className="p-4 bg-gradient-to-br from-brand-50 to-purple-50 rounded-xl border border-brand-200">
+                    <p className="text-gray-900 font-medium">{i + 1}. {q.question}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Open Task Content */}
+          {bookmark.section === 'task2' && (content?.openTaskTitle || content?.openTaskDescription) && (
+            <div className="space-y-4">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-orange-500" />
+                {content.openTaskTitle || 'Real-World Challenge'}
+              </h3>
+              {content.openTaskDescription && (
+                <p className="text-gray-600">{content.openTaskDescription}</p>
+              )}
+              {content.openTaskChallenge && (
+                <div className="p-4 bg-orange-50 rounded-xl border border-orange-200">
+                  <h4 className="text-sm font-medium text-orange-800 mb-2">Challenge</h4>
+                  <p className="text-orange-900">{content.openTaskChallenge}</p>
                 </div>
               )}
             </div>

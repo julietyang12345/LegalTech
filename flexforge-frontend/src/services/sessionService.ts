@@ -326,8 +326,13 @@ export const sessionService = {
   /**
    * Get AI-generated skill combos based on user's learned skills
    * Pro: 1/day, Premium: unlimited
+   * @param selectedSkills - Optional array of skill names to focus on
+   * @param action - Type of analysis: 'combo' | 'analyze' | 'related' | 'path'
    */
-  async getSkillCombos(): Promise<{
+  async getSkillCombos(params?: {
+    selectedSkills?: string[];
+    action?: 'combo' | 'analyze' | 'related' | 'path';
+  }): Promise<{
     message: string;
     combos: Array<{
       project: string;
@@ -344,7 +349,10 @@ export const sessionService = {
     remainingToday: number;
     limit: number;
   }> {
-    const { data } = await api.get('/sessions/skill-combos');
+    const { data } = await api.post('/sessions/skill-combos', {
+      selectedSkills: params?.selectedSkills || [],
+      action: params?.action || 'combo',
+    });
     return data;
   },
 

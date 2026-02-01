@@ -4,4 +4,3 @@ export { DirectionsStep } from './DirectionsStep';
 export { RefinementPanel } from './RefinementPanel';
 export { FeelingStep } from './FeelingStep';
 export { LanguageStep } from './LanguageStep';
-export { AspirationStep } from './AspirationStep';

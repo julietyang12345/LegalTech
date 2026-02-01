@@ -60,6 +60,16 @@ interface AISuggestedSkill {
   skill: string;
   unlocks: string[];
   icon: string;
+  reason?: string;
+}
+
+interface AISkillAnalysis {
+  overview: string;
+  keyConcepts: string[];
+  difficulty: 'beginner' | 'intermediate' | 'advanced';
+  timeToLearn: string;
+  prerequisites: string[];
+  realWorldUses: string[];
 }
 
 interface PlannedSkill {
@@ -70,8 +80,8 @@ interface PlannedSkill {
 
 
 // Custom Skill Node - floating leaf with visual states
-function SkillNode({ id, data, selected, dragging }: { id: string; data: SkillNodeData; selected: boolean; dragging?: boolean }) {
-  const { setNodes } = useReactFlow();
+function SkillNode({ id, data, selected, dragging }: { id: string; data: SkillNodeData & { onToggleSelect?: (id: string) => void }; selected: boolean; dragging?: boolean }) {
+  const onToggleSelect = data.onToggleSelect;
   const progressPercent = data.totalDays > 0
     ? Math.round((data.daysCompleted || 0) / data.totalDays * 100)
     : 0;
@@ -132,7 +142,8 @@ function SkillNode({ id, data, selected, dragging }: { id: string; data: SkillNo
         <motion.button
           onClick={(e) => {
             e.stopPropagation();
-            setNodes(nds => nds.map(n => n.id === id ? { ...n, selected: !n.selected } : n));
+            console.log('[SkillNode] + button clicked, id:', id, 'onToggleSelect:', !!onToggleSelect);
+            onToggleSelect?.(id);
           }}
           className={clsx(
             "absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full flex items-center justify-center z-10 border-2 transition-all cursor-pointer",
@@ -213,7 +224,7 @@ const nodeTypes: NodeTypes = {
 };
 
 // AI Analysis action types
-type AIAction = 'generate-ideas' | 'analyze-skill' | 'find-related' | 'learning-path';
+type AIAction = 'generate-ideas' | 'analyze-skill' | 'find-related';
 
 // Skill Action Menu - shows on click with AI analysis options
 function SkillActionMenu({
@@ -385,21 +396,6 @@ function SkillActionMenu({
         <span>Find Related Skills</span>
       </button>
 
-      {/* Suggest Learning Path */}
-      <button
-        onClick={() => handleAction('learning-path')}
-        disabled={!rateLimit.allowed}
-        className={clsx(
-          "w-full px-4 py-2 text-left text-sm flex items-center gap-2 transition-colors",
-          rateLimit.allowed
-            ? "text-green-700 hover:bg-green-50"
-            : "text-gray-400 cursor-not-allowed"
-        )}
-      >
-        <Rocket className={clsx("w-4 h-4", rateLimit.allowed ? "text-green-500" : "text-gray-300")} />
-        <span>Suggest Learning Path</span>
-      </button>
-
       {/* Rate limit info */}
       <div className="px-4 pt-1.5 pb-1 border-t border-gray-100 mt-1">
         <p className="text-[10px] text-gray-400">
@@ -542,7 +538,7 @@ function SkillTreeCanvasInner({
 
   // AI Ideas state
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiResults, setAiResults] = useState<{ type: BottomAIAction; combos: AICombo[]; suggestions: AISuggestedSkill[] } | null>(null);
+  const [aiResults, setAiResults] = useState<{ type: BottomAIAction; combos: AICombo[]; suggestions: AISuggestedSkill[]; analysis?: AISkillAnalysis } | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
 
   // Rate limit modal state
@@ -615,14 +611,54 @@ function SkillTreeCanvasInner({
     return [];
   }, []);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(getInitialNodes());
+  // Toggle node selection - using ref pattern for stable callback
+  const setNodesRef = useRef<typeof setNodes | null>(null);
+  const handleToggleNodeSelect = useCallback((nodeId: string) => {
+    console.log('[Toggle] Called for nodeId:', nodeId, 'setNodesRef.current:', !!setNodesRef.current);
+    setNodesRef.current?.(nds => {
+      const updated = nds.map(n =>
+        n.id === nodeId ? { ...n, selected: !n.selected } : n
+      );
+      console.log('[Toggle] After update, selected nodes:', updated.filter(n => n.selected).map(n => n.id));
+      return updated;
+    });
+  }, []);
+
+  // Create initial nodes with callback
+  const getInitialNodesWithCallback = useCallback(() => {
+    return getInitialNodes().map(node => ({
+      ...node,
+      data: { ...node.data, onToggleSelect: handleToggleNodeSelect },
+    }));
+  }, [getInitialNodes, handleToggleNodeSelect]);
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(getInitialNodesWithCallback());
   const [edges, setEdges, onEdgesChange] = useEdgesState(getInitialEdges());
   const [skillMenu, setSkillMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
 
-  // Update nodes when skills change
+  // Update the ref after setNodes is available
   useEffect(() => {
-    setNodes(getInitialNodes());
-  }, [skills, getInitialNodes, setNodes]);
+    setNodesRef.current = setNodes;
+  }, [setNodes]);
+
+  // Update nodes when skills change (preserve positions and selection)
+  useEffect(() => {
+    setNodes(currentNodes => {
+      const initialNodes = getInitialNodes();
+      const existingMap = new Map(currentNodes.map(n => [n.id, n]));
+
+      return initialNodes.map(node => {
+        const existing = existingMap.get(node.id);
+        return {
+          ...node,
+          position: existing?.position || node.position,
+          selected: existing?.selected || false,
+          data: { ...node.data, onToggleSelect: handleToggleNodeSelect },
+        };
+      });
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skills]);
 
   // Save layout on changes
   useEffect(() => {
@@ -672,6 +708,7 @@ function SkillTreeCanvasInner({
   const getSelectedSkillNodes = useCallback(() => {
     // Get all selected skill nodes
     const selectedNodes = nodes.filter(n => n.type === 'skill' && n.selected);
+    console.log('[getSelectedSkillNodes] nodes count:', nodes.length, 'selected:', selectedNodes.length, 'nodeIds with selected=true:', nodes.filter(n => n.selected).map(n => n.id));
     // If none selected but skill menu was on a skill, use that one
     if (selectedNodes.length === 0 && skillMenu?.nodeId) {
       const menuNode = nodes.find(n => n.id === skillMenu.nodeId && n.type === 'skill');
@@ -701,7 +738,7 @@ function SkillTreeCanvasInner({
     if (!menuSkill) return;
 
     // Map menu action to bottom action type
-    const bottomAction: BottomAIAction = action === 'analyze-skill' ? 'analyze' : action === 'find-related' ? 'related' : 'path';
+    const bottomAction: BottomAIAction = action === 'analyze-skill' ? 'analyze' : 'related';
 
     setAiLoading(true);
     setAiError(null);
@@ -713,7 +750,6 @@ function SkillTreeCanvasInner({
 
     // Use the specific menu skill for this action
     const selectedSkillNames = [menuSkill.name];
-    console.log(`[SkillTree] Menu AI Action: ${bottomAction}, skill: ${menuSkill.name}`);
 
     try {
       const result = await sessionService.getSkillCombos({
@@ -722,8 +758,9 @@ function SkillTreeCanvasInner({
       });
       setAiResults({
         type: bottomAction,
-        combos: result.combos,
-        suggestions: result.suggestedSkills,
+        combos: result.combos || [],
+        suggestions: result.suggestedSkills || [],
+        analysis: (result as any).analysis,
       });
       recordAIIdeasUsage();
     } catch (err: any) {
@@ -752,8 +789,7 @@ function SkillTreeCanvasInner({
     setTimeout(() => setShowParticles(false), 1500);
 
     // Extract skill names from selected nodes
-    const selectedSkillNames = selectedNodes.map(n => n.data.label as string);
-    console.log(`[SkillTree] AI Action: ${action}, skills: [${selectedSkillNames.join(', ')}]`);
+    const selectedSkillNames = selectedNodes.map(n => (n.data as unknown as SkillNodeData).name);
 
     try {
       const result = await sessionService.getSkillCombos({
@@ -762,8 +798,9 @@ function SkillTreeCanvasInner({
       });
       setAiResults({
         type: action,
-        combos: result.combos,
-        suggestions: result.suggestedSkills,
+        combos: result.combos || [],
+        suggestions: result.suggestedSkills || [],
+        analysis: (result as any).analysis,
       });
       recordAIIdeasUsage();
     } catch (err: any) {
@@ -850,12 +887,12 @@ function SkillTreeCanvasInner({
           id: `skill-${skill.sessionId || index}`,
           type: 'skill',
           position: { x: col * 90 + 80 + rowOffset, y: row * 100 + 40 },
-          data: { ...skill, type: 'skill' as const },
+          data: { ...skill, type: 'skill' as const, onToggleSelect: handleToggleNodeSelect },
         };
       })
     );
     setEdges([]);
-  }, [skills, setNodes, setEdges]);
+  }, [skills, setNodes, setEdges, handleToggleNodeSelect]);
 
   // Tree trunk SVG component
   const TreeTrunk = () => (
@@ -1067,7 +1104,7 @@ function SkillTreeCanvasInner({
 }
 
 // AI Action type for the bottom panel
-type BottomAIAction = 'combo' | 'analyze' | 'related' | 'path';
+type BottomAIAction = 'combo' | 'analyze' | 'related';
 
 // Bottom Control Panel - skill selection + AI actions + results
 function BottomControlPanel({
@@ -1089,7 +1126,7 @@ function BottomControlPanel({
   onClearAll: () => void;
   onAIAction: (action: BottomAIAction) => void;
   isLoading: boolean;
-  results: { type: BottomAIAction; combos: AICombo[]; suggestions: AISuggestedSkill[] } | null;
+  results: { type: BottomAIAction; combos: AICombo[]; suggestions: AISuggestedSkill[]; analysis?: AISkillAnalysis } | null;
   error: string | null;
   isPro: boolean;
   isPremium: boolean;
@@ -1099,6 +1136,9 @@ function BottomControlPanel({
 }) {
   const rateLimit = canUseAIIdeas(isPro, isPremium, isAdmin);
   const hasSelection = selectedSkills.length > 0;
+
+  // Debug - expanded
+  console.log('[BottomPanel] hasSelection:', hasSelection, 'rateLimit.allowed:', rateLimit.allowed, 'isPro:', isPro, 'isPremium:', isPremium, 'isAdmin:', isAdmin);
 
   return (
     <div className="mt-4 space-y-3">
@@ -1145,21 +1185,22 @@ function BottomControlPanel({
         <div className="p-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200">
           <p className="text-xs font-medium text-gray-500 mb-2">AI Actions</p>
           <div className="flex gap-2">
-            {/* Combo - only when multiple selected */}
+            {/* Combo - requires 2+ skills selected */}
             <motion.button
               onClick={() => onAIAction('combo')}
-              disabled={!hasSelection || isLoading || !rateLimit.allowed}
+              disabled={selectedSkills.length < 2 || isLoading || !rateLimit.allowed}
               className={clsx(
                 "px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all",
-                hasSelection && rateLimit.allowed
+                selectedSkills.length >= 2 && rateLimit.allowed
                   ? "bg-purple-500 text-white hover:bg-purple-600 shadow-sm"
                   : "bg-gray-200 text-gray-400 cursor-not-allowed"
               )}
-              whileHover={hasSelection && rateLimit.allowed ? { scale: 1.02 } : {}}
-              whileTap={hasSelection && rateLimit.allowed ? { scale: 0.98 } : {}}
+              whileHover={selectedSkills.length >= 2 && rateLimit.allowed ? { scale: 1.02 } : {}}
+              whileTap={selectedSkills.length >= 2 && rateLimit.allowed ? { scale: 0.98 } : {}}
+              title={selectedSkills.length < 2 ? "Select 2+ skills for combo ideas" : ""}
             >
               <Sparkles className="w-3.5 h-3.5" />
-              Combo
+              Combo {selectedSkills.length >= 2 && `(${selectedSkills.length})`}
             </motion.button>
 
             <motion.button
@@ -1192,22 +1233,6 @@ function BottomControlPanel({
             >
               <Zap className="w-3.5 h-3.5" />
               Related
-            </motion.button>
-
-            <motion.button
-              onClick={() => onAIAction('path')}
-              disabled={!hasSelection || isLoading || !rateLimit.allowed}
-              className={clsx(
-                "px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all",
-                hasSelection && rateLimit.allowed
-                  ? "bg-green-500 text-white hover:bg-green-600 shadow-sm"
-                  : "bg-gray-200 text-gray-400 cursor-not-allowed"
-              )}
-              whileHover={hasSelection && rateLimit.allowed ? { scale: 1.02 } : {}}
-              whileTap={hasSelection && rateLimit.allowed ? { scale: 0.98 } : {}}
-            >
-              <Rocket className="w-3.5 h-3.5" />
-              Path
             </motion.button>
           </div>
           <p className="text-[9px] text-gray-400 mt-1.5">
@@ -1280,20 +1305,17 @@ function BottomControlPanel({
                   "w-8 h-8 rounded-lg flex items-center justify-center",
                   results.type === 'combo' && "bg-purple-100",
                   results.type === 'analyze' && "bg-blue-100",
-                  results.type === 'related' && "bg-amber-100",
-                  results.type === 'path' && "bg-green-100"
+                  results.type === 'related' && "bg-amber-100"
                 )}>
                   {results.type === 'combo' && <Sparkles className="w-4 h-4 text-purple-600" />}
                   {results.type === 'analyze' && <Lightbulb className="w-4 h-4 text-blue-600" />}
                   {results.type === 'related' && <Zap className="w-4 h-4 text-amber-600" />}
-                  {results.type === 'path' && <Rocket className="w-4 h-4 text-green-600" />}
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-900">
                     {results.type === 'combo' && 'Combo Project Ideas'}
                     {results.type === 'analyze' && 'Skill Analysis'}
                     {results.type === 'related' && 'Related Skills'}
-                    {results.type === 'path' && 'Learning Path'}
                   </h3>
                   <p className="text-xs text-gray-500">
                     Based on: {selectedSkills.map(s => s.name).join(', ')}
@@ -1334,7 +1356,7 @@ function BottomControlPanel({
               )}
 
               {/* Related/Suggested skills */}
-              {(results.type === 'related' || results.type === 'path') && results.suggestions.length > 0 && (
+              {results.type === 'related' && results.suggestions.length > 0 && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {results.suggestions.slice(0, 8).map((suggestion, i) => (
                     <motion.div
@@ -1362,25 +1384,90 @@ function BottomControlPanel({
                 </div>
               )}
 
-              {/* Analysis placeholder */}
-              {results.type === 'analyze' && (
-                <div className="space-y-3">
-                  {results.combos.slice(0, 3).map((combo, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.1 }}
-                      className="p-3 bg-blue-50 rounded-lg border border-blue-100"
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-lg">{combo.icon}</span>
-                        <span className="text-sm font-medium text-blue-800">{combo.project}</span>
+              {/* Skill Analysis results */}
+              {results.type === 'analyze' && results.analysis && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-4"
+                >
+                  {/* Overview */}
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
+                    <p className="text-sm text-blue-800">{results.analysis.overview}</p>
+                    <div className="flex gap-3 mt-3 text-xs">
+                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
+                        {results.analysis.difficulty}
+                      </span>
+                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
+                        ⏱️ {results.analysis.timeToLearn}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Key Concepts & Prerequisites */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 bg-white rounded-lg border border-gray-100">
+                      <h4 className="text-xs font-semibold text-gray-700 mb-2">Key Concepts</h4>
+                      <div className="flex flex-wrap gap-1.5">
+                        {results.analysis.keyConcepts.map((concept, i) => (
+                          <span key={i} className="px-2 py-0.5 text-[10px] bg-indigo-50 text-indigo-700 rounded">
+                            {concept}
+                          </span>
+                        ))}
                       </div>
-                      <p className="text-xs text-blue-600">{combo.description}</p>
-                    </motion.div>
-                  ))}
-                </div>
+                    </div>
+                    <div className="p-3 bg-white rounded-lg border border-gray-100">
+                      <h4 className="text-xs font-semibold text-gray-700 mb-2">Prerequisites</h4>
+                      <div className="flex flex-wrap gap-1.5">
+                        {results.analysis.prerequisites.map((prereq, i) => (
+                          <span key={i} className="px-2 py-0.5 text-[10px] bg-amber-50 text-amber-700 rounded">
+                            {prereq}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Real World Uses */}
+                  <div className="p-3 bg-white rounded-lg border border-gray-100">
+                    <h4 className="text-xs font-semibold text-gray-700 mb-2">Real World Applications</h4>
+                    <ul className="space-y-1">
+                      {results.analysis.realWorldUses.map((use, i) => (
+                        <li key={i} className="text-xs text-gray-600 flex items-start gap-2">
+                          <span className="text-green-500 mt-0.5">✓</span>
+                          {use}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Suggested complementary skills */}
+                  {results.suggestions.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-700 mb-2">Pairs Well With</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {results.suggestions.slice(0, 4).map((skill, i) => (
+                          <motion.div
+                            key={i}
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: i * 0.05 }}
+                            onClick={() => onStartLearning(skill.skill)}
+                            className="p-2 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border border-purple-100 cursor-pointer hover:shadow-md transition-all"
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-lg">{skill.icon}</span>
+                              <span className="text-xs font-medium text-purple-800">{skill.skill}</span>
+                            </div>
+                            {skill.reason && (
+                              <p className="text-[10px] text-purple-600">{skill.reason}</p>
+                            )}
+                          </motion.div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
               )}
 
               {/* Empty state */}

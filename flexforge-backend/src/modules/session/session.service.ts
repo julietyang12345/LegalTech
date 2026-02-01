@@ -70,6 +70,14 @@ export class SessionService {
       );
     }
 
+    // Check daily curriculum generation limit
+    const dailyLimit = await this.userService.checkDailyCurriculumLimit(userId);
+    if (!dailyLimit.allowed) {
+      throw new ForbiddenException(
+        `Daily curriculum limit reached (${dailyLimit.limit}/day). Try again tomorrow or upgrade your plan.`,
+      );
+    }
+
     // Generate curriculum with tier-specific access
     const tierString = user.getEffectiveTier().toUpperCase();
 
@@ -202,6 +210,9 @@ export class SessionService {
       savedSession.skillName,
       1, // Day 1
     );
+
+    // Increment daily curriculum usage counter (always, even from cache)
+    await this.userService.incrementDailyCurriculumUsage(userId);
 
     if (fromPreview) {
       this.logger.log(
@@ -695,6 +706,30 @@ export class SessionService {
             `🧹 Cleared boss project cache for Day ${bossProject.day}`,
           );
         }
+      }
+    }
+
+    // Validate curriculum metadata before generating day content
+    // This prevents cache key collisions between different subjects
+    if (!session.curriculum?.metadata?.skillName) {
+      this.logger.error(
+        `⚠️ Session ${sessionId} has curriculum with missing metadata.skillName! ` +
+          `Session skillName: "${session.skillName}", ` +
+          `Curriculum metadata: ${JSON.stringify(session.curriculum?.metadata)}`,
+      );
+      // Fix the metadata if it's missing but session has skillName
+      if (session.skillName && session.curriculum) {
+        session.curriculum.metadata = {
+          ...session.curriculum.metadata,
+          skillName: session.skillName,
+          durationDays: session.durationDays,
+          hoursPerDay: session.hoursPerDay,
+          skillLevel: session.skillLevel,
+        };
+        this.logger.log(
+          `🔧 Fixed curriculum metadata for session ${sessionId}: skillName="${session.skillName}"`,
+        );
+        await this.sessionsRepository.save(session);
       }
     }
 
@@ -1347,6 +1382,8 @@ export class SessionService {
    */
   async generateSkillCombos(
     userId: string,
+    selectedSkills: string[] = [],
+    action: 'combo' | 'analyze' | 'related' | 'path' = 'combo',
   ): Promise<{
     combos: Array<{
       project: string;
@@ -1364,26 +1401,37 @@ export class SessionService {
     limit: number;
   }> {
     const user = await this.userService.findById(userId);
+    const isAdmin = user.isAdmin();
+    const effectiveTier = user.getEffectiveTier();
 
-    // Minimum Pro tier required
-    if (!user.hasTierAccess(QuotaTier.PRO)) {
-      throw new ForbiddenException(
-        'AI-generated skill combos require Pro tier or higher',
-      );
+    // Debug logging for admin issues
+    this.logger.log(
+      `🎯 Skill combos for user ${userId}: email=${user.email}, role=${user.role}, ` +
+      `isAdmin=${isAdmin}, effectiveTier=${effectiveTier}`,
+    );
+
+    // Daily limits by tier: FREE=1, PRO=5, PREMIUM/ADMIN=unlimited
+    let dailyLimit: number;
+    if (isAdmin || effectiveTier === QuotaTier.UNLIMITED || effectiveTier === QuotaTier.PREMIUM) {
+      dailyLimit = Infinity;
+    } else if (effectiveTier === QuotaTier.PRO) {
+      dailyLimit = 5;
+    } else {
+      dailyLimit = 1; // FREE tier
     }
 
-    const isPremium = user.hasTierAccess(QuotaTier.PREMIUM);
-    const dailyLimit = isPremium ? Infinity : 1; // Pro: 1/day, Premium: unlimited
-
-    // Check daily limit for Pro users
+    // Check daily limit
     const today = new Date().toISOString().split('T')[0];
     const comboGen = user.preferences?.skillComboGeneration;
     const lastGenDate = comboGen?.lastGeneratedAt?.split('T')[0];
     const countToday = lastGenDate === today ? (comboGen?.countToday || 0) : 0;
 
-    if (!isPremium && countToday >= dailyLimit) {
+    if (dailyLimit !== Infinity && countToday >= dailyLimit) {
+      const upgradeMsg = effectiveTier === QuotaTier.FREE
+        ? 'Upgrade to Pro for 5/day or Premium for unlimited.'
+        : 'Upgrade to Premium for unlimited.';
       throw new ForbiddenException(
-        `Daily limit reached (${dailyLimit}/day for Pro). Upgrade to Premium for unlimited.`,
+        `Daily limit reached (${dailyLimit}/day). ${upgradeMsg}`,
       );
     }
 
@@ -1397,30 +1445,87 @@ export class SessionService {
       )
       .map((s) => s.skillName);
 
-    if (userSkills.length === 0) {
+    // Use selected skills if provided, otherwise fall back to user's learned skills
+    const targetSkills = selectedSkills.length > 0 ? selectedSkills : userSkills;
+
+    this.logger.log(
+      `🎯 Skill combos: action=${action}, selectedSkills=[${selectedSkills.join(', ')}], userSkills=[${userSkills.join(', ')}], targetSkills=[${targetSkills.join(', ')}]`,
+    );
+
+    if (targetSkills.length === 0) {
       return {
         combos: [],
         suggestedSkills: [],
         tokensUsed: 0,
-        remainingToday: isPremium ? Infinity : dailyLimit - countToday,
+        remainingToday: dailyLimit === Infinity ? Infinity : dailyLimit - countToday,
         limit: dailyLimit,
       };
     }
 
-    const prompt = `Based on the user's learned skills: ${userSkills.join(', ')}
+    // Common JSON format instructions
+    const jsonInstruction = 'Return ONLY valid JSON, no markdown or explanation.';
+    const suggestedSkillFormat = '{ skill: string, unlocks: string[], icon: emoji, reason: string }';
 
-Generate personalized project ideas that combine these skills. Return a JSON object with:
-1. "combos": Array of 3-5 projects the user CAN build NOW with their current skills
-2. "suggestedSkills": Array of 2-3 skills they should learn next to unlock more projects
+    // Generate prompt based on action type
+    let prompt: string;
+    let systemPrompt: string;
 
-Each combo needs: project (name), description (15 words max), skills (array of skill names used), icon (single emoji)
-Each suggestedSkill needs: skill (name), unlocks (array of 3 project names this enables), icon (single emoji)
+    switch (action) {
+      case 'analyze':
+        // Deep analysis of a single skill
+        const skill = targetSkills[0];
+        prompt = `Analyze "${skill}" for a learner.
 
-Focus on practical, achievable projects. Be creative but realistic.
+Return JSON with:
+{
+  "analysis": {
+    "overview": "2-3 sentences on what this skill is and why it matters",
+    "keyConcepts": ["4-5 core topics within this skill"],
+    "difficulty": "beginner|intermediate|advanced",
+    "timeToLearn": "e.g. 2-4 weeks",
+    "prerequisites": ["2-3 things to know first"],
+    "realWorldUses": ["3-4 industry applications"]
+  },
+  "suggestedSkills": [${suggestedSkillFormat}] // 3-4 complementary skills
+}
 
-Return ONLY valid JSON, no markdown or explanation.`;
+${jsonInstruction}`;
+        systemPrompt = `Skill analysis expert. Provide accurate, educational insights about "${skill}". Return valid JSON.`;
+        break;
 
-    const systemPrompt = `You are a creative coding project advisor. Generate inspiring but achievable project ideas based on user's skills. Always return valid JSON.`;
+      case 'related':
+        // Find related/complementary skills
+        prompt = `Find skills related to: ${targetSkills.join(', ')}
+
+Return JSON with:
+{
+  "suggestedSkills": [${suggestedSkillFormat}] // 4-5 closely related skills with reasons
+}
+
+Focus on skills commonly used together in real projects.
+
+${jsonInstruction}`;
+        systemPrompt = `Technology ecosystem expert. Find skills that complement: ${targetSkills.join(', ')}. Return valid JSON.`;
+        break;
+
+      case 'combo':
+      default:
+        // Project ideas combining multiple skills
+        prompt = `Create project ideas combining: ${targetSkills.join(' + ')}
+${userSkills.length > 0 ? `Context - user also knows: ${userSkills.join(', ')}` : ''}
+
+Return JSON with:
+{
+  "combos": [{ project: string, description: string (15 words), skills: string[], icon: emoji }], // 3-5 projects
+  "suggestedSkills": [${suggestedSkillFormat}] // 2-3 skills to learn next
+}
+
+Projects MUST use ${targetSkills.join(' AND ')} together. Be creative but practical.
+
+${jsonInstruction}`;
+        systemPrompt = `Creative project advisor. Generate achievable projects combining: ${targetSkills.join(', ')}. Return valid JSON.`;
+        break;
+    }
 
     try {
       // Use GPT-4o-mini for fast, cheap generation
@@ -1452,7 +1557,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
         combos: parsed.combos || [],
         suggestedSkills: parsed.suggestedSkills || [],
         tokensUsed: response.tokensUsed,
-        remainingToday: isPremium ? Infinity : dailyLimit - newCount,
+        remainingToday: dailyLimit === Infinity ? Infinity : dailyLimit - newCount,
         limit: dailyLimit,
       };
     } catch (error) {

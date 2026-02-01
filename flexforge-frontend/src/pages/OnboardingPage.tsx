@@ -7,7 +7,6 @@ import {
   DirectionsStep,
   RefinementPanel,
   FeelingStep,
-  AspirationStep,
 } from '@/components/onboarding';
 import { LanguageStep } from '@/components/onboarding/LanguageStep';
 import { onboardingService } from '@/services/onboardingService';
@@ -17,7 +16,6 @@ import type {
   RefinementContext,
   LearnerPrefs,
   CompleteOnboardingDto,
-  Aspiration,
 } from '@/types';
 
 // Onboarding state machine
@@ -27,8 +25,7 @@ type OnboardingStep =
   | 'directions'     // Step 2-3: Show directions + confirmation
   | 'refinement'     // Step 3b: Refinement panel (if "Not quite")
   | 'language'       // Step 4b: Language selection (if CODE/AI_AGENT)
-  | 'aspiration'     // Step 5: Identity aspiration (who do you want to become?)
-  | 'depth'          // Step 6: Depth test
+  | 'depth'          // Step 5: Depth test
   | 'completing';    // Final: Saving preferences
 
 export default function OnboardingPage() {
@@ -44,7 +41,6 @@ export default function OnboardingPage() {
   const [interpretedGoal, setInterpretedGoal] = useState('');
   const [selectedDirection, setSelectedDirection] = useState<LearningDirection | null>(null);
   const [selectedLanguage, setSelectedLanguage] = useState<string | undefined>();
-  const [selectedAspiration, setSelectedAspiration] = useState<Aspiration | null>(null);
   const [refinementContext, setRefinementContext] = useState<RefinementContext | undefined>();
 
   // Error handling
@@ -68,7 +64,7 @@ export default function OnboardingPage() {
     }
   }, []);
 
-  // Step 2-3: Select direction → go to language step (if CODE/AI_AGENT) or aspiration step
+  // Step 2-3: Select direction → go to language step (if CODE/AI_AGENT) or depth step
   const handleDirectionSelect = useCallback((direction: LearningDirection) => {
     setSelectedDirection(direction);
     // If direction has language config, show language selection step
@@ -76,19 +72,13 @@ export default function OnboardingPage() {
       setSelectedLanguage(direction.languageConfig.recommended); // Default to recommended
       setStep('language');
     } else {
-      setStep('aspiration');
+      setStep('depth');
     }
   }, []);
 
-  // Step 4b: Select language → go to aspiration step
+  // Step 4b: Select language → go to depth step
   const handleLanguageSelect = useCallback((language: string) => {
     setSelectedLanguage(language);
-    setStep('aspiration');
-  }, []);
-
-  // Step 5: Select aspiration → go to depth step
-  const handleAspirationSelect = useCallback((aspiration: Aspiration) => {
-    setSelectedAspiration(aspiration);
     setStep('depth');
   }, []);
 
@@ -110,7 +100,7 @@ export default function OnboardingPage() {
     }
   }, [goal]);
 
-  // Step 6: Select feelings → complete onboarding
+  // Step 5: Select feelings → complete onboarding
   const handleFeelingSelect = useCallback(async (
     depth: LearnerPrefs['contentDepth'],
     familiarity: string,
@@ -143,8 +133,6 @@ export default function OnboardingPage() {
         // Feeling-based inputs
         familiarity,
         sessionLength,
-        // Identity aspiration
-        aspiration: selectedAspiration || undefined,
         // Learning style - projects vs practice
         learningStyle,
         // Advanced mode: code writing exercises
@@ -163,23 +151,21 @@ export default function OnboardingPage() {
       setError(err.response?.data?.message || 'Failed to save preferences. Please try again.');
       setStep('depth');
     }
-  }, [goal, selectedDirection, selectedLanguage, selectedAspiration, refinementContext, navigate, refreshUser]);
+  }, [goal, selectedDirection, selectedLanguage, refinementContext, navigate, refreshUser]);
 
   // Progress indicator
   const getProgress = () => {
     switch (step) {
       case 'goal_input':
-        return 15;
+        return 20;
       case 'generating':
-        return 30;
+        return 35;
       case 'directions':
-        return 45;
+        return 50;
       case 'refinement':
-        return 45;
+        return 50;
       case 'language':
-        return 55;
-      case 'aspiration':
-        return 70;
+        return 65;
       case 'depth':
         return 85;
       case 'completing':
@@ -265,15 +251,6 @@ export default function OnboardingPage() {
                   selectedDirection={selectedDirection.title}
                   languageConfig={selectedDirection.languageConfig}
                   onSelect={handleLanguageSelect}
-                />
-              </StepWrapper>
-            )}
-
-            {step === 'aspiration' && (
-              <StepWrapper key="aspiration">
-                <AspirationStep
-                  skillType={selectedDirection?.skillType}
-                  onSelect={handleAspirationSelect}
                 />
               </StepWrapper>
             )}

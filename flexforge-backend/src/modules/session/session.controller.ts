@@ -94,12 +94,20 @@ export class SessionController {
   }
 
   /**
-   * GET /api/v1/sessions/skill-combos
+   * POST /api/v1/sessions/skill-combos
    * Get AI-generated skill combo suggestions (Premium feature)
+   * Accepts selectedSkills array and action type
    */
-  @Get('skill-combos')
-  async getSkillCombos(@Request() req) {
-    const result = await this.sessionService.generateSkillCombos(req.user.id);
+  @Post('skill-combos')
+  async getSkillCombos(
+    @Request() req,
+    @Body() body: { selectedSkills?: string[]; action?: 'combo' | 'analyze' | 'related' | 'path' },
+  ) {
+    const result = await this.sessionService.generateSkillCombos(
+      req.user.id,
+      body.selectedSkills || [],
+      body.action || 'combo',
+    );
     return {
       message: 'Skill combos generated',
       ...result,

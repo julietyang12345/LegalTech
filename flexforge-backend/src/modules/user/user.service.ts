@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
@@ -8,6 +8,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
 export class UserService {
+  private readonly logger = new Logger(UserService.name);
   private readonly adminEmails: string[];
 
   constructor(
@@ -22,6 +23,8 @@ export class UserService {
       .split(',')
       .map((e) => e.trim().toLowerCase())
       .filter(Boolean);
+
+    this.logger.log(`🔐 Loaded ${this.adminEmails.length} admin emails: ${this.adminEmails.length > 0 ? this.adminEmails.join(', ') : '(none)'}`);
   }
 
   /**

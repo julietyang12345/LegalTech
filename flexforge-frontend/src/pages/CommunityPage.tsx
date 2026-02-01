@@ -611,7 +611,15 @@ function PostCard({
 
             {/* Linked project preview */}
             {post.linkedProject && (
-              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+              <a
+                href={post.linkedProject.demoUrl || post.linkedProject.githubUrl || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={clsx(
+                  'block p-3 bg-gray-50 rounded-lg border border-gray-200 transition-colors',
+                  (post.linkedProject.demoUrl || post.linkedProject.githubUrl) && 'hover:bg-gray-100 hover:border-gray-300 cursor-pointer'
+                )}
+              >
                 <div className="flex items-center gap-2 mb-2">
                   <Trophy className="w-4 h-4 text-purple-600" />
                   <span className="text-sm font-medium text-gray-900">Linked Project</span>
@@ -620,18 +628,21 @@ function PostCard({
                   )}
                 </div>
                 <p className="text-sm text-gray-700">{post.linkedProject.title}</p>
-                {post.linkedProject.demoUrl && (
-                  <a
-                    href={post.linkedProject.demoUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-brand-600 hover:underline flex items-center gap-1 mt-1"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    View Demo
-                  </a>
-                )}
-              </div>
+                <div className="flex items-center gap-3 mt-2">
+                  {post.linkedProject.demoUrl && (
+                    <span className="text-xs text-brand-600 flex items-center gap-1">
+                      <ExternalLink className="w-3 h-3" />
+                      View Demo
+                    </span>
+                  )}
+                  {post.linkedProject.githubUrl && (
+                    <span className="text-xs text-gray-600 flex items-center gap-1">
+                      <Github className="w-3 h-3" />
+                      View Code
+                    </span>
+                  )}
+                </div>
+              </a>
             )}
 
             {/* Code snippet */}
@@ -792,7 +803,6 @@ function CreatePostModal({
   } | null;
 }) {
   const { activeSession, currentDay } = useSessionStore();
-  const [postType, setPostType] = useState<PostType>('project');
   const [shareScope, setShareScope] = useState<'course' | 'task'>(initialShareData?.scope || 'task');
   const [selectedProject, setSelectedProject] = useState<Project | null>(preselectedProject || null);
   const [showCodeEditor, setShowCodeEditor] = useState(!!initialShareData?.code);
@@ -804,14 +814,7 @@ function CreatePostModal({
 
   const [formData, setFormData] = useState({
     title: initialShareData?.taskTitle || preselectedProject?.title || '',
-    currentState: (initialShareData?.currentState || 'in-progress') as Post['currentState'],
-    whatDone: initialShareData?.notes || '',
-    feedbackWanted: '',
-    question: '',
-    whatTrying: '',
-    whatTried: '',
-    whereStuck: '',
-    progressNote: '',
+    comments: initialShareData?.notes || '',
   });
 
   // Course data for preview
@@ -829,13 +832,14 @@ function CreatePostModal({
 
   const handleSubmit = () => {
     console.log('Create post:', {
-      type: postType,
+      type: 'project' as PostType,
       linkedProject: selectedProject,
       shareScope,
       linkedCourse: linkType === 'session' ? courseData : null,
       selectedDay: linkType === 'session' ? selectedDay : null,
       codeSnippet,
-      ...formData,
+      title: formData.title,
+      comments: formData.comments,
     });
     onClose();
   };
@@ -843,23 +847,16 @@ function CreatePostModal({
   // Build preview post object
   const previewPost: Post = {
     id: 'preview',
-    type: postType,
+    type: 'project' as PostType,
     authorId: user?.id || '',
     authorName: user?.name || 'You',
     createdAt: new Date(),
     title: formData.title,
-    currentState: formData.currentState,
-    whatDone: formData.whatDone,
-    feedbackWanted: formData.feedbackWanted,
+    whatDone: formData.comments,
     linkedProject: selectedProject || undefined,
     linkedCourse: linkType === 'session' ? courseData || undefined : undefined,
     dayNumber: linkType === 'session' ? selectedDay : undefined,
     codeSnippet: codeSnippet || undefined,
-    question: formData.question,
-    whatTrying: formData.whatTrying,
-    whatTried: formData.whatTried,
-    whereStuck: formData.whereStuck,
-    progressNote: formData.progressNote,
     comments: [],
   };
 
@@ -914,397 +911,238 @@ function CreatePostModal({
             </div>
           ) : (
             <>
-              {/* Post type selector */}
-              <div className="flex gap-2 mb-6">
-                {(['project', 'question', 'progress'] as const).map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => setPostType(type)}
-                    className={clsx(
-                      'flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-colors',
-                      postType === type
-                        ? 'bg-brand-100 text-brand-700'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    )}
-                  >
-                    {type === 'project' && <Folder className="w-4 h-4 inline mr-1.5" />}
-                    {type === 'question' && <HelpCircle className="w-4 h-4 inline mr-1.5" />}
-                    {type === 'progress' && <Clock className="w-4 h-4 inline mr-1.5" />}
-                    {type === 'project' && 'Project'}
-                    {type === 'question' && 'Question'}
-                    {type === 'progress' && 'Progress'}
-                  </button>
-                ))}
-              </div>
-
               {/* Form fields */}
               <div className="space-y-4">
-                {(postType === 'project' || postType === 'question') && (
-                  <>
-                    {/* Link type selector */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Link to your work (optional)
-                      </label>
-                      <div className="grid grid-cols-3 gap-2">
+                {/* Link type selector - first */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Link to your work (optional)
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => {
+                        setLinkType('none');
+                        setSelectedProject(null);
+                      }}
+                      className={clsx(
+                        'py-2.5 px-3 rounded-lg text-sm font-medium transition-colors border text-center',
+                        linkType === 'none'
+                          ? 'bg-gray-100 border-gray-300 text-gray-700'
+                          : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                      )}
+                    >
+                      No link
+                    </button>
+                    <button
+                      onClick={() => setLinkType('project')}
+                      className={clsx(
+                        'py-2.5 px-3 rounded-lg text-sm font-medium transition-colors border flex items-center justify-center gap-1.5',
+                        linkType === 'project'
+                          ? 'bg-purple-50 border-purple-300 text-purple-700'
+                          : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                      )}
+                    >
+                      <Trophy className="w-4 h-4" />
+                      Project
+                    </button>
+                    <button
+                      onClick={() => setLinkType('session')}
+                      className={clsx(
+                        'py-2.5 px-3 rounded-lg text-sm font-medium transition-colors border flex items-center justify-center gap-1.5',
+                        linkType === 'session'
+                          ? 'bg-brand-50 border-brand-300 text-brand-700'
+                          : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                      )}
+                    >
+                      <Code className="w-4 h-4" />
+                      Course Task
+                    </button>
+                  </div>
+                </div>
+
+                {/* Project selector */}
+                {linkType === 'project' && projects.length === 0 && (
+                  <div className="p-4 bg-purple-50 rounded-xl border border-purple-100 text-center">
+                    <Trophy className="w-8 h-8 text-purple-400 mx-auto mb-2" />
+                    <p className="text-sm text-purple-700">No projects yet</p>
+                    <p className="text-xs text-purple-500 mt-1">Complete boss projects to link them here</p>
+                  </div>
+                )}
+                {linkType === 'project' && projects.length > 0 && (
+                  <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
+                    <label className="block text-sm font-medium text-purple-700 mb-2">
+                      Select a project
+                    </label>
+                    <div className="flex gap-2 flex-wrap">
+                      {projects.map((project) => (
                         <button
+                          key={project.id}
                           onClick={() => {
-                            setLinkType('none');
-                            setSelectedProject(null);
+                            setSelectedProject(selectedProject?.id === project.id ? null : project);
+                            if (project.title && !formData.title) {
+                              setFormData({ ...formData, title: project.title });
+                            }
                           }}
                           className={clsx(
-                            'py-2.5 px-3 rounded-lg text-sm font-medium transition-colors border text-center',
-                            linkType === 'none'
-                              ? 'bg-gray-100 border-gray-300 text-gray-700'
-                              : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                            'px-3 py-2 text-sm rounded-lg border transition-colors flex items-center gap-2',
+                            selectedProject?.id === project.id
+                              ? 'border-purple-500 bg-white text-purple-700 shadow-sm'
+                              : 'border-purple-200 bg-white/50 text-purple-600 hover:border-purple-300'
                           )}
                         >
-                          No link
+                          {project.isBossProject && <Trophy className="w-4 h-4" />}
+                          <span className="truncate max-w-[150px]">{project.title}</span>
+                          {selectedProject?.id === project.id && <Check className="w-4 h-4" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Session/Task selector */}
+                {linkType === 'session' && !courseData && (
+                  <div className="p-4 bg-brand-50 rounded-xl border border-brand-100 text-center">
+                    <Code className="w-8 h-8 text-brand-400 mx-auto mb-2" />
+                    <p className="text-sm text-brand-700">No active course</p>
+                    <p className="text-xs text-brand-500 mt-1">Start a learning session to link tasks here</p>
+                  </div>
+                )}
+                {linkType === 'session' && courseData && (
+                  <div className="p-4 bg-brand-50 rounded-xl border border-brand-100 space-y-4">
+                    {/* Course info */}
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-brand-100 flex items-center justify-center">
+                        <Trophy className="w-5 h-5 text-brand-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-brand-900">{courseData.skillName}</p>
+                        <p className="text-xs text-brand-600">Day {courseData.currentDay} of {courseData.durationDays}</p>
+                      </div>
+                    </div>
+
+                    {/* Share scope */}
+                    <div>
+                      <label className="block text-xs font-medium text-brand-700 mb-2">
+                        What to share?
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setShareScope('task')}
+                          className={clsx(
+                            'flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors border',
+                            shareScope === 'task'
+                              ? 'bg-white border-brand-400 text-brand-700 shadow-sm'
+                              : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-white'
+                          )}
+                        >
+                          <Code className="w-4 h-4 inline mr-1.5" />
+                          Specific Task
                         </button>
                         <button
-                          onClick={() => setLinkType('project')}
-                          disabled={projects.length === 0}
+                          onClick={() => setShareScope('course')}
                           className={clsx(
-                            'py-2.5 px-3 rounded-lg text-sm font-medium transition-colors border flex items-center justify-center gap-1.5',
-                            linkType === 'project'
-                              ? 'bg-purple-50 border-purple-300 text-purple-700'
-                              : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300',
-                            projects.length === 0 && 'opacity-50 cursor-not-allowed'
+                            'flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors border',
+                            shareScope === 'course'
+                              ? 'bg-white border-brand-400 text-brand-700 shadow-sm'
+                              : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-white'
                           )}
                         >
-                          <Trophy className="w-4 h-4" />
-                          Project
-                        </button>
-                        <button
-                          onClick={() => setLinkType('session')}
-                          disabled={!activeSession}
-                          className={clsx(
-                            'py-2.5 px-3 rounded-lg text-sm font-medium transition-colors border flex items-center justify-center gap-1.5',
-                            linkType === 'session'
-                              ? 'bg-brand-50 border-brand-300 text-brand-700'
-                              : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300',
-                            !activeSession && 'opacity-50 cursor-not-allowed'
-                          )}
-                        >
-                          <Code className="w-4 h-4" />
-                          Course Task
+                          <Trophy className="w-4 h-4 inline mr-1.5" />
+                          Full Course
                         </button>
                       </div>
                     </div>
 
-                    {/* Project selector */}
-                    {linkType === 'project' && projects.length > 0 && (
-                      <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
-                        <label className="block text-sm font-medium text-purple-700 mb-2">
-                          Select a project
+                    {/* Day selector (for task scope) */}
+                    {shareScope === 'task' && (
+                      <div>
+                        <label className="block text-xs font-medium text-brand-700 mb-2">
+                          Select day
                         </label>
                         <div className="flex gap-2 flex-wrap">
-                          {projects.map((project) => (
+                          {availableDays.map((day) => (
                             <button
-                              key={project.id}
-                              onClick={() => {
-                                setSelectedProject(selectedProject?.id === project.id ? null : project);
-                                if (project.title && !formData.title) {
-                                  setFormData({ ...formData, title: project.title });
-                                }
-                              }}
+                              key={day}
+                              onClick={() => setSelectedDay(day)}
                               className={clsx(
-                                'px-3 py-2 text-sm rounded-lg border transition-colors flex items-center gap-2',
-                                selectedProject?.id === project.id
-                                  ? 'border-purple-500 bg-white text-purple-700 shadow-sm'
-                                  : 'border-purple-200 bg-white/50 text-purple-600 hover:border-purple-300'
+                                'w-10 h-10 rounded-lg text-sm font-medium transition-colors border',
+                                selectedDay === day
+                                  ? 'bg-white border-brand-400 text-brand-700 shadow-sm'
+                                  : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-white'
                               )}
                             >
-                              {project.isBossProject && <Trophy className="w-4 h-4" />}
-                              <span className="truncate max-w-[150px]">{project.title}</span>
-                              {selectedProject?.id === project.id && <Check className="w-4 h-4" />}
+                              {day}
                             </button>
                           ))}
                         </div>
                       </div>
                     )}
-
-                    {/* Session/Task selector */}
-                    {linkType === 'session' && courseData && (
-                      <div className="p-4 bg-brand-50 rounded-xl border border-brand-100 space-y-4">
-                        {/* Course info */}
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-brand-100 flex items-center justify-center">
-                            <Trophy className="w-5 h-5 text-brand-600" />
-                          </div>
-                          <div>
-                            <p className="font-medium text-brand-900">{courseData.skillName}</p>
-                            <p className="text-xs text-brand-600">Day {courseData.currentDay} of {courseData.durationDays}</p>
-                          </div>
-                        </div>
-
-                        {/* Share scope */}
-                        <div>
-                          <label className="block text-xs font-medium text-brand-700 mb-2">
-                            What to share?
-                          </label>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => setShareScope('task')}
-                              className={clsx(
-                                'flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors border',
-                                shareScope === 'task'
-                                  ? 'bg-white border-brand-400 text-brand-700 shadow-sm'
-                                  : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-white'
-                              )}
-                            >
-                              <Code className="w-4 h-4 inline mr-1.5" />
-                              Specific Task
-                            </button>
-                            <button
-                              onClick={() => setShareScope('course')}
-                              className={clsx(
-                                'flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors border',
-                                shareScope === 'course'
-                                  ? 'bg-white border-brand-400 text-brand-700 shadow-sm'
-                                  : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-white'
-                              )}
-                            >
-                              <Trophy className="w-4 h-4 inline mr-1.5" />
-                              Full Course
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Day selector (for task scope) */}
-                        {shareScope === 'task' && (
-                          <div>
-                            <label className="block text-xs font-medium text-brand-700 mb-2">
-                              Select day
-                            </label>
-                            <div className="flex gap-2 flex-wrap">
-                              {availableDays.map((day) => (
-                                <button
-                                  key={day}
-                                  onClick={() => setSelectedDay(day)}
-                                  className={clsx(
-                                    'w-10 h-10 rounded-lg text-sm font-medium transition-colors border',
-                                    selectedDay === day
-                                      ? 'bg-white border-brand-400 text-brand-700 shadow-sm'
-                                      : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-white'
-                                  )}
-                                >
-                                  {day}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {postType === 'project' && (
-                  <>
-                    {/* Code snippet */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="block text-sm font-medium text-gray-700">
-                          Code snippet (optional)
-                        </label>
-                        {!showCodeEditor && (
-                          <button
-                            onClick={() => setShowCodeEditor(true)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
-                          >
-                            <Code className="w-3.5 h-3.5 text-gray-500" />
-                            Add Code
-                          </button>
-                        )}
-                      </div>
-                      {showCodeEditor && (
-                        <div className="relative">
-                          <textarea
-                            value={codeSnippet}
-                            onChange={(e) => setCodeSnippet(e.target.value)}
-                            placeholder="Paste your code here..."
-                            className="w-full px-3 py-2 bg-gray-900 text-gray-100 font-mono text-sm border border-gray-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-y min-h-[100px]"
-                            rows={5}
-                          />
-                          <button
-                            onClick={() => {
-                              setCodeSnippet('');
-                              setShowCodeEditor(false);
-                            }}
-                            className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-200"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        What are you building/working on? *
-                      </label>
-                      <Input
-                        value={formData.title}
-                        onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                        placeholder="e.g., Todo app with React"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Current state *</label>
-                      <div className="flex gap-2 flex-wrap">
-                        {(['started', 'in-progress', 'paused', 'completed'] as const).map((state) => (
-                          <button
-                            key={state}
-                            onClick={() => setFormData({ ...formData, currentState: state })}
-                            className={clsx(
-                              'px-3 py-1.5 text-sm rounded-lg transition-colors capitalize',
-                              formData.currentState === state
-                                ? 'bg-brand-100 text-brand-700'
-                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                            )}
-                          >
-                            {state.replace('-', ' ')}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        What have you done so far? *
-                      </label>
-                      <textarea
-                        value={formData.whatDone}
-                        onChange={(e) => setFormData({ ...formData, whatDone: e.target.value })}
-                        placeholder="Describe your progress..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
-                        rows={3}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        What feedback do you want? (optional)
-                      </label>
-                      <textarea
-                        value={formData.feedbackWanted}
-                        onChange={(e) => setFormData({ ...formData, feedbackWanted: e.target.value })}
-                        placeholder="Be specific about what you'd like help with..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
-                        rows={2}
-                      />
-                    </div>
-                  </>
-                )}
-
-                {postType === 'question' && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Your question *
-                      </label>
-                      <Input
-                        value={formData.question}
-                        onChange={(e) => setFormData({ ...formData, question: e.target.value })}
-                        placeholder="What do you need help with?"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        What are you trying to do? *
-                      </label>
-                      <textarea
-                        value={formData.whatTrying}
-                        onChange={(e) => setFormData({ ...formData, whatTrying: e.target.value })}
-                        placeholder="Describe your goal..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
-                        rows={2}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        What have you already tried? *
-                      </label>
-                      <textarea
-                        value={formData.whatTried}
-                        onChange={(e) => setFormData({ ...formData, whatTried: e.target.value })}
-                        placeholder="List what you've attempted..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
-                        rows={2}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Where are you stuck? *
-                      </label>
-                      <textarea
-                        value={formData.whereStuck}
-                        onChange={(e) => setFormData({ ...formData, whereStuck: e.target.value })}
-                        placeholder="Be specific about the blocker..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
-                        rows={2}
-                      />
-                    </div>
-
-                    {/* Code snippet for questions */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="block text-sm font-medium text-gray-700">
-                          Share code? (optional)
-                        </label>
-                        {!showCodeEditor && (
-                          <button
-                            onClick={() => setShowCodeEditor(true)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
-                          >
-                            <Code className="w-3.5 h-3.5 text-gray-500" />
-                            Add Code
-                          </button>
-                        )}
-                      </div>
-                      {showCodeEditor && (
-                        <div className="relative">
-                          <textarea
-                            value={codeSnippet}
-                            onChange={(e) => setCodeSnippet(e.target.value)}
-                            placeholder="Paste your code here..."
-                            className="w-full px-3 py-2 bg-gray-900 text-gray-100 font-mono text-sm border border-gray-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-y min-h-[100px]"
-                            rows={5}
-                          />
-                          <button
-                            onClick={() => {
-                              setCodeSnippet('');
-                              setShowCodeEditor(false);
-                            }}
-                            className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-200"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                {postType === 'progress' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      What did you work on today?
-                    </label>
-                    <textarea
-                      value={formData.progressNote}
-                      onChange={(e) => setFormData({ ...formData, progressNote: e.target.value })}
-                      placeholder="Today I..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
-                      rows={3}
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Progress logs have reactions only (no comments by default)
-                    </p>
                   </div>
                 )}
+
+                {/* What are you building - second */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    What are you building/working on? *
+                  </label>
+                  <Input
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    placeholder="e.g., Todo app with React"
+                  />
+                </div>
+
+                {/* Code snippet (optional) */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Code snippet (optional)
+                    </label>
+                    {!showCodeEditor && (
+                      <button
+                        onClick={() => setShowCodeEditor(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
+                      >
+                        <Code className="w-3.5 h-3.5 text-gray-500" />
+                        Add Code
+                      </button>
+                    )}
+                  </div>
+                  {showCodeEditor && (
+                    <div className="relative">
+                      <textarea
+                        value={codeSnippet}
+                        onChange={(e) => setCodeSnippet(e.target.value)}
+                        placeholder="Paste your code here..."
+                        className="w-full px-3 py-2 bg-gray-900 text-gray-100 font-mono text-sm border border-gray-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-y min-h-[100px]"
+                        rows={5}
+                      />
+                      <button
+                        onClick={() => {
+                          setCodeSnippet('');
+                          setShowCodeEditor(false);
+                        }}
+                        className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-200"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Comments - single simple textarea */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Comments
+                  </label>
+                  <textarea
+                    value={formData.comments}
+                    onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
+                    placeholder="Share your thoughts, progress, questions, or what feedback you're looking for..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
+                    rows={4}
+                  />
+                </div>
               </div>
             </>
           )}

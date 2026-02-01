@@ -4,50 +4,6 @@
 
 import { SkillType } from '../services/skill-detector.service';
 
-// ============================================
-// IDENTITY VERIFICATION TYPES
-// ============================================
-
-/**
- * Aspiration chosen during onboarding.
- * Represents who the user wants to become.
- */
-export interface Aspiration {
-  id: string;
-  name: string; // "Builder", "Problem Solver", etc.
-  statement: string; // "I want to be someone who builds things that work"
-  skillTypes: SkillType[]; // Which skill types this applies to
-}
-
-/**
- * Verification milestone - proof of identity transformation.
- * Achieved when user demonstrates concrete evidence of their aspiration.
- */
-export interface VerificationMilestone {
-  id: string;
-  label: string; // "Shipped first project"
-  proofStatement: string; // "You made something real"
-  achieved: boolean;
-  achievedAt?: string; // ISO date string
-  evidence?: {
-    projectId?: string;
-    taskId?: string;
-    metric?: number;
-  };
-}
-
-/**
- * User's complete identity profile.
- * Tracks their aspiration and verification progress.
- */
-export interface IdentityProfile {
-  aspiration: Aspiration;
-  chosenAt: string; // ISO date string
-  milestones: VerificationMilestone[];
-  verificationProgress: number; // 0-100%
-  identityVerified: boolean; // All key milestones achieved
-}
-
 /**
  * Language alternative for a direction (genuinely equivalent, not a downgrade)
  */
@@ -165,9 +121,6 @@ export interface LearnerPrefs {
   // KEY for solving the "Zapier problem" - affects TOOL_SPECIFIC video penalty
   platformTolerance?: 'any' | 'preferGeneric' | 'genericOnly';
 
-  // Identity verification (user's chosen aspiration and progress)
-  identityProfile?: IdentityProfile;
-
   // Metadata
   completedOnboarding: boolean;
   onboardingCompletedAt?: string; // ISO date string
@@ -225,9 +178,6 @@ export interface CompleteOnboardingDto {
   // Feeling-based inputs (easier than explicit skill level/time questions)
   familiarity?: 'new' | 'know_basics' | 'skilled';
   sessionLength?: 'short' | 'medium' | 'long';
-
-  // Identity aspiration (who do you want to become?)
-  aspiration?: Aspiration;
 
   // Learning style preference - explicitly choose projects vs practice
   learningStyle?: 'projects' | 'practice';
