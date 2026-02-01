@@ -56,6 +56,14 @@ export const onboardingService = {
   },
 
   /**
+   * Skip onboarding - marks as complete with defaults for returning users
+   */
+  async skipOnboarding(): Promise<{ message: string }> {
+    const { data } = await api.post<{ message: string }>('/onboarding/skip');
+    return data;
+  },
+
+  /**
    * Classify a skill to determine if it supports project-based learning
    * Used by FeelingStep to conditionally show learning style options
    */

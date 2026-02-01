@@ -264,19 +264,6 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
       title="Quick Reflection"
       subtitle="Help future you by locking in what matters"
     >
-      {/* Confidence slider */}
-      <Card>
-        <div className="p-6">
-          <h3 className="font-medium text-gray-900 mb-4">
-            How confident do you feel? 🎯
-          </h3>
-          <ConfidenceSlider
-            value={confidence}
-            onChange={setConfidence}
-          />
-        </div>
-      </Card>
-
       {/* What clicked - Quick pick */}
       <Card>
         <div className="p-6">

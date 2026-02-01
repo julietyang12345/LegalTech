@@ -34,7 +34,7 @@ export function ShowcasePage() {
   const { hasTierAccess, user } = useAuthStore();
   const isPro = hasTierAccess(QuotaTier.PRO);
   const isPremium = hasTierAccess(QuotaTier.PREMIUM);
-  const isAdmin = user?.role === UserRole.ADMIN;
+  const isAdmin = user?.role === UserRole.ADMIN || user?.quotaTier === QuotaTier.UNLIMITED;
   const [skills, setSkills] = useState<SkillProgress[]>([]);
   const [plannedSkills, setPlannedSkills] = useState<PlannedSkill[]>([]);
   const [isLoading, setIsLoading] = useState(true);

@@ -1406,14 +1406,15 @@ OPEN TASK:
 - Choose task type based on skill:
   * Soft skills (leadership, communication, negotiation): Real interaction tasks
     e.g., "Have a 1-on-1 with a team member", "Practice active listening in your next meeting"
-  * Academic skills (math, science, history, concepts): Teaching tasks (Feynman technique)
-    e.g., "Explain [concept] to a friend or family member in simple terms"
-    This reinforces learning - if you can teach it, you understand it
+  * Academic skills (math, science, history, concepts, languages): Low-pressure teaching practice (Feynman technique)
+    e.g., "Pretend you're explaining [concept] to a curious friend - write or say your explanation out loud"
+    e.g., "Write a simple explanation of [concept] that a 10-year-old could understand"
+    This reinforces learning without social pressure - if you can explain it simply, you understand it
 - Include:
   - title: Short, action-oriented - NO prefix
   - description: 2-3 sentences explaining what to do and why
-  - icon: Emoji (💬 chat, 🎯 goal, 🤝 collab, 📝 write, 🔍 observe, 🎤 speak, 👂 listen, 🧑‍🏫 teach)
-  - context: Where/when (e.g., "With a friend or family member", "At work", "During dinner")
+  - icon: Emoji (💬 chat, 🎯 goal, 🤝 collab, 📝 write, 🔍 observe, 🎤 speak, 👂 listen, 🧑‍🏫 teach, 🎙️ record)
+  - context: Where/when (e.g., "Alone or with someone", "Out loud to yourself", "Write it down", "Record a voice note")
   - difficulty: "easy" (5-10 min) | "medium" (15-20 min) | "challenging" (30+ min)
   - conceptConnection: Which foundationCard concept this applies
   - tips: 2-3 practical tips for success
@@ -2047,9 +2048,8 @@ ${skillsStr ? `Key topics: ${skillsStr}` : ''}
 Generate CORE content as JSON with this structure:
 {
   "prePrompt": {
-    "text": "Welcome message for today's learning",
-    "primeQuestions": ["Question 1?", "Question 2?"],
-    "yesterdayRecap": "Brief recap of previous day or welcome for day 1"
+    "text": "ONE sentence: Today you'll learn [specific topics]. Keep it simple and direct, no fluff.",
+    "primeQuestions": ["Question 1?", "Question 2?"]
   },
   ${videoSection},
   "${cardsArrayName}": [

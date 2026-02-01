@@ -120,6 +120,7 @@ const STEP_ORDER: SessionStep[] = [
   'foundationCards',
   'task1',
   'bossMilestone',
+  'openTask',
   'reflection',
 ];
 
@@ -420,6 +421,11 @@ export const useSessionStore = create<SessionState>()(
 
     // Skip bossMilestone if not present (check both bossMilestone and hasBossProject)
     if (nextStep === 'bossMilestone' && !currentDay?.bossMilestone && !currentDay?.hasBossProject) {
+      nextStep = stepOrder[currentIndex + 2];
+    }
+
+    // Skip openTask if not present
+    if (nextStep === 'openTask' && !currentDay?.openTask) {
       nextStep = stepOrder[currentIndex + 2];
     }
 
@@ -922,6 +928,7 @@ export const useSessionStore = create<SessionState>()(
                      (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
     if (!hasCards) total -= 1;
     if (!currentDay?.bossMilestone && !currentDay?.hasBossProject) total -= 1;
+    if (!currentDay?.openTask) total -= 1;
 
     return {
       current: completedSteps.length,

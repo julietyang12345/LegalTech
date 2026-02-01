@@ -78,6 +78,18 @@ export class OnboardingController {
   }
 
   /**
+   * Skip onboarding - marks as complete with defaults for returning users.
+   */
+  @Post('skip')
+  @HttpCode(HttpStatus.OK)
+  async skipOnboarding(
+    @CurrentUser() user: User,
+  ): Promise<{ message: string }> {
+    await this.onboardingService.skipOnboarding(user.id);
+    return { message: 'Onboarding skipped successfully' };
+  }
+
+  /**
    * Classify a skill to determine if it supports project-based learning.
    * Used by onboarding UI to conditionally show learning style options.
    */

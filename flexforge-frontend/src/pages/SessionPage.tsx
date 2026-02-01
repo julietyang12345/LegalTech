@@ -738,8 +738,19 @@ export function SessionPage() {
         case 'openTask':
           const openTask = currentDay.openTask as any;
           if (openTask) {
-            content.taskTitle = openTask.title || 'Real-World Challenge';
-            content.taskDescription = openTask.description || openTask.challenge;
+            content.openTaskTitle = openTask.title || 'Real-World Challenge';
+            content.openTaskDescription = openTask.description;
+            content.openTaskChallenge = openTask.challenge;
+          }
+          break;
+
+        case 'reflection':
+          const reflection = currentDay.reflection as any;
+          if (reflection?.questions && reflection.questions.length > 0) {
+            content.reflectionQuestions = reflection.questions.slice(0, 5).map((q: any) => ({
+              id: q.id,
+              question: q.question,
+            }));
           }
           break;
       }

@@ -287,7 +287,7 @@ function NoSessionState() {
       animate={{ opacity: 1, y: 0 }}
       className="text-center py-16"
     >
-      <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-brand-400 to-brand-500 
+      <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-brand-400 to-brand-500
                       flex items-center justify-center">
         <Sparkles className="w-10 h-10 text-white" />
       </div>
@@ -302,6 +302,15 @@ function NoSessionState() {
       >
         Create Your First Curriculum
       </Button>
+
+      {/* Link to existing courses */}
+      <button
+        onClick={() => navigate('/vault')}
+        className="mt-6 text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1.5 mx-auto transition-colors"
+      >
+        <BookOpen className="w-4 h-4" />
+        Previous Sessions
+      </button>
     </motion.div>
   );
 }

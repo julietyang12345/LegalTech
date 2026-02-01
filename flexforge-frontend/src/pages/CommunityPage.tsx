@@ -9,6 +9,7 @@ import {
   HelpCircle,
   Folder,
   ChevronRight,
+  ChevronDown,
   Clock,
   Check,
   Flag,
@@ -25,6 +26,10 @@ import {
   UserMinus,
   Eye,
   Lock,
+  Play,
+  BookOpen,
+  Target,
+  Lightbulb,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAuthStore } from '@/stores/authStore';
@@ -802,7 +807,16 @@ function CreatePostModal({
     currentState: 'started' | 'in-progress' | 'paused' | 'completed';
   } | null;
 }) {
-  const { activeSession, currentDay } = useSessionStore();
+  const { activeSession, currentDay, sessions, fetchSessions } = useSessionStore();
+  const [selectedSession, setSelectedSession] = useState<typeof activeSession>(null);
+
+  // Fetch all sessions on mount to show paused ones too
+  useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
+  // All linkable sessions (active or paused)
+  const linkableSessions = sessions.filter(s => s.status === 'ACTIVE' || s.status === 'PAUSED');
   const [shareScope, setShareScope] = useState<'course' | 'task'>(initialShareData?.scope || 'task');
   const [selectedProject, setSelectedProject] = useState<Project | null>(preselectedProject || null);
   const [showCodeEditor, setShowCodeEditor] = useState(!!initialShareData?.code);
@@ -810,6 +824,8 @@ function CreatePostModal({
   const [showPreview, setShowPreview] = useState(false);
   const [linkType, setLinkType] = useState<'none' | 'project' | 'session'>('none');
   const [selectedDay, setSelectedDay] = useState<number>(initialShareData?.dayNumber || currentDay?.day || 1);
+  const [selectedStep, setSelectedStep] = useState<string>('overview');
+  const [showStepDropdown, setShowStepDropdown] = useState(false);
   const { user } = useAuthStore();
 
   const [formData, setFormData] = useState({
@@ -817,18 +833,24 @@ function CreatePostModal({
     comments: initialShareData?.notes || '',
   });
 
+  // Use selected session, or fall back to active session, or initialShareData
+  const effectiveSession = selectedSession || activeSession;
+
   // Course data for preview
-  const courseData: LinkedCourse | null = (initialShareData || activeSession) ? {
-    sessionId: initialShareData?.sessionId || activeSession?.id || '',
-    skillName: initialShareData?.skillName || activeSession?.skillName || '',
-    skillLevel: initialShareData?.skillLevel || activeSession?.skillLevel || 'beginner',
-    durationDays: initialShareData?.durationDays || activeSession?.durationDays || 5,
-    currentDay: initialShareData?.currentDay || activeSession?.currentDay || 1,
-    progress: initialShareData?.progress || Math.round(((activeSession?.currentDay || 1) / (activeSession?.durationDays || 5)) * 100),
+  const courseData: LinkedCourse | null = (initialShareData || effectiveSession) ? {
+    sessionId: initialShareData?.sessionId || effectiveSession?.id || '',
+    skillName: initialShareData?.skillName || effectiveSession?.skillName || '',
+    skillLevel: initialShareData?.skillLevel || effectiveSession?.skillLevel || 'beginner',
+    durationDays: initialShareData?.durationDays || effectiveSession?.durationDays || 5,
+    currentDay: initialShareData?.currentDay || effectiveSession?.currentDay || 1,
+    progress: initialShareData?.progress || Math.round(((effectiveSession?.currentDay || 1) / (effectiveSession?.durationDays || 5)) * 100),
   } : null;
 
   // Generate mock days for selection (in real app, fetch from session)
   const availableDays = Array.from({ length: courseData?.currentDay || 1 }, (_, i) => i + 1);
+
+  // Get selected day's curriculum data for preview
+  const selectedDayData = effectiveSession?.curriculum?.days?.find(d => d.day === selectedDay);
 
   const handleSubmit = () => {
     console.log('Create post:', {
@@ -1000,82 +1022,374 @@ function CreatePostModal({
                 )}
 
                 {/* Session/Task selector */}
-                {linkType === 'session' && !courseData && (
+                {linkType === 'session' && linkableSessions.length === 0 && (
                   <div className="p-4 bg-brand-50 rounded-xl border border-brand-100 text-center">
                     <Code className="w-8 h-8 text-brand-400 mx-auto mb-2" />
-                    <p className="text-sm text-brand-700">No active course</p>
+                    <p className="text-sm text-brand-700">No courses yet</p>
                     <p className="text-xs text-brand-500 mt-1">Start a learning session to link tasks here</p>
                   </div>
                 )}
-                {linkType === 'session' && courseData && (
+                {linkType === 'session' && linkableSessions.length > 0 && (
                   <div className="p-4 bg-brand-50 rounded-xl border border-brand-100 space-y-4">
-                    {/* Course info */}
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-brand-100 flex items-center justify-center">
-                        <Trophy className="w-5 h-5 text-brand-600" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-brand-900">{courseData.skillName}</p>
-                        <p className="text-xs text-brand-600">Day {courseData.currentDay} of {courseData.durationDays}</p>
-                      </div>
-                    </div>
-
-                    {/* Share scope */}
+                    {/* Session picker */}
                     <div>
                       <label className="block text-xs font-medium text-brand-700 mb-2">
-                        What to share?
+                        Select a course
                       </label>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setShareScope('task')}
-                          className={clsx(
-                            'flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors border',
-                            shareScope === 'task'
-                              ? 'bg-white border-brand-400 text-brand-700 shadow-sm'
-                              : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-white'
-                          )}
-                        >
-                          <Code className="w-4 h-4 inline mr-1.5" />
-                          Specific Task
-                        </button>
-                        <button
-                          onClick={() => setShareScope('course')}
-                          className={clsx(
-                            'flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors border',
-                            shareScope === 'course'
-                              ? 'bg-white border-brand-400 text-brand-700 shadow-sm'
-                              : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-white'
-                          )}
-                        >
-                          <Trophy className="w-4 h-4 inline mr-1.5" />
-                          Full Course
-                        </button>
+                      <div className="flex gap-2 flex-wrap">
+                        {linkableSessions.map((session) => (
+                          <button
+                            key={session.id}
+                            onClick={() => setSelectedSession(session)}
+                            className={clsx(
+                              'px-3 py-2 text-sm rounded-lg border transition-colors flex items-center gap-2',
+                              (selectedSession?.id || activeSession?.id) === session.id
+                                ? 'border-brand-500 bg-white text-brand-700 shadow-sm'
+                                : 'border-brand-200 bg-white/50 text-brand-600 hover:border-brand-300'
+                            )}
+                          >
+                            <Trophy className="w-4 h-4" />
+                            <span className="truncate max-w-[120px]">{session.skillName}</span>
+                            {session.status === 'PAUSED' && (
+                              <span className="text-xs text-orange-600">(paused)</span>
+                            )}
+                            {(selectedSession?.id || activeSession?.id) === session.id && <Check className="w-4 h-4" />}
+                          </button>
+                        ))}
                       </div>
                     </div>
 
-                    {/* Day selector (for task scope) */}
-                    {shareScope === 'task' && (
-                      <div>
-                        <label className="block text-xs font-medium text-brand-700 mb-2">
-                          Select day
-                        </label>
-                        <div className="flex gap-2 flex-wrap">
-                          {availableDays.map((day) => (
+                    {/* Course info - only show when a session is selected */}
+                    {courseData && (
+                      <>
+                        <div className="flex items-center gap-3 pt-2 border-t border-brand-200">
+                          <div className="w-10 h-10 rounded-lg bg-brand-100 flex items-center justify-center">
+                            <Trophy className="w-5 h-5 text-brand-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-brand-900">{courseData.skillName}</p>
+                            <p className="text-xs text-brand-600">Day {courseData.currentDay} of {courseData.durationDays}</p>
+                          </div>
+                        </div>
+
+                        {/* Share scope */}
+                        <div>
+                          <label className="block text-xs font-medium text-brand-700 mb-2">
+                            What to share?
+                          </label>
+                          <div className="flex gap-2">
                             <button
-                              key={day}
-                              onClick={() => setSelectedDay(day)}
+                              onClick={() => setShareScope('task')}
                               className={clsx(
-                                'w-10 h-10 rounded-lg text-sm font-medium transition-colors border',
-                                selectedDay === day
+                                'flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors border',
+                                shareScope === 'task'
                                   ? 'bg-white border-brand-400 text-brand-700 shadow-sm'
                                   : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-white'
                               )}
                             >
-                              {day}
+                              <Code className="w-4 h-4 inline mr-1.5" />
+                              Specific Task
                             </button>
-                          ))}
+                            <button
+                              onClick={() => setShareScope('course')}
+                              className={clsx(
+                                'flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors border',
+                                shareScope === 'course'
+                                  ? 'bg-white border-brand-400 text-brand-700 shadow-sm'
+                                  : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-white'
+                              )}
+                            >
+                              <Trophy className="w-4 h-4 inline mr-1.5" />
+                              Full Course
+                            </button>
+                          </div>
                         </div>
-                      </div>
+
+                        {/* Day selector (for task scope) */}
+                        {shareScope === 'task' && (
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-xs font-medium text-brand-700 mb-2">
+                                Select day
+                              </label>
+                              <div className="flex gap-2 flex-wrap">
+                                {availableDays.map((day) => (
+                                  <button
+                                    key={day}
+                                    onClick={() => {
+                                      setSelectedDay(day);
+                                      setSelectedStep('overview');
+                                    }}
+                                    className={clsx(
+                                      'w-10 h-10 rounded-lg text-sm font-medium transition-colors border',
+                                      selectedDay === day
+                                        ? 'bg-white border-brand-400 text-brand-700 shadow-sm'
+                                        : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-white'
+                                    )}
+                                  >
+                                    {day}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Step selector dropdown */}
+                            {selectedDayData && (
+                              <div>
+                                <label className="block text-xs font-medium text-brand-700 mb-2">
+                                  Select step to share
+                                </label>
+                                <div className="relative">
+                                  <button
+                                    onClick={() => setShowStepDropdown(!showStepDropdown)}
+                                    className="w-full px-3 py-2 bg-white border border-brand-200 rounded-lg text-sm text-left flex items-center justify-between hover:border-brand-300 transition-colors"
+                                  >
+                                    <span className="flex items-center gap-2">
+                                      {selectedStep === 'overview' && <><BookOpen className="w-4 h-4 text-brand-500" /> Day Overview</>}
+                                      {selectedStep === 'video' && <><Play className="w-4 h-4 text-blue-500" /> Video Lesson</>}
+                                      {selectedStep === 'foundationCards' && <><BookOpen className="w-4 h-4 text-green-500" /> Foundation Cards</>}
+                                      {selectedStep === 'task1' && <><Code className="w-4 h-4 text-blue-500" /> Practice Task</>}
+                                      {selectedStep === 'bossMilestone' && <><Trophy className="w-4 h-4 text-purple-500" /> Boss Milestone</>}
+                                      {selectedStep === 'openTask' && <><Target className="w-4 h-4 text-orange-500" /> Real-World Challenge</>}
+                                      {selectedStep === 'reflection' && <><Lightbulb className="w-4 h-4 text-yellow-500" /> Reflection</>}
+                                    </span>
+                                    <ChevronDown className={clsx('w-4 h-4 text-gray-400 transition-transform', showStepDropdown && 'rotate-180')} />
+                                  </button>
+
+                                  {/* Dropdown menu */}
+                                  <AnimatePresence>
+                                    {showStepDropdown && (
+                                      <>
+                                        <div className="fixed inset-0 z-10" onClick={() => setShowStepDropdown(false)} />
+                                        <motion.div
+                                          initial={{ opacity: 0, y: -5 }}
+                                          animate={{ opacity: 1, y: 0 }}
+                                          exit={{ opacity: 0, y: -5 }}
+                                          className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden"
+                                        >
+                                          <button
+                                            onClick={() => { setSelectedStep('overview'); setShowStepDropdown(false); }}
+                                            className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'overview' && 'bg-brand-50')}
+                                          >
+                                            <BookOpen className="w-4 h-4 text-brand-500" /> Day Overview
+                                          </button>
+                                          {selectedDayData.video && (
+                                            <button
+                                              onClick={() => { setSelectedStep('video'); setShowStepDropdown(false); }}
+                                              className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'video' && 'bg-brand-50')}
+                                            >
+                                              <Play className="w-4 h-4 text-blue-500" /> Video Lesson
+                                            </button>
+                                          )}
+                                          {(selectedDayData.foundationCards || selectedDayData.languageFoundationCards) && (
+                                            <button
+                                              onClick={() => { setSelectedStep('foundationCards'); setShowStepDropdown(false); }}
+                                              className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'foundationCards' && 'bg-brand-50')}
+                                            >
+                                              <BookOpen className="w-4 h-4 text-green-500" /> Foundation Cards
+                                            </button>
+                                          )}
+                                          {selectedDayData.task1 && (
+                                            <button
+                                              onClick={() => { setSelectedStep('task1'); setShowStepDropdown(false); }}
+                                              className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'task1' && 'bg-brand-50')}
+                                            >
+                                              <Code className="w-4 h-4 text-blue-500" /> Practice Task
+                                            </button>
+                                          )}
+                                          {selectedDayData.bossMilestone && (
+                                            <button
+                                              onClick={() => { setSelectedStep('bossMilestone'); setShowStepDropdown(false); }}
+                                              className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'bossMilestone' && 'bg-brand-50')}
+                                            >
+                                              <Trophy className="w-4 h-4 text-purple-500" /> Boss Milestone
+                                            </button>
+                                          )}
+                                          {selectedDayData.openTask && (
+                                            <button
+                                              onClick={() => { setSelectedStep('openTask'); setShowStepDropdown(false); }}
+                                              className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'openTask' && 'bg-brand-50')}
+                                            >
+                                              <Target className="w-4 h-4 text-orange-500" /> Real-World Challenge
+                                            </button>
+                                          )}
+                                          {selectedDayData.reflection && (
+                                            <button
+                                              onClick={() => { setSelectedStep('reflection'); setShowStepDropdown(false); }}
+                                              className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'reflection' && 'bg-brand-50')}
+                                            >
+                                              <Lightbulb className="w-4 h-4 text-yellow-500" /> Reflection
+                                            </button>
+                                          )}
+                                        </motion.div>
+                                      </>
+                                    )}
+                                  </AnimatePresence>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Step content preview */}
+                            {selectedDayData && (
+                              <div className="p-3 bg-white rounded-lg border border-brand-200">
+                                {/* Overview */}
+                                {selectedStep === 'overview' && (
+                                  <>
+                                    <div className="flex items-start gap-2 mb-2">
+                                      <div className="w-6 h-6 rounded bg-brand-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                        <span className="text-xs font-bold text-brand-600">{selectedDay}</span>
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <h4 className="font-medium text-gray-900 text-sm">{selectedDayData.title}</h4>
+                                        {selectedDayData.objectives && selectedDayData.objectives.length > 0 && (
+                                          <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
+                                            {selectedDayData.objectives[0]}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {selectedDayData.estimatedMinutes && (
+                                      <div className="mt-2 flex items-center gap-1 text-xs text-gray-400">
+                                        <Clock className="w-3 h-3" />
+                                        <span>{selectedDayData.estimatedMinutes} min</span>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+
+                                {/* Video preview */}
+                                {selectedStep === 'video' && selectedDayData.video && (
+                                  <div>
+                                    <div className="flex items-center gap-1.5 mb-2">
+                                      <Play className="w-4 h-4 text-blue-500" />
+                                      <span className="text-sm font-medium text-blue-700">Video Lesson</span>
+                                    </div>
+                                    <h4 className="font-medium text-gray-900 text-sm">{selectedDayData.video.title || selectedDayData.title}</h4>
+                                    {(selectedDayData.video as any).description && (
+                                      <p className="text-xs text-gray-500 mt-1 line-clamp-3">
+                                        {(selectedDayData.video as any).description}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Foundation Cards preview */}
+                                {selectedStep === 'foundationCards' && (selectedDayData.foundationCards || selectedDayData.languageFoundationCards) && (
+                                  <div>
+                                    <div className="flex items-center gap-1.5 mb-2">
+                                      <BookOpen className="w-4 h-4 text-green-500" />
+                                      <span className="text-sm font-medium text-green-700">Foundation Cards</span>
+                                    </div>
+                                    <p className="text-xs text-gray-600 mb-2">
+                                      {(selectedDayData.foundationCards || selectedDayData.languageFoundationCards)?.length} cards to review
+                                    </p>
+                                    <div className="space-y-1">
+                                      {(selectedDayData.foundationCards || selectedDayData.languageFoundationCards)?.slice(0, 2).map((card: any, i: number) => (
+                                        <div key={i} className="p-2 bg-gray-50 rounded text-xs">
+                                          <span className="font-medium">{card.front || card.question || card.term}</span>
+                                        </div>
+                                      ))}
+                                      {((selectedDayData.foundationCards || selectedDayData.languageFoundationCards)?.length || 0) > 2 && (
+                                        <p className="text-xs text-gray-400">+{((selectedDayData.foundationCards || selectedDayData.languageFoundationCards)?.length || 0) - 2} more cards</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Task1 preview */}
+                                {selectedStep === 'task1' && selectedDayData.task1 && (
+                                  <div>
+                                    <div className="flex items-center gap-1.5 mb-2">
+                                      <Code className="w-4 h-4 text-blue-500" />
+                                      <span className="text-sm font-medium text-blue-700">Practice Task</span>
+                                    </div>
+                                    <h4 className="font-medium text-gray-900 text-sm">
+                                      {(selectedDayData.task1 as any).title || 'Practice task'}
+                                    </h4>
+                                    {(selectedDayData.task1 as any).description && (
+                                      <p className="text-xs text-gray-500 mt-1 line-clamp-3">
+                                        {(selectedDayData.task1 as any).description}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Boss Milestone preview */}
+                                {selectedStep === 'bossMilestone' && selectedDayData.bossMilestone && (
+                                  <div>
+                                    <div className="flex items-center gap-1.5 mb-2">
+                                      <Trophy className="w-4 h-4 text-purple-500" />
+                                      <span className="text-sm font-medium text-purple-700">Boss Milestone</span>
+                                    </div>
+                                    <h4 className="font-medium text-gray-900 text-sm">{selectedDayData.bossMilestone.title}</h4>
+                                    {selectedDayData.bossMilestone.microTask && (
+                                      <p className="text-xs text-gray-500 mt-1 line-clamp-3">
+                                        {selectedDayData.bossMilestone.microTask}
+                                      </p>
+                                    )}
+                                    {selectedDayData.bossMilestone.requirements && selectedDayData.bossMilestone.requirements.length > 0 && (
+                                      <div className="mt-2 space-y-1">
+                                        {selectedDayData.bossMilestone.requirements.slice(0, 2).map((req: string, i: number) => (
+                                          <div key={i} className="flex items-start gap-1 text-xs text-purple-600">
+                                            <Check className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                                            <span>{req}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Open Task preview */}
+                                {selectedStep === 'openTask' && selectedDayData.openTask && (
+                                  <div>
+                                    <div className="flex items-center gap-1.5 mb-2">
+                                      <Target className="w-4 h-4 text-orange-500" />
+                                      <span className="text-sm font-medium text-orange-700">Real-World Challenge</span>
+                                    </div>
+                                    <h4 className="font-medium text-gray-900 text-sm">
+                                      {(selectedDayData.openTask as any).title || 'Real-World Challenge'}
+                                    </h4>
+                                    {(selectedDayData.openTask as any).description && (
+                                      <p className="text-xs text-gray-500 mt-1 line-clamp-3">
+                                        {(selectedDayData.openTask as any).description}
+                                      </p>
+                                    )}
+                                    {(selectedDayData.openTask as any).challenge && (
+                                      <div className="mt-2 p-2 bg-orange-50 rounded text-xs text-orange-700">
+                                        {(selectedDayData.openTask as any).challenge}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Reflection preview */}
+                                {selectedStep === 'reflection' && selectedDayData.reflection && (
+                                  <div>
+                                    <div className="flex items-center gap-1.5 mb-2">
+                                      <Lightbulb className="w-4 h-4 text-yellow-500" />
+                                      <span className="text-sm font-medium text-yellow-700">Reflection</span>
+                                    </div>
+                                    <p className="text-xs text-gray-600 mb-2">
+                                      {selectedDayData.reflection.questions?.length} reflection questions
+                                    </p>
+                                    <div className="space-y-1">
+                                      {selectedDayData.reflection.questions?.slice(0, 2).map((q: any, i: number) => (
+                                        <div key={i} className="p-2 bg-yellow-50 rounded text-xs text-yellow-800">
+                                          {q.question}
+                                        </div>
+                                      ))}
+                                      {(selectedDayData.reflection.questions?.length || 0) > 2 && (
+                                        <p className="text-xs text-gray-400">+{(selectedDayData.reflection.questions?.length || 0) - 2} more questions</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 )}

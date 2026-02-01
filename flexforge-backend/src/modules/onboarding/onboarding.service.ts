@@ -219,6 +219,35 @@ export class OnboardingService {
   }
 
   /**
+   * Skip onboarding - marks as complete with minimal defaults.
+   * For returning users who want to access their previous sessions.
+   */
+  async skipOnboarding(userId: string): Promise<void> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    // Set minimal preferences to mark onboarding as complete
+    const learnerPrefs: Partial<LearnerPrefs> = {
+      completedOnboarding: true,
+      onboardingCompletedAt: new Date().toISOString(),
+      version: 1,
+    };
+
+    user.preferences = {
+      ...user.preferences,
+      learner: {
+        ...user.preferences?.learner,
+        ...learnerPrefs,
+      } as LearnerPrefs,
+    };
+
+    await this.userRepository.save(user);
+    this.logger.log(`Skipped onboarding for user ${userId}`);
+  }
+
+  /**
    * Classify a skill to determine if it supports project-based learning.
    * Uses Haiku for cost efficiency - this is a simple yes/no classification.
    */
