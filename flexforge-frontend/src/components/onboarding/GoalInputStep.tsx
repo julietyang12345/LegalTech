@@ -8,10 +8,11 @@ import { useAuthStore } from "@/stores/authStore";
 interface GoalInputStepProps {
   onSubmit: (goal: string) => void;
   isLoading?: boolean;
+  initialValue?: string;
 }
 
-export function GoalInputStep({ onSubmit, isLoading }: GoalInputStepProps) {
-  const [goal, setGoal] = useState("");
+export function GoalInputStep({ onSubmit, isLoading, initialValue }: GoalInputStepProps) {
+  const [goal, setGoal] = useState(initialValue || "");
   const [isSkipping, setIsSkipping] = useState(false);
   const navigate = useNavigate();
   const { refreshUser } = useAuthStore();

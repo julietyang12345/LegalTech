@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
 import {
@@ -30,7 +30,11 @@ type OnboardingStep =
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { refreshUser } = useAuthStore();
+
+  // Get pre-filled skill from URL (from showcase page)
+  const prefilledSkill = searchParams.get('skill') || '';
 
   // State machine
   const [step, setStep] = useState<OnboardingStep>('goal_input');
@@ -205,7 +209,7 @@ export default function OnboardingPage() {
           <AnimatePresence mode="wait">
             {step === 'goal_input' && (
               <StepWrapper key="goal">
-                <GoalInputStep onSubmit={handleGoalSubmit} />
+                <GoalInputStep onSubmit={handleGoalSubmit} initialValue={prefilledSkill} />
               </StepWrapper>
             )}
 

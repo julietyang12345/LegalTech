@@ -6,6 +6,7 @@ import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useCommunityShareStore } from '@/stores/communityShareStore';
 import { FocusModeLayout } from '@/components/layout';
 import { Button, GeneratingScreen, ExerciseLoadingScreen } from '@/components/common';
 import { AiTutorPanel } from '@/components/session/AiTutorPanel';
@@ -235,7 +236,7 @@ type TaskFormat = 'quiz' | 'fillBlank' | 'mixed' | 'sections';
 // Unified section-based system: ALL skill types can use sections format
 // Legacy quiz/fillBlank formats are auto-converted by SectionTaskStep
 // Language learning uses 'mixed' format (treated same as 'sections')
-function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session: any; onComplete: () => void }) {
+function TaskRouter({ day, session, onComplete, onBookmarkQuestion, onShareQuestion }: { day: CurriculumDay; session: any; onComplete: () => void; onBookmarkQuestion?: (q: { question: string; options?: string[]; correctAnswer?: string }) => void; onShareQuestion?: (q: { question: string; options?: string[]; correctAnswer?: string }) => void }) {
   const task = day.task1;
   const originalFormat = ((task as any)?.format || 'quiz') as TaskFormat;
   const [selectedFormat, setSelectedFormat] = useState<TaskFormat>(originalFormat);
@@ -272,7 +273,7 @@ function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session:
   // For section-based formats (sections, mixed), use unified SectionTaskStep
   // This handles ALL skill types with appropriate section rendering
   if (originalFormat === 'sections' || originalFormat === 'mixed') {
-    return <SectionTaskStep day={day} session={session} onComplete={onComplete} />;
+    return <SectionTaskStep day={day} session={session} onComplete={onComplete} onBookmarkQuestion={onBookmarkQuestion} onShareQuestion={onShareQuestion} />;
   }
 
   // For legacy formats (quiz, fillBlank), allow format switching
@@ -341,15 +342,15 @@ function TaskRouter({ day, session, onComplete }: { day: CurriculumDay; session:
 
     switch (selectedFormat) {
       case 'quiz':
-        return <QuizTaskStep day={modifiedDay} session={session} onComplete={onComplete} />;
+        return <QuizTaskStep day={modifiedDay} session={session} onComplete={onComplete} onBookmarkQuestion={onBookmarkQuestion} onShareQuestion={onShareQuestion} />;
       case 'fillBlank':
         return <FillBlankTaskStep day={modifiedDay} session={session} onComplete={onComplete} />;
       case 'sections':
       case 'mixed':
         // Use unified SectionTaskStep which auto-converts legacy formats
-        return <SectionTaskStep day={modifiedDay} session={session} onComplete={onComplete} />;
+        return <SectionTaskStep day={modifiedDay} session={session} onComplete={onComplete} onBookmarkQuestion={onBookmarkQuestion} onShareQuestion={onShareQuestion} />;
       default:
-        return <QuizTaskStep day={modifiedDay} session={session} onComplete={onComplete} />;
+        return <QuizTaskStep day={modifiedDay} session={session} onComplete={onComplete} onBookmarkQuestion={onBookmarkQuestion} onShareQuestion={onShareQuestion} />;
     }
   };
 
@@ -645,130 +646,49 @@ export function SessionPage() {
     return true;
   };
 
-  // Handle bookmark current section
-  const handleBookmark = () => {
+  // Handle bookmarking a specific question from within a quiz
+  const handleBookmarkQuestion = (questionData: { question: string; options?: string[]; correctAnswer?: string }) => {
     if (!activeSession || !currentDay) return;
-
-    // Map step to section type
-    const sectionMap: Record<SessionStepType, CourseBookmark['section']> = {
-      prePrompt: 'video',
-      video: 'video',
-      foundationCards: 'video',
-      task1: 'task1',
-      bossMilestone: 'boss',
-      openTask: 'task2',
-      reflection: 'reflection',
-    };
-
-    // Get section title based on current step
-    const getSectionTitle = (): string => {
-      switch (currentStep) {
-        case 'video':
-          return currentDay.video?.title || currentDay.title || 'Video Lesson';
-        case 'foundationCards':
-          return 'Foundation Cards';
-        case 'task1':
-          return (currentDay.task1 as any)?.title || 'Practice Task';
-        case 'bossMilestone':
-          return currentDay.bossMilestone?.title || 'Boss Project';
-        case 'openTask':
-          return 'Real-World Challenge';
-        case 'reflection':
-          return 'Daily Reflection';
-        default:
-          return currentDay.title || 'Learning Section';
-      }
-    };
-
-    // Capture content based on current step
-    const getContent = (): CourseBookmark['content'] => {
-      const content: CourseBookmark['content'] = {};
-
-      switch (currentStep) {
-        case 'video':
-          if (currentDay.video) {
-            content.videoTitle = currentDay.video.title || currentDay.title;
-            content.videoDescription = (currentDay.video as any).description;
-          }
-          break;
-
-        case 'foundationCards':
-          // Capture foundation cards
-          const cards = currentDay.foundationCards || currentDay.languageFoundationCards;
-          if (cards && cards.length > 0) {
-            content.foundationCards = cards.slice(0, 10).map((card: any) => ({
-              front: card.front || card.question || card.term,
-              back: card.back || card.answer || card.definition,
-            }));
-          }
-          break;
-
-        case 'task1':
-          const task1 = currentDay.task1 as any;
-          if (task1) {
-            content.taskTitle = task1.title;
-            content.taskDescription = task1.description;
-            // Capture questions if available
-            if (task1.questions && task1.questions.length > 0) {
-              content.taskQuestions = task1.questions.slice(0, 5).map((q: any) => ({
-                question: q.question || q.text,
-                options: q.options || q.choices,
-                correctAnswer: q.correctAnswer || q.answer,
-              }));
-            }
-            // Capture code if available
-            if (task1.code || task1.starterCode) {
-              content.codeSnippet = task1.code || task1.starterCode;
-            }
-          }
-          break;
-
-        case 'bossMilestone':
-          const boss = currentDay.bossMilestone as any;
-          if (boss) {
-            content.bossTitle = boss.title;
-            content.bossDescription = boss.description;
-            content.bossRequirements = boss.requirements?.slice(0, 5);
-            if (boss.starterCode) {
-              content.codeSnippet = boss.starterCode;
-            }
-          }
-          break;
-
-        case 'openTask':
-          const openTask = currentDay.openTask as any;
-          if (openTask) {
-            content.openTaskTitle = openTask.title || 'Real-World Challenge';
-            content.openTaskDescription = openTask.description;
-            content.openTaskChallenge = openTask.challenge;
-          }
-          break;
-
-        case 'reflection':
-          const reflection = currentDay.reflection as any;
-          if (reflection?.questions && reflection.questions.length > 0) {
-            content.reflectionQuestions = reflection.questions.slice(0, 5).map((q: any) => ({
-              id: q.id,
-              question: q.question,
-            }));
-          }
-          break;
-      }
-
-      return Object.keys(content).length > 0 ? content : undefined;
-    };
 
     addBookmark({
       sessionId: activeSession.id,
       skillName: activeSession.skillName,
       dayNumber: currentDay.day,
-      section: sectionMap[currentStep] || 'video',
-      sectionTitle: getSectionTitle(),
-      content: getContent(),
+      section: 'task1',
+      sectionTitle: (currentDay.task1 as any)?.title || 'Practice Question',
+      content: {
+        taskTitle: (currentDay.task1 as any)?.title,
+        taskQuestions: [questionData],
+      },
     });
 
     setShowBookmarkToast(true);
     setTimeout(() => setShowBookmarkToast(false), 2000);
+  };
+
+  // Handle sharing a specific question to the community
+  const { setShareData } = useCommunityShareStore();
+
+  const handleShareQuestion = (questionData: { question: string; options?: string[]; correctAnswer?: string }) => {
+    if (!activeSession || !currentDay) return;
+
+    // Set the share data with the specific question
+    setShareData({
+      scope: 'question',
+      sessionId: activeSession.id,
+      skillName: activeSession.skillName,
+      skillLevel: activeSession.skillLevel,
+      durationDays: activeSession.durationDays,
+      currentDay: activeSession.currentDay,
+      progress: Math.round((activeSession.currentDay / activeSession.durationDays) * 100),
+      dayNumber: currentDay.day,
+      taskTitle: (currentDay.task1 as any)?.title || 'Practice Question',
+      currentState: 'in-progress',
+      questionData: questionData,
+    });
+
+    // Navigate to community page
+    navigate('/community?share=true');
   };
 
   const handleContinue = async () => {
@@ -912,6 +832,8 @@ export function SessionPage() {
             day={displayDay}
             session={activeSession}
             onComplete={handleStepComplete}
+            onBookmarkQuestion={currentStep === 'task1' ? handleBookmarkQuestion : undefined}
+            onShareQuestion={currentStep === 'task1' ? handleShareQuestion : undefined}
           />
         </motion.div>
       </AnimatePresence>
@@ -921,39 +843,17 @@ export function SessionPage() {
         <div className="max-w-focus mx-auto px-4">
           {/* Navigation buttons */}
           <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                onClick={handlePrevious}
-                disabled={isFirstStep || !currentDay}
-                leftIcon={<ChevronLeft className="w-5 h-5" />}
-              >
-                Previous
-              </Button>
-
-              {/* Mobile bookmark button */}
-              <button
-                onClick={handleBookmark}
-                disabled={!currentDay}
-                className="md:hidden p-2 rounded-lg text-brand-500 hover:bg-brand-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                title="Bookmark this section"
-              >
-                <Bookmark className="w-5 h-5" />
-              </button>
-            </div>
+            <Button
+              variant="ghost"
+              onClick={handlePrevious}
+              disabled={isFirstStep || !currentDay}
+              leftIcon={<ChevronLeft className="w-5 h-5" />}
+            >
+              Previous
+            </Button>
 
             {/* Center buttons - Desktop only */}
             <div className="hidden md:flex items-center gap-2">
-              {/* Bookmark Button */}
-              <button
-                onClick={handleBookmark}
-                disabled={!currentDay}
-                className="group flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-300 bg-white hover:bg-gray-50 border border-gray-200 hover:border-brand-300 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Bookmark className="w-4 h-4 text-brand-500 group-hover:text-brand-600" />
-                <span className="text-gray-700 group-hover:text-gray-900">Bookmark</span>
-              </button>
-
               {/* AI Tutor Button */}
               {canUseAITutor ? (
                 <button

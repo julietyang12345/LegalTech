@@ -49,8 +49,7 @@ export class UserService {
       password: userData.password,
       fullName: userData.fullName,
       role: isAdmin ? UserRole.ADMIN : UserRole.MEMBER,
-      //quotaTier: QuotaTier.FREE,
-      quotaTier: QuotaTier.PRO,
+      quotaTier: QuotaTier.FREE, // All users start FREE
       tokensUsedThisMonth: 0,
       curriculaGeneratedThisMonth: 0,
       codeReviewsThisMonth: 0,
@@ -244,7 +243,7 @@ export class UserService {
       },
       [QuotaTier.PRO]: {
         tokens: 500000,
-        curricula: 20,
+        curricula: 30,
         codeReviews: 0,
       },
       [QuotaTier.PREMIUM]: {
@@ -408,7 +407,7 @@ export class UserService {
           codeReview: false,
           careerPath: false,
           monthlyQuota: {
-            curricula: 20,
+            curricula: 30,
             codeReviews: 0,
           },
         },

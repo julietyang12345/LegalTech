@@ -12,6 +12,7 @@ import {
   ReorderSectionExercise,
   TypingSectionExercise,
   OpenEndedSectionExercise,
+  type BookmarkQuestionData,
 } from './LanguageExercises';
 import {
   CodeCompletionExercise,
@@ -42,6 +43,8 @@ interface SectionTaskStepProps {
   day: CurriculumDay;
   session: Session;
   onComplete: () => void;
+  onBookmarkQuestion?: (questionData: BookmarkQuestionData) => void;
+  onShareQuestion?: (questionData: BookmarkQuestionData) => void;
 }
 
 interface SectionResult {
@@ -123,7 +126,7 @@ function getTaskSections(task: QuizTask | FillBlankTask | MixedTask | SectionsTa
   return [];
 }
 
-export function SectionTaskStep({ day, session, onComplete }: SectionTaskStepProps) {
+export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, onShareQuestion }: SectionTaskStepProps) {
   const task = day.task1 as QuizTask | FillBlankTask | MixedTask | SectionsTask;
   const sections = getTaskSections(task);
   const targetLanguage = session.curriculum?.metadata?.targetLanguage as TargetLanguage | undefined;
@@ -184,6 +187,8 @@ export function SectionTaskStep({ day, session, onComplete }: SectionTaskStepPro
             section={section}
             targetLanguage={targetLanguage}
             onComplete={handleSectionComplete}
+            onBookmarkQuestion={onBookmarkQuestion}
+            onShareQuestion={onShareQuestion}
           />
         );
       case 'matching':

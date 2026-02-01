@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { HelpCircle, Code2, Lightbulb, Volume2 } from 'lucide-react';
+import { HelpCircle, Code2, Lightbulb, Volume2, Bookmark, Share2 } from 'lucide-react';
 import { Card, Button, MultipleChoiceQuestion } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { TaskResultsScreen, TaskProgress, TaskNavigation } from './TaskShared';
@@ -17,9 +17,11 @@ interface QuizTaskStepProps {
   day: CurriculumDay;
   session: Session;
   onComplete: () => void;
+  onBookmarkQuestion?: (questionData: { question: string; options?: string[]; correctAnswer?: string }) => void;
+  onShareQuestion?: (questionData: { question: string; options?: string[]; correctAnswer?: string }) => void;
 }
 
-export function QuizTaskStep({ day, session, onComplete }: QuizTaskStepProps) {
+export function QuizTaskStep({ day, session, onComplete, onBookmarkQuestion, onShareQuestion }: QuizTaskStepProps) {
   const quiz = day.task1 as QuizTask;
   // Use consistent index-based IDs to ensure saved progress matches
   const questions = (quiz?.questions || []).map((q, index) => ({
@@ -199,6 +201,40 @@ export function QuizTaskStep({ day, session, onComplete }: QuizTaskStepProps) {
             </div>
           </Card>
         </motion.div>
+      )}
+
+      {/* Bookmark button for current question */}
+      {(onShareQuestion || onBookmarkQuestion) && (
+        <div className="flex justify-end gap-2 mb-2">
+          {onShareQuestion && (
+            <button
+              onClick={() => onShareQuestion({
+                question: currentQuestion.question,
+                options: currentQuestion.options,
+                correctAnswer: currentQuestion.options?.[currentQuestion.correctIndex ?? 0],
+              })}
+              className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-1.5 text-sm"
+              title="Share to community"
+            >
+              <Share2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Share</span>
+            </button>
+          )}
+          {onBookmarkQuestion && (
+            <button
+              onClick={() => onBookmarkQuestion({
+                question: currentQuestion.question,
+                options: currentQuestion.options,
+                correctAnswer: currentQuestion.options?.[currentQuestion.correctIndex ?? 0],
+              })}
+              className="p-2 text-gray-400 hover:text-brand-500 hover:bg-brand-50 rounded-lg transition-colors flex items-center gap-1.5 text-sm"
+              title="Bookmark this question"
+            >
+              <Bookmark className="w-4 h-4" />
+              <span className="hidden sm:inline">Bookmark</span>
+            </button>
+          )}
+        </div>
       )}
 
       <MultipleChoiceQuestion

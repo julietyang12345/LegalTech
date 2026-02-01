@@ -196,7 +196,7 @@ export class User {
         };
       case QuotaTier.PRO:
         return {
-          curricula: 20,
+          curricula: 30,
           aiTokens: 500000,
           aiTutorQuestions: Infinity, // Unlimited for PRO
         };
@@ -238,9 +238,9 @@ export class User {
         };
       case QuotaTier.PRO:
         return {
-          curriculumGenerations: 5, // 5 new curricula per day
-          dayContentRegens: 10, // More generous for PRO
-          curriculumRegens: 10,
+          curriculumGenerations: 4, // 4 new curricula per day
+          dayContentRegens: 4, // 4 day content regenerations per day
+          curriculumRegens: 4,
           aiTutorConversations: 10, // 10 AI tutor messages per day
         };
       case QuotaTier.PREMIUM:

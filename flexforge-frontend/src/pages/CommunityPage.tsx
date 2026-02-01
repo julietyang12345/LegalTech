@@ -36,8 +36,10 @@ import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCommunityShareStore } from '@/stores/communityShareStore';
 import { projectService } from '@/services/projectService';
+import { sessionService } from '@/services/sessionService';
 import { Button, Card, Input } from '@/components/common';
-import type { Project } from '@/types';
+import { StepContentPreview, type PreviewStep } from '@/components/session';
+import type { Project, CurriculumDay, TargetLanguage } from '@/types';
 
 
 // =============================================================================
@@ -65,6 +67,7 @@ interface LinkedCourse {
   currentDay: number;
   progress: number;
 }
+
 
 interface Post {
   id: string;
@@ -785,6 +788,7 @@ function CreatePostModal({
   projects,
   preselectedProject,
   initialShareData,
+  onPostCreated,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -792,7 +796,7 @@ function CreatePostModal({
   projects: Project[];
   preselectedProject?: Project;
   initialShareData?: {
-    scope: 'course' | 'task';
+    scope: 'course' | 'task' | 'question';
     sessionId: string;
     skillName: string;
     skillLevel: string;
@@ -805,36 +809,107 @@ function CreatePostModal({
     code?: string;
     notes?: string;
     currentState: 'started' | 'in-progress' | 'paused' | 'completed';
+    questionData?: {
+      question: string;
+      options?: string[];
+      correctAnswer?: string;
+    };
   } | null;
+  onPostCreated: (post: Post) => void;
 }) {
   const { activeSession, currentDay, sessions, fetchSessions } = useSessionStore();
-  const [selectedSession, setSelectedSession] = useState<typeof activeSession>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const { user } = useAuthStore();
 
-  // Fetch all sessions on mount to show paused ones too
+  // Day data loading (like VaultPage)
+  const [dayData, setDayData] = useState<CurriculumDay | null>(null);
+  const [isLoadingDay, setIsLoadingDay] = useState(false);
+  const [targetLanguage, setTargetLanguage] = useState<TargetLanguage | undefined>();
+
+  // Fetch all sessions on mount
   useEffect(() => {
     fetchSessions();
   }, [fetchSessions]);
 
   // All linkable sessions (active or paused)
   const linkableSessions = sessions.filter(s => s.status === 'ACTIVE' || s.status === 'PAUSED');
-  const [shareScope, setShareScope] = useState<'course' | 'task'>(initialShareData?.scope || 'task');
+
+  // Form state
+  const [shareScope, setShareScope] = useState<'course' | 'task' | 'question'>(initialShareData?.scope || 'task');
   const [selectedProject, setSelectedProject] = useState<Project | null>(preselectedProject || null);
   const [showCodeEditor, setShowCodeEditor] = useState(!!initialShareData?.code);
   const [codeSnippet, setCodeSnippet] = useState(initialShareData?.code || '');
   const [showPreview, setShowPreview] = useState(false);
-  const [linkType, setLinkType] = useState<'none' | 'project' | 'session'>('none');
+  // Auto-set to 'session' when sharing a question
+  const [linkType, setLinkType] = useState<'none' | 'project' | 'session'>(
+    initialShareData?.scope === 'question' ? 'session' : 'none'
+  );
   const [selectedDay, setSelectedDay] = useState<number>(initialShareData?.dayNumber || currentDay?.day || 1);
   const [selectedStep, setSelectedStep] = useState<string>('overview');
   const [showStepDropdown, setShowStepDropdown] = useState(false);
-  const { user } = useAuthStore();
 
   const [formData, setFormData] = useState({
     title: initialShareData?.taskTitle || preselectedProject?.title || '',
     comments: initialShareData?.notes || '',
   });
 
-  // Use selected session, or fall back to active session, or initialShareData
-  const effectiveSession = selectedSession || activeSession;
+  // Store the shared question data
+  const sharedQuestion = initialShareData?.questionData;
+
+  // Get effective session ID and info
+  const effectiveSessionId = selectedSessionId || activeSession?.id;
+  const effectiveSession = linkableSessions.find(s => s.id === effectiveSessionId) || activeSession;
+
+  // Load day data when session/day changes (like VaultPage)
+  useEffect(() => {
+    if (!effectiveSessionId || linkType !== 'session') {
+      setDayData(null);
+      return;
+    }
+
+    const fetchDayData = async () => {
+      setIsLoadingDay(true);
+      try {
+        // Use getDayDetails like VaultPage does
+        const dayDetails = await sessionService.getDayDetails(effectiveSessionId, selectedDay);
+        if (dayDetails.day) {
+          // Merge coreContent and deferredContent into day data (same fix as sessionStore)
+          const mergedDay = {
+            ...dayDetails.day,
+            ...(dayDetails.day.coreContent as object),
+            ...(dayDetails.day.deferredContent as object),
+          };
+          setDayData(mergedDay as CurriculumDay);
+        }
+        // Get target language
+        const sessionResponse = await sessionService.getById(effectiveSessionId);
+        setTargetLanguage(sessionResponse.session.curriculum?.metadata?.targetLanguage as TargetLanguage | undefined);
+      } catch (error) {
+        console.error('Failed to load day data:', error);
+        // Fallback: try getting from session
+        try {
+          const response = await sessionService.getById(effectiveSessionId);
+          const day = response.session.curriculum?.days?.find(d => d.day === selectedDay);
+          if (day) {
+            // Merge coreContent and deferredContent into day data (same fix as sessionStore)
+            const mergedDay = {
+              ...day,
+              ...(day.coreContent as object),
+              ...(day.deferredContent as object),
+            };
+            setDayData(mergedDay as CurriculumDay);
+            setTargetLanguage(response.session.curriculum?.metadata?.targetLanguage as TargetLanguage | undefined);
+          }
+        } catch {
+          setDayData(null);
+        }
+      } finally {
+        setIsLoadingDay(false);
+      }
+    };
+
+    fetchDayData();
+  }, [effectiveSessionId, selectedDay, linkType]);
 
   // Course data for preview
   const courseData: LinkedCourse | null = (initialShareData || effectiveSession) ? {
@@ -849,20 +924,23 @@ function CreatePostModal({
   // Generate mock days for selection (in real app, fetch from session)
   const availableDays = Array.from({ length: courseData?.currentDay || 1 }, (_, i) => i + 1);
 
-  // Get selected day's curriculum data for preview
-  const selectedDayData = effectiveSession?.curriculum?.days?.find(d => d.day === selectedDay);
-
   const handleSubmit = () => {
-    console.log('Create post:', {
+    const newPost: Post = {
+      id: `post-${Date.now()}`,
       type: 'project' as PostType,
-      linkedProject: selectedProject,
-      shareScope,
-      linkedCourse: linkType === 'session' ? courseData : null,
-      selectedDay: linkType === 'session' ? selectedDay : null,
-      codeSnippet,
+      authorId: user?.id || '',
+      authorName: user?.name || 'You',
+      createdAt: new Date(),
       title: formData.title,
-      comments: formData.comments,
-    });
+      currentState: 'in-progress',
+      whatDone: formData.comments,
+      linkedProject: selectedProject || undefined,
+      linkedCourse: linkType === 'session' ? courseData || undefined : undefined,
+      dayNumber: linkType === 'session' ? selectedDay : undefined,
+      codeSnippet: codeSnippet || undefined,
+      comments: [],
+    };
+    onPostCreated(newPost);
     onClose();
   };
 
@@ -982,6 +1060,42 @@ function CreatePostModal({
                   </div>
                 </div>
 
+                {/* Shared question display */}
+                {sharedQuestion && (
+                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                    <label className="block text-sm font-medium text-blue-700 mb-3">
+                      <HelpCircle className="w-4 h-4 inline mr-1.5" />
+                      Sharing this question
+                    </label>
+                    <div className="bg-white rounded-lg border border-blue-200 p-4">
+                      <p className="font-medium text-gray-900 mb-3">{sharedQuestion.question}</p>
+                      {sharedQuestion.options && sharedQuestion.options.length > 0 && (
+                        <div className="space-y-2 ml-2">
+                          {sharedQuestion.options.map((opt, i) => (
+                            <div
+                              key={i}
+                              className={clsx(
+                                'p-2 rounded-lg text-sm',
+                                sharedQuestion.correctAnswer === opt
+                                  ? 'bg-green-100 text-green-800 border border-green-200'
+                                  : 'bg-gray-50 text-gray-600 border border-gray-100'
+                              )}
+                            >
+                              {opt}
+                              {sharedQuestion.correctAnswer === opt && (
+                                <Check className="inline w-4 h-4 ml-2 text-green-600" />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-blue-600 mt-2">
+                      From: {initialShareData?.skillName} - Day {initialShareData?.dayNumber}
+                    </p>
+                  </div>
+                )}
+
                 {/* Project selector */}
                 {linkType === 'project' && projects.length === 0 && (
                   <div className="p-4 bg-purple-50 rounded-xl border border-purple-100 text-center">
@@ -1040,10 +1154,10 @@ function CreatePostModal({
                         {linkableSessions.map((session) => (
                           <button
                             key={session.id}
-                            onClick={() => setSelectedSession(session)}
+                            onClick={() => setSelectedSessionId(session.id)}
                             className={clsx(
                               'px-3 py-2 text-sm rounded-lg border transition-colors flex items-center gap-2',
-                              (selectedSession?.id || activeSession?.id) === session.id
+                              (selectedSessionId || activeSession?.id) === session.id
                                 ? 'border-brand-500 bg-white text-brand-700 shadow-sm'
                                 : 'border-brand-200 bg-white/50 text-brand-600 hover:border-brand-300'
                             )}
@@ -1053,10 +1167,13 @@ function CreatePostModal({
                             {session.status === 'PAUSED' && (
                               <span className="text-xs text-orange-600">(paused)</span>
                             )}
-                            {(selectedSession?.id || activeSession?.id) === session.id && <Check className="w-4 h-4" />}
+                            {(selectedSessionId || activeSession?.id) === session.id && <Check className="w-4 h-4" />}
                           </button>
                         ))}
                       </div>
+                      {isLoadingDay && (
+                        <p className="text-xs text-brand-600 mt-2">Loading course content...</p>
+                      )}
                     </div>
 
                     {/* Course info - only show when a session is selected */}
@@ -1134,7 +1251,7 @@ function CreatePostModal({
                             </div>
 
                             {/* Step selector dropdown */}
-                            {selectedDayData && (
+                            {dayData && (
                               <div>
                                 <label className="block text-xs font-medium text-brand-700 mb-2">
                                   Select step to share
@@ -1173,7 +1290,7 @@ function CreatePostModal({
                                           >
                                             <BookOpen className="w-4 h-4 text-brand-500" /> Day Overview
                                           </button>
-                                          {selectedDayData.video && (
+                                          {(dayData.video || (dayData as any).deferredContent?.video) && (
                                             <button
                                               onClick={() => { setSelectedStep('video'); setShowStepDropdown(false); }}
                                               className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'video' && 'bg-brand-50')}
@@ -1181,7 +1298,7 @@ function CreatePostModal({
                                               <Play className="w-4 h-4 text-blue-500" /> Video Lesson
                                             </button>
                                           )}
-                                          {(selectedDayData.foundationCards || selectedDayData.languageFoundationCards) && (
+                                          {(dayData.foundationCards || dayData.languageFoundationCards || (dayData as any).deferredContent?.foundationCards || (dayData as any).deferredContent?.languageFoundationCards) && (
                                             <button
                                               onClick={() => { setSelectedStep('foundationCards'); setShowStepDropdown(false); }}
                                               className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'foundationCards' && 'bg-brand-50')}
@@ -1189,7 +1306,7 @@ function CreatePostModal({
                                               <BookOpen className="w-4 h-4 text-green-500" /> Foundation Cards
                                             </button>
                                           )}
-                                          {selectedDayData.task1 && (
+                                          {(dayData.task1 || (dayData as any).deferredContent?.task1) && (
                                             <button
                                               onClick={() => { setSelectedStep('task1'); setShowStepDropdown(false); }}
                                               className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'task1' && 'bg-brand-50')}
@@ -1197,7 +1314,7 @@ function CreatePostModal({
                                               <Code className="w-4 h-4 text-blue-500" /> Practice Task
                                             </button>
                                           )}
-                                          {selectedDayData.bossMilestone && (
+                                          {(dayData.bossMilestone || (dayData as any).deferredContent?.bossMilestone) && (
                                             <button
                                               onClick={() => { setSelectedStep('bossMilestone'); setShowStepDropdown(false); }}
                                               className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'bossMilestone' && 'bg-brand-50')}
@@ -1205,7 +1322,7 @@ function CreatePostModal({
                                               <Trophy className="w-4 h-4 text-purple-500" /> Boss Milestone
                                             </button>
                                           )}
-                                          {selectedDayData.openTask && (
+                                          {(dayData.openTask || (dayData as any).deferredContent?.openTask) && (
                                             <button
                                               onClick={() => { setSelectedStep('openTask'); setShowStepDropdown(false); }}
                                               className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'openTask' && 'bg-brand-50')}
@@ -1213,7 +1330,7 @@ function CreatePostModal({
                                               <Target className="w-4 h-4 text-orange-500" /> Real-World Challenge
                                             </button>
                                           )}
-                                          {selectedDayData.reflection && (
+                                          {(dayData.reflection || (dayData as any).deferredContent?.reflection) && (
                                             <button
                                               onClick={() => { setSelectedStep('reflection'); setShowStepDropdown(false); }}
                                               className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'reflection' && 'bg-brand-50')}
@@ -1229,164 +1346,32 @@ function CreatePostModal({
                               </div>
                             )}
 
-                            {/* Step content preview */}
-                            {selectedDayData && (
-                              <div className="p-3 bg-white rounded-lg border border-brand-200">
-                                {/* Overview */}
-                                {selectedStep === 'overview' && (
-                                  <>
-                                    <div className="flex items-start gap-2 mb-2">
-                                      <div className="w-6 h-6 rounded bg-brand-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                        <span className="text-xs font-bold text-brand-600">{selectedDay}</span>
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <h4 className="font-medium text-gray-900 text-sm">{selectedDayData.title}</h4>
-                                        {selectedDayData.objectives && selectedDayData.objectives.length > 0 && (
-                                          <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
-                                            {selectedDayData.objectives[0]}
-                                          </p>
-                                        )}
-                                      </div>
-                                    </div>
-                                    {selectedDayData.estimatedMinutes && (
-                                      <div className="mt-2 flex items-center gap-1 text-xs text-gray-400">
-                                        <Clock className="w-3 h-3" />
-                                        <span>{selectedDayData.estimatedMinutes} min</span>
-                                      </div>
-                                    )}
-                                  </>
-                                )}
-
-                                {/* Video preview */}
-                                {selectedStep === 'video' && selectedDayData.video && (
-                                  <div>
-                                    <div className="flex items-center gap-1.5 mb-2">
-                                      <Play className="w-4 h-4 text-blue-500" />
-                                      <span className="text-sm font-medium text-blue-700">Video Lesson</span>
-                                    </div>
-                                    <h4 className="font-medium text-gray-900 text-sm">{selectedDayData.video.title || selectedDayData.title}</h4>
-                                    {(selectedDayData.video as any).description && (
-                                      <p className="text-xs text-gray-500 mt-1 line-clamp-3">
-                                        {(selectedDayData.video as any).description}
-                                      </p>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Foundation Cards preview */}
-                                {selectedStep === 'foundationCards' && (selectedDayData.foundationCards || selectedDayData.languageFoundationCards) && (
-                                  <div>
-                                    <div className="flex items-center gap-1.5 mb-2">
-                                      <BookOpen className="w-4 h-4 text-green-500" />
-                                      <span className="text-sm font-medium text-green-700">Foundation Cards</span>
-                                    </div>
-                                    <p className="text-xs text-gray-600 mb-2">
-                                      {(selectedDayData.foundationCards || selectedDayData.languageFoundationCards)?.length} cards to review
-                                    </p>
-                                    <div className="space-y-1">
-                                      {(selectedDayData.foundationCards || selectedDayData.languageFoundationCards)?.slice(0, 2).map((card: any, i: number) => (
-                                        <div key={i} className="p-2 bg-gray-50 rounded text-xs">
-                                          <span className="font-medium">{card.front || card.question || card.term}</span>
-                                        </div>
-                                      ))}
-                                      {((selectedDayData.foundationCards || selectedDayData.languageFoundationCards)?.length || 0) > 2 && (
-                                        <p className="text-xs text-gray-400">+{((selectedDayData.foundationCards || selectedDayData.languageFoundationCards)?.length || 0) - 2} more cards</p>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Task1 preview */}
-                                {selectedStep === 'task1' && selectedDayData.task1 && (
-                                  <div>
-                                    <div className="flex items-center gap-1.5 mb-2">
-                                      <Code className="w-4 h-4 text-blue-500" />
-                                      <span className="text-sm font-medium text-blue-700">Practice Task</span>
-                                    </div>
-                                    <h4 className="font-medium text-gray-900 text-sm">
-                                      {(selectedDayData.task1 as any).title || 'Practice task'}
-                                    </h4>
-                                    {(selectedDayData.task1 as any).description && (
-                                      <p className="text-xs text-gray-500 mt-1 line-clamp-3">
-                                        {(selectedDayData.task1 as any).description}
-                                      </p>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Boss Milestone preview */}
-                                {selectedStep === 'bossMilestone' && selectedDayData.bossMilestone && (
-                                  <div>
-                                    <div className="flex items-center gap-1.5 mb-2">
-                                      <Trophy className="w-4 h-4 text-purple-500" />
-                                      <span className="text-sm font-medium text-purple-700">Boss Milestone</span>
-                                    </div>
-                                    <h4 className="font-medium text-gray-900 text-sm">{selectedDayData.bossMilestone.title}</h4>
-                                    {selectedDayData.bossMilestone.microTask && (
-                                      <p className="text-xs text-gray-500 mt-1 line-clamp-3">
-                                        {selectedDayData.bossMilestone.microTask}
-                                      </p>
-                                    )}
-                                    {selectedDayData.bossMilestone.requirements && selectedDayData.bossMilestone.requirements.length > 0 && (
-                                      <div className="mt-2 space-y-1">
-                                        {selectedDayData.bossMilestone.requirements.slice(0, 2).map((req: string, i: number) => (
-                                          <div key={i} className="flex items-start gap-1 text-xs text-purple-600">
-                                            <Check className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                                            <span>{req}</span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Open Task preview */}
-                                {selectedStep === 'openTask' && selectedDayData.openTask && (
-                                  <div>
-                                    <div className="flex items-center gap-1.5 mb-2">
-                                      <Target className="w-4 h-4 text-orange-500" />
-                                      <span className="text-sm font-medium text-orange-700">Real-World Challenge</span>
-                                    </div>
-                                    <h4 className="font-medium text-gray-900 text-sm">
-                                      {(selectedDayData.openTask as any).title || 'Real-World Challenge'}
-                                    </h4>
-                                    {(selectedDayData.openTask as any).description && (
-                                      <p className="text-xs text-gray-500 mt-1 line-clamp-3">
-                                        {(selectedDayData.openTask as any).description}
-                                      </p>
-                                    )}
-                                    {(selectedDayData.openTask as any).challenge && (
-                                      <div className="mt-2 p-2 bg-orange-50 rounded text-xs text-orange-700">
-                                        {(selectedDayData.openTask as any).challenge}
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Reflection preview */}
-                                {selectedStep === 'reflection' && selectedDayData.reflection && (
-                                  <div>
-                                    <div className="flex items-center gap-1.5 mb-2">
-                                      <Lightbulb className="w-4 h-4 text-yellow-500" />
-                                      <span className="text-sm font-medium text-yellow-700">Reflection</span>
-                                    </div>
-                                    <p className="text-xs text-gray-600 mb-2">
-                                      {selectedDayData.reflection.questions?.length} reflection questions
-                                    </p>
-                                    <div className="space-y-1">
-                                      {selectedDayData.reflection.questions?.slice(0, 2).map((q: any, i: number) => (
-                                        <div key={i} className="p-2 bg-yellow-50 rounded text-xs text-yellow-800">
-                                          {q.question}
-                                        </div>
-                                      ))}
-                                      {(selectedDayData.reflection.questions?.length || 0) > 2 && (
-                                        <p className="text-xs text-gray-400">+{(selectedDayData.reflection.questions?.length || 0) - 2} more questions</p>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )}
+                            {/* Content preview using StepContentPreview like VaultPage */}
+                            <div className="mt-3">
+                              <label className="block text-xs font-medium text-brand-700 mb-2">
+                                Content Preview
+                              </label>
+                              {isLoadingDay ? (
+                                <div className="p-4 bg-white rounded-lg border border-brand-200 animate-pulse">
+                                  <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+                                  <div className="h-3 bg-gray-200 rounded w-1/2" />
+                                </div>
+                              ) : dayData ? (
+                                <div className="bg-white rounded-lg border border-brand-200 p-4">
+                                  <StepContentPreview
+                                    day={dayData}
+                                    step={selectedStep as PreviewStep}
+                                    targetLanguage={targetLanguage}
+                                    maxHeight="300px"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="p-4 bg-white rounded-lg border border-brand-200 text-center text-sm text-gray-500">
+                                  <p>Content not available for this step</p>
+                                  <p className="text-xs text-gray-400 mt-1">Try selecting a different step or day</p>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
                       </>
@@ -1491,6 +1476,7 @@ function CreatePostModal({
     </div>
   );
 }
+
 
 // Helper function
 function getTimeAgo(date: Date): string {
@@ -1722,6 +1708,7 @@ export function CommunityPage() {
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [viewingPost, setViewingPost] = useState<Post | null>(null);
   const [joinedGroups, setJoinedGroups] = useState<Set<string>>(new Set());
+  const [posts, setPosts] = useState<Post[]>(MOCK_POSTS);
 
   // Handle share from session (via URL param)
   useEffect(() => {
@@ -1878,7 +1865,7 @@ export function CommunityPage() {
 
         {/* Posts */}
         <div className="space-y-4">
-          {MOCK_POSTS.map((post) => (
+          {posts.map((post) => (
             <PostCard
               key={post.id}
               post={post}
@@ -1904,6 +1891,7 @@ export function CommunityPage() {
             projects={projects}
             preselectedProject={shareProject || undefined}
             initialShareData={shareData}
+            onPostCreated={(newPost) => setPosts([newPost, ...posts])}
           />
         )}
 
@@ -2119,6 +2107,7 @@ export function CommunityPage() {
           projects={projects}
           preselectedProject={shareProject || undefined}
           initialShareData={shareData}
+          onPostCreated={(newPost) => setPosts([newPost, ...posts])}
         />
       )}
     </div>

@@ -15,12 +15,14 @@ import {
   MoreVertical,
   X,
   BookOpen,
+  Loader2,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { Button, Card, Input } from '@/components/common';
+import { StepContentPreview, type PreviewStep } from '@/components/session';
 import { sessionService } from '@/services/sessionService';
-import { SessionStatus, type Session } from '@/types';
+import { SessionStatus, type Session, type CurriculumDay, type TargetLanguage } from '@/types';
 
 // Tab types
 type VaultTab = 'courses' | 'bookmarks';
@@ -346,6 +348,18 @@ function BookmarkCard({
   );
 }
 
+// Map bookmark section to preview step
+function sectionToPreviewStep(section: CourseBookmark['section']): PreviewStep {
+  const map: Record<CourseBookmark['section'], PreviewStep> = {
+    video: 'video',
+    task1: 'task1',
+    task2: 'openTask',
+    boss: 'bossMilestone',
+    reflection: 'reflection',
+  };
+  return map[section] || 'overview';
+}
+
 // Bookmark detail modal
 function BookmarkModal({
   bookmark,
@@ -360,7 +374,57 @@ function BookmarkModal({
 }) {
   const { icon: Icon, label } = getSectionInfo(bookmark.section);
   const createdDate = new Date(bookmark.createdAt).toLocaleDateString();
-  const content = bookmark.content;
+
+  // State for loading curriculum day data
+  const [dayData, setDayData] = useState<CurriculumDay | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [targetLanguage, setTargetLanguage] = useState<TargetLanguage | undefined>();
+
+  // Fetch curriculum day data on mount
+  useEffect(() => {
+    const fetchDayData = async () => {
+      try {
+        setIsLoading(true);
+        setLoadError(null);
+
+        // Try to get full day details first (includes all task content)
+        try {
+          const dayDetails = await sessionService.getDayDetails(bookmark.sessionId, bookmark.dayNumber);
+          if (dayDetails.day) {
+            setDayData(dayDetails.day as CurriculumDay);
+            // Get target language from session
+            const sessionResponse = await sessionService.getById(bookmark.sessionId);
+            setTargetLanguage(sessionResponse.session.curriculum?.metadata?.targetLanguage as TargetLanguage | undefined);
+            return;
+          }
+        } catch {
+          // Fall back to session data if getDayDetails fails
+        }
+
+        // Fallback: get day from session curriculum
+        const response = await sessionService.getById(bookmark.sessionId);
+        const session = response.session;
+        const day = session.curriculum?.days?.find(d => d.day === bookmark.dayNumber);
+
+        if (day) {
+          setDayData(day);
+          setTargetLanguage(session.curriculum?.metadata?.targetLanguage as TargetLanguage | undefined);
+        } else {
+          setLoadError('Day content not found');
+        }
+      } catch (err) {
+        console.error('Failed to load bookmark content:', err);
+        setLoadError('Failed to load content');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDayData();
+  }, [bookmark.sessionId, bookmark.dayNumber]);
+
+  const previewStep = sectionToPreviewStep(bookmark.section);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -398,58 +462,38 @@ function BookmarkModal({
             <span className="text-xs text-gray-400">Bookmarked {createdDate}</span>
           </div>
 
-          {/* Video Content */}
-          {bookmark.section === 'video' && content?.videoTitle && (
-            <div className="space-y-3">
-              <h3 className="font-semibold text-gray-900">{content.videoTitle}</h3>
-              {content.videoDescription && (
-                <p className="text-gray-600">{content.videoDescription}</p>
-              )}
+          {/* Loading state */}
+          {isLoading && (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 text-brand-500 animate-spin" />
             </div>
           )}
 
-          {/* Foundation Cards */}
-          {content?.foundationCards && content.foundationCards.length > 0 && (
-            <div className="space-y-3">
-              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-brand-500" />
-                Foundation Cards ({content.foundationCards.length})
-              </h3>
-              <div className="grid gap-3">
-                {content.foundationCards.map((card, i) => (
-                  <div key={i} className="p-4 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200">
-                    <div className="mb-3">
-                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Question</span>
-                      <p className="text-gray-900 mt-1">{card.front}</p>
-                    </div>
-                    <div className="pt-3 border-t border-gray-200">
-                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Answer</span>
-                      <p className="text-gray-700 mt-1">{card.back}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          {/* Error state */}
+          {loadError && !isLoading && (
+            <div className="text-center py-8 text-gray-500">
+              <Bookmark className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <p>{loadError}</p>
             </div>
           )}
 
-          {/* Task Content */}
-          {(bookmark.section === 'task1' || bookmark.section === 'task2') && content?.taskTitle && (
+          {/* Task1 bookmark with specific questions - show only those */}
+          {bookmark.section === 'task1' && bookmark.content?.taskQuestions && bookmark.content.taskQuestions.length > 0 && !isLoading && (
             <div className="space-y-4">
-              <h3 className="font-semibold text-gray-900">{content.taskTitle}</h3>
-              {content.taskDescription && (
-                <p className="text-gray-600">{content.taskDescription}</p>
+              {bookmark.content?.taskTitle && (
+                <h3 className="font-semibold text-gray-900">{bookmark.content.taskTitle}</h3>
               )}
-
-              {/* Task Questions */}
-              {content.taskQuestions && content.taskQuestions.length > 0 && (
-                <div className="space-y-4">
-                  <h4 className="text-sm font-medium text-gray-700">Questions</h4>
-                  {content.taskQuestions.map((q, i) => (
-                    <div key={i} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-gray-700">
+                  {bookmark.content.taskQuestions.length} bookmarked {bookmark.content.taskQuestions.length === 1 ? 'question' : 'questions'}
+                </h4>
+                <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                  {bookmark.content.taskQuestions.map((q, i) => (
+                    <div key={i} className="p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
                       <p className="font-medium text-gray-900 mb-3">
                         {i + 1}. {q.question}
                       </p>
-                      {q.options && q.options.length > 0 && (
+                      {q.options && (
                         <div className="space-y-2 ml-4">
                           {q.options.map((opt, j) => (
                             <div
@@ -458,7 +502,7 @@ function BookmarkModal({
                                 'p-2 rounded-lg text-sm',
                                 q.correctAnswer === opt
                                   ? 'bg-green-100 text-green-800 border border-green-200'
-                                  : 'bg-white text-gray-600 border border-gray-100'
+                                  : 'bg-gray-50 text-gray-600 border border-gray-100'
                               )}
                             >
                               {opt}
@@ -472,81 +516,81 @@ function BookmarkModal({
                     </div>
                   ))}
                 </div>
+              </div>
+              {bookmark.content?.codeSnippet && (
+                <div className="rounded-lg overflow-hidden">
+                  <div className="bg-gray-800 px-3 py-1.5 text-xs text-gray-400 font-mono">Code</div>
+                  <pre className="bg-gray-900 p-3 text-xs text-gray-100 overflow-x-auto max-h-[200px]">
+                    <code>{bookmark.content.codeSnippet}</code>
+                  </pre>
+                </div>
               )}
             </div>
           )}
 
-          {/* Boss Milestone Content */}
-          {bookmark.section === 'boss' && content?.bossTitle && (
+          {/* Boss bookmark with stored content - show it directly */}
+          {bookmark.section === 'boss' && !isLoading && (bookmark.content?.bossTitle || bookmark.content?.bossDescription) && (
             <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <GraduationCap className="w-6 h-6 text-purple-600" />
-                <h3 className="font-semibold text-gray-900">{content.bossTitle}</h3>
-              </div>
-              {content.bossDescription && (
-                <p className="text-gray-600">{content.bossDescription}</p>
+              {bookmark.content?.bossTitle && (
+                <h3 className="font-semibold text-gray-900">{bookmark.content.bossTitle}</h3>
               )}
-
-              {/* Requirements */}
-              {content.bossRequirements && content.bossRequirements.length > 0 && (
-                <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
-                  <h4 className="text-sm font-medium text-purple-800 mb-2">Requirements</h4>
-                  <ul className="space-y-2">
-                    {content.bossRequirements.map((req, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-purple-700">
-                        <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              {bookmark.content?.bossDescription && (
+                <p className="text-sm text-gray-600">{bookmark.content.bossDescription}</p>
+              )}
+              {bookmark.content?.bossRequirements && bookmark.content.bossRequirements.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-gray-700">Requirements</h4>
+                  <ul className="space-y-1">
+                    {bookmark.content.bossRequirements.map((req, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
+                        <CheckCircle2 className="w-4 h-4 text-purple-500 mt-0.5 flex-shrink-0" />
                         {req}
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
-            </div>
-          )}
-
-          {/* Reflection Questions */}
-          {bookmark.section === 'reflection' && content?.reflectionQuestions && content.reflectionQuestions.length > 0 && (
-            <div className="space-y-3">
-              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-brand-500" />
-                Reflection Questions ({content.reflectionQuestions.length})
-              </h3>
-              <div className="space-y-3">
-                {content.reflectionQuestions.map((q, i) => (
-                  <div key={q.id || i} className="p-4 bg-gradient-to-br from-brand-50 to-purple-50 rounded-xl border border-brand-200">
-                    <p className="text-gray-900 font-medium">{i + 1}. {q.question}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Open Task Content */}
-          {bookmark.section === 'task2' && (content?.openTaskTitle || content?.openTaskDescription) && (
-            <div className="space-y-4">
-              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-orange-500" />
-                {content.openTaskTitle || 'Real-World Challenge'}
-              </h3>
-              {content.openTaskDescription && (
-                <p className="text-gray-600">{content.openTaskDescription}</p>
-              )}
-              {content.openTaskChallenge && (
-                <div className="p-4 bg-orange-50 rounded-xl border border-orange-200">
-                  <h4 className="text-sm font-medium text-orange-800 mb-2">Challenge</h4>
-                  <p className="text-orange-900">{content.openTaskChallenge}</p>
+              {bookmark.content?.codeSnippet && (
+                <div className="rounded-lg overflow-hidden">
+                  <div className="bg-gray-800 px-3 py-1.5 text-xs text-gray-400 font-mono">Starter Code</div>
+                  <pre className="bg-gray-900 p-3 text-xs text-gray-100 overflow-x-auto max-h-[200px]">
+                    <code>{bookmark.content.codeSnippet}</code>
+                  </pre>
                 </div>
               )}
             </div>
           )}
 
-          {/* Code Snippet */}
-          {content?.codeSnippet && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium text-gray-700">Code</h4>
-              <pre className="p-4 bg-gray-900 text-gray-100 rounded-xl overflow-x-auto text-sm font-mono">
-                {content.codeSnippet}
-              </pre>
+          {/* Boss bookmark without stored content - fall back to StepContentPreview */}
+          {bookmark.section === 'boss' && !isLoading && !bookmark.content?.bossTitle && !bookmark.content?.bossDescription && dayData && (
+            <StepContentPreview
+              day={dayData}
+              step={previewStep}
+              targetLanguage={targetLanguage}
+              maxHeight="400px"
+            />
+          )}
+
+          {/* Task1 without specific questions OR other sections (video, reflection, etc.) - use StepContentPreview */}
+          {((bookmark.section === 'task1' && (!bookmark.content?.taskQuestions || bookmark.content.taskQuestions.length === 0)) || (bookmark.section !== 'task1' && bookmark.section !== 'boss')) && dayData && !isLoading && (
+            <StepContentPreview
+              day={dayData}
+              step={previewStep}
+              targetLanguage={targetLanguage}
+              maxHeight="400px"
+            />
+          )}
+
+          {/* Fallback when dayData fails to load for sections that need it */}
+          {(
+            // Non-task1, non-boss sections need dayData
+            (bookmark.section !== 'task1' && bookmark.section !== 'boss') ||
+            // Boss without stored content also needs dayData
+            (bookmark.section === 'boss' && !bookmark.content?.bossTitle && !bookmark.content?.bossDescription)
+          ) && !dayData && !isLoading && !loadError && (
+            <div className="text-center py-8">
+              <Bookmark className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <p className="text-gray-500">Content not available. Resume the course to view this section.</p>
             </div>
           )}
 
@@ -555,14 +599,6 @@ function BookmarkModal({
             <div className="p-4 bg-yellow-50 rounded-xl border border-yellow-200">
               <h4 className="text-sm font-medium text-yellow-800 mb-1">Your Note</h4>
               <p className="text-yellow-900">{bookmark.note}</p>
-            </div>
-          )}
-
-          {/* Empty state if no content */}
-          {!content && (
-            <div className="text-center py-8 text-gray-500">
-              <Bookmark className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-              <p>Content preview not available for this bookmark.</p>
             </div>
           )}
         </div>

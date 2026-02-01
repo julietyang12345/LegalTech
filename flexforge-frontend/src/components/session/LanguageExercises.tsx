@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, X, Volume2, ArrowRight, ChevronLeft, RotateCcw, Lightbulb, Sparkles, Lock } from 'lucide-react';
+import { Check, X, Volume2, ArrowRight, ChevronLeft, RotateCcw, Lightbulb, Sparkles, Lock, Bookmark, Share2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useBrowserTTS } from '@/hooks/useBrowserTTS';
 import { useAuthStore } from '@/stores/authStore';
@@ -137,15 +137,24 @@ export interface SectionSavedProgress {
 // Quiz Section Component (MCQ + Open-Ended)
 // ============================================
 
+// Bookmark question data
+export interface BookmarkQuestionData {
+  question: string;
+  options?: string[];
+  correctAnswer?: string;
+}
+
 interface QuizSectionProps {
   section: QuizSection;
   targetLanguage?: TargetLanguage;
   onComplete: (score: number, total: number, answers?: Record<string, number | string | boolean>) => void;
   savedProgress?: SectionSavedProgress;
   onProgressChange?: (answers: Record<string, number | string | boolean>, currentIndex: number) => void;
+  onBookmarkQuestion?: (questionData: BookmarkQuestionData) => void;
+  onShareQuestion?: (questionData: BookmarkQuestionData) => void;
 }
 
-export function QuizSectionExercise({ section, targetLanguage, onComplete, savedProgress, onProgressChange }: QuizSectionProps) {
+export function QuizSectionExercise({ section, targetLanguage, onComplete, savedProgress, onProgressChange, onBookmarkQuestion, onShareQuestion }: QuizSectionProps) {
   // Initialize from saved progress if available
   const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
   // For MCQ answers (stores option index)
@@ -396,8 +405,38 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
           </div>
         )}
 
-        {/* Question text */}
-        <p className="text-lg font-medium mb-4">{currentQuestion.question}</p>
+        {/* Question text with bookmark and share */}
+        <div className="flex items-start justify-between gap-2 mb-4">
+          <p className="text-lg font-medium">{currentQuestion.question}</p>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {onShareQuestion && (
+              <button
+                onClick={() => onShareQuestion({
+                  question: currentQuestion.question,
+                  options: currentQuestion.options,
+                  correctAnswer: currentQuestion.options?.[currentQuestion.correctIndex ?? 0],
+                })}
+                className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                title="Share to community"
+              >
+                <Share2 className="w-5 h-5" />
+              </button>
+            )}
+            {onBookmarkQuestion && (
+              <button
+                onClick={() => onBookmarkQuestion({
+                  question: currentQuestion.question,
+                  options: currentQuestion.options,
+                  correctAnswer: currentQuestion.options?.[currentQuestion.correctIndex ?? 0],
+                })}
+                className="p-1.5 text-gray-400 hover:text-brand-500 hover:bg-brand-50 rounded-lg transition-colors"
+                title="Bookmark this question"
+              >
+                <Bookmark className="w-5 h-5" />
+              </button>
+            )}
+          </div>
+        </div>
 
         {/* MCQ Options */}
         {!isOpenEnded && currentQuestion.options && (

@@ -382,10 +382,10 @@ export function TodayPage() {
     const currentDayData = activeSession.curriculum?.days?.find(
       d => d.day === activeSession.currentDay
     );
+
     // Backend sets coreLoaded=true and stores coreContent when content is generated
-    const isContentCached = currentDayData?.detailsLoaded ||
-                            currentDayData?.coreLoaded ||
-                            currentDayData?.coreContent;
+    // Only check for CORE content, not detailsLoaded (which is deferred)
+    const isContentCached = currentDayData?.coreLoaded || currentDayData?.coreContent;
 
     if (isContentCached) {
       // Content already loaded - navigate immediately

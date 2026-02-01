@@ -352,7 +352,7 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
       know_basics:
         'SKILL LEVEL: INTERMEDIATE - User knows fundamentals. Skip basics, focus on practical application and common patterns. Address pain points.',
       skilled:
-        'SKILL LEVEL: ADVANCED - User is experienced. Focus on advanced techniques, edge cases, optimization. Challenge them.',
+        'SKILL LEVEL: ADVANCED - User is experienced. Focus on advanced patterns with context connections. Challenge with scaffolding. Build on existing knowledge.',
     };
     parts.push(familiarityGuidance[prefs.familiarity] || '');
   }
@@ -413,6 +413,71 @@ function getTierInstructions(userTier: string): string {
 }
 
 /**
+ * Get skeleton-level guidance for curriculum STRUCTURE based on skill level
+ * This affects day topics, progression, content depth, and what concepts to cover
+ * Combines structure guidance with content expectations for holistic curriculum design
+ */
+function getSkeletonLevelGuidance(skillLevel: SkillLevel): string {
+  switch (skillLevel) {
+    case SkillLevel.INTERMEDIATE:
+      return `INTERMEDIATE LEVEL CURRICULUM:
+
+STRUCTURE:
+- Brief context bridges instead of full introductions - user knows basics but may have gaps
+- Day 1 starts with practical application, with quick refreshers where needed
+- Progress faster - combine related topics, cover more ground per day
+- Day titles reference practical outcomes (e.g., "Building Scalable APIs" not "Introduction to APIs")
+- Include days on common pitfalls, debugging, and troubleshooting
+
+CONTENT APPROACH:
+- Define terms in passing, not as the main focus - user knows most terminology
+- Focus on patterns, best practices, and real-world scenarios
+- Include nuanced situations, edge cases, and common mistakes
+- Show 2-3 valid approaches with trade-offs when applicable
+- Questions require applying knowledge, not just recall
+- Examples should combine 2-3 concepts together`;
+
+    case SkillLevel.ADVANCED:
+      return `ADVANCED LEVEL CURRICULUM:
+
+STRUCTURE:
+- User knows fundamentals and intermediate patterns - build on that foundation
+- Day 1 dives into advanced techniques, with quick references to prerequisites when relevant
+- Cover topics rarely found in beginner tutorials
+- Day titles reference advanced concepts (e.g., "Memory-Efficient Pipelines" not "Working with Data")
+- Include days on architecture decisions, performance tuning, and scaling
+- Each day covers more ground - user learns faster
+
+CONTENT APPROACH:
+- Quick refreshers where concepts connect, not standalone explanations
+- Reference fundamentals when they inform advanced decisions
+- Include optimization, trade-offs, and when to choose different approaches
+- Present problems with multiple valid solutions and reasoning behind each
+- Include analysis and reasoning questions with scaffolding
+- Examples show realistic complexity and expert problem-solving approach
+- Help user develop judgment, not just follow rules`;
+
+    case SkillLevel.BEGINNER:
+    default:
+      return `BEGINNER LEVEL CURRICULUM:
+
+STRUCTURE:
+- Day 1 covers "What is X and why use it?" - start with fundamentals
+- Progress gradually - each day builds on the previous
+- Don't skip steps - assume no prior knowledge
+- Day titles should be approachable (e.g., "Your First API Call" not "RESTful Architecture")
+- Include days for practice and reinforcement
+
+CONTENT APPROACH:
+- Clear "what" and "how" explanations for every concept
+- Include motivational context (why this matters)
+- Simple, focused examples demonstrating one concept at a time
+- Questions test understanding with clear right/wrong answers
+- Cover essentials first, mention but don't dwell on exceptions`;
+  }
+}
+
+/**
  * Get skill level guidance for content quantity and complexity
  * BEGINNER: 1x content, foundational concepts, straightforward questions
  * INTERMEDIATE: 1.2x content, intermediate concepts, moderate difficulty
@@ -444,14 +509,14 @@ function getSkillLevelGuidance(skillLevel: SkillLevel): {
         foundationCardCount: '7-9',
         quizQuestionCount: '12-15',
         complexityGuidance: `ADVANCED LEVEL COMPLEXITY:
-- Basics: SKIP entirely - assume user knows all fundamentals and terminology. Jump straight to advanced content
-- Concepts: Focus on sophisticated techniques, subtle distinctions, edge cases, and expert-level insights
-- Trade-offs: More discussion about trade-offs, performance implications, and when NOT to use a technique
-- Questions: Require analysis, evaluating trade-offs, handling ambiguous situations, and explaining reasoning
-- Multiple Solutions: Present problems with multiple valid solutions and discuss why experts might choose different approaches
-- Examples: Use complex real-world scenarios with nuanced considerations and potential pitfalls
-- Hints: MINIMAL hints - only for the most challenging questions. Let user struggle productively
-- Depth: Cover advanced strategies, when to break conventional rules, and how experts think about the topic`,
+- Basics: Skip basic definitions but include brief context connections. User knows core concepts but appreciates seeing how they connect to advanced material
+- Concepts: Focus on advanced patterns and techniques. Include edge cases as illustrative examples, not the main focus
+- Trade-offs: Discuss trade-offs, performance implications, and when to choose different approaches. Help user develop judgment
+- Questions: Include analysis and reasoning questions, but provide scaffolding. Mix challenging questions with confidence-building ones
+- Multiple Solutions: Present problems with multiple valid approaches. Explain the thinking behind each, not just the "expert choice"
+- Examples: Use realistic scenarios with meaningful complexity. Show how advanced users approach problems step-by-step
+- Hints: Provide sophisticated hints that guide thinking without giving answers. Available for all questions, not just hardest ones
+- Depth: Cover advanced strategies and nuances. Build on what user knows rather than assuming mastery`,
         contentMultiplier: 1.5,
       };
     case SkillLevel.BEGINNER:
@@ -1717,7 +1782,7 @@ export function buildCacheableCurriculumPrompt(
     params.complexity,
     params.safetyLevel,
   );
-  const levelGuidance = getSkillLevelGuidance(params.skillLevel);
+  const skeletonLevelGuidance = getSkeletonLevelGuidance(params.skillLevel);
   const dynamicPart = `Generate ${params.durationDays}-day curriculum skeleton for "${params.skillName}".
 Type: ${params.skillType} | Level: ${params.skillLevel} | ${time.totalMinutes}min/day (${time.mode})
 ${params.suggestedLanguage ? `Language: ${params.suggestedLanguage}` : ''}
@@ -1726,7 +1791,7 @@ ${structureInstructions}
 ${learnerContext}
 ${skillGuidance}
 
-${levelGuidance.complexityGuidance}
+${skeletonLevelGuidance}
 
 Per day: day, title, subtitle, skills[], teaser, estimatedMinutes:${time.totalMinutes}, ${isProjectBased ? 'hasBossProject:true, bossMilestonePreview,' : ''} contentLayer, videoStrategy, transferability.`;
 
@@ -1820,18 +1885,11 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
     ? getLanguageFeatures(params.targetLanguage)
     : '';
 
-  // Check if skill name suggests vocabulary-focused learning vs concept/grammar learning
-  // Vocabulary: "Italian vocabulary", "Spanish words", "learn Japanese words"
-  // Concept: "Italian grammar", "Spanish conjugation", "Japanese sentence structure"
-  const skillNameLower = params.skillName.toLowerCase();
-  const isVocabularyFocused = params.isLanguageLearning && (
-    skillNameLower.includes('vocabulary') ||
-    skillNameLower.includes('vocab') ||
-    skillNameLower.includes(' words') ||
-    skillNameLower.includes('phrases') ||
-    (skillNameLower.includes('learn') && !skillNameLower.includes('grammar') && !skillNameLower.includes('conjugat'))
-  );
-  const isConceptFocused = params.isLanguageLearning && !isVocabularyFocused;
+  // AI decides the mix of vocabulary vs grammar cards based on day's learning objectives
+  // Both card types are available in languageFoundationCards - AI chooses appropriate mix
+  // - Vocabulary cards: new words/phrases with term, definition, romanization
+  // - Grammar cards: rules, patterns, conjugation with examples
+  // AI determines based on: skill name, day objectives, what's being taught
 
   const languageInstructions = params.isLanguageLearning
     ? `\nLANGUAGE LEARNING: Target language is ${params.targetLanguage || 'specified'}. Level: ${params.proficiencyLevel || 'beginner'}.
@@ -1841,7 +1899,10 @@ Features: ${langFeatures}
 - Include target language text with pronunciation/romanization in examples
 - Include "audioText" field in quiz questions for listening practice (TTS will speak it)
 - Include commonMistakes in explanations where relevant
-${isConceptFocused ? `- CONCEPT-FOCUSED (${params.skillName}): Use regular foundationCards to explain grammar/concepts. Do NOT use vocabulary cards. Focus on rules, patterns, conjugation tables, sentence structure - NOT vocabulary lists.` : ''}
+- AI DECIDES CARD MIX: Based on day's objectives, use the appropriate mix of:
+  * VOCABULARY cards (for new words/phrases) - include "vocabulary" object
+  * GRAMMAR cards (for rules/patterns/conjugation) - include "grammar" object
+  Choose the best mix for effective learning. Example: grammar lesson needs mostly grammar cards with a few vocab cards for key terms.
 ${langHasTones ? '- TONAL LANGUAGE: Include tone numbers/markers. Add toneSelect section in task1.' : ''}${langHasGender ? '\n- GENDERED LANGUAGE: Include grammatical gender (masculine/feminine/neuter) where applicable.' : ''}`
     : '';
 
@@ -1920,15 +1981,15 @@ ${personalizationInstructions}${continuityInstructions}`;
     ? '- video: null (language learning uses audio/TTS instead)\n- contentLayer: "language_core"'
     : '- video: REQUIRED (even if just searchQuery)';
 
-  // For vocabulary-focused language learning, use languageFoundationCards with vocabulary object
-  // For concept-focused (grammar, conjugation) or non-language skills, use regular foundationCards
-  const cardsArrayName = isVocabularyFocused ? 'languageFoundationCards' : 'foundationCards';
+  // For language learning, always use languageFoundationCards - AI decides the mix of vocabulary/grammar
+  // For non-language skills, use regular foundationCards
+  const cardsArrayName = params.isLanguageLearning ? 'languageFoundationCards' : 'foundationCards';
 
-  // Language-specific card structure matching frontend VocabularyItem/GrammarRule interfaces
-  // For vocabulary-focused: use languageFoundationCards with vocabulary object (VocabularyItem)
-  // For grammar-focused: use foundationCards with grammar object (GrammarRule)
-  const languageCardStructure = isVocabularyFocused
-    ? `{
+  // Language-specific card structure - AI chooses between vocabulary or grammar object per card
+  // Both are shown so AI understands both formats and can pick the right one
+  const languageCardStructure = params.isLanguageLearning
+    ? `VOCABULARY CARD (for teaching new words/phrases):
+    {
       "id": "day${params.dayNumber}-vocab-1",
       "concept": "Word/phrase in English (brief description)",
       "visual": "relevant emoji",
@@ -1959,9 +2020,10 @@ ${personalizationInstructions}${continuityInstructions}`;
         "explanation": "Why this is correct"
       },
       "order": 1
-    }`
-    : isConceptFocused
-    ? `{
+    }
+
+    GRAMMAR CARD (for teaching rules/patterns/conjugation):
+    {
       "concept": "Grammar rule name (e.g., Present Tense Conjugation)",
       "explanation": "Explain the grammar rule clearly.\\n\\nProvide conjugation tables or sentence patterns.\\n\\nInclude examples in ${params.targetLanguage}.",
       "realWorldContext": "When and how to use this in conversation",
@@ -1997,7 +2059,9 @@ ${personalizationInstructions}${continuityInstructions}`;
         "correctIndex": 0,
         "explanation": "Why this follows the grammar rule"
       }
-    }`
+    }
+
+    AI DECIDES: Use vocabulary cards for new words/phrases, grammar cards for rules/patterns. Mix as appropriate for the day's learning objectives.`
     : `{
       "concept": "Main concept title",
       "explanation": "Key insight paragraph here.\\n\\nSupporting details, examples, or nuances in second paragraph.\\n\\nOptional third paragraph for additional context.",
@@ -2012,27 +2076,25 @@ ${personalizationInstructions}${continuityInstructions}`;
     }`;
 
   // Additional requirements based on content type (matching frontend VocabularyItem/GrammarRule interfaces)
-  const languageRequirements = isVocabularyFocused
+  const languageRequirements = params.isLanguageLearning
     ? `
-- languageFoundationCards: REQUIRED - ${levelGuidance.foundationCardCount} cards
-  - Each card MUST have "vocabulary" object matching VocabularyItem interface:
-    - REQUIRED: id, term, definition, partOfSpeech, proficiencyLevel, examples[]
-    - REQUIRED: romanization (pronunciation guide)${langHasTones ? '\n    - REQUIRED: tone (number or array for multi-syllable) - TONAL LANGUAGE' : ''}${langHasGender ? '\n    - REQUIRED: gender ("masculine"|"feminine"|"neuter") - GENDERED LANGUAGE' : ''}
-    - examples[]: Array with {sentence, romanization, translation}
-  - Include "audioText" field with term for TTS pronunciation
-  - Use microQuestion to test vocabulary recognition`
-    : isConceptFocused
-    ? `
-- foundationCards: REQUIRED - ${levelGuidance.foundationCardCount} cards covering ${params.skillName}
-  - FOCUS ON GRAMMAR/CONCEPTS - NOT vocabulary lists
-  - Each card MUST have "grammar" object matching GrammarRule interface:
-    - REQUIRED: rule, pattern, proficiencyLevel, examples[]
-    - OPTIONAL: patternInTarget, genderNotes, formality, commonMistakes[]
-    - examples[]: Array with {sentence, breakdown, translation, romanization, notes}
-    - commonMistakes[]: Array with {wrong, correct, why}
-  - Include "audioText" for TTS pronunciation of example sentences
-  - explanation: Conjugation tables, pattern rules, structural explanations
-  - microQuestion: Test understanding of the grammar rule`
+- languageFoundationCards: REQUIRED - ${levelGuidance.foundationCardCount} cards total
+  - AI DECIDES: Mix vocabulary and grammar cards based on day's objectives
+
+  FOR VOCABULARY CARDS (use when teaching new words/phrases):
+  - MUST have "vocabulary" object with: id, term, definition, romanization, partOfSpeech, proficiencyLevel, examples[]${langHasTones ? '\n  - TONAL: Include tone number' : ''}${langHasGender ? '\n  - GENDERED: Include gender (masculine/feminine/neuter)' : ''}
+  - examples[]: Array with {sentence, romanization, translation}
+  - audioText: The term for TTS pronunciation
+
+  FOR GRAMMAR CARDS (use when teaching rules/patterns/conjugation):
+  - MUST have "grammar" object with: rule, pattern, proficiencyLevel, examples[], commonMistakes[]
+  - examples[]: Array with {sentence, breakdown, translation, romanization, notes}
+  - audioText: Example sentence for TTS pronunciation
+
+  GUIDELINES:
+  - Grammar-focused topics (conjugation, sentence structure): Mostly grammar cards, few vocab cards for key terms
+  - Vocabulary-focused topics (words, phrases): Mostly vocabulary cards, occasional grammar card for patterns
+  - General language learning: Balanced mix based on content`
     : `
 - foundationCards: REQUIRED - ${levelGuidance.foundationCardCount} cards covering the key topics
   - Card 1: INTRO/RECAP connecting to previous day

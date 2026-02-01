@@ -143,6 +143,12 @@ export class CurriculumCacheService implements OnModuleInit {
     const normalizedSkill = await this.normalizeSkillName(dto.skillName);
     const hash = this.generateHash(dto, normalizedSkill);
 
+    // DEBUG: Log the normalization and hash for debugging cache issues
+    this.logger.log(
+      `🔍 Cache lookup: "${dto.skillName}" → normalized="${normalizedSkill}" ` +
+      `hash=${hash.substring(0, 12)}... (d${dto.durationDays}h${dto.hoursPerDay}${dto.skillLevel})`
+    );
+
     // Find cache key (active and not expired)
     const cacheKey = await this.keyRepo.findOne({
       where: {
@@ -153,8 +159,14 @@ export class CurriculumCacheService implements OnModuleInit {
     });
 
     if (!cacheKey) {
+      this.logger.log(`🔍 Cache MISS: no matching key for "${normalizedSkill}"`);
       return null;
     }
+
+    // DEBUG: Log what we found in cache
+    this.logger.log(
+      `🔍 Cache key found: stored skill="${cacheKey.skillName}" normalized="${cacheKey.skillNameNormalized}"`
+    );
 
     // Select best variant
     const variant = await this.selectVariant(
@@ -611,7 +623,7 @@ export class CurriculumCacheService implements OnModuleInit {
    * Fast and cheap - handles languages, typos, and semantic understanding.
    */
   private async normalizeWithAI(skillName: string): Promise<string> {
-    const prompt = `Extract the core programming/technology skill from this input. Handle any language, typos, or phrasings.
+    const prompt = `Extract the core skill/topic from this input. Handle any language, typos, or phrasings.
 
 Input: "${skillName}"
 
@@ -619,20 +631,25 @@ Rules:
 1. Return ONLY the canonical English skill name in lowercase
 2. Remove filler words (learn, tutorial, how to, basics, etc.)
 3. Fix typos (Pythn → python, Javascrip → javascript)
-4. Translate non-English to English (파이썬 → python, питон → python)
-5. Expand abbreviations only if ambiguous context (JS in web context → javascript)
-6. Keep compound skills together (data structures and algorithms, machine learning)
-7. For specific tools/frameworks, return just the tool name (React hooks → react)
-8. Maximum 4 words
+4. Translate non-English input to English (파이썬 → python, питон → python)
+5. PRESERVE the subject being learned - don't generalize:
+   - "Italian grammar" → "italian grammar" (NOT "grammar")
+   - "Spanish vocabulary" → "spanish vocabulary" (NOT "vocabulary")
+   - "French pronunciation" → "french pronunciation"
+6. For language learning, keep the language name + topic:
+   - "Italian Sentence Structure" → "italian sentence structure"
+   - "Japanese Hiragana" → "japanese hiragana"
+   - "Korean grammar basics" → "korean grammar"
+7. Maximum 10 words
 
 Examples:
+- "Italian Sentence Structure and Word Order" → "italian sentence structure"
+- "learn basic Italian grammar" → "italian grammar"
+- "Japanese for beginners" → "japanese"
+- "Spanish conversation practice" → "spanish conversation"
 - "how to use Python to build a bot" → "python"
-- "파이썬 기초" → "python"
-- "Javascrip tutorial" → "javascript"
 - "Data Structures & Algorithms" → "data structures and algorithms"
-- "learn react hooks for beginners" → "react"
 - "ML with TensorFlow" → "tensorflow machine learning"
-- "build REST APIs with Node" → "nodejs rest api"
 
 Return ONLY the normalized skill name, nothing else.`;
 

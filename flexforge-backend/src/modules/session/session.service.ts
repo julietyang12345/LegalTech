@@ -252,6 +252,7 @@ export class SessionService {
 
   /**
    * Get single session by ID
+   * Also fixes missing coreLoaded/deferredLoaded flags for old sessions
    */
   async findOne(id: string, userId: string): Promise<Session> {
     const session = await this.sessionsRepository.findOne({
@@ -261,6 +262,43 @@ export class SessionService {
 
     if (!session) {
       throw new NotFoundException('Session not found');
+    }
+
+    // Fix missing coreLoaded/deferredLoaded flags for old sessions
+    const repaired = await this.repairContentFlags(session);
+    return repaired;
+  }
+
+  /**
+   * Repair missing coreLoaded/deferredLoaded flags for old sessions
+   * This fixes data from before the JSONB save fix was applied
+   */
+  private async repairContentFlags(session: Session): Promise<Session> {
+    if (!session.curriculum?.days) return session;
+
+    let flagsFixed = false;
+    const updatedDays = session.curriculum.days.map((day: any) => {
+      let updated = { ...day };
+      if (day.coreContent && !day.coreLoaded) {
+        updated.coreLoaded = true;
+        flagsFixed = true;
+      }
+      if (day.deferredContent && !day.deferredLoaded) {
+        updated.deferredLoaded = true;
+        flagsFixed = true;
+      }
+      return updated;
+    });
+
+    if (flagsFixed) {
+      this.logger.log(
+        `🔧 Repaired content flags for session ${session.id}`,
+      );
+      session.curriculum = {
+        ...session.curriculum,
+        days: updatedDays,
+      };
+      await this.sessionsRepository.save(session);
     }
 
     return session;
@@ -345,6 +383,7 @@ export class SessionService {
   /**
    * Get active session for user
    * Also syncs currentDay with actual day progress if out of sync
+   * And fixes missing coreLoaded/deferredLoaded flags for old sessions
    */
   async getActiveSession(userId: string): Promise<Session | null> {
     const session = await this.sessionsRepository.findOne({
@@ -380,7 +419,9 @@ export class SessionService {
       await this.sessionsRepository.save(session);
     }
 
-    return session;
+    // Fix missing coreLoaded/deferredLoaded flags for old sessions
+    const repaired = await this.repairContentFlags(session);
+    return repaired;
   }
 
   /**
@@ -668,40 +709,48 @@ export class SessionService {
       );
 
       // Clear all progress for this day when regenerating
+      // Force TypeORM to detect JSONB change by reassigning entire curriculum
       const dayIndex = session.curriculum.days.findIndex(
         (d: any) => d.day === dayNumber,
       );
       if (dayIndex !== -1) {
         const dayData = session.curriculum.days[dayIndex];
-        // Clear practice submission
-        delete dayData.practiceSubmitted;
-        delete dayData.practiceAnswer;
-        delete dayData.practiceConfidence;
-        // Clear reflection data
-        delete dayData.reflectionData;
-        // Clear deferred content (needs to reload with new core)
-        delete dayData.deferredLoaded;
-        delete dayData.deferredContent;
-        // Clear alternative formats (new task = new alternatives)
-        delete dayData.alternativeFormats;
-        // Reset status to in_progress (not completed/skipped)
-        dayData.status = 'in_progress';
+        const updatedDays = [...session.curriculum.days];
+        // Create a clean day object without the cleared properties
+        const {
+          practiceSubmitted, practiceAnswer, practiceConfidence,
+          reflectionData, deferredLoaded, deferredContent, alternativeFormats,
+          ...cleanDayData
+        } = dayData;
+        updatedDays[dayIndex] = {
+          ...cleanDayData,
+          status: 'in_progress',
+        };
+        session.curriculum = {
+          ...session.curriculum,
+          days: updatedDays,
+        };
         this.logger.log(`🧹 Cleared all progress for Day ${dayNumber}`);
       }
 
       // Also clear boss project cache if this day is part of one
       if (session.curriculum.bossProjects) {
-        const bossProject = session.curriculum.bossProjects.find((bp: any) =>
+        const bossProjectIndex = session.curriculum.bossProjects.findIndex((bp: any) =>
           bp.combinesDays?.includes(dayNumber),
         );
-        if (bossProject) {
-          // Clear the boss project's detailsLoaded flag so it regenerates
-          bossProject.detailsLoaded = false;
-          // Clear the generated content
-          delete bossProject.phases;
-          delete bossProject.requirements;
-          delete bossProject.hints;
-          delete bossProject.files;
+        if (bossProjectIndex !== -1) {
+          const bossProject = session.curriculum.bossProjects[bossProjectIndex];
+          // Create a clean boss project object without the cleared properties
+          const { phases, requirements, hints, files, ...cleanBossData } = bossProject;
+          const updatedBossProjects = [...session.curriculum.bossProjects];
+          updatedBossProjects[bossProjectIndex] = {
+            ...cleanBossData,
+            detailsLoaded: false,
+          };
+          session.curriculum = {
+            ...session.curriculum,
+            bossProjects: updatedBossProjects,
+          };
           this.logger.log(
             `🧹 Cleared boss project cache for Day ${bossProject.day}`,
           );
@@ -763,13 +812,20 @@ export class SessionService {
       solutionPreview: bossMilestone?.solution?.substring(0, 100),
     });
 
-    session.curriculum.days[dayIndex] = {
-      ...session.curriculum.days[dayIndex],
+    const updatedDays = [...session.curriculum.days];
+    updatedDays[dayIndex] = {
+      ...updatedDays[dayIndex],
       coreContent: result.coreContent,
       coreLoaded: true,
       status: 'in_progress',
       variantId: result.variantId, // Store variant ID for regen tracking
       foundationCardConcepts: result.foundationCardConcepts, // Store for deferred generation
+    };
+
+    // Force TypeORM to detect JSONB change by reassigning entire curriculum
+    session.curriculum = {
+      ...session.curriculum,
+      days: updatedDays,
     };
 
     // Update currentDay if user is starting a new day
@@ -784,6 +840,10 @@ export class SessionService {
     // Increment usage
     await this.userService.incrementUsage(userId, result.tokensUsed, 0);
     await this.sessionsRepository.save(session);
+
+    this.logger.log(
+      `💾 Saved session with coreLoaded=true for day ${dayNumber}`,
+    );
 
     this.logger.log(
       `🚀 Day ${dayNumber} CORE loaded for session ${sessionId} (variant=${result.variantId})`,
@@ -881,13 +941,21 @@ export class SessionService {
       const dayIndex = session.curriculum.days.findIndex(
         (d: any) => d.day === dayNumber,
       );
-      session.curriculum.days[dayIndex] = {
-        ...session.curriculum.days[dayIndex],
+
+      // Force TypeORM to detect JSONB change by reassigning entire curriculum
+      const updatedDays = [...session.curriculum.days];
+      updatedDays[dayIndex] = {
+        ...updatedDays[dayIndex],
         coreContent: finalResult.coreContent,
         coreLoaded: true,
         status: 'in_progress',
         variantId: finalResult.variantId,
         foundationCardConcepts: finalResult.foundationCardConcepts,
+      };
+
+      session.curriculum = {
+        ...session.curriculum,
+        days: updatedDays,
       };
 
       if (dayNumber > session.currentDay) {
@@ -896,6 +964,10 @@ export class SessionService {
 
       await this.userService.incrementUsage(userId, finalResult.tokensUsed, 0);
       await this.sessionsRepository.save(session);
+
+      this.logger.log(
+        `💾 Saved session with coreLoaded=true for day ${dayNumber} (streaming)`,
+      );
 
       this.logger.log(
         `🚀 Day ${dayNumber} CORE streamed and saved (variant=${finalResult.variantId})`,
@@ -980,14 +1052,20 @@ export class SessionService {
         );
 
         // Update the boss project in the curriculum
+        // Force TypeORM to detect JSONB change by reassigning entire array
         const bossIndex = session.curriculum.bossProjects.findIndex(
           (bp: any) => bp.day === bossProject.day,
         );
         if (bossIndex !== -1) {
-          session.curriculum.bossProjects[bossIndex] = {
-            ...session.curriculum.bossProjects[bossIndex],
+          const updatedBossProjects = [...session.curriculum.bossProjects];
+          updatedBossProjects[bossIndex] = {
+            ...updatedBossProjects[bossIndex],
             ...bossDetails,
             detailsLoaded: true,
+          };
+          session.curriculum = {
+            ...session.curriculum,
+            bossProjects: updatedBossProjects,
           };
         }
 
@@ -1001,15 +1079,27 @@ export class SessionService {
     const dayIndex = session.curriculum.days.findIndex(
       (d: any) => d.day === dayNumber,
     );
-    session.curriculum.days[dayIndex] = {
-      ...session.curriculum.days[dayIndex],
+
+    // Force TypeORM to detect JSONB change by reassigning entire curriculum
+    const updatedDays = [...session.curriculum.days];
+    updatedDays[dayIndex] = {
+      ...updatedDays[dayIndex],
       deferredContent: result.deferredContent,
       deferredLoaded: true,
+    };
+
+    session.curriculum = {
+      ...session.curriculum,
+      days: updatedDays,
     };
 
     // Increment usage
     await this.userService.incrementUsage(userId, totalTokensUsed, 0);
     await this.sessionsRepository.save(session);
+
+    this.logger.log(
+      `💾 Saved session with deferredLoaded=true for day ${dayNumber}`,
+    );
 
     this.logger.log(
       `⏳ Day ${dayNumber} DEFERRED loaded for session ${sessionId}`,
@@ -1103,17 +1193,25 @@ export class SessionService {
       const dayIndex = session.curriculum.days.findIndex(
         (d: any) => d.day === dayNumber,
       );
-      session.curriculum.days[dayIndex] = {
-        ...session.curriculum.days[dayIndex],
+
+      // Force TypeORM to detect JSONB change by reassigning entire curriculum
+      const updatedDays = [...session.curriculum.days];
+      updatedDays[dayIndex] = {
+        ...updatedDays[dayIndex],
         deferredContent: finalResult.deferredContent,
         deferredLoaded: true,
+      };
+
+      session.curriculum = {
+        ...session.curriculum,
+        days: updatedDays,
       };
 
       await this.userService.incrementUsage(userId, finalResult.tokensUsed, 0);
       await this.sessionsRepository.save(session);
 
       this.logger.log(
-        `⏳ Day ${dayNumber} DEFERRED streamed and saved for session ${sessionId}`,
+        `💾 Saved session with deferredLoaded=true for day ${dayNumber} (streaming)`,
       );
     }
   }
@@ -1140,23 +1238,37 @@ export class SessionService {
       throw new NotFoundException(`Day ${dayNumber} not found`);
     }
 
+    // Force TypeORM to detect JSONB change by reassigning entire curriculum
+    const updatedDays = [...session.curriculum.days];
+
     // Mark day as completed
-    session.curriculum.days[dayIndex].status = 'completed';
-    session.curriculum.days[dayIndex].practiceSubmitted = true;
-    session.curriculum.days[dayIndex].practiceAnswer = answer;
-    session.curriculum.days[dayIndex].practiceConfidence = confidence;
+    updatedDays[dayIndex] = {
+      ...updatedDays[dayIndex],
+      status: 'completed',
+      practiceSubmitted: true,
+      practiceAnswer: answer,
+      practiceConfidence: confidence,
+    };
 
     // Unlock next day
     let nextDayUnlocked = false;
     if (dayNumber < session.curriculum.days.length) {
-      const nextDayIndex = session.curriculum.days.findIndex(
+      const nextDayIndex = updatedDays.findIndex(
         (d: any) => d.day === dayNumber + 1,
       );
       if (nextDayIndex !== -1) {
-        session.curriculum.days[nextDayIndex].status = 'unlockable';
+        updatedDays[nextDayIndex] = {
+          ...updatedDays[nextDayIndex],
+          status: 'unlockable',
+        };
         nextDayUnlocked = true;
       }
     }
+
+    session.curriculum = {
+      ...session.curriculum,
+      days: updatedDays,
+    };
 
     // Update current day
     const previousCurrentDay = session.currentDay;
@@ -1274,13 +1386,19 @@ export class SessionService {
       },
     );
 
-    // Cache the result in the session
-    session.curriculum.days[dayIndex] = {
-      ...session.curriculum.days[dayIndex],
+    // Force TypeORM to detect JSONB change by reassigning entire curriculum
+    const updatedDays = [...session.curriculum.days];
+    updatedDays[dayIndex] = {
+      ...updatedDays[dayIndex],
       alternativeFormats: {
         ...cachedFormats,
         [targetFormat]: result.task,
       },
+    };
+
+    session.curriculum = {
+      ...session.curriculum,
+      days: updatedDays,
     };
 
     // Increment usage
@@ -1326,10 +1444,19 @@ export class SessionService {
       throw new NotFoundException(`Day ${dayNumber} not found`);
     }
 
-    // Store reflection data on the day
-    session.curriculum.days[dayIndex].reflectionData = {
-      ...reflectionData,
-      savedAt: new Date().toISOString(),
+    // Force TypeORM to detect JSONB change by reassigning entire curriculum
+    const updatedDays = [...session.curriculum.days];
+    updatedDays[dayIndex] = {
+      ...updatedDays[dayIndex],
+      reflectionData: {
+        ...reflectionData,
+        savedAt: new Date().toISOString(),
+      },
+    };
+
+    session.curriculum = {
+      ...session.curriculum,
+      days: updatedDays,
     };
 
     await this.sessionsRepository.save(session);
@@ -1396,6 +1523,9 @@ export class SessionService {
       unlocks: string[];
       icon: string;
     }>;
+    analysis?: {
+      realWorldUses: string[];
+    } | null;
     tokensUsed: number;
     remainingToday: number;
     limit: number;
@@ -1472,25 +1602,19 @@ export class SessionService {
 
     switch (action) {
       case 'analyze':
-        // Deep analysis of a single skill
+        // Deep analysis of a single skill - focused on real world uses
         const skill = targetSkills[0];
         prompt = `Analyze "${skill}" for a learner.
 
 Return JSON with:
 {
   "analysis": {
-    "overview": "2-3 sentences on what this skill is and why it matters",
-    "keyConcepts": ["4-5 core topics within this skill"],
-    "difficulty": "beginner|intermediate|advanced",
-    "timeToLearn": "e.g. 2-4 weeks",
-    "prerequisites": ["2-3 things to know first"],
-    "realWorldUses": ["3-4 industry applications"]
-  },
-  "suggestedSkills": [${suggestedSkillFormat}] // 3-4 complementary skills
+    "realWorldUses": ["5-6 specific industry applications and use cases"]
+  }
 }
 
 ${jsonInstruction}`;
-        systemPrompt = `Skill analysis expert. Provide accurate, educational insights about "${skill}". Return valid JSON.`;
+        systemPrompt = `Skill analysis expert. Provide practical, real-world applications for "${skill}". Return valid JSON.`;
         break;
 
       case 'related':
@@ -1550,12 +1674,13 @@ ${jsonInstruction}`;
       await this.userService.incrementUsage(userId, response.tokensUsed, 0);
 
       this.logger.log(
-        `🎨 Generated ${parsed.combos?.length || 0} skill combos for user ${userId} (${newCount}/${dailyLimit} today)`,
+        `🎨 Generated skill ${action} for user ${userId} (${newCount}/${dailyLimit} today)`,
       );
 
       return {
         combos: parsed.combos || [],
         suggestedSkills: parsed.suggestedSkills || [],
+        analysis: parsed.analysis || null, // Include analysis for 'analyze' action
         tokensUsed: response.tokensUsed,
         remainingToday: dailyLimit === Infinity ? Infinity : dailyLimit - newCount,
         limit: dailyLimit,

@@ -64,11 +64,6 @@ interface AISuggestedSkill {
 }
 
 interface AISkillAnalysis {
-  overview: string;
-  keyConcepts: string[];
-  difficulty: 'beginner' | 'intermediate' | 'advanced';
-  timeToLearn: string;
-  prerequisites: string[];
   realWorldUses: string[];
 }
 
@@ -82,9 +77,6 @@ interface PlannedSkill {
 // Custom Skill Node - floating leaf with visual states
 function SkillNode({ id, data, selected, dragging }: { id: string; data: SkillNodeData & { onToggleSelect?: (id: string) => void }; selected: boolean; dragging?: boolean }) {
   const onToggleSelect = data.onToggleSelect;
-  const progressPercent = data.totalDays > 0
-    ? Math.round((data.daysCompleted || 0) / data.totalDays * 100)
-    : 0;
 
   const isPlanned = data.status === 'planned';
   const isComplete = data.status === 'complete';
@@ -142,7 +134,6 @@ function SkillNode({ id, data, selected, dragging }: { id: string; data: SkillNo
         <motion.button
           onClick={(e) => {
             e.stopPropagation();
-            console.log('[SkillNode] + button clicked, id:', id, 'onToggleSelect:', !!onToggleSelect);
             onToggleSelect?.(id);
           }}
           className={clsx(
@@ -185,33 +176,14 @@ function SkillNode({ id, data, selected, dragging }: { id: string; data: SkillNo
           {data.name}
         </span>
 
-        {/* Progress indicator for in-progress skills */}
-        {isProgress && (
-          <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-200/50 rounded-b-xl overflow-hidden pointer-events-none">
-            <motion.div
-              className="h-full bg-emerald-500"
-              initial={{ width: 0 }}
-              animate={{ width: `${progressPercent}%` }}
-              transition={{ duration: 0.5 }}
-            />
-          </div>
-        )}
       </motion.div>
 
-      {/* Status label below */}
-      {selected ? (
+      {/* Status indicator below */}
+      {selected && (
         <span className="text-[8px] text-purple-600 mt-1 font-medium pointer-events-none select-none">
           Selected
         </span>
-      ) : isProgress && data.totalDays ? (
-        <span className="text-[8px] text-emerald-600 mt-1 font-medium pointer-events-none select-none">
-          {data.daysCompleted}/{data.totalDays}
-        </span>
-      ) : isComplete ? (
-        <span className="text-[8px] text-emerald-600 mt-1 pointer-events-none select-none">
-          ✓ Done
-        </span>
-      ) : null}
+      )}
 
       <Handle type="source" position={Position.Bottom} className="!w-1.5 !h-1.5 !bottom-0 !bg-emerald-600 !pointer-events-none" />
     </motion.div>
@@ -614,14 +586,9 @@ function SkillTreeCanvasInner({
   // Toggle node selection - using ref pattern for stable callback
   const setNodesRef = useRef<typeof setNodes | null>(null);
   const handleToggleNodeSelect = useCallback((nodeId: string) => {
-    console.log('[Toggle] Called for nodeId:', nodeId, 'setNodesRef.current:', !!setNodesRef.current);
-    setNodesRef.current?.(nds => {
-      const updated = nds.map(n =>
-        n.id === nodeId ? { ...n, selected: !n.selected } : n
-      );
-      console.log('[Toggle] After update, selected nodes:', updated.filter(n => n.selected).map(n => n.id));
-      return updated;
-    });
+    setNodesRef.current?.(nds => nds.map(n =>
+      n.id === nodeId ? { ...n, selected: !n.selected } : n
+    ));
   }, []);
 
   // Create initial nodes with callback
@@ -708,7 +675,6 @@ function SkillTreeCanvasInner({
   const getSelectedSkillNodes = useCallback(() => {
     // Get all selected skill nodes
     const selectedNodes = nodes.filter(n => n.type === 'skill' && n.selected);
-    console.log('[getSelectedSkillNodes] nodes count:', nodes.length, 'selected:', selectedNodes.length, 'nodeIds with selected=true:', nodes.filter(n => n.selected).map(n => n.id));
     // If none selected but skill menu was on a skill, use that one
     if (selectedNodes.length === 0 && skillMenu?.nodeId) {
       const menuNode = nodes.find(n => n.id === skillMenu.nodeId && n.type === 'skill');
@@ -994,7 +960,7 @@ function SkillTreeCanvasInner({
         <Panel position="top-left" className="flex gap-2">
           <Card className="px-2.5 py-1.5 flex items-center gap-1.5 text-xs text-gray-600 bg-white/80 backdrop-blur-sm">
             <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            <span>Click a skill for AI analysis • Check the ✓ to select for combos</span>
+            <span>Click a skill for AI analysis • Check the + to select for combos</span>
           </Card>
         </Panel>
 
@@ -1136,9 +1102,6 @@ function BottomControlPanel({
 }) {
   const rateLimit = canUseAIIdeas(isPro, isPremium, isAdmin);
   const hasSelection = selectedSkills.length > 0;
-
-  // Debug - expanded
-  console.log('[BottomPanel] hasSelection:', hasSelection, 'rateLimit.allowed:', rateLimit.allowed, 'isPro:', isPro, 'isPremium:', isPremium, 'isAdmin:', isAdmin);
 
   return (
     <div className="mt-4 space-y-3">
@@ -1384,89 +1347,23 @@ function BottomControlPanel({
                 </div>
               )}
 
-              {/* Skill Analysis results */}
+              {/* Skill Analysis results - Real World Uses only */}
               {results.type === 'analyze' && results.analysis && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="space-y-4"
                 >
-                  {/* Overview */}
                   <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-                    <p className="text-sm text-blue-800">{results.analysis.overview}</p>
-                    <div className="flex gap-3 mt-3 text-xs">
-                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
-                        {results.analysis.difficulty}
-                      </span>
-                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
-                        ⏱️ {results.analysis.timeToLearn}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Key Concepts & Prerequisites */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3 bg-white rounded-lg border border-gray-100">
-                      <h4 className="text-xs font-semibold text-gray-700 mb-2">Key Concepts</h4>
-                      <div className="flex flex-wrap gap-1.5">
-                        {results.analysis.keyConcepts.map((concept, i) => (
-                          <span key={i} className="px-2 py-0.5 text-[10px] bg-indigo-50 text-indigo-700 rounded">
-                            {concept}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="p-3 bg-white rounded-lg border border-gray-100">
-                      <h4 className="text-xs font-semibold text-gray-700 mb-2">Prerequisites</h4>
-                      <div className="flex flex-wrap gap-1.5">
-                        {results.analysis.prerequisites.map((prereq, i) => (
-                          <span key={i} className="px-2 py-0.5 text-[10px] bg-amber-50 text-amber-700 rounded">
-                            {prereq}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Real World Uses */}
-                  <div className="p-3 bg-white rounded-lg border border-gray-100">
-                    <h4 className="text-xs font-semibold text-gray-700 mb-2">Real World Applications</h4>
-                    <ul className="space-y-1">
-                      {results.analysis.realWorldUses.map((use, i) => (
-                        <li key={i} className="text-xs text-gray-600 flex items-start gap-2">
+                    <h4 className="text-xs font-semibold text-blue-700 mb-3">Real World Applications</h4>
+                    <ul className="space-y-2">
+                      {results.analysis.realWorldUses?.map((use, i) => (
+                        <li key={i} className="text-sm text-blue-800 flex items-start gap-2">
                           <span className="text-green-500 mt-0.5">✓</span>
                           {use}
                         </li>
                       ))}
                     </ul>
                   </div>
-
-                  {/* Suggested complementary skills */}
-                  {results.suggestions.length > 0 && (
-                    <div>
-                      <h4 className="text-xs font-semibold text-gray-700 mb-2">Pairs Well With</h4>
-                      <div className="grid grid-cols-2 gap-2">
-                        {results.suggestions.slice(0, 4).map((skill, i) => (
-                          <motion.div
-                            key={i}
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: i * 0.05 }}
-                            onClick={() => onStartLearning(skill.skill)}
-                            className="p-2 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border border-purple-100 cursor-pointer hover:shadow-md transition-all"
-                          >
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-lg">{skill.icon}</span>
-                              <span className="text-xs font-medium text-purple-800">{skill.skill}</span>
-                            </div>
-                            {skill.reason && (
-                              <p className="text-[10px] text-purple-600">{skill.reason}</p>
-                            )}
-                          </motion.div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </motion.div>
               )}
 

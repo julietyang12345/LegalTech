@@ -255,7 +255,33 @@ export const useSessionStore = create<SessionState>()(
     set({ isLoading: true });
     try {
       const response = await sessionService.getActive();
-      set({ activeSession: response.session, isLoading: false });
+      const session = response.session;
+
+      // Check if current day's content is already cached in the session
+      // Same logic as setActiveSession to preserve cache state
+      const currentDayData = session?.curriculum?.days?.find((d: any) => d.day === session?.currentDay);
+      const isContentCached = currentDayData?.coreLoaded || currentDayData?.coreContent;
+      const isDeferredCached = currentDayData?.detailsLoaded || currentDayData?.deferredContent;
+
+      // Merge coreContent and deferredContent into currentDay (same as startDay does)
+      // Backend saves nested: coreContent.video, coreContent.foundationCards
+      // Frontend expects flat: currentDay.video, currentDay.foundationCards
+      let mergedDay = currentDayData || null;
+      if (currentDayData) {
+        mergedDay = {
+          ...currentDayData,
+          ...(currentDayData.coreContent as object),
+          ...(currentDayData.deferredContent as object),
+        };
+      }
+
+      set({
+        activeSession: session,
+        currentDay: mergedDay,
+        isCoreLoaded: !!isContentCached,
+        isDeferredLoaded: !!isDeferredCached,
+        isLoading: false,
+      });
     } catch (error: any) {
       console.error('[fetchActiveSession] Error:', error);
       set({
@@ -271,9 +297,21 @@ export const useSessionStore = create<SessionState>()(
     const isContentCached = currentDayData?.coreLoaded || currentDayData?.coreContent;
     const isDeferredCached = currentDayData?.detailsLoaded || currentDayData?.deferredContent;
 
+    // Merge coreContent and deferredContent into currentDay (same as startDay does)
+    // Backend saves nested: coreContent.video, coreContent.foundationCards
+    // Frontend expects flat: currentDay.video, currentDay.foundationCards
+    let mergedDay = currentDayData || null;
+    if (currentDayData) {
+      mergedDay = {
+        ...currentDayData,
+        ...(currentDayData.coreContent as object),
+        ...(currentDayData.deferredContent as object),
+      };
+    }
+
     set({
       activeSession: session,
-      currentDay: currentDayData || null,
+      currentDay: mergedDay,
       // Only set isCoreLoaded if content is already cached
       isCoreLoaded: !!isContentCached,
       isDeferredLoading: false,
@@ -488,6 +526,21 @@ export const useSessionStore = create<SessionState>()(
     const { activeSession } = get();
     if (!activeSession) throw new Error('No active session');
 
+    // Check if core content is already cached in session data (skip API call)
+    // This works even if zustand state (isCoreLoaded) wasn't properly set
+    if (!forceRegenerate) {
+      const existingDay = activeSession.curriculum.days.find((d) => d.day === dayNumber);
+      if (existingDay?.coreLoaded && existingDay?.coreContent) {
+        // Update zustand state to reflect cached content
+        set({
+          isCoreLoaded: true,
+          currentDayNumber: dayNumber,
+          currentDay: { ...existingDay },
+        });
+        return existingDay.coreContent as unknown as DayCoreContent;
+      }
+    }
+
     set({
       isDayLoading: true,
       dayLoadingNumber: dayNumber,
@@ -590,6 +643,20 @@ export const useSessionStore = create<SessionState>()(
   loadDayDeferredContent: async (dayNumber: number) => {
     const { activeSession } = get();
     if (!activeSession) throw new Error('No active session');
+
+    // Check if deferred content is already cached in session data (skip API call)
+    // This works even if zustand state (isDeferredLoaded) wasn't properly set
+    const existingDay = activeSession.curriculum.days.find((d) => d.day === dayNumber);
+    if (existingDay?.deferredLoaded && existingDay?.deferredContent) {
+      console.log(`[loadDayDeferredContent] Day ${dayNumber} deferred already cached, skipping API call`);
+      // Update zustand state to reflect cached content
+      set({
+        isDeferredLoaded: true,
+        isDeferredLoading: false,
+        deferredContent: existingDay.deferredContent as DayDeferredContent,
+      });
+      return existingDay.deferredContent as DayDeferredContent;
+    }
 
     set({ isDeferredLoading: true });
 
