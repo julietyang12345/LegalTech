@@ -1302,12 +1302,29 @@ export interface BossMilestone {
   conceptConnection: string;      // Links to today's concept from quiz/cards
   estimatedMinutes: number;       // 10-15 minutes
 
-  // Code content
-  starterCode: string;            // Code to start with (cumulative from previous days)
+  // Solution-first approach (new)
+  solutionCode?: string;          // AI-generated solution (primary code)
+  solutionExplanation?: string;   // What this code does
+  solutionAnnotations?: string[]; // Key lines explained
+
+  // Challenge options (new)
+  challengeOptions?: {
+    writeYourself: {
+      description: string;        // "Write this code from scratch"
+      hints: Array<{ level: number; hint: string }>;
+    };
+    makeItRun: {
+      description: string;        // "Copy the AI code and make it run"
+      setupSteps: string[];       // Steps to get it running
+      possibleIssues?: string[];  // Common issues AI code might have
+    };
+  };
+
+  // Legacy fields (for backward compatibility)
+  starterCode?: string;           // Code to start with (deprecated: use solutionCode)
   expectedOutput?: string;        // What the result should look like
   hints?: Array<{ level: number; hint: string } | string>;
-  solution?: string;              // Full solution for this micro-step
-  solutionAnnotations?: string[]; // Explanation of the solution
+  solution?: string;              // Deprecated: use solutionCode
 
   // Validation
   validationType: 'run' | 'visual' | 'test';  // How user validates their work

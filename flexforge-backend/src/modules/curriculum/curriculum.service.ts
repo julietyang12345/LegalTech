@@ -17,6 +17,7 @@ import {
   buildCacheableCurriculumPrompt,
   buildCacheableDayDetailCorePrompt,
   buildDayDetailDeferredPrompt,
+  buildLightweightContentPrompt,
   buildBossDetailPrompt,
   usesProjectBasedLearning,
   DayDetailParams,
@@ -1931,6 +1932,49 @@ Return JSON only:
       );
       throw new BadRequestException(
         'Failed to generate deferred day content. Please try again.',
+      );
+    }
+
+    // Generate lightweight content (reflection/openTask) with Haiku for cost efficiency
+    try {
+      const { systemPrompt: lightSystemPrompt, userPrompt: lightUserPrompt } =
+        buildLightweightContentPrompt(params, ctx);
+
+      const lightweightResponse = await this.aiService.routeRequest(
+        AITask.LIGHTWEIGHT_CONTENT,
+        lightUserPrompt,
+        lightSystemPrompt,
+      );
+
+      let lightweightContent: any;
+      const cleanedLightweight = lightweightResponse.content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
+
+      const lightJsonMatch = cleanedLightweight.match(/\{[\s\S]*\}/);
+      if (lightJsonMatch) {
+        try {
+          lightweightContent = JSON.parse(lightJsonMatch[0]);
+        } catch {
+          const fixedLight = lightJsonMatch[0].replace(/,(\s*[}\]])/g, '$1');
+          lightweightContent = JSON.parse(fixedLight);
+        }
+
+        // Replace Sonnet's reflection/openTask with Haiku's version
+        if (lightweightContent.reflection) {
+          deferredContent.reflection = lightweightContent.reflection;
+          this.logger.log(`✅ Day ${dayNumber} reflection generated with Haiku`);
+        }
+        if (lightweightContent.openTask) {
+          deferredContent.openTask = lightweightContent.openTask;
+          this.logger.log(`✅ Day ${dayNumber} openTask generated with Haiku`);
+        }
+      }
+    } catch (lightError) {
+      // Non-fatal: keep Sonnet's reflection/openTask if Haiku fails
+      this.logger.warn(
+        `⚠️ Day ${dayNumber} lightweight content failed, using Sonnet fallback: ${lightError.message}`,
       );
     }
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, ArrowRight, CheckCircle2, Lightbulb, ChevronDown, ChevronUp, BookOpen, ChevronRight, ChevronLeft, RotateCcw, ExternalLink, Monitor, Copy, Check, Share2 } from 'lucide-react';
+import { Trophy, ArrowRight, CheckCircle2, Lightbulb, ChevronDown, ChevronUp, BookOpen, ChevronRight, ChevronLeft, RotateCcw, ExternalLink, Monitor, Copy, Check, Share2, PenLine, Play, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Card, Button, ProgressBar, ExerciseLoadingScreen } from '@/components/common';
 import { StepLayout } from './StepLayout';
@@ -818,16 +818,24 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
   const [showSolution, setShowSolution] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
 
-  // Save progress when notes change (for engagement tracking)
+  // Challenge mode state (new solution-first approach)
+  const [challengeChoice, setChallengeChoice] = useState<'write' | 'run' | null>(
+    (savedProgress?.answers?.challengeChoice as 'write' | 'run' | null) || null
+  );
+  const [revealedHintLevel, setRevealedHintLevel] = useState(
+    (savedProgress?.answers?.revealedHintLevel as number) || 0
+  );
+
+  // Save progress when state changes (for engagement tracking)
   useEffect(() => {
-    if (notes.length > 0) {
+    if (notes.length > 0 || challengeChoice) {
       saveTaskProgress(day.day, 'bossMilestone', {
-        answers: { notes } as unknown as Record<string, number | null>,
+        answers: { notes, challengeChoice, revealedHintLevel } as unknown as Record<string, number | null>,
         currentIndex: 0,
         showResults: isSubmitted,
       });
     }
-  }, [notes, isSubmitted, day.day, saveTaskProgress]);
+  }, [notes, isSubmitted, challengeChoice, revealedHintLevel, day.day, saveTaskProgress]);
 
   const language = session.curriculum.metadata?.suggestedLanguage || 'javascript';
   const externalTools = getExternalToolSuggestions(language);
@@ -874,21 +882,38 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
 
   const progressPercent = calculateProgress();
 
-  // Get hints from milestone (new structure) or fall back to boss project hints
+  // Check if milestone has new challenge options (solution-first approach)
+  const hasChallengeOptions = Boolean(milestone?.challengeOptions);
+
+  // Get solution code (new: solutionCode, fallback: solution, starterCode)
+  const solutionCode = milestone?.solutionCode || milestone?.solution || milestone?.starterCode || activeBoss?.starterCode || activeBoss?.files?.starter || `// ${milestone?.microTask || 'Start coding here...'}\n\n`;
+  const solutionExplanation = milestone?.solutionExplanation;
+  const solutionAnnotations = milestone?.solutionAnnotations || [];
+
+  // Get challenge options (new approach)
+  const challengeOptions = milestone?.challengeOptions;
+
+  // Get hints - from challengeOptions.writeYourself.hints (new) or legacy hints
+  const writeYourselfHints = challengeOptions?.writeYourself?.hints || [];
   const milestoneHints = milestone?.hints || [];
-  const hintsData = milestoneHints.length > 0
+  const hintsData = writeYourselfHints.length > 0
+    ? writeYourselfHints
+    : milestoneHints.length > 0
     ? milestoneHints
     : (activeBoss?.hints || activeBoss?.pro?.hints || (activeBoss?.free?.hint1 ? [activeBoss.free.hint1] : []));
   const hints = (hintsData as Array<string | { hint?: string; level?: number }>).map(
     (h): string => (typeof h === 'string' ? h : h.hint || String(h))
   );
 
-  // Get starter code from milestone (new structure) or fall back to boss project
+  // Get setup steps and possible issues from makeItRun challenge
+  const makeItRunSetupSteps = challengeOptions?.makeItRun?.setupSteps || [];
+  const possibleIssues = challengeOptions?.makeItRun?.possibleIssues || [];
+
+  // Legacy: Get starter code from milestone (deprecated) or fall back to boss project
   const starterCode = milestone?.starterCode || activeBoss?.starterCode || activeBoss?.files?.starter || `// ${milestone?.microTask || 'Start coding here...'}\n\n`;
 
-  // Get solution from milestone
+  // Get solution from milestone (legacy)
   const solution = milestone?.solution;
-  const solutionAnnotations = milestone?.solutionAnnotations || [];
 
   const handleSubmit = () => {
     // Save this day's milestone to localStorage
@@ -1050,9 +1075,314 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
         </div>
       </Card>
 
+      {/* Challenge Mode UI (new solution-first approach) */}
+      {hasChallengeOptions && !isSubmitted && !currentDayAlreadySaved && (
+        <AnimatePresence mode="wait">
+          {/* Step 1: Challenge Selector */}
+          {!challengeChoice && (
+            <motion.div
+              key="challenge-selector"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+            >
+              <Card className="border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 to-purple-50">
+                <div className="p-6">
+                  <h3 className="font-bold text-lg text-gray-900 mb-2 text-center">
+                    Choose Your Approach
+                  </h3>
+                  <p className="text-gray-600 text-sm text-center mb-6">
+                    You get a solution. Practice understanding it by choosing your path.
+                  </p>
 
-      {/* Hints (collapsible) */}
-      {hints.length > 0 && (
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Write it yourself */}
+                    <button
+                      onClick={() => setChallengeChoice('write')}
+                      className="p-4 rounded-xl border-2 border-indigo-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 transition-all text-left group"
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center mb-3 group-hover:bg-indigo-200 transition-colors">
+                        <PenLine className="w-5 h-5 text-indigo-600" />
+                      </div>
+                      <h4 className="font-semibold text-gray-900 mb-1">Write it yourself</h4>
+                      <p className="text-xs text-gray-500">
+                        {challengeOptions?.writeYourself?.description || 'Write this code from scratch to prove you understand it'}
+                      </p>
+                    </button>
+
+                    {/* Make AI code run */}
+                    <button
+                      onClick={() => setChallengeChoice('run')}
+                      className="p-4 rounded-xl border-2 border-emerald-200 bg-white hover:border-emerald-400 hover:bg-emerald-50 transition-all text-left group"
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center mb-3 group-hover:bg-emerald-200 transition-colors">
+                        <Play className="w-5 h-5 text-emerald-600" />
+                      </div>
+                      <h4 className="font-semibold text-gray-900 mb-1">Make AI code run</h4>
+                      <p className="text-xs text-gray-500">
+                        {challengeOptions?.makeItRun?.description || 'Copy the AI code and make it run on your machine'}
+                      </p>
+                    </button>
+                  </div>
+
+                  <p className="text-xs text-gray-400 text-center mt-4">
+                    Both paths prove you understand the code. Choose what works for you.
+                  </p>
+                </div>
+              </Card>
+            </motion.div>
+          )}
+
+          {/* Step 2a: Write Yourself Path */}
+          {challengeChoice === 'write' && (
+            <motion.div
+              key="write-path"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-4"
+            >
+              <Card className="border-2 border-indigo-200">
+                <div className="p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+                      <PenLine className="w-5 h-5 text-indigo-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900">Write It Yourself</h3>
+                      <p className="text-sm text-gray-500">Build this code from scratch</p>
+                    </div>
+                    <button
+                      onClick={() => setChallengeChoice(null)}
+                      className="ml-auto text-xs text-gray-400 hover:text-gray-600"
+                    >
+                      Change path
+                    </button>
+                  </div>
+
+                  {/* Goal reminder */}
+                  <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-lg mb-4">
+                    <p className="text-sm text-indigo-800">
+                      <span className="font-medium">Goal:</span> {milestone?.microTask || taskPreview}
+                    </p>
+                  </div>
+
+                  {/* Starter Code for Write Yourself path */}
+                  {starterCode && starterCode.trim() !== '// Start coding here...\n\n' && (
+                    <div className="relative mb-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-medium text-gray-700">Starter code:</p>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(starterCode);
+                            setCopiedCode(true);
+                            setTimeout(() => setCopiedCode(false), 2000);
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+                        >
+                          {copiedCode ? (
+                            <>
+                              <Check className="w-3 h-3 text-green-500" />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3" />
+                              Copy code
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg overflow-x-auto text-sm font-mono whitespace-pre-wrap max-h-48">
+                        {starterCode}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Progressive hints */}
+                  <div className="space-y-2 mb-4">
+                    <p className="text-sm font-medium text-gray-700">Hints (click to reveal):</p>
+                    {hints.map((hint, index) => (
+                      <button
+                        key={index}
+                        onClick={() => setRevealedHintLevel(Math.max(revealedHintLevel, index + 1))}
+                        className={clsx(
+                          'w-full p-3 rounded-lg text-left transition-all',
+                          revealedHintLevel > index
+                            ? 'bg-amber-50 border border-amber-200'
+                            : 'bg-gray-100 hover:bg-gray-200 cursor-pointer'
+                        )}
+                      >
+                        <div className="flex items-start gap-2">
+                          <span className="text-xs font-medium text-gray-500 bg-white px-1.5 py-0.5 rounded">
+                            Hint {index + 1}
+                          </span>
+                          {revealedHintLevel > index ? (
+                            <span className="text-sm text-amber-800">{hint}</span>
+                          ) : (
+                            <span className="text-sm text-gray-400 italic">Click to reveal...</span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Setup instructions */}
+                  {(milestone?.setupInstructions || activeBoss?.setupInstructions) && (
+                    <div className="p-3 bg-white border border-gray-200 rounded-lg mb-4">
+                      <p className="text-sm font-medium text-gray-700 mb-2">Setup:</p>
+                      <ul className="text-sm text-gray-600 space-y-1">
+                        {(milestone?.setupInstructions || activeBoss?.setupInstructions)?.steps?.map((step, i) => (
+                          <li key={i} className="flex items-start gap-2">
+                            <span className="text-indigo-500">{i + 1}.</span>
+                            <span>{step}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {(milestone?.setupInstructions || activeBoss?.setupInstructions)?.runCommand && (
+                        <p className="text-xs text-gray-500 mt-2">
+                          Run: <code className="bg-gray-100 px-1 rounded">{(milestone?.setupInstructions || activeBoss?.setupInstructions)?.runCommand}</code>
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Stuck? Show AI solution */}
+                  <button
+                    onClick={() => setShowSolution(!showSolution)}
+                    className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+                  >
+                    {showSolution ? 'Hide AI solution' : 'Stuck? View AI solution'}
+                    {showSolution ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </button>
+
+                  {showSolution && (
+                    <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                      <p className="text-xs text-gray-500 mb-2">AI-generated solution:</p>
+                      <pre className="p-3 bg-gray-900 text-gray-100 rounded-lg overflow-x-auto text-sm font-mono whitespace-pre-wrap max-h-48">
+                        {solutionCode}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </motion.div>
+          )}
+
+          {/* Step 2b: Make AI Code Run Path */}
+          {challengeChoice === 'run' && (
+            <motion.div
+              key="run-path"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-4"
+            >
+              <Card className="border-2 border-emerald-200">
+                <div className="p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
+                      <Play className="w-5 h-5 text-emerald-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900">Make the AI Code Run</h3>
+                      <p className="text-sm text-gray-500">Copy, set up, and debug</p>
+                    </div>
+                    <button
+                      onClick={() => setChallengeChoice(null)}
+                      className="ml-auto text-xs text-gray-400 hover:text-gray-600"
+                    >
+                      Change path
+                    </button>
+                  </div>
+
+                  {/* AI Solution Code */}
+                  <div className="relative mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-medium text-gray-700">AI-generated solution:</p>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(solutionCode);
+                          setCopiedCode(true);
+                          setTimeout(() => setCopiedCode(false), 2000);
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+                      >
+                        {copiedCode ? (
+                          <>
+                            <Check className="w-3 h-3 text-green-500" />
+                            Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            Copy code
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg overflow-x-auto text-sm font-mono whitespace-pre-wrap max-h-64">
+                      {solutionCode}
+                    </pre>
+                  </div>
+
+                  {/* What it does */}
+                  {solutionExplanation && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-lg mb-4">
+                      <p className="text-sm text-emerald-800">
+                        <span className="font-medium">What it does:</span> {solutionExplanation}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Setup steps */}
+                  {(makeItRunSetupSteps.length > 0 || milestone?.setupInstructions?.steps) && (
+                    <div className="mb-4">
+                      <p className="text-sm font-medium text-gray-700 mb-2">Setup Steps:</p>
+                      <ul className="space-y-2">
+                        {(makeItRunSetupSteps.length > 0 ? makeItRunSetupSteps : milestone?.setupInstructions?.steps || []).map((step, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm">
+                            <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-xs font-medium flex-shrink-0">
+                              {i + 1}
+                            </span>
+                            <span className="text-gray-700">{step}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {milestone?.setupInstructions?.runCommand && (
+                        <p className="text-xs text-gray-500 mt-3">
+                          Run: <code className="bg-gray-100 px-1.5 py-0.5 rounded">{milestone.setupInstructions.runCommand}</code>
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Possible issues warning */}
+                  {possibleIssues.length > 0 && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-500" />
+                        <p className="text-sm font-medium text-amber-800">Things to watch out for:</p>
+                      </div>
+                      <ul className="space-y-1">
+                        {possibleIssues.map((issue, i) => (
+                          <li key={i} className="text-sm text-amber-700 flex items-start gap-2">
+                            <span className="text-amber-400">•</span>
+                            <span>{issue}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
+
+      {/* Legacy Hints (for old curricula without challengeOptions) */}
+      {!hasChallengeOptions && hints.length > 0 && (
         <Card>
           <button
             onClick={() => setShowHints(!showHints)}
@@ -1083,7 +1413,8 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
         </Card>
       )}
 
-      {/* External Tools Required Banner */}
+      {/* External Tools Required Banner - only show for legacy curricula */}
+      {!hasChallengeOptions && (
       <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
         <div className="p-6">
           <div className="flex items-center gap-3 mb-4">
@@ -1163,16 +1494,15 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
           )}
         </div>
       </Card>
+      )}
 
-      {/* Reflection / Notes */}
+      {/* Reflection / Notes - only for legacy curricula */}
+      {!hasChallengeOptions && (
       <Card>
         <div className="p-4">
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Your notes & reflection
           </label>
-          <p className="text-xs text-gray-500 mb-3">
-            What did you learn? Any challenges? Paste code snippets you're proud of.
-          </p>
           <textarea
             placeholder="Write your notes here..."
             value={notes}
@@ -1181,6 +1511,7 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
           />
         </div>
       </Card>
+      )}
 
       {/* Submit button */}
       {!isSubmitted && !currentDayAlreadySaved ? (
@@ -1193,15 +1524,19 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
             variant="accent"
             size="lg"
             onClick={handleSubmit}
-            disabled={notes.length < 5}
+            disabled={hasChallengeOptions ? !challengeChoice : notes.length < 5}
             className="w-full"
             leftIcon={<Trophy className="w-5 h-5" />}
           >
-            Mark as Complete
+            {hasChallengeOptions && challengeChoice === 'write' ? 'I Wrote It! Mark Complete' :
+             hasChallengeOptions && challengeChoice === 'run' ? 'I Made It Run! Mark Complete' :
+             'Mark as Complete'}
           </Button>
+          {!hasChallengeOptions && (
           <p className="text-xs text-center text-gray-400 mt-2">
             Add a quick note about what you accomplished
           </p>
+          )}
         </motion.div>
       ) : (
         <motion.div
@@ -1234,7 +1569,25 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
         </motion.div>
       )}
 
-      {/* Solution (subtle link below save button) */}
+      {/* Solution Walkthrough - shown after completion for challenge mode */}
+      {(isSubmitted || currentDayAlreadySaved) && hasChallengeOptions && solutionAnnotations.length > 0 && (
+        <Card className="border border-purple-200 bg-gradient-to-br from-purple-50 to-indigo-50">
+          <div className="p-4">
+            <h4 className="font-semibold text-gray-900 mb-3">Solution Walkthrough</h4>
+            <ul className="space-y-2">
+              {solutionAnnotations.map((annotation: string, index: number) => (
+                <li key={index} className="flex items-start gap-2 text-sm text-gray-700">
+                  <CheckCircle2 className="w-4 h-4 text-purple-500 flex-shrink-0 mt-0.5" />
+                  {annotation}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Card>
+      )}
+
+      {/* Solution (subtle link below save button) - for legacy curricula */}
+      {!hasChallengeOptions && (
       <div className="text-center">
         <button
           onClick={() => setShowSolution(!showSolution)}
@@ -1249,10 +1602,10 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
         {showSolution && (
           <Card className="mt-3 text-left">
             <div className="p-4">
-              {solution ? (
+              {(solutionCode || solution) ? (
                 <>
                   <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg overflow-x-auto text-sm font-mono whitespace-pre-wrap">
-                    {solution}
+                    {solutionCode || solution}
                   </pre>
                   {solutionAnnotations.length > 0 && (
                     <div className="mt-4 space-y-2">
@@ -1277,6 +1630,7 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
           </Card>
         )}
       </div>
+      )}
     </StepLayout>
   );
 }

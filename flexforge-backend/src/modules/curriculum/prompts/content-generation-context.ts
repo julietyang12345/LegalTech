@@ -42,6 +42,8 @@ export interface ContinuityContext {
   bossProjectTarget?: string;
   /** Progress description of boss project from previous days */
   bossProjectProgress?: string;
+  /** Previous day's boss milestone solution code (to build on) */
+  previousDayCode?: string;
 }
 
 /**
@@ -163,6 +165,14 @@ export function buildContentGenerationContext(
     }
   }
 
+  // Get previous day's boss milestone code (for cumulative building)
+  let previousDayCode: string | undefined;
+  if (previousDay?.deferredContent?.bossMilestone?.solutionCode) {
+    previousDayCode = previousDay.deferredContent.bossMilestone.solutionCode;
+  } else if (previousDay?.bossMilestone?.solutionCode) {
+    previousDayCode = previousDay.bossMilestone.solutionCode;
+  }
+
   return {
     // Skill metadata
     skillName: metadata.skillName || curriculum.title || '',
@@ -210,6 +220,7 @@ export function buildContentGenerationContext(
         previousDay?.coreContent?.foundationCards?.[0]?.concept,
       bossProjectTarget,
       bossProjectProgress,
+      previousDayCode,
     },
   };
 }

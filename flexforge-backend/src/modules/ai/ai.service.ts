@@ -28,6 +28,9 @@ export enum AITask {
   LIFE_HAPPENS_ADJUST = 'LIFE_HAPPENS_ADJUST',
   REFLECTION_ANALYSIS = 'REFLECTION_ANALYSIS',
 
+  // Lightweight content generation (Haiku - for reflection, openTask)
+  LIGHTWEIGHT_CONTENT = 'LIGHTWEIGHT_CONTENT',
+
   // Video/Multimodal (Gemini Flash 2.0)
   VIDEO_SUMMARY = 'VIDEO_SUMMARY',
   VIDEO_TIMESTAMP_EXTRACTION = 'VIDEO_TIMESTAMP_EXTRACTION',
@@ -188,6 +191,10 @@ export class AiService {
         { provider: 'openai', model: 'gpt-4o-mini' },
       ],
       [AITask.REFLECTION_ANALYSIS]: [
+        { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
+        { provider: 'openai', model: 'gpt-4o-mini' },
+      ],
+      [AITask.LIGHTWEIGHT_CONTENT]: [
         { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
         { provider: 'openai', model: 'gpt-4o-mini' },
       ],

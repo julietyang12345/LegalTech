@@ -118,6 +118,17 @@ ${continuity.bossProjectProgress}
 - Today's bossMilestone should build on this existing work
 - Starter code should continue from where they left off`);
     }
+
+    // Include previous day's actual code for cumulative building
+    if (continuity.previousDayCode) {
+      parts.push(`PREVIOUS DAY'S CODE (build on this - don't start fresh):
+\`\`\`
+${continuity.previousDayCode}
+\`\`\`
+- Today's code MUST extend/build on this code
+- Add new functionality, don't replace existing code
+- Import from or add to existing files`);
+    }
   }
 
   if (parts.length === 0) {

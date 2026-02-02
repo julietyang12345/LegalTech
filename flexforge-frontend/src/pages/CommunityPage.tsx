@@ -89,6 +89,12 @@ interface Post {
   // Course sharing
   linkedCourse?: LinkedCourse;
   dayNumber?: number;
+  stepType?: string;
+  sharedContent?: {
+    question?: string;
+    options?: string[];
+    correctAnswer?: string;
+  };
 
   // Question post fields
   question?: string;
@@ -363,59 +369,30 @@ function CurrentTaskLink({
 // Course preview card (shown in posts)
 function CoursePreviewCard({
   course,
-  dayNumber,
-  onClick,
+  onViewSource,
 }: {
   course: LinkedCourse;
   dayNumber?: number;
-  onClick?: () => void;
+  onViewSource?: () => void;
 }) {
-  const levelColors = {
-    beginner: 'bg-green-100 text-green-700',
-    intermediate: 'bg-yellow-100 text-yellow-700',
-    advanced: 'bg-red-100 text-red-700',
-  };
-
   return (
-    <div
-      className={clsx(
-        'p-4 bg-gradient-to-br from-brand-50 to-purple-50 rounded-lg border border-brand-200',
-        onClick && 'cursor-pointer hover:border-brand-300 transition-colors'
-      )}
-      onClick={onClick}
-    >
-      <div className="flex items-start gap-3">
-        <div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center flex-shrink-0">
-          <Trophy className="w-6 h-6 text-brand-600" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <h4 className="font-semibold text-gray-900">{course.skillName}</h4>
-            <span className={clsx('px-2 py-0.5 text-xs font-medium rounded-full', levelColors[course.skillLevel as keyof typeof levelColors] || levelColors.beginner)}>
-              {course.skillLevel}
-            </span>
-          </div>
-          <div className="flex items-center gap-3 text-sm text-gray-600 mb-2">
-            <span>Day {course.currentDay} of {course.durationDays}</span>
-            {dayNumber && <span className="text-brand-600">Sharing Day {dayNumber}</span>}
-          </div>
-          {/* Progress bar */}
-          <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-brand-500 to-purple-500 transition-all"
-              style={{ width: `${course.progress}%` }}
-            />
-          </div>
-          <div className="flex items-center justify-between mt-1">
-            <span className="text-xs text-gray-500">{course.progress}% complete</span>
-            {onClick && (
-              <span className="text-xs text-brand-600 flex items-center gap-1">
-                View course <ChevronRight className="w-3 h-3" />
-              </span>
-            )}
-          </div>
-        </div>
+    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <BookOpen className="w-4 h-4 text-brand-600" />
+        <span className="text-sm font-medium text-gray-900">{course.skillName}</span>
       </div>
+      {onViewSource && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onViewSource();
+          }}
+          className="text-xs text-brand-600 hover:text-brand-700 flex items-center gap-1 font-medium"
+        >
+          <Eye className="w-3 h-3" />
+          View Source
+        </button>
+      )}
     </div>
   );
 }
@@ -613,7 +590,7 @@ function PostCard({
               <CoursePreviewCard
                 course={post.linkedCourse}
                 dayNumber={post.dayNumber}
-                onClick={() => onViewCourse?.(post)}
+                onViewSource={() => onViewCourse?.(post)}
               />
             )}
 
@@ -651,6 +628,39 @@ function PostCard({
                   )}
                 </div>
               </a>
+            )}
+
+            {/* Shared question content */}
+            {post.sharedContent?.question && (
+              <div className="p-3 bg-brand-50 rounded-lg border border-brand-200">
+                <div className="flex items-start gap-2 mb-2">
+                  <HelpCircle className="w-4 h-4 text-brand-600 mt-0.5" />
+                  <span className="text-xs font-medium text-brand-700 uppercase tracking-wide">
+                    Shared Question {post.stepType && `(${post.stepType})`}
+                  </span>
+                </div>
+                <p className="font-medium text-gray-900 mb-2">{post.sharedContent.question}</p>
+                {post.sharedContent.options && post.sharedContent.options.length > 0 && (
+                  <div className="space-y-1.5 ml-2">
+                    {post.sharedContent.options.map((opt, i) => (
+                      <div
+                        key={i}
+                        className={clsx(
+                          'p-2 rounded-lg text-sm',
+                          post.sharedContent?.correctAnswer === opt
+                            ? 'bg-green-100 text-green-800 border border-green-200'
+                            : 'bg-white text-gray-600 border border-gray-100'
+                        )}
+                      >
+                        {opt}
+                        {post.sharedContent?.correctAnswer === opt && (
+                          <Check className="inline w-4 h-4 ml-2 text-green-600" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Code snippet */}
@@ -1030,6 +1040,12 @@ function CreatePostModal({
       linkedProject: selectedProject || undefined,
       linkedCourse: linkType === 'session' ? courseData || undefined : undefined,
       dayNumber: linkType === 'session' ? selectedDay : undefined,
+      stepType: linkType === 'session' ? selectedStep : undefined,
+      sharedContent: selectedQuestion ? {
+        question: selectedQuestion.question,
+        options: selectedQuestion.options,
+        correctAnswer: selectedQuestion.correctAnswer,
+      } : undefined,
       codeSnippet: codeSnippet || undefined,
       comments: [],
     };
@@ -1724,22 +1740,17 @@ function SharedContentViewer({
   course: LinkedCourse;
   post: Post;
   hasFullCourseAccess?: boolean;
-  onRequestFullCourse?: () => void;
+  onRequestFullCourse?: (message: string) => void;
   onViewFullCourse?: () => void;
 }) {
   const [requestSent, setRequestSent] = useState(false);
+  const [requestMessage, setRequestMessage] = useState('');
 
   if (!isOpen) return null;
 
-  const levelColors = {
-    beginner: 'bg-green-100 text-green-700',
-    intermediate: 'bg-yellow-100 text-yellow-700',
-    advanced: 'bg-red-100 text-red-700',
-  };
-
   const handleRequestCourse = () => {
     setRequestSent(true);
-    onRequestFullCourse?.();
+    onRequestFullCourse?.(requestMessage);
   };
 
   return (
@@ -1749,154 +1760,75 @@ function SharedContentViewer({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-auto"
+        className="relative bg-white rounded-xl shadow-xl w-full max-w-md"
       >
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-100 to-purple-100 flex items-center justify-center">
-              <Trophy className="w-5 h-5 text-brand-600" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-gray-900">{course.skillName}</h2>
-              <div className="flex items-center gap-2">
-                <span className={clsx('px-2 py-0.5 text-xs font-medium rounded-full', levelColors[course.skillLevel as keyof typeof levelColors] || levelColors.beginner)}>
-                  {course.skillLevel}
-                </span>
-                <span className="text-xs text-gray-500">by {post.authorName}</span>
-              </div>
-            </div>
-          </div>
+        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+          <h2 className="font-semibold text-gray-900">Course Source</h2>
           <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
-          {/* Progress overview */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">Course Progress</span>
-              <span className="text-sm text-brand-600">{course.progress}% complete</span>
-            </div>
-            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-brand-500 to-purple-500"
-                style={{ width: `${course.progress}%` }}
-              />
-            </div>
-            <p className="text-xs text-gray-500 mt-2">
-              Day {course.currentDay} of {course.durationDays}
-            </p>
-          </div>
-
-          {/* View/Request Full Course Button */}
-          <div className="p-4 bg-gradient-to-br from-purple-50 to-brand-50 rounded-xl border border-purple-100">
-            {hasFullCourseAccess ? (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-                    <Eye className="w-5 h-5 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">Full course shared</p>
-                    <p className="text-sm text-gray-500">View the complete curriculum</p>
-                  </div>
-                </div>
-                <Button onClick={onViewFullCourse}>
-                  <Eye className="w-4 h-4" />
-                  View Full Course
-                </Button>
+        <div className="p-6">
+          {hasFullCourseAccess ? (
+            // Has access - show view button
+            <div className="text-center">
+              <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+                <Eye className="w-7 h-7 text-green-600" />
               </div>
-            ) : (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-                    <Lock className="w-5 h-5 text-gray-500" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">Full course not shared</p>
-                    <p className="text-sm text-gray-500">Request access to see the full curriculum</p>
-                  </div>
-                </div>
-                {requestSent ? (
-                  <span className="px-4 py-2 text-sm text-green-700 bg-green-100 rounded-lg flex items-center gap-2">
-                    <Check className="w-4 h-4" />
-                    Request Sent
-                  </span>
-                ) : (
-                  <Button variant="secondary" onClick={handleRequestCourse}>
-                    <Send className="w-4 h-4" />
-                    Request Access
-                  </Button>
-                )}
+              <p className="font-medium text-gray-900 mb-2">Full course available</p>
+              <p className="text-sm text-gray-500 mb-4">
+                {post.authorName} has shared the full course with you.
+              </p>
+              <Button onClick={onViewFullCourse} className="w-full">
+                <Eye className="w-4 h-4" />
+                View Full Course
+              </Button>
+            </div>
+          ) : requestSent ? (
+            // Request sent
+            <div className="text-center">
+              <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+                <Check className="w-7 h-7 text-green-600" />
               </div>
-            )}
-          </div>
-
-          {/* Shared task content */}
-          {post.dayNumber && (
-            <div className="border-t border-gray-200 pt-6">
-              <h3 className="text-sm font-medium text-gray-700 mb-3">
-                Shared: Day {post.dayNumber} - {post.title}
-              </h3>
-
-              {/* Task card */}
-              <Card className="border-2 border-purple-200">
-                <div className="p-4 space-y-4">
-                  {/* Task title */}
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
-                      <Trophy className="w-4 h-4 text-purple-600" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-gray-900">{post.title}</h4>
-                      {post.currentState && (
-                        <span className={clsx(
-                          'text-xs px-2 py-0.5 rounded-full',
-                          post.currentState === 'completed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                        )}>
-                          {post.currentState}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* What they did */}
-                  {post.whatDone && (
-                    <div>
-                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Progress Notes</span>
-                      <p className="text-sm text-gray-700 mt-1">{post.whatDone}</p>
-                    </div>
-                  )}
-
-                  {/* Code snippet */}
-                  {post.codeSnippet && (
-                    <div>
-                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Code</span>
-                      <pre className="mt-1 p-3 bg-gray-900 text-gray-100 text-sm rounded-lg overflow-x-auto font-mono">
-                        {post.codeSnippet}
-                      </pre>
-                    </div>
-                  )}
-
-                  {/* Feedback wanted */}
-                  {post.feedbackWanted && (
-                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Feedback Wanted</span>
-                      <p className="text-sm text-gray-700 mt-1">{post.feedbackWanted}</p>
-                    </div>
-                  )}
+              <p className="font-medium text-gray-900 mb-2">Request Sent!</p>
+              <p className="text-sm text-gray-500">
+                {post.authorName} will be notified about your request.
+              </p>
+            </div>
+          ) : (
+            // Request form
+            <div className="space-y-4">
+              <div className="text-center">
+                <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+                  <Lock className="w-7 h-7 text-gray-400" />
                 </div>
-              </Card>
+                <p className="font-medium text-gray-900 mb-1">Full course not shared</p>
+                <p className="text-sm text-gray-500">
+                  {post.authorName} hasn't shared the full course yet. Send them a request.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Message (optional)
+                </label>
+                <textarea
+                  value={requestMessage}
+                  onChange={(e) => setRequestMessage(e.target.value)}
+                  placeholder={`Hi ${post.authorName}, I'd love to see your full ${course.skillName} course!`}
+                  className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
+                  rows={3}
+                />
+              </div>
+
+              <Button onClick={handleRequestCourse} className="w-full">
+                <Send className="w-4 h-4" />
+                Send Request
+              </Button>
             </div>
           )}
-
-          {/* View instructions */}
-          <div className="text-center text-sm text-gray-500 pt-4 border-t border-gray-100">
-            <p>This is a shared view of {post.authorName}'s learning journey.</p>
-            <p className="mt-1">Want to learn {course.skillName}? Start your own course!</p>
-          </div>
         </div>
       </motion.div>
     </div>
@@ -1923,7 +1855,27 @@ export function CommunityPage() {
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [viewingPost, setViewingPost] = useState<Post | null>(null);
   const [joinedGroups, setJoinedGroups] = useState<Set<string>>(new Set());
-  const [posts, setPosts] = useState<Post[]>(MOCK_POSTS);
+  const [posts, setPosts] = useState<Post[]>(() => {
+    // Load posts from localStorage on mount
+    try {
+      const savedPosts = localStorage.getItem('community_posts');
+      if (savedPosts) {
+        const parsed = JSON.parse(savedPosts);
+        // Convert date strings back to Date objects
+        return parsed.map((post: any) => ({
+          ...post,
+          createdAt: new Date(post.createdAt),
+          comments: post.comments?.map((c: any) => ({
+            ...c,
+            createdAt: new Date(c.createdAt),
+          })) || [],
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to load posts from localStorage:', error);
+    }
+    return MOCK_POSTS;
+  });
 
   // Handle share from session (via URL param)
   useEffect(() => {
@@ -1989,9 +1941,9 @@ export function CommunityPage() {
 
   const isGroupJoined = (groupId: string) => joinedGroups.has(groupId);
 
-  const handleRequestFullCourse = () => {
-    // TODO: API call to send request
-    console.log('Request full course access');
+  const handleRequestFullCourse = (message: string) => {
+    // TODO: API call to send request with message
+    console.log('Request full course access with message:', message);
   };
 
   const handleViewFullCourse = () => {
@@ -2106,7 +2058,12 @@ export function CommunityPage() {
             projects={projects}
             preselectedProject={shareProject || undefined}
             initialShareData={shareData}
-            onPostCreated={(newPost) => setPosts([newPost, ...posts])}
+            onPostCreated={(newPost) => {
+              const updatedPosts = [newPost, ...posts];
+              setPosts(updatedPosts);
+              // Persist to localStorage
+              localStorage.setItem('community_posts', JSON.stringify(updatedPosts));
+            }}
           />
         )}
 
@@ -2315,14 +2272,18 @@ export function CommunityPage() {
           onClose={() => {
             setShowCreatePost(false);
             setShareProject(null);
-            setSelectedGroup(null);
             clearShareData();
           }}
           groupName={selectedGroup.name}
           projects={projects}
           preselectedProject={shareProject || undefined}
           initialShareData={shareData}
-          onPostCreated={(newPost) => setPosts([newPost, ...posts])}
+          onPostCreated={(newPost) => {
+            const updatedPosts = [newPost, ...posts];
+            setPosts(updatedPosts);
+            // Persist to localStorage
+            localStorage.setItem('community_posts', JSON.stringify(updatedPosts));
+          }}
         />
       )}
     </div>

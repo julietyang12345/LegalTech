@@ -833,19 +833,59 @@ TASK1: 4-6 questions testing today's foundationCards ONLY (no new knowledge)
 - Level 2 "Application" (2-3 Qs): "which approach fits?", "why would B fail?"
 ${ctx?.generatedContent?.foundationCardConcepts?.length ? `- Reference these concepts: ${ctx.generatedContent.foundationCardConcepts.join(', ')}` : ''}
 
-BOSS MILESTONE (${newCodeLines} new lines):
-- starterCode: ${starterCodeLines} lines REAL RUNNABLE code with TODOs marking where user adds code
-- solution: ${solutionCodeLines} lines COMPLETE WORKING code - NO placeholders like "// COMPLETE working solution"
-- solutionAnnotations: 2-4 strings explaining key lines
-- hints: 3 progressive (conceptual → specific → detailed)
+BOSS MILESTONE - SOLUTION + CHALLENGE (${newCodeLines} new lines):
+You provide a complete AI-generated solution. User chooses their path: write it themselves OR make the AI code run.
+
+CUMULATIVE CODE REQUIREMENT:
+- Day 2+ code MUST build on previous days - NOT independent/unrelated code
+- Same project folder, same file structure, building incrementally
+- Reference previous files/functions: "import { helper } from './day1'" or add to existing files
+- Example progression:
+  - Day 1: Create app/api/users/route.js with GET /api/users
+  - Day 2: Add app/api/users/[id]/route.js for GET /api/users/:id (builds on Day 1)
+  - Day 3: Add POST to app/api/users/route.js (extends Day 1 file)
+- User should feel they're building ONE project, not 5 separate mini-projects
+
+REQUIRED FIELDS:
+- solutionCode: ${solutionCodeLines} lines COMPLETE WORKING code
+  - Real, runnable code that ADDS to the existing project
+  - For Day 2+: show what files to add/modify, reference existing code
+- solutionExplanation: 1-2 sentences on what this code does
+- solutionAnnotations: 3-5 strings explaining key parts
+
+- challengeOptions:
+  - writeYourself:
+    - description: "Write this code from scratch to prove you understand it"
+    - hints: 3 progressive hints if user gets stuck (conceptual → specific → detailed)
+  - makeItRun:
+    - description: "Copy this code and make it run on your machine"
+    - setupSteps: Clear steps to get it running (files, commands)
+    - possibleIssues: 2-3 things that might go wrong (missing deps, path issues, etc.)
+
+- validationType: "run"
+- validationInstructions: "Run the code and verify it produces the expected output"
 - setupInstructions:
-  - REQUIRED: Tell user which file(s) to create and where to paste code
-  - files: List each file path with description (e.g., "pages/index.js", "pages/api/hello.js")
-  - steps: Clear setup instructions (e.g., "Create pages/api/hello.js and paste the API code")
-  - runCommand: How to run the code (e.g., "node index.js", "npm start", "npm run dev")
+  - REQUIRED: Tell user which file(s) to create/modify with FULL PATH from project root
+  - files: List each file with FULL PATH and description (e.g., "app/api/users/route.js", "src/components/Card.jsx")
+  - steps: Clear setup instructions in order:
+    1. Project scaffold if needed (e.g., "npx create-next-app my-app")
+    2. cd into project folder (e.g., "cd my-app")
+    3. Install packages if needed (e.g., "npm install axios")
+    4. File instructions - ALWAYS use FULL PATH from project root:
+       - Use "Open [path]" for existing files, "Create [path]" for new files
+    5. How to test - ALWAYS include:
+       - Run command (e.g., "Run: npm run dev")
+       - Expected result (e.g., "You should see JSON response: {users: [...]}")
+  - IMPORTANT: If route will be tested in browser, ALWAYS export GET handler. Browser visits = GET request.
+  - runCommand: Command AND test method (e.g., "npm run dev → GET http://localhost:3000/api/hello")
+- API ROUTES - Prevent 405 Method Not Allowed errors:
+  - If testing via browser URL → MUST have GET handler (browser sends GET)
+  - For POST-only APIs: show curl command in test steps, NOT "open in browser"
 - DO NOT use placeholder text - generate ACTUAL code
-- Validation: user runs code, sees expectedOutput
 ${ctx?.continuity?.bossProjectTarget ? `- Boss Project: "${ctx.continuity.bossProjectTarget}" - conceptConnection should reference a foundationCard concept` : ''}
+
+NOTE: Do NOT generate reflection - this is handled separately by a lightweight model.
+Only generate: task1 and bossMilestone.
 
 Output valid JSON.`;
 
@@ -861,35 +901,41 @@ Output valid JSON.`;
   },
   "bossMilestone": {
     "day": ${dayNumber},
-    "title": "Day ${dayNumber} Contribution",
-    "description": "Build a piece of your boss project",
-    "microTask": "REQUIRED: Specific task description (${newCodeLines} lines of code)",
-    "dayContribution": "How this helps the final project",
+    "title": "Day ${dayNumber}: Build Your Piece",
+    "description": "Today's contribution to the boss project",
+    "microTask": "REQUIRED: What this code accomplishes (${newCodeLines} lines of code)",
+    "dayContribution": "How this connects to the final project",
     "conceptConnection": "Which foundationCard concept this applies",
-    "estimatedMinutes": 10,
-    "starterCode": "REQUIRED: ${starterCodeLines} lines ACTUAL starter code with TODOs marking where user adds code.${dayNumber === 1 ? ' Start fresh.' : ' Build on previous days.'}",
+    "estimatedMinutes": 12,
+
+    "solutionCode": "REQUIRED: ${solutionCodeLines} lines complete working ${params.suggestedLanguage || 'code'}. Must be real, runnable code.",
+    "solutionExplanation": "REQUIRED: 1-2 sentences on what this code does",
+    "solutionAnnotations": ["Key line 1 explanation", "Key line 2 explanation", "Key line 3 explanation"],
+
+    "challengeOptions": {
+      "writeYourself": {
+        "description": "Write this code from scratch to prove you understand it",
+        "hints": [
+          {"level": 1, "hint": "REQUIRED: Conceptual hint - what approach to take"},
+          {"level": 2, "hint": "REQUIRED: More specific hint - key functions/methods"},
+          {"level": 3, "hint": "REQUIRED: Detailed guidance - almost the answer"}
+        ]
+      },
+      "makeItRun": {
+        "description": "Copy the AI code and make it run on your machine",
+        "setupSteps": ["REQUIRED: Step to create file (e.g., 'Create index.js')", "REQUIRED: Step to add code (e.g., 'Add the solution code')", "REQUIRED: Step to run (e.g., 'Run: node index.js')"],
+        "possibleIssues": ["Missing dependency issue", "Path or import issue", "Syntax or version issue"]
+      }
+    },
+
     "expectedOutput": "What user should see when they run the code",
-    "hints": [
-      {"level": 1, "hint": "REQUIRED: Gentle conceptual hint"},
-      {"level": 2, "hint": "REQUIRED: More specific approach"},
-      {"level": 3, "hint": "REQUIRED: Detailed guidance"}
-    ],
-    "solution": "REQUIRED: ${solutionCodeLines} lines COMPLETE working ${params.suggestedLanguage || 'code'}. Must be real, runnable code.",
-    "solutionAnnotations": ["REQUIRED: 2-4 explanations of key lines in the solution"],
     "validationType": "run",
     "validationInstructions": "Run the code and verify the output",
     "setupInstructions": {
-      "files": [{"path": "REQUIRED: e.g. 'index.js' or 'pages/index.js'", "description": "What this file contains"}],
-      "steps": ["REQUIRED: Step-by-step setup (e.g., 'Paste code into index.js')"],
-      "runCommand": "e.g. 'node index.js' or 'npm start'"
+      "files": [{"path": "REQUIRED: FULL PATH e.g. 'app/api/users/route.js' or 'src/components/Card.jsx'", "description": "What this file contains"}],
+      "steps": ["REQUIRED: 1) Scaffold (npx create-...), 2) cd into folder, 3) Install packages if needed, 4) Create/open files with FULL PATHS (e.g., 'Create app/api/users/route.js'), 5) Write and complete the code, 6) Test (e.g., 'Run npm run dev, then open http://localhost:3000')"],
+      "runCommand": "e.g. 'npm run dev' then 'Open http://localhost:3000'"
     }
-  },
-  "reflection": {
-    "questions": [
-      {"id": "confidence", "question": "Rate your confidence (1-5)?", "type": "scale"},
-      {"id": "clicked", "question": "What clicked today?", "type": "text"},
-      {"id": "foggy", "question": "What's still unclear?", "type": "text"}
-    ]
   }
 }`;
 
@@ -1464,26 +1510,8 @@ INTENSIVE PRACTICE:
 ${sectionInstructions}
 Items per section: ${itemsPerSection}
 
-OPEN TASK:
-- A specific, actionable task to do outside the app
-- Must directly apply one of today's foundationCard concepts${ctx?.generatedContent?.foundationCardConcepts?.length ? `: ${ctx.generatedContent.foundationCardConcepts.join(', ')}` : ''}
-- No correct answer - user self-reports completion
-- Choose task type based on skill:
-  * Soft skills (leadership, communication, negotiation): Real interaction tasks
-    e.g., "Have a 1-on-1 with a team member", "Practice active listening in your next meeting"
-  * Academic skills (math, science, history, concepts, languages): Low-pressure teaching practice (Feynman technique)
-    e.g., "Pretend you're explaining [concept] to a curious friend - write or say your explanation out loud"
-    e.g., "Write a simple explanation of [concept] that a 10-year-old could understand"
-    This reinforces learning without social pressure - if you can explain it simply, you understand it
-- Include:
-  - title: Short, action-oriented - NO prefix
-  - description: 2-3 sentences explaining what to do and why
-  - icon: Emoji (💬 chat, 🎯 goal, 🤝 collab, 📝 write, 🔍 observe, 🎤 speak, 👂 listen, 🧑‍🏫 teach, 🎙️ record)
-  - context: Where/when (e.g., "Alone or with someone", "Out loud to yourself", "Write it down", "Record a voice note")
-  - difficulty: "easy" (5-10 min) | "medium" (15-20 min) | "challenging" (30+ min)
-  - conceptConnection: Which foundationCard concept this applies
-  - tips: 2-3 practical tips for success
-  - reflectionPrompts: 2-3 questions for after completion
+NOTE: Do NOT generate openTask or reflection - these are handled separately by a lightweight model.
+Only generate: task1 and intensivePractice.
 
 Output valid JSON.`;
 
@@ -1502,69 +1530,8 @@ Output valid JSON.`;
       {"id": "mini1", "concept": "New Concept", "explanation": "100-150 words..."}
     ]`;
 
-  // Language-specific reflection questions
-  const languageReflectionQuestions = `[
-      {"id": "confidence", "question": "Rate your confidence with today's ${lang} content (1-5)", "type": "scale"},
-      {"id": "hardest", "question": "Hardest exercise type?", "type": "choice", "options": ["Fill in blank", "Translation", "Reordering", "Typing"${langHasTonesForTemplate ? ', "Tone recognition"' : ''}]},
-      {"id": "clicked", "question": "What clicked for you today?", "type": "text"},
-      {"id": "review", "question": "What needs more review?", "type": "text"}
-    ]`;
-
-  const genericReflectionQuestions = `[
-      {"id": "confidence", "question": "Rate your confidence (1-5)?", "type": "scale"},
-      {"id": "application", "question": "How will you apply this?", "type": "text"},
-      {"id": "questions", "question": "What questions remain?", "type": "text"}
-    ]`;
-
-  // Language-specific open task (practice speaking/writing)
-  const languageOpenTaskTemplate = `{
-    "id": "day${dayNumber}-opentask",
-    "sectionType": "openTask",
-    "sectionTitle": "Real-World Practice",
-    "sectionSubtitle": "Use ${lang} outside the app",
-    "title": "Practice ${lang} in a real conversation or writing",
-    "description": "Find an opportunity to use what you learned today. This could be speaking with a language partner, writing a message, or practicing pronunciation out loud.",
-    "icon": "🗣️",
-    "context": "With a language partner / Speaking aloud / Writing practice",
-    "difficulty": "easy",
-    "conceptConnection": "Today's ${params.dayTitle} content",
-    "estimatedMinutes": 10,
-    "tips": [
-      "Don't worry about being perfect - focus on using the new patterns",
-      "Record yourself to hear your pronunciation",
-      "Write down any words you couldn't remember to review later"
-    ],
-    "completionType": "self-reported",
-    "reflectionPrompts": [
-      "What did you try to say or write?",
-      "What was challenging about using ${lang} in practice?",
-      "What would you like to practice more?"
-    ]
-  }`;
-
-  const genericOpenTaskTemplate = `{
-    "id": "day${dayNumber}-opentask",
-    "sectionType": "openTask",
-    "sectionTitle": "Real-World Challenge",
-    "sectionSubtitle": "Take your learning beyond the screen",
-    "title": "[Action verb + specific activity]",
-    "description": "2-3 sentences: what to do, with whom, and the goal",
-    "icon": "🎯",
-    "context": "At work / With a friend / During your next meeting",
-    "difficulty": "easy|medium|challenging",
-    "conceptConnection": "[Reference specific foundationCard concept]",
-    "estimatedMinutes": 15,
-    "tips": [
-      "Practical tip for success #1",
-      "Practical tip for success #2"
-    ],
-    "completionType": "self-reported",
-    "reflectionPrompts": [
-      "What did you notice during this interaction?",
-      "How did applying [concept] change the outcome?",
-      "What would you do differently next time?"
-    ]
-  }`;
+  // NOTE: reflection and openTask templates removed - now handled by lightweight model (Haiku)
+  // See buildLightweightContentPrompt() for the templates
 
   const userPrompt = `{
   "day": ${dayNumber},
@@ -1583,10 +1550,6 @@ Output valid JSON.`;
     "estimatedMinutes": 12,
     "miniFoundationCards": ${params.isLanguageLearning ? languageMiniCardsTemplate : genericMiniCardsTemplate},
     "sections": ${sectionTemplate}
-  },
-  "openTask": ${params.isLanguageLearning ? languageOpenTaskTemplate : genericOpenTaskTemplate},
-  "reflection": {
-    "questions": ${params.isLanguageLearning ? languageReflectionQuestions : genericReflectionQuestions}
   }
 }`;
 
@@ -1643,7 +1606,7 @@ Generate JSON with:
 - requirements: [{requirement, fromDay, concept}] - one per day combined
 - phases: 3 phases (Setup 15min, Core Build 35min, Polish 25min) with objectives[], deliverable
 - starterCode: REAL ${params.suggestedLanguage || 'code'} with TODOs (30-50 lines)
-- setupInstructions: {files: [{path: "file path", description: "what it contains"}], steps: ["Step-by-step setup instructions"], runCommand: "optional run command"}
+- setupInstructions: {files: [{path: "FULL PATH e.g. app/api/route.js", description: "what it contains"}], steps: ["1) Scaffold, 2) cd into folder, 3) Install packages, 4) File steps with FULL PATHS, 5) Test: run command + URL + expected result"], runCommand: "npm run dev → http://localhost:3000/..."}
 - hints: 4 progressive hints with phase numbers
 - solution: COMPLETE working ${params.suggestedLanguage || 'code'} (50-100 lines)
 - solutionWalkthrough: [{step, description, code}]
@@ -2162,4 +2125,152 @@ function getTask1SectionTemplate(skillType: SkillType): string {
       ]`;
     // Note: For soft skills, AI may use openEnded instead of fillBlank
   }
+}
+
+// ============================================
+// LIGHTWEIGHT CONTENT PROMPT (Haiku - reflection + openTask)
+// ============================================
+
+/**
+ * Lightweight prompt for generating reflection and openTask only.
+ * Uses Haiku for cost efficiency - these are simpler content types.
+ */
+export function buildLightweightContentPrompt(
+  params: DayDetailParams,
+  ctx?: ContentGenerationContext,
+): {
+  systemPrompt: string;
+  userPrompt: string;
+} {
+  const dayNumber = params.dayNumber;
+  const skillsStr = getSkillsString(params.skeleton, params.dayObjectives);
+  const isProjectBased = params.isProjectBased ?? usesProjectBasedLearning(params.learningStyle);
+
+  // Get foundation card concepts for reflection context
+  const conceptsContext = ctx?.generatedContent?.foundationCardConcepts?.length
+    ? `Today's concepts: ${ctx.generatedContent.foundationCardConcepts.join(', ')}`
+    : '';
+
+  // Language learning detection
+  const isLanguageLearning = params.isLanguageLearning ?? false;
+  const lang = params.targetLanguage || 'target language';
+  const langHasTonesForTemplate = ['Chinese', 'Mandarin', 'Cantonese', 'Vietnamese', 'Thai'].some(
+    (l) => lang.toLowerCase().includes(l.toLowerCase()),
+  );
+
+  // Build open task instructions for practice-based curricula
+  const openTaskInstructions = !isProjectBased
+    ? `
+OPEN TASK:
+- A specific, actionable task to do outside the app
+- Must directly apply one of today's foundationCard concepts${ctx?.generatedContent?.foundationCardConcepts?.length ? `: ${ctx.generatedContent.foundationCardConcepts.join(', ')}` : ''}
+- No correct answer - user self-reports completion
+- Choose task type based on skill:
+  * Soft skills (leadership, communication, negotiation): Real interaction tasks
+    e.g., "Have a 1-on-1 with a team member", "Practice active listening in your next meeting"
+  * Academic skills (math, science, history, concepts, languages): Low-pressure teaching practice (Feynman technique)
+    e.g., "Pretend you're explaining [concept] to a curious friend - write or say your explanation out loud"
+    e.g., "Write a simple explanation of [concept] that a 10-year-old could understand"
+    This reinforces learning without social pressure - if you can explain it simply, you understand it
+- Include:
+  - title: Short, action-oriented - NO prefix
+  - description: 2-3 sentences explaining what to do and why
+  - icon: Emoji (💬 chat, 🎯 goal, 🤝 collab, ✍️ write, 🔍 observe, 🎤 speak, 👂 listen, 🧑‍🏫 teach, 🎙️ record)
+  - context: Where/when (e.g., "Alone or with someone", "Out loud to yourself", "Write it down", "Record a voice note")
+  - difficulty: "easy" (5-10 min) | "medium" (15-20 min) | "challenging" (30+ min)
+  - conceptConnection: Which foundationCard concept this applies
+  - tips: 2-3 practical tips for success
+  - reflectionPrompts: 2-3 questions for after completion
+`
+    : '';
+
+  const systemPrompt = `Generate reflection questions${!isProjectBased ? ' and open task' : ''} for Day ${dayNumber}: "${params.skillName}"
+Skill Type: ${params.skillType} | Level: ${params.skillLevel}
+Topics: ${skillsStr}
+${conceptsContext}
+${openTaskInstructions}
+REFLECTION:
+- Questions should help user self-assess and identify areas for improvement
+- Include confidence scale, what clicked, and what needs review
+- Keep it encouraging and forward-looking
+
+Output valid JSON only.`;
+
+  // Language-specific reflection questions
+  const languageReflectionQuestions = `[
+      {"id": "confidence", "question": "Rate your confidence with today's ${lang} content (1-5)", "type": "scale"},
+      {"id": "hardest", "question": "Hardest exercise type?", "type": "choice", "options": ["Fill in blank", "Translation", "Reordering", "Typing"${langHasTonesForTemplate ? ', "Tone recognition"' : ''}]},
+      {"id": "clicked", "question": "What clicked for you today?", "type": "text"},
+      {"id": "review", "question": "What needs more review?", "type": "text"}
+    ]`;
+
+  const genericReflectionQuestions = `[
+      {"id": "confidence", "question": "Rate your confidence (1-5)?", "type": "scale"},
+      {"id": "application", "question": "How will you apply this?", "type": "text"},
+      {"id": "questions", "question": "What questions remain?", "type": "text"}
+    ]`;
+
+  // Language-specific open task (practice speaking/writing)
+  const languageOpenTaskTemplate = `{
+    "id": "day${dayNumber}-opentask",
+    "sectionType": "openTask",
+    "sectionTitle": "Real-World Practice",
+    "sectionSubtitle": "Use ${lang} outside the app",
+    "title": "Practice ${lang} in a real conversation or writing",
+    "description": "Find an opportunity to use what you learned today. This could be speaking with a language partner, writing a message, or practicing pronunciation out loud.",
+    "icon": "🗣️",
+    "context": "With a language partner / Speaking aloud / Writing practice",
+    "difficulty": "easy",
+    "conceptConnection": "Today's ${params.dayTitle} content",
+    "estimatedMinutes": 10,
+    "tips": [
+      "Don't worry about being perfect - focus on using the new patterns",
+      "Record yourself to hear your pronunciation",
+      "Write down any words you couldn't remember to review later"
+    ],
+    "completionType": "self-reported",
+    "reflectionPrompts": [
+      "What did you try to say or write?",
+      "What was challenging about using ${lang} in practice?",
+      "What would you like to practice more?"
+    ]
+  }`;
+
+  const genericOpenTaskTemplate = `{
+    "id": "day${dayNumber}-opentask",
+    "sectionType": "openTask",
+    "sectionTitle": "Real-World Challenge",
+    "sectionSubtitle": "Take your learning beyond the screen",
+    "title": "[Action verb + specific activity]",
+    "description": "2-3 sentences: what to do, with whom, and the goal",
+    "icon": "🎯",
+    "context": "At work / With a friend / During your next meeting",
+    "difficulty": "easy|medium|challenging",
+    "conceptConnection": "[Reference specific foundationCard concept]",
+    "estimatedMinutes": 15,
+    "tips": [
+      "Practical tip for success #1",
+      "Practical tip for success #2"
+    ],
+    "completionType": "self-reported",
+    "reflectionPrompts": [
+      "What did you notice during this interaction?",
+      "How did applying [concept] change the outcome?",
+      "What would you do differently next time?"
+    ]
+  }`;
+
+  // Different templates based on whether it's project-based or practice-based
+  const openTaskSection = !isProjectBased
+    ? `,
+  "openTask": ${isLanguageLearning ? languageOpenTaskTemplate : genericOpenTaskTemplate}`
+    : '';
+
+  const userPrompt = `{
+  "reflection": {
+    "questions": ${isLanguageLearning ? languageReflectionQuestions : genericReflectionQuestions}
+  }${openTaskSection}
+}`;
+
+  return { systemPrompt, userPrompt };
 }
