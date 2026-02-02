@@ -317,7 +317,7 @@ function HowItWorksSection() {
     {
       number: '02',
       title: 'Daily 45-min sessions',
-      description: 'Watch a focused video, practice active recall, solve coding challenges, and reflect on your learning.',
+      description: 'Watch a focused video, practice active recall, work through coding exercises, and reflect on your learning.',
     },
     {
       number: '03',

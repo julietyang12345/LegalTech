@@ -11,7 +11,7 @@ interface ExerciseLoadingScreenProps {
 // Fun loading messages by type
 const LOADING_MESSAGES: Record<string, string[]> = {
   task: [
-    'Crafting the perfect challenge for you...',
+    'Crafting the perfect practice for you...',
     'Preparing brain-boosting exercises...',
     'Loading knowledge nuggets...',
     'Mixing up some learning magic...',
@@ -20,19 +20,19 @@ const LOADING_MESSAGES: Record<string, string[]> = {
   intensive: [
     'Preparing intensive practice session...',
     'Loading advanced exercises...',
-    'Brewing up some challenging content...',
+    'Brewing up some engaging content...',
     'Assembling your training arena...',
     'Calibrating difficulty levels...',
   ],
   quiz: [
     'Shuffling question cards...',
     'Preparing your knowledge check...',
-    'Loading quiz questions...',
-    'Getting ready to test your skills...',
+    'Loading practice questions...',
+    'Getting your practice session ready...',
     'Assembling brain teasers...',
   ],
   code: [
-    'Compiling your coding challenge...',
+    'Preparing your coding practice...',
     'Preparing the sandbox environment...',
     'Loading code snippets...',
     'Setting up your dev playground...',
@@ -335,8 +335,8 @@ export function ExerciseLoadingScreen({ type, skillName, dayNumber }: ExerciseLo
         <h2 className="text-xl font-bold text-gray-800 mb-1">
           {type === 'intensive' && 'Intensive Practice'}
           {type === 'reflection' && 'Preparing Reflection'}
-          {type === 'quiz' && 'Loading Quiz'}
-          {type === 'code' && 'Setting Up Code Challenge'}
+          {type === 'quiz' && 'Loading Practice'}
+          {type === 'code' && 'Setting Up Code Practice'}
           {type === 'task' && 'Preparing Exercises'}
         </h2>
         {skillName && (

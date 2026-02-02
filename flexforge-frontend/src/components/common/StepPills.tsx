@@ -18,7 +18,7 @@ const getStepLabels = (isProjectBased: boolean, videoUnavailable: boolean): Reco
   foundationCards: 'Cards',
   task1: 'Practice',
   bossMilestone: isProjectBased ? 'Boss' : 'Intensive',
-  openTask: 'Challenge',
+  openTask: 'Apply',
   reflection: 'Reflect',
 });
 

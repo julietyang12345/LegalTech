@@ -256,7 +256,7 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
                   Practice & Exercises
                 </div>
                 <div className="text-xs text-gray-500">
-                  Daily quizzes, exercises, challenges. Great for mastering concepts.
+                  Daily practice, exercises, and hands-on activities. Great for mastering concepts.
                 </div>
               </button>
 

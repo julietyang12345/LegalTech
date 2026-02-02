@@ -117,25 +117,32 @@ function FoundationCardPreview({
 
       {/* Explanation */}
       <div className="px-4 pb-4">
-        <p className={clsx('text-sm text-gray-600', !expanded && 'line-clamp-3')}>
-          {card.explanation}
-        </p>
-        {card.explanation.length > 150 && (
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="mt-2 text-xs text-brand-600 flex items-center gap-1"
-          >
-            {expanded ? (
-              <>
-                Show less <ChevronUp className="w-3 h-3" />
-              </>
-            ) : (
-              <>
-                Show more <ChevronDown className="w-3 h-3" />
-              </>
-            )}
-          </button>
-        )}
+        {(() => {
+          const explanationText = card.explanation || (card as any).content || '';
+          return (
+            <>
+              <p className={clsx('text-sm text-gray-600', !expanded && 'line-clamp-3')}>
+                {explanationText}
+              </p>
+              {explanationText.length > 150 && (
+                <button
+                  onClick={() => setExpanded(!expanded)}
+                  className="mt-2 text-xs text-brand-600 flex items-center gap-1"
+                >
+                  {expanded ? (
+                    <>
+                      Show less <ChevronUp className="w-3 h-3" />
+                    </>
+                  ) : (
+                    <>
+                      Show more <ChevronDown className="w-3 h-3" />
+                    </>
+                  )}
+                </button>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       {/* Real World Context */}
@@ -488,14 +495,14 @@ export function StepContentPreview({
   if (step === 'openTask') {
     // Check both day.openTask and day.deferredContent?.openTask
     const openTask = (day.openTask || (day as any).deferredContent?.openTask) as any;
-    if (!openTask) return <p className="text-gray-500 text-sm">No real-world challenge available</p>;
+    if (!openTask) return <p className="text-gray-500 text-sm">No real-world task available</p>;
 
     return (
       <div className="space-y-4">
         <StepHeader
           icon={Target}
           iconColor="bg-gradient-to-br from-orange-500 to-red-500"
-          title={openTask.title || 'Real-World Challenge'}
+          title={openTask.title || 'Real-World Task'}
           subtitle="Apply what you learned"
         />
 
@@ -503,7 +510,7 @@ export function StepContentPreview({
 
         {openTask.challenge && (
           <div className="p-4 bg-orange-50 rounded-xl border border-orange-200">
-            <h4 className="text-sm font-medium text-orange-800 mb-2">Challenge</h4>
+            <h4 className="text-sm font-medium text-orange-800 mb-2">Your Task</h4>
             <p className="text-sm text-orange-700">{openTask.challenge}</p>
           </div>
         )}

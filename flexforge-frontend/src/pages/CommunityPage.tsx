@@ -847,6 +847,8 @@ function CreatePostModal({
   const [selectedDay, setSelectedDay] = useState<number>(initialShareData?.dayNumber || currentDay?.day || 1);
   const [selectedStep, setSelectedStep] = useState<string>('overview');
   const [showStepDropdown, setShowStepDropdown] = useState(false);
+  const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number | null>(null);
+  const [showQuestionDropdown, setShowQuestionDropdown] = useState(false);
 
   const [formData, setFormData] = useState({
     title: initialShareData?.taskTitle || preselectedProject?.title || '',
@@ -923,6 +925,97 @@ function CreatePostModal({
 
   // Generate mock days for selection (in real app, fetch from session)
   const availableDays = Array.from({ length: courseData?.currentDay || 1 }, (_, i) => i + 1);
+
+  // Get available questions from the selected step
+  const getStepQuestions = (): { question: string; options?: string[]; correctAnswer?: string }[] => {
+    if (!dayData) return [];
+
+    if (selectedStep === 'task1') {
+      const task = (dayData.task1 || (dayData as any).deferredContent?.task1) as any;
+      if (!task) return [];
+
+      // QuizTask questions
+      if (task.questions && Array.isArray(task.questions)) {
+        return task.questions
+          .filter((q: any) => q?.question || q?.text)
+          .map((q: any) => ({
+            question: q.question || q.text,
+            options: q.options,
+            correctAnswer: q.options?.[q.correctIndex],
+          }));
+      }
+
+      // SectionsTask - collect questions from all sections
+      if (task.sections && Array.isArray(task.sections)) {
+        const questions: { question: string; options?: string[]; correctAnswer?: string }[] = [];
+        for (const section of task.sections) {
+          const items = section.questions || section.items || [];
+          for (const item of items) {
+            if (item?.question || item?.text) {
+              questions.push({
+                question: item.question || item.text,
+                options: item.options,
+                correctAnswer: item.options?.[item.correctIndex],
+              });
+            }
+          }
+        }
+        return questions;
+      }
+    }
+
+    if (selectedStep === 'foundationCards') {
+      const cards = (
+        dayData.languageFoundationCards ||
+        dayData.foundationCards ||
+        (dayData as any).deferredContent?.languageFoundationCards ||
+        (dayData as any).deferredContent?.foundationCards ||
+        []
+      ) as any[];
+
+      return cards
+        .filter((card: any) => card?.microQuestion?.question)
+        .map((card: any) => ({
+          question: card.microQuestion.question,
+          options: card.microQuestion.options,
+          correctAnswer: card.microQuestion.options?.[card.microQuestion.correctIndex],
+        }));
+    }
+
+    if (selectedStep === 'reflection') {
+      const reflection = dayData.reflection || (dayData as any).deferredContent?.reflection;
+      if (!reflection?.questions) return [];
+
+      return reflection.questions
+        .filter((q: any) => q?.question)
+        .map((q: any) => ({
+          question: q.question,
+        }));
+    }
+
+    return [];
+  };
+
+  const stepQuestions = getStepQuestions() || [];
+
+  // Reset question selection when questions change or become invalid
+  useEffect(() => {
+    if (selectedQuestionIndex !== null && selectedQuestionIndex >= (stepQuestions?.length || 0)) {
+      setSelectedQuestionIndex(null);
+    }
+  }, [stepQuestions?.length, selectedQuestionIndex]);
+
+  // Reset question selection when step changes
+  const handleStepChange = (step: string) => {
+    setSelectedStep(step);
+    setSelectedQuestionIndex(null);
+    setShowStepDropdown(false);
+  };
+
+  // Safe accessor for selected question
+  const selectedQuestion = selectedQuestionIndex !== null && stepQuestions[selectedQuestionIndex]
+    ? stepQuestions[selectedQuestionIndex]
+    : null;
 
   const handleSubmit = () => {
     const newPost: Post = {
@@ -1267,7 +1360,7 @@ function CreatePostModal({
                                       {selectedStep === 'foundationCards' && <><BookOpen className="w-4 h-4 text-green-500" /> Foundation Cards</>}
                                       {selectedStep === 'task1' && <><Code className="w-4 h-4 text-blue-500" /> Practice Task</>}
                                       {selectedStep === 'bossMilestone' && <><Trophy className="w-4 h-4 text-purple-500" /> Boss Milestone</>}
-                                      {selectedStep === 'openTask' && <><Target className="w-4 h-4 text-orange-500" /> Real-World Challenge</>}
+                                      {selectedStep === 'openTask' && <><Target className="w-4 h-4 text-orange-500" /> Real-World Task</>}
                                       {selectedStep === 'reflection' && <><Lightbulb className="w-4 h-4 text-yellow-500" /> Reflection</>}
                                     </span>
                                     <ChevronDown className={clsx('w-4 h-4 text-gray-400 transition-transform', showStepDropdown && 'rotate-180')} />
@@ -1285,14 +1378,14 @@ function CreatePostModal({
                                           className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden"
                                         >
                                           <button
-                                            onClick={() => { setSelectedStep('overview'); setShowStepDropdown(false); }}
+                                            onClick={() => handleStepChange('overview')}
                                             className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'overview' && 'bg-brand-50')}
                                           >
                                             <BookOpen className="w-4 h-4 text-brand-500" /> Day Overview
                                           </button>
                                           {(dayData.video || (dayData as any).deferredContent?.video) && (
                                             <button
-                                              onClick={() => { setSelectedStep('video'); setShowStepDropdown(false); }}
+                                              onClick={() => handleStepChange('video')}
                                               className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'video' && 'bg-brand-50')}
                                             >
                                               <Play className="w-4 h-4 text-blue-500" /> Video Lesson
@@ -1300,7 +1393,7 @@ function CreatePostModal({
                                           )}
                                           {(dayData.foundationCards || dayData.languageFoundationCards || (dayData as any).deferredContent?.foundationCards || (dayData as any).deferredContent?.languageFoundationCards) && (
                                             <button
-                                              onClick={() => { setSelectedStep('foundationCards'); setShowStepDropdown(false); }}
+                                              onClick={() => handleStepChange('foundationCards')}
                                               className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'foundationCards' && 'bg-brand-50')}
                                             >
                                               <BookOpen className="w-4 h-4 text-green-500" /> Foundation Cards
@@ -1308,7 +1401,7 @@ function CreatePostModal({
                                           )}
                                           {(dayData.task1 || (dayData as any).deferredContent?.task1) && (
                                             <button
-                                              onClick={() => { setSelectedStep('task1'); setShowStepDropdown(false); }}
+                                              onClick={() => handleStepChange('task1')}
                                               className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'task1' && 'bg-brand-50')}
                                             >
                                               <Code className="w-4 h-4 text-blue-500" /> Practice Task
@@ -1316,7 +1409,7 @@ function CreatePostModal({
                                           )}
                                           {(dayData.bossMilestone || (dayData as any).deferredContent?.bossMilestone) && (
                                             <button
-                                              onClick={() => { setSelectedStep('bossMilestone'); setShowStepDropdown(false); }}
+                                              onClick={() => handleStepChange('bossMilestone')}
                                               className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'bossMilestone' && 'bg-brand-50')}
                                             >
                                               <Trophy className="w-4 h-4 text-purple-500" /> Boss Milestone
@@ -1324,15 +1417,15 @@ function CreatePostModal({
                                           )}
                                           {(dayData.openTask || (dayData as any).deferredContent?.openTask) && (
                                             <button
-                                              onClick={() => { setSelectedStep('openTask'); setShowStepDropdown(false); }}
+                                              onClick={() => handleStepChange('openTask')}
                                               className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'openTask' && 'bg-brand-50')}
                                             >
-                                              <Target className="w-4 h-4 text-orange-500" /> Real-World Challenge
+                                              <Target className="w-4 h-4 text-orange-500" /> Real-World Task
                                             </button>
                                           )}
                                           {(dayData.reflection || (dayData as any).deferredContent?.reflection) && (
                                             <button
-                                              onClick={() => { setSelectedStep('reflection'); setShowStepDropdown(false); }}
+                                              onClick={() => handleStepChange('reflection')}
                                               className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'reflection' && 'bg-brand-50')}
                                             >
                                               <Lightbulb className="w-4 h-4 text-yellow-500" /> Reflection
@@ -1346,7 +1439,96 @@ function CreatePostModal({
                               </div>
                             )}
 
-                            {/* Content preview using StepContentPreview like VaultPage */}
+                            {/* Question selector dropdown - only show when step has questions */}
+                            {dayData && Array.isArray(stepQuestions) && stepQuestions.length > 0 && (
+                              <div className="mt-3">
+                                <label className="block text-xs font-medium text-brand-700 mb-2">
+                                  Select question to share (optional)
+                                </label>
+                                <div className="relative">
+                                  <button
+                                    onClick={() => setShowQuestionDropdown(!showQuestionDropdown)}
+                                    className="w-full px-3 py-2 bg-white border border-brand-200 rounded-lg text-sm text-left flex items-center justify-between hover:border-brand-300 transition-colors"
+                                  >
+                                    <span className="flex items-center gap-2 truncate">
+                                      <HelpCircle className="w-4 h-4 text-brand-500 flex-shrink-0" />
+                                      <span className="truncate">
+                                        {!selectedQuestion
+                                          ? `All questions (${stepQuestions?.length || 0})`
+                                          : `Q${(selectedQuestionIndex || 0) + 1}: ${(selectedQuestion.question || '').length > 40 ? (selectedQuestion.question || '').slice(0, 40) + '...' : (selectedQuestion.question || '')}`}
+                                      </span>
+                                    </span>
+                                    <ChevronDown className={clsx('w-4 h-4 text-gray-400 transition-transform flex-shrink-0', showQuestionDropdown && 'rotate-180')} />
+                                  </button>
+
+                                  {/* Question dropdown menu */}
+                                  <AnimatePresence>
+                                    {showQuestionDropdown && (
+                                      <>
+                                        <div className="fixed inset-0 z-10" onClick={() => setShowQuestionDropdown(false)} />
+                                        <motion.div
+                                          initial={{ opacity: 0, y: -5 }}
+                                          animate={{ opacity: 1, y: 0 }}
+                                          exit={{ opacity: 0, y: -5 }}
+                                          className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden max-h-[200px] overflow-y-auto"
+                                        >
+                                          <button
+                                            onClick={() => { setSelectedQuestionIndex(null); setShowQuestionDropdown(false); }}
+                                            className={clsx(
+                                              'w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50',
+                                              selectedQuestionIndex === null && 'bg-brand-50'
+                                            )}
+                                          >
+                                            <span className="font-medium text-brand-600">All questions ({stepQuestions?.length || 0})</span>
+                                          </button>
+                                          {stepQuestions.map((q, idx) => q?.question ? (
+                                            <button
+                                              key={idx}
+                                              onClick={() => { setSelectedQuestionIndex(idx); setShowQuestionDropdown(false); }}
+                                              className={clsx(
+                                                'w-full px-3 py-2 text-sm text-left hover:bg-gray-50',
+                                                selectedQuestionIndex === idx && 'bg-brand-50'
+                                              )}
+                                            >
+                                              <span className="font-medium text-gray-700">Q{idx + 1}:</span>{' '}
+                                              <span className="text-gray-600 line-clamp-1">{q.question}</span>
+                                            </button>
+                                          ) : null)}
+                                        </motion.div>
+                                      </>
+                                    )}
+                                  </AnimatePresence>
+                                </div>
+
+                                {/* Selected question preview */}
+                                {selectedQuestion && (
+                                  <div className="mt-2 p-3 bg-brand-50 rounded-lg border border-brand-200">
+                                    <p className="text-sm font-medium text-gray-800 mb-2">
+                                      {selectedQuestion.question}
+                                    </p>
+                                    {selectedQuestion.options && selectedQuestion.options.length > 0 && (
+                                      <div className="space-y-1">
+                                        {selectedQuestion.options.map((opt, optIdx) => (
+                                          <div
+                                            key={optIdx}
+                                            className={clsx(
+                                              'px-2 py-1 rounded text-xs',
+                                              opt === selectedQuestion.correctAnswer
+                                                ? 'bg-green-100 text-green-800'
+                                                : 'bg-white text-gray-600'
+                                            )}
+                                          >
+                                            {opt}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Content preview - show selected question or full step */}
                             <div className="mt-3">
                               <label className="block text-xs font-medium text-brand-700 mb-2">
                                 Content Preview
@@ -1356,7 +1538,40 @@ function CreatePostModal({
                                   <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
                                   <div className="h-3 bg-gray-200 rounded w-1/2" />
                                 </div>
+                              ) : selectedQuestion ? (
+                                // Show only the selected question
+                                <div className="bg-white rounded-lg border border-brand-200 p-4">
+                                  <div className="flex items-start gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-brand-100 flex items-center justify-center flex-shrink-0">
+                                      <HelpCircle className="w-4 h-4 text-brand-600" />
+                                    </div>
+                                    <div className="flex-1">
+                                      <p className="font-medium text-gray-900 mb-3">{selectedQuestion.question}</p>
+                                      {selectedQuestion.options && selectedQuestion.options.length > 0 && (
+                                        <div className="space-y-2">
+                                          {selectedQuestion.options.map((opt: string, i: number) => (
+                                            <div
+                                              key={i}
+                                              className={clsx(
+                                                'p-2 rounded-lg text-sm',
+                                                selectedQuestion.correctAnswer === opt
+                                                  ? 'bg-green-100 text-green-800 border border-green-200'
+                                                  : 'bg-gray-50 text-gray-600 border border-gray-100'
+                                              )}
+                                            >
+                                              {opt}
+                                              {selectedQuestion.correctAnswer === opt && (
+                                                <Check className="inline w-4 h-4 ml-2 text-green-600" />
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
                               ) : dayData ? (
+                                // Show full step content when "All questions" is selected
                                 <div className="bg-white rounded-lg border border-brand-200 p-4">
                                   <StepContentPreview
                                     day={dayData}

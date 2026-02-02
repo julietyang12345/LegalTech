@@ -151,7 +151,7 @@ export function QuizTaskStep({ day, session, onComplete, onBookmarkQuestion, onS
       icon={HelpCircle}
       iconGradient="from-blue-400 to-blue-500"
       title={quiz.title || "Knowledge Check"}
-      subtitle={quiz.description || "Test your understanding"}
+      subtitle={quiz.description || "Check your understanding"}
     >
       <TaskProgress
         currentIndex={currentIndex}

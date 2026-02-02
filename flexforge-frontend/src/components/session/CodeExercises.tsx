@@ -167,7 +167,7 @@ export function CodeCompletionExercise({ section, onComplete, savedProgress, onP
     <div className="space-y-4">
       <ExerciseHeader
         title={section.title}
-        instructions="Complete the code to solve the challenge"
+        instructions="Complete the code to finish the exercise"
         progress={{ current: currentIndex + 1, total: items.length }}
       />
 

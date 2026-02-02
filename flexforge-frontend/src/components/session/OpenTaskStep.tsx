@@ -88,7 +88,7 @@ export function OpenTaskStep({ day, session, onComplete }: OpenTaskStepProps) {
           </div>
           <div className="flex-1">
             <h2 className="font-semibold text-gray-900">
-              {openTask.sectionTitle || 'Real-World Challenge'}
+              {openTask.sectionTitle || 'Real-World Task'}
             </h2>
             <p className="text-sm text-gray-500">
               {openTask.sectionSubtitle || 'Take your learning beyond the screen'}
@@ -167,7 +167,7 @@ export function OpenTaskStep({ day, session, onComplete }: OpenTaskStepProps) {
                 <div className="w-5 h-5 rounded border-2 border-gray-300 group-hover:border-purple-400 flex items-center justify-center transition-colors">
                   <Check className="w-3 h-3 text-transparent group-hover:text-purple-400" />
                 </div>
-                <span>I've completed this challenge</span>
+                <span>I've completed this task</span>
               </button>
             ) : (
               <div className="flex items-center gap-2 text-sm text-green-600">
