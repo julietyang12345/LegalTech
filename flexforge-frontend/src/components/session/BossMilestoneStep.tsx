@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, ArrowRight, CheckCircle2, Lightbulb, ChevronDown, ChevronUp, BookOpen, ChevronRight, ChevronLeft, RotateCcw, ExternalLink, Monitor, Copy, Check, Share2, PenLine, Play, AlertTriangle } from 'lucide-react';
+import { Trophy, ArrowRight, CheckCircle2, Lightbulb, ChevronDown, ChevronUp, BookOpen, ChevronRight, ChevronLeft, RotateCcw, ExternalLink, Monitor, Copy, Check, Share2, PenLine, Play, AlertTriangle, Sparkles, Code2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Card, Button, ProgressBar, ExerciseLoadingScreen } from '@/components/common';
 import { StepLayout } from './StepLayout';
@@ -44,6 +44,98 @@ const isProjectBasedCurriculum = (session: Session): boolean => {
   return session.curriculum.metadata?.isProjectBased !== false &&
     (session.curriculum.bossProjects?.length ?? 0) > 0;
 };
+
+// Simple inline loader for boss milestone content
+function BossMilestoneLoader({ dayTitle, bossTitle }: { dayTitle: string; bossTitle?: string }) {
+  return (
+    <div className="space-y-4">
+      {/* Progress card skeleton */}
+      <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center">
+                <Trophy className="w-6 h-6 text-purple-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">{bossTitle || 'Boss Project'}</h3>
+                <p className="text-sm text-gray-500">Building your project...</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Loading indicator */}
+          <div className="flex items-center gap-2 mb-3">
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+            >
+              <Sparkles className="w-4 h-4 text-purple-500" />
+            </motion.div>
+            <span className="text-sm font-medium text-purple-600">Preparing your coding challenge...</span>
+          </div>
+
+          {/* Progress bar skeleton */}
+          <div className="h-2 bg-purple-100 rounded-full overflow-hidden">
+            <motion.div
+              className="h-full bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400"
+              style={{ backgroundSize: '200% 100%' }}
+              animate={{ backgroundPosition: ['0% 0%', '100% 0%'] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+            />
+          </div>
+        </div>
+      </Card>
+
+      {/* Task card skeleton */}
+      <Card className="border-2 border-purple-200">
+        <div className="p-6">
+          <div className="mb-4">
+            <h3 className="font-bold text-lg text-gray-900 mb-1">
+              Today: {dayTitle}
+            </h3>
+          </div>
+
+          {/* Task skeleton */}
+          <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg mb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Code2 className="w-5 h-5 text-purple-500" />
+              <span className="text-sm font-medium text-purple-700">Loading task details...</span>
+            </div>
+
+            {/* Skeleton lines */}
+            {[1, 2, 3].map((i) => (
+              <motion.div
+                key={i}
+                className="h-4 bg-gradient-to-r from-purple-100 via-purple-200 to-purple-100 rounded mb-2"
+                style={{ width: `${85 - i * 15}%`, backgroundSize: '200% 100%' }}
+                animate={{ backgroundPosition: ['0% 0%', '100% 0%'] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: 'linear', delay: i * 0.1 }}
+              />
+            ))}
+          </div>
+
+          {/* Bouncing dots */}
+          <div className="flex justify-center gap-1.5 mt-4">
+            {[0, 1, 2].map((i) => (
+              <motion.div
+                key={i}
+                className="w-2 h-2 rounded-full bg-purple-400"
+                animate={{ y: [0, -6, 0] }}
+                transition={{
+                  duration: 0.6,
+                  repeat: Infinity,
+                  delay: i * 0.15,
+                  ease: 'easeInOut',
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
 
 // External tool suggestions based on language
 const getExternalToolSuggestions = (language: string): { name: string; url: string; description: string }[] => {
@@ -805,9 +897,33 @@ interface ProjectMilestoneStepProps {
 
 function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: ProjectMilestoneStepProps) {
   const navigate = useNavigate();
-  const { saveTaskProgress, getTaskProgress } = useSessionStore();
+  const { saveTaskProgress, getTaskProgress, isDeferredLoading, isDeferredLoaded } = useSessionStore();
   const { addSystemMessage } = useCompanionStore();
   const { setShareData } = useCommunityShareStore();
+
+  // Milestone data comes pre-merged from sessionStore into day.bossMilestone
+  // Also check deferredContent for backward compatibility (cast to any for type flexibility)
+  const milestone = day.bossMilestone || (day.deferredContent as any)?.bossMilestone;
+
+  // Show loading when deferred content is loading or not yet loaded
+  // Check if milestone exists AND has actual content (not just stale preview data)
+  const hasMilestoneContent = milestone?.solutionCode || milestone?.microTask || milestone?.challengeOptions;
+
+  if (isDeferredLoading || (!isDeferredLoaded && !hasMilestoneContent)) {
+    return (
+      <StepLayout
+        icon={Trophy}
+        iconGradient="from-purple-400 to-pink-500"
+        title="Boss Milestone"
+        subtitle="Loading today's project task..."
+      >
+        <BossMilestoneLoader
+          dayTitle={day.title}
+          bossTitle={session.curriculum.bossProjects?.[0]?.title}
+        />
+      </StepLayout>
+    );
+  }
 
   // Load saved progress for boss milestone
   const savedProgress = getTaskProgress(day.day, 'bossMilestone');
@@ -852,9 +968,6 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
 
   // Use currentBoss if available, otherwise nextBoss
   const activeBoss = currentBoss || nextBoss;
-
-  // Milestone data comes pre-merged from sessionStore into day.bossMilestone
-  const milestone = day.bossMilestone;
 
   // Fallback task description from skeleton preview (if milestone not loaded yet)
   const taskPreview = day.bossMilestonePreview || day.skeleton?.task1Preview;
@@ -1232,7 +1345,7 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
                     <div className="p-3 bg-white border border-gray-200 rounded-lg mb-4">
                       <p className="text-sm font-medium text-gray-700 mb-2">Setup:</p>
                       <ul className="text-sm text-gray-600 space-y-1">
-                        {(milestone?.setupInstructions || activeBoss?.setupInstructions)?.steps?.map((step, i) => (
+                        {(milestone?.setupInstructions || activeBoss?.setupInstructions)?.steps?.map((step: string, i: number) => (
                           <li key={i} className="flex items-start gap-2">
                             <span className="text-indigo-500">{i + 1}.</span>
                             <span>{step}</span>
@@ -1340,7 +1453,7 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
                     <div className="mb-4">
                       <p className="text-sm font-medium text-gray-700 mb-2">Setup Steps:</p>
                       <ul className="space-y-2">
-                        {(makeItRunSetupSteps.length > 0 ? makeItRunSetupSteps : milestone?.setupInstructions?.steps || []).map((step, i) => (
+                        {(makeItRunSetupSteps.length > 0 ? makeItRunSetupSteps : milestone?.setupInstructions?.steps || []).map((step: string, i: number) => (
                           <li key={i} className="flex items-start gap-2 text-sm">
                             <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-xs font-medium flex-shrink-0">
                               {i + 1}
@@ -1365,7 +1478,7 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
                         <p className="text-sm font-medium text-amber-800">Things to watch out for:</p>
                       </div>
                       <ul className="space-y-1">
-                        {possibleIssues.map((issue, i) => (
+                        {possibleIssues.map((issue: string, i: number) => (
                           <li key={i} className="text-sm text-amber-700 flex items-start gap-2">
                             <span className="text-amber-400">•</span>
                             <span>{issue}</span>
@@ -1451,7 +1564,7 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
             <div className="p-3 bg-white/80 border border-blue-100 rounded-lg mb-4">
               <p className="text-sm font-medium text-gray-700 mb-2">Setup:</p>
               <ul className="text-sm text-gray-600 space-y-1">
-                {(milestone?.setupInstructions || activeBoss?.setupInstructions)?.steps?.map((step, i) => (
+                {(milestone?.setupInstructions || activeBoss?.setupInstructions)?.steps?.map((step: string, i: number) => (
                   <li key={i} className="flex items-start gap-2">
                     <span className="text-blue-500">{i + 1}.</span>
                     <span>{step}</span>

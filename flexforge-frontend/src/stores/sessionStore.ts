@@ -645,17 +645,30 @@ export const useSessionStore = create<SessionState>()(
     if (!activeSession) throw new Error('No active session');
 
     // Check if deferred content is already cached in session data (skip API call)
-    // This works even if zustand state (isDeferredLoaded) wasn't properly set
+    // Deferred content (task1, reflection, etc.) is spread onto the day object, not in a nested deferredContent
     const existingDay = activeSession.curriculum.days.find((d) => d.day === dayNumber);
-    if (existingDay?.deferredLoaded && existingDay?.deferredContent) {
-      console.log(`[loadDayDeferredContent] Day ${dayNumber} deferred already cached, skipping API call`);
-      // Update zustand state to reflect cached content
-      set({
+
+    // Check if day has deferred content by looking at task1 or detailsLoaded flag
+    // The content is spread directly onto the day, not nested in deferredContent
+    if (existingDay?.detailsLoaded && (existingDay?.task1 || existingDay?.reflection)) {
+      // Reconstruct the deferred content from the day's top-level properties
+      const cachedDeferredContent = {
+        task1: existingDay.task1,
+        reflection: existingDay.reflection,
+        intensivePractice: existingDay.intensivePractice,
+        openTask: existingDay.openTask,
+      } as DayDeferredContent;
+
+      // Update zustand state AND merge into currentDay to reflect cached content
+      set((state) => ({
         isDeferredLoaded: true,
         isDeferredLoading: false,
-        deferredContent: existingDay.deferredContent as DayDeferredContent,
-      });
-      return existingDay.deferredContent as DayDeferredContent;
+        deferredContent: cachedDeferredContent,
+        currentDay: state.currentDay?.day === dayNumber
+          ? { ...state.currentDay, ...cachedDeferredContent, detailsLoaded: true }
+          : state.currentDay,
+      }));
+      return cachedDeferredContent;
     }
 
     set({ isDeferredLoading: true });

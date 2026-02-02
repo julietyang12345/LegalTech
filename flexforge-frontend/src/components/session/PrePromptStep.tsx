@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Lightbulb, RotateCcw, AlertTriangle, X } from 'lucide-react';
-import { Card, Button, ExerciseLoadingScreen } from '@/components/common';
+import { Lightbulb, RotateCcw, AlertTriangle, X, Sparkles } from 'lucide-react';
+import { Card, Button } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
@@ -13,26 +13,99 @@ interface PrePromptStepProps {
   onComplete: () => void;
 }
 
+// Simple inline loader for prePrompt content
+function PrePromptLoader({ dayTitle }: { dayTitle: string }) {
+  return (
+    <Card className="bg-gradient-to-br from-brand-50 to-white border border-brand-100">
+      <div className="p-6">
+        {/* Show actual "Today you'll learn" text */}
+        <p className="text-lg text-gray-800 leading-relaxed mb-6">
+          Today you'll learn about <span className="font-medium text-brand-600">{dayTitle}</span>
+        </p>
+
+        {/* Loading indicator for prime questions */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 mb-2">
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+            >
+              <Sparkles className="w-4 h-4 text-brand-500" />
+            </motion.div>
+            <span className="text-sm font-medium text-brand-600">Preparing your learning journey...</span>
+          </div>
+
+          {/* Skeleton loading for questions */}
+          {[1, 2, 3].map((i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.1 }}
+              className="flex items-start gap-3 p-3 bg-white rounded-lg border border-brand-100"
+            >
+              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-100/50
+                             flex items-center justify-center">
+                <motion.div
+                  className="w-3 h-3 rounded-full bg-brand-200"
+                  animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.2 }}
+                />
+              </span>
+              <div className="flex-1 space-y-2">
+                <motion.div
+                  className="h-4 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded"
+                  style={{ width: `${70 + i * 10}%` }}
+                  animate={{ backgroundPosition: ['0% 0%', '100% 0%'] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+                />
+              </div>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Bouncing dots */}
+        <div className="flex justify-center gap-1.5 mt-6">
+          {[0, 1, 2].map((i) => (
+            <motion.div
+              key={i}
+              className="w-2 h-2 rounded-full bg-brand-400"
+              animate={{ y: [0, -6, 0] }}
+              transition={{
+                duration: 0.6,
+                repeat: Infinity,
+                delay: i * 0.15,
+                ease: 'easeInOut',
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export function PrePromptStep({ day, session }: PrePromptStepProps) {
   const { regenerateDayContent, isCoreLoaded } = useSessionStore();
   const { addSystemMessage } = useCompanionStore();
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
 
-  // Show loading when core content not yet loaded
+  // Show simpler inline loading when core content not yet loaded
   if (!isCoreLoaded && !day.prePrompt) {
     return (
       <StepLayout
         icon={Lightbulb}
         iconGradient="from-brand-400 to-brand-500"
         title="Get Ready 🧠"
-        subtitle="Loading today's content..."
+        subtitle="Take 30 seconds to prime your brain"
       >
-        <ExerciseLoadingScreen
-          type="task"
-          skillName={session.skillName}
-          dayNumber={day.day}
-        />
+        <PrePromptLoader dayTitle={day.title} />
+
+        {/* Tip - same as loaded state */}
+        <div className="text-center text-sm text-gray-500">
+          💡 Don't worry about knowing the answers yet - just let your brain start connecting!
+        </div>
       </StepLayout>
     );
   }

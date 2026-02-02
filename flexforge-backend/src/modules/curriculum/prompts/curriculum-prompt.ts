@@ -856,7 +856,11 @@ REQUIRED FIELDS:
 - challengeOptions:
   - writeYourself:
     - description: "Write this code from scratch to prove you understand it"
-    - hints: 3 progressive hints if user gets stuck (conceptual → specific → detailed)
+    - hints: 3 progressive hints if user gets stuck
+      - For Day 2+: Reference what user already built (e.g., "You have the GET handler from Day 1, now add POST to the same file")
+      - Level 1: Conceptual - what approach, how it connects to existing code
+      - Level 2: Specific - key functions/methods to add, which file to modify
+      - Level 3: Detailed - almost the answer, show exactly where in existing code to add
   - makeItRun:
     - description: "Copy this code and make it run on your machine"
     - setupSteps: Clear steps to get it running (files, commands)
@@ -916,9 +920,9 @@ Output valid JSON.`;
       "writeYourself": {
         "description": "Write this code from scratch to prove you understand it",
         "hints": [
-          {"level": 1, "hint": "REQUIRED: Conceptual hint - what approach to take"},
-          {"level": 2, "hint": "REQUIRED: More specific hint - key functions/methods"},
-          {"level": 3, "hint": "REQUIRED: Detailed guidance - almost the answer"}
+          {"level": 1, "hint": "REQUIRED: Conceptual hint - what approach, how it builds on existing code (Day 2+: reference what they built)"},
+          {"level": 2, "hint": "REQUIRED: Specific hint - key functions/methods, which file to modify"},
+          {"level": 3, "hint": "REQUIRED: Detailed hint - almost the answer, exactly where to add in existing code"}
         ]
       },
       "makeItRun": {

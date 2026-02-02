@@ -1783,6 +1783,25 @@ Return JSON only:
         }
       : undefined;
 
+    // Fetch previous day's deferred content from cache for cumulative code building
+    // This is needed because deferred content is cached separately, not stored in curriculum object
+    if (previousDay && dayNumber > 1) {
+      const previousDayCacheKey = await this.buildDayCacheKey(
+        curriculum.metadata,
+        dayNumber - 1,
+        'deferred',
+      );
+      const previousDayDeferred =
+        await this.cacheService.getDayContent(previousDayCacheKey);
+      if (previousDayDeferred?.bossMilestone?.solutionCode) {
+        // Inject previous day's deferred content so buildContentGenerationContext can find it
+        previousDay.deferredContent = previousDayDeferred;
+        this.logger.log(
+          `📦 Fetched Day ${dayNumber - 1} solutionCode for cumulative building`,
+        );
+      }
+    }
+
     // Build unified content generation context
     const ctx = buildContentGenerationContext(curriculum, dayNumber, {
       userTier,
@@ -2096,6 +2115,25 @@ Return JSON only:
           whatsFoggy: previousDay.reflectionData.whatsFoggy,
         }
       : undefined;
+
+    // Fetch previous day's deferred content from cache for cumulative code building
+    // This is needed because deferred content is cached separately, not stored in curriculum object
+    if (previousDay && dayNumber > 1) {
+      const previousDayCacheKey = await this.buildDayCacheKey(
+        curriculum.metadata,
+        dayNumber - 1,
+        'deferred',
+      );
+      const previousDayDeferred =
+        await this.cacheService.getDayContent(previousDayCacheKey);
+      if (previousDayDeferred?.bossMilestone?.solutionCode) {
+        // Inject previous day's deferred content so buildContentGenerationContext can find it
+        previousDay.deferredContent = previousDayDeferred;
+        this.logger.log(
+          `📦 Fetched Day ${dayNumber - 1} solutionCode for cumulative building (streaming)`,
+        );
+      }
+    }
 
     const ctx = buildContentGenerationContext(curriculum, dayNumber, {
       userTier,
