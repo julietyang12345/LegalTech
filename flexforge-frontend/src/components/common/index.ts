@@ -9,6 +9,7 @@ export { GeneratingScreen } from './GeneratingScreen';
 export type { LoadingStep } from './GeneratingScreen';
 export { ExerciseLoadingScreen } from './ExerciseLoadingScreen';
 export { Toast, QuotaExceededModal } from './Toast';
+export { FakePaywallModal } from './FakePaywallModal';
 export type { ToastType } from './Toast';
 export { MultipleChoiceQuestion } from './MultipleChoiceQuestion';
 export type { MultipleChoiceQuestionProps } from './MultipleChoiceQuestion';

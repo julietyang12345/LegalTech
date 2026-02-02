@@ -607,6 +607,54 @@ export class SessionService {
   // ═══════════════════════════════════════════════════
 
   /**
+   * Check regeneration rate limit status
+   * Frontend can use this to show upgrade panel before attempting regeneration
+   */
+  async checkRegenRateLimit(
+    sessionId: string,
+    userId: string,
+    dayNumber: number,
+  ): Promise<{
+    canRegenerate: boolean;
+    used: number;
+    limit: number;
+    remaining: number;
+    requiresUpgrade: boolean;
+    currentTier: string;
+    upgradeMessage: string;
+  }> {
+    const user = await this.userService.findById(userId);
+    const dailyLimits = user.getDailyLimits();
+    const regenLimit = dailyLimits.dayContentRegens;
+    const regenCount = await this.cacheService.getDayRegenCount(sessionId, dayNumber);
+    const userTier = user.getEffectiveTier();
+    const remaining = Math.max(0, regenLimit - regenCount);
+    const canRegenerate = remaining > 0;
+
+    let upgradeMessage = '';
+    let requiresUpgrade = false;
+
+    if (!canRegenerate) {
+      requiresUpgrade = userTier === 'FREE' || userTier === 'PRO';
+      upgradeMessage = userTier === 'FREE'
+        ? 'Upgrade to Pro for more daily regenerations'
+        : userTier === 'PRO'
+          ? 'Upgrade to Premium for unlimited regenerations'
+          : 'Try again tomorrow';
+    }
+
+    return {
+      canRegenerate,
+      used: regenCount,
+      limit: regenLimit,
+      remaining,
+      requiresUpgrade,
+      currentTier: userTier,
+      upgradeMessage,
+    };
+  }
+
+  /**
    * Start a day - CORE content only (fast initial load)
    * Returns: prePrompt, video, foundationCards, task1
    * With variant tracking and rate limiting for regeneration
@@ -685,8 +733,22 @@ export class SessionService {
         regenLimit,
       );
       if (isLimitReached) {
+        const regenCount = await this.cacheService.getDayRegenCount(sessionId, dayNumber);
+        const userTier = user.getEffectiveTier();
         throw new HttpException(
-          `Day content regeneration limit reached (${regenLimit} per day). Try again tomorrow or continue with current content.`,
+          {
+            message: `Daily regeneration limit reached (${regenLimit} per day)`,
+            code: 'REGEN_LIMIT_REACHED',
+            requiresUpgrade: userTier === 'FREE' || userTier === 'PRO',
+            currentTier: userTier,
+            currentLimit: regenLimit,
+            currentUsage: regenCount,
+            upgradeMessage: userTier === 'FREE'
+              ? 'Upgrade to Pro for more daily regenerations'
+              : userTier === 'PRO'
+                ? 'Upgrade to Premium for unlimited regenerations'
+                : 'Try again tomorrow',
+          },
           HttpStatus.TOO_MANY_REQUESTS,
         );
       }

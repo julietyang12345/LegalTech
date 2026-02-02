@@ -32,7 +32,8 @@ import {
   Zap,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import { Button, Card, Input } from '@/components/common';
+import { useNavigate } from 'react-router-dom';
+import { Button, Card, Input, FakePaywallModal } from '@/components/common';
 import { sessionService } from '@/services/sessionService';
 import { authService } from '@/services/authService';
 
@@ -1100,10 +1101,17 @@ function BottomControlPanel({
   onStartLearning: (skill: string) => void;
   onCloseResults: () => void;
 }) {
+  const [showPaywallModal, setShowPaywallModal] = useState(false);
   const rateLimit = canUseAIIdeas(isPro, isPremium, isAdmin);
   const hasSelection = selectedSkills.length > 0;
 
   return (
+    <>
+    <FakePaywallModal
+      isOpen={showPaywallModal}
+      onClose={() => setShowPaywallModal(false)}
+      source="showcase_ai"
+    />
     <div className="mt-4 space-y-3">
       {/* Top row: Selected skills + AI action buttons */}
       <div className="flex gap-3">
@@ -1198,10 +1206,20 @@ function BottomControlPanel({
               Related
             </motion.button>
           </div>
-          <p className="text-[9px] text-gray-400 mt-1.5">
-            {isAdmin ? '🔑 Admin' : isPremium ? '✨ Unlimited' : isPro ? '⭐ 1/day' : '🌱 1/week'}
-            {!rateLimit.allowed && <span className="text-amber-500 ml-1">{rateLimit.nextAvailable}</span>}
-          </p>
+          <div className="flex items-center gap-2 mt-1.5">
+            <p className="text-[9px] text-gray-400">
+              {isAdmin ? '🔑 Admin' : isPremium ? '✨ Unlimited' : isPro ? '⭐ 1/day' : '🌱 1/week'}
+              {!rateLimit.allowed && <span className="text-amber-500 ml-1">{rateLimit.nextAvailable}</span>}
+            </p>
+            {!isPremium && !isAdmin && (
+              <button
+                onClick={() => setShowPaywallModal(true)}
+                className="text-[9px] text-brand-500 hover:text-brand-600 font-medium hover:underline"
+              >
+                Upgrade for more AI analysis →
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1382,6 +1400,7 @@ function BottomControlPanel({
         )}
       </AnimatePresence>
     </div>
+    </>
   );
 }
 

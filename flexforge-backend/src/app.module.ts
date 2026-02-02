@@ -21,6 +21,7 @@ import {
   DayContentServe,
 } from './database/entities/curriculum-cache.entity';
 import { AuditLog } from './database/entities/audit-log.entity';
+import { Waitlist } from './database/entities/waitlist.entity';
 
 // Modules
 import { AuthModule } from './modules/auth/auth.module';
@@ -34,6 +35,7 @@ import { CompanionModule } from './modules/companion/companion.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { TtsModule } from './modules/tts/tts.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { WaitlistModule } from './modules/waitlist/waitlist.module';
 
 @Module({
   imports: [
@@ -66,6 +68,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
           DayContentCacheVariant,
           DayContentServe,
           AuditLog,
+          Waitlist,
         ],
         synchronize: configService.get('nodeEnv') === 'development',
         logging: configService.get('nodeEnv') === 'development',
@@ -100,6 +103,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     OnboardingModule,
     TtsModule,
     AnalyticsModule,
+    WaitlistModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -513,8 +513,10 @@ export function SessionPage() {
       // Only skip if explicitly marked as no practice day (rare edge case)
       return true;
     }
-    // Skip foundationCards if not present (check both regular and language-specific cards)
+    // Skip foundationCards only if core is loaded AND no cards present
+    // While loading, always show the step (component will show its own loader)
     if (step === 'foundationCards') {
+      if (!isCoreLoaded) return true; // Still loading, show the step
       const hasCards = (currentDay?.foundationCards && currentDay.foundationCards.length > 0) ||
                        (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
       if (!hasCards) return false;
@@ -748,21 +750,24 @@ export function SessionPage() {
     detailsLoaded: false,
   };
 
-  // Regenerating day content - show loading screen regardless of currentDay state
+  // Regenerating day content - show loading inside FocusModeLayout to keep step circles visible
   if (isRegenerating) {
     const dayNum = currentDay?.day || activeSession.currentDay;
     return (
-      <GeneratingScreen
-        steps={[
-          { icon: Sparkles, text: 'Generating fresh content...', duration: 20000 },
-          { icon: Target, text: 'Creating new exercises...', duration: 20000 },
-          { icon: BookOpen, text: 'Finding a new video...', duration: 22000 },
-          { icon: Trophy, text: 'Preparing your refreshed session...', duration: 15000 },
-        ]}
-        title={`Regenerating Day ${dayNum}`}
-        subtitle={`Creating fresh ${activeSession.skillName} content just for you`}
-        timeEstimate="This usually takes about 90 seconds"
-      />
+      <FocusModeLayout>
+        <GeneratingScreen
+          inline
+          steps={[
+            { icon: Sparkles, text: 'Generating fresh content...', duration: 2500 },
+            { icon: Target, text: 'Creating new exercises...', duration: 2500 },
+            { icon: BookOpen, text: 'Finding a new video...', duration: 2500 },
+            { icon: Trophy, text: 'Preparing your refreshed session...', duration: 2500 },
+          ]}
+          title={`Regenerating Day ${dayNum}`}
+          subtitle={`Creating fresh ${activeSession.skillName} content just for you`}
+          timeEstimate="This usually takes about 10 seconds"
+        />
+      </FocusModeLayout>
     );
   }
 

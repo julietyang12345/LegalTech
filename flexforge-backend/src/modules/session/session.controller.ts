@@ -193,12 +193,49 @@ export class SessionController {
       coreContent: result.coreContent,
       tokensUsed: result.tokensUsed,
       fromCache: result.fromCache,
+      variantId: result.variantId,
+      // Rate limit info for frontend
+      rateLimit: {
+        used: result.regenCount || 0,
+        limit: result.regenLimit || 0,
+        remaining: Math.max(0, (result.regenLimit || 0) - (result.regenCount || 0)),
+      },
     };
   }
 
   // SSE STREAMING DISABLED - using regular API calls instead
   // @Sse(':id/days/:dayNumber/start-core-stream')
   // startDayCoreStream(...) { ... }
+
+  /**
+   * GET /api/v1/sessions/:id/days/:dayNumber/regen-status
+   * Check regeneration rate limit status before attempting regeneration
+   * Frontend can use this to show upgrade panel preemptively
+   */
+  @Get(':id/days/:dayNumber/regen-status')
+  async checkRegenStatus(
+    @Request() req,
+    @Param('id') id: string,
+    @Param('dayNumber') dayNumber: string,
+  ) {
+    const result = await this.sessionService.checkRegenRateLimit(
+      id,
+      req.user.id,
+      parseInt(dayNumber, 10),
+    );
+
+    return {
+      canRegenerate: result.canRegenerate,
+      rateLimit: {
+        used: result.used,
+        limit: result.limit,
+        remaining: result.remaining,
+      },
+      requiresUpgrade: result.requiresUpgrade,
+      currentTier: result.currentTier,
+      upgradeMessage: result.upgradeMessage,
+    };
+  }
 
   /**
    * POST /api/v1/sessions/:id/days/:dayNumber/load-deferred

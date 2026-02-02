@@ -388,7 +388,7 @@ function PricingSection() {
     },
     {
       name: 'Pro',
-      price: '$15',
+      price: '$20',
       period: '/month',
       description: 'For serious learners',
       features: [
@@ -404,7 +404,7 @@ function PricingSection() {
     },
     {
       name: 'Premium',
-      price: '$39',
+      price: '$50',
       period: '/month',
       description: 'Maximum learning power',
       features: [

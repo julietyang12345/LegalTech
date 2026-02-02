@@ -15,9 +15,11 @@ interface GeneratingScreenProps {
   title: string;
   subtitle: string;
   timeEstimate: string;
+  /** When true, removes min-h-screen and background for embedding in layouts */
+  inline?: boolean;
 }
 
-export function GeneratingScreen({ steps, title, subtitle, timeEstimate }: GeneratingScreenProps) {
+export function GeneratingScreen({ steps, title, subtitle, timeEstimate, inline = false }: GeneratingScreenProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
 
@@ -45,7 +47,7 @@ export function GeneratingScreen({ steps, title, subtitle, timeEstimate }: Gener
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="min-h-screen bg-gradient-to-br from-brand-50 to-gray-50 py-12 px-4"
+      className={inline ? "py-8 px-4" : "min-h-screen bg-gradient-to-br from-brand-50 to-gray-50 py-12 px-4"}
     >
       <div className="max-w-md mx-auto">
         <motion.div
