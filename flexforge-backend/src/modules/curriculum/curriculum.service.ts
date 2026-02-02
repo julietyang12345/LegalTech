@@ -1745,29 +1745,34 @@ Return JSON only:
     foundationCardConcepts?: string[],
     improvementAreas?: string[],
     lessOfAreas?: string[],
+    forceRegenerate?: boolean,
   ): Promise<DayDeferredResult> {
-    this.logger.log(`⏳ Generating Day ${dayNumber} DEFERRED content...`);
+    this.logger.log(`⏳ Generating Day ${dayNumber} DEFERRED content...${forceRegenerate ? ' (force regenerate - skipping cache)' : ''}`);
 
     const dayOverview = curriculum.days.find((d: any) => d.day === dayNumber);
     if (!dayOverview) {
       throw new BadRequestException(`Day ${dayNumber} not found in curriculum`);
     }
 
-    // Check cache first
+    // Build cache key (used for both reading and writing)
     const cacheKey = await this.buildDayCacheKey(
       curriculum.metadata,
       dayNumber,
       'deferred',
     );
-    const cached = await this.cacheService.getDayContent(cacheKey);
-    if (cached) {
-      this.logger.log(`📦 Day ${dayNumber} DEFERRED cache HIT`);
-      return {
-        deferredContent: cached,
-        tokensUsed: 0,
-        cost: 0,
-        fromCache: true,
-      };
+
+    // Check cache first (skip if force regenerating)
+    if (!forceRegenerate) {
+      const cached = await this.cacheService.getDayContent(cacheKey);
+      if (cached) {
+        this.logger.log(`📦 Day ${dayNumber} DEFERRED cache HIT`);
+        return {
+          deferredContent: cached,
+          tokensUsed: 0,
+          cost: 0,
+          fromCache: true,
+        };
+      }
     }
 
     // Get reflection data from previous day for personalization
@@ -1791,15 +1796,28 @@ Return JSON only:
         dayNumber - 1,
         'deferred',
       );
+
       const previousDayDeferred =
         await this.cacheService.getDayContent(previousDayCacheKey);
-      if (previousDayDeferred?.bossMilestone?.solutionCode) {
+
+      // Check for solutionCode (new) or solution/starterCode (legacy)
+      const prevMilestone = previousDayDeferred?.bossMilestone;
+      const hasPreviousCode = prevMilestone?.solutionCode || prevMilestone?.solution || prevMilestone?.starterCode;
+
+      if (hasPreviousCode) {
         // Inject previous day's deferred content so buildContentGenerationContext can find it
         previousDay.deferredContent = previousDayDeferred;
+        const codeField = prevMilestone?.solutionCode ? 'solutionCode' : prevMilestone?.solution ? 'solution' : 'starterCode';
         this.logger.log(
-          `📦 Fetched Day ${dayNumber - 1} solutionCode for cumulative building`,
+          `📦 Fetched Day ${dayNumber - 1} code for cumulative building (field: ${codeField}, length: ${(prevMilestone?.solutionCode || prevMilestone?.solution || prevMilestone?.starterCode)?.length})`,
+        );
+      } else {
+        this.logger.warn(
+          `⚠️ Day ${dayNumber - 1} deferred content found but no code field (solutionCode/solution/starterCode)`,
         );
       }
+    } else if (dayNumber > 1) {
+      this.logger.warn(`⚠️ No previousDay data available for Day ${dayNumber}, cumulative building not possible`);
     }
 
     // Build unified content generation context
@@ -1989,6 +2007,11 @@ Return JSON only:
           deferredContent.openTask = lightweightContent.openTask;
           this.logger.log(`✅ Day ${dayNumber} openTask generated with Haiku`);
         }
+        // Add primeQuestions (Think About) from Haiku - frontend displays alongside prePrompt
+        if (lightweightContent.primeQuestions) {
+          deferredContent.primeQuestions = lightweightContent.primeQuestions;
+          this.logger.log(`✅ Day ${dayNumber} primeQuestions generated with Haiku`);
+        }
       }
     } catch (lightError) {
       // Non-fatal: keep Sonnet's reflection/openTask if Haiku fails
@@ -2036,11 +2059,12 @@ Return JSON only:
     foundationCardConcepts?: string[],
     improvementAreas?: string[],
     lessOfAreas?: string[],
+    forceRegenerate?: boolean,
   ): AsyncGenerator<{
     event: string;
     data: any;
   }> {
-    this.logger.log(`⏳ Streaming Day ${dayNumber} DEFERRED content...`);
+    this.logger.log(`⏳ Streaming Day ${dayNumber} DEFERRED content...${forceRegenerate ? ' (force regenerate - skipping cache)' : ''}`);
 
     const dayOverview = curriculum.days.find((d: any) => d.day === dayNumber);
     if (!dayOverview) {
@@ -2051,56 +2075,58 @@ Return JSON only:
       return;
     }
 
-    // Check cache first
+    // Check cache first (skip if force regenerating)
     const cacheKey = await this.buildDayCacheKey(
       curriculum.metadata,
       dayNumber,
       'deferred',
     );
-    const cached = await this.cacheService.getDayContent(cacheKey);
-    if (cached) {
-      this.logger.log(`📦 Day ${dayNumber} DEFERRED cache HIT (streaming)`);
-      // Yield cached content piece by piece
-      if (cached.task1) {
+    if (!forceRegenerate) {
+      const cached = await this.cacheService.getDayContent(cacheKey);
+      if (cached) {
+        this.logger.log(`📦 Day ${dayNumber} DEFERRED cache HIT (streaming)`);
+        // Yield cached content piece by piece
+        if (cached.task1) {
+          yield {
+            event: CurriculumService.DEFERRED_STREAM_EVENTS.TASK1,
+            data: cached.task1,
+          };
+        }
+        if (cached.bossMilestone) {
+          yield {
+            event: CurriculumService.DEFERRED_STREAM_EVENTS.BOSS_MILESTONE,
+            data: cached.bossMilestone,
+          };
+        }
+        if (cached.intensivePractice) {
+          yield {
+            event: CurriculumService.DEFERRED_STREAM_EVENTS.INTENSIVE_PRACTICE,
+            data: cached.intensivePractice,
+          };
+        }
+        if (cached.openTask) {
+          yield {
+            event: CurriculumService.DEFERRED_STREAM_EVENTS.OPEN_TASK,
+            data: cached.openTask,
+          };
+        }
+        if (cached.reflection) {
+          yield {
+            event: CurriculumService.DEFERRED_STREAM_EVENTS.REFLECTION,
+            data: cached.reflection,
+          };
+        }
         yield {
-          event: CurriculumService.DEFERRED_STREAM_EVENTS.TASK1,
-          data: cached.task1,
+          event: CurriculumService.DEFERRED_STREAM_EVENTS.COMPLETE,
+          data: {
+            deferredContent: cached,
+            tokensUsed: 0,
+            cost: 0,
+            fromCache: true,
+          },
         };
+        return;
       }
-      if (cached.bossMilestone) {
-        yield {
-          event: CurriculumService.DEFERRED_STREAM_EVENTS.BOSS_MILESTONE,
-          data: cached.bossMilestone,
-        };
-      }
-      if (cached.intensivePractice) {
-        yield {
-          event: CurriculumService.DEFERRED_STREAM_EVENTS.INTENSIVE_PRACTICE,
-          data: cached.intensivePractice,
-        };
-      }
-      if (cached.openTask) {
-        yield {
-          event: CurriculumService.DEFERRED_STREAM_EVENTS.OPEN_TASK,
-          data: cached.openTask,
-        };
-      }
-      if (cached.reflection) {
-        yield {
-          event: CurriculumService.DEFERRED_STREAM_EVENTS.REFLECTION,
-          data: cached.reflection,
-        };
-      }
-      yield {
-        event: CurriculumService.DEFERRED_STREAM_EVENTS.COMPLETE,
-        data: {
-          deferredContent: cached,
-          tokensUsed: 0,
-          cost: 0,
-          fromCache: true,
-        },
-      };
-      return;
     }
 
     // Build params for prompt (same as non-streaming)
@@ -2126,11 +2152,14 @@ Return JSON only:
       );
       const previousDayDeferred =
         await this.cacheService.getDayContent(previousDayCacheKey);
-      if (previousDayDeferred?.bossMilestone?.solutionCode) {
+      // Check for solutionCode (new) or solution/starterCode (legacy)
+      const prevMilestoneStreaming = previousDayDeferred?.bossMilestone;
+      const hasPreviousCodeStreaming = prevMilestoneStreaming?.solutionCode || prevMilestoneStreaming?.solution || prevMilestoneStreaming?.starterCode;
+      if (hasPreviousCodeStreaming) {
         // Inject previous day's deferred content so buildContentGenerationContext can find it
         previousDay.deferredContent = previousDayDeferred;
         this.logger.log(
-          `📦 Fetched Day ${dayNumber - 1} solutionCode for cumulative building (streaming)`,
+          `📦 Fetched Day ${dayNumber - 1} code for cumulative building (streaming)`,
         );
       }
     }

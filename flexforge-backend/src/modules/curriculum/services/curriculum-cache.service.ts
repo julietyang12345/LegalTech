@@ -798,6 +798,38 @@ Return ONLY the normalized skill name, nothing else.`;
     this.logger.log('Day content in-memory cache cleared');
   }
 
+  /**
+   * Clear a specific day content entry from L1 (in-memory) cache only.
+   * Does NOT delete from L2 (database) to preserve variant tracking and regen rate metrics.
+   * Use this when force regenerating to bypass in-memory cache while keeping quality tracking.
+   */
+  clearDayContentFromMemory(key: string): void {
+    this.dayContentCache.delete(key);
+    this.logger.log(`🗑️ Cleared day content from L1 cache: ${key}`);
+  }
+
+  /**
+   * Delete a day content entry from both L1 (in-memory) and L2 (database) cache.
+   * WARNING: This removes variant tracking data. Use only for admin cleanup.
+   * For normal regeneration, use clearDayContentFromMemory() instead.
+   */
+  async deleteDayContent(cacheKey: string): Promise<boolean> {
+    // Clear from L1 first
+    this.dayContentCache.delete(cacheKey);
+
+    // Delete from L2 (database)
+    const result = await this.dayContentRepo.delete({ cacheKey });
+    const deleted = (result.affected || 0) > 0;
+
+    if (deleted) {
+      this.logger.log(`🗑️ Deleted day content from L1 and L2 cache: ${cacheKey}`);
+    } else {
+      this.logger.log(`🗑️ Day content not found in L2 cache: ${cacheKey}`);
+    }
+
+    return deleted;
+  }
+
   // ==========================================================================
   // DAY CONTENT VARIANT TRACKING (Quality-based caching like curriculum)
   // ==========================================================================

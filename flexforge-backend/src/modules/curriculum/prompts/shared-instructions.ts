@@ -121,13 +121,30 @@ ${continuity.bossProjectProgress}
 
     // Include previous day's actual code for cumulative building
     if (continuity.previousDayCode) {
-      parts.push(`PREVIOUS DAY'S CODE (build on this - don't start fresh):
+      console.log(`[ContinuityInstructions] Including previous day code in prompt (length: ${continuity.previousDayCode.length})`);
+      parts.push(`⚠️ CRITICAL - CUMULATIVE CODE REQUIREMENT ⚠️
+
+PREVIOUS DAY'S WORKING CODE:
 \`\`\`
 ${continuity.previousDayCode}
 \`\`\`
-- Today's code MUST extend/build on this code
-- Add new functionality, don't replace existing code
-- Import from or add to existing files`);
+
+TODAY'S CODE MUST BE CUMULATIVE - THIS IS MANDATORY:
+1. SAME FILE: Today's solutionCode should be the SAME file as above, with NEW code ADDED
+2. KEEP ALL EXISTING CODE: Include ALL the code from above, then add today's new functionality
+3. DO NOT create a different file or endpoint - extend the existing one
+4. The output should be ONE complete file that includes yesterday's code PLUS today's additions
+5. Mark new additions with comments like "// Day ${ctx.dayNumber}: Added ..."
+
+WRONG (creating new file):
+- Day 1: app/api/product-info/route.ts
+- Day 2: app/api/price/[symbol]/route.ts  ❌ WRONG - different file!
+
+CORRECT (extending same file):
+- Day 1: app/api/product-info/route.ts (basic POST endpoint)
+- Day 2: app/api/product-info/route.ts (same file + scraping logic added) ✅`);
+    } else {
+      console.log(`[ContinuityInstructions] No previous day code available for cumulative building`);
     }
   }
 

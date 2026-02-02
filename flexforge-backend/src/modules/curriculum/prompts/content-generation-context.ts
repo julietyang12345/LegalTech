@@ -166,11 +166,15 @@ export function buildContentGenerationContext(
   }
 
   // Get previous day's boss milestone code (for cumulative building)
+  // Check multiple possible locations and field names (solutionCode is new, solution/starterCode are legacy)
   let previousDayCode: string | undefined;
-  if (previousDay?.deferredContent?.bossMilestone?.solutionCode) {
-    previousDayCode = previousDay.deferredContent.bossMilestone.solutionCode;
-  } else if (previousDay?.bossMilestone?.solutionCode) {
-    previousDayCode = previousDay.bossMilestone.solutionCode;
+  const prevMilestone = previousDay?.bossMilestone || previousDay?.deferredContent?.bossMilestone;
+
+  if (prevMilestone) {
+    previousDayCode = prevMilestone.solutionCode || prevMilestone.solution || prevMilestone.starterCode;
+   
+  } else {
+    console.log(`[ContentGenContext] Day ${dayNumber} - No previous milestone found, code will not be cumulative`);
   }
 
   return {

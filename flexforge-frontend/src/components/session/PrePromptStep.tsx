@@ -91,8 +91,13 @@ export function PrePromptStep({ day, session }: PrePromptStepProps) {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
 
-  // Show simpler inline loading when core content not yet loaded
-  if (!isCoreLoaded && !day.prePrompt) {
+  // Check if prePrompt content is available (has text or primeQuestions)
+  const hasPrePromptContent = day.prePrompt?.text || (day.prePrompt?.primeQuestions && day.prePrompt.primeQuestions.length > 0);
+
+  // Show inline loading when:
+  // 1. Core content not yet loaded, OR
+  // 2. PrePrompt content is missing (even if isCoreLoaded - might be resuming with stale state)
+  if (!isCoreLoaded || !hasPrePromptContent) {
     return (
       <StepLayout
         icon={Lightbulb}

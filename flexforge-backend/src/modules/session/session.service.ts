@@ -725,6 +725,7 @@ export class SessionService {
         updatedDays[dayIndex] = {
           ...cleanDayData,
           status: 'in_progress',
+          forceRegenerated: true, // Flag to bypass L2 cache in deferred generation
         };
         session.curriculum = {
           ...session.curriculum,
@@ -754,6 +755,25 @@ export class SessionService {
           this.logger.log(
             `🧹 Cleared boss project cache for Day ${bossProject.day}`,
           );
+        }
+      }
+
+      // Clear L1 (in-memory) day content caches for both CORE and DEFERRED
+      // Only clears in-memory cache - L2 (database) is preserved for variant tracking and regen rate metrics
+      const metadata = session.curriculum.metadata;
+      if (metadata?.skillName) {
+        try {
+          // Use the same AI normalization as the cache key builder
+          const normalizedSkill = await this.cacheService.normalizeSkillForDayCache(metadata.skillName);
+          const skillKey = normalizedSkill.replace(/\s+/g, '-');
+          const cacheKeyBase = `day-content:${skillKey}:d${metadata.durationDays || 0}:h${metadata.hoursPerDay || 0}:${(metadata.skillLevel || 'beginner').toLowerCase()}:day${dayNumber}`;
+
+          // Clear L1 caches only (preserve L2 for variant tracking)
+          this.cacheService.clearDayContentFromMemory(`${cacheKeyBase}:core`);
+          this.cacheService.clearDayContentFromMemory(`${cacheKeyBase}:deferred`);
+          this.logger.log(`🧹 Cleared L1 day content caches for Day ${dayNumber} (core + deferred)`);
+        } catch (error) {
+          this.logger.warn(`⚠️ Failed to clear day content caches: ${error.message}`);
         }
       }
     }
@@ -1021,6 +1041,9 @@ export class SessionService {
       };
     }
 
+    // Check if this day was force regenerated (flag set by loadDayContent)
+    const forceRegenerate = dayOverview.forceRegenerated || false;
+
     // Generate deferred content with foundation card concepts for consistent personalization
     // Pass foundationCardConcepts from core content and session's improvement areas
     const result = await this.curriculumService.generateDayDeferredDetails(
@@ -1030,6 +1053,7 @@ export class SessionService {
       dayOverview.foundationCardConcepts, // From core generation
       session.improvementAreas,
       session.lessOfAreas,
+      forceRegenerate, // Pass through to bypass L2 cache when day was force regenerated
     );
 
     let totalTokensUsed = result.tokensUsed;
@@ -1082,8 +1106,10 @@ export class SessionService {
 
     // Force TypeORM to detect JSONB change by reassigning entire curriculum
     const updatedDays = [...session.curriculum.days];
+    // Clear forceRegenerated flag after deferred generation
+    const { forceRegenerated: _, ...dayDataWithoutFlag } = updatedDays[dayIndex];
     updatedDays[dayIndex] = {
-      ...updatedDays[dayIndex],
+      ...dayDataWithoutFlag,
       deferredContent: result.deferredContent,
       deferredLoaded: true,
     };
@@ -1171,6 +1197,9 @@ export class SessionService {
       return;
     }
 
+    // Check if this day was force regenerated (flag set by loadDayContent)
+    const forceRegenerate = dayOverview.forceRegenerated || false;
+
     // Stream from curriculum service
     let finalResult: any = null;
     for await (const chunk of this.curriculumService.generateDayDeferredDetailsStream(
@@ -1180,6 +1209,7 @@ export class SessionService {
       dayOverview.foundationCardConcepts,
       session.improvementAreas,
       session.lessOfAreas,
+      forceRegenerate, // Pass through to bypass L2 cache when day was force regenerated
     )) {
       yield chunk;
 
@@ -1196,8 +1226,10 @@ export class SessionService {
 
       // Force TypeORM to detect JSONB change by reassigning entire curriculum
       const updatedDays = [...session.curriculum.days];
+      // Clear forceRegenerated flag after deferred generation
+      const { forceRegenerated: _, ...dayDataWithoutFlag } = updatedDays[dayIndex];
       updatedDays[dayIndex] = {
-        ...updatedDays[dayIndex],
+        ...dayDataWithoutFlag,
         deferredContent: finalResult.deferredContent,
         deferredLoaded: true,
       };

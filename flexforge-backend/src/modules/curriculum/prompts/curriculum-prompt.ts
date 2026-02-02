@@ -836,15 +836,25 @@ ${ctx?.generatedContent?.foundationCardConcepts?.length ? `- Reference these con
 BOSS MILESTONE - SOLUTION + CHALLENGE (${newCodeLines} new lines):
 You provide a complete AI-generated solution. User chooses their path: write it themselves OR make the AI code run.
 
-CUMULATIVE CODE REQUIREMENT:
-- Day 2+ code MUST build on previous days - NOT independent/unrelated code
-- Same project folder, same file structure, building incrementally
-- Reference previous files/functions: "import { helper } from './day1'" or add to existing files
-- Example progression:
-  - Day 1: Create app/api/users/route.js with GET /api/users
-  - Day 2: Add app/api/users/[id]/route.js for GET /api/users/:id (builds on Day 1)
-  - Day 3: Add POST to app/api/users/route.js (extends Day 1 file)
-- User should feel they're building ONE project, not 5 separate mini-projects
+⚠️ CUMULATIVE CODE REQUIREMENT (MANDATORY FOR DAY 2+) ⚠️
+${dayNumber > 1 ? `
+THIS IS DAY ${dayNumber} - YOU MUST EXTEND PREVIOUS CODE, NOT CREATE NEW FILES!
+- Your solutionCode output must be the COMPLETE file including Day 1-${dayNumber - 1} code PLUS today's additions
+- DO NOT create a new/different file or endpoint
+- ADD to the existing code, don't replace it
+- Mark new code with: // Day ${dayNumber}: Added ...
+` : ''}
+CORRECT APPROACH:
+- Day 1: Create app/api/product/route.ts with basic endpoint
+- Day 2: SAME FILE app/api/product/route.ts with Day 1 code + new features added
+- Day 3: SAME FILE with Day 1 + Day 2 code + new features added
+
+WRONG APPROACH (DO NOT DO THIS):
+- Day 1: app/api/product-info/route.ts
+- Day 2: app/api/price/route.ts  ← WRONG! Different file!
+- Day 3: app/api/scraper/route.ts ← WRONG! Another different file!
+
+User must feel they're building ONE growing codebase, not 5 separate mini-projects.
 
 REQUIRED FIELDS:
 - solutionCode: ${solutionCodeLines} lines COMPLETE WORKING code
@@ -862,10 +872,9 @@ REQUIRED FIELDS:
       - Level 2: Specific - key functions/methods to add, which file to modify
       - Level 3: Detailed - almost the answer, show exactly where in existing code to add
   - makeItRun:
-    - description: "Copy this code and make it run on your machine"
-    - setupSteps: Clear steps to get it running (files, commands)
+    - description: Day 1: "Copy this starter code, complete it and make it run" | Day 2+: "Update your existing code with today's additions"
+    - setupSteps: Day 1: Create file, add code, run | Day 2+: Open existing file, ADD new code, run
     - possibleIssues: 2-3 things that might go wrong (missing deps, path issues, etc.)
-
 - validationType: "run"
 - validationInstructions: "Run the code and verify it produces the expected output"
 - setupInstructions:
@@ -881,7 +890,7 @@ REQUIRED FIELDS:
        - Run command (e.g., "Run: npm run dev")
        - Expected result (e.g., "You should see JSON response: {users: [...]}")
   - IMPORTANT: If route will be tested in browser, ALWAYS export GET handler. Browser visits = GET request.
-  - runCommand: Command AND test method (e.g., "npm run dev → GET http://localhost:3000/api/hello")
+  - runCommand: Command AND test method (e.g., "npm run dev → GET http://localhost:<PORT>/api/hello" - use <PORT> placeholder, user will use their configured port)
 - API ROUTES - Prevent 405 Method Not Allowed errors:
   - If testing via browser URL → MUST have GET handler (browser sends GET)
   - For POST-only APIs: show curl command in test steps, NOT "open in browser"
@@ -912,7 +921,7 @@ Output valid JSON.`;
     "conceptConnection": "Which foundationCard concept this applies",
     "estimatedMinutes": 12,
 
-    "solutionCode": "REQUIRED: ${solutionCodeLines} lines complete working ${params.suggestedLanguage || 'code'}. Must be real, runnable code.",
+    "solutionCode": "REQUIRED: ${solutionCodeLines} lines complete working ${params.suggestedLanguage || 'code'}. ${dayNumber > 1 ? 'MUST include ALL previous days code + new additions. Same file as Day 1, extended.' : 'Must be real, runnable code.'}",
     "solutionExplanation": "REQUIRED: 1-2 sentences on what this code does",
     "solutionAnnotations": ["Key line 1 explanation", "Key line 2 explanation", "Key line 3 explanation"],
 
@@ -926,8 +935,8 @@ Output valid JSON.`;
         ]
       },
       "makeItRun": {
-        "description": "Copy the AI code and make it run on your machine",
-        "setupSteps": ["REQUIRED: Step to create file (e.g., 'Create index.js')", "REQUIRED: Step to add code (e.g., 'Add the solution code')", "REQUIRED: Step to run (e.g., 'Run: node index.js')"],
+        "description": "Day 1: Copy and run the code | Day 2+: Add today's code to your existing file",
+        "setupSteps": ["REQUIRED: Day 1: Create file | Day 2+: Open your existing file from previous days", "REQUIRED: Day 1: Add solution code | Day 2+: ADD today's new code sections to existing code (keep previous code, add new parts)", "REQUIRED: Run and test (e.g., 'npm run dev')"],
         "possibleIssues": ["Missing dependency issue", "Path or import issue", "Syntax or version issue"]
       }
     },
@@ -937,8 +946,8 @@ Output valid JSON.`;
     "validationInstructions": "Run the code and verify the output",
     "setupInstructions": {
       "files": [{"path": "REQUIRED: FULL PATH e.g. 'app/api/users/route.js' or 'src/components/Card.jsx'", "description": "What this file contains"}],
-      "steps": ["REQUIRED: 1) Scaffold (npx create-...), 2) cd into folder, 3) Install packages if needed, 4) Create/open files with FULL PATHS (e.g., 'Create app/api/users/route.js'), 5) Write and complete the code, 6) Test (e.g., 'Run npm run dev, then open http://localhost:3000')"],
-      "runCommand": "e.g. 'npm run dev' then 'Open http://localhost:3000'"
+      "steps": ["REQUIRED: 1) Scaffold (npx create-...), 2) cd into folder, 3) Install packages if needed, 4) Create/open files with FULL PATHS (e.g., 'Create app/api/users/route.js'), 5) Write and complete the code, 6) Test (e.g., 'Run npm run dev, then open http://localhost:<PORT>/...')"],
+      "runCommand": "e.g. 'npm run dev' then 'Open http://localhost:<PORT>/...' (use <PORT> placeholder)"
     }
   }
 }`;
@@ -1610,7 +1619,7 @@ Generate JSON with:
 - requirements: [{requirement, fromDay, concept}] - one per day combined
 - phases: 3 phases (Setup 15min, Core Build 35min, Polish 25min) with objectives[], deliverable
 - starterCode: REAL ${params.suggestedLanguage || 'code'} with TODOs (30-50 lines)
-- setupInstructions: {files: [{path: "FULL PATH e.g. app/api/route.js", description: "what it contains"}], steps: ["1) Scaffold, 2) cd into folder, 3) Install packages, 4) File steps with FULL PATHS, 5) Test: run command + URL + expected result"], runCommand: "npm run dev → http://localhost:3000/..."}
+- setupInstructions: {files: [{path: "FULL PATH e.g. app/api/route.js", description: "what it contains"}], steps: ["1) Scaffold, 2) cd into folder, 3) Install packages, 4) File steps with FULL PATHS, 5) Test: run command + URL + expected result"], runCommand: "npm run dev → http://localhost:<PORT>/..." (use <PORT> placeholder for user's port)}
 - hints: 4 progressive hints with phase numbers
 - solution: COMPLETE working ${params.suggestedLanguage || 'code'} (50-100 lines)
 - solutionWalkthrough: [{step, description, code}]
@@ -2077,8 +2086,7 @@ ${skillsStr ? `Key topics: ${skillsStr}` : ''}
 Generate CORE content as JSON with this structure:
 {
   "prePrompt": {
-    "text": "ONE sentence: Today you'll learn [specific topics]. Keep it simple and direct, no fluff.",
-    "primeQuestions": ["Question 1?", "Question 2?"]
+    "text": "ONE sentence: Today you'll learn [specific topics]. Keep it simple and direct, no fluff."
   },
   ${videoSection},
   "${cardsArrayName}": [
@@ -2188,11 +2196,18 @@ OPEN TASK:
 `
     : '';
 
-  const systemPrompt = `Generate reflection questions${!isProjectBased ? ' and open task' : ''} for Day ${dayNumber}: "${params.skillName}"
+  const systemPrompt = `Generate primeQuestions, reflection${!isProjectBased ? ', and open task' : ''} for Day ${dayNumber}: "${params.skillName}"
 Skill Type: ${params.skillType} | Level: ${params.skillLevel}
 Topics: ${skillsStr}
 ${conceptsContext}
 ${openTaskInstructions}
+PRIME QUESTIONS (Think About):
+- 2-3 thought-provoking questions to prime the learner's mind BEFORE they start
+- Questions should spark curiosity about today's topics
+- Help users think about real-world applications and edge cases
+- Keep questions short and direct (under 15 words each)
+- Examples: "How do you handle failed requests when scraping?", "What's the best way to avoid rate limits?"
+
 REFLECTION:
 - Questions should help user self-assess and identify areas for improvement
 - Include confidence scale, what clicked, and what needs review
@@ -2271,6 +2286,7 @@ Output valid JSON only.`;
     : '';
 
   const userPrompt = `{
+  "primeQuestions": ["Think about question 1?", "Think about question 2?"],
   "reflection": {
     "questions": ${isLanguageLearning ? languageReflectionQuestions : genericReflectionQuestions}
   }${openTaskSection}

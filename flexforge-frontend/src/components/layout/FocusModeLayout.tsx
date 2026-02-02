@@ -71,6 +71,7 @@ function PresenceBar() {
     completedSteps,
     currentDay,
     setCurrentStep,
+    isCoreLoaded,
   } = useSessionStore();
 
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -107,11 +108,20 @@ function PresenceBar() {
     if (step === 'video') {
       if (videoUnavailable) return false;
     }
-    // Skip foundationCards if not present (check both regular and language-specific cards)
+    // Skip foundationCards only if core is loaded AND no cards present
+    // While loading, always show the step (component will show its own loader)
     if (step === 'foundationCards') {
+      if (!isCoreLoaded) return true; // Still loading, show the step
       const hasCards = (currentDay?.foundationCards && currentDay.foundationCards.length > 0) ||
                        (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
       if (!hasCards) return false;
+    }
+    // Skip openTask for project-based curricula (they have bossMilestone instead)
+    // or when openTask content is not available
+    if (step === 'openTask') {
+      if (isProjectBased) return false;
+      const hasOpenTask = !!(currentDay?.openTask || (currentDay as any)?.deferredContent?.openTask);
+      if (!hasOpenTask) return false;
     }
     return true;
   });

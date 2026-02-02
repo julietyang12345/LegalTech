@@ -908,26 +908,12 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
   // Show loading when deferred content is loading or not yet loaded
   // Check if milestone exists AND has actual content (not just stale preview data)
   const hasMilestoneContent = milestone?.solutionCode || milestone?.microTask || milestone?.challengeOptions;
-
-  if (isDeferredLoading || (!isDeferredLoaded && !hasMilestoneContent)) {
-    return (
-      <StepLayout
-        icon={Trophy}
-        iconGradient="from-purple-400 to-pink-500"
-        title="Boss Milestone"
-        subtitle="Loading today's project task..."
-      >
-        <BossMilestoneLoader
-          dayTitle={day.title}
-          bossTitle={session.curriculum.bossProjects?.[0]?.title}
-        />
-      </StepLayout>
-    );
-  }
+  const isLoading = isDeferredLoading || (!isDeferredLoaded && !hasMilestoneContent);
 
   // Load saved progress for boss milestone
   const savedProgress = getTaskProgress(day.day, 'bossMilestone');
 
+  // ALL HOOKS MUST BE BEFORE ANY EARLY RETURNS (React rules of hooks)
   const [notes, setNotes] = useState(savedProgress?.answers?.notes as unknown as string || '');
   const [isSubmitted, setIsSubmitted] = useState(savedProgress?.showResults ?? false);
   const [showHints, setShowHints] = useState(false);
@@ -952,6 +938,23 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
       });
     }
   }, [notes, isSubmitted, challengeChoice, revealedHintLevel, day.day, saveTaskProgress]);
+
+  // NOW we can do early return after all hooks are called
+  if (isLoading) {
+    return (
+      <StepLayout
+        icon={Trophy}
+        iconGradient="from-purple-400 to-pink-500"
+        title="Boss Milestone"
+        subtitle="Loading today's project task..."
+      >
+        <BossMilestoneLoader
+          dayTitle={day.title}
+          bossTitle={session.curriculum.bossProjects?.[0]?.title}
+        />
+      </StepLayout>
+    );
+  }
 
   const language = session.curriculum.metadata?.suggestedLanguage || 'javascript';
   const externalTools = getExternalToolSuggestions(language);

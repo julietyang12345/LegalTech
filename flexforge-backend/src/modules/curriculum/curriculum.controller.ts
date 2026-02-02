@@ -379,6 +379,24 @@ export class CurriculumController {
   }
 
   /**
+   * POST /api/v1/curriculum/delete-day-cache
+   * Delete a specific day content cache entry (admin endpoint)
+   * Body: { cacheKey: "day-content:serverless-architecture:d7:h0.5:beginner:day2:deferred" }
+   */
+  @Post('delete-day-cache')
+  async deleteDayCache(@Body() body: { cacheKey: string }) {
+    if (!body.cacheKey) {
+      throw new BadRequestException('cacheKey is required');
+    }
+    const deleted = await this.cacheService.deleteDayContent(body.cacheKey);
+    return {
+      message: deleted ? 'Cache entry deleted' : 'Cache entry not found',
+      cacheKey: body.cacheKey,
+      deleted,
+    };
+  }
+
+  /**
    * POST /api/v1/curriculum/refresh-video
    * Find a new video for a day using Layer 3 deep verification
    * Called when user exhausts the alternative and clicks "Find New Video" again
