@@ -241,17 +241,20 @@ export class SessionController {
    * POST /api/v1/sessions/:id/days/:dayNumber/load-deferred
    * Load deferred content in background
    * Returns: reflection
+   * @param body.forceRegenerate - If true, bypass cache and regenerate content
    */
   @Post(':id/days/:dayNumber/load-deferred')
   async loadDayDeferred(
     @Request() req,
     @Param('id') id: string,
     @Param('dayNumber') dayNumber: string,
+    @Body() body?: { forceRegenerate?: boolean },
   ) {
     const result = await this.sessionService.loadDayDeferred(
       id,
       req.user.id,
       parseInt(dayNumber, 10),
+      body?.forceRegenerate,
     );
 
     return {

@@ -500,8 +500,11 @@ export function SessionPage() {
   // Get available steps (filter out skipped ones)
   const availableSteps = STEP_ORDER.filter(step => {
     // Skip video step if no actual video OR if video was skipped
-    // This avoids duplicate "Learn & Understand" content
+    // But show it while core content is still loading (video might not be populated yet)
     if (step === 'video') {
+      if (!isCoreLoaded) return true; // Still loading - show the step
+      // Video undefined means content not properly loaded - show the step
+      if (currentDay?.video === undefined) return true;
       const hasActualVideo = !!(currentDay?.video?.videoId || currentDay?.video?.backupVideo?.videoId);
       const videoSkipped = currentDay?.video?.skipped === true;
       if (!hasActualVideo || videoSkipped) return false;
@@ -513,12 +516,18 @@ export function SessionPage() {
       // Only skip if explicitly marked as no practice day (rare edge case)
       return true;
     }
-    // Skip foundationCards only if core is loaded AND no cards present
-    // While loading, always show the step (component will show its own loader)
+    // Skip foundationCards only if core is loaded AND explicitly has no cards (empty array)
+    // If undefined, content might not be properly loaded - show the step
     if (step === 'foundationCards') {
-      if (!isCoreLoaded) return true; // Still loading, show the step
-      const hasCards = (currentDay?.foundationCards && currentDay.foundationCards.length > 0) ||
-                       (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
+      const foundationCards = currentDay?.foundationCards;
+      const languageFoundationCards = currentDay?.languageFoundationCards;
+      // Still loading core content - show the step
+      if (!isCoreLoaded) return true;
+      // Content not properly populated (undefined) - show the step, component will handle
+      if (foundationCards === undefined && languageFoundationCards === undefined) return true;
+      // Explicitly empty arrays - hide the step
+      const hasCards = (foundationCards && foundationCards.length > 0) ||
+                       (languageFoundationCards && languageFoundationCards.length > 0);
       if (!hasCards) return false;
     }
     // Always show openTask step (renders as Real-World Challenge)

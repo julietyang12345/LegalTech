@@ -20,7 +20,6 @@ import {
   RecordBounceDto,
   RecordRegenerationDto,
   RefreshVideoDto,
-  GetTranscriptSummaryDto,
   CurriculumCacheResponse,
 } from './dto/curriculum-cache.dto';
 import { VideoMatchingService } from './services/youtube/video-matching.service';
@@ -485,58 +484,6 @@ export class CurriculumController {
       console.error('[refresh-video] Error:', error.message);
       throw new BadRequestException(
         error.message || 'Failed to find new video',
-      );
-    }
-  }
-
-  /**
-   * POST /api/v1/curriculum/transcript-summary
-   * Get AI-generated summary of a YouTube video's transcript
-   * PRO feature only
-   */
-  @Post('transcript-summary')
-  async getTranscriptSummary(
-    @Body() dto: GetTranscriptSummaryDto,
-    @CurrentUser() user: User,
-  ) {
-    // Check PRO tier access
-    const tierHierarchy = {
-      [QuotaTier.FREE]: 0,
-      [QuotaTier.PRO]: 1,
-      [QuotaTier.PREMIUM]: 2,
-      [QuotaTier.UNLIMITED]: 3,
-    };
-
-    if (tierHierarchy[user.getEffectiveTier()] < tierHierarchy[QuotaTier.PRO]) {
-      throw new ForbiddenException('Transcript summary is a PRO feature');
-    }
-
-    try {
-      const result = await this.videoMatcher.getTranscriptSummary(
-        dto.videoId,
-        dto.concept,
-      );
-
-      if (!result.success) {
-        throw new BadRequestException(
-          result.error || 'Failed to get transcript summary',
-        );
-      }
-
-      return {
-        message: 'Transcript summary generated',
-        summary: result.summary,
-        keyPoints: result.keyPoints,
-      };
-    } catch (error) {
-      if (
-        error instanceof ForbiddenException ||
-        error instanceof BadRequestException
-      ) {
-        throw error;
-      }
-      throw new BadRequestException(
-        error.message || 'Failed to generate transcript summary',
       );
     }
   }

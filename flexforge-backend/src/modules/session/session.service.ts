@@ -1065,6 +1065,7 @@ export class SessionService {
     sessionId: string,
     userId: string,
     dayNumber: number,
+    forceRegenerateParam?: boolean,
   ): Promise<{
     deferredContent: any;
     tokensUsed: number;
@@ -1087,8 +1088,12 @@ export class SessionService {
       bp.combinesDays?.includes(dayNumber),
     );
 
-    // Check if deferred already loaded
-    if (dayOverview.deferredLoaded && dayOverview.deferredContent) {
+    // Check if this day was force regenerated (flag set by loadDayContent or passed directly)
+    // This flag must be checked BEFORE the cache check
+    const forceRegenerate = forceRegenerateParam || dayOverview.forceRegenerated || false;
+
+    // Check if deferred already loaded (unless force regenerating)
+    if (!forceRegenerate && dayOverview.deferredLoaded && dayOverview.deferredContent) {
       // Return cached boss project if applicable
       const cachedBossProject = bossProject
         ? session.curriculum.bossProjects.find(
@@ -1102,9 +1107,6 @@ export class SessionService {
         bossProject: cachedBossProject,
       };
     }
-
-    // Check if this day was force regenerated (flag set by loadDayContent)
-    const forceRegenerate = dayOverview.forceRegenerated || false;
 
     // Generate deferred content with foundation card concepts for consistent personalization
     // Pass foundationCardConcepts from core content and session's improvement areas
@@ -1229,8 +1231,12 @@ export class SessionService {
       return;
     }
 
-    // Check if already loaded
-    if (dayOverview.deferredLoaded && dayOverview.deferredContent) {
+    // Check if this day was force regenerated (flag set by loadDayContent)
+    // This flag must be checked BEFORE the cache check
+    const forceRegenerate = dayOverview.forceRegenerated || false;
+
+    // Check if already loaded (unless force regenerating)
+    if (!forceRegenerate && dayOverview.deferredLoaded && dayOverview.deferredContent) {
       this.logger.log(`📦 Day ${dayNumber} DEFERRED already loaded, streaming cached`);
       const cached = dayOverview.deferredContent;
       if (cached.task1) {
@@ -1258,9 +1264,6 @@ export class SessionService {
       };
       return;
     }
-
-    // Check if this day was force regenerated (flag set by loadDayContent)
-    const forceRegenerate = dayOverview.forceRegenerated || false;
 
     // Stream from curriculum service
     let finalResult: any = null;

@@ -78,7 +78,7 @@ interface SessionState {
   // Split loading actions (core + deferred)
   loadDayCoreContent: (dayNumber: number, forceRegenerate?: boolean) => Promise<DayCoreContent>;
   // loadDayCoreContentStream: (dayNumber: number, forceRegenerate?: boolean) => Promise<DayCoreContent>; // SSE disabled
-  loadDayDeferredContent: (dayNumber: number) => Promise<DayDeferredContent>;
+  loadDayDeferredContent: (dayNumber: number, forceRegenerate?: boolean) => Promise<DayDeferredContent>;
   // loadDayDeferredContentStream: (dayNumber: number) => Promise<DayDeferredContent>; // SSE disabled
   loadDayContentSplit: (dayNumber: number) => Promise<CurriculumDay>;
   getDeferredContent: () => DayDeferredContent | null;
@@ -448,23 +448,34 @@ export const useSessionStore = create<SessionState>()(
     // Find next step (skip steps that don't apply)
     let nextStep = stepOrder[currentIndex + 1];
 
-    // Skip foundationCards if not present (check both regular and language-specific cards)
+    // Skip foundationCards only if explicitly empty (not undefined = still loading)
     if (nextStep === 'foundationCards') {
-      const hasCards = (currentDay?.foundationCards && currentDay.foundationCards.length > 0) ||
-                       (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
-      if (!hasCards) {
+      const foundationCards = currentDay?.foundationCards;
+      const languageFoundationCards = currentDay?.languageFoundationCards;
+      // Only skip if content is loaded (arrays exist) and both are empty
+      const isLoaded = foundationCards !== undefined || languageFoundationCards !== undefined;
+      const hasCards = (foundationCards && foundationCards.length > 0) ||
+                       (languageFoundationCards && languageFoundationCards.length > 0);
+      if (isLoaded && !hasCards) {
         nextStep = stepOrder[currentIndex + 2];
       }
     }
 
-    // Skip bossMilestone if not present (check both bossMilestone and hasBossProject)
-    if (nextStep === 'bossMilestone' && !currentDay?.bossMilestone && !currentDay?.hasBossProject) {
-      nextStep = stepOrder[currentIndex + 2];
+    // Skip bossMilestone only if explicitly not present (deferred content loaded but no milestone)
+    // Don't skip if undefined - content might still be loading
+    if (nextStep === 'bossMilestone') {
+      // bossMilestone content is always present now (either boss project or intensive practice)
+      // The component handles both cases, so we shouldn't skip it
     }
 
-    // Skip openTask if not present
-    if (nextStep === 'openTask' && !currentDay?.openTask) {
-      nextStep = stepOrder[currentIndex + 2];
+    // Skip openTask only if explicitly not present (deferred content loaded but no openTask)
+    // Don't skip if undefined - content might still be loading
+    if (nextStep === 'openTask') {
+      const openTask = currentDay?.openTask;
+      // Only skip if explicitly set to null/empty, not if undefined
+      if (openTask === null || (typeof openTask === 'object' && Object.keys(openTask).length === 0)) {
+        nextStep = stepOrder[currentIndex + 2];
+      }
     }
 
     // Add to completed steps if not already there
@@ -593,6 +604,7 @@ export const useSessionStore = create<SessionState>()(
         const existingDay = state.activeSession.curriculum.days.find((d) => d.day === dayNumber);
         const isNewDayContent = !existingDay?.detailsLoaded && !existingDay?.coreContent;
 
+        const newCurrentDayObj = updatedDays.find((d) => d.day === dayNumber)!;
         return {
           activeSession: {
             ...state.activeSession,
@@ -603,7 +615,7 @@ export const useSessionStore = create<SessionState>()(
               bossProjects: updatedBossProjects,
             },
           },
-          currentDay: { ...updatedDays.find((d) => d.day === dayNumber)! },
+          currentDay: { ...newCurrentDayObj },
           currentDayNumber: dayNumber,
           isDayLoading: false,
           dayLoadingNumber: null,
@@ -640,41 +652,44 @@ export const useSessionStore = create<SessionState>()(
   // SSE STREAMING DISABLED - using regular loading instead
   // loadDayCoreContentStream: async (dayNumber: number, forceRegenerate?: boolean) => { ... },
 
-  loadDayDeferredContent: async (dayNumber: number) => {
+  loadDayDeferredContent: async (dayNumber: number, forceRegenerate?: boolean) => {
     const { activeSession } = get();
     if (!activeSession) throw new Error('No active session');
 
     // Check if deferred content is already cached in session data (skip API call)
     // Deferred content (task1, reflection, etc.) is spread onto the day object, not in a nested deferredContent
-    const existingDay = activeSession.curriculum.days.find((d) => d.day === dayNumber);
+    // Skip cache when forceRegenerate is true (regenerating content)
+    if (!forceRegenerate) {
+      const existingDay = activeSession.curriculum.days.find((d) => d.day === dayNumber);
 
-    // Check if day has deferred content by looking at task1 or detailsLoaded flag
-    // The content is spread directly onto the day, not nested in deferredContent
-    if (existingDay?.detailsLoaded && (existingDay?.task1 || existingDay?.reflection)) {
-      // Reconstruct the deferred content from the day's top-level properties
-      const cachedDeferredContent = {
-        task1: existingDay.task1,
-        reflection: existingDay.reflection,
-        intensivePractice: existingDay.intensivePractice,
-        openTask: existingDay.openTask,
-      } as DayDeferredContent;
+      // Check if day has deferred content by looking at task1 or detailsLoaded flag
+      // The content is spread directly onto the day, not nested in deferredContent
+      if (existingDay?.detailsLoaded && (existingDay?.task1 || existingDay?.reflection)) {
+        // Reconstruct the deferred content from the day's top-level properties
+        const cachedDeferredContent = {
+          task1: existingDay.task1,
+          reflection: existingDay.reflection,
+          intensivePractice: existingDay.intensivePractice,
+          openTask: existingDay.openTask,
+        } as DayDeferredContent;
 
-      // Update zustand state AND merge into currentDay to reflect cached content
-      set((state) => ({
-        isDeferredLoaded: true,
-        isDeferredLoading: false,
-        deferredContent: cachedDeferredContent,
-        currentDay: state.currentDay?.day === dayNumber
-          ? { ...state.currentDay, ...cachedDeferredContent, detailsLoaded: true }
-          : state.currentDay,
-      }));
-      return cachedDeferredContent;
+        // Update zustand state AND merge into currentDay to reflect cached content
+        set((state) => ({
+          isDeferredLoaded: true,
+          isDeferredLoading: false,
+          deferredContent: cachedDeferredContent,
+          currentDay: state.currentDay?.day === dayNumber
+            ? { ...state.currentDay, ...cachedDeferredContent, detailsLoaded: true }
+            : state.currentDay,
+        }));
+        return cachedDeferredContent;
+      }
     }
 
     set({ isDeferredLoading: true });
 
     try {
-      const response = await sessionService.loadDayDeferred(activeSession.id, dayNumber);
+      const response = await sessionService.loadDayDeferred(activeSession.id, dayNumber, forceRegenerate);
       const deferredContent = response.deferredContent;
 
       // Update the curriculum day with deferred content
@@ -782,6 +797,19 @@ export const useSessionStore = create<SessionState>()(
         }
       });
 
+      // Clear deferred content fields from currentDay so components show loading state
+      const clearedCurrentDay = state.currentDay ? {
+        ...state.currentDay,
+        detailsLoaded: false,
+        // Clear deferred content fields
+        task1: undefined,
+        task2: undefined,
+        reflection: undefined,
+        intensivePractice: undefined,
+        openTask: undefined,
+        bossMilestone: undefined,
+      } : null;
+
       return {
         taskProgress: newTaskProgress,
         alternativeTaskCache: newAlternativeTaskCache,
@@ -790,7 +818,7 @@ export const useSessionStore = create<SessionState>()(
         completedSteps: [],
         stepStartTime: new Date(),
         // Clear current day content so section loaders show
-        currentDay: state.currentDay ? { ...state.currentDay, detailsLoaded: false } : null,
+        currentDay: clearedCurrentDay,
         coreContent: null,
         deferredContent: null,
         isCoreLoaded: false,
@@ -802,8 +830,9 @@ export const useSessionStore = create<SessionState>()(
     set({ isRegenerating: true, error: null });
 
     // Start loading content in background (don't await)
+    // Pass forceRegenerate: true to skip cache and generate fresh content
     loadDayCoreContent(dayNumber, true).then(() => {
-      loadDayDeferredContent(dayNumber).catch((err) => {
+      loadDayDeferredContent(dayNumber, true).catch((err) => {
         console.error('Deferred content loading failed:', err);
       });
     }).catch((err) => {
@@ -999,16 +1028,25 @@ export const useSessionStore = create<SessionState>()(
   },
 
   getStepProgress: () => {
-    const { completedSteps, currentDay } = get();
+    const { completedSteps, currentDay, isCoreLoaded, isDeferredLoading } = get();
     const stepOrder = getStepOrder();
     let total = stepOrder.length;
 
-    // Adjust total based on what's available (check both regular and language-specific cards)
-    const hasCards = (currentDay?.foundationCards && currentDay.foundationCards.length > 0) ||
-                     (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
-    if (!hasCards) total -= 1;
-    if (!currentDay?.bossMilestone && !currentDay?.hasBossProject) total -= 1;
-    if (!currentDay?.openTask) total -= 1;
+    // Only adjust total if content is loaded and explicitly empty (not undefined = still loading)
+    // This prevents progress jumping around as content loads
+    const foundationCards = currentDay?.foundationCards;
+    const languageFoundationCards = currentDay?.languageFoundationCards;
+    const cardsLoaded = foundationCards !== undefined || languageFoundationCards !== undefined;
+    const hasCards = (foundationCards && foundationCards.length > 0) ||
+                     (languageFoundationCards && languageFoundationCards.length > 0);
+    if (isCoreLoaded && cardsLoaded && !hasCards) total -= 1;
+
+    // bossMilestone is always shown (handles both boss projects and intensive practice)
+    // So we don't subtract for it
+
+    // openTask - only subtract if deferred is loaded and explicitly not present
+    const openTask = currentDay?.openTask;
+    if (!isDeferredLoading && openTask === null) total -= 1;
 
     return {
       current: completedSteps.length,

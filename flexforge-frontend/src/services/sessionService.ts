@@ -110,10 +110,12 @@ export const sessionService = {
   /**
    * Load deferred content in background
    * Returns: reflection
+   * @param forceRegenerate - If true, regenerates content even if already cached
    */
-  async loadDayDeferred(sessionId: string, dayNumber: number): Promise<LoadDayDeferredResponse> {
+  async loadDayDeferred(sessionId: string, dayNumber: number, forceRegenerate?: boolean): Promise<LoadDayDeferredResponse> {
     const { data } = await api.post<LoadDayDeferredResponse>(
-      `/sessions/${sessionId}/days/${dayNumber}/load-deferred`
+      `/sessions/${sessionId}/days/${dayNumber}/load-deferred`,
+      { forceRegenerate }
     );
     return data;
   },
@@ -360,21 +362,6 @@ export const sessionService = {
    * Find a new video for a day using Layer 3 deep verification
    * Called when user exhausts the alternative and clicks "Find New Video" again
    */
-  /**
-   * Get transcript summary for a YouTube video (PRO feature)
-   */
-  async getTranscriptSummary(params: {
-    videoId: string;
-    concept?: string;
-  }): Promise<{
-    message: string;
-    summary: string;
-    keyPoints: string[];
-  }> {
-    const { data } = await api.post('/curriculum/transcript-summary', params);
-    return data;
-  },
-
   async refreshVideo(params: {
     sessionId: string;
     dayNumber: number;

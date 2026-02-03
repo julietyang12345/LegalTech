@@ -156,7 +156,7 @@ export function PrePromptStep({ day, session }: PrePromptStepProps) {
           {primeQuestions.length > 0 ? (
             <div className="space-y-3">
               <h3 className="font-medium text-gray-700">Think about:</h3>
-              {primeQuestions.map((question, index) => (
+              {primeQuestions.map((question: string, index: number) => (
                 <motion.div
                   key={index}
                   initial={{ opacity: 0, x: -10 }}

@@ -139,19 +139,6 @@ export class GenerateDayDetailsDto {
 }
 
 /**
- * DTO for getting transcript summary for a video
- * PRO feature only
- */
-export class GetTranscriptSummaryDto {
-  @IsString()
-  videoId: string;
-
-  @IsOptional()
-  @IsString()
-  concept?: string; // Optional context for better summary
-}
-
-/**
  * Response for curriculum generation with cache info
  */
 export interface CurriculumCacheResponse {

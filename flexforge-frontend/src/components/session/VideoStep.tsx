@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Clock, CheckCircle2, MessageCircle, Lock, Youtube, RefreshCw, Loader2, BookOpen, Video, Sparkles, Info, ChevronDown, ChevronUp, FileText, Zap } from 'lucide-react';
+import { Play, Clock, CheckCircle2, MessageCircle, Lock, Youtube, RefreshCw, Loader2, BookOpen, Video, Sparkles, Info, ChevronDown, ChevronUp, Zap } from 'lucide-react';
 import { Card, Button } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { useAuthStore } from '@/stores/authStore';
@@ -440,186 +440,12 @@ function ModeToggle({
   );
 }
 
-// Transcript Summary component for PRO users
-function TranscriptSummary({
-  videoId,
-  concept,
-  isPro,
-  onFetchStatusChange,
-}: {
-  videoId: string;
-  concept?: string;
-  isPro: boolean;
-  onFetchStatusChange?: (status: 'idle' | 'loading' | 'success' | 'error') => void;
-}) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [summary, setSummary] = useState<string | null>(null);
-  const [keyPoints, setKeyPoints] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [hasFetched, setHasFetched] = useState(false);
-
-  const fetchSummary = async () => {
-    if (hasFetched || isLoading) return;
-
-    setIsLoading(true);
-    setError(null);
-    onFetchStatusChange?.('loading');
-
-    try {
-      const result = await sessionService.getTranscriptSummary({
-        videoId,
-        concept,
-      });
-      setSummary(result.summary);
-      setKeyPoints(result.keyPoints || []);
-      setHasFetched(true);
-      onFetchStatusChange?.('success');
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Failed to load summary');
-      onFetchStatusChange?.('error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleToggle = () => {
-    if (!isExpanded && !hasFetched) {
-      fetchSummary();
-    }
-    setIsExpanded(!isExpanded);
-  };
-
-  // Hide completely if there was an error
-  if (error) {
-    return null;
-  }
-
-  if (!isPro) {
-    return (
-      <div className="px-6 py-4 border-t border-gray-100 bg-gradient-to-r from-gray-50 to-gray-100">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-gray-200 rounded-lg">
-              <FileText className="w-4 h-4 text-gray-400" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Video Transcript Summary</p>
-              <p className="text-xs text-gray-400">AI-powered summary of key points</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-200 rounded-lg">
-            <Lock className="w-3.5 h-3.5 text-gray-400" />
-            <span className="text-xs font-medium text-gray-500">PRO</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="border-t border-gray-100">
-      {/* Header - always visible */}
-      <button
-        onClick={handleToggle}
-        className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-purple-100 rounded-lg">
-            <FileText className="w-4 h-4 text-purple-600" />
-          </div>
-          <div className="text-left">
-            <p className="text-sm font-medium text-gray-900">Video Transcript Summary</p>
-            <p className="text-xs text-gray-500">AI-powered summary of key points</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-700 rounded-full">
-            PRO
-          </span>
-          {isLoading ? (
-            <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
-          ) : isExpanded ? (
-            <ChevronUp className="w-4 h-4 text-gray-400" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-gray-400" />
-          )}
-        </div>
-      </button>
-
-      {/* Expanded content */}
-      {isExpanded && (
-        <motion.div
-          initial={{ height: 0, opacity: 0 }}
-          animate={{ height: 'auto', opacity: 1 }}
-          exit={{ height: 0, opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          className="overflow-hidden"
-        >
-          <div className="px-6 pb-6">
-            {isLoading && (
-              <div className="flex items-center justify-center py-8">
-                <div className="flex items-center gap-3 text-gray-500">
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span className="text-sm">Generating summary...</span>
-                </div>
-              </div>
-            )}
-
-            {summary && !isLoading && (
-              <div className="space-y-4">
-                {/* Summary */}
-                <div className="p-4 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl border border-purple-100">
-                  <div className="flex items-start gap-3">
-                    <Sparkles className="w-5 h-5 text-purple-500 shrink-0 mt-0.5" />
-                    <div className="space-y-2">
-                      {summary.split(/\n\n+/).map((paragraph, idx) => (
-                        <p key={idx} className="text-sm text-gray-700 leading-relaxed">
-                          {paragraph.trim()}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Key Points */}
-                {keyPoints.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                      <Zap className="w-4 h-4 text-amber-500" />
-                      Key Takeaways
-                    </h4>
-                    <ul className="space-y-2">
-                      {keyPoints.map((point, index) => (
-                        <li
-                          key={index}
-                          className="flex items-start gap-2 text-sm text-gray-600"
-                        >
-                          <span className="w-5 h-5 flex items-center justify-center bg-purple-100 text-purple-700 rounded-full text-xs font-medium shrink-0">
-                            {index + 1}
-                          </span>
-                          <span>{point}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </motion.div>
-      )}
-    </div>
-  );
-}
-
 export function VideoStep({ day, session }: VideoStepProps) {
   const [hasWatched, setHasWatched] = useState(false);
   const [activeVideoIndex, setActiveVideoIndex] = useState(0); // 0=main, 1=alt1, 2=alt2, 3+=AI generated
   const [isSearchingNew, setIsSearchingNew] = useState(false);
   const [aiGeneratedVideos, setAiGeneratedVideos] = useState<VideoMatch[]>([]);
   const [currentMode, setCurrentMode] = useState<ContentMode>('ai');
-  const [transcriptStatus, setTranscriptStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const { hasTierAccess } = useAuthStore();
   useSessionStore(); // Store subscription for state changes
   const canAskAI = hasTierAccess(QuotaTier.PRO);
@@ -819,16 +645,6 @@ export function VideoStep({ day, session }: VideoStepProps) {
                   })}
                 </ul>
               </div>
-            )}
-
-            {/* Transcript Summary - PRO feature (shown above actions when not errored) */}
-            {currentVideo?.videoId && transcriptStatus !== 'error' && (
-              <TranscriptSummary
-                videoId={currentVideo.videoId}
-                concept={video?.concept || video?.topicFocus || day.title}
-                isPro={canAskAI}
-                onFetchStatusChange={setTranscriptStatus}
-              />
             )}
 
             {/* Actions footer */}

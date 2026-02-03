@@ -105,23 +105,33 @@ function PresenceBar() {
   // Filter steps based on current day
   const availableSteps = STEPS.filter(step => {
     // Skip video step when video is unavailable - foundationCards step handles learning content
+    // But show it while core content is still loading (video might not be populated yet)
     if (step === 'video') {
+      if (!isCoreLoaded) return true; // Still loading - show the step
+      // Video undefined means content not properly loaded - show the step
+      if (currentDay?.video === undefined) return true;
       if (videoUnavailable) return false;
     }
-    // Skip foundationCards only if core is loaded AND no cards present
-    // While loading, always show the step (component will show its own loader)
+    // Skip foundationCards only if core is loaded AND explicitly has no cards (empty array)
+    // If undefined, content might not be properly loaded - show the step
     if (step === 'foundationCards') {
-      if (!isCoreLoaded) return true; // Still loading, show the step
-      const hasCards = (currentDay?.foundationCards && currentDay.foundationCards.length > 0) ||
-                       (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
+      const foundationCards = currentDay?.foundationCards;
+      const languageFoundationCards = currentDay?.languageFoundationCards;
+      // Still loading core content - show the step
+      if (!isCoreLoaded) return true;
+      // Content not properly populated (undefined) - show the step, component will handle
+      if (foundationCards === undefined && languageFoundationCards === undefined) return true;
+      // Explicitly empty arrays - hide the step
+      const hasCards = (foundationCards && foundationCards.length > 0) ||
+                       (languageFoundationCards && languageFoundationCards.length > 0);
       if (!hasCards) return false;
     }
     // Skip openTask for project-based curricula (they have bossMilestone instead)
-    // or when openTask content is not available
+    // Always show for non-project curricula - component handles loading/empty state
     if (step === 'openTask') {
       if (isProjectBased) return false;
-      const hasOpenTask = !!(currentDay?.openTask || (currentDay as any)?.deferredContent?.openTask);
-      if (!hasOpenTask) return false;
+      // Always show - openTask is deferred content, let component handle loading state
+      return true;
     }
     return true;
   });
