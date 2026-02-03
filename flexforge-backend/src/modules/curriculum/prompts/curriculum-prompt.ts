@@ -618,6 +618,90 @@ function hasGender(lang: TargetLanguage): boolean {
   return GENDERED_LANGUAGES.includes(lang);
 }
 
+// ============================================
+// SHARED LANGUAGE HELPERS (avoid duplication)
+// ============================================
+
+interface LanguageFeatures {
+  hasTones: boolean;
+  hasGender: boolean;
+  lang: string;
+}
+
+/**
+ * Extract language features (tones, gender) from params - used by multiple prompt builders
+ */
+function extractLangFeatures(params: {
+  isLanguageLearning?: boolean;
+  targetLanguage?: string;
+}): LanguageFeatures {
+  if (!params.isLanguageLearning || !params.targetLanguage) {
+    return { hasTones: false, hasGender: false, lang: 'target language' };
+  }
+  return {
+    hasTones: hasTones(params.targetLanguage as TargetLanguage),
+    hasGender: hasGender(params.targetLanguage as TargetLanguage),
+    lang: params.targetLanguage,
+  };
+}
+
+/**
+ * Build language task1 template - shared between project-based and practice-based prompts
+ */
+function buildLanguageTask1Template(lang: string, langHasTones: boolean): string {
+  return `[
+        {
+          "type": "quiz",
+          "level": 1,
+          "title": "Listening & Recognition",
+          "questions": [
+            {"id": "q1", "question": "What does this mean?", "audioText": "word/phrase in ${lang}", "options": ["meaning1", "meaning2", "meaning3", "meaning4"], "correctIndex": 0, "explanation": "Explanation with romanization"},
+            {"id": "q2", "question": "Select the correct translation", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "Why this is correct"}
+          ]
+        },
+        {
+          "type": "fillBlank",
+          "level": 2,
+          "title": "Apply Your Learning",
+          "items": [
+            {"id": "fb1", "sentence": "Sentence with ___BLANK___", "translation": "English meaning", "blank": {"correctAnswers": ["answer"], "hint": "Grammar/form hint"}, "audioText": "Full sentence for TTS"}
+          ]
+        }${langHasTones ? `,
+        {
+          "type": "toneSelect",
+          "title": "Tone Recognition",
+          "questions": [
+            {"id": "t1", "audioText": "word in ${lang}", "prompt": "Select the correct tone", "options": ["Tone 1", "Tone 2", "Tone 3", "Tone 4"], "correctIndex": 0, "explanation": "This is [tone name] - [description]"}
+          ]
+        }` : ''}
+      ]`;
+}
+
+/**
+ * Build language caveats/requirements - shared between project-based and practice-based prompts
+ */
+function buildLanguageCaveats(params: {
+  isLanguageLearning?: boolean;
+  targetLanguage?: string;
+  proficiencyLevel?: string;
+  skillName: string;
+}, langFeatures: LanguageFeatures): string {
+  if (!params.isLanguageLearning) return '';
+
+  return `
+LANGUAGE LEARNING MODE - Target: ${params.targetLanguage || 'specified language'} | Level: ${params.proficiencyLevel || 'beginner'}
+Focus on: "${params.skillName}" (generate content matching this topic)
+
+REQUIRED FOR ALL LANGUAGE CONTENT:
+- "audioText": Native ${langFeatures.lang} text for TTS pronunciation
+- "translation": English meaning for all target language content
+- "romanization": Pronunciation guide for non-Latin scripts
+- Focus on the SPECIFIC topic (grammar = conjugation/tenses/structure, NOT vocabulary lists)${langFeatures.hasTones ? `
+- "tone"/"toneMarkers": Tone numbers for all words (TONAL LANGUAGE)` : ''}${langFeatures.hasGender ? `
+- "gender": Grammatical gender where applicable (GENDERED LANGUAGE)` : ''}
+`;
+}
+
 // Extract skills string from skeleton or dayObjectives
 function getSkillsString(skeleton: any, dayObjectives?: string[]): string {
   const skills = skeleton?.skills || dayObjectives || [];
@@ -762,66 +846,19 @@ function buildProjectBasedDeferredPrompt(
         ? '8-20'
         : '5-15';
 
-  // Get skill-type-specific task1 template (2 section types per skill)
-  // For language learning, use language-specific sections with audioText
-  const langHasTonesProjectBased = params.isLanguageLearning && params.targetLanguage
-    ? hasTones(params.targetLanguage)
-    : false;
-  const langHasGenderProjectBased = params.isLanguageLearning && params.targetLanguage
-    ? hasGender(params.targetLanguage)
-    : false;
-  const langProjectBased = params.targetLanguage || 'target language';
+  // Get language features using shared helper (avoid duplication)
+  const langFeatures = extractLangFeatures(params);
 
-  // Detailed language task1 template with full examples
-  const languageTask1TemplateProjectBased = `[
-        {
-          "type": "quiz",
-          "level": 1,
-          "title": "Listening & Recognition",
-          "questions": [
-            {"id": "q1", "question": "What does this mean?", "audioText": "word/phrase in ${langProjectBased}", "options": ["meaning1", "meaning2", "meaning3", "meaning4"], "correctIndex": 0, "explanation": "Explanation with romanization"},
-            {"id": "q2", "question": "Select the correct translation", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "Why this is correct"}
-          ]
-        },
-        {
-          "type": "fillBlank",
-          "level": 2,
-          "title": "Apply Your Learning",
-          "items": [
-            {"id": "fb1", "sentence": "Sentence with ___BLANK___", "translation": "English meaning", "blank": {"correctAnswers": ["answer"], "hint": "Grammar/form hint"}, "audioText": "Full sentence for TTS"}
-          ]
-        }${langHasTonesProjectBased ? `,
-        {
-          "type": "toneSelect",
-          "title": "Tone Recognition",
-          "questions": [
-            {"id": "t1", "audioText": "word in ${langProjectBased}", "prompt": "Select the correct tone", "options": ["Tone 1", "Tone 2", "Tone 3", "Tone 4"], "correctIndex": 0, "explanation": "This is [tone name] - [description]"}
-          ]
-        }` : ''}
-      ]`;
-
+  // Get skill-type-specific task1 template
   const task1Template = params.isLanguageLearning
-    ? languageTask1TemplateProjectBased
+    ? buildLanguageTask1Template(langFeatures.lang, langFeatures.hasTones)
     : getTask1SectionTemplate(skillType);
 
   // Build unified context instructions if context is provided
   const contextInstructions = ctx ? buildFullContextInstructions(ctx) : '';
 
-  // Language learning caveats - comprehensive requirements
-  const languageCaveats = params.isLanguageLearning
-    ? `
-LANGUAGE LEARNING MODE - Target: ${params.targetLanguage || 'specified language'} | Level: ${params.proficiencyLevel || 'beginner'}
-Focus on: "${params.skillName}" (generate content matching this topic)
-
-REQUIRED FOR ALL LANGUAGE CONTENT:
-- "audioText": Native ${langProjectBased} text for TTS pronunciation
-- "translation": English meaning for all target language content
-- "romanization": Pronunciation guide for non-Latin scripts
-- Focus on the SPECIFIC topic (grammar = conjugation/tenses/structure, NOT vocabulary lists)${langHasTonesProjectBased ? `
-- "tone"/"toneMarkers": Tone numbers for all words (TONAL LANGUAGE)` : ''}${langHasGenderProjectBased ? `
-- "gender": Grammatical gender where applicable (GENDERED LANGUAGE)` : ''}
-`
-    : '';
+  // Language learning caveats using shared helper
+  const languageCaveats = buildLanguageCaveats(params, langFeatures);
 
   const systemPrompt = `Generate DEFERRED content for Day ${dayNumber}: "${params.skillName}"
 Type: ${params.skillType} | Level: ${params.skillLevel}${params.suggestedLanguage ? ` | Lang: ${params.suggestedLanguage}` : ''}
@@ -1328,13 +1365,8 @@ function buildPracticeBasedDeferredPrompt(
   // For language learning, use language-specific sections
   const codeWritingEnabled = params.codeWritingEnabled ?? false;
 
-  // Language-specific: calculate items per section type (from original buildLanguageLearningDeferredPrompt)
-  const langHasTonesForTemplate = params.isLanguageLearning && params.targetLanguage
-    ? hasTones(params.targetLanguage)
-    : false;
-  const langHasGenderForTemplate = params.isLanguageLearning && params.targetLanguage
-    ? hasGender(params.targetLanguage)
-    : false;
+  // Get language features using shared helper (avoid duplication)
+  const langFeatures = extractLangFeatures(params);
 
   // Calculated item counts for language learning sections
   const fillBlankItems = `${Math.round(5 * levelGuidance.contentMultiplier)}-${Math.round(6 * levelGuidance.contentMultiplier)}`;
@@ -1353,11 +1385,11 @@ function buildPracticeBasedDeferredPrompt(
 3. reorder (${reorderItems} items) - Arrange scrambled words into correct sentence
    Format: {id, scrambled: [], correctOrder: [], translation: "English meaning", hint?}
 4. typing (${typingItems} items) - Type what you see or hear
-   Format: {id, prompt: "instruction", displayText?: "text to show", audioText?: "for TTS", acceptedAnswers: [], romanization?}${langHasTonesForTemplate ? `
+   Format: {id, prompt: "instruction", displayText?: "text to show", audioText?: "for TTS", acceptedAnswers: [], romanization?}${langFeatures.hasTones ? `
 5. toneSelect (3-4 items) - Hear word/phrase, select correct tone
    Format: {id, audioText, prompt, options[], correctIndex, explanation}` : ''}
 
-IMPORTANT: Use "audioText" for TTS pronunciation in typing items.${langHasTonesForTemplate ? ' Include tone markers.' : ''}${langHasGenderForTemplate ? ' Include gender where applicable.' : ''}`
+IMPORTANT: Use "audioText" for TTS pronunciation in typing items.${langFeatures.hasTones ? ' Include tone markers.' : ''}${langFeatures.hasGender ? ' Include gender where applicable.' : ''}`
     : '';
 
   const sectionInstructions = params.customSections
@@ -1368,7 +1400,7 @@ IMPORTANT: Use "audioText" for TTS pronunciation in typing items.${langHasTonesF
 
   // Language-specific section template with detailed examples
   // MUST match frontend interfaces: TranslationItem, LanguageFillBlankItem, ReorderItem, TypingItem
-  const lang = params.targetLanguage || 'target language';
+  const lang = langFeatures.lang;
   const languageSectionTemplate = `[
       {
         "type": "fillBlank",
@@ -1443,73 +1475,29 @@ IMPORTANT: Use "audioText" for TTS pronunciation in typing items.${langHasTonesF
       ? languageSectionTemplate
       : getIntensiveSectionTemplate(skillType, dayNumber, codeWritingEnabled);
 
-  // Get skill-type-specific task1 template (2 section types per skill)
-  // For language learning, use quiz + fillBlank (with audioText) - detailed format
-  const languageTask1Template = `[
-        {
-          "type": "quiz",
-          "level": 1,
-          "title": "Listening & Recognition",
-          "questions": [
-            {"id": "q1", "question": "What does this mean?", "audioText": "word/phrase in ${lang}", "options": ["meaning1", "meaning2", "meaning3", "meaning4"], "correctIndex": 0, "explanation": "Explanation with romanization"},
-            {"id": "q2", "question": "Select the correct translation", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "Why this is correct"}
-          ]
-        },
-        {
-          "type": "fillBlank",
-          "level": 2,
-          "title": "Apply Your Learning",
-          "items": [
-            {"id": "fb1", "sentence": "Sentence with ___BLANK___", "translation": "English meaning", "blank": {"correctAnswers": ["answer"], "hint": "Hint"}, "audioText": "Full sentence for TTS"}
-          ]
-        }${langHasTonesForTemplate ? `,
-        {
-          "type": "toneSelect",
-          "title": "Tone Recognition",
-          "questions": [
-            {"id": "t1", "audioText": "word in ${lang}", "prompt": "Select the correct tone", "options": ["Tone 1", "Tone 2", "Tone 3", "Tone 4"], "correctIndex": 0, "explanation": "This is [tone name] - [description]"}
-          ]
-        }` : ''}
-      ]`;
-
+  // Get skill-type-specific task1 template using shared helper
   const task1Template = params.isLanguageLearning
-    ? languageTask1Template
+    ? buildLanguageTask1Template(lang, langFeatures.hasTones)
     : getTask1SectionTemplate(skillType);
 
   // Build unified context instructions if context is provided
   const contextInstructions = ctx ? buildFullContextInstructions(ctx) : '';
 
-  // Language learning caveats - add enhancements without changing content focus
-  // This ensures "Italian grammar" generates GRAMMAR content with language enhancements
-  const langHasTones = params.isLanguageLearning && params.targetLanguage
-    ? hasTones(params.targetLanguage)
-    : false;
-  const langHasGender = params.isLanguageLearning && params.targetLanguage
-    ? hasGender(params.targetLanguage)
-    : false;
-
-  const languageCaveats = params.isLanguageLearning
+  // Language learning caveats using shared helper + practice-specific mini foundation card format
+  const baseCaveats = buildLanguageCaveats(params, langFeatures);
+  const miniFoundationCardFormat = params.isLanguageLearning
     ? `
-LANGUAGE LEARNING MODE - Target: ${params.targetLanguage || 'specified language'} | Level: ${params.proficiencyLevel || 'beginner'}
-Focus on: "${params.skillName}" (generate content that matches this topic - grammar, vocabulary, phrases, etc.)
-
-REQUIRED FOR ALL LANGUAGE CONTENT:
-- "audioText": Native ${params.targetLanguage || 'target language'} text for TTS pronunciation
-- "translation": English meaning for all target language content
-- "romanization": Pronunciation guide (pinyin/romaji/etc) for non-Latin scripts${langHasTones ? `
-- "tone"/"toneMarkers": Tone numbers for all words (TONAL LANGUAGE)` : ''}${langHasGender ? `
-- "gender": Grammatical gender (masculine/feminine/neuter) where applicable` : ''}
-
 MINI FOUNDATION CARDS FORMAT (for intensive practice):
 {
   "id": "mini1",
   "concept": "New word/phrase/pattern in English",
-  "explanation": "100-150 words covering: meaning, pronunciation, usage context, example sentences in ${params.targetLanguage || 'target language'} with translations",
+  "explanation": "100-150 words covering: meaning, pronunciation, usage context, example sentences in ${langFeatures.lang} with translations",
   "audioText": "Key word/phrase for TTS",
-  "romanization": "pronunciation guide"${langHasTones ? ',\n  "tone": "tone number(s)"' : ''}${langHasGender ? ',\n  "gender": "grammatical gender"' : ''}
+  "romanization": "pronunciation guide"${langFeatures.hasTones ? ',\n  "tone": "tone number(s)"' : ''}${langFeatures.hasGender ? ',\n  "gender": "grammatical gender"' : ''}
 }
 `
     : '';
+  const languageCaveats = baseCaveats + miniFoundationCardFormat;
 
   const systemPrompt = `Generate DEFERRED content for Day ${dayNumber}: "${params.skillName}"
 Type: ${skillType}${params.customSections ? ' (hybrid)' : ''} | Level: ${params.skillLevel}
@@ -1542,7 +1530,7 @@ Output valid JSON.`;
         "concept": "New word/phrase in English",
         "explanation": "100-150 words: meaning, pronunciation (${lang}), usage context, 2-3 example sentences with translations",
         "audioText": "Word/phrase in ${lang} for TTS",
-        "romanization": "pronunciation guide"${langHasTonesForTemplate ? ',\n        "tone": "tone number(s)"' : ''}${langHasGenderForTemplate ? ',\n        "gender": "masculine/feminine/neuter"' : ''}
+        "romanization": "pronunciation guide"${langFeatures.hasTones ? ',\n        "tone": "tone number(s)"' : ''}${langFeatures.hasGender ? ',\n        "gender": "masculine/feminine/neuter"' : ''}
       }
     ]`;
 
@@ -2207,7 +2195,7 @@ export function buildLightweightContentPrompt(
   // Language learning detection
   const isLanguageLearning = params.isLanguageLearning ?? false;
   const lang = params.targetLanguage || 'target language';
-  const langHasTonesForTemplate = ['Chinese', 'Mandarin', 'Cantonese', 'Vietnamese', 'Thai'].some(
+  const langHasTones = ['Chinese', 'Mandarin', 'Cantonese', 'Vietnamese', 'Thai'].some(
     (l) => lang.toLowerCase().includes(l.toLowerCase()),
   );
 
@@ -2259,7 +2247,7 @@ Output valid JSON only.`;
   // Language-specific reflection questions
   const languageReflectionQuestions = `[
       {"id": "confidence", "question": "Rate your confidence with today's ${lang} content (1-5)", "type": "scale"},
-      {"id": "hardest", "question": "Hardest exercise type?", "type": "choice", "options": ["Fill in blank", "Translation", "Reordering", "Typing"${langHasTonesForTemplate ? ', "Tone recognition"' : ''}]},
+      {"id": "hardest", "question": "Hardest exercise type?", "type": "choice", "options": ["Fill in blank", "Translation", "Reordering", "Typing"${langHasTones ? ', "Tone recognition"' : ''}]},
       {"id": "clicked", "question": "What clicked for you today?", "type": "text"},
       {"id": "review", "question": "What needs more review?", "type": "text"}
     ]`;

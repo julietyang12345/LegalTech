@@ -38,6 +38,53 @@ export class SessionService {
     private aiService: AiService,
   ) {}
 
+  // ============================================
+  // SHARED HELPERS (avoid code duplication)
+  // ============================================
+
+  /**
+   * Get day overview from session or throw NotFoundException
+   */
+  private getDayOverview(session: Session, dayNumber: number): any {
+    const dayOverview = session.curriculum.days.find(
+      (d: any) => d.day === dayNumber,
+    );
+    if (!dayOverview) {
+      throw new NotFoundException(`Day ${dayNumber} not found`);
+    }
+    return dayOverview;
+  }
+
+  /**
+   * Check if core content is valid (has foundation cards)
+   * Returns false if forceRegenerate or content is missing/invalid
+   */
+  private isCoreContentValid(
+    dayOverview: any,
+    forceRegenerate: boolean,
+  ): boolean {
+    if (forceRegenerate) return false;
+    if (!dayOverview.coreLoaded || !dayOverview.coreContent) return false;
+
+    const cards =
+      dayOverview.coreContent.foundationCards ||
+      dayOverview.coreContent.languageFoundationCards ||
+      [];
+    return cards.length > 0;
+  }
+
+  /**
+   * Check if deferred content is valid (loaded and present)
+   * Returns false if forceRegenerate or content is missing
+   */
+  private isDeferredContentValid(
+    dayOverview: any,
+    forceRegenerate: boolean,
+  ): boolean {
+    if (forceRegenerate) return false;
+    return dayOverview.deferredLoaded && dayOverview.deferredContent;
+  }
+
   /**
    * Create new learning session with AI-generated curriculum
    */
@@ -695,19 +742,12 @@ export class SessionService {
     const dailyLimits = user.getDailyLimits();
     const regenLimit = dailyLimits.dayContentRegens;
 
-    // Check if day is unlockable
-    const dayOverview = session.curriculum.days.find(
-      (d: any) => d.day === dayNumber,
-    );
-    if (!dayOverview) {
-      throw new NotFoundException(`Day ${dayNumber} not found`);
-    }
+    // Check if day is unlockable (uses shared helper)
+    const dayOverview = this.getDayOverview(session, dayNumber);
 
     // Day 1 is always unlockable
     if (dayNumber > 1) {
-      const previousDay = session.curriculum.days.find(
-        (d: any) => d.day === dayNumber - 1,
-      );
+      const previousDay = this.getDayOverview(session, dayNumber - 1);
       if (
         previousDay?.status !== 'completed' &&
         previousDay?.status !== 'skipped'
@@ -718,27 +758,21 @@ export class SessionService {
       }
     }
 
-    // Check if core content already loaded (skip if forceRegenerate)
-    if (!forceRegenerate && dayOverview.coreLoaded && dayOverview.coreContent) {
-      // foundationCards are REQUIRED - if missing, force regenerate
-      const cachedCards = dayOverview.coreContent.foundationCards || dayOverview.coreContent.languageFoundationCards;
-      if (!cachedCards || cachedCards.length === 0) {
-        // Continue to regeneration - foundationCards are missing
-      } else {
-        // Get current regen count for UI
-        const regenCount = await this.cacheService.getDayRegenCount(
-          sessionId,
-          dayNumber,
-        );
-        return {
-          coreContent: dayOverview.coreContent,
-          tokensUsed: 0,
-          fromCache: true,
-          variantId: dayOverview.variantId,
-          regenCount,
-          regenLimit,
-        };
-      }
+    // Check if core content already loaded (uses shared helper)
+    if (this.isCoreContentValid(dayOverview, forceRegenerate)) {
+      // Get current regen count for UI
+      const regenCount = await this.cacheService.getDayRegenCount(
+        sessionId,
+        dayNumber,
+      );
+      return {
+        coreContent: dayOverview.coreContent,
+        tokensUsed: 0,
+        fromCache: true,
+        variantId: dayOverview.variantId,
+        regenCount,
+        regenLimit,
+      };
     }
 
     if (forceRegenerate) {

@@ -73,3 +73,28 @@ docker exec -it flexforge-db-prod psql -U flexforge -d flexforge_dev -c 'SELECT 
 - Backend API base: `/api/v1/`
 - Auth: JWT with HTTP-only cookies
 - Optional auth guard: `OptionalAuthGuard` (allows anonymous + authenticated)
+
+### Redundancy Patterns to Avoid
+
+| Bad Pattern | Good Pattern |
+|-------------|--------------|
+| Multiple AI calls for same content | Generate both in same prompt |
+| Copy-paste if/else across methods | Extract to helper function |
+| 50+ line template strings duplicated | Shared template builder function |
+| Inline language feature checks | Use `extractLangFeatures(params)` |
+| Repeated day finding logic | Use `getDayOverview()` |
+
+### Before Creating New Code
+1. `grep -rn "similar_pattern" src/` - search for existing implementations
+2. Check if helper function already exists in this file
+3. If pattern will be used 2+ times, create a shared helper
+4. Add new shared utilities to this documentation
+
+### How to Check for Redundancy
+```bash
+# Find similar code blocks
+grep -rn "pattern" src/modules/
+
+# Check for duplicate function logic
+npx jscpd src/ --min-lines 5 --min-tokens 50
+```
