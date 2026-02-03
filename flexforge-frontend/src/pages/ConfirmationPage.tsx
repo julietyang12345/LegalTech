@@ -9,7 +9,7 @@ import {
   CheckCircle,
   Brain,
 } from 'lucide-react';
-import { GeneratingScreen, QuotaExceededModal } from '@/components/common';
+import { GeneratingScreen, FakePaywallModal } from '@/components/common';
 import { SkillLevel } from '@/types';
 import api from '@/services/api';
 
@@ -121,14 +121,15 @@ export function ConfirmationPage() {
         timeEstimate={estimatedDays > 7 ? "This takes about 70-80 seconds" : "This takes about 50-60 seconds"}
       />
 
-      {/* Quota Exceeded Modal */}
-      <QuotaExceededModal
+      {/* Quota Exceeded Modal - Full Feature Comparison */}
+      <FakePaywallModal
         isOpen={showQuotaModal}
         onClose={() => {
           setShowQuotaModal(false);
           navigate('/onboarding');
         }}
-        message={quotaErrorMessage}
+        source="rate_limit"
+        reason="curriculum_quota"
       />
     </>
   );

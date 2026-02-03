@@ -1,15 +1,52 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Check, Sparkles, Zap, Crown, Rocket, Users } from 'lucide-react';
+import { X, Check, Sparkles, Zap, Crown, Rocket, Users, ChevronDown, ChevronUp, AlertTriangle, RefreshCw, MessageSquare, Layers, Brain } from 'lucide-react';
 import { Button } from './Button';
 import { useAuthStore } from '@/stores/authStore';
 import api from '@/services/api';
+
+type RateLimitReason =
+  | 'day_regen_limit'      // Hit daily regeneration limit
+  | 'curriculum_quota'     // Hit monthly curriculum creation quota
+  | 'ai_tutor_limit'       // Hit AI tutor message limit
+  | 'skill_tree_limit'     // Hit skill tree analysis limit
+  | 'general';             // Generic rate limit
 
 interface FakePaywallModalProps {
   isOpen: boolean;
   onClose: () => void;
   source?: 'showcase_ai' | 'rate_limit' | 'settings' | 'feature_gate';
+  reason?: RateLimitReason;
 }
+
+// Reason-specific messaging
+const reasonMessages: Record<RateLimitReason, { icon: React.ReactNode; title: string; description: string }> = {
+  day_regen_limit: {
+    icon: <RefreshCw className="w-6 h-6" />,
+    title: "Daily Regeneration Limit Reached",
+    description: "You've used all your content regenerations for today. Upgrade to get more regenerations and keep perfecting your learning experience.",
+  },
+  curriculum_quota: {
+    icon: <Layers className="w-6 h-6" />,
+    title: "Monthly Curriculum Limit Reached",
+    description: "You've created all the curricula available this month. Upgrade to create more personalized learning paths.",
+  },
+  ai_tutor_limit: {
+    icon: <MessageSquare className="w-6 h-6" />,
+    title: "AI Tutor Message Limit Reached",
+    description: "You've used all your AI tutor messages for today. Upgrade for more personalized help and unlimited questions.",
+  },
+  skill_tree_limit: {
+    icon: <Brain className="w-6 h-6" />,
+    title: "Skill Tree Analysis Limit Reached",
+    description: "You've used your weekly skill tree analysis. Upgrade to analyze your skills more frequently.",
+  },
+  general: {
+    icon: <AlertTriangle className="w-6 h-6" />,
+    title: "Usage Limit Reached",
+    description: "You've reached your plan's limit. Upgrade to continue without interruptions.",
+  },
+};
 
 // Plan comparison data
 const plans = [
@@ -22,6 +59,7 @@ const plans = [
       'Daily learning sessions': true,
       'Boss Projects': true,
       'Active curricula': '1',
+      'Content regenerations': '3/day',
       'AI Skill Tree Analysis': '1/week',
       'Flexi AI Tutor': false,
       'AI code review': false,
@@ -41,6 +79,7 @@ const plans = [
       'Daily learning sessions': true,
       'Boss Projects': true,
       'Active curricula': '3',
+      'Content regenerations': '10/day',
       'AI Skill Tree Analysis': '1/day',
       'Flexi AI Tutor': '20 msgs/day',
       'AI code review': true,
@@ -59,6 +98,7 @@ const plans = [
       'Daily learning sessions': true,
       'Boss Projects': true,
       'Active curricula': 'Unlimited',
+      'Content regenerations': 'Unlimited',
       'AI Skill Tree Analysis': 'Unlimited',
       'Flexi AI Tutor': 'Unlimited',
       'AI code review': true,
@@ -75,6 +115,7 @@ const featureOrder = [
   'Daily learning sessions',
   'Boss Projects',
   'Active curricula',
+  'Content regenerations',
   'AI Skill Tree Analysis',
   'Flexi AI Tutor',
   'AI code review',
@@ -84,7 +125,7 @@ const featureOrder = [
   'Priority support',
 ];
 
-export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate' }: FakePaywallModalProps) {
+export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', reason = 'general' }: FakePaywallModalProps) {
   const { user } = useAuthStore();
   const [email, setEmail] = useState(user?.email || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -92,6 +133,9 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate' }: F
   const [waitlistCount, setWaitlistCount] = useState(100);
   const [showPriceQuestion, setShowPriceQuestion] = useState(false);
   const [selectedPrice, setSelectedPrice] = useState<string | null>(null);
+  const [showComparison, setShowComparison] = useState(false);
+
+  const reasonInfo = reasonMessages[reason] || reasonMessages.general;
 
   useEffect(() => {
     if (user?.email) {
@@ -105,6 +149,7 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate' }: F
       setIsSubmitted(false);
       setShowPriceQuestion(false);
       setSelectedPrice(null);
+      setShowComparison(false);
 
       // Fetch real waitlist count
       api.get('/waitlist/count')
@@ -190,18 +235,19 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate' }: F
               <X className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-                <Rocket className="w-5 h-5" />
+            {/* Reason-specific message */}
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                {reasonInfo.icon}
               </div>
               <div>
-                <h2 className="text-2xl font-bold">Premium is Coming Soon!</h2>
-                <p className="text-white/80 text-sm">Be first in line and save big</p>
+                <h2 className="text-xl font-bold">{reasonInfo.title}</h2>
+                <p className="text-white/80 text-sm mt-1">{reasonInfo.description}</p>
               </div>
             </div>
 
             {/* Early Access Banner */}
-            <div className="mt-4 p-3 bg-white/10 rounded-xl border border-white/20">
+            <div className="p-3 bg-white/10 rounded-xl border border-white/20">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-yellow-300" />
                 <span className="font-semibold">Early Access Offer: 50% off first 2 months!</span>
@@ -216,46 +262,71 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate' }: F
           <div className="p-6">
             {!isSubmitted ? (
               <>
-                {/* Comparison Table */}
-                <div className="mb-8 overflow-x-auto">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Compare Plans</h3>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="py-3 px-2 text-left text-gray-500 font-medium">Features</th>
-                        {plans.map((plan) => (
-                          <th key={plan.name} className="py-3 px-2 text-center min-w-[100px]">
-                            <div className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
-                              plan.name === 'Free' ? 'bg-gray-100 text-gray-600' :
-                              plan.name === 'Pro' ? 'bg-brand-100 text-brand-700' :
-                              'bg-purple-100 text-purple-700'
-                            }`}>
-                              {plan.name}
-                            </div>
-                            <div className="mt-2">
-                              <span className="text-xl font-bold text-gray-900">{plan.price}</span>
-                              <span className="text-gray-500 text-xs">{plan.period}</span>
-                            </div>
-                            {plan.popular && (
-                              <div className="mt-1 text-xs text-brand-600 font-medium">Most Popular</div>
-                            )}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {featureOrder.map((feature, index) => (
-                        <tr key={feature} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                          <td className="py-2.5 px-2 text-gray-700">{feature}</td>
-                          {plans.map((plan) => (
-                            <td key={`${plan.name}-${feature}`} className="py-2.5 px-2 text-center">
-                              {renderFeatureValue(plan.features[feature as keyof typeof plan.features])}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                {/* Collapsible Comparison Table */}
+                <div className="mb-6">
+                  <button
+                    onClick={() => setShowComparison(!showComparison)}
+                    className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
+                  >
+                    <span className="font-medium text-gray-700">Compare Plans</span>
+                    {showComparison ? (
+                      <ChevronUp className="w-5 h-5 text-gray-500" />
+                    ) : (
+                      <ChevronDown className="w-5 h-5 text-gray-500" />
+                    )}
+                  </button>
+
+                  <AnimatePresence>
+                    {showComparison && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="pt-4 overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b border-gray-200">
+                                <th className="py-3 px-2 text-left text-gray-500 font-medium">Features</th>
+                                {plans.map((plan) => (
+                                  <th key={plan.name} className="py-3 px-2 text-center min-w-[100px]">
+                                    <div className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+                                      plan.name === 'Free' ? 'bg-gray-100 text-gray-600' :
+                                      plan.name === 'Pro' ? 'bg-brand-100 text-brand-700' :
+                                      'bg-purple-100 text-purple-700'
+                                    }`}>
+                                      {plan.name}
+                                    </div>
+                                    <div className="mt-2">
+                                      <span className="text-xl font-bold text-gray-900">{plan.price}</span>
+                                      <span className="text-gray-500 text-xs">{plan.period}</span>
+                                    </div>
+                                    {plan.popular && (
+                                      <div className="mt-1 text-xs text-brand-600 font-medium">Most Popular</div>
+                                    )}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {featureOrder.map((feature, index) => (
+                                <tr key={feature} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
+                                  <td className="py-2.5 px-2 text-gray-700">{feature}</td>
+                                  {plans.map((plan) => (
+                                    <td key={`${plan.name}-${feature}`} className="py-2.5 px-2 text-center">
+                                      {renderFeatureValue(plan.features[feature as keyof typeof plan.features])}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 {/* Signup Form or Price Question */}

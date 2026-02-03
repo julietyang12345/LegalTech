@@ -1,14 +1,14 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, CheckCircle, Shuffle, HelpCircle, FileText, Sparkles, Target, BookOpen, Trophy, GraduationCap, Bookmark, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCircle, Shuffle, HelpCircle, FileText, Sparkles, Target, BookOpen, Trophy, GraduationCap, Bookmark } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useCommunityShareStore } from '@/stores/communityShareStore';
 import { FocusModeLayout } from '@/components/layout';
-import { Button, GeneratingScreen, ExerciseLoadingScreen } from '@/components/common';
+import { Button, GeneratingScreen, ExerciseLoadingScreen, FakePaywallModal } from '@/components/common';
 import { AiTutorPanel } from '@/components/session/AiTutorPanel';
 import { QuotaTier } from '@/types';
 import type { CurriculumDay } from '@/types';
@@ -469,7 +469,6 @@ export function SessionPage() {
     isCoreLoaded,
     showRegenLimitModal,
     dismissRegenLimitModal,
-    regenLimit,
   } = useSessionStore();
 
   const { celebrate, addSystemMessage } = useCompanionStore();
@@ -941,143 +940,24 @@ export function SessionPage() {
         />
       )}
 
-      {/* Upgrade Modal */}
+      {/* AI Tutor Upgrade Modal - Full Feature Comparison */}
+      <FakePaywallModal
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        source="feature_gate"
+        reason="ai_tutor_limit"
+      />
+
+      {/* Regeneration Limit Modal - Full Feature Comparison */}
+      <FakePaywallModal
+        isOpen={showRegenLimitModal}
+        onClose={dismissRegenLimitModal}
+        source="rate_limit"
+        reason="day_regen_limit"
+      />
+
+      {/* Bookmark Toast */}
       <AnimatePresence>
-        {showUpgradeModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-            onClick={() => setShowUpgradeModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-2xl max-w-sm w-full shadow-xl overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="bg-gradient-to-r from-purple-500 to-purple-600 p-6 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 bg-white/20 rounded-full flex items-center justify-center">
-                  <Sparkles className="w-8 h-8 text-white" />
-                </div>
-                <h2 className="text-xl font-bold text-white">Unlock AI Tutor</h2>
-                <p className="text-purple-100 text-sm mt-1">Get personalized help anytime</p>
-              </div>
-
-              {/* Content */}
-              <div className="p-6">
-                <ul className="space-y-3 mb-6">
-                  <li className="flex items-center gap-3 text-sm text-gray-700">
-                    <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                    <span>Ask unlimited questions about your lessons</span>
-                  </li>
-                  <li className="flex items-center gap-3 text-sm text-gray-700">
-                    <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                    <span>Get instant explanations and examples</span>
-                  </li>
-                  <li className="flex items-center gap-3 text-sm text-gray-700">
-                    <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                    <span>Personalized learning assistance 24/7</span>
-                  </li>
-                </ul>
-
-                <Button
-                  size="lg"
-                  className="w-full bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"
-                  onClick={() => {
-                    setShowUpgradeModal(false);
-                    // Navigate to upgrade page or show payment modal
-                    window.open('/upgrade', '_blank');
-                  }}
-                >
-                  Upgrade to PRO
-                </Button>
-
-                <button
-                  onClick={() => setShowUpgradeModal(false)}
-                  className="w-full mt-3 py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
-                >
-                  Maybe later
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Regeneration Limit Modal */}
-      <AnimatePresence>
-        {showRegenLimitModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-            onClick={dismissRegenLimitModal}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-2xl max-w-sm w-full shadow-xl overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="bg-gradient-to-r from-amber-500 to-orange-500 p-6 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 bg-white/20 rounded-full flex items-center justify-center">
-                  <RefreshCw className="w-8 h-8 text-white" />
-                </div>
-                <h2 className="text-xl font-bold text-white">Regeneration Limit Reached</h2>
-                <p className="text-amber-100 text-sm mt-1">You've used all {regenLimit} regenerations today</p>
-              </div>
-
-              {/* Content */}
-              <div className="p-6">
-                <p className="text-gray-600 text-sm mb-4 text-center">
-                  Free users can regenerate content {regenLimit} times per day. Upgrade to PRO for unlimited regenerations!
-                </p>
-
-                <ul className="space-y-3 mb-6">
-                  <li className="flex items-center gap-3 text-sm text-gray-700">
-                    <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                    <span>Unlimited content regenerations</span>
-                  </li>
-                  <li className="flex items-center gap-3 text-sm text-gray-700">
-                    <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                    <span>AI-powered personalized learning</span>
-                  </li>
-                  <li className="flex items-center gap-3 text-sm text-gray-700">
-                    <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                    <span>Priority content generation</span>
-                  </li>
-                </ul>
-
-                <Button
-                  size="lg"
-                  className="w-full bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"
-                  onClick={() => {
-                    dismissRegenLimitModal();
-                    window.open('/upgrade', '_blank');
-                  }}
-                >
-                  Upgrade to PRO
-                </Button>
-
-                <button
-                  onClick={dismissRegenLimitModal}
-                  className="w-full mt-3 py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
-                >
-                  Continue with current content
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-
-        {/* Bookmark Toast */}
         {showBookmarkToast && (
           <motion.div
             initial={{ opacity: 0, y: 50 }}

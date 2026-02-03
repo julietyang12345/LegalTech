@@ -1111,6 +1111,7 @@ function BottomControlPanel({
       isOpen={showPaywallModal}
       onClose={() => setShowPaywallModal(false)}
       source="showcase_ai"
+      reason="skill_tree_limit"
     />
     <div className="mt-4 space-y-3">
       {/* Top row: Selected skills + AI action buttons */}
