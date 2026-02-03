@@ -43,6 +43,7 @@ interface SessionState {
 
   // Regeneration state (for showing full loading screen during regenerate)
   isRegenerating: boolean;
+  showRegenLimitModal: boolean; // Show upgrade modal when regen limit reached
 
   // Day content variant tracking (for quality-based caching and rate limiting)
   currentDayVariantId: string | null;
@@ -84,6 +85,7 @@ interface SessionState {
   getDeferredContent: () => DayDeferredContent | null;
   resetSplitLoadingState: () => void;
   regenerateDayContent: (dayNumber: number) => Promise<void>;
+  dismissRegenLimitModal: () => void;
 
   // Streaming state (SSE disabled)
   // streamingCards: any[];
@@ -165,6 +167,7 @@ export const useSessionStore = create<SessionState>()(
 
   // Regeneration state
   isRegenerating: false,
+  showRegenLimitModal: false,
 
   // Streaming state (SSE disabled)
   // streamingCards: [] as any[],
@@ -637,14 +640,22 @@ export const useSessionStore = create<SessionState>()(
     } catch (error: any) {
       // Check for rate limit error (429)
       const isRateLimitError = error.response?.status === 429;
-      set({
-        error: isRateLimitError
-          ? error.response?.data?.message || 'Regeneration limit reached. Try again later.'
-          : error.response?.data?.message || 'Failed to load core content',
-        isDayLoading: false,
-        dayLoadingNumber: null,
-        isCoreLoaded: false,
-      });
+      if (isRateLimitError) {
+        // Show upgrade modal and stop regeneration loading
+        set({
+          showRegenLimitModal: true,
+          isRegenerating: false,
+          isDayLoading: false,
+          dayLoadingNumber: null,
+        });
+      } else {
+        set({
+          error: error.response?.data?.message || 'Failed to load core content',
+          isDayLoading: false,
+          dayLoadingNumber: null,
+          isCoreLoaded: false,
+        });
+      }
       throw error;
     }
   },
@@ -771,10 +782,9 @@ export const useSessionStore = create<SessionState>()(
     if (!activeSession) throw new Error('No active session');
 
     // Check if rate limit already reached (client-side check)
+    // Show upgrade modal for free users when limit reached
     if (regenCount >= regenLimit) {
-      set({
-        error: `Regeneration limit reached (${regenLimit} per day). Continue with current content or try again later.`,
-      });
+      set({ showRegenLimitModal: true });
       throw new Error('Rate limit reached');
     }
 
@@ -829,20 +839,28 @@ export const useSessionStore = create<SessionState>()(
     // Set regenerating state to show loading screen
     set({ isRegenerating: true, error: null });
 
-    // Start loading content in background (don't await)
-    // Pass forceRegenerate: true to skip cache and generate fresh content
-    loadDayCoreContent(dayNumber, true).then(() => {
+    try {
+      // Load core content first - if 429, this will throw and show modal
+      await loadDayCoreContent(dayNumber, true);
+
+      // Core succeeded, start deferred in background
       loadDayDeferredContent(dayNumber, true).catch((err) => {
         console.error('Deferred content loading failed:', err);
       });
-    }).catch((err) => {
+
+      // Show loading screen for remaining time (content already loading)
+      await new Promise(resolve => setTimeout(resolve, 10000));
+
+      set({ isRegenerating: false });
+    } catch (err: any) {
+      // Error already handled in loadDayCoreContent (shows modal for 429)
+      // isRegenerating already set to false for 429 errors
       console.error('Core content loading failed:', err);
-    });
+    }
+  },
 
-    // Show loading screen for 10 seconds, then let section loaders handle the rest
-    await new Promise(resolve => setTimeout(resolve, 10000));
-
-    set({ isRegenerating: false });
+  dismissRegenLimitModal: () => {
+    set({ showRegenLimitModal: false });
   },
 
   // ═══════════════════════════════════════════════════

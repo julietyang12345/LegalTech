@@ -127,12 +127,15 @@ export function PrePromptStep({ day, session }: PrePromptStepProps) {
         '✨ Fresh content generated! Ready to learn something new.',
         'encouraging'
       );
-    } catch (err) {
-      console.error('Failed to regenerate day:', err);
-      addSystemMessage(
-        'Failed to regenerate content. Please try again.',
-        'supportive'
-      );
+    } catch (err: any) {
+      // Don't show error message for rate limit - the modal handles it
+      if (err?.message !== 'Rate limit reached') {
+        console.error('Failed to regenerate day:', err);
+        addSystemMessage(
+          'Failed to regenerate content. Please try again.',
+          'supportive'
+        );
+      }
     } finally {
       setIsRegenerating(false);
     }
