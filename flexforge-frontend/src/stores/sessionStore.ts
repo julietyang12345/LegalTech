@@ -79,7 +79,7 @@ interface SessionState {
   // Split loading actions (core + deferred)
   loadDayCoreContent: (dayNumber: number, forceRegenerate?: boolean) => Promise<DayCoreContent>;
   // loadDayCoreContentStream: (dayNumber: number, forceRegenerate?: boolean) => Promise<DayCoreContent>; // SSE disabled
-  loadDayDeferredContent: (dayNumber: number, forceRegenerate?: boolean) => Promise<DayDeferredContent>;
+  loadDayDeferredContent: (dayNumber: number, forceRegenerate?: boolean, retryCount?: number) => Promise<DayDeferredContent>;
   // loadDayDeferredContentStream: (dayNumber: number) => Promise<DayDeferredContent>; // SSE disabled
   loadDayContentSplit: (dayNumber: number) => Promise<CurriculumDay>;
   getDeferredContent: () => DayDeferredContent | null;
@@ -605,8 +605,10 @@ export const useSessionStore = create<SessionState>()(
           : state.activeSession.currentDay;
 
         // Check if this is fresh content for a new day (not a refresh of already-loaded day)
+        // Also reset if we're regenerating (forceRegenerate=true)
         const existingDay = state.activeSession.curriculum.days.find((d) => d.day === dayNumber);
         const isNewDayContent = !existingDay?.detailsLoaded && !existingDay?.coreContent;
+        const shouldResetSteps = isNewDayContent || forceRegenerate;
 
         const newCurrentDayObj = updatedDays.find((d) => d.day === dayNumber)!;
         return {
@@ -624,8 +626,8 @@ export const useSessionStore = create<SessionState>()(
           isDayLoading: false,
           dayLoadingNumber: null,
           isCoreLoaded: true,
-          // Reset step state when loading fresh content (not resuming)
-          ...(isNewDayContent ? {
+          // Reset step state when loading fresh content OR regenerating
+          ...(shouldResetSteps ? {
             currentStep: 'prePrompt' as const,
             completedSteps: [],
             stepStartTime: new Date(),
@@ -664,9 +666,12 @@ export const useSessionStore = create<SessionState>()(
   // SSE STREAMING DISABLED - using regular loading instead
   // loadDayCoreContentStream: async (dayNumber: number, forceRegenerate?: boolean) => { ... },
 
-  loadDayDeferredContent: async (dayNumber: number, forceRegenerate?: boolean) => {
-    const { activeSession } = get();
+  loadDayDeferredContent: async (dayNumber: number, forceRegenerate?: boolean, retryCount = 0) => {
+    const { activeSession, loadDayDeferredContent } = get();
     if (!activeSession) throw new Error('No active session');
+
+    const MAX_RETRIES = 2; // Total 3 attempts (initial + 2 retries)
+    const RETRY_DELAY_MS = 3000; // Wait 3 seconds between retries
 
     // Check if deferred content is already cached in session data (skip API call)
     // Deferred content (task1, reflection, etc.) is spread onto the day object, not in a nested deferredContent
@@ -737,8 +742,28 @@ export const useSessionStore = create<SessionState>()(
 
       return deferredContent;
     } catch (error: any) {
+      // Check if this is a timeout error (524 Cloudflare, 504 Gateway, or network timeout)
+      const isTimeoutError = error.response?.status === 524 ||
+                            error.response?.status === 504 ||
+                            error.code === 'ECONNABORTED' ||
+                            error.message?.includes('timeout');
+
+      // Retry on timeout errors if we haven't exceeded max retries
+      if (isTimeoutError && retryCount < MAX_RETRIES) {
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+
+        // Retry with forceRegenerate=false to allow using cached content if available
+        // The backend may have completed generation during our wait
+        return loadDayDeferredContent(dayNumber, false, retryCount + 1);
+      }
+
+      // Final failure - update state but don't block UI
+      console.error('Deferred content failed:', error.message || error);
       set({
-        error: error.response?.data?.message || 'Failed to load deferred content',
+        error: isTimeoutError
+          ? 'Content generation is taking longer than expected. Some exercises may load later.'
+          : (error.response?.data?.message || 'Failed to load deferred content'),
         isDeferredLoading: false,
       });
       throw error;
@@ -789,6 +814,11 @@ export const useSessionStore = create<SessionState>()(
       throw new Error('Rate limit reached');
     }
 
+    // IMPORTANT: Set isRegenerating FIRST before clearing content state
+    // This prevents the SessionPage useEffect from seeing !isCoreLoaded && !isRegenerating
+    // and triggering a cached content load during the brief window
+    set({ isRegenerating: true, error: null });
+
     // Clear all local progress for this day immediately
     const sessionId = activeSession.id;
     set((state) => {
@@ -808,10 +838,17 @@ export const useSessionStore = create<SessionState>()(
         }
       });
 
-      // Clear deferred content fields from currentDay so components show loading state
+      // Clear ALL content fields from currentDay so components show loading state
       const clearedCurrentDay = state.currentDay ? {
         ...state.currentDay,
         detailsLoaded: false,
+        coreLoaded: false,
+        // Clear core content fields
+        video: undefined,
+        foundationCards: undefined,
+        languageFoundationCards: undefined,
+        prePrompt: undefined,
+        primeQuestions: undefined,
         // Clear deferred content fields
         task1: undefined,
         task2: undefined,
@@ -830,33 +867,41 @@ export const useSessionStore = create<SessionState>()(
         stepStartTime: new Date(),
         // Clear current day content so section loaders show
         currentDay: clearedCurrentDay,
-        coreContent: null,
         deferredContent: null,
         isCoreLoaded: false,
         isDeferredLoaded: false,
       };
     });
 
-    // Set regenerating state to show loading screen
-    set({ isRegenerating: true, error: null });
-
     try {
-      // Load core content first - if 429, this will throw and show modal
-      await loadDayCoreContent(dayNumber, true);
-
-      // Core succeeded, start deferred in background
-      loadDayDeferredContent(dayNumber, true).catch((err) => {
-        console.error('Deferred content loading failed:', err);
+      // Show GeneratingScreen for 10 seconds for visual feedback
+      // Then transition to page with loading spinners (like initial load)
+      const displayPromise = new Promise(resolve => {
+        setTimeout(() => resolve(true), 10000);
       });
 
-      // Show loading screen for remaining time (content already loading)
-      await new Promise(resolve => setTimeout(resolve, 10000));
+      // Start content loading in background (don't await)
+      loadDayCoreContent(dayNumber, true).catch((err) => {
+        // For 429 errors, the modal is shown by loadDayCoreContent
+        // For other errors, the page will show loading state
+        console.error('Core content loading failed:', err.message);
+      });
+
+      // Start deferred loading in background
+      loadDayDeferredContent(dayNumber, true).catch((err) => {
+        console.error('Deferred content loading failed:', err.message);
+      });
+
+      // Wait for 10s display, then show page with loading spinners
+      await displayPromise;
 
       set({ isRegenerating: false });
     } catch (err: any) {
-      // Error already handled in loadDayCoreContent (shows modal for 429)
-      // isRegenerating already set to false for 429 errors
-      console.error('Core content loading failed:', err);
+      // Always set isRegenerating to false on ANY error to prevent stuck UI
+      const is429 = err?.response?.status === 429 || err?.message === 'Rate limit reached';
+      if (!is429) {
+        set({ isRegenerating: false });
+      }
     }
   },
 

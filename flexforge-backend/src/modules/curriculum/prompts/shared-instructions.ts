@@ -122,9 +122,9 @@ ${continuity.bossProjectProgress}
     // Include previous day's actual code for cumulative building
     if (continuity.previousDayCode) {
       console.log(`[ContinuityInstructions] Including previous day code in prompt (length: ${continuity.previousDayCode.length})`);
-      parts.push(`⚠️ CRITICAL - CUMULATIVE CODE REQUIREMENT ⚠️
+      parts.push(`CUMULATIVE CODE REQUIREMENT
 
-PREVIOUS DAY'S WORKING CODE:
+PREVIOUS DAY'S CODE (Day ${ctx.dayNumber - 1}):
 \`\`\`
 ${continuity.previousDayCode}
 \`\`\`
@@ -134,15 +134,43 @@ TODAY'S CODE MUST BE CUMULATIVE - THIS IS MANDATORY:
 2. KEEP ALL EXISTING CODE: Include ALL the code from above, then add today's new functionality
 3. DO NOT create a different file or endpoint - extend the existing one
 4. The output should be ONE complete file that includes yesterday's code PLUS today's additions
-5. Mark new additions with comments like "// Day ${ctx.dayNumber}: Added ..."
 
-WRONG (creating new file):
-- Day 1: app/api/product-info/route.ts
-- Day 2: app/api/price/[symbol]/route.ts  ❌ WRONG - different file!
+✅ CORRECT APPROACH:
+- Take the EXACT code above as your starting point
+- ADD new functionality by modifying existing functions OR adding new helper functions
+- ENHANCE existing code with new features
+- You CAN add new imports, new helper functions - just integrate them into the same file
 
-CORRECT (extending same file):
-- Day 1: app/api/product-info/route.ts (basic POST endpoint)
-- Day 2: app/api/product-info/route.ts (same file + scraping logic added) ✅`);
+❌ WRONG APPROACH:
+- Creating a different file or endpoint
+- Appending new code at the bottom without integrating with existing code
+- Duplicating logic that already exists
+
+EXAMPLE of correct cumulative building:
+Day 1 code:
+\`\`\`python
+def fetch_data(url):
+    response = requests.get(url)
+    return response.text
+\`\`\`
+
+Day 2 solutionCode (enhanced version):
+\`\`\`python
+def fetch_data(url):
+    # Day 2: Enhanced with error handling
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        return response.text
+    except requests.RequestException:
+        return None
+
+# Day 2: Added helper function
+def validate_response(data):
+    return data and len(data) > 0
+\`\`\`
+
+Your solutionCode for Day ${ctx.dayNumber} MUST be ONE complete file containing Day ${ctx.dayNumber - 1}'s code with today's enhancements/additions.`);
     } else {
       console.log(`[ContinuityInstructions] No previous day code available for cumulative building`);
     }

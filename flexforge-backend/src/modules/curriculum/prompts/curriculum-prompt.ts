@@ -927,8 +927,8 @@ Output valid JSON.`;
     "conceptConnection": "Which foundationCard concept this applies",
     "estimatedMinutes": 12,
 
-    "solutionCode": "REQUIRED: ${solutionCodeLines} lines complete working ${params.suggestedLanguage || 'code'}. ${dayNumber > 1 ? 'MUST include ALL previous days code + new additions. Same file as Day 1, extended.' : 'Must be real, runnable code.'} GENERATE THIS FIRST.",
-    "starterCode": "REQUIRED: ${starterCodeLines} lines DERIVED FROM solutionCode. Same structure/imports/class names/function names. Replace bodies with TODO comments. ${dayNumber > 1 ? 'Include previous days completed code + TODOs for today.' : ''}",
+    "solutionCode": "REQUIRED: ${solutionCodeLines} lines complete working ${params.suggestedLanguage || 'code'}. ${dayNumber > 1 ? `MUST include Day ${dayNumber - 1} code (provided above) PLUS todays additions. One complete file with all previous code + new code.` : 'Must be real, runnable code.'} GENERATE THIS FIRST.",
+    "starterCode": "REQUIRED: ${starterCodeLines} lines DERIVED FROM solutionCode. Same structure/imports/class names/function names. Replace bodies with TODO comments.",
     "solutionExplanation": "REQUIRED: 1-2 sentences on what this code does",
     "solutionAnnotations": ["Key line 1 explanation", "Key line 2 explanation", "Key line 3 explanation"],
 

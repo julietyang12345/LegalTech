@@ -488,15 +488,16 @@ export function SessionPage() {
   }, [activeSession, currentDay, startDay]);
 
   // Continue loading content if not fully loaded (TodayPage started it, we continue)
+  // SKIP this during regeneration - regenerateDayContent handles its own loading
   useEffect(() => {
-    if (activeSession && !isCoreLoaded) {
+    if (activeSession && !isCoreLoaded && !isRegenerating) {
       // Content loading started by TodayPage, continues here
       // Each section will show its own loader until content arrives
       loadDayCoreContent(activeSession.currentDay).then(() => {
         loadDayDeferredContent(activeSession.currentDay).catch(console.error);
       }).catch(console.error);
     }
-  }, [activeSession, isCoreLoaded, loadDayCoreContent, loadDayDeferredContent]);
+  }, [activeSession, isCoreLoaded, isRegenerating, loadDayCoreContent, loadDayDeferredContent]);
 
 
   // Get available steps (filter out skipped ones)
@@ -761,7 +762,7 @@ export function SessionPage() {
     detailsLoaded: false,
   };
 
-  // Regenerating day content - show loading inside FocusModeLayout to keep step circles visible
+  // Regenerating day content - show 10s loading screen then transition to page with loading spinners
   if (isRegenerating) {
     const dayNum = currentDay?.day || activeSession.currentDay;
     return (
