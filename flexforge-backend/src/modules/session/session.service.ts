@@ -123,14 +123,30 @@ export class SessionService {
       );
 
       if (cacheResult) {
-        // Cache HIT
-        curriculum = cacheResult.curriculum;
-        variantId = cacheResult.variantId;
-        fromCache = true;
-        this.logger.log(
-          `📦 Cache HIT for "${createSessionDto.skillName}" - variant ${variantId}`,
-        );
-      } else {
+        // Cache HIT - but STRICTLY verify the cached curriculum is for the right skill
+        const cachedSkillName = cacheResult.curriculum?.metadata?.skillName;
+        const requestedSkillName = createSessionDto.skillName;
+
+        // Strict skill match verification
+        const isValidMatch = this.verifySkillMatch(requestedSkillName, cachedSkillName);
+
+        if (!isValidMatch) {
+          this.logger.warn(
+            `🚨 Cache HIT REJECTED: requested "${requestedSkillName}" but cached is "${cachedSkillName}". ` +
+            `Skills don't match - treating as cache MISS.`
+          );
+          // Treat as cache miss - fall through to generate new curriculum
+        } else {
+          curriculum = cacheResult.curriculum;
+          variantId = cacheResult.variantId;
+          fromCache = true;
+          this.logger.log(
+            `📦 Cache HIT for "${createSessionDto.skillName}" - variant ${variantId}`,
+          );
+        }
+      }
+
+      if (!curriculum) {
         // Cache MISS - generate new curriculum
         // Include user's learner preferences from onboarding
         const learnerPrefs = user.preferences?.learner;
@@ -842,25 +858,54 @@ export class SessionService {
 
     // Validate curriculum metadata before generating day content
     // This prevents cache key collisions between different subjects
-    if (!session.curriculum?.metadata?.skillName) {
+    const metadataSkillName = session.curriculum?.metadata?.skillName;
+    const sessionSkillName = session.skillName;
+
+    // Check 1: Missing metadata.skillName
+    if (!metadataSkillName) {
       this.logger.error(
         `⚠️ Session ${sessionId} has curriculum with missing metadata.skillName! ` +
-          `Session skillName: "${session.skillName}", ` +
+          `Session skillName: "${sessionSkillName}", ` +
           `Curriculum metadata: ${JSON.stringify(session.curriculum?.metadata)}`,
       );
       // Fix the metadata if it's missing but session has skillName
-      if (session.skillName && session.curriculum) {
+      if (sessionSkillName && session.curriculum) {
         session.curriculum.metadata = {
           ...session.curriculum.metadata,
-          skillName: session.skillName,
+          skillName: sessionSkillName,
           durationDays: session.durationDays,
           hoursPerDay: session.hoursPerDay,
           skillLevel: session.skillLevel,
         };
         this.logger.log(
-          `🔧 Fixed curriculum metadata for session ${sessionId}: skillName="${session.skillName}"`,
+          `🔧 Fixed curriculum metadata for session ${sessionId}: skillName="${sessionSkillName}"`,
         );
         await this.sessionsRepository.save(session);
+      }
+    }
+    // Check 2: Mismatched skillName (wrong curriculum from cache collision)
+    else if (metadataSkillName.toLowerCase() !== sessionSkillName.toLowerCase()) {
+      this.logger.error(
+        `🚨 CRITICAL: Session ${sessionId} has MISMATCHED skillName! ` +
+          `Session wants "${sessionSkillName}" but curriculum is for "${metadataSkillName}". ` +
+          `This indicates a cache collision - fixing metadata and forcing regeneration.`,
+      );
+      // Fix the metadata to match what the session actually requested
+      if (session.curriculum) {
+        session.curriculum.metadata = {
+          ...session.curriculum.metadata,
+          skillName: sessionSkillName,
+          durationDays: session.durationDays,
+          hoursPerDay: session.hoursPerDay,
+          skillLevel: session.skillLevel,
+        };
+        this.logger.log(
+          `🔧 Fixed curriculum metadata mismatch for session ${sessionId}: "${metadataSkillName}" → "${sessionSkillName}"`,
+        );
+        await this.sessionsRepository.save(session);
+        // Force regeneration since the content is for the wrong subject
+        forceRegenerate = true;
+        this.logger.log(`🔄 Forcing day content regeneration due to skillName mismatch`);
       }
     }
 
@@ -1813,5 +1858,70 @@ ${jsonInstruction}`;
     this.logger.log(`✅ Cleared deferredContent from ${count} sessions`);
 
     return { sessionsUpdated: count };
+  }
+
+  /**
+   * Strictly verify that requested skill matches cached skill
+   * Returns true only if they're essentially the same skill
+   */
+  private verifySkillMatch(requestedSkill: string, cachedSkill: string | undefined): boolean {
+    if (!cachedSkill) return false;
+
+    const requestedLower = requestedSkill.toLowerCase().trim();
+    const cachedLower = cachedSkill.toLowerCase().trim();
+
+    // Exact match
+    if (requestedLower === cachedLower) return true;
+
+    // Extract meaningful words (ignore filler words)
+    const fillerWords = new Set([
+      'the', 'a', 'an', 'to', 'for', 'of', 'in', 'on', 'with', 'and', 'or',
+      'how', 'learn', 'learning', 'basics', 'basic', 'beginner', 'beginners',
+      'introduction', 'intro', 'tutorial', 'course', 'guide', 'advanced',
+      'intermediate', 'using', 'build', 'building', 'create', 'creating'
+    ]);
+
+    const getKeyWords = (text: string): string[] =>
+      text.split(/\s+/)
+        .map(w => w.replace(/[^a-z0-9]/g, ''))
+        .filter(w => w.length > 1 && !fillerWords.has(w));
+
+    const requestedWords = getKeyWords(requestedLower);
+    const cachedWords = getKeyWords(cachedLower);
+
+    if (requestedWords.length === 0 || cachedWords.length === 0) {
+      return false;
+    }
+
+    // PRIMARY SUBJECT must match (first meaningful word)
+    const requestedPrimary = requestedWords[0];
+    const cachedPrimary = cachedWords[0];
+
+    const primaryMatch =
+      requestedPrimary === cachedPrimary ||
+      requestedPrimary.includes(cachedPrimary) ||
+      cachedPrimary.includes(requestedPrimary);
+
+    if (!primaryMatch) {
+      this.logger.debug(
+        `Skill mismatch: primary "${requestedPrimary}" vs "${cachedPrimary}"`
+      );
+      return false;
+    }
+
+    // Require high word overlap (at least 80% of cached words in requested)
+    const overlapCount = cachedWords.filter(w =>
+      requestedWords.includes(w) || requestedLower.includes(w)
+    ).length;
+    const overlapRatio = overlapCount / cachedWords.length;
+
+    if (overlapRatio < 0.8) {
+      this.logger.debug(
+        `Skill mismatch: overlap ${(overlapRatio * 100).toFixed(0)}% < 80%`
+      );
+      return false;
+    }
+
+    return true;
   }
 }

@@ -104,13 +104,15 @@ function PresenceBar() {
 
   // Filter steps based on current day
   const availableSteps = STEPS.filter(step => {
-    // Skip video step when video is unavailable - foundationCards step handles learning content
-    // But show it while core content is still loading (video might not be populated yet)
+    // Skip video step until we confirm it has content
+    // Only show when we have actual video OR AI explanation content
     if (step === 'video') {
-      if (!isCoreLoaded) return true; // Still loading - show the step
-      // Video undefined means content not properly loaded - show the step
-      if (currentDay?.video === undefined) return true;
-      if (videoUnavailable) return false;
+      // Hide if explicitly skipped (language learning or skip strategy)
+      if (isLanguageLearning || videoStrategy === 'skip' || videoSkipped) return false;
+      // Hide until we have confirmed video content
+      if (!hasVideo) return false;
+      // Has video - show the step
+      return true;
     }
     // Skip foundationCards only if core is loaded AND explicitly has no cards (empty array)
     // If undefined, content might not be properly loaded - show the step

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Play, Clock, CheckCircle2, MessageCircle, Lock, Youtube, RefreshCw, Loader2, BookOpen, Video, Sparkles, Info, ChevronDown, ChevronUp, Zap } from 'lucide-react';
-import { Card, Button } from '@/components/common';
+import { Card, Button, ExerciseLoadingScreen } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
@@ -583,14 +583,27 @@ export function VideoStep({ day, session }: VideoStepProps) {
         />
       )}
 
-      {/* AI Explanation Mode - "Learn & Understand" (only available when video exists) */}
-      {currentMode === 'ai' && video && (
-        <AIExplanation
-          video={video}
-          onSwitchToVideo={showVideoOption ? handleSwitchToVideo : undefined}
-          showVideoOption={!!showVideoOption}
-          foundationCards={day.foundationCards}
-        />
+      {/* AI Explanation Mode - "Learn & Understand" */}
+      {currentMode === 'ai' && (
+        <>
+          {/* Show loading screen while content is generating */}
+          {!day.foundationCards && !day.languageFoundationCards && !video?.aiConceptBreakdown && (
+            <ExerciseLoadingScreen
+              type="task"
+              skillName={session.skillName}
+              dayNumber={day.day}
+            />
+          )}
+          {/* Show AI explanation once content is loaded */}
+          {(day.foundationCards || day.languageFoundationCards || video?.aiConceptBreakdown) && video && (
+            <AIExplanation
+              video={video}
+              onSwitchToVideo={showVideoOption ? handleSwitchToVideo : undefined}
+              showVideoOption={!!showVideoOption}
+              foundationCards={day.foundationCards}
+            />
+          )}
+        </>
       )}
 
       {/* Video Mode */}

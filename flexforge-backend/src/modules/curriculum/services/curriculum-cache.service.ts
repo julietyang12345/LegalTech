@@ -168,6 +168,64 @@ export class CurriculumCacheService implements OnModuleInit {
       `🔍 Cache key found: stored skill="${cacheKey.skillName}" normalized="${cacheKey.skillNameNormalized}"`
     );
 
+    // CRITICAL: Strict verification that cached skill matches what was requested
+    // This prevents cache collisions when AI normalization incorrectly maps different skills
+    const requestedLower = dto.skillName.toLowerCase().trim();
+    const storedLower = cacheKey.skillName.toLowerCase().trim();
+    const storedNormalizedLower = cacheKey.skillNameNormalized.toLowerCase().trim();
+
+    // Extract meaningful words (ignore common filler words)
+    const fillerWords = new Set(['the', 'a', 'an', 'to', 'for', 'of', 'in', 'on', 'with', 'and', 'or', 'how', 'learn', 'learning', 'basics', 'basic', 'beginner', 'beginners', 'introduction', 'intro', 'tutorial', 'course', 'guide']);
+    const getKeyWords = (text: string) =>
+      text.split(/\s+/)
+        .map(w => w.replace(/[^a-z0-9]/g, ''))
+        .filter(w => w.length > 1 && !fillerWords.has(w));
+
+    const requestedWords = getKeyWords(requestedLower);
+    const storedWords = getKeyWords(storedLower);
+    const storedNormalizedWords = getKeyWords(storedNormalizedLower);
+
+    // STRICT CHECK 1: Exact normalized match
+    if (normalizedSkill === storedNormalizedLower) {
+      // Normalized forms match exactly - this is expected and safe
+      this.logger.log(`✅ Cache validation passed: normalized forms match exactly`);
+    }
+    // STRICT CHECK 2: The PRIMARY/CORE subject word must match
+    // e.g., "Italian" must be in both for Italian courses, "Python" for Python courses
+    else {
+      // Get the first key word (usually the main subject)
+      const requestedPrimary = requestedWords[0];
+      const storedPrimary = storedWords[0] || storedNormalizedWords[0];
+
+      // Check if primary subjects match
+      const primaryMatch = requestedPrimary && storedPrimary &&
+        (requestedPrimary === storedPrimary ||
+         requestedPrimary.includes(storedPrimary) ||
+         storedPrimary.includes(requestedPrimary));
+
+      // Also require high overlap: at least 80% of stored key words appear in requested
+      const overlapCount = storedNormalizedWords.filter(w =>
+        requestedWords.includes(w) || requestedLower.includes(w)
+      ).length;
+      const overlapRatio = storedNormalizedWords.length > 0
+        ? overlapCount / storedNormalizedWords.length
+        : 0;
+
+      if (!primaryMatch || overlapRatio < 0.8) {
+        this.logger.warn(
+          `🚫 Cache REJECTED (strict check failed): requested="${dto.skillName}" ` +
+          `but found "${cacheKey.skillName}" (normalized="${cacheKey.skillNameNormalized}"). ` +
+          `Primary match: ${primaryMatch}, overlap: ${(overlapRatio * 100).toFixed(0)}%. ` +
+          `Treating as cache miss to prevent wrong content.`
+        );
+        return null;
+      }
+
+      this.logger.log(
+        `✅ Cache validation passed: primary="${requestedPrimary}" matches, overlap=${(overlapRatio * 100).toFixed(0)}%`
+      );
+    }
+
     // Select best variant
     const variant = await this.selectVariant(
       cacheKey.id,
