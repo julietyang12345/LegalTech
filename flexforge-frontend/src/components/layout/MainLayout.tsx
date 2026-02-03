@@ -17,7 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
-import { communityService, Notification as ApiNotification } from '@/services/communityService';
+import { communityService, getDisplayName, Notification as ApiNotification } from '@/services/communityService';
 
 const NAV_ITEMS = [
   { path: '/today', label: 'Today', icon: Home },
@@ -43,7 +43,7 @@ function toDisplayNotification(n: ApiNotification): DisplayNotification {
   return {
     id: n.id,
     type: n.type,
-    fromUserName: n.fromUser?.name || 'Someone',
+    fromUserName: getDisplayName(n.fromUser),
     postTitle: n.postTitle,
     courseName: n.courseName,
     message: n.message,

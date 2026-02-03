@@ -6,12 +6,14 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { IsString } from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { User } from '../../database/entities/user.entity';
 import { OnboardingService } from './onboarding.service';
+import { SkillDetectorService } from '../curriculum/services/skill-detector.service';
 import {
   GenerateDirectionsDto,
   CompleteOnboardingDto,
@@ -26,7 +28,10 @@ class ClassifySkillDto {
 @Controller('onboarding')
 @UseGuards(JwtAuthGuard)
 export class OnboardingController {
-  constructor(private readonly onboardingService: OnboardingService) {}
+  constructor(
+    private readonly onboardingService: OnboardingService,
+    private readonly skillDetector: SkillDetectorService,
+  ) {}
 
   /**
    * Generate 4-6 learning directions based on user's goal.
@@ -38,6 +43,16 @@ export class OnboardingController {
     @Body() dto: GenerateDirectionsDto,
     @CurrentUser() _user: User, // Required for auth guard
   ): Promise<DirectionsResponse> {
+    // Content moderation check first
+    const moderationResult = await this.skillDetector.moderateContent(dto.goal);
+    if (!moderationResult.isAllowed) {
+      throw new BadRequestException({
+        message: 'This topic violates AI content policy. Please choose a different learning goal.',
+        error: 'AI_CONTENT_POLICY_VIOLATION',
+        flaggedCategories: moderationResult.flaggedCategories,
+      });
+    }
+
     return this.onboardingService.generateDirections(dto.goal, dto.refinement);
   }
 

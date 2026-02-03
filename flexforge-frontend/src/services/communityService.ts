@@ -1,11 +1,27 @@
 import api from './api';
 
+// Helper to get display name from user object with fallbacks
+export function getDisplayName(user?: { name?: string; email?: string } | null): string {
+  if (!user) return 'Unknown';
+  if (user.name) return user.name;
+  if (user.email) {
+    // Extract username from email (before @)
+    const username = user.email.split('@')[0];
+    // Capitalize first letter and replace dots/underscores with spaces
+    return username
+      .replace(/[._]/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase());
+  }
+  return 'Unknown';
+}
+
 export interface CommunityPost {
   id: string;
   authorId: string;
   author?: {
     id: string;
-    name: string;
+    name?: string;
+    email?: string;
   };
   type: 'project' | 'question' | 'progress';
   title?: string;
@@ -46,7 +62,8 @@ export interface CommunityComment {
   authorId: string;
   author?: {
     id: string;
-    name: string;
+    name?: string;
+    email?: string;
   };
   content: string;
   commentType: 'worked-for-me' | 'clarification' | 'watch-out' | 'general';
@@ -60,7 +77,8 @@ export interface Notification {
   fromUserId: string;
   fromUser?: {
     id: string;
-    name: string;
+    name?: string;
+    email?: string;
   };
   type: 'comment' | 'course_request' | 'course_granted' | 'mention';
   postId?: string;

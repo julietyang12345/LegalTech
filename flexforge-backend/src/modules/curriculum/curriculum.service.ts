@@ -623,6 +623,18 @@ Return JSON only:
       `🎯 Generating curriculum: ${dto.skillName} (${dto.durationDays} days, ${userTier} tier)`,
     );
 
+    // Step 0: Content moderation - check for policy violations using OpenAI's free Moderation API
+    const moderationResult = await this.skillDetector.moderateContent(
+      dto.skillName,
+    );
+    if (!moderationResult.isAllowed) {
+      throw new BadRequestException({
+        message: 'This topic violates AI content policy and cannot be used for curriculum generation. Please choose a different learning topic.',
+        error: 'AI_CONTENT_POLICY_VIOLATION',
+        flaggedCategories: moderationResult.flaggedCategories,
+      });
+    }
+
     // Step 1: Detect skill type and complexity
     const skillDetection = await this.skillDetector.detectSkillType(
       dto.skillName,

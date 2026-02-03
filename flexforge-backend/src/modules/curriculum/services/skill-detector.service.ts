@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AiService, AITask } from '../../ai/ai.service';
+import OpenAI from 'openai';
 
 export enum SkillType {
   CODE = 'CODE',
@@ -55,11 +57,106 @@ export interface SkillDetectionResult {
   } | null;
 }
 
+export interface ContentModerationResult {
+  isAllowed: boolean;
+  // OpenAI moderation categories
+  categories?: {
+    sexual: boolean;
+    hate: boolean;
+    harassment: boolean;
+    'self-harm': boolean;
+    violence: boolean;
+    illicit: boolean;
+  };
+  flaggedCategories?: string[];
+}
+
 @Injectable()
 export class SkillDetectorService {
   private readonly logger = new Logger(SkillDetectorService.name);
+  private readonly openai: OpenAI;
 
-  constructor(private aiService: AiService) {}
+  constructor(
+    private aiService: AiService,
+    private configService: ConfigService,
+  ) {
+    const openaiKey = this.configService.get<string>('OPENAI_API_KEY');
+    if (!openaiKey) {
+      this.logger.warn('⚠️ OPENAI_API_KEY not configured - content moderation will be skipped');
+    }
+    this.openai = new OpenAI({
+      apiKey: openaiKey || 'dummy-key', // Prevent constructor error, API call will fail gracefully
+    });
+  }
+
+  /**
+   * Check if a skill/topic violates content policies using OpenAI's free Moderation API.
+   * Called before curriculum generation to filter inappropriate requests.
+   *
+   * Uses OpenAI's omni-moderation-latest model which checks for:
+   * - sexual, sexual/minors
+   * - hate, hate/threatening
+   * - harassment, harassment/threatening
+   * - self-harm, self-harm/intent, self-harm/instructions
+   * - violence, violence/graphic
+   * - illicit, illicit/violent
+   *
+   * @see https://platform.openai.com/docs/guides/moderation
+   */
+  async moderateContent(skillName: string): Promise<ContentModerationResult> {
+    this.logger.log(`🛡️ Moderating content for: "${skillName}"`);
+
+    // Skip moderation if OpenAI API key is not configured
+    const openaiKey = this.configService.get<string>('OPENAI_API_KEY');
+    if (!openaiKey) {
+      this.logger.warn('⚠️ Skipping content moderation - OPENAI_API_KEY not configured');
+      return { isAllowed: true };
+    }
+
+    try {
+      this.logger.log(`🛡️ Calling OpenAI Moderation API...`);
+      const response = await this.openai.moderations.create({
+        model: 'omni-moderation-latest',
+        input: skillName,
+      });
+
+      const result = response.results[0];
+      this.logger.log(`🛡️ OpenAI Moderation response - flagged: ${result.flagged}`);
+
+      if (result.flagged) {
+        // Extract which categories were flagged
+        const flaggedCategories = Object.entries(result.categories)
+          .filter(([_, flagged]) => flagged)
+          .map(([category]) => category);
+
+        this.logger.warn(
+          `🚫 Content blocked: "${skillName}" - Flagged categories: ${flaggedCategories.join(', ')}`,
+        );
+
+        return {
+          isAllowed: false,
+          categories: {
+            sexual: result.categories.sexual || result.categories['sexual/minors'],
+            hate: result.categories.hate || result.categories['hate/threatening'],
+            harassment: result.categories.harassment || result.categories['harassment/threatening'],
+            'self-harm': result.categories['self-harm'] || result.categories['self-harm/intent'] || result.categories['self-harm/instructions'],
+            violence: result.categories.violence || result.categories['violence/graphic'],
+            illicit: result.categories.illicit || result.categories['illicit/violent'],
+          },
+          flaggedCategories,
+        };
+      }
+
+      this.logger.log(`✅ Content approved: "${skillName}"`);
+      return { isAllowed: true };
+    } catch (error) {
+      this.logger.error('OpenAI moderation failed:', error.message);
+      this.logger.error('Full error:', JSON.stringify(error, null, 2));
+      // On error, allow the content but log for review
+      // This prevents blocking legitimate requests due to API issues
+      return { isAllowed: true };
+    }
+  }
 
   /**
    * Detect skill type and complexity using Claude

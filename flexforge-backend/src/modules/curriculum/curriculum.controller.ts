@@ -69,6 +69,16 @@ export class CurriculumController {
   @Post('estimate-days')
   async estimateDays(@Body() body: { skillName: string }) {
     try {
+      // Content moderation check first
+      const moderationResult = await this.skillDetector.moderateContent(body.skillName);
+      if (!moderationResult.isAllowed) {
+        throw new BadRequestException({
+          message: 'This topic violates AI content policy and cannot be used for curriculum generation. Please choose a different learning topic.',
+          error: 'AI_CONTENT_POLICY_VIOLATION',
+          flaggedCategories: moderationResult.flaggedCategories,
+        });
+      }
+
       const result = await this.skillDetector.detectSkillType(body.skillName);
 
       return {
@@ -78,6 +88,10 @@ export class CurriculumController {
         reasoning: result.reasoning,
       };
     } catch (error) {
+      // Re-throw BadRequestException as-is (includes our moderation error)
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
       throw new BadRequestException(error.message || 'Failed to estimate days');
     }
   }

@@ -37,7 +37,7 @@ import { useSessionStore } from '@/stores/sessionStore';
 import { useCommunityShareStore } from '@/stores/communityShareStore';
 import { projectService } from '@/services/projectService';
 import { sessionService } from '@/services/sessionService';
-import { communityService, type CommunityPost as ApiPost } from '@/services/communityService';
+import { communityService, getDisplayName, type CommunityPost as ApiPost } from '@/services/communityService';
 import { Button, Card, Input } from '@/components/common';
 import { StepContentPreview, type PreviewStep } from '@/components/session';
 import type { Project, CurriculumDay, TargetLanguage } from '@/types';
@@ -1911,7 +1911,7 @@ export function CommunityPage() {
           id: p.id,
           type: p.type,
           authorId: p.authorId,
-          authorName: p.author?.name || 'Unknown',
+          authorName: getDisplayName(p.author),
           createdAt: new Date(p.createdAt),
           title: p.title,
           currentState: p.currentState,
@@ -1930,7 +1930,7 @@ export function CommunityPage() {
           isPinned: p.isPinned,
           comments: (p.comments || []).map((c) => ({
             id: c.id,
-            authorName: c.author?.name || 'Unknown',
+            authorName: getDisplayName(c.author),
             content: c.content,
             commentType: c.commentType,
             createdAt: new Date(c.createdAt),
