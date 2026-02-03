@@ -186,7 +186,10 @@ const TRANSCRIPT_CACHE_TARGET = 1800;
 const MAX_TRANSCRIPT_ENTRIES = 300; // Cap stored transcript length to save memory
 
 const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+// YouTube consent cookie to bypass GDPR consent screen
+const YT_CONSENT_COOKIE = 'CONSENT=YES+cb.20210328-17-p0.en+FX+999';
 
 // Transcript cache interface
 interface CachedTranscript {
@@ -573,15 +576,27 @@ export class VideoMatchingService {
     error?: string;
   }> {
     try {
+      this.logger.log(`[TranscriptSummary] Fetching transcript for video: ${videoId}`);
+
+      // Clear any negative cache for this video to retry fresh
+      const cached = this.transcriptCache.get(videoId);
+      if (cached?.failed) {
+        this.logger.log(`[TranscriptSummary] Clearing negative cache for ${videoId}`);
+        this.transcriptCache.delete(videoId);
+      }
+
       // Fetch transcript
       const transcript = await this.getYouTubeTranscript(videoId);
 
       if (!transcript || transcript.length === 0) {
+        this.logger.warn(`[TranscriptSummary] No transcript found for video: ${videoId}`);
         return {
           success: false,
-          error: 'No transcript available for this video',
+          error: 'No transcript available for this video. The video may not have captions enabled.',
         };
       }
+
+      this.logger.log(`[TranscriptSummary] Got ${transcript.length} transcript segments for ${videoId}`);
 
       // Combine transcript into full text (limit to ~8000 chars for API)
       const fullText = transcript
@@ -908,7 +923,11 @@ Return ONLY valid JSON, no markdown or extra text.`;
         const response = await axios.get(
           `https://www.youtube.com/watch?v=${candidate.videoId}`,
           {
-            headers: { 'User-Agent': USER_AGENT },
+            headers: {
+              'User-Agent': USER_AGENT,
+              'Cookie': YT_CONSENT_COOKIE,
+              'Accept-Language': 'en-US,en;q=0.9',
+            },
             timeout: 5000,
           },
         );
@@ -2350,7 +2369,11 @@ Return JSON only:
         const response = await axios.get(
           `https://www.youtube.com/watch?v=${videoId}`,
           {
-            headers: { 'User-Agent': USER_AGENT },
+            headers: {
+              'User-Agent': USER_AGENT,
+              'Cookie': YT_CONSENT_COOKIE,
+              'Accept-Language': 'en-US,en;q=0.9',
+            },
             timeout: 10000,
           },
         );
@@ -2387,6 +2410,7 @@ Return JSON only:
               ?.captionTracks;
 
           if (captionTracks && captionTracks.length > 0) {
+            this.logger.debug(`[Transcript] Found ${captionTracks.length} caption tracks for ${videoId}`);
             // Find English track, preferring manually-created over ASR (auto speech recognition)
             const englishTracks = captionTracks.filter((t: any) =>
               t.languageCode?.startsWith('en'),
@@ -2397,22 +2421,36 @@ Return JSON only:
               captionTracks[0];
 
             if (englishTrack?.baseUrl) {
+              this.logger.debug(`[Transcript] Fetching captions from baseUrl for ${videoId}`);
               const captionResponse = await axios.get(englishTrack.baseUrl, {
                 headers: { 'User-Agent': USER_AGENT },
                 timeout: 5000,
               });
               const transcript = this.parseTranscriptXml(captionResponse.data);
-              this.cacheTranscript(videoId, transcript);
-              return transcript;
+              if (transcript.length > 0) {
+                this.logger.debug(`[Transcript] Parsed ${transcript.length} segments for ${videoId}`);
+                this.cacheTranscript(videoId, transcript);
+                return transcript;
+              } else {
+                this.logger.warn(`[Transcript] Caption XML parsed but empty for ${videoId}`);
+              }
+            } else {
+              this.logger.warn(`[Transcript] No baseUrl in caption track for ${videoId}`);
             }
+          } else {
+            this.logger.debug(`[Transcript] No captionTracks in playerResponse for ${videoId}`);
           }
-        } catch {
+        } catch (err) {
+          this.logger.warn(`[Transcript] Method 1 failed for ${videoId}: ${err.message}`);
           // Fall through to next method
         }
+      } else {
+        this.logger.debug(`[Transcript] Could not extract playerResponse for ${videoId}`);
       }
 
       // Method 2: Extract captionTracks array with anchor-aware extraction
       // Format: "captionTracks": [...]
+      this.logger.debug(`[Transcript] Trying Method 2 for ${videoId}`);
       const captionArrayJson = this.extractJsonArrayAnchored(
         html,
         '"captionTracks"',
@@ -2420,6 +2458,7 @@ Return JSON only:
       if (captionArrayJson) {
         try {
           const captionTracks = JSON.parse(captionArrayJson);
+          this.logger.debug(`[Transcript] Method 2 found ${captionTracks.length} tracks for ${videoId}`);
           // Prefer manually-created over ASR
           const englishTracks = captionTracks.filter((t: any) =>
             t.languageCode?.startsWith('en'),
@@ -2435,15 +2474,21 @@ Return JSON only:
               timeout: 5000,
             });
             const transcript = this.parseTranscriptXml(captionResponse.data);
-            this.cacheTranscript(videoId, transcript);
-            return transcript;
+            if (transcript.length > 0) {
+              this.logger.debug(`[Transcript] Method 2 success: ${transcript.length} segments for ${videoId}`);
+              this.cacheTranscript(videoId, transcript);
+              return transcript;
+            }
           }
-        } catch {
-          // No captions available
+        } catch (err) {
+          this.logger.warn(`[Transcript] Method 2 failed for ${videoId}: ${err.message}`);
         }
+      } else {
+        this.logger.debug(`[Transcript] Method 2: no captionTracks array found for ${videoId}`);
       }
 
       // No transcript found - cache as failed
+      this.logger.warn(`[Transcript] All methods failed for ${videoId} - caching as unavailable`);
       this.cacheTranscript(videoId, null, true);
       return null;
     } catch {

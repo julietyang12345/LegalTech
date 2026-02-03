@@ -445,10 +445,12 @@ function TranscriptSummary({
   videoId,
   concept,
   isPro,
+  onFetchStatusChange,
 }: {
   videoId: string;
   concept?: string;
   isPro: boolean;
+  onFetchStatusChange?: (status: 'idle' | 'loading' | 'success' | 'error') => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -462,6 +464,7 @@ function TranscriptSummary({
 
     setIsLoading(true);
     setError(null);
+    onFetchStatusChange?.('loading');
 
     try {
       const result = await sessionService.getTranscriptSummary({
@@ -471,8 +474,10 @@ function TranscriptSummary({
       setSummary(result.summary);
       setKeyPoints(result.keyPoints || []);
       setHasFetched(true);
+      onFetchStatusChange?.('success');
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Failed to load summary');
+      onFetchStatusChange?.('error');
     } finally {
       setIsLoading(false);
     }
@@ -484,6 +489,11 @@ function TranscriptSummary({
     }
     setIsExpanded(!isExpanded);
   };
+
+  // Hide completely if there was an error
+  if (error) {
+    return null;
+  }
 
   if (!isPro) {
     return (
@@ -556,21 +566,6 @@ function TranscriptSummary({
               </div>
             )}
 
-            {error && (
-              <div className="p-4 bg-red-50 rounded-xl border border-red-100">
-                <p className="text-sm text-red-600">{error}</p>
-                <button
-                  onClick={() => {
-                    setHasFetched(false);
-                    fetchSummary();
-                  }}
-                  className="mt-2 text-sm text-red-700 underline hover:no-underline"
-                >
-                  Try again
-                </button>
-              </div>
-            )}
-
             {summary && !isLoading && (
               <div className="space-y-4">
                 {/* Summary */}
@@ -624,6 +619,7 @@ export function VideoStep({ day, session }: VideoStepProps) {
   const [isSearchingNew, setIsSearchingNew] = useState(false);
   const [aiGeneratedVideos, setAiGeneratedVideos] = useState<VideoMatch[]>([]);
   const [currentMode, setCurrentMode] = useState<ContentMode>('ai');
+  const [transcriptStatus, setTranscriptStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const { hasTierAccess } = useAuthStore();
   useSessionStore(); // Store subscription for state changes
   const canAskAI = hasTierAccess(QuotaTier.PRO);
@@ -825,6 +821,16 @@ export function VideoStep({ day, session }: VideoStepProps) {
               </div>
             )}
 
+            {/* Transcript Summary - PRO feature (shown above actions when not errored) */}
+            {currentVideo?.videoId && transcriptStatus !== 'error' && (
+              <TranscriptSummary
+                videoId={currentVideo.videoId}
+                concept={video?.concept || video?.topicFocus || day.title}
+                isPro={canAskAI}
+                onFetchStatusChange={setTranscriptStatus}
+              />
+            )}
+
             {/* Actions footer */}
             <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
               <button
@@ -851,15 +857,6 @@ export function VideoStep({ day, session }: VideoStepProps) {
                 </button>
               )}
             </div>
-
-            {/* Transcript Summary - PRO feature */}
-            {currentVideo?.videoId && (
-              <TranscriptSummary
-                videoId={currentVideo.videoId}
-                concept={video?.concept || video?.topicFocus || day.title}
-                isPro={canAskAI}
-              />
-            )}
           </Card>
         </>
       )}

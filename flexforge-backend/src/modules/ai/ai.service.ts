@@ -15,6 +15,76 @@ import {
   CompanionContext,
 } from '../companion/companion.service';
 
+/**
+ * Simple semaphore to limit concurrent AI API calls
+ * Prevents overwhelming AI providers with too many concurrent requests
+ */
+class Semaphore {
+  private permits: number;
+  private queue: Array<() => void> = [];
+
+  constructor(permits: number) {
+    this.permits = permits;
+  }
+
+  async acquire(): Promise<void> {
+    if (this.permits > 0) {
+      this.permits--;
+      return;
+    }
+    return new Promise<void>((resolve) => {
+      this.queue.push(resolve);
+    });
+  }
+
+  release(): void {
+    const next = this.queue.shift();
+    if (next) {
+      next();
+    } else {
+      this.permits++;
+    }
+  }
+
+  get available(): number {
+    return this.permits;
+  }
+
+  get waiting(): number {
+    return this.queue.length;
+  }
+}
+
+// Max concurrent AI API calls (across all providers)
+const MAX_CONCURRENT_AI_CALLS = 20;
+
+// Retry configuration
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 1000; // 1 second
+const MAX_DELAY_MS = 60000; // 60 seconds
+
+/**
+ * Sleep for a given number of milliseconds
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Calculate exponential backoff delay with jitter
+ * Jitter prevents "thundering herd" when many clients retry at once
+ */
+function getBackoffDelay(attempt: number, retryAfterMs?: number): number {
+  if (retryAfterMs) {
+    // Respect the API's retry-after header
+    return retryAfterMs;
+  }
+  // Exponential: 1s, 2s, 4s, 8s... with random jitter (±25%)
+  const exponentialDelay = BASE_DELAY_MS * Math.pow(2, attempt);
+  const jitter = exponentialDelay * 0.25 * (Math.random() - 0.5); // ±25%
+  return Math.min(exponentialDelay + jitter, MAX_DELAY_MS);
+}
+
 export enum AITask {
   // Heavy reasoning (Claude Sonnet 4)
   CURRICULUM_GENERATION = 'CURRICULUM_GENERATION',
@@ -75,6 +145,9 @@ export class AiService {
   private gemini: GoogleGenerativeAI;
   private groq: Groq;
 
+  // Semaphore to limit concurrent AI API calls globally
+  private static aiSemaphore = new Semaphore(MAX_CONCURRENT_AI_CALLS);
+
   // Cost per 1M tokens (input + output average)
   private readonly costs = {
     'claude-sonnet-4': 0.05,
@@ -127,31 +200,80 @@ export class AiService {
   ): Promise<AIResponse> {
     const routing = this.getRoutingStrategy(task);
 
-    for (const { provider, model } of routing) {
-      try {
-        this.logger.log(`🎯 Routing ${task} to ${provider} (${model})`);
-
-        const response = await this.callProvider(
-          provider,
-          model,
-          prompt,
-          systemPrompt,
-        );
-
-        this.logger.log(
-          `✅ ${provider} success. Tokens: ${response.tokensUsed}, Cost: $${response.cost.toFixed(4)}`,
-        );
-
-        return response;
-      } catch (error) {
-        this.logger.error(`❌ ${provider} failed for ${task}:`, error.message);
-
-        // Try next provider in fallback chain
-        continue;
-      }
+    // Acquire semaphore to limit concurrent AI calls
+    const semaphore = AiService.aiSemaphore;
+    if (semaphore.waiting > 0) {
+      this.logger.debug(`⏳ AI semaphore queue: ${semaphore.waiting} waiting, ${semaphore.available} available`);
     }
+    await semaphore.acquire();
 
-    throw new Error(`All AI providers failed for task: ${task}`);
+    try {
+      for (const { provider, model } of routing) {
+        try {
+          this.logger.log(`🎯 Routing ${task} to ${provider} (${model})`);
+
+          const response = await this.callProvider(
+            provider,
+            model,
+            prompt,
+            systemPrompt,
+          );
+
+          this.logger.log(
+            `✅ ${provider} success. Tokens: ${response.tokensUsed}, Cost: $${response.cost.toFixed(4)}`,
+          );
+
+          return response;
+        } catch (error: any) {
+          const isRateLimited = error?.status === 429 || error?.message?.includes('rate');
+
+          // If rate limited, retry twice with exponential backoff before falling back
+          if (isRateLimited) {
+            let lastError = error;
+
+            for (let attempt = 1; attempt <= 2; attempt++) {
+              const retryAfter = lastError?.headers?.['retry-after'];
+              const delayMs = retryAfter ? parseInt(retryAfter) * 1000 : getBackoffDelay(attempt - 1);
+
+              this.logger.warn(
+                `⏳ ${provider} rate limited, retry ${attempt}/2 in ${Math.round(delayMs / 1000)}s...`,
+              );
+              await sleep(delayMs);
+
+              try {
+                const retryResponse = await this.callProvider(
+                  provider,
+                  model,
+                  prompt,
+                  systemPrompt,
+                );
+                this.logger.log(
+                  `✅ ${provider} retry ${attempt} success. Tokens: ${retryResponse.tokensUsed}`,
+                );
+                return retryResponse;
+              } catch (retryError: any) {
+                lastError = retryError;
+                this.logger.warn(
+                  `❌ ${provider} retry ${attempt} failed: ${retryError.message}`,
+                );
+              }
+            }
+
+            this.logger.error(`❌ ${provider} all retries failed, falling back`);
+          } else {
+            this.logger.error(`❌ ${provider} failed for ${task}: ${error.message}`);
+          }
+
+          // Try next provider in fallback chain
+          continue;
+        }
+      }
+
+      throw new Error(`All AI providers failed for task: ${task}`);
+    } finally {
+      // Always release semaphore
+      semaphore.release();
+    }
   }
 
   private getRoutingStrategy(
@@ -318,56 +440,64 @@ export class AiService {
     prompt: string,
     cacheableSystem: CacheablePrompt,
   ): AsyncGenerator<{ type: 'text' | 'done'; text?: string; usage?: any }> {
-    // Build system with cache_control for static parts
-    const systemBlocks: Array<{
-      type: 'text';
-      text: string;
-      cache_control?: { type: 'ephemeral' };
-    }> = [];
+    // Acquire semaphore to limit concurrent AI calls
+    const semaphore = AiService.aiSemaphore;
+    await semaphore.acquire();
 
-    if (cacheableSystem.staticPart) {
-      systemBlocks.push({
-        type: 'text',
-        text: cacheableSystem.staticPart,
-        cache_control: { type: 'ephemeral' },
-      });
-    }
+    try {
+      // Build system with cache_control for static parts
+      const systemBlocks: Array<{
+        type: 'text';
+        text: string;
+        cache_control?: { type: 'ephemeral' };
+      }> = [];
 
-    if (cacheableSystem.dynamicPart) {
-      systemBlocks.push({
-        type: 'text',
-        text: cacheableSystem.dynamicPart,
-      });
-    }
-
-    const stream = await this.anthropic.messages.stream({
-      model,
-      max_tokens: 16384,
-      system: systemBlocks,
-      messages: [{ role: 'user', content: prompt }],
-    });
-
-    // Yield text chunks as they arrive
-    for await (const event of stream) {
-      if (
-        event.type === 'content_block_delta' &&
-        event.delta.type === 'text_delta'
-      ) {
-        yield { type: 'text', text: event.delta.text };
+      if (cacheableSystem.staticPart) {
+        systemBlocks.push({
+          type: 'text',
+          text: cacheableSystem.staticPart,
+          cache_control: { type: 'ephemeral' },
+        });
       }
-    }
 
-    // Get final message for usage stats
-    const finalMessage = await stream.finalMessage();
-    yield {
-      type: 'done',
-      usage: {
-        inputTokens: finalMessage.usage.input_tokens,
-        outputTokens: finalMessage.usage.output_tokens,
-        cacheReadTokens: (finalMessage as any).usage?.cache_read_input_tokens || 0,
-        cacheWriteTokens: (finalMessage as any).usage?.cache_creation_input_tokens || 0,
-      },
-    };
+      if (cacheableSystem.dynamicPart) {
+        systemBlocks.push({
+          type: 'text',
+          text: cacheableSystem.dynamicPart,
+        });
+      }
+
+      const stream = await this.anthropic.messages.stream({
+        model,
+        max_tokens: 16384,
+        system: systemBlocks,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      // Yield text chunks as they arrive
+      for await (const event of stream) {
+        if (
+          event.type === 'content_block_delta' &&
+          event.delta.type === 'text_delta'
+        ) {
+          yield { type: 'text', text: event.delta.text };
+        }
+      }
+
+      // Get final message for usage stats
+      const finalMessage = await stream.finalMessage();
+      yield {
+        type: 'done',
+        usage: {
+          inputTokens: finalMessage.usage.input_tokens,
+          outputTokens: finalMessage.usage.output_tokens,
+          cacheReadTokens: (finalMessage as any).usage?.cache_read_input_tokens || 0,
+          cacheWriteTokens: (finalMessage as any).usage?.cache_creation_input_tokens || 0,
+        },
+      };
+    } finally {
+      semaphore.release();
+    }
   }
 
   /**
@@ -379,63 +509,71 @@ export class AiService {
     prompt: string,
     cacheableSystem: CacheablePrompt,
   ): Promise<AIResponse> {
-    // Build system with cache_control for static parts
-    const systemBlocks: Array<{
-      type: 'text';
-      text: string;
-      cache_control?: { type: 'ephemeral' };
-    }> = [];
+    // Acquire semaphore to limit concurrent AI calls
+    const semaphore = AiService.aiSemaphore;
+    await semaphore.acquire();
 
-    // Static part gets cached (must be >1024 tokens to be effective)
-    if (cacheableSystem.staticPart) {
-      systemBlocks.push({
-        type: 'text',
-        text: cacheableSystem.staticPart,
-        cache_control: { type: 'ephemeral' },
-      });
-    }
+    try {
+      // Build system with cache_control for static parts
+      const systemBlocks: Array<{
+        type: 'text';
+        text: string;
+        cache_control?: { type: 'ephemeral' };
+      }> = [];
 
-    // Dynamic part is not cached
-    if (cacheableSystem.dynamicPart) {
-      systemBlocks.push({
-        type: 'text',
-        text: cacheableSystem.dynamicPart,
-      });
-    }
+      // Static part gets cached (must be >1024 tokens to be effective)
+      if (cacheableSystem.staticPart) {
+        systemBlocks.push({
+          type: 'text',
+          text: cacheableSystem.staticPart,
+          cache_control: { type: 'ephemeral' },
+        });
+      }
 
-    const response = await this.anthropic.messages.create({
-      model,
-      max_tokens: 16384,
-      system: systemBlocks,
-      messages: [{ role: 'user', content: prompt }],
-    });
+      // Dynamic part is not cached
+      if (cacheableSystem.dynamicPart) {
+        systemBlocks.push({
+          type: 'text',
+          text: cacheableSystem.dynamicPart,
+        });
+      }
 
-    const content = response.content[0];
-    const text = content.type === 'text' ? content.text : '';
-
-    // Check if cache was used
-    const cacheHit = (response as any).usage?.cache_read_input_tokens > 0;
-
-    if (cacheHit) {
-      this.logger.log(
-        `🎯 Cache HIT - saved ${(response as any).usage.cache_read_input_tokens} tokens`,
-      );
-    }
-
-    return {
-      content: text,
-      tokensUsed: response.usage.input_tokens + response.usage.output_tokens,
-      cost: this.calculateCostWithCache(
+      const response = await this.anthropic.messages.create({
         model,
-        response.usage.input_tokens,
-        response.usage.output_tokens,
-        (response as any).usage?.cache_creation_input_tokens || 0,
-        (response as any).usage?.cache_read_input_tokens || 0,
-      ),
-      provider: 'anthropic',
-      model,
-      cacheHit,
-    };
+        max_tokens: 16384,
+        system: systemBlocks,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const content = response.content[0];
+      const text = content.type === 'text' ? content.text : '';
+
+      // Check if cache was used
+      const cacheHit = (response as any).usage?.cache_read_input_tokens > 0;
+
+      if (cacheHit) {
+        this.logger.log(
+          `🎯 Cache HIT - saved ${(response as any).usage.cache_read_input_tokens} tokens`,
+        );
+      }
+
+      return {
+        content: text,
+        tokensUsed: response.usage.input_tokens + response.usage.output_tokens,
+        cost: this.calculateCostWithCache(
+          model,
+          response.usage.input_tokens,
+          response.usage.output_tokens,
+          (response as any).usage?.cache_creation_input_tokens || 0,
+          (response as any).usage?.cache_read_input_tokens || 0,
+        ),
+        provider: 'anthropic',
+        model,
+        cacheHit,
+      };
+    } finally {
+      semaphore.release();
+    }
   }
 
   private calculateCostWithCache(

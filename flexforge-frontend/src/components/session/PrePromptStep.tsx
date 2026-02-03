@@ -86,13 +86,15 @@ function PrePromptLoader({ dayTitle }: { dayTitle: string }) {
 }
 
 export function PrePromptStep({ day, session }: PrePromptStepProps) {
-  const { regenerateDayContent, isCoreLoaded } = useSessionStore();
+  const { regenerateDayContent, isCoreLoaded, isDeferredLoading } = useSessionStore();
   const { addSystemMessage } = useCompanionStore();
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
 
   // Check if prePrompt content is available (has text or primeQuestions)
-  const hasPrePromptContent = day.prePrompt?.text || (day.prePrompt?.primeQuestions && day.prePrompt.primeQuestions.length > 0);
+  // primeQuestions can be at day.prePrompt.primeQuestions (legacy) or day.primeQuestions (from Haiku deferred)
+  const primeQuestions = day.prePrompt?.primeQuestions || (day as any).primeQuestions || [];
+  const hasPrePromptContent = day.prePrompt?.text || primeQuestions.length > 0;
 
   // Show inline loading when:
   // 1. Core content not yet loaded, OR
@@ -151,10 +153,10 @@ export function PrePromptStep({ day, session }: PrePromptStepProps) {
           </p>
 
           {/* Prime questions */}
-          {day.prePrompt?.primeQuestions && day.prePrompt.primeQuestions.length > 0 && (
+          {primeQuestions.length > 0 ? (
             <div className="space-y-3">
               <h3 className="font-medium text-gray-700">Think about:</h3>
-              {day.prePrompt.primeQuestions.map((question, index) => (
+              {primeQuestions.map((question, index) => (
                 <motion.div
                   key={index}
                   initial={{ opacity: 0, x: -10 }}
@@ -170,7 +172,18 @@ export function PrePromptStep({ day, session }: PrePromptStepProps) {
                 </motion.div>
               ))}
             </div>
-          )}
+          ) : isDeferredLoading ? (
+            /* Show skeleton while primeQuestions are loading */
+            <div className="space-y-3">
+              <h3 className="font-medium text-gray-700">Think about:</h3>
+              {[1, 2].map((i) => (
+                <div key={i} className="flex items-start gap-3 p-3 bg-white rounded-lg border border-brand-100 animate-pulse">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-100/50" />
+                  <div className="flex-1 h-4 bg-gray-100 rounded" style={{ width: `${60 + i * 15}%` }} />
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       </Card>
 
