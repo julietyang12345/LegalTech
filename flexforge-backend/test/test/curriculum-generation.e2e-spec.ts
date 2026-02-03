@@ -7,7 +7,6 @@ import {
   SkillType,
 } from '../../src/modules/curriculum/services/skill-detector.service';
 import { VideoMatchingService } from '../../src/modules/curriculum/services/youtube/video-matching.service';
-import { FileGeneratorService } from '../../src/modules/curriculum/services/file-generator.service';
 import { CurriculumCacheService } from '../../src/modules/curriculum/services/curriculum-cache.service';
 import { UniversityResourceService } from '../../src/modules/curriculum/services/university/university-resource.service';
 import { DocumentationFetchService } from '../../src/modules/curriculum/services/docs/documentation-fetch.service';
@@ -97,21 +96,6 @@ describe('Curriculum Generation (e2e)', () => {
                 duration: 600,
               },
               matchPercent: 85,
-            }),
-          },
-        },
-        {
-          provide: FileGeneratorService,
-          useValue: {
-            generateTaskFiles: jest.fn().mockResolvedValue({
-              starter: '// starter code',
-              hints: '// hints',
-              solution: '// solution',
-            }),
-            generateBossProjectFiles: jest.fn().mockResolvedValue({
-              starter: '// boss starter',
-              hints: '// boss hints',
-              solution: '// boss solution',
             }),
           },
         },

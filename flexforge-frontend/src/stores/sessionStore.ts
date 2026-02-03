@@ -471,7 +471,8 @@ export const useSessionStore = create<SessionState>()(
       // The component handles both cases, so we shouldn't skip it
     }
 
-    // Skip openTask only if explicitly not present (deferred content loaded but no openTask)
+    // Skip openTask only if explicitly not present (core content loaded but no openTask)
+    // openTask now comes from CORE content (Haiku), not deferred
     // Don't skip if undefined - content might still be loading
     if (nextStep === 'openTask') {
       const openTask = currentDay?.openTask;
@@ -1062,9 +1063,10 @@ export const useSessionStore = create<SessionState>()(
     // bossMilestone is always shown (handles both boss projects and intensive practice)
     // So we don't subtract for it
 
-    // openTask - only subtract if deferred is loaded and explicitly not present
+    // openTask - subtract if explicitly not present (null) and not still loading
+    // openTask now comes from CORE content (Haiku), not deferred
     const openTask = currentDay?.openTask;
-    if (!isDeferredLoading && openTask === null) total -= 1;
+    if (isCoreLoaded && openTask === null) total -= 1;
 
     return {
       current: completedSteps.length,

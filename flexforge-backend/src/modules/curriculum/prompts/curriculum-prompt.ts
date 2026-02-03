@@ -857,9 +857,14 @@ WRONG APPROACH (DO NOT DO THIS):
 User must feel they're building ONE growing codebase, not 5 separate mini-projects.
 
 REQUIRED FIELDS:
-- solutionCode: ${solutionCodeLines} lines COMPLETE WORKING code
+- solutionCode: ${solutionCodeLines} lines COMPLETE WORKING code (GENERATE THIS FIRST)
   - Real, runnable code that ADDS to the existing project
   - For Day 2+: show what files to add/modify, reference existing code
+- starterCode: ${starterCodeLines} lines DERIVED FROM solutionCode above
+  - SAME structure: same imports, same class/function names, same file organization
+  - Replace implementation bodies with TODO comments describing what to implement
+  - Keep signatures, parameters, return types from solution
+  - For Day 2+: Include previous days' completed code + new TODOs for today's additions
 - solutionExplanation: 1-2 sentences on what this code does
 - solutionAnnotations: 3-5 strings explaining key parts
 
@@ -895,6 +900,7 @@ REQUIRED FIELDS:
   - If testing via browser URL → MUST have GET handler (browser sends GET)
   - For POST-only APIs: show curl command in test steps, NOT "open in browser"
 - DO NOT use placeholder text - generate ACTUAL code
+- AVOID REPETITION in solution code: Extract repeated values into constants, use helper functions for repeated logic
 ${ctx?.continuity?.bossProjectTarget ? `- Boss Project: "${ctx.continuity.bossProjectTarget}" - conceptConnection should reference a foundationCard concept` : ''}
 
 NOTE: Do NOT generate reflection - this is handled separately by a lightweight model.
@@ -921,7 +927,8 @@ Output valid JSON.`;
     "conceptConnection": "Which foundationCard concept this applies",
     "estimatedMinutes": 12,
 
-    "solutionCode": "REQUIRED: ${solutionCodeLines} lines complete working ${params.suggestedLanguage || 'code'}. ${dayNumber > 1 ? 'MUST include ALL previous days code + new additions. Same file as Day 1, extended.' : 'Must be real, runnable code.'}",
+    "solutionCode": "REQUIRED: ${solutionCodeLines} lines complete working ${params.suggestedLanguage || 'code'}. ${dayNumber > 1 ? 'MUST include ALL previous days code + new additions. Same file as Day 1, extended.' : 'Must be real, runnable code.'} GENERATE THIS FIRST.",
+    "starterCode": "REQUIRED: ${starterCodeLines} lines DERIVED FROM solutionCode. Same structure/imports/class names/function names. Replace bodies with TODO comments. ${dayNumber > 1 ? 'Include previous days completed code + TODOs for today.' : ''}",
     "solutionExplanation": "REQUIRED: 1-2 sentences on what this code does",
     "solutionAnnotations": ["Key line 1 explanation", "Key line 2 explanation", "Key line 3 explanation"],
 
@@ -1602,10 +1609,44 @@ Boss projects are 60-90 minute capstone challenges integrating ALL previous conc
 Challenging but achievable.
 
 CRITICAL - CODE GENERATION REQUIREMENTS:
-- "starterCode": Generate ACTUAL runnable code with TODO comments marking where user adds code
-- "solution": Generate COMPLETE working code that implements ALL requirements
-- DO NOT copy the placeholder text - generate REAL code
-- The code must be runnable and solve the project requirements
+1. FIRST generate "solution": COMPLETE working code that implements ALL requirements (50-100 lines)
+2. THEN derive "starterCode" FROM the solution:
+   - SAME file structure, class names, function names as solution
+   - SAME imports and setup code
+   - Replace function bodies with TODO comments describing what to implement
+   - Keep type signatures, parameters, return types intact
+
+EXAMPLE - If solution is:
+\`\`\`
+class PriceTracker:
+    def __init__(self):
+        self.db = sqlite3.connect('prices.db')
+
+    def fetch_price(self, url):
+        response = requests.get(url, headers=self.headers)
+        soup = BeautifulSoup(response.content, 'html.parser')
+        return soup.select_one('.price').text
+\`\`\`
+
+Then starterCode MUST be:
+\`\`\`
+class PriceTracker:
+    def __init__(self):
+        # TODO: Initialize database connection
+        pass
+
+    def fetch_price(self, url):
+        # TODO: Fetch URL with proper headers
+        # TODO: Parse HTML and extract price
+        pass
+\`\`\`
+
+DO NOT generate starterCode with different structure (e.g., functions when solution uses classes)
+
+CODE QUALITY - Avoid repetition in solution:
+- Extract repeated values into CONSTANTS at the top (e.g., HEADERS, SELECTORS, CONFIG)
+- Use helper functions for repeated logic
+- Keep solution clean and DRY (Don't Repeat Yourself)
 
 Output valid JSON only.`;
 
@@ -1618,10 +1659,10 @@ Generate JSON with:
 - overview: {whatYouBuild, whyItMatters, skillsIntegrated[{skill, howUsed}]}
 - requirements: [{requirement, fromDay, concept}] - one per day combined
 - phases: 3 phases (Setup 15min, Core Build 35min, Polish 25min) with objectives[], deliverable
-- starterCode: REAL ${params.suggestedLanguage || 'code'} with TODOs (30-50 lines)
+- solution: COMPLETE working ${params.suggestedLanguage || 'code'} (50-100 lines) - GENERATE THIS FIRST
+- starterCode: DERIVED FROM solution above - same structure/classes/functions, bodies replaced with TODOs (30-50 lines)
 - setupInstructions: {files: [{path: "FULL PATH e.g. app/api/route.js", description: "what it contains"}], steps: ["1) Scaffold, 2) cd into folder, 3) Install packages, 4) File steps with FULL PATHS, 5) Test: run command + URL + expected result"], runCommand: "npm run dev → http://localhost:<PORT>/..." (use <PORT> placeholder for user's port)}
 - hints: 4 progressive hints with phase numbers
-- solution: COMPLETE working ${params.suggestedLanguage || 'code'} (50-100 lines)
 - solutionWalkthrough: [{step, description, code}]
 - evaluation: {criteria[{criterion, points, checks[]}], passingScore:70}
 - commonMistakes: [{mistake, fix}]

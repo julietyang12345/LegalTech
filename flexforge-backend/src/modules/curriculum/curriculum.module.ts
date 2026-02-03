@@ -2,7 +2,6 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CurriculumService } from './curriculum.service';
 import { CurriculumController } from './curriculum.controller';
-import { FileGeneratorService } from './services/file-generator.service';
 import { SkillDetectorService } from './services/skill-detector.service';
 import { VideoMatchingService } from './services/youtube/video-matching.service';
 import { CurriculumCacheService } from './services/curriculum-cache.service';
@@ -37,7 +36,6 @@ import {
   controllers: [CurriculumController],
   providers: [
     CurriculumService,
-    FileGeneratorService,
     SkillDetectorService,
     VideoMatchingService,
     CurriculumCacheService,

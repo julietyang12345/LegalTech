@@ -1040,11 +1040,39 @@ Return JSON only:
     const { staticPart, dynamicPart, userPrompt } =
       buildCacheableDayDetailCorePrompt(params);
 
-    const aiResponse = await this.aiService.callAnthropicWithCache(
-      'claude-sonnet-4-20250514',
-      userPrompt,
-      { staticPart, dynamicPart },
-    );
+    // Build unified content generation context for lightweight prompt
+    const ctx = buildContentGenerationContext(curriculum, dayNumber, {
+      userTier,
+      improvementAreas,
+      lessOfAreas,
+      previousDayReflection,
+    });
+
+    // Build lightweight prompt for Haiku (reflection, openTask, primeQuestions)
+    const { systemPrompt: lightSystemPrompt, userPrompt: lightUserPrompt } =
+      buildLightweightContentPrompt(params, ctx);
+
+    // Run BOTH AI calls in parallel: Sonnet (core) + Haiku (lightweight)
+    this.logger.log(`🚀 Starting parallel AI calls for Day ${dayNumber} CORE (Sonnet + Haiku)`);
+
+    const [aiResponse, lightweightResponse] = await Promise.all([
+      this.aiService.callAnthropicWithCache(
+        'claude-sonnet-4-20250514',
+        userPrompt,
+        { staticPart, dynamicPart },
+      ),
+      this.aiService.routeRequest(
+        AITask.LIGHTWEIGHT_CONTENT,
+        lightUserPrompt,
+        lightSystemPrompt,
+      ).catch((error) => {
+        // Non-fatal: log and return null so Sonnet content is still used
+        this.logger.warn(
+          `⚠️ Day ${dayNumber} lightweight content failed: ${error.message}`,
+        );
+        return null;
+      }),
+    ]);
 
     let coreContent: any;
     try {
@@ -1127,6 +1155,45 @@ Return JSON only:
     coreContent.contentLayer = contentLayer;
     coreContent.videoStrategy = videoStrategy;
     coreContent.contentSource = contentSource;
+
+    // Merge lightweight content (Haiku) into core content
+    if (lightweightResponse) {
+      try {
+        const cleanedLightweight = lightweightResponse.content
+          .replace(/```json\n?/g, '')
+          .replace(/```\n?/g, '')
+          .trim();
+
+        const lightJsonMatch = cleanedLightweight.match(/\{[\s\S]*\}/);
+        if (lightJsonMatch) {
+          let lightweightContent: any;
+          try {
+            lightweightContent = JSON.parse(lightJsonMatch[0]);
+          } catch {
+            const fixedLight = lightJsonMatch[0].replace(/,(\s*[}\]])/g, '$1');
+            lightweightContent = JSON.parse(fixedLight);
+          }
+
+          // Add Haiku's lightweight content to core
+          if (lightweightContent.reflection) {
+            coreContent.reflection = lightweightContent.reflection;
+            this.logger.log(`✅ Day ${dayNumber} reflection generated with Haiku (in CORE)`);
+          }
+          if (lightweightContent.openTask) {
+            coreContent.openTask = lightweightContent.openTask;
+            this.logger.log(`✅ Day ${dayNumber} openTask generated with Haiku (in CORE)`);
+          }
+          if (lightweightContent.primeQuestions) {
+            coreContent.primeQuestions = lightweightContent.primeQuestions;
+            this.logger.log(`✅ Day ${dayNumber} primeQuestions generated with Haiku (in CORE)`);
+          }
+        }
+      } catch (parseError) {
+        this.logger.warn(
+          `⚠️ Day ${dayNumber} lightweight content parse failed in CORE: ${parseError.message}`,
+        );
+      }
+    }
 
     // ====== VIDEO SEARCH FOR CORE CONTENT (using shared helper) ======
     // Includes multi-model alignment verification (Haiku checks Gemini's video selection)
@@ -1485,6 +1552,31 @@ Return JSON only:
     const { staticPart, dynamicPart, userPrompt } =
       buildCacheableDayDetailCorePrompt(params);
 
+    // Build unified content generation context for lightweight prompt
+    const ctx = buildContentGenerationContext(curriculum, dayNumber, {
+      userTier,
+      improvementAreas,
+      lessOfAreas,
+      previousDayReflection,
+    });
+
+    // Build lightweight prompt for Haiku (reflection, openTask, primeQuestions)
+    const { systemPrompt: lightSystemPrompt, userPrompt: lightUserPrompt } =
+      buildLightweightContentPrompt(params, ctx);
+
+    // Start Haiku call early (non-blocking) - will merge at the end
+    this.logger.log(`🚀 Starting parallel Haiku call for Day ${dayNumber} lightweight content (streaming)`);
+    const lightweightPromise = this.aiService.routeRequest(
+      AITask.LIGHTWEIGHT_CONTENT,
+      lightUserPrompt,
+      lightSystemPrompt,
+    ).catch((error) => {
+      this.logger.warn(
+        `⚠️ Day ${dayNumber} lightweight content failed (streaming): ${error.message}`,
+      );
+      return null;
+    });
+
     // Stream from Anthropic
     let fullContent = '';
     let lastYieldedCardIndex = -1;
@@ -1646,6 +1738,46 @@ Return JSON only:
                 skipped: true,
               };
               // Don't yield video event when skipped - frontend will skip video step
+            }
+
+            // Merge lightweight content (Haiku) into core content
+            const lightweightResponse = await lightweightPromise;
+            if (lightweightResponse) {
+              try {
+                const cleanedLightweight = lightweightResponse.content
+                  .replace(/```json\n?/g, '')
+                  .replace(/```\n?/g, '')
+                  .trim();
+
+                const lightJsonMatch = cleanedLightweight.match(/\{[\s\S]*\}/);
+                if (lightJsonMatch) {
+                  let lightweightContent: any;
+                  try {
+                    lightweightContent = JSON.parse(lightJsonMatch[0]);
+                  } catch {
+                    const fixedLight = lightJsonMatch[0].replace(/,(\s*[}\]])/g, '$1');
+                    lightweightContent = JSON.parse(fixedLight);
+                  }
+
+                  // Add Haiku's lightweight content to core
+                  if (lightweightContent.reflection) {
+                    coreContent.reflection = lightweightContent.reflection;
+                    this.logger.log(`✅ Day ${dayNumber} reflection generated with Haiku (in CORE streaming)`);
+                  }
+                  if (lightweightContent.openTask) {
+                    coreContent.openTask = lightweightContent.openTask;
+                    this.logger.log(`✅ Day ${dayNumber} openTask generated with Haiku (in CORE streaming)`);
+                  }
+                  if (lightweightContent.primeQuestions) {
+                    coreContent.primeQuestions = lightweightContent.primeQuestions;
+                    this.logger.log(`✅ Day ${dayNumber} primeQuestions generated with Haiku (in CORE streaming)`);
+                  }
+                }
+              } catch (parseError) {
+                this.logger.warn(
+                  `⚠️ Day ${dayNumber} lightweight content parse failed in CORE streaming: ${parseError.message}`,
+                );
+              }
             }
 
             // Cache the result
@@ -1867,32 +1999,17 @@ Return JSON only:
       ctx,
     );
 
-    // Build lightweight prompt for Haiku (reflection, openTask, primeQuestions)
-    const { systemPrompt: lightSystemPrompt, userPrompt: lightUserPrompt } =
-      buildLightweightContentPrompt(params, ctx);
+    // NOTE: Lightweight content (reflection, openTask, primeQuestions) is now generated
+    // in CORE content phase via Haiku, running parallel with Sonnet core generation.
+    // This deferred phase only generates main content (bossMilestone/intensivePractice).
 
-    // Run BOTH AI calls in parallel to avoid Cloudflare timeout (524 error)
-    // Sonnet handles main deferred content, Haiku handles lightweight content
-    this.logger.log(`🚀 Starting parallel AI calls for Day ${dayNumber} (Sonnet + Haiku)`);
+    this.logger.log(`🚀 Generating Day ${dayNumber} DEFERRED content (Sonnet)`);
 
-    const [aiResponse, lightweightResponse] = await Promise.all([
-      this.aiService.routeRequest(
-        AITask.CURRICULUM_GENERATION,
-        userPrompt,
-        systemPrompt,
-      ),
-      this.aiService.routeRequest(
-        AITask.LIGHTWEIGHT_CONTENT,
-        lightUserPrompt,
-        lightSystemPrompt,
-      ).catch((error) => {
-        // Non-fatal: log and return null so Sonnet content is still used
-        this.logger.warn(
-          `⚠️ Day ${dayNumber} lightweight content failed: ${error.message}`,
-        );
-        return null;
-      }),
-    ]);
+    const aiResponse = await this.aiService.routeRequest(
+      AITask.CURRICULUM_GENERATION,
+      userPrompt,
+      systemPrompt,
+    );
 
     let deferredContent: any;
     try {
@@ -1971,18 +2088,8 @@ Return JSON only:
         );
       }
 
-      // Validate openTask structure (practice-based curricula)
-      if (deferredContent.openTask) {
-        const ot = deferredContent.openTask;
-        this.logger.log(
-          `✅ Day ${dayNumber} openTask: "${ot.title}" (${ot.difficulty || 'medium'})`,
-        );
-      } else if (deferredContent.intensivePractice) {
-        // Practice-based but no openTask - log warning
-        this.logger.warn(
-          `⚠️ Day ${dayNumber} is practice-based but missing openTask`,
-        );
-      }
+      // NOTE: openTask validation removed - openTask is now generated in CORE content phase
+      // via Haiku, alongside reflection and primeQuestions
     } catch (error) {
       this.logger.error(
         `❌ Failed to parse Day ${dayNumber} DEFERRED:`,
@@ -1991,46 +2098,6 @@ Return JSON only:
       throw new BadRequestException(
         'Failed to generate deferred day content. Please try again.',
       );
-    }
-
-    // Merge lightweight content (Haiku) into deferred content
-    if (lightweightResponse) {
-      try {
-        const cleanedLightweight = lightweightResponse.content
-          .replace(/```json\n?/g, '')
-          .replace(/```\n?/g, '')
-          .trim();
-
-        const lightJsonMatch = cleanedLightweight.match(/\{[\s\S]*\}/);
-        if (lightJsonMatch) {
-          let lightweightContent: any;
-          try {
-            lightweightContent = JSON.parse(lightJsonMatch[0]);
-          } catch {
-            const fixedLight = lightJsonMatch[0].replace(/,(\s*[}\]])/g, '$1');
-            lightweightContent = JSON.parse(fixedLight);
-          }
-
-          // Replace Sonnet's reflection/openTask with Haiku's version
-          if (lightweightContent.reflection) {
-            deferredContent.reflection = lightweightContent.reflection;
-            this.logger.log(`✅ Day ${dayNumber} reflection generated with Haiku`);
-          }
-          if (lightweightContent.openTask) {
-            deferredContent.openTask = lightweightContent.openTask;
-            this.logger.log(`✅ Day ${dayNumber} openTask generated with Haiku`);
-          }
-          // Add primeQuestions (Think About) from Haiku - frontend displays alongside prePrompt
-          if (lightweightContent.primeQuestions) {
-            deferredContent.primeQuestions = lightweightContent.primeQuestions;
-            this.logger.log(`✅ Day ${dayNumber} primeQuestions generated with Haiku`);
-          }
-        }
-      } catch (parseError) {
-        this.logger.warn(
-          `⚠️ Day ${dayNumber} lightweight content parse failed, using Sonnet fallback: ${parseError.message}`,
-        );
-      }
     }
 
     // Cache the result
@@ -3275,42 +3342,6 @@ Give a direct, helpful answer.`;
 
     return {
       reply: response.content,
-      tokensUsed: response.tokensUsed,
-      cost: response.cost,
-    };
-  }
-
-  /**
-   * Generate starter code template
-   */
-  async generateStarterCode(params: {
-    projectTitle: string;
-    projectDescription: string;
-    language: string;
-  }): Promise<{ code: string; tokensUsed: number; cost: number }> {
-    this.logger.log(`📝 Generating starter code for: ${params.projectTitle}`);
-
-    const prompt = `Generate starter code template for this project:
-
-Title: ${params.projectTitle}
-Description: ${params.projectDescription}
-Language: ${params.language}
-
-Requirements:
-1. Create a clean, well-structured code skeleton
-2. Include TODO comments showing what to implement
-3. Add helpful explanatory comments
-4. Use best practices for ${params.language}
-
-Return ONLY the code, no markdown blocks:`;
-
-    const response = await this.aiService.routeRequest(
-      AITask.CODE_GENERATION,
-      prompt,
-    );
-
-    return {
-      code: response.content,
       tokensUsed: response.tokensUsed,
       cost: response.cost,
     };
