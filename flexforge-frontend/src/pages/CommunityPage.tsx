@@ -37,6 +37,7 @@ import { useSessionStore } from '@/stores/sessionStore';
 import { useCommunityShareStore } from '@/stores/communityShareStore';
 import { projectService } from '@/services/projectService';
 import { sessionService } from '@/services/sessionService';
+import { communityService, type CommunityPost as ApiPost } from '@/services/communityService';
 import { Button, Card, Input } from '@/components/common';
 import { StepContentPreview, type PreviewStep } from '@/components/session';
 import type { Project, CurriculumDay, TargetLanguage } from '@/types';
@@ -1027,30 +1028,71 @@ function CreatePostModal({
     ? stepQuestions[selectedQuestionIndex]
     : null;
 
-  const handleSubmit = () => {
-    const newPost: Post = {
-      id: `post-${Date.now()}`,
-      type: 'project' as PostType,
-      authorId: user?.id || '',
-      authorName: user?.name || 'You',
-      createdAt: new Date(),
-      title: formData.title,
-      currentState: 'in-progress',
-      whatDone: formData.comments,
-      linkedProject: selectedProject || undefined,
-      linkedCourse: linkType === 'session' ? courseData || undefined : undefined,
-      dayNumber: linkType === 'session' ? selectedDay : undefined,
-      stepType: linkType === 'session' ? selectedStep : undefined,
-      sharedContent: selectedQuestion ? {
-        question: selectedQuestion.question,
-        options: selectedQuestion.options,
-        correctAnswer: selectedQuestion.correctAnswer,
-      } : undefined,
-      codeSnippet: codeSnippet || undefined,
-      comments: [],
-    };
-    onPostCreated(newPost);
-    onClose();
+  const handleSubmit = async () => {
+    try {
+      // Create post via API
+      const response = await communityService.createPost({
+        type: 'project',
+        title: formData.title,
+        currentState: 'in-progress',
+        whatDone: formData.comments,
+        linkedCourse: linkType === 'session' ? courseData || undefined : undefined,
+        dayNumber: linkType === 'session' ? selectedDay : undefined,
+        stepType: linkType === 'session' ? selectedStep : undefined,
+        sharedContent: selectedQuestion ? {
+          question: selectedQuestion.question,
+          options: selectedQuestion.options,
+          correctAnswer: selectedQuestion.correctAnswer,
+        } : undefined,
+        codeSnippet: codeSnippet || undefined,
+      });
+
+      // Convert API response to local Post type
+      const newPost: Post = {
+        id: response.post.id,
+        type: response.post.type,
+        authorId: response.post.authorId,
+        authorName: response.post.author?.name || user?.name || 'You',
+        createdAt: new Date(response.post.createdAt),
+        title: response.post.title,
+        currentState: response.post.currentState,
+        whatDone: response.post.whatDone,
+        linkedCourse: response.post.linkedCourse,
+        dayNumber: response.post.dayNumber,
+        stepType: response.post.stepType,
+        sharedContent: response.post.sharedContent,
+        codeSnippet: response.post.codeSnippet,
+        comments: [],
+      };
+
+      onPostCreated(newPost);
+      onClose();
+    } catch (error) {
+      console.error('Failed to create post:', error);
+      // Fallback: create local post
+      const newPost: Post = {
+        id: `post-${Date.now()}`,
+        type: 'project' as PostType,
+        authorId: user?.id || '',
+        authorName: user?.name || 'You',
+        createdAt: new Date(),
+        title: formData.title,
+        currentState: 'in-progress',
+        whatDone: formData.comments,
+        linkedCourse: linkType === 'session' ? courseData || undefined : undefined,
+        dayNumber: linkType === 'session' ? selectedDay : undefined,
+        stepType: linkType === 'session' ? selectedStep : undefined,
+        sharedContent: selectedQuestion ? {
+          question: selectedQuestion.question,
+          options: selectedQuestion.options,
+          correctAnswer: selectedQuestion.correctAnswer,
+        } : undefined,
+        codeSnippet: codeSnippet || undefined,
+        comments: [],
+      };
+      onPostCreated(newPost);
+      onClose();
+    }
   };
 
   // Build preview post object
@@ -1855,27 +1897,58 @@ export function CommunityPage() {
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [viewingPost, setViewingPost] = useState<Post | null>(null);
   const [joinedGroups, setJoinedGroups] = useState<Set<string>>(new Set());
-  const [posts, setPosts] = useState<Post[]>(() => {
-    // Load posts from localStorage on mount
-    try {
-      const savedPosts = localStorage.getItem('community_posts');
-      if (savedPosts) {
-        const parsed = JSON.parse(savedPosts);
-        // Convert date strings back to Date objects
-        return parsed.map((post: any) => ({
-          ...post,
-          createdAt: new Date(post.createdAt),
-          comments: post.comments?.map((c: any) => ({
-            ...c,
+  const [posts, setPosts] = useState<Post[]>(MOCK_POSTS);
+  const [isLoadingPosts, setIsLoadingPosts] = useState(false);
+
+  // Load posts from API on mount
+  useEffect(() => {
+    const loadPosts = async () => {
+      setIsLoadingPosts(true);
+      try {
+        const response = await communityService.getPosts();
+        // Convert API posts to local Post type
+        const apiPosts: Post[] = response.posts.map((p) => ({
+          id: p.id,
+          type: p.type,
+          authorId: p.authorId,
+          authorName: p.author?.name || 'Unknown',
+          createdAt: new Date(p.createdAt),
+          title: p.title,
+          currentState: p.currentState,
+          whatDone: p.whatDone,
+          feedbackWanted: p.feedbackWanted,
+          codeSnippet: p.codeSnippet,
+          linkedCourse: p.linkedCourse,
+          dayNumber: p.dayNumber,
+          stepType: p.stepType,
+          sharedContent: p.sharedContent,
+          question: p.question,
+          whatTrying: p.whatTrying,
+          whatTried: p.whatTried,
+          whereStuck: p.whereStuck,
+          progressNote: p.progressNote,
+          isPinned: p.isPinned,
+          comments: (p.comments || []).map((c) => ({
+            id: c.id,
+            authorName: c.author?.name || 'Unknown',
+            content: c.content,
+            commentType: c.commentType,
             createdAt: new Date(c.createdAt),
-          })) || [],
+            isHelpful: c.isHelpful,
+          })),
         }));
+        // Combine API posts with mock posts for now (mock posts show for demo)
+        setPosts([...apiPosts, ...MOCK_POSTS]);
+      } catch (error) {
+        console.error('Failed to load posts from API:', error);
+        // Fall back to mock data
+        setPosts(MOCK_POSTS);
+      } finally {
+        setIsLoadingPosts(false);
       }
-    } catch (error) {
-      console.error('Failed to load posts from localStorage:', error);
-    }
-    return MOCK_POSTS;
-  });
+    };
+    loadPosts();
+  }, []);
 
   // Handle share from session (via URL param)
   useEffect(() => {
@@ -2059,10 +2132,7 @@ export function CommunityPage() {
             preselectedProject={shareProject || undefined}
             initialShareData={shareData}
             onPostCreated={(newPost) => {
-              const updatedPosts = [newPost, ...posts];
-              setPosts(updatedPosts);
-              // Persist to localStorage
-              localStorage.setItem('community_posts', JSON.stringify(updatedPosts));
+              setPosts([newPost, ...posts]);
             }}
           />
         )}
@@ -2279,10 +2349,7 @@ export function CommunityPage() {
           preselectedProject={shareProject || undefined}
           initialShareData={shareData}
           onPostCreated={(newPost) => {
-            const updatedPosts = [newPost, ...posts];
-            setPosts(updatedPosts);
-            // Persist to localStorage
-            localStorage.setItem('community_posts', JSON.stringify(updatedPosts));
+            setPosts([newPost, ...posts]);
           }}
         />
       )}

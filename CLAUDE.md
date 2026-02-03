@@ -19,7 +19,27 @@ docker exec -it flexforge-db-prod psql -U flexforge -d flexforge_dev -c "\dt"
 
 # List databases
 docker exec -it flexforge-db-prod psql -U flexforge -d postgres -c "\l"
+
+# Upgrade user to PRO (quotaTier column, not tier)
+docker exec -it flexforge-db-prod psql -U flexforge -d flexforge_dev -c 'UPDATE users SET "quotaTier" = '\''PRO'\'' WHERE email = '\''user@example.com'\'';'
+
+# Verify user tier
+docker exec -it flexforge-db-prod psql -U flexforge -d flexforge_dev -c 'SELECT email, "quotaTier" FROM users WHERE email = '\''user@example.com'\'';'
+
+# List all users with their tiers
+docker exec -it flexforge-db-prod psql -U flexforge -d flexforge_dev -c 'SELECT email, "quotaTier" FROM users;'
 ```
+
+## Key Table Columns
+
+### users table
+- `quotaTier` (not `tier`) - enum: FREE, PRO, PREMIUM, UNLIMITED
+- `curriculaGeneratedThisMonth`
+- `aiTokensUsedThisMonth`
+- `tokensUsedThisMonth`
+
+### waitlist table
+- `createdAt`, `pricePreference`, `userId`, `convertedAt`, `convertedTier`
 
 ## Common Mistakes to Avoid
 

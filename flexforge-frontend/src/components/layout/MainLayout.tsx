@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
+import { communityService, Notification as ApiNotification } from '@/services/communityService';
 
 const NAV_ITEMS = [
   { path: '/today', label: 'Today', icon: Home },
@@ -25,12 +26,10 @@ const NAV_ITEMS = [
   { path: '/community', label: 'Community', icon: Users },
 ];
 
-// Notification types
-type NotificationType = 'comment' | 'course_request' | 'course_granted';
-
-interface Notification {
+// Local notification type for display
+interface DisplayNotification {
   id: string;
-  type: NotificationType;
+  type: 'comment' | 'course_request' | 'course_granted' | 'mention';
   fromUserName: string;
   postTitle?: string;
   courseName?: string;
@@ -39,26 +38,19 @@ interface Notification {
   isRead: boolean;
 }
 
-// Mock notifications
-const MOCK_NOTIFICATIONS: Notification[] = [
-  {
-    id: 'n1',
-    type: 'comment',
-    fromUserName: 'Sarah Kim',
-    postTitle: 'Learning React Hooks',
-    message: 'Your cleanup looks correct!',
-    createdAt: new Date(Date.now() - 1000 * 60 * 30), // 30 min ago
-    isRead: false,
-  },
-  {
-    id: 'n2',
-    type: 'course_request',
-    fromUserName: 'Taylor Swift',
-    courseName: 'React',
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
-    isRead: false,
-  },
-];
+// Transform API notification to display format
+function toDisplayNotification(n: ApiNotification): DisplayNotification {
+  return {
+    id: n.id,
+    type: n.type,
+    fromUserName: n.fromUser?.name || 'Someone',
+    postTitle: n.postTitle,
+    courseName: n.courseName,
+    message: n.message,
+    createdAt: new Date(n.createdAt),
+    isRead: n.isRead,
+  };
+}
 
 function getTimeAgo(date: Date): string {
   const now = new Date();
@@ -102,7 +94,7 @@ function NotificationPanel({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  notifications: Notification[];
+  notifications: DisplayNotification[];
   onMarkRead: (id: string) => void;
   onGrantAccess: (id: string) => void;
 }) {
@@ -149,6 +141,7 @@ function NotificationPanel({
                     {notification.type === 'comment' && <MessageCircle className="w-4 h-4 text-gray-600" />}
                     {notification.type === 'course_request' && <Eye className="w-4 h-4 text-gray-600" />}
                     {notification.type === 'course_granted' && <Check className="w-4 h-4 text-gray-600" />}
+                    {notification.type === 'mention' && <MessageCircle className="w-4 h-4 text-gray-600" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-gray-900">
@@ -156,6 +149,7 @@ function NotificationPanel({
                       {notification.type === 'comment' && ' commented on '}
                       {notification.type === 'course_request' && ' requested to view your '}
                       {notification.type === 'course_granted' && ' granted access to '}
+                      {notification.type === 'mention' && ' mentioned you in '}
                       <span className="font-medium">
                         {notification.postTitle || notification.courseName}
                       </span>
@@ -206,21 +200,49 @@ function TopNav() {
   const { user, logout } = useAuthStore();
   const location = useLocation();
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<DisplayNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  // Fetch notifications from API
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const response = await communityService.getNotifications();
+      setNotifications(response.notifications.map(toDisplayNotification));
+      setUnreadCount(response.unreadCount);
+    } catch (error) {
+      console.error('Failed to fetch notifications:', error);
+    }
+  }, []);
 
-  const handleMarkRead = (id: string) => {
-    setNotifications(prev =>
-      prev.map(n => n.id === id ? { ...n, isRead: true } : n)
-    );
+  useEffect(() => {
+    fetchNotifications();
+    // Poll for new notifications every 30 seconds
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
+  const handleMarkRead = async (id: string) => {
+    try {
+      await communityService.markNotificationRead(id);
+      setNotifications(prev =>
+        prev.map(n => n.id === id ? { ...n, isRead: true } : n)
+      );
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('Failed to mark notification as read:', error);
+    }
   };
 
-  const handleGrantAccess = (id: string) => {
-    setNotifications(prev =>
-      prev.map(n => n.id === id ? { ...n, isRead: true } : n)
-    );
-    console.log('Grant access for notification:', id);
+  const handleGrantAccess = async (id: string) => {
+    try {
+      await communityService.grantCourseAccess(id);
+      setNotifications(prev =>
+        prev.map(n => n.id === id ? { ...n, isRead: true } : n)
+      );
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('Failed to grant access:', error);
+    }
   };
 
   // Hide on focus mode
