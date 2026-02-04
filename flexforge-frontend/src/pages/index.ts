@@ -9,3 +9,6 @@ export { PlanPage } from './PlanPage';
 export { ShowcasePage } from './ShowcasePage';
 export { VaultPage } from './VaultPage';
 export { CommunityPage } from './CommunityPage';
+export { ForgotPasswordPage } from './ForgotPasswordPage';
+export { ResetPasswordPage } from './ResetPasswordPage';
+export { VerifyEmailPage } from './VerifyEmailPage';

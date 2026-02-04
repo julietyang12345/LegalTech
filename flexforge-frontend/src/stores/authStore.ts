@@ -9,14 +9,17 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  requiresVerification: boolean; // True when user registered but needs email verification
+  pendingVerificationEmail: string | null; // Email that needs verification
 
   // Actions
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name?: string) => Promise<void>;
+  register: (email: string, password: string, name?: string) => Promise<{ requiresVerification: boolean }>;
   logout: () => Promise<void>;
   fetchProfile: () => Promise<void>;
   refreshUser: () => Promise<void>;
   clearError: () => void;
+  clearVerificationState: () => void;
 
   // Helpers
   hasTierAccess: (tier: QuotaTier) => boolean;
@@ -37,6 +40,8 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: false,
       error: null,
+      requiresVerification: false,
+      pendingVerificationEmail: null,
 
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
@@ -47,6 +52,8 @@ export const useAuthStore = create<AuthState>()(
             user: response.user,
             isAuthenticated: true,
             isLoading: false,
+            requiresVerification: false,
+            pendingVerificationEmail: null,
           });
         } catch (error: any) {
           set({
@@ -61,12 +68,27 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const response = await authService.register({ email, password, name });
+
+          // Check if email verification is required
+          if (response.requiresVerification) {
+            set({
+              isLoading: false,
+              requiresVerification: true,
+              pendingVerificationEmail: email,
+              // Don't set isAuthenticated - user must verify first
+            });
+            return { requiresVerification: true };
+          }
+
           // Token is now stored in HTTP-only cookie by the server
           set({
             user: response.user,
             isAuthenticated: true,
             isLoading: false,
+            requiresVerification: false,
+            pendingVerificationEmail: null,
           });
+          return { requiresVerification: false };
         } catch (error: any) {
           set({
             error: error.response?.data?.message || 'Registration failed',
@@ -110,6 +132,11 @@ export const useAuthStore = create<AuthState>()(
       },
 
       clearError: () => set({ error: null }),
+
+      clearVerificationState: () => set({
+        requiresVerification: false,
+        pendingVerificationEmail: null,
+      }),
 
       hasTierAccess: (requiredTier: QuotaTier) => {
         const { user } = get();

@@ -55,6 +55,8 @@ export default () => {
       })(),
       expiresIn: process.env.JWT_EXPIRES_IN || '7d',
     },
+    // Edge worker signing secret for password reset/email verification
+    EDGE_SIGNING_SECRET: process.env.EDGE_SIGNING_SECRET || '',
     ai: {
       anthropic: {
         apiKey: process.env.ANTHROPIC_API_KEY || '',

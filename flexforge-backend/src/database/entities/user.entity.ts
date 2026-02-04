@@ -134,6 +134,8 @@ export class User {
       lastDate: string;
       count: number;
     };
+    // Security - password change timestamp for session invalidation
+    passwordChangedAt?: string;
   };
 
   // Relations

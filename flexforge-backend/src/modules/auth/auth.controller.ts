@@ -5,11 +5,21 @@ import {
   HttpCode,
   HttpStatus,
   Res,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Response, Request } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { IsEmail, IsString, MinLength, Matches } from 'class-validator';
+import { EdgeSignatureGuard } from './guards/edge-signature.guard';
+import { ResetPasswordDto, CheckEmailExistsDto } from './dto/password-reset.dto';
+
+// Extend Express Request to include edge-related properties
+interface EdgeRequest extends Request {
+  edgeUserId?: string;
+  edgePayload?: Record<string, unknown>;
+}
 
 class RegisterDto {
   @IsEmail()
@@ -108,5 +118,75 @@ export class AuthController {
     });
 
     return { message: 'Logout successful' };
+  }
+
+  /**
+   * Check if an email exists (internal endpoint for edge worker)
+   * This endpoint is called by the edge worker to validate email before
+   * generating password reset or verification tokens
+   */
+  @Post('check-email-exists')
+  @HttpCode(HttpStatus.OK)
+  async checkEmailExists(@Body() dto: CheckEmailExistsDto) {
+    return this.authService.checkEmailExists(dto.email, dto.checkVerified);
+  }
+
+  /**
+   * Reset password with edge-validated token
+   * The edge worker validates the reset token and signs the request
+   * This endpoint only processes requests with valid edge signatures
+   */
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(EdgeSignatureGuard)
+  async resetPassword(
+    @Body() dto: ResetPasswordDto,
+    @Req() req: EdgeRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const userId = req.edgeUserId;
+
+    if (!userId) {
+      throw new Error('User ID not found in edge-signed request');
+    }
+
+    const result = await this.authService.resetPassword(userId, dto.newPassword);
+
+    // Clear any existing auth cookie since we invalidated sessions
+    const isProduction = this.isProduction();
+    res.clearCookie('access_token', {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'lax',
+      domain: isProduction ? '.flexforge.ai' : undefined,
+      path: '/',
+    });
+
+    return {
+      message: 'Password reset successfully. Please log in with your new password.',
+      ...result,
+    };
+  }
+
+  /**
+   * Verify email with edge-validated token
+   * The edge worker validates the verification token and signs the request
+   */
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(EdgeSignatureGuard)
+  async verifyEmail(@Req() req: EdgeRequest) {
+    const userId = req.edgeUserId;
+
+    if (!userId) {
+      throw new Error('User ID not found in edge-signed request');
+    }
+
+    const result = await this.authService.verifyEmail(userId);
+
+    return {
+      message: 'Email verified successfully. You can now log in.',
+      ...result,
+    };
   }
 }

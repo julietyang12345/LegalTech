@@ -16,6 +16,24 @@ export interface AuthResponse {
   message: string;
   user: User;
   // Token is now stored in HTTP-only cookie, not returned in response body
+  requiresVerification?: boolean;
+}
+
+export interface ForgotPasswordDto {
+  email: string;
+}
+
+export interface ResetPasswordDto {
+  token: string;
+  newPassword: string;
+}
+
+export interface VerifyEmailDto {
+  token: string;
+}
+
+export interface MessageResponse {
+  message: string;
 }
 
 export const authService = {
@@ -64,6 +82,28 @@ export const authService = {
     const { data } = await api.delete(
       `/users/planned-skills/${encodeURIComponent(skill)}`,
     );
+    return data;
+  },
+
+  // Password Reset & Email Verification
+
+  async forgotPassword(dto: ForgotPasswordDto): Promise<MessageResponse> {
+    const { data } = await api.post<MessageResponse>('/auth/forgot-password', dto);
+    return data;
+  },
+
+  async resetPassword(dto: ResetPasswordDto): Promise<MessageResponse> {
+    const { data } = await api.post<MessageResponse>('/auth/reset-password', dto);
+    return data;
+  },
+
+  async verifyEmail(dto: VerifyEmailDto): Promise<MessageResponse> {
+    const { data } = await api.post<MessageResponse>('/auth/verify-email', dto);
+    return data;
+  },
+
+  async resendVerification(email: string): Promise<MessageResponse> {
+    const { data } = await api.post<MessageResponse>('/auth/resend-verification', { email });
     return data;
   },
 };

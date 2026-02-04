@@ -1,28 +1,57 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail, Lock, User, AlertCircle, ArrowLeft, CheckCircle } from 'lucide-react';
+import { Mail, Lock, User, AlertCircle, ArrowLeft, CheckCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
+import { authService } from '@/services/authService';
 import { Button, Card } from '@/components/common';
 
 export function RegisterPage() {
   const navigate = useNavigate();
-  const { register, isLoading, error, clearError } = useAuthStore();
-  
+  const { register, isLoading, error, clearError, requiresVerification, pendingVerificationEmail, clearVerificationState } = useAuthStore();
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isResending, setIsResending] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
-    
+
     try {
-      await register(email, password, name);
-      navigate('/confirm', { replace: true });
+      const result = await register(email, password, name);
+      // If verification is not required, navigate to confirm
+      if (!result.requiresVerification) {
+        navigate('/confirm', { replace: true });
+      }
+      // Otherwise, the UI will show the verification message
     } catch (_err) {
       // Error is handled by store
     }
+  };
+
+  const handleResendVerification = async () => {
+    if (!pendingVerificationEmail) return;
+    setIsResending(true);
+    setResendSuccess(false);
+    try {
+      await authService.resendVerification(pendingVerificationEmail);
+      setResendSuccess(true);
+    } catch (_err) {
+      // Silently fail - still show success to prevent enumeration
+      setResendSuccess(true);
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  const handleBackToRegister = () => {
+    clearVerificationState();
+    setEmail('');
+    setPassword('');
+    setName('');
   };
 
   const benefits = [
@@ -60,6 +89,61 @@ export function RegisterPage() {
           </div>
 
           <Card className="p-8">
+            {/* Email Verification Pending */}
+            {requiresVerification ? (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="text-center"
+              >
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Mail className="w-8 h-8 text-green-600" />
+                </div>
+                <h1 className="text-2xl font-bold text-gray-900 mb-2">Verify your email</h1>
+                <p className="text-gray-600 mb-2">
+                  We've sent a verification link to:
+                </p>
+                <p className="font-medium text-gray-900 mb-6">{pendingVerificationEmail}</p>
+                <p className="text-sm text-gray-500 mb-6">
+                  Please check your email and click the link to verify your account.
+                  The link expires in 24 hours.
+                </p>
+
+                {resendSuccess ? (
+                  <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center justify-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    <span className="text-sm text-green-700">Verification email sent!</span>
+                  </div>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    className="w-full mb-3"
+                    onClick={handleResendVerification}
+                    isLoading={isResending}
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Resend verification email
+                  </Button>
+                )}
+
+                <button
+                  onClick={handleBackToRegister}
+                  className="text-sm text-gray-500 hover:text-gray-700"
+                >
+                  Use a different email
+                </button>
+
+                <div className="mt-6 pt-6 border-t border-gray-200">
+                  <p className="text-gray-600">
+                    Already verified?{' '}
+                    <Link to="/login" className="text-brand-600 hover:text-brand-700 font-medium">
+                      Sign in
+                    </Link>
+                  </p>
+                </div>
+              </motion.div>
+            ) : (
+              <>
             <div className="text-center mb-8">
               <h1 className="text-2xl font-bold text-gray-900 mb-2">Create your account</h1>
               <p className="text-gray-600">Start your learning journey today</p>
@@ -173,6 +257,8 @@ export function RegisterPage() {
                 </Link>
               </p>
             </div>
+              </>
+            )}
           </Card>
         </motion.div>
       </div>

@@ -700,4 +700,70 @@ export class UserService {
     await this.usersRepository.save(user);
     return user.preferences.plannedSkills;
   }
+
+  /**
+   * Update user's password
+   * @param userId - User ID
+   * @param newPassword - New plaintext password (will be hashed)
+   */
+  async updatePassword(userId: string, newPassword: string): Promise<void> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Hash the new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+
+    await this.usersRepository.save(user);
+    this.logger.log(`Password updated for user: ${userId}`);
+  }
+
+  /**
+   * Set user's email verification status
+   * @param userId - User ID
+   * @param verified - Whether email is verified
+   */
+  async setEmailVerified(userId: string, verified: boolean): Promise<void> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    user.emailVerified = verified;
+    await this.usersRepository.save(user);
+    this.logger.log(`Email verification status set to ${verified} for user: ${userId}`);
+  }
+
+  /**
+   * Invalidate all sessions for a user (used after password reset)
+   * This is a security best practice - if someone's password was compromised,
+   * we want to log them out everywhere
+   */
+  async invalidateAllSessions(userId: string): Promise<void> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Mark all active sessions as completed/invalidated
+    if (user.sessions && user.sessions.length > 0) {
+      for (const session of user.sessions) {
+        if (session.status === SessionStatus.ACTIVE) {
+          session.status = SessionStatus.COMPLETED;
+        }
+      }
+    }
+
+    // Also update passwordChangedAt to invalidate existing JWTs
+    // (JWT strategy should check this field)
+    user.preferences = {
+      ...user.preferences,
+      passwordChangedAt: new Date().toISOString(),
+    };
+
+    await this.usersRepository.save(user);
+    this.logger.log(`All sessions invalidated for user: ${userId}`);
+  }
 }

@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { EdgeSignatureGuard } from './guards/edge-signature.guard';
 import { UserModule } from '../user/user.module';
 
 @Module({
@@ -25,7 +26,7 @@ import { UserModule } from '../user/user.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard],
-  exports: [AuthService, JwtAuthGuard, RolesGuard],
+  providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard, EdgeSignatureGuard],
+  exports: [AuthService, JwtAuthGuard, RolesGuard, EdgeSignatureGuard],
 })
 export class AuthModule {}

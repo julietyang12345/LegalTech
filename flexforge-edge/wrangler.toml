@@ -10,6 +10,9 @@ compatibility_flags = ["nodejs_compat"]
 # Backend URL via Cloudflare Tunnel (private access for worker only)
 [vars]
 BACKEND_URL = "https://api-backend.flexforge.ai"
+FRONTEND_URL = "https://app.flexforge.ai"
+FROM_EMAIL = "noreply@flexforge.ai"
+FROM_NAME = "FlexForge"
 
 # KV Namespaces - Create with: npx wrangler kv:namespace create <NAME>
 # After creating, replace the placeholder IDs below with actual IDs
@@ -26,15 +29,33 @@ id = "e9297e016a7143cba04de82cedf8f859"
 binding = "DOC_CACHE"
 id = "0c222cee5064403b89edab4753b7092d"
 
+# Password reset and email verification tokens (auto-expiry via TTL)
+# Create with: npx wrangler kv:namespace create PASSWORD_RESET_TOKENS
+[[kv_namespaces]]
+binding = "PASSWORD_RESET_TOKENS"
+id = "ec16fa30a0e9412e9e51b14c6453c6c6"
+
+# Create with: npx wrangler kv:namespace create EMAIL_VERIFY_TOKENS
+[[kv_namespaces]]
+binding = "EMAIL_VERIFY_TOKENS"
+id = "f7fb188b8b7945c18181eddd1de9dc2f"
+
+# Create with: npx wrangler kv:namespace create RATE_LIMIT_COUNTERS
+[[kv_namespaces]]
+binding = "RATE_LIMIT_COUNTERS"
+id = "9c1b2e317e904d2195d4b2b49327ebe3"
+
 # Secrets - Set with: npx wrangler secret put <SECRET_NAME>
 # Required secrets:
 # - JWT_SECRET: Same JWT secret as your backend (for token verification)
 # - CF_ACCESS_CLIENT_ID: Cloudflare Access Service Token Client ID
 # - CF_ACCESS_CLIENT_SECRET: Cloudflare Access Service Token Client Secret
+# - EDGE_SIGNING_SECRET: Shared secret for HMAC signing edge->backend requests (32+ chars)
+# - DKIM_PRIVATE_KEY: DKIM private key for email signing (optional, for better deliverability)
 
 # Development overrides
 [env.development]
-vars = { BACKEND_URL = "http://localhost:4000" }
+vars = { BACKEND_URL = "http://localhost:4000", FRONTEND_URL = "http://localhost:5173", FROM_EMAIL = "noreply@flexforge.ai", FROM_NAME = "FlexForge" }
 
 # Staging environment (optional)
 [env.staging]

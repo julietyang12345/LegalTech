@@ -1,29 +1,51 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail, Lock, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, AlertCircle, ArrowLeft, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
+import { authService } from '@/services/authService';
 import { Button, Card } from '@/components/common';
 
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { login, isLoading, error, clearError } = useAuthStore();
-  
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isResending, setIsResending] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
 
   const from = (location.state as any)?.from?.pathname || '/today';
+
+  // Check if error is related to email verification
+  const isVerificationError = error?.toLowerCase().includes('verify');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
-    
+    setResendSuccess(false);
+
     try {
       await login(email, password);
       navigate(from, { replace: true });
     } catch (_err) {
       // Error is handled by store
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!email) return;
+    setIsResending(true);
+    setResendSuccess(false);
+    try {
+      await authService.resendVerification(email);
+      setResendSuccess(true);
+    } catch (_err) {
+      // Silently fail - still show success to prevent enumeration
+      setResendSuccess(true);
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -64,10 +86,31 @@ export function LoginPage() {
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3"
+                className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg"
               >
-                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                <p className="text-red-700 text-sm">{error}</p>
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-red-700 text-sm">{error}</p>
+                </div>
+                {isVerificationError && (
+                  <div className="mt-3 pt-3 border-t border-red-200">
+                    {resendSuccess ? (
+                      <div className="flex items-center gap-2 text-green-700 text-sm">
+                        <CheckCircle2 className="w-4 h-4" />
+                        Verification email sent! Check your inbox.
+                      </div>
+                    ) : (
+                      <button
+                        onClick={handleResendVerification}
+                        disabled={isResending || !email}
+                        className="flex items-center gap-2 text-sm text-red-700 hover:text-red-800 disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${isResending ? 'animate-spin' : ''}`} />
+                        {isResending ? 'Sending...' : 'Resend verification email'}
+                      </button>
+                    )}
+                  </div>
+                )}
               </motion.div>
             )}
 
