@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
+import * as bcrypt from 'bcrypt';
 import { User, QuotaTier, UserRole } from '../../database/entities/user.entity';
 import { SessionStatus } from '../../database/entities/session.entity';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -24,7 +25,7 @@ export class UserService {
       .map((e) => e.trim().toLowerCase())
       .filter(Boolean);
 
-    this.logger.log(`🔐 Loaded ${this.adminEmails.length} admin emails: ${this.adminEmails.length > 0 ? this.adminEmails.join(', ') : '(none)'}`);
+    this.logger.log(`🔐 Loaded ${this.adminEmails.length} admin email(s)`);
   }
 
   /**
@@ -44,9 +45,12 @@ export class UserService {
   }): Promise<User> {
     const isAdmin = this.isAdminEmail(userData.email);
 
+    // Hash password with bcrypt (10 rounds)
+    const hashedPassword = await bcrypt.hash(userData.password, 10);
+
     const user = this.usersRepository.create({
       email: userData.email,
-      password: userData.password,
+      password: hashedPassword,
       fullName: userData.fullName,
       role: isAdmin ? UserRole.ADMIN : UserRole.MEMBER,
       quotaTier: QuotaTier.FREE, // All users start FREE
@@ -96,8 +100,7 @@ export class UserService {
    * Validate user password
    */
   async validatePassword(user: User, password: string): Promise<boolean> {
-    // In production, use bcrypt.compare(password, user.password)
-    return user.password === password;
+    return bcrypt.compare(password, user.password);
   }
 
   /**

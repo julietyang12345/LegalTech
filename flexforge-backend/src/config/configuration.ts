@@ -46,7 +46,13 @@ export default () => {
       password: process.env.REDIS_PASSWORD || '',
     },
     jwt: {
-      secret: process.env.JWT_SECRET || 'default_secret_change_in_production',
+      secret: (() => {
+        const secret = process.env.JWT_SECRET;
+        if (!secret || secret.length < 32) {
+          throw new Error('JWT_SECRET environment variable is required and must be at least 32 characters');
+        }
+        return secret;
+      })(),
       expiresIn: process.env.JWT_EXPIRES_IN || '7d',
     },
     ai: {

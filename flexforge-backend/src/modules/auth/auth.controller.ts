@@ -9,14 +9,17 @@ import {
 import { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsString, MinLength, Matches } from 'class-validator';
 
 class RegisterDto {
   @IsEmail()
   email: string;
 
   @IsString()
-  @MinLength(6)
+  @MinLength(8, { message: 'Password must be at least 8 characters' })
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
+    message: 'Password must contain at least one uppercase letter, one lowercase letter, and one number',
+  })
   password: string;
 
   @IsString()
@@ -36,21 +39,12 @@ export class AuthController {
   constructor(
     private authService: AuthService,
     private configService: ConfigService,
-  ) {
-    console.log('🚀 AuthController loaded - NEW CODE v2');
-  }
+  ) {}
 
   private isProduction(): boolean {
     const nodeEnv =
       this.configService.get('NODE_ENV') || this.configService.get('nodeEnv');
-    const isProd = nodeEnv !== 'development' && nodeEnv !== 'test';
-    console.log(
-      '🔧 isProduction check - NODE_ENV:',
-      nodeEnv,
-      '→ isProd:',
-      isProd,
-    );
-    return isProd;
+    return nodeEnv !== 'development' && nodeEnv !== 'test';
   }
 
   private setAuthCookie(res: Response, token: string) {
@@ -91,15 +85,8 @@ export class AuthController {
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    console.log('🔐 LOGIN: Starting login for', dto.email);
     const result = await this.authService.login(dto.email, dto.password);
-    console.log('🔐 LOGIN: Got token, length:', result.access_token?.length);
-
     this.setAuthCookie(res, result.access_token);
-    console.log(
-      '🔐 LOGIN: Cookie set, checking headers:',
-      res.getHeaders()['set-cookie'],
-    );
 
     return {
       message: 'Login successful',

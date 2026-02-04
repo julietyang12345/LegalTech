@@ -170,22 +170,58 @@ deploy_backend() {
 run_migrations() {
     log_info "Running database migrations on server..."
 
-    # Get list of migration files
-    MIGRATIONS=$(ls -1 "$BACKEND_DIR/src/database/migrations/"*.sql 2>/dev/null | sort)
+    # Run SQL migrations
+    SQL_MIGRATIONS=$(ls -1 "$BACKEND_DIR/src/database/migrations/"*.sql 2>/dev/null | sort)
 
-    if [ -z "$MIGRATIONS" ]; then
-        log_warn "No migration files found"
-        return
+    if [ -n "$SQL_MIGRATIONS" ]; then
+        for migration in $SQL_MIGRATIONS; do
+            filename=$(basename "$migration")
+            log_info "Running SQL migration: $filename"
+
+            # Copy migration to server and run it
+            scp "$migration" "$SERVER_USER@$SERVER_HOST:/tmp/$filename"
+            ssh "$SERVER_USER@$SERVER_HOST" "docker exec -i flexforge-db-prod psql -U flexforge -d flexforge_prod < /tmp/$filename" || true
+        done
+    else
+        log_warn "No SQL migration files found"
     fi
 
-    for migration in $MIGRATIONS; do
-        filename=$(basename "$migration")
-        log_info "Running migration: $filename"
+    # Run TypeScript migrations
+    TS_MIGRATIONS=$(ls -1 "$BACKEND_DIR/src/database/migrations/"*.ts 2>/dev/null | sort)
 
-        # Copy migration to server and run it
-        scp "$migration" "$SERVER_USER@$SERVER_HOST:/tmp/$filename"
-        ssh "$SERVER_USER@$SERVER_HOST" "docker exec -i flexforge-db-prod psql -U flexforge -d flexforge_prod < /tmp/$filename" || true
-    done
+    if [ -n "$TS_MIGRATIONS" ]; then
+        log_info "Setting up TypeScript migration environment on server..."
+
+        # Create migration directory on server and install dependencies
+        ssh "$SERVER_USER@$SERVER_HOST" "mkdir -p ~/migrations && cd ~/migrations && [ -f package.json ] || npm init -y && npm install --save ts-node typescript pg bcrypt @types/node @types/pg @types/bcrypt 2>/dev/null"
+
+        for migration in $TS_MIGRATIONS; do
+            filename=$(basename "$migration")
+            log_info "Running TypeScript migration: $filename"
+
+            # Copy migration to server
+            scp "$migration" "$SERVER_USER@$SERVER_HOST:~/migrations/$filename"
+
+            # Run via ts-node, sourcing credentials from the backend .env
+            # The migration script has fallback defaults for local dev
+            ssh "$SERVER_USER@$SERVER_HOST" << ENDSSH
+                cd ~/migrations
+                # Source DB credentials from backend .env if it exists
+                if [ -f ~/flexforge-backend/.env ]; then
+                    export \$(grep -E '^DB_' ~/flexforge-backend/.env | xargs)
+                fi
+                # Override for production database name
+                export DB_DATABASE=flexforge_prod
+                export DB_HOST=localhost
+                npx ts-node $filename
+ENDSSH
+            if [ $? -ne 0 ]; then
+                log_error "Migration $filename failed"
+            fi
+        done
+    else
+        log_info "No TypeScript migration files found"
+    fi
 
     log_success "Migrations completed!"
 }
