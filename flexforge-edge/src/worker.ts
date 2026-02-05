@@ -31,7 +31,7 @@ type Bindings = {
   FROM_NAME: string;
   JWT_SECRET: string;
   EDGE_SIGNING_SECRET: string;
-  DKIM_PRIVATE_KEY?: string;
+  RESEND_API_KEY: string;
   // Cloudflare Access Service Token for backend authentication
   CF_ACCESS_CLIENT_ID: string;
   CF_ACCESS_CLIENT_SECRET: string;
@@ -298,9 +298,7 @@ app.post('/api/v1/auth/register', async (c) => {
         subject: 'Verify Your FlexForge Email',
         html: emailContent.html,
         text: emailContent.text,
-        dkimPrivateKey: c.env.DKIM_PRIVATE_KEY,
-        dkimSelector: 'mailchannels',
-        dkimDomain: 'flexforge.ai',
+        resendApiKey: c.env.RESEND_API_KEY,
       }).catch((err) => console.error('Failed to send verification email:', err));
 
       // Modify response to indicate verification is required
@@ -550,9 +548,7 @@ app.post('/api/v1/auth/forgot-password', async (c) => {
       subject: 'Reset Your FlexForge Password',
       html: emailContent.html,
       text: emailContent.text,
-      dkimPrivateKey: c.env.DKIM_PRIVATE_KEY,
-      dkimSelector: 'mailchannels',
-      dkimDomain: 'flexforge.ai',
+      resendApiKey: c.env.RESEND_API_KEY,
     });
 
     if (!emailResult.success) {
@@ -797,9 +793,7 @@ app.post('/api/v1/auth/resend-verification', async (c) => {
       subject: 'Verify Your FlexForge Email',
       html: emailContent.html,
       text: emailContent.text,
-      dkimPrivateKey: c.env.DKIM_PRIVATE_KEY,
-      dkimSelector: 'mailchannels',
-      dkimDomain: 'flexforge.ai',
+      resendApiKey: c.env.RESEND_API_KEY,
     });
 
     if (!emailResult.success) {

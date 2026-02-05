@@ -56,6 +56,7 @@ services:
       - FRONTEND_URL=${FRONTEND_URL}
       - AI_PRIMARY_PROVIDER=${AI_PRIMARY_PROVIDER:-anthropic}
       - AI_FALLBACK_ENABLED=${AI_FALLBACK_ENABLED:-true}
+      - EDGE_SIGNING_SECRET=${EDGE_SIGNING_SECRET}
     depends_on:
       postgres:
         condition: service_healthy

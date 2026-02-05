@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
@@ -43,13 +43,22 @@ export class UserService {
     password: string;
     fullName?: string;
   }): Promise<User> {
+    // Check if user already exists
+    const existingUser = await this.usersRepository.findOne({
+      where: { email: userData.email.toLowerCase() },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('An account with this email already exists');
+    }
+
     const isAdmin = this.isAdminEmail(userData.email);
 
     // Hash password with bcrypt (10 rounds)
     const hashedPassword = await bcrypt.hash(userData.password, 10);
 
     const user = this.usersRepository.create({
-      email: userData.email,
+      email: userData.email.toLowerCase(),
       password: hashedPassword,
       fullName: userData.fullName,
       role: isAdmin ? UserRole.ADMIN : UserRole.MEMBER,

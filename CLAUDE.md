@@ -66,7 +66,39 @@ docker exec -it flexforge-db-prod psql -U flexforge -d flexforge_dev -c 'SELECT 
 
 - Frontend: `flexforge-frontend/` (React + Vite)
 - Backend: `flexforge-backend/` (NestJS)
+- Edge Worker: `flexforge-edge/` (Cloudflare Worker)
 - TypeScript in both - run `npx tsc --noEmit` to check compilation
+
+## Remote Server Deployment
+
+- **Server**: `ssh j@10.3.8.169`
+- **Deploy method**: Docker
+- **Backend path**: `/home/j/flexforge-backend/`
+
+```bash
+# SSH into server
+ssh j@10.3.8.169
+
+# Check running containers
+docker ps | grep flex
+
+# View backend logs
+docker logs flexforge-api-prod --tail 100
+
+# Restart backend with new env
+cd /home/j/flexforge-backend
+docker-compose -f docker-compose.prod.yml up -d --force-recreate api
+
+# Add new env variable
+echo "NEW_VAR=value" >> .env
+```
+
+## Edge Worker (Cloudflare)
+
+- **Deploy**: `cd flexforge-edge && npx wrangler deploy`
+- **Logs**: `npx wrangler tail`
+- **Secrets**: `npx wrangler secret put SECRET_NAME`
+- **Email service**: Resend API (RESEND_API_KEY secret)
 
 ## API Patterns
 

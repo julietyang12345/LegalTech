@@ -46,6 +46,7 @@ import { CommunityModule } from './modules/community/community.module';
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
+      envFilePath: ['.env.production', '.env.local', '.env'],
     }),
 
     // Database
