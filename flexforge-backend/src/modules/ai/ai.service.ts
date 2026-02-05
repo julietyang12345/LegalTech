@@ -152,7 +152,7 @@ export class AiService {
   private readonly costs = {
     'claude-sonnet-4': 0.05,
     'claude-haiku-3.5': 0.005,
-    'gemini-1.5-flash': 0.02,
+    'gemini-1.5-flash-latest': 0.02,
     'gpt-4o-mini': 0.002,
     'llama-3.1-70b': 0.0005,
   };
@@ -323,28 +323,28 @@ export class AiService {
 
       // Video/Multimodal
       [AITask.VIDEO_SUMMARY]: [
-        { provider: 'gemini', model: 'gemini-1.5-flash' },
+        { provider: 'gemini', model: 'gemini-1.5-flash-latest' },
         { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
       ],
       [AITask.VIDEO_TIMESTAMP_EXTRACTION]: [
-        { provider: 'gemini', model: 'gemini-1.5-flash' },
+        { provider: 'gemini', model: 'gemini-1.5-flash-latest' },
         { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
       ],
       [AITask.VIDEO_CHAPTER_GENERATION]: [
-        { provider: 'gemini', model: 'gemini-1.5-flash' },
+        { provider: 'gemini', model: 'gemini-1.5-flash-latest' },
       ],
       [AITask.TRANSCRIPT_ANALYSIS]: [
-        { provider: 'gemini', model: 'gemini-1.5-flash' },
+        { provider: 'gemini', model: 'gemini-1.5-flash-latest' },
         { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
       ],
       [AITask.VISUAL_CONTENT_ANALYSIS]: [
-        { provider: 'gemini', model: 'gemini-1.5-flash' },
+        { provider: 'gemini', model: 'gemini-1.5-flash-latest' },
       ],
 
       // Basic logic
       [AITask.BATCH_LOGIC]: [
         { provider: 'openai', model: 'gpt-4o-mini' },
-        { provider: 'gemini', model: 'gemini-1.5-flash' },
+        { provider: 'gemini', model: 'gemini-1.5-flash-latest' },
       ],
       [AITask.QUIZ_GENERATION]: [
         { provider: 'openai', model: 'gpt-4o-mini' },
@@ -752,7 +752,7 @@ Return JSON: {overallQuality, issues[], suggestions[], missingApproaches[], feed
 
     try {
       geminiReview = await this.callGemini(
-        'gemini-1.5-flash',
+        'gemini-1.5-flash-latest',
         reviewPrompt,
         '',
       );
