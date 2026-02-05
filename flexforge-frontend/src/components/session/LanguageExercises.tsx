@@ -113,7 +113,7 @@ function FeedbackToast({ show, correct, message }: FeedbackToastProps) {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -20 }}
           className={clsx(
-            'fixed bottom-1/3 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 z-50',
+            'fixed bottom-1/3 left-1/2 transform -translate-x-1/2 px-4 sm:px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 z-50 max-w-[90vw] text-center',
             correct ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
           )}
         >

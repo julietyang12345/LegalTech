@@ -1278,7 +1278,7 @@ function CreatePostModal({
                           )}
                         >
                           {project.isBossProject && <Trophy className="w-4 h-4" />}
-                          <span className="truncate max-w-[150px]">{project.title}</span>
+                          <span className="truncate max-w-[100px] sm:max-w-[150px]">{project.title}</span>
                           {selectedProject?.id === project.id && <Check className="w-4 h-4" />}
                         </button>
                       ))}
@@ -1314,7 +1314,7 @@ function CreatePostModal({
                             )}
                           >
                             <Trophy className="w-4 h-4" />
-                            <span className="truncate max-w-[120px]">{session.skillName}</span>
+                            <span className="truncate max-w-[80px] sm:max-w-[120px]">{session.skillName}</span>
                             {session.status === 'PAUSED' && (
                               <span className="text-xs text-orange-600">(paused)</span>
                             )}

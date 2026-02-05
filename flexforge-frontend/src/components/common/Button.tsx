@@ -49,7 +49,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         focus-visible:ring-alert-500
       `,
       ghost: `
-        text-gray-600 hover:bg-gray-100 hover:text-gray-900
+        text-gray-600 hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200
       `,
       danger: `
         bg-red-500 text-white shadow-md
@@ -59,10 +59,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     };
 
     const sizes = {
-      sm: 'px-3 py-1.5 text-sm',
-      md: 'px-4 py-2 text-sm',
-      lg: 'px-6 py-3 text-base',
-      xl: 'px-8 py-4 text-lg',
+      sm: 'px-3 py-2 text-sm min-h-[40px]',      // Increased for mobile tap target
+      md: 'px-4 py-2.5 text-sm min-h-[44px]',    // iOS minimum tap target
+      lg: 'px-6 py-3 text-base min-h-[48px]',
+      xl: 'px-8 py-4 text-lg min-h-[52px]',
     };
 
     return (

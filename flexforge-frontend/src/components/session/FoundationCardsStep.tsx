@@ -197,7 +197,7 @@ export function FoundationCardsStep({ day, session, onComplete }: FoundationCard
       </div>
 
       {/* Swipeable Card */}
-      <div className="relative min-h-[450px] overflow-hidden">
+      <div className="relative min-h-[350px] sm:min-h-[450px] overflow-hidden">
         <AnimatePresence initial={false} custom={direction} mode="wait">
           <motion.div
             key={currentCard.id}

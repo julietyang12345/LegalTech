@@ -40,19 +40,19 @@ function ExitConfirmModal({ isOpen, onClose, onConfirm }: {
         <h3 className="text-lg font-semibold text-gray-900 mb-2">
           Leave session?
         </h3>
-        <p className="text-gray-600 mb-6">
+        <p className="text-gray-600 mb-6 pb-[env(safe-area-inset-bottom)]">
           Your progress has been saved. You can continue later from where you left off.
         </p>
         <div className="flex gap-3 justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            className="px-4 py-2.5 min-h-[44px] text-gray-600 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors"
           >
             Stay
           </button>
           <button
             onClick={onConfirm}
-            className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors"
+            className="px-4 py-2.5 min-h-[44px] bg-brand-500 text-white rounded-lg hover:bg-brand-600 active:bg-brand-700 transition-colors"
           >
             Exit Session
           </button>
@@ -168,20 +168,20 @@ function PresenceBar() {
             </div>
           </div>
 
-          {/* Right side: timer (desktop only) */}
-          <div className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-3">
-            {/* Topic */}
-            <span className="hidden lg:block text-sm text-gray-600 max-w-[200px] truncate">
+          {/* Right side: timer (always visible, topic desktop only) */}
+          <div className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 sm:gap-3">
+            {/* Topic - desktop only */}
+            <span className="hidden lg:block text-sm text-gray-600 max-w-[120px] sm:max-w-[200px] truncate">
               Day {currentDay?.day}: {currentDay?.title?.split(':')[1]?.trim() || 'Loading...'}
             </span>
 
-            {/* Timer */}
+            {/* Timer - always visible, responsive size */}
             {showTimer && (
               <button
                 onClick={() => setShowTimer(false)}
-                className="flex items-center gap-1 px-2 py-1.5 text-sm text-gray-500 hover:bg-gray-100 rounded transition-colors"
+                className="flex items-center gap-1 px-2 py-1.5 text-xs sm:text-sm text-gray-500 hover:bg-gray-100 active:bg-gray-200 rounded transition-colors"
               >
-                <Clock className="w-4 h-4" />
+                <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 {formatTime(elapsedSeconds)}
               </button>
             )}

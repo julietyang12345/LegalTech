@@ -219,7 +219,7 @@ function IncompleteWorkModal({
           </button>
           <button
             onClick={onProceedAnyway}
-            className="py-2.5 px-4 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl font-medium transition-colors"
+            className="py-2.5 px-4 min-h-[44px] text-gray-500 hover:text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-xl font-medium transition-colors"
           >
             Continue Anyway
           </button>
@@ -859,8 +859,8 @@ export function SessionPage() {
       </AnimatePresence>
 
       {/* Navigation footer */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 py-4">
-        <div className="max-w-focus mx-auto px-4">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 py-3 sm:py-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="max-w-focus mx-auto px-3 sm:px-4">
           {/* Navigation buttons */}
           <div className="flex justify-between items-center">
             <Button
@@ -878,7 +878,7 @@ export function SessionPage() {
               {canUseAITutor ? (
                 <button
                   onClick={() => setShowAiTutor(true)}
-                  className="group flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-300 bg-white hover:bg-gray-50 border border-gray-200 hover:border-purple-300 hover:shadow-md hover:shadow-purple-100"
+                  className="group flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-xl text-sm font-medium transition-all duration-300 bg-white hover:bg-gray-50 active:bg-gray-100 border border-gray-200 hover:border-purple-300 hover:shadow-md hover:shadow-purple-100"
                 >
                   <Sparkles className="w-4 h-4 text-purple-500 group-hover:text-purple-600" />
                   <span className="text-gray-700 group-hover:text-gray-900">Ask AI Tutor</span>
@@ -886,7 +886,7 @@ export function SessionPage() {
               ) : (
                 <button
                   onClick={() => setShowUpgradeModal(true)}
-                  className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500 bg-gray-50 hover:bg-gray-100 rounded-xl border border-gray-200 transition-colors"
+                  className="flex items-center gap-2 px-3 py-2 min-h-[44px] text-sm text-gray-500 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 rounded-xl border border-gray-200 transition-colors"
                 >
                   <Sparkles className="w-4 h-4" />
                   Ask AI Tutor (PRO)
@@ -906,8 +906,8 @@ export function SessionPage() {
         </div>
       </div>
 
-      {/* Spacer for fixed footer */}
-      <div className="h-32 sm:h-24" />
+      {/* Spacer for fixed footer - includes safe area for notched phones */}
+      <div className="h-28 sm:h-24" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }} />
 
       {/* Incomplete Work Warning Modal */}
       <IncompleteWorkModal

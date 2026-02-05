@@ -40,8 +40,10 @@ function DayPreviewModal({
 
   // Calculate top position, ensuring modal stays within viewport
   const topPosition = Math.min(Math.max(clickY - 50, 70), window.innerHeight - 500);
-  // Left position based on sidebar state
+  // Left position based on sidebar state (only used on desktop)
   const leftPosition = sidebarCollapsed ? 70 : 340;
+  // Check if mobile viewport
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
 
   const topic = day.title?.includes(':')
     ? day.title.split(':')[1]?.trim()
@@ -63,8 +65,13 @@ function DayPreviewModal({
         initial={{ opacity: 0, x: -10 }}
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -10 }}
-        className="absolute bg-white rounded-2xl w-full max-w-[420px] shadow-xl overflow-hidden max-h-[calc(100vh-100px)] overflow-y-auto left-0 right-0 mx-4 md:left-auto md:right-auto md:mx-0"
-        style={{ top: topPosition, left: leftPosition }}
+        className="absolute bg-white rounded-2xl w-full max-w-[calc(100vw-2rem)] sm:max-w-[420px] shadow-xl overflow-hidden max-h-[calc(100vh-100px)] overflow-y-auto"
+        style={{
+          top: isMobile ? 'auto' : topPosition,
+          bottom: isMobile ? '1rem' : 'auto',
+          left: isMobile ? '1rem' : leftPosition,
+          right: isMobile ? '1rem' : 'auto',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

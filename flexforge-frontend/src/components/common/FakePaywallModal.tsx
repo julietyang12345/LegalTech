@@ -285,44 +285,90 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', rea
                         transition={{ duration: 0.2 }}
                         className="overflow-hidden"
                       >
-                        <div className="pt-4 overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="border-b border-gray-200">
-                                <th className="py-3 px-2 text-left text-gray-500 font-medium">Features</th>
-                                {plans.map((plan) => (
-                                  <th key={plan.name} className="py-3 px-2 text-center min-w-[100px]">
-                                    <div className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
-                                      plan.name === 'Free' ? 'bg-gray-100 text-gray-600' :
-                                      plan.name === 'Pro' ? 'bg-brand-100 text-brand-700' :
-                                      'bg-purple-100 text-purple-700'
-                                    }`}>
-                                      {plan.name}
-                                    </div>
-                                    <div className="mt-2">
-                                      <span className="text-xl font-bold text-gray-900">{plan.price}</span>
-                                      <span className="text-gray-500 text-xs">{plan.period}</span>
-                                    </div>
-                                    {plan.popular && (
-                                      <div className="mt-1 text-xs text-brand-600 font-medium">Most Popular</div>
-                                    )}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {featureOrder.map((feature, index) => (
-                                <tr key={feature} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                                  <td className="py-2.5 px-2 text-gray-700">{feature}</td>
+                        <div className="pt-4">
+                          {/* Mobile: Card layout */}
+                          <div className="md:hidden space-y-4">
+                            {plans.map((plan) => (
+                              <div key={plan.name} className={`p-4 rounded-xl border-2 ${
+                                plan.popular ? 'border-brand-300 bg-brand-50' : 'border-gray-200'
+                              }`}>
+                                <div className="flex items-center justify-between mb-3">
+                                  <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                    plan.name === 'Free' ? 'bg-gray-100 text-gray-600' :
+                                    plan.name === 'Pro' ? 'bg-brand-100 text-brand-700' :
+                                    'bg-purple-100 text-purple-700'
+                                  }`}>
+                                    {plan.name}
+                                  </div>
+                                  <div>
+                                    <span className="text-xl font-bold text-gray-900">{plan.price}</span>
+                                    <span className="text-gray-500 text-xs">{plan.period}</span>
+                                  </div>
+                                </div>
+                                {plan.popular && (
+                                  <div className="mb-3 text-xs text-brand-600 font-medium">Most Popular</div>
+                                )}
+                                <ul className="space-y-2">
+                                  {featureOrder.slice(0, 6).map((feature) => (
+                                    <li key={feature} className="flex items-center gap-2 text-sm">
+                                      {plan.features[feature as keyof typeof plan.features] === false ? (
+                                        <X className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                                      ) : (
+                                        <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+                                      )}
+                                      <span className="text-gray-700">{feature}</span>
+                                      {typeof plan.features[feature as keyof typeof plan.features] === 'string' && (
+                                        <span className="text-gray-500 text-xs ml-auto">
+                                          {plan.features[feature as keyof typeof plan.features]}
+                                        </span>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Desktop: Table layout */}
+                          <div className="hidden md:block overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b border-gray-200">
+                                  <th className="py-3 px-2 text-left text-gray-500 font-medium">Features</th>
                                   {plans.map((plan) => (
-                                    <td key={`${plan.name}-${feature}`} className="py-2.5 px-2 text-center">
-                                      {renderFeatureValue(plan.features[feature as keyof typeof plan.features])}
-                                    </td>
+                                    <th key={plan.name} className="py-3 px-2 text-center min-w-[100px]">
+                                      <div className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+                                        plan.name === 'Free' ? 'bg-gray-100 text-gray-600' :
+                                        plan.name === 'Pro' ? 'bg-brand-100 text-brand-700' :
+                                        'bg-purple-100 text-purple-700'
+                                      }`}>
+                                        {plan.name}
+                                      </div>
+                                      <div className="mt-2">
+                                        <span className="text-xl font-bold text-gray-900">{plan.price}</span>
+                                        <span className="text-gray-500 text-xs">{plan.period}</span>
+                                      </div>
+                                      {plan.popular && (
+                                        <div className="mt-1 text-xs text-brand-600 font-medium">Most Popular</div>
+                                      )}
+                                    </th>
                                   ))}
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                              </thead>
+                              <tbody>
+                                {featureOrder.map((feature, index) => (
+                                  <tr key={feature} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
+                                    <td className="py-2.5 px-2 text-gray-700">{feature}</td>
+                                    {plans.map((plan) => (
+                                      <td key={`${plan.name}-${feature}`} className="py-2.5 px-2 text-center">
+                                        {renderFeatureValue(plan.features[feature as keyof typeof plan.features])}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
                       </motion.div>
                     )}
@@ -391,15 +437,15 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', rea
                       What price feels fair for unlimited AI-powered learning? (This helps us price fairly)
                     </p>
 
-                    <div className="grid grid-cols-4 gap-2 mb-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
                       {['$10/mo', '$15/mo', '$20/mo', '$25+/mo'].map((price) => (
                         <button
                           key={price}
                           onClick={() => setSelectedPrice(price)}
-                          className={`p-3 rounded-xl border-2 transition-all ${
+                          className={`p-3 min-h-[48px] rounded-xl border-2 transition-all ${
                             selectedPrice === price
                               ? 'border-brand-500 bg-brand-50 text-brand-700'
-                              : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                              : 'border-gray-200 hover:border-gray-300 active:bg-gray-50 text-gray-700'
                           }`}
                         >
                           <span className="font-semibold">{price}</span>

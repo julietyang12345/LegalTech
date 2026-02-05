@@ -81,7 +81,7 @@ function QuickActions() {
         <button
           key={action.id}
           onClick={() => executeQuickAction(action.id)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 
+          className="flex items-center gap-1.5 px-3 py-2 min-h-[40px] bg-gray-100 hover:bg-gray-200 active:bg-gray-300
                      rounded-full text-sm text-gray-700 whitespace-nowrap transition-colors"
         >
           <span>{action.emoji}</span>
@@ -131,7 +131,7 @@ export function CompanionChat() {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.9, y: 20 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="fixed bottom-24 left-4 right-4 max-w-96 max-h-[500px] bg-white rounded-2xl shadow-companion
+          className="fixed bottom-24 left-4 right-4 max-w-96 max-h-[60vh] sm:max-h-[500px] bg-white rounded-2xl shadow-companion
                      flex flex-col overflow-hidden z-40 sm:left-auto sm:right-6 sm:w-96"
         >
           {/* Header */}
@@ -186,9 +186,9 @@ export function CompanionChat() {
             <button
               onClick={handleSend}
               disabled={!input.trim()}
-              className="p-2 bg-brand-500 text-white rounded-full 
-                       hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed
-                       transition-colors"
+              className="p-2.5 min-w-[44px] min-h-[44px] bg-brand-500 text-white rounded-full
+                       hover:bg-brand-600 active:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed
+                       transition-colors flex items-center justify-center"
             >
               <Send className="w-4 h-4" />
             </button>
