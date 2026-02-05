@@ -12,3 +12,5 @@ export { CommunityPage } from './CommunityPage';
 export { ForgotPasswordPage } from './ForgotPasswordPage';
 export { ResetPasswordPage } from './ResetPasswordPage';
 export { VerifyEmailPage } from './VerifyEmailPage';
+export { TermsPage } from './TermsPage';
+export { PrivacyPage } from './PrivacyPage';

@@ -86,13 +86,16 @@ deploy_backend_remote() {
         echo "[INFO] Loading Docker image..."
         docker load < /tmp/flexforge-api.tar.gz
 
-        echo "[INFO] Stopping existing container..."
+        echo "[INFO] Stopping existing API container..."
         docker stop flexforge-api-prod 2>/dev/null || true
         docker rm flexforge-api-prod 2>/dev/null || true
 
-        echo "[INFO] Starting containers..."
+        echo "[INFO] Starting API container (keeping tunnel running)..."
         cd ~
-        docker-compose -f docker-compose.prod.yml up -d
+        docker-compose -f docker-compose.prod.yml up -d --no-deps api
+
+        echo "[INFO] Ensuring tunnel is running..."
+        docker-compose -f docker-compose.prod.yml up -d cf-tunnel
 
         echo "[SUCCESS] Backend deployed!"
         docker-compose -f docker-compose.prod.yml ps
@@ -146,14 +149,18 @@ deploy_backend() {
         docker compose -f docker-compose.prod.yml build
     fi
 
-    # Stop existing container
-    log_info "Stopping existing containers..."
+    # Stop existing API container only
+    log_info "Stopping existing API container..."
     docker stop flexforge-api-prod 2>/dev/null || true
     docker rm flexforge-api-prod 2>/dev/null || true
 
-    # Start containers
-    log_info "Starting containers..."
-    docker compose -f docker-compose.prod.yml up -d
+    # Start API container (keep tunnel running)
+    log_info "Starting API container (keeping tunnel running)..."
+    docker compose -f docker-compose.prod.yml up -d --no-deps api
+
+    # Ensure tunnel is running (starts if not already running)
+    log_info "Ensuring tunnel is running..."
+    docker compose -f docker-compose.prod.yml up -d cf-tunnel
 
     # Wait for services to be healthy
     log_info "Waiting for services to be healthy..."

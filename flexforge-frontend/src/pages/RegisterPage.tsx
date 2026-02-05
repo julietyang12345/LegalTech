@@ -13,6 +13,7 @@ export function RegisterPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
 
@@ -55,10 +56,10 @@ export function RegisterPage() {
   };
 
   const benefits = [
-    'AI-generated personalized curriculum',
-    '45-minute daily structured sessions',
-    'Build real projects for your portfolio',
-    'Flexi - your AI learning companion',
+    'Personalized curriculum tailored to your goals',
+    'Structured daily sessions with videos & exercises',
+    'Build real projects as you learn',
+    'On-demand tutor when you get stuck',
   ];
 
   return (
@@ -236,20 +237,37 @@ export function RegisterPage() {
                 <p className="mt-1 text-xs text-gray-500">Minimum 8 characters</p>
               </div>
 
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="terms"
+                  checked={agreedToTerms}
+                  onChange={(e) => setAgreedToTerms(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-gray-300 text-brand-600
+                           focus:ring-brand-500 cursor-pointer"
+                  required
+                />
+                <label htmlFor="terms" className="text-sm text-gray-600 cursor-pointer">
+                  I agree to the{' '}
+                  <Link to="/terms" className="text-brand-600 hover:underline" target="_blank">
+                    Terms of Service
+                  </Link>{' '}
+                  and{' '}
+                  <Link to="/privacy" className="text-brand-600 hover:underline" target="_blank">
+                    Privacy Policy
+                  </Link>
+                </label>
+              </div>
+
               <Button
                 type="submit"
                 size="lg"
                 className="w-full"
                 isLoading={isLoading}
+                disabled={!agreedToTerms}
               >
                 Create Account
               </Button>
-
-              <p className="text-xs text-gray-500 text-center">
-                By creating an account, you agree to our{' '}
-                <a href="#" className="text-brand-600 hover:underline">Terms</a> and{' '}
-                <a href="#" className="text-brand-600 hover:underline">Privacy Policy</a>
-              </p>
             </form>
 
             <div className="mt-6 text-center">

@@ -953,8 +953,9 @@ function SkillTreeCanvasInner({
       >
         <Background gap={20} size={1} color="#bae6fd" className="opacity-30" />
         <Controls className="!bg-white !border-gray-200 !rounded-lg !shadow-sm" />
+        {/* Hide MiniMap on mobile - takes up too much space */}
         <MiniMap
-          className="!bg-white !border-gray-200 !rounded-lg"
+          className="!bg-white !border-gray-200 !rounded-lg !hidden md:!block"
           nodeColor={() => '#22c55e'}
         />
 

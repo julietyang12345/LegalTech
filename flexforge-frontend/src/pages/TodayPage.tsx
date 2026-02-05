@@ -175,16 +175,16 @@ function CurriculumModal({
 }
 
 
-// Yesterday's Fog - memory bridge before starting
-function YesterdaysFog({ yesterdayTopic, question }: { yesterdayTopic: string; question: string }) {
+// Knowledge Recall - memory bridge before starting
+function KnowledgeRecall({ yesterdayTopic, question }: { yesterdayTopic: string; question: string }) {
   const [revealed, setRevealed] = useState(false);
 
   return (
     <Card className="border-l-4 border-l-brand-400 bg-brand-50/50">
       <div className="p-6">
         <div className="flex items-center gap-2 mb-3">
-          <span className="text-xl">🌫️</span>
-          <h3 className="font-semibold text-gray-900">Yesterday's Fog</h3>
+          <span className="text-xl">🧠</span>
+          <h3 className="font-semibold text-gray-900">Knowledge Recall</h3>
         </div>
         <p className="text-sm text-gray-600 mb-4">
           Quick recall before we start:
@@ -505,14 +505,14 @@ export function TodayPage() {
         )}
       </motion.div>
 
-      {/* Yesterday's Fog (skip on day 1) */}
+      {/* Knowledge Recall (skip on day 1) */}
       {previousDayData && activeSession.currentDay > 1 && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <YesterdaysFog
+          <KnowledgeRecall
             yesterdayTopic={previousDayData.title.split(':')[1]?.trim() || 'yesterday\'s concept'}
             question={previousDayData.activeRecall?.part2?.connectionQuestion || 
               `How does ${previousDayData.title} connect to what you'll learn today?`}

@@ -88,10 +88,15 @@ export default () => {
       path: process.env.STORAGE_PATH || './uploads',
     },
     email: {
+      resend: {
+        apiKey: process.env.RESEND_API_KEY || '',
+        fromEmail: process.env.RESEND_FROM_EMAIL || 'FlexForge <noreply@flexforge.ai>',
+      },
       sendgrid: {
         apiKey: process.env.SENDGRID_API_KEY || '',
         fromEmail: process.env.SENDGRID_FROM_EMAIL || 'noreply@flexforge.com',
       },
+      contactRecipient: process.env.CONTACT_EMAIL || 'juliet.y28@outlook.com',
     },
     analytics: {
       posthog: {

@@ -22,9 +22,13 @@ if [ -d ".git" ]; then
     git pull origin main || git pull origin master || true
 fi
 
-# Build and start containers
-echo "Building and starting containers..."
-docker-compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+# Build and start API container only (keep tunnel running)
+echo "Building and starting API container..."
+docker-compose -f docker-compose.prod.yml --env-file .env.production up -d --no-deps --build api
+
+# Ensure tunnel is running
+echo "Ensuring tunnel is running..."
+docker-compose -f docker-compose.prod.yml --env-file .env.production up -d cf-tunnel
 
 # Wait for health check
 echo "Waiting for application to start..."

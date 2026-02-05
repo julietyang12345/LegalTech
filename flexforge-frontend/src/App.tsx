@@ -24,6 +24,8 @@ import {
   ForgotPasswordPage,
   ResetPasswordPage,
   VerifyEmailPage,
+  TermsPage,
+  PrivacyPage,
 } from '@/pages';
 
 // React Query client
@@ -48,6 +50,8 @@ function App() {
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
 
           {/* Onboarding - protected but skip onboarding check to avoid redirect loop */}
           <Route

@@ -24,6 +24,7 @@ import { AuditLog } from './database/entities/audit-log.entity';
 import { Waitlist } from './database/entities/waitlist.entity';
 import { CommunityPost, CommunityComment } from './database/entities/community-post.entity';
 import { Notification } from './database/entities/notification.entity';
+import { ContactSubmission } from './database/entities/contact.entity';
 
 // Modules
 import { AuthModule } from './modules/auth/auth.module';
@@ -39,6 +40,7 @@ import { TtsModule } from './modules/tts/tts.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { WaitlistModule } from './modules/waitlist/waitlist.module';
 import { CommunityModule } from './modules/community/community.module';
+import { ContactModule } from './modules/contact/contact.module';
 
 @Module({
   imports: [
@@ -76,6 +78,7 @@ import { CommunityModule } from './modules/community/community.module';
           CommunityPost,
           CommunityComment,
           Notification,
+          ContactSubmission,
         ],
         synchronize: configService.get('nodeEnv') === 'development',
         logging: configService.get('nodeEnv') === 'development',
@@ -112,6 +115,7 @@ import { CommunityModule } from './modules/community/community.module';
     AnalyticsModule,
     WaitlistModule,
     CommunityModule,
+    ContactModule,
   ],
   controllers: [AppController],
   providers: [AppService],

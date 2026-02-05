@@ -2131,40 +2131,43 @@ export function CommunityPage() {
         </div>
 
         {/* Group header */}
-        <Card className="p-6 mb-6">
-          <div className="flex items-start gap-4">
-            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-brand-100 to-purple-100 flex items-center justify-center flex-shrink-0">
-              <Users className="w-8 h-8 text-brand-600" />
+        <Card className="p-4 sm:p-6 mb-6 overflow-hidden">
+          <div className="flex items-start gap-3 sm:gap-4">
+            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl bg-gradient-to-br from-brand-100 to-purple-100 flex items-center justify-center flex-shrink-0">
+              <Users className="w-6 h-6 sm:w-8 sm:h-8 text-brand-600" />
             </div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-bold text-gray-900">{selectedGroup.name}</h1>
-                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-sm rounded-full">
+            <div className="flex-1 min-w-0 overflow-hidden">
+              {/* Title row - stacks on mobile */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                  <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{selectedGroup.name}</h1>
+                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs sm:text-sm rounded-full flex-shrink-0">
                     {selectedGroup.topic}
                   </span>
                 </div>
-                {isGroupJoined(selectedGroup.id) ? (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => handleToggleJoinGroup(selectedGroup.id)}
-                  >
-                    <UserMinus className="w-4 h-4" />
-                    Leave
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    onClick={() => handleToggleJoinGroup(selectedGroup.id)}
-                  >
-                    <UserPlus className="w-4 h-4" />
-                    Join Group
-                  </Button>
-                )}
+                <div className="flex-shrink-0">
+                  {isGroupJoined(selectedGroup.id) ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleToggleJoinGroup(selectedGroup.id)}
+                    >
+                      <UserMinus className="w-4 h-4" />
+                      Leave
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={() => handleToggleJoinGroup(selectedGroup.id)}
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      Join Group
+                    </Button>
+                  )}
+                </div>
               </div>
-              <p className="text-gray-600 mb-3">{selectedGroup.description}</p>
-              <div className="flex items-center gap-4 text-sm text-gray-500">
+              <p className="text-sm sm:text-base text-gray-600 mb-3">{selectedGroup.description}</p>
+              <div className="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm text-gray-500 flex-wrap">
                 <span>{selectedGroup.memberCount + (isGroupJoined(selectedGroup.id) ? 1 : 0)} members</span>
                 <span>Curated by {selectedGroup.curatorName}</span>
               </div>

@@ -172,11 +172,11 @@ function SessionCard({
         </div>
 
         {/* Content */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 overflow-hidden">
           <div className="flex items-start justify-between gap-2">
-            <div>
+            <div className="min-w-0 flex-1">
               <h3 className="font-semibold text-gray-900 truncate">{session.skillName}</h3>
-              <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
+              <div className="flex items-center gap-2 sm:gap-3 mt-1 text-xs sm:text-sm text-gray-500 flex-wrap">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5" />
                   {startDate}
@@ -187,13 +187,15 @@ function SessionCard({
                 </span>
               </div>
             </div>
-            <StatusBadge status={
-              // Show actual status for active session or completed
-              // All other sessions display as PAUSED on vault page
-              isActiveSession || session.status === SessionStatus.COMPLETED
-                ? session.status
-                : SessionStatus.PAUSED
-            } />
+            <div className="flex-shrink-0">
+              <StatusBadge status={
+                // Show actual status for active session or completed
+                // All other sessions display as PAUSED on vault page
+                isActiveSession || session.status === SessionStatus.COMPLETED
+                  ? session.status
+                  : SessionStatus.PAUSED
+              } />
+            </div>
           </div>
 
           {/* Progress bar */}

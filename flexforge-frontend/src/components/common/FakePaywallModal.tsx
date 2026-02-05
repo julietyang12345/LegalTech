@@ -73,7 +73,6 @@ const plans = [
     name: 'Pro',
     price: '$20',
     period: '/mo',
-    popular: true,
     features: {
       'AI-generated curriculum': true,
       'Daily learning sessions': true,
@@ -289,9 +288,7 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', rea
                           {/* Mobile: Card layout */}
                           <div className="md:hidden space-y-4">
                             {plans.map((plan) => (
-                              <div key={plan.name} className={`p-4 rounded-xl border-2 ${
-                                plan.popular ? 'border-brand-300 bg-brand-50' : 'border-gray-200'
-                              }`}>
+                              <div key={plan.name} className="p-4 rounded-xl border-2 border-gray-200">
                                 <div className="flex items-center justify-between mb-3">
                                   <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
                                     plan.name === 'Free' ? 'bg-gray-100 text-gray-600' :
@@ -305,9 +302,6 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', rea
                                     <span className="text-gray-500 text-xs">{plan.period}</span>
                                   </div>
                                 </div>
-                                {plan.popular && (
-                                  <div className="mb-3 text-xs text-brand-600 font-medium">Most Popular</div>
-                                )}
                                 <ul className="space-y-2">
                                   {featureOrder.slice(0, 6).map((feature) => (
                                     <li key={feature} className="flex items-center gap-2 text-sm">
@@ -348,9 +342,6 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', rea
                                         <span className="text-xl font-bold text-gray-900">{plan.price}</span>
                                         <span className="text-gray-500 text-xs">{plan.period}</span>
                                       </div>
-                                      {plan.popular && (
-                                        <div className="mt-1 text-xs text-brand-600 font-medium">Most Popular</div>
-                                      )}
                                     </th>
                                   ))}
                                 </tr>
