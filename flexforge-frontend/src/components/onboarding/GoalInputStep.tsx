@@ -15,16 +15,35 @@ interface GoalInputStepProps {
 export function GoalInputStep({ onSubmit, isLoading, initialValue }: GoalInputStepProps) {
   const [goal, setGoal] = useState(initialValue || "");
   const [isSkipping, setIsSkipping] = useState(false);
+  const [isCheckingSessions, setIsCheckingSessions] = useState(true);
   const navigate = useNavigate();
   const { refreshUser } = useAuthStore();
   const { sessions, fetchSessions } = useSessionStore();
 
   // Fetch sessions on mount to check if user has previous courses
   useEffect(() => {
-    fetchSessions();
+    const checkSessions = async () => {
+      setIsCheckingSessions(true);
+      console.log('[GoalInputStep] Starting to fetch sessions...');
+      try {
+        await fetchSessions();
+        console.log('[GoalInputStep] fetchSessions completed');
+      } catch (err) {
+        console.error('[GoalInputStep] Failed to fetch sessions:', err);
+      } finally {
+        setIsCheckingSessions(false);
+      }
+    };
+    checkSessions();
   }, [fetchSessions]);
 
+  // Debug: log sessions when they change
+  useEffect(() => {
+    console.log('[GoalInputStep] Sessions updated:', sessions.length, sessions);
+  }, [sessions]);
+
   const hasPreviousSessions = sessions.length > 0;
+  console.log('[GoalInputStep] hasPreviousSessions:', hasPreviousSessions, 'isCheckingSessions:', isCheckingSessions);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,9 +105,14 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue }: GoalInputSt
         </Button>
       </form>
 
-      {/* Previous Sessions link - only show if user has previous sessions */}
-      {hasPreviousSessions && (
-        <div className="mt-8 text-center">
+      {/* Previous Sessions link - show if user has previous sessions or still checking */}
+      <div className="mt-8 text-center">
+        {isCheckingSessions ? (
+          <span className="inline-flex items-center gap-2 text-sm text-gray-400">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Checking for previous courses...
+          </span>
+        ) : hasPreviousSessions ? (
           <button
             type="button"
             onClick={handleContinuePrevious}
@@ -102,8 +126,8 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue }: GoalInputSt
             )}
             {isSkipping ? 'Loading...' : 'Continue a previous session'}
           </button>
-        </div>
-      )}
+        ) : null}
+      </div>
     </div>
   );
 }

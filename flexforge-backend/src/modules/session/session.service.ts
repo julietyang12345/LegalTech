@@ -264,7 +264,23 @@ export class SessionService {
       startedAt: new Date(),
     });
 
-    const savedSession = await this.sessionsRepository.save(session);
+    let savedSession: Session;
+    try {
+      this.logger.log(`💾 Attempting to save session for user ${userId}...`);
+      savedSession = await this.sessionsRepository.save(session);
+      this.logger.log(`💾 Session save returned ID: ${savedSession?.id}`);
+    } catch (saveError) {
+      this.logger.error(`❌ Session save FAILED: ${saveError.message}`, saveError.stack);
+      throw saveError;
+    }
+
+    // Verify the session was actually persisted
+    const verifySession = await this.sessionsRepository.findOne({ where: { id: savedSession.id } });
+    if (!verifySession) {
+      this.logger.error(`❌ Session ${savedSession.id} was NOT persisted to database!`);
+      throw new Error(`Session save appeared successful but session ${savedSession.id} not found in database`);
+    }
+    this.logger.log(`✅ Session ${savedSession.id} verified in database`);
 
     // Track session started
     await this.analyticsService.sessionStarted(

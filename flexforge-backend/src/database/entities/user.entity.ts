@@ -233,10 +233,10 @@ export class User {
     switch (effectiveTier) {
       case QuotaTier.FREE:
         return {
-          curriculumGenerations: 2, // 2 new curricula per day
-          dayContentRegens: 2, // 2 day content regenerations per day
-          curriculumRegens: 2, // 2 curriculum regenerations per day
-          aiTutorConversations: 3, // 3 AI tutor messages per day
+          curriculumGenerations: 1, // 1 new curriculum per day
+          dayContentRegens: 0, // No day content regenerations
+          curriculumRegens: 1, // 1 curriculum regenerations
+          aiTutorConversations: 2, // 3 AI tutor messages per day
         };
       case QuotaTier.PRO:
         return {

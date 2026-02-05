@@ -78,6 +78,7 @@ const ALLOWED_ROUTE_PREFIXES = [
   '/api/v1/tts/',
   '/api/v1/videos/',
   '/api/v1/docs/',
+  '/api/v1/analytics/',
 ];
 
 // Check if route is public

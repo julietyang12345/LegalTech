@@ -36,10 +36,6 @@ export class AuthService {
   async login(email: string, password: string) {
     const user = await this.validateCredentials(email, password);
 
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
     // Check if email is verified
     if (!user.emailVerified) {
       throw new UnauthorizedException('Please verify your email before logging in');
@@ -68,7 +64,7 @@ export class AuthService {
     const user = await this.userService.findByEmail(email);
 
     if (!user) {
-      return null;
+      throw new UnauthorizedException('User not found');
     }
 
     const isPasswordValid = await this.userService.validatePassword(
@@ -77,7 +73,7 @@ export class AuthService {
     );
 
     if (!isPasswordValid) {
-      return null;
+      throw new UnauthorizedException('Wrong password');
     }
 
     return user;

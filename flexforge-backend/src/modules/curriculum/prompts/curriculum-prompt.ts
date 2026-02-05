@@ -115,7 +115,7 @@ export const SECTION_REGISTRY: Record<
   },
   [SkillType.PHYSICAL]: {
     task1: ['quiz', 'reorder', 'matching'],
-    intensive: ['formCheck', 'safetyCheck', 'reorder'],
+    intensive: ['formCheck', 'quiz', 'reorder'], // formCheck includes safety items mixed in, quiz has estimation/troubleshooting/tool selection
   },
   [SkillType.KNOWLEDGE]: {
     // AI chooses: quiz + matching + fillBlank (factual) OR quiz + fillBlank + openEnded (soft skills/leadership)
@@ -1039,9 +1039,23 @@ ${newKnowledgeNote}`;
 
     case SkillType.PHYSICAL:
       return `SECTION TYPES TO INCLUDE:
-1. formCheck - Verify form including ADVANCED variations and NEW techniques (4-5 items)
-2. safetyCheck - Safety questions including NEW scenarios and equipment (3-4 items)
-3. reorder - Order steps for NEW movement combinations (3-4 items)
+1. formCheck - Mixed checklist with BOTH technique checkpoints AND safety items (5-7 items total)
+   - Include form/technique checkpoints (posture, grip, alignment, stance, etc.)
+   - Include safety checkpoints (protective gear, environment check, weight limits, etc.)
+   - Mix them together so users verify EVERYTHING before proceeding
+2. quiz - Varied practical questions (4-6 questions). Include a MIX of different question types appropriate for this specific skill. Examples:
+   - Estimation/calculation (materials, measurements, quantities, time)
+   - Troubleshooting scenarios (diagnose problems, identify causes)
+   - Tool/material selection (choosing the right equipment)
+   - Best practices and techniques
+   - Safety and risk assessment
+   - Code/permit/regulation knowledge (for construction)
+   - Quality inspection criteria
+   - Cost/budget considerations
+   - Environmental factors (weather, conditions)
+   - Maintenance and care
+   Choose question types that make sense for THIS skill - not all types apply to every project!
+3. reorder - Order steps for NEW movement/task sequences (3-4 items)
 ${newKnowledgeNote}`;
 
     case SkillType.KNOWLEDGE:
@@ -1191,39 +1205,45 @@ function getIntensiveSectionTemplate(
       return `[
       {
         "type": "formCheck",
-        "title": "Form Checkpoints",
+        "title": "Pre-Work Checklist",
         "items": [
           {
             "id": "fc1",
-            "checkpoint": "Checkpoint name",
-            "description": "What to check for",
+            "checkpoint": "Technique checkpoint (e.g., Grip position, Stance alignment)",
+            "description": "What to verify before proceeding",
             "commonMistake": "Common error to avoid"
+          },
+          {
+            "id": "fc2",
+            "checkpoint": "Safety checkpoint (e.g., Protective gear on, Area clear)",
+            "description": "Safety item to verify",
+            "commonMistake": "What can go wrong if skipped"
           }
         ]
       },
       {
-        "type": "safetyCheck",
-        "title": "Safety Check",
-        "items": [
-          {
-            "id": "sc1",
-            "question": "Is this safe practice?",
-            "correctAnswer": true,
-            "explanation": "Why this is true/false"
-          }
+        "type": "quiz",
+        "title": "Practical Knowledge Check",
+        "questions": [
+          // Mix different question types based on what's relevant to THIS specific skill:
+          {"id": "q1", "question": "Estimation/calculation question...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."},
+          {"id": "q2", "question": "Troubleshooting scenario...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."},
+          {"id": "q3", "question": "Tool/material selection...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."},
+          {"id": "q4", "question": "Best practice or technique...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."}
+          // Also consider: safety scenarios, code/permits, quality checks, cost/budget, environmental factors, maintenance, etc.
         ]
       },
       {
         "type": "reorder",
         "title": "Order the Steps",
-        "instructions": "Put these movement steps in correct order",
+        "instructions": "Put these steps in correct order",
         "items": [
           {
             "id": "ro1",
             "scrambled": ["step2", "step1", "step3"],
             "correctOrder": ["step1", "step2", "step3"],
-            "translation": "Complete movement sequence",
-            "hint": "Think about the flow"
+            "translation": "Complete task sequence",
+            "hint": "Think about dependencies"
           }
         ]
       }
