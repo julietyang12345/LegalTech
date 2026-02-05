@@ -7,7 +7,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
-import { QuotaTier } from '../../database/entities/user.entity';
+import { QuotaTier, UserRole } from '../../database/entities/user.entity';
 import { CurriculumService } from './curriculum.service';
 import { CurriculumCacheService } from './services/curriculum-cache.service';
 import { SkillDetectorService } from './services/skill-detector.service';
@@ -24,6 +24,8 @@ import {
 } from './dto/curriculum-cache.dto';
 import { VideoMatchingService } from './services/youtube/video-matching.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { User } from '../../database/entities/user.entity';
 
@@ -373,9 +375,11 @@ export class CurriculumController {
 
   /**
    * GET /api/v1/curriculum/cache-stats
-   * Get cache statistics (admin/debug endpoint)
+   * Get cache statistics (admin endpoint)
    */
   @Get('cache-stats')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   async getCacheStats() {
     const stats = await this.cacheService.getCacheStats();
     return { stats };
@@ -386,6 +390,8 @@ export class CurriculumController {
    * Clear all curriculum and day content caches (admin endpoint)
    */
   @Post('clear-cache')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   async clearAllCache() {
     const result = await this.cacheService.clearAllCache();
     return { message: 'All caches cleared', ...result };
@@ -397,6 +403,8 @@ export class CurriculumController {
    * Body: { cacheKey: "day-content:serverless-architecture:d7:h0.5:beginner:day2:deferred" }
    */
   @Post('delete-day-cache')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   async deleteDayCache(@Body() body: { cacheKey: string }) {
     if (!body.cacheKey) {
       throw new BadRequestException('cacheKey is required');

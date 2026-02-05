@@ -84,7 +84,6 @@ export class EdgeSignatureGuard implements CanActivate {
     signature: string,
   ): boolean {
     if (!this.secret) {
-      this.logger.error('EDGE_SIGNING_SECRET is empty!');
       return false;
     }
 
@@ -100,10 +99,6 @@ export class EdgeSignatureGuard implements CanActivate {
         .update(sortedPayload)
         .digest('base64');
 
-      this.logger.warn(`DEBUG Payload: ${sortedPayload}`);
-      this.logger.warn(`DEBUG Received sig: ${signature.substring(0, 20)}...`);
-      this.logger.warn(`DEBUG Expected sig: ${expectedSignature.substring(0, 20)}...`);
-      this.logger.warn(`DEBUG Secret prefix: ${this.secret.substring(0, 5)}...`);
 
       // Timing-safe comparison
       const signatureBuffer = Buffer.from(signature, 'base64');
