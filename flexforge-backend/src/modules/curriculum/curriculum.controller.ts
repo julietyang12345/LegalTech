@@ -12,6 +12,7 @@ import { CurriculumService } from './curriculum.service';
 import { CurriculumCacheService } from './services/curriculum-cache.service';
 import { SkillDetectorService } from './services/skill-detector.service';
 import { UserService } from '../user/user.service';
+import { AnalyticsService } from '../analytics/analytics.service';
 import { GenerateCurriculumDto } from './dto/generate-curriculum.dto';
 import {
   GenerateCurriculumWithCacheDto,
@@ -38,6 +39,7 @@ export class CurriculumController {
     private videoMatcher: VideoMatchingService,
     private skillDetector: SkillDetectorService,
     private userService: UserService,
+    private analyticsService: AnalyticsService,
   ) {}
 
   /**
@@ -69,8 +71,14 @@ export class CurriculumController {
    * Get AI estimation for how many days a skill will take to learn
    */
   @Post('estimate-days')
-  async estimateDays(@Body() body: { skillName: string }) {
+  async estimateDays(
+    @Body() body: { skillName: string },
+    @CurrentUser() user: User,
+  ) {
     try {
+      // Track estimate started
+      await this.analyticsService.curriculumEstimateStarted(user.id, body.skillName);
+
       // Content moderation check first
       const moderationResult = await this.skillDetector.moderateContent(body.skillName);
       if (!moderationResult.isAllowed) {
@@ -82,6 +90,13 @@ export class CurriculumController {
       }
 
       const result = await this.skillDetector.detectSkillType(body.skillName);
+
+      // Track estimate completed
+      await this.analyticsService.curriculumEstimateCompleted(
+        user.id,
+        body.skillName,
+        result.estimatedDaysNeeded,
+      );
 
       return {
         skillType: result.skillType,
@@ -257,6 +272,14 @@ export class CurriculumController {
         dto.previousVariantId,
         user.id,
         dto.sessionId,
+      );
+
+      // Track curriculum regeneration
+      // Note: regen count is tracked in cacheService, passing 1 as we don't need exact count here
+      await this.analyticsService.curriculumRegenerated(
+        user.id,
+        dto.skillName,
+        1, // Single regeneration event
       );
 
       // Check if we should skip caching

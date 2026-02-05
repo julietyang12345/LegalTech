@@ -184,6 +184,9 @@ export interface CompleteOnboardingDto {
 
   // Advanced mode: enables code writing exercises in intensive practice
   codeWritingEnabled?: boolean;
+
+  // Analytics: time spent in onboarding flow (tracked client-side)
+  durationSeconds?: number;
 }
 
 // ============================================

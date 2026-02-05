@@ -85,8 +85,20 @@ deploy_backend_remote() {
         set -e
         cd ~
 
-        echo "[INFO] Building and starting API container..."
-        docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build api
+        echo "[INFO] Loading Docker image from transferred tar..."
+        if [ -f /tmp/flexforge-api.tar.gz ]; then
+            gunzip -c /tmp/flexforge-api.tar.gz | docker load
+            echo "[SUCCESS] Image loaded!"
+        else
+            echo "[WARN] No image tar found at /tmp/flexforge-api.tar.gz"
+        fi
+
+        echo "[INFO] Stopping existing API container..."
+        docker stop flexforge-api-prod 2>/dev/null || true
+        docker rm flexforge-api-prod 2>/dev/null || true
+
+        echo "[INFO] Starting API container (using pre-built image)..."
+        docker compose -f docker-compose.prod.yml --env-file .env.production up -d --no-build api
 
         echo "[INFO] Ensuring tunnel is running..."
         docker compose -f docker-compose.prod.yml --env-file .env.production up -d cf-tunnel

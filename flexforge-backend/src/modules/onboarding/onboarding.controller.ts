@@ -14,6 +14,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { User } from '../../database/entities/user.entity';
 import { OnboardingService } from './onboarding.service';
 import { SkillDetectorService } from '../curriculum/services/skill-detector.service';
+import { AnalyticsService } from '../analytics/analytics.service';
 import {
   GenerateDirectionsDto,
   CompleteOnboardingDto,
@@ -31,6 +32,7 @@ export class OnboardingController {
   constructor(
     private readonly onboardingService: OnboardingService,
     private readonly skillDetector: SkillDetectorService,
+    private readonly analyticsService: AnalyticsService,
   ) {}
 
   /**
@@ -41,7 +43,7 @@ export class OnboardingController {
   @HttpCode(HttpStatus.OK)
   async generateDirections(
     @Body() dto: GenerateDirectionsDto,
-    @CurrentUser() _user: User, // Required for auth guard
+    @CurrentUser() user: User,
   ): Promise<DirectionsResponse> {
     // Content moderation check first
     const moderationResult = await this.skillDetector.moderateContent(dto.goal);
@@ -53,7 +55,15 @@ export class OnboardingController {
       });
     }
 
-    return this.onboardingService.generateDirections(dto.goal, dto.refinement);
+    const result = await this.onboardingService.generateDirections(dto.goal, dto.refinement);
+
+    // Track directions shown
+    await this.analyticsService.onboardingDirectionsShown(
+      user.id,
+      result.directions.length,
+    );
+
+    return result;
   }
 
   /**
@@ -67,6 +77,13 @@ export class OnboardingController {
     @CurrentUser() user: User,
   ): Promise<{ message: string }> {
     await this.onboardingService.savePreferences(user.id, dto);
+
+    // Track onboarding completion (duration is tracked client-side)
+    await this.analyticsService.onboardingCompleted(
+      user.id,
+      dto.durationSeconds || 0,
+    );
+
     return { message: 'Onboarding completed successfully' };
   }
 

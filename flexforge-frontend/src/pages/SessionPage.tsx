@@ -6,6 +6,7 @@ import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
 import { useCommunityShareStore } from '@/stores/communityShareStore';
+import { analyticsService } from '@/services/analyticsService';
 import { FocusModeLayout } from '@/components/layout';
 import { Button, GeneratingScreen, ExerciseLoadingScreen, FakePaywallModal } from '@/components/common';
 import { AiTutorPanel } from '@/components/session/AiTutorPanel';
@@ -539,6 +540,17 @@ export function SessionPage() {
     }
   }, [currentStep, availableSteps, setCurrentStep]);
 
+  // Track step views for analytics
+  useEffect(() => {
+    if (activeSession && currentDay && currentStep) {
+      analyticsService.sessionStepViewed(
+        activeSession.id,
+        currentDay.day,
+        currentStep
+      );
+    }
+  }, [activeSession?.id, currentDay?.day, currentStep]);
+
   const currentStepIndex = availableSteps.indexOf(currentStep);
   const isFirstStep = currentStepIndex === 0;
   const isLastStep = currentStepIndex === availableSteps.length - 1;
@@ -817,6 +829,16 @@ export function SessionPage() {
     }
     // task1, bossMilestone engagement is automatically tracked
     // when user answers questions or types code
+
+    // Track step completion for analytics
+    if (activeSession && currentDay) {
+      analyticsService.sessionStepCompleted(
+        activeSession.id,
+        currentDay.day,
+        currentStep
+      );
+    }
+
     handleContinue();
   };
 

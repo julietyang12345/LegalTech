@@ -1833,4 +1833,6 @@ export interface CompleteOnboardingDto {
   learningStyle?: 'projects' | 'practice'; // 'projects' = boss project, 'practice' = exercises only
   // Advanced mode: enables code writing exercises (codeCompletion) in intensive practice
   codeWritingEnabled?: boolean;
+  // Analytics: time spent in onboarding flow (tracked client-side)
+  durationSeconds?: number;
 }

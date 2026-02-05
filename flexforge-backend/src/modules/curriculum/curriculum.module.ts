@@ -9,6 +9,7 @@ import { UniversityResourceService } from './services/university/university-reso
 import { DocumentationFetchService } from './services/docs/documentation-fetch.service';
 import { AiModule } from '../ai/ai.module';
 import { UserModule } from '../user/user.module';
+import { AnalyticsModule } from '../analytics/analytics.module';
 import {
   CurriculumCacheKey,
   CurriculumCacheVariant,
@@ -23,6 +24,7 @@ import {
   imports: [
     AiModule,
     forwardRef(() => UserModule), // forwardRef to avoid circular dependency
+    AnalyticsModule,
     TypeOrmModule.forFeature([
       CurriculumCacheKey,
       CurriculumCacheVariant,

@@ -803,6 +803,16 @@ export class SessionService {
         );
       }
 
+      // Track day regeneration for analytics
+      const currentRegenCount = await this.cacheService.getDayRegenCount(sessionId, dayNumber);
+      await this.analyticsService.sessionDayRegenerated(
+        userId,
+        sessionId,
+        session.skillName,
+        dayNumber,
+        currentRegenCount + 1, // Include this regeneration in the count
+      );
+
       // Mark previous variant as regenerated (negative signal for quality tracking)
       const previousVariantId = dayOverview.variantId;
       if (previousVariantId) {

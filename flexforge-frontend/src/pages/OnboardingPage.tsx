@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
@@ -10,6 +10,7 @@ import {
 } from '@/components/onboarding';
 import { LanguageStep } from '@/components/onboarding/LanguageStep';
 import { onboardingService } from '@/services/onboardingService';
+import { analyticsService } from '@/services/analyticsService';
 import { useAuthStore } from '@/stores/authStore';
 import type {
   LearningDirection,
@@ -36,6 +37,9 @@ export default function OnboardingPage() {
   // Get pre-filled skill from URL (from showcase page)
   const prefilledSkill = searchParams.get('skill') || '';
 
+  // Track onboarding start time for duration calculation
+  const onboardingStartTime = useRef<number>(Date.now());
+
   // State machine
   const [step, setStep] = useState<OnboardingStep>('goal_input');
 
@@ -56,6 +60,9 @@ export default function OnboardingPage() {
     setError(null);
     setStep('generating');
 
+    // Track goal submission
+    analyticsService.onboardingGoalSubmitted(goalText);
+
     try {
       const response = await onboardingService.generateDirections(goalText);
       setDirections(response.directions);
@@ -71,6 +78,13 @@ export default function OnboardingPage() {
   // Step 2-3: Select direction → go to language step (if CODE/AI_AGENT) or depth step
   const handleDirectionSelect = useCallback((direction: LearningDirection) => {
     setSelectedDirection(direction);
+
+    // Track direction selection
+    analyticsService.onboardingDirectionSelected(
+      direction.title,
+      direction.skillType || 'unknown'
+    );
+
     // If direction has language config, show language selection step
     if (direction.languageConfig) {
       setSelectedLanguage(direction.languageConfig.recommended); // Default to recommended
@@ -116,8 +130,14 @@ export default function OnboardingPage() {
   ) => {
     if (!selectedDirection) return;
 
+    // Track feeling submission
+    analyticsService.onboardingFeelingSubmitted(familiarity, sessionLength);
+
     setError(null);
     setStep('completing');
+
+    // Calculate duration in seconds
+    const durationSeconds = Math.round((Date.now() - onboardingStartTime.current) / 1000);
 
     try {
       const dto: CompleteOnboardingDto = {
@@ -141,6 +161,8 @@ export default function OnboardingPage() {
         learningStyle,
         // Advanced mode: code writing exercises
         codeWritingEnabled,
+        // Analytics: time spent in onboarding
+        durationSeconds,
       };
 
       await onboardingService.completeOnboarding(dto);
