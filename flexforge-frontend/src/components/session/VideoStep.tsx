@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Clock, CheckCircle2, MessageCircle, Lock, Youtube, RefreshCw, Loader2, BookOpen, Video, Sparkles, Info, ChevronDown, ChevronUp, Zap } from 'lucide-react';
+import { Play, Clock, CheckCircle2, MessageCircle, Youtube, RefreshCw, Loader2, BookOpen, Video, Sparkles, Info, ChevronDown, ChevronUp, Zap } from 'lucide-react';
 import { Card, Button, ExerciseLoadingScreen } from '@/components/common';
 import { StepLayout } from './StepLayout';
-import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { sessionService } from '@/services/sessionService';
-import { QuotaTier, ContentMode } from '@/types';
+import { ContentMode } from '@/types';
 import type { CurriculumDay, Session, VideoMatch, VideoAlternative, VideoContentType } from '@/types';
 
 interface VideoStepProps {
@@ -446,9 +445,7 @@ export function VideoStep({ day, session }: VideoStepProps) {
   const [isSearchingNew, setIsSearchingNew] = useState(false);
   const [aiGeneratedVideos, setAiGeneratedVideos] = useState<VideoMatch[]>([]);
   const [currentMode, setCurrentMode] = useState<ContentMode>('ai');
-  const { hasTierAccess } = useAuthStore();
   useSessionStore(); // Store subscription for state changes
-  const canAskAI = hasTierAccess(QuotaTier.PRO);
 
   const video = day.video;
 
@@ -712,20 +709,12 @@ export function VideoStep({ day, session }: VideoStepProps) {
           }
         </button>
 
-        {/* Ask AI (PRO feature) - only show in video mode */}
+        {/* Ask AI - available to all users with daily limits for free tier */}
         {currentMode === 'video' && (
-          canAskAI ? (
-            <Button variant="secondary" size="sm" leftIcon={<MessageCircle className="w-4 h-4" />}>
-              <span className="hidden sm:inline">Ask AI about this video</span>
-              <span className="sm:hidden">Ask AI</span>
-            </Button>
-          ) : (
-            <div className="flex items-center gap-2 text-sm text-gray-400 whitespace-nowrap">
-              <Lock className="w-4 h-4" />
-              <span className="hidden sm:inline">Ask AI (PRO)</span>
-              <span className="sm:hidden">PRO</span>
-            </div>
-          )
+          <Button variant="secondary" size="sm" leftIcon={<MessageCircle className="w-4 h-4" />}>
+            <span className="hidden sm:inline">Ask AI about this video</span>
+            <span className="sm:hidden">Ask AI</span>
+          </Button>
         )}
       </motion.div>
     </StepLayout>

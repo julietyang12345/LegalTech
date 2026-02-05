@@ -248,8 +248,8 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
     }
   };
 
-  // Minimum completion: confidence + one of the quick picks
-  const canComplete = confidence !== null && (whatClicked !== null || warmupPlan !== null);
+  // Minimum completion: answer what's foggy, what clicked, or shape future days
+  const canComplete = whatsFoggy !== null || whatClicked !== null || moreOfAreas.length > 0 || lessOfAreas.length > 0;
 
   // Show boost offer when user has confusion and hasn't completed a boost yet
   const showBoostOffer =

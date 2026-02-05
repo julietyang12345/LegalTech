@@ -5,12 +5,10 @@ import { ChevronLeft, ChevronRight, CheckCircle, Shuffle, HelpCircle, FileText, 
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
-import { useAuthStore } from '@/stores/authStore';
 import { useCommunityShareStore } from '@/stores/communityShareStore';
 import { FocusModeLayout } from '@/components/layout';
 import { Button, GeneratingScreen, ExerciseLoadingScreen, FakePaywallModal } from '@/components/common';
 import { AiTutorPanel } from '@/components/session/AiTutorPanel';
-import { QuotaTier } from '@/types';
 import type { CurriculumDay } from '@/types';
 
 // Import step components
@@ -46,13 +44,9 @@ function addBookmark(bookmark: Omit<CourseBookmark, 'id' | 'createdAt'>) {
 
 // Draggable AI Tutor Button for mobile
 function DraggableAiTutorButton({
-  canUseAITutor,
   onOpenTutor,
-  onOpenUpgrade,
 }: {
-  canUseAITutor: boolean;
   onOpenTutor: () => void;
-  onOpenUpgrade: () => void;
 }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [pos, setPos] = useState(() => {
@@ -102,11 +96,7 @@ function DraggableAiTutorButton({
     const handleTouchEnd = () => {
       localStorage.setItem('ai-tutor-btn-pos', JSON.stringify(pos));
       if (!dragInfo.current.moved) {
-        if (canUseAITutor) {
-          onOpenTutor();
-        } else {
-          onOpenUpgrade();
-        }
+        onOpenTutor();
       }
     };
 
@@ -119,18 +109,14 @@ function DraggableAiTutorButton({
       btn.removeEventListener('touchmove', handleTouchMove);
       btn.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [pos, canUseAITutor, onOpenTutor, onOpenUpgrade]);
+  }, [pos, onOpenTutor]);
 
   return (
     <button
       ref={buttonRef}
       onClick={() => {
         if (!dragInfo.current.moved) {
-          if (canUseAITutor) {
-            onOpenTutor();
-          } else {
-            onOpenUpgrade();
-          }
+          onOpenTutor();
         }
         dragInfo.current.moved = false;
       }}
@@ -140,12 +126,7 @@ function DraggableAiTutorButton({
         bottom: pos.bottom,
         touchAction: 'none',
       }}
-      className={clsx(
-        'z-30 flex items-center gap-2 px-4 py-2.5 rounded-2xl shadow-lg transition-all duration-200',
-        canUseAITutor
-          ? 'bg-gradient-to-br from-focus-500 to-focus-600 text-white hover:shadow-xl active:scale-95'
-          : 'bg-gray-200 text-gray-500 hover:bg-gray-300 active:scale-95'
-      )}
+      className="z-30 flex items-center gap-2 px-4 py-2.5 rounded-2xl shadow-lg transition-all duration-200 bg-gradient-to-br from-focus-500 to-focus-600 text-white hover:shadow-xl active:scale-95"
     >
       <GraduationCap className="w-5 h-5" />
       <span className="text-sm font-medium">AI Tutor</span>
@@ -437,8 +418,6 @@ export function SessionPage() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showBookmarkToast, setShowBookmarkToast] = useState(false);
 
-  const { hasTierAccess } = useAuthStore();
-  const canUseAITutor = hasTierAccess(QuotaTier.PRO);
 
   // Track what user has actually engaged with
   const [stepEngagement, setStepEngagement] = useState<StepEngagement>({
@@ -874,24 +853,14 @@ export function SessionPage() {
 
             {/* Center buttons - Desktop only */}
             <div className="hidden md:flex items-center gap-2">
-              {/* AI Tutor Button */}
-              {canUseAITutor ? (
-                <button
-                  onClick={() => setShowAiTutor(true)}
-                  className="group flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-xl text-sm font-medium transition-all duration-300 bg-white hover:bg-gray-50 active:bg-gray-100 border border-gray-200 hover:border-purple-300 hover:shadow-md hover:shadow-purple-100"
-                >
-                  <Sparkles className="w-4 h-4 text-purple-500 group-hover:text-purple-600" />
-                  <span className="text-gray-700 group-hover:text-gray-900">Ask AI Tutor</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => setShowUpgradeModal(true)}
-                  className="flex items-center gap-2 px-3 py-2 min-h-[44px] text-sm text-gray-500 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 rounded-xl border border-gray-200 transition-colors"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  Ask AI Tutor (PRO)
-                </button>
-              )}
+              {/* AI Tutor Button - available to all users with daily limits */}
+              <button
+                onClick={() => setShowAiTutor(true)}
+                className="group flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-xl text-sm font-medium transition-all duration-300 bg-white hover:bg-gray-50 active:bg-gray-100 border border-gray-200 hover:border-purple-300 hover:shadow-md hover:shadow-purple-100"
+              >
+                <Sparkles className="w-4 h-4 text-purple-500 group-hover:text-purple-600" />
+                <span className="text-gray-700 group-hover:text-gray-900">Ask AI Tutor</span>
+              </button>
             </div>
 
             <Button
@@ -923,9 +892,7 @@ export function SessionPage() {
       {/* Floating AI Tutor Button - Mobile only (draggable) */}
       <div className="md:hidden">
         <DraggableAiTutorButton
-          canUseAITutor={canUseAITutor}
           onOpenTutor={() => setShowAiTutor(true)}
-          onOpenUpgrade={() => setShowUpgradeModal(true)}
         />
       </div>
 

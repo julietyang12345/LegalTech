@@ -310,14 +310,16 @@ export const sessionService = {
       };
       conversationHistory?: Array<{ role: string; content: string }>;
     }
-  ): Promise<{ reply: string; tokensUsed?: number }> {
+  ): Promise<{ reply: string; tokensUsed?: number; dailyUsage?: { used: number; limit: number; remaining: number } }> {
     const { data } = await api.post<{
       reply: string;
       metadata?: { tokensUsed: number; cost: number };
+      dailyUsage?: { used: number; limit: number; remaining: number };
     }>('/curriculum/ai-tutor', params);
     return {
       reply: data.reply,
       tokensUsed: data.metadata?.tokensUsed,
+      dailyUsage: data.dailyUsage,
     };
   },
 

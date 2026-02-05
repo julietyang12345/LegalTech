@@ -63,9 +63,31 @@ const PUBLIC_ROUTES = [
   '/api/v1/auth/check-email-exists', // Internal endpoint for edge worker
 ];
 
+// Allowed API route prefixes (security: only proxy known routes to backend)
+const ALLOWED_ROUTE_PREFIXES = [
+  '/api/v1/auth/',
+  '/api/v1/users/',
+  '/api/v1/sessions/',
+  '/api/v1/curriculum/',
+  '/api/v1/onboarding/',
+  '/api/v1/progress/',
+  '/api/v1/community/',
+  '/api/v1/waitlist/',
+  '/api/v1/tts/',
+  '/api/v1/companion/',
+  '/api/v1/videos/',
+  '/api/v1/docs/',
+];
+
 // Check if route is public
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTES.some((route) => pathname === route || pathname.startsWith(route + '/'));
+}
+
+// Check if route is allowed to be proxied to backend
+function isAllowedRoute(pathname: string): boolean {
+  if (pathname === '/' || pathname === '/health') return true;
+  return ALLOWED_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
 // Helper to create backend request headers with Cloudflare Access auth
@@ -816,6 +838,12 @@ app.post('/api/v1/auth/resend-verification', async (c) => {
 // Proxy all other requests to backend via Cloudflare Tunnel
 app.all('*', async (c) => {
   const url = new URL(c.req.url);
+
+  // Security: Only allow known routes to be proxied
+  if (!isAllowedRoute(url.pathname)) {
+    return c.json({ error: 'Not Found' }, 404);
+  }
+
   const backendUrl = `${c.env.BACKEND_URL}${url.pathname}${url.search}`;
 
   // Build headers with Cloudflare Access auth

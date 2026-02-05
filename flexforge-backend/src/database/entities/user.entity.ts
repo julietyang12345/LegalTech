@@ -194,7 +194,7 @@ export class User {
         return {
           curricula: 3,
           aiTokens: 50000,
-          aiTutorQuestions: 5, // 5 per day (checked daily, not monthly)
+          aiTutorQuestions: 3, // 3 per day (checked daily, not monthly)
         };
       case QuotaTier.PRO:
         return {
@@ -218,7 +218,7 @@ export class User {
         return {
           curricula: 3,
           aiTokens: 50000,
-          aiTutorQuestions: 5,
+          aiTutorQuestions: 3,
         };
     }
   }
@@ -236,7 +236,7 @@ export class User {
           curriculumGenerations: 2, // 2 new curricula per day
           dayContentRegens: 2, // 2 day content regenerations per day
           curriculumRegens: 2, // 2 curriculum regenerations per day
-          aiTutorConversations: 5, // 5 AI tutor messages per day
+          aiTutorConversations: 3, // 3 AI tutor messages per day
         };
       case QuotaTier.PRO:
         return {
@@ -264,7 +264,7 @@ export class User {
           curriculumGenerations: 2,
           dayContentRegens: 2,
           curriculumRegens: 2,
-          aiTutorConversations: 5,
+          aiTutorConversations: 3,
         };
     }
   }
