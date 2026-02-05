@@ -408,9 +408,12 @@ export class AiService {
     prompt: string,
     systemPrompt?: string,
   ): Promise<AIResponse> {
+    // Haiku has a lower max_tokens limit (8192) than Sonnet/Opus (16384)
+    const maxTokens = model.includes('haiku') ? 8192 : 16384;
+
     const response = await this.anthropic.messages.create({
       model,
-      max_tokens: 16384,
+      max_tokens: maxTokens,
       system: systemPrompt || '',
       messages: [{ role: 'user', content: prompt }],
     });
@@ -467,9 +470,12 @@ export class AiService {
         });
       }
 
+      // Haiku has a lower max_tokens limit (8192) than Sonnet/Opus (16384)
+      const maxTokens = model.includes('haiku') ? 8192 : 16384;
+
       const stream = await this.anthropic.messages.stream({
         model,
-        max_tokens: 16384,
+        max_tokens: maxTokens,
         system: systemBlocks,
         messages: [{ role: 'user', content: prompt }],
       });
@@ -538,9 +544,12 @@ export class AiService {
         });
       }
 
+      // Haiku has a lower max_tokens limit (8192) than Sonnet/Opus (16384)
+      const maxTokens = model.includes('haiku') ? 8192 : 16384;
+
       const response = await this.anthropic.messages.create({
         model,
-        max_tokens: 16384,
+        max_tokens: maxTokens,
         system: systemBlocks,
         messages: [{ role: 'user', content: prompt }],
       });
