@@ -72,9 +72,10 @@ const ALLOWED_ROUTE_PREFIXES = [
   '/api/v1/onboarding/',
   '/api/v1/progress/',
   '/api/v1/community/',
+  '/api/v1/companion/',
+  '/api/v1/projects/',
   '/api/v1/waitlist/',
   '/api/v1/tts/',
-  '/api/v1/companion/',
   '/api/v1/videos/',
   '/api/v1/docs/',
 ];
@@ -87,7 +88,10 @@ function isPublicRoute(pathname: string): boolean {
 // Check if route is allowed to be proxied to backend
 function isAllowedRoute(pathname: string): boolean {
   if (pathname === '/' || pathname === '/health') return true;
-  return ALLOWED_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  // Match both /api/v1/sessions and /api/v1/sessions/... for prefix /api/v1/sessions/
+  return ALLOWED_ROUTE_PREFIXES.some((prefix) =>
+    pathname.startsWith(prefix) || pathname + '/' === prefix
+  );
 }
 
 // Helper to create backend request headers with Cloudflare Access auth

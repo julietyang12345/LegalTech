@@ -152,7 +152,7 @@ export class AiService {
   private readonly costs = {
     'claude-sonnet-4': 0.05,
     'claude-haiku-3.5': 0.005,
-    'gemini-1.5-flash-latest': 0.02,
+    'gemini-2.0-flash': 0.02,
     'gpt-4o-mini': 0.002,
     'llama-3.1-70b': 0.0005,
   };
@@ -323,28 +323,28 @@ export class AiService {
 
       // Video/Multimodal
       [AITask.VIDEO_SUMMARY]: [
-        { provider: 'gemini', model: 'gemini-1.5-flash-latest' },
+        { provider: 'gemini', model: 'gemini-2.0-flash' },
         { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
       ],
       [AITask.VIDEO_TIMESTAMP_EXTRACTION]: [
-        { provider: 'gemini', model: 'gemini-1.5-flash-latest' },
+        { provider: 'gemini', model: 'gemini-2.0-flash' },
         { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
       ],
       [AITask.VIDEO_CHAPTER_GENERATION]: [
-        { provider: 'gemini', model: 'gemini-1.5-flash-latest' },
+        { provider: 'gemini', model: 'gemini-2.0-flash' },
       ],
       [AITask.TRANSCRIPT_ANALYSIS]: [
-        { provider: 'gemini', model: 'gemini-1.5-flash-latest' },
+        { provider: 'gemini', model: 'gemini-2.0-flash' },
         { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
       ],
       [AITask.VISUAL_CONTENT_ANALYSIS]: [
-        { provider: 'gemini', model: 'gemini-1.5-flash-latest' },
+        { provider: 'gemini', model: 'gemini-2.0-flash' },
       ],
 
       // Basic logic
       [AITask.BATCH_LOGIC]: [
         { provider: 'openai', model: 'gpt-4o-mini' },
-        { provider: 'gemini', model: 'gemini-1.5-flash-latest' },
+        { provider: 'gemini', model: 'gemini-2.0-flash' },
       ],
       [AITask.QUIZ_GENERATION]: [
         { provider: 'openai', model: 'gpt-4o-mini' },
@@ -747,41 +747,41 @@ ${compressedDirections}
 Check: searchable terms? scoped (30-90min)? diverse approaches? low-friction options?
 Return JSON: {overallQuality, issues[], suggestions[], missingApproaches[], feedbackAlignment}`;
 
-    let geminiReview: AIResponse;
+    let reviewResponse: AIResponse;
     let reviewData: any = null;
 
     try {
-      geminiReview = await this.callGemini(
-        'gemini-1.5-flash-latest',
+      reviewResponse = await this.callOpenAI(
+        'gpt-4o-mini',
         reviewPrompt,
         '',
       );
 
-      this.logger.log('✅ Step 2: Gemini reviewed directions');
+      this.logger.log('✅ Step 2: OpenAI reviewed directions');
 
-      // Try to parse Gemini's review
+      // Try to parse review response
       try {
-        const jsonMatch = geminiReview.content.match(/\{[\s\S]*\}/);
+        const jsonMatch = reviewResponse.content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           reviewData = JSON.parse(jsonMatch[0]);
         }
       } catch {
         this.logger.warn(
-          'Could not parse Gemini review as JSON, using raw content',
+          'Could not parse review as JSON, using raw content',
         );
       }
     } catch (error) {
-      this.logger.error(`Gemini review failed: ${error.message || error}`);
+      this.logger.error(`OpenAI review failed: ${error.message || error}`);
       // Don't silently return old directions - continue to Claude without review
       this.logger.log(
-        'Skipping Gemini review, proceeding directly to Claude synthesis',
+        'Skipping review, proceeding directly to Claude synthesis',
       );
     }
 
-    // Step 3: Claude synthesizes final directions incorporating Gemini's feedback
-    // Extract just the actionable feedback from Gemini's review (or empty if Gemini failed)
+    // Step 3: Claude synthesizes final directions incorporating review feedback
+    // Extract just the actionable feedback from the review (or empty if review failed)
     let reviewSummary =
-      geminiReview?.content || 'No automated review available';
+      reviewResponse?.content || 'No automated review available';
     if (reviewData) {
       const parts = [];
       if (reviewData.issues?.length)
@@ -821,8 +821,8 @@ Return improved JSON with same format. Each direction must achieve user's comple
 
       return {
         ...finalResponse,
-        tokensUsed: (geminiReview?.tokensUsed || 0) + finalResponse.tokensUsed,
-        cost: (geminiReview?.cost || 0) + finalResponse.cost,
+        tokensUsed: (reviewResponse?.tokensUsed || 0) + finalResponse.tokensUsed,
+        cost: (reviewResponse?.cost || 0) + finalResponse.cost,
       };
     } catch (error) {
       this.logger.error(`Claude synthesis failed: ${error.message || error}`);

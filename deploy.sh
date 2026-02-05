@@ -83,22 +83,28 @@ deploy_backend_remote() {
 
     ssh "$SERVER_USER@$SERVER_HOST" << 'ENDSSH'
         set -e
-        echo "[INFO] Loading Docker image..."
-        docker load < /tmp/flexforge-api.tar.gz
-
-        echo "[INFO] Stopping existing API container..."
-        docker stop flexforge-api-prod 2>/dev/null || true
-        docker rm flexforge-api-prod 2>/dev/null || true
-
-        echo "[INFO] Starting API container (keeping tunnel running)..."
         cd ~
-        docker-compose -f docker-compose.prod.yml up -d --no-deps api
+
+        echo "[INFO] Building and starting API container..."
+        docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build api
 
         echo "[INFO] Ensuring tunnel is running..."
-        docker-compose -f docker-compose.prod.yml up -d cf-tunnel
+        docker compose -f docker-compose.prod.yml --env-file .env.production up -d cf-tunnel
+
+        echo "[INFO] Waiting for API to be healthy..."
+        sleep 15
+
+        echo "[INFO] Verifying API is running..."
+        if docker ps --filter "name=flexforge-api-prod" --filter "status=running" | grep -q flexforge-api-prod; then
+            echo "[SUCCESS] API container is running!"
+        else
+            echo "[ERROR] API container failed to start. Checking logs..."
+            docker logs flexforge-api-prod --tail 50
+            exit 1
+        fi
 
         echo "[SUCCESS] Backend deployed!"
-        docker-compose -f docker-compose.prod.yml ps
+        docker compose -f docker-compose.prod.yml ps
 ENDSSH
 
     log_success "Remote deployment complete!"

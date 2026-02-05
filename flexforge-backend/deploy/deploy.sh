@@ -22,26 +22,26 @@ if [ -d ".git" ]; then
     git pull origin main || git pull origin master || true
 fi
 
-# Build and start API container only (keep tunnel running)
+# Build and start API container (keep tunnel running)
 echo "Building and starting API container..."
-docker-compose -f docker-compose.prod.yml --env-file .env.production up -d --no-deps --build api
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build api
 
 # Ensure tunnel is running
 echo "Ensuring tunnel is running..."
-docker-compose -f docker-compose.prod.yml --env-file .env.production up -d cf-tunnel
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d cf-tunnel
 
 # Wait for health check
 echo "Waiting for application to start..."
 sleep 10
 
 # Check health
-if curl -s http://localhost:3000/api/v1/health | grep -q "ok"; then
+if curl -s http://localhost:4000/api/v1/health | grep -q "ok"; then
     echo ""
     echo "=== Deployment Successful ==="
-    echo "API is running at http://localhost:3000"
-    echo "Health check: http://localhost:3000/api/v1/health"
+    echo "API is running at http://localhost:4000"
+    echo "Health check: http://localhost:4000/api/v1/health"
 else
     echo ""
     echo "=== Warning: Health check failed ==="
-    echo "Check logs with: docker-compose -f docker-compose.prod.yml logs -f"
+    echo "Check logs with: docker compose -f docker-compose.prod.yml logs -f api"
 fi
