@@ -55,10 +55,14 @@ function DraggableAiTutorButton({
       try {
         return JSON.parse(saved);
       } catch {
-        return { right: 16, bottom: 112 };
+        // Default to center bottom (button is ~130px wide)
+        const centerRight = typeof window !== 'undefined' ? (window.innerWidth - 130) / 2 : 120;
+        return { right: centerRight, bottom: 112 };
       }
     }
-    return { right: 16, bottom: 112 };
+    // Default to center bottom (button is ~130px wide)
+    const centerRight = typeof window !== 'undefined' ? (window.innerWidth - 130) / 2 : 120;
+    return { right: centerRight, bottom: 112 };
   });
   const dragInfo = useRef({ startX: 0, startY: 0, startRight: 0, startBottom: 0, moved: false });
 

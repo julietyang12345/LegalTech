@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CommunityPost, CommunityComment } from '../../database/entities/community-post.entity';
 import { Notification, NotificationType } from '../../database/entities/notification.entity';
+import { User } from '../../database/entities/user.entity';
 import { CreatePostDto, CreateCommentDto, RequestCourseAccessDto } from './dto/community.dto';
 
 @Injectable()
@@ -14,6 +15,8 @@ export class CommunityService {
     private commentRepository: Repository<CommunityComment>,
     @InjectRepository(Notification)
     private notificationRepository: Repository<Notification>,
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
   ) {}
 
   // Posts
@@ -47,6 +50,41 @@ export class CommunityService {
     return query.getMany();
   }
 
+  async getMyPosts(userId: string): Promise<CommunityPost[]> {
+    return this.postRepository
+      .createQueryBuilder('post')
+      .leftJoinAndSelect('post.author', 'author')
+      .leftJoinAndSelect('post.comments', 'comments')
+      .leftJoinAndSelect('comments.author', 'commentAuthor')
+      .where('post.authorId = :userId', { userId })
+      .orderBy('post.createdAt', 'DESC')
+      .getMany();
+  }
+
+  async getPostsICommented(userId: string): Promise<CommunityPost[]> {
+    // Get posts where the user has commented (but is not the author)
+    const postIds = await this.commentRepository
+      .createQueryBuilder('comment')
+      .select('DISTINCT comment.postId', 'postId')
+      .innerJoin('comment.post', 'post')
+      .where('comment.authorId = :userId', { userId })
+      .andWhere('post.authorId != :userId', { userId })
+      .getRawMany();
+
+    if (postIds.length === 0) {
+      return [];
+    }
+
+    return this.postRepository
+      .createQueryBuilder('post')
+      .leftJoinAndSelect('post.author', 'author')
+      .leftJoinAndSelect('post.comments', 'comments')
+      .leftJoinAndSelect('comments.author', 'commentAuthor')
+      .whereInIds(postIds.map(p => p.postId))
+      .orderBy('post.createdAt', 'DESC')
+      .getMany();
+  }
+
   async getPostById(id: string): Promise<CommunityPost> {
     const post = await this.postRepository.findOne({
       where: { id },
@@ -63,8 +101,13 @@ export class CommunityService {
     if (!post) {
       throw new NotFoundException('Post not found');
     }
+
+    // Check if user is authorized: post author or admin
     if (post.authorId !== userId) {
-      throw new Error('Not authorized to delete this post');
+      const user = await this.userRepository.findOne({ where: { id: userId } });
+      if (!user || !user.isAdmin()) {
+        throw new ForbiddenException('Not authorized to delete this post');
+      }
     }
     await this.postRepository.remove(post);
   }

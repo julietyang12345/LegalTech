@@ -135,6 +135,16 @@ export const communityService = {
     return data;
   },
 
+  async getMyPosts(): Promise<{ posts: CommunityPost[] }> {
+    const { data } = await api.get<{ posts: CommunityPost[] }>('/community/posts/mine');
+    return data;
+  },
+
+  async getPostsICommented(): Promise<{ posts: CommunityPost[] }> {
+    const { data } = await api.get<{ posts: CommunityPost[] }>('/community/posts/commented');
+    return data;
+  },
+
   async getPost(id: string): Promise<{ post: CommunityPost }> {
     const { data } = await api.get<{ post: CommunityPost }>(`/community/posts/${id}`);
     return data;

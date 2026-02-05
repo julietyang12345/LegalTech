@@ -35,6 +35,18 @@ export class CommunityController {
     return { posts };
   }
 
+  @Get('posts/mine')
+  async getMyPosts(@Request() req) {
+    const posts = await this.communityService.getMyPosts(req.user.id);
+    return { posts };
+  }
+
+  @Get('posts/commented')
+  async getPostsICommented(@Request() req) {
+    const posts = await this.communityService.getPostsICommented(req.user.id);
+    return { posts };
+  }
+
   @Get('posts/:id')
   async getPost(@Param('id') id: string) {
     const post = await this.communityService.getPostById(id);

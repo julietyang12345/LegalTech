@@ -54,13 +54,9 @@ async function bootstrap() {
         callback(null, true);
         return;
       }
-      // Allow configured origins
+      // Allow configured origins only (explicit list, no subdomain wildcards)
+      // This prevents subdomain takeover attacks
       if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-        return;
-      }
-      // Allow flexforge.ai subdomains only
-      if (origin.endsWith('.flexforge.ai')) {
         callback(null, true);
         return;
       }

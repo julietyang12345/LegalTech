@@ -48,7 +48,7 @@ import type { Project, CurriculumDay, TargetLanguage } from '@/types';
 // =============================================================================
 
 type PostType = 'project' | 'question' | 'progress';
-type ViewMode = 'groups' | 'my-projects';
+type ViewMode = 'groups' | 'my-posts' | 'my-comments';
 
 interface Comment {
   id: string;
@@ -108,6 +108,7 @@ interface Post {
 
   comments: Comment[];
   isPinned?: boolean;
+  groupId?: string;
 }
 
 interface Group {
@@ -143,15 +144,15 @@ const MOCK_GROUPS: Group[] = [
   },
   {
     id: '2',
-    name: 'Web Dev Projects',
-    description: 'Share your web projects, get feedback, and learn together.',
-    topic: 'Web Development',
-    memberCount: 456,
-    postCount: 167,
+    name: 'Leadership Skills',
+    description: 'Develop your leadership abilities through shared experiences and practical exercises.',
+    topic: 'Leadership',
+    memberCount: 312,
+    postCount: 94,
     curatorId: 'user2',
     curatorName: 'Sarah Kim',
     createdAt: new Date('2024-02-20'),
-    norms: 'Focus on learning, not showing off. Incomplete projects welcome!',
+    norms: 'Share vulnerably, support growth, and celebrate small wins together.',
   },
   {
     id: '3',
@@ -167,6 +168,25 @@ const MOCK_GROUPS: Group[] = [
 ];
 
 const MOCK_POSTS: Post[] = [
+  {
+    id: 'p-lead-1',
+    type: 'progress',
+    authorId: 'user6',
+    authorName: 'Jordan Rivera',
+    createdAt: new Date('2024-03-28'),
+    title: 'First time leading a team meeting',
+    progressNote: 'Led my first team standup today! I was nervous but prepared an agenda beforehand. The 15-minute meeting went well - everyone shared their blockers and I made sure quieter team members got a chance to speak. Key takeaway: preparation helps calm nerves.',
+    comments: [
+      {
+        id: 'c-lead-1',
+        authorName: 'Sarah Kim',
+        content: 'Congrats on taking that first step! Preparing an agenda is such an underrated skill. I found that ending with action items helps too.',
+        commentType: 'worked-for-me',
+        createdAt: new Date('2024-03-28'),
+        isHelpful: true,
+      },
+    ],
+  },
   {
     id: 'p0',
     type: 'project',
@@ -795,6 +815,7 @@ function PostCard({
 function CreatePostModal({
   isOpen,
   onClose,
+  groupId,
   groupName,
   projects,
   preselectedProject,
@@ -803,6 +824,7 @@ function CreatePostModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
+  groupId: string;
   groupName: string;
   projects: Project[];
   preselectedProject?: Project;
@@ -1045,6 +1067,7 @@ function CreatePostModal({
           correctAnswer: selectedQuestion.correctAnswer,
         } : undefined,
         codeSnippet: codeSnippet || undefined,
+        groupId,
       });
 
       // Convert API response to local Post type
@@ -1062,6 +1085,7 @@ function CreatePostModal({
         stepType: response.post.stepType,
         sharedContent: response.post.sharedContent,
         codeSnippet: response.post.codeSnippet,
+        groupId: response.post.groupId,
         comments: [],
       };
 
@@ -1088,6 +1112,7 @@ function CreatePostModal({
           correctAnswer: selectedQuestion.correctAnswer,
         } : undefined,
         codeSnippet: codeSnippet || undefined,
+        groupId,
         comments: [],
       };
       onPostCreated(newPost);
@@ -1895,48 +1920,57 @@ export function CommunityPage() {
   const [shareProject, setShareProject] = useState<Project | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+  const [myPosts, setMyPosts] = useState<Post[]>([]);
+  const [commentedPosts, setCommentedPosts] = useState<Post[]>([]);
+  const [isLoadingMyPosts, setIsLoadingMyPosts] = useState(false);
+  const [isLoadingCommentedPosts, setIsLoadingCommentedPosts] = useState(false);
   const [viewingPost, setViewingPost] = useState<Post | null>(null);
   const [joinedGroups, setJoinedGroups] = useState<Set<string>>(new Set());
   const [posts, setPosts] = useState<Post[]>(MOCK_POSTS);
+  const [groupPosts, setGroupPosts] = useState<Post[]>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
+  const [isLoadingGroupPosts, setIsLoadingGroupPosts] = useState(false);
 
   // Load posts from API on mount
+  // Helper to convert API post to local Post type
+  const convertApiPostToPost = (p: ApiPost): Post => ({
+    id: p.id,
+    type: p.type,
+    authorId: p.authorId,
+    authorName: getDisplayName(p.author),
+    createdAt: new Date(p.createdAt),
+    title: p.title,
+    currentState: p.currentState,
+    whatDone: p.whatDone,
+    feedbackWanted: p.feedbackWanted,
+    codeSnippet: p.codeSnippet,
+    linkedCourse: p.linkedCourse,
+    dayNumber: p.dayNumber,
+    stepType: p.stepType,
+    sharedContent: p.sharedContent,
+    question: p.question,
+    whatTrying: p.whatTrying,
+    whatTried: p.whatTried,
+    whereStuck: p.whereStuck,
+    progressNote: p.progressNote,
+    isPinned: p.isPinned,
+    groupId: p.groupId,
+    comments: (p.comments || []).map((c) => ({
+      id: c.id,
+      authorName: getDisplayName(c.author),
+      content: c.content,
+      commentType: c.commentType,
+      createdAt: new Date(c.createdAt),
+      isHelpful: c.isHelpful,
+    })),
+  });
+
   useEffect(() => {
     const loadPosts = async () => {
       setIsLoadingPosts(true);
       try {
         const response = await communityService.getPosts();
-        // Convert API posts to local Post type
-        const apiPosts: Post[] = response.posts.map((p) => ({
-          id: p.id,
-          type: p.type,
-          authorId: p.authorId,
-          authorName: getDisplayName(p.author),
-          createdAt: new Date(p.createdAt),
-          title: p.title,
-          currentState: p.currentState,
-          whatDone: p.whatDone,
-          feedbackWanted: p.feedbackWanted,
-          codeSnippet: p.codeSnippet,
-          linkedCourse: p.linkedCourse,
-          dayNumber: p.dayNumber,
-          stepType: p.stepType,
-          sharedContent: p.sharedContent,
-          question: p.question,
-          whatTrying: p.whatTrying,
-          whatTried: p.whatTried,
-          whereStuck: p.whereStuck,
-          progressNote: p.progressNote,
-          isPinned: p.isPinned,
-          comments: (p.comments || []).map((c) => ({
-            id: c.id,
-            authorName: getDisplayName(c.author),
-            content: c.content,
-            commentType: c.commentType,
-            createdAt: new Date(c.createdAt),
-            isHelpful: c.isHelpful,
-          })),
-        }));
+        const apiPosts = response.posts.map(convertApiPostToPost);
         // Combine API posts with mock posts for now (mock posts show for demo)
         setPosts([...apiPosts, ...MOCK_POSTS]);
       } catch (error) {
@@ -1961,12 +1995,45 @@ export function CommunityPage() {
     }
   }, [searchParams, shareData, setSearchParams]);
 
-  // Load user's projects
+  // Load user's projects (for CurrentTaskLink component)
   useEffect(() => {
-    if (viewMode === 'my-projects') {
-      loadProjects();
+    loadProjects();
+  }, []);
+
+  // Load my posts when switching to "my-posts" tab
+  useEffect(() => {
+    if (viewMode === 'my-posts') {
+      loadMyPosts();
     }
   }, [viewMode]);
+
+  // Load posts I commented on when switching to "my-comments" tab
+  useEffect(() => {
+    if (viewMode === 'my-comments') {
+      loadCommentedPosts();
+    }
+  }, [viewMode]);
+
+  // Load posts for selected group
+  useEffect(() => {
+    if (selectedGroup) {
+      loadGroupPosts(selectedGroup.id);
+    }
+  }, [selectedGroup?.id]);
+
+  const loadGroupPosts = async (groupId: string) => {
+    setIsLoadingGroupPosts(true);
+    try {
+      const response = await communityService.getPosts(groupId);
+      setGroupPosts(response.posts.map(convertApiPostToPost));
+    } catch (error) {
+      console.error('Failed to load group posts:', error);
+      // Fallback: filter local posts by groupId
+      setGroupPosts(posts.filter(p => p.groupId === groupId));
+    } finally {
+      setIsLoadingGroupPosts(false);
+    }
+  };
 
   const loadProjects = async () => {
     setIsLoadingProjects(true);
@@ -1977,6 +2044,30 @@ export function CommunityPage() {
       console.error('Failed to load projects:', error);
     } finally {
       setIsLoadingProjects(false);
+    }
+  };
+
+  const loadMyPosts = async () => {
+    setIsLoadingMyPosts(true);
+    try {
+      const response = await communityService.getMyPosts();
+      setMyPosts(response.posts.map(convertApiPostToPost));
+    } catch (error) {
+      console.error('Failed to load my posts:', error);
+    } finally {
+      setIsLoadingMyPosts(false);
+    }
+  };
+
+  const loadCommentedPosts = async () => {
+    setIsLoadingCommentedPosts(true);
+    try {
+      const response = await communityService.getPostsICommented();
+      setCommentedPosts(response.posts.map(convertApiPostToPost));
+    } catch (error) {
+      console.error('Failed to load commented posts:', error);
+    } finally {
+      setIsLoadingCommentedPosts(false);
     }
   };
 
@@ -2105,37 +2196,39 @@ export function CommunityPage() {
 
         {/* Posts */}
         <div className="space-y-4">
-          {posts.map((post) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              isExpanded={expandedPostId === post.id}
-              onToggle={() => setExpandedPostId(expandedPostId === post.id ? null : post.id)}
-              currentUserId={user?.id}
-              onViewCourse={setViewingPost}
-            />
-          ))}
+          {isLoadingGroupPosts ? (
+            // Loading skeleton
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="animate-pulse p-4 bg-white rounded-xl shadow-sm">
+                  <div className="h-5 bg-gray-200 rounded w-3/4 mb-2" />
+                  <div className="h-4 bg-gray-100 rounded w-full mb-2" />
+                  <div className="h-4 bg-gray-100 rounded w-2/3" />
+                </div>
+              ))}
+            </div>
+          ) : groupPosts.length === 0 ? (
+            <Card className="p-8 text-center">
+              <MessageCircle className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No posts yet</h3>
+              <p className="text-gray-600 mb-4">
+                Be the first to share something in this group!
+              </p>
+              <Button onClick={() => setShowCreatePost(true)}>Create Post</Button>
+            </Card>
+          ) : (
+            groupPosts.map((post) => (
+              <PostCard
+                key={post.id}
+                post={post}
+                isExpanded={expandedPostId === post.id}
+                onToggle={() => setExpandedPostId(expandedPostId === post.id ? null : post.id)}
+                currentUserId={user?.id}
+                onViewCourse={setViewingPost}
+              />
+            ))
+          )}
         </div>
-
-        {/* Create post modal */}
-        {showCreatePost && (
-          <CreatePostModal
-            key={`${shareProject?.id || 'no-project'}-${shareData?.sessionId || 'no-share'}`}
-            isOpen={showCreatePost}
-            onClose={() => {
-              setShowCreatePost(false);
-              setShareProject(null);
-              clearShareData();
-            }}
-            groupName={selectedGroup.name}
-            projects={projects}
-            preselectedProject={shareProject || undefined}
-            initialShareData={shareData}
-            onPostCreated={(newPost) => {
-              setPosts([newPost, ...posts]);
-            }}
-          />
-        )}
 
         {/* Shared content viewer modal */}
         {viewingPost?.linkedCourse && (
@@ -2165,30 +2258,42 @@ export function CommunityPage() {
       </div>
 
       {/* View toggle */}
-          <div className="flex gap-2 mb-5">
-            <button
-              onClick={() => setViewMode('groups')}
-              className={clsx(
-                'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-                viewMode === 'groups'
+      <div className="flex flex-wrap gap-2 mb-5">
+        <button
+          onClick={() => setViewMode('groups')}
+          className={clsx(
+            'px-3 py-2 min-h-[40px] rounded-lg text-sm font-medium transition-colors',
+            viewMode === 'groups'
               ? 'bg-brand-100 text-brand-700'
-              : 'text-gray-600 hover:bg-gray-100'
+              : 'text-gray-600 hover:bg-gray-100 active:bg-gray-200'
           )}
         >
           <Users className="w-4 h-4 inline mr-1.5" />
           Browse Groups
         </button>
         <button
-          onClick={() => setViewMode('my-projects')}
+          onClick={() => setViewMode('my-posts')}
           className={clsx(
-            'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-            viewMode === 'my-projects'
+            'px-3 py-2 min-h-[40px] rounded-lg text-sm font-medium transition-colors',
+            viewMode === 'my-posts'
               ? 'bg-brand-100 text-brand-700'
-              : 'text-gray-600 hover:bg-gray-100'
+              : 'text-gray-600 hover:bg-gray-100 active:bg-gray-200'
           )}
         >
-          <Trophy className="w-4 h-4 inline mr-1.5" />
-          My Projects
+          <Folder className="w-4 h-4 inline mr-1.5" />
+          My Posts
+        </button>
+        <button
+          onClick={() => setViewMode('my-comments')}
+          className={clsx(
+            'px-3 py-2 min-h-[40px] rounded-lg text-sm font-medium transition-colors',
+            viewMode === 'my-comments'
+              ? 'bg-brand-100 text-brand-700'
+              : 'text-gray-600 hover:bg-gray-100 active:bg-gray-200'
+          )}
+        >
+          <MessageCircle className="w-4 h-4 inline mr-1.5" />
+          My Comments
         </button>
       </div>
 
@@ -2254,68 +2359,47 @@ export function CommunityPage() {
         </>
       )}
 
-      {/* My Projects view */}
-      {viewMode === 'my-projects' && (
+      {/* My Posts view */}
+      {viewMode === 'my-posts' && (
         <>
-          {isLoadingProjects ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {isLoadingMyPosts ? (
+            <div className="space-y-4">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="animate-pulse">
-                  <div className="h-32 bg-gray-200 rounded-t-xl" />
-                  <div className="p-4 bg-white rounded-b-xl shadow-sm">
+                  <div className="p-4 bg-white rounded-xl shadow-sm">
                     <div className="h-5 bg-gray-200 rounded w-3/4 mb-2" />
-                    <div className="h-4 bg-gray-100 rounded w-full" />
+                    <div className="h-4 bg-gray-100 rounded w-full mb-2" />
+                    <div className="h-4 bg-gray-100 rounded w-2/3" />
                   </div>
                 </div>
               ))}
             </div>
-          ) : projects.length === 0 ? (
+          ) : myPosts.length === 0 ? (
             <Card className="p-8 text-center">
-              <Trophy className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No projects yet</h3>
+              <Folder className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No posts yet</h3>
               <p className="text-gray-600 mb-4">
-                Complete boss projects in your learning sessions to build your portfolio!
+                Share your progress, ask questions, or showcase your projects in a group!
               </p>
-              <Button onClick={() => navigate('/today')}>Start Learning</Button>
+              <Button onClick={() => setViewMode('groups')}>Browse Groups</Button>
             </Card>
           ) : (
-            <div className="space-y-8">
-              {/* Boss Projects */}
-              {bossProjects.length > 0 && (
-                <div>
-                  <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                    <Trophy className="w-5 h-5 text-purple-600" />
-                    Boss Projects ({bossProjects.length})
-                  </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {bossProjects.map((project) => (
-                      <ProjectCard
-                        key={project.id}
-                        project={project}
-                        onShare={handleShareProject}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Other Projects */}
-              {otherProjects.length > 0 && (
-                <div>
-                  <h2 className="font-semibold text-gray-900 mb-4">
-                    Other Projects ({otherProjects.length})
-                  </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {otherProjects.map((project) => (
-                      <ProjectCard
-                        key={project.id}
-                        project={project}
-                        onShare={handleShareProject}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
+            <div className="space-y-4">
+              <p className="text-sm text-gray-500 mb-4">
+                {myPosts.length} post{myPosts.length !== 1 ? 's' : ''} you've shared
+              </p>
+              {myPosts.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  isExpanded={expandedPostId === post.id}
+                  onToggle={() =>
+                    setExpandedPostId(expandedPostId === post.id ? null : post.id)
+                  }
+                  currentUserId={user?.id}
+                  onViewCourse={setViewingPost}
+                />
+              ))}
             </div>
           )}
 
@@ -2334,6 +2418,52 @@ export function CommunityPage() {
         </>
       )}
 
+      {/* My Comments view - posts I've commented on */}
+      {viewMode === 'my-comments' && (
+        <>
+          {isLoadingCommentedPosts ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="animate-pulse">
+                  <div className="p-4 bg-white rounded-xl shadow-sm">
+                    <div className="h-5 bg-gray-200 rounded w-3/4 mb-2" />
+                    <div className="h-4 bg-gray-100 rounded w-full mb-2" />
+                    <div className="h-4 bg-gray-100 rounded w-2/3" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : commentedPosts.length === 0 ? (
+            <Card className="p-8 text-center">
+              <MessageCircle className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No comments yet</h3>
+              <p className="text-gray-600 mb-4">
+                Help others by commenting on their posts. Your comments will appear here!
+              </p>
+              <Button onClick={() => setViewMode('groups')}>Browse Groups</Button>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-500 mb-4">
+                {commentedPosts.length} post{commentedPosts.length !== 1 ? 's' : ''} you've commented on
+              </p>
+              {commentedPosts.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  isExpanded={expandedPostId === post.id}
+                  onToggle={() =>
+                    setExpandedPostId(expandedPostId === post.id ? null : post.id)
+                  }
+                  currentUserId={user?.id}
+                  onViewCourse={setViewingPost}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
       {/* Create post modal (when sharing from My Projects) */}
       {showCreatePost && selectedGroup && (
         <CreatePostModal
@@ -2344,12 +2474,15 @@ export function CommunityPage() {
             setShareProject(null);
             clearShareData();
           }}
+          groupId={selectedGroup.id}
           groupName={selectedGroup.name}
           projects={projects}
           preselectedProject={shareProject || undefined}
           initialShareData={shareData}
           onPostCreated={(newPost) => {
             setPosts([newPost, ...posts]);
+            setMyPosts([newPost, ...myPosts]);
+            setGroupPosts([newPost, ...groupPosts]);
           }}
         />
       )}

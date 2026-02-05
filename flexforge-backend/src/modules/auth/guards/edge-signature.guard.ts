@@ -72,8 +72,21 @@ export class EdgeSignatureGuard implements CanActivate {
       throw new UnauthorizedException('Invalid request signature');
     }
 
-    // Attach userId to request for use in handlers
-    request.edgeUserId = userId;
+    // SECURITY: Use userId from the SIGNED payload, not the header
+    // This prevents replay attacks where attacker changes X-Edge-User-Id header
+    const signedUserId = payload.userId as string;
+    if (!signedUserId) {
+      this.logger.warn('Missing userId in signed payload');
+      throw new UnauthorizedException('Invalid request signature');
+    }
+
+    // Optionally warn if header doesn't match (indicates tampering attempt)
+    if (userId && userId !== signedUserId) {
+      this.logger.warn(`User ID mismatch: header=${userId}, signed=${signedUserId}`);
+    }
+
+    // Attach userId from SIGNED payload to request for use in handlers
+    request.edgeUserId = signedUserId;
     request.edgePayload = payload;
 
     return true;
