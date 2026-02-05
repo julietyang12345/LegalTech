@@ -1478,7 +1478,7 @@ export class VideoMatchingService {
         if (transcriptSamples.length === 0) continue;
 
         const model = this.genAI.getGenerativeModel({
-          model: 'gemini-2.0-flash-exp',
+          model: 'gemini-1.5-flash',
         });
 
         // Build context-aware prompt with skill name and day concepts
@@ -1778,7 +1778,7 @@ Answer with JSON only:
       .join('\n');
 
     const model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-1.5-flash',
     });
 
     const prompt = `Find the best ${Math.round(userSlotSeconds / 60)} minute segment in this video for learning "${context.concept}".

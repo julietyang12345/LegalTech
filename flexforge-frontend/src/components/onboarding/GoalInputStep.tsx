@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../common/Button";
 import { Sparkles, ArrowRight, BookOpen, Loader2 } from "lucide-react";
 import { onboardingService } from "@/services/onboardingService";
 import { useAuthStore } from "@/stores/authStore";
+import { useSessionStore } from "@/stores/sessionStore";
 
 interface GoalInputStepProps {
   onSubmit: (goal: string) => void;
@@ -16,6 +17,14 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue }: GoalInputSt
   const [isSkipping, setIsSkipping] = useState(false);
   const navigate = useNavigate();
   const { refreshUser } = useAuthStore();
+  const { sessions, fetchSessions } = useSessionStore();
+
+  // Fetch sessions on mount to check if user has previous courses
+  useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
+  const hasPreviousSessions = sessions.length > 0;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,22 +86,24 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue }: GoalInputSt
         </Button>
       </form>
 
-      {/* Previous Sessions link - subtle style */}
-      <div className="mt-8 text-center">
-        <button
-          type="button"
-          onClick={handleContinuePrevious}
-          disabled={isSkipping}
-          className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
-        >
-          {isSkipping ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <BookOpen className="w-4 h-4" />
-          )}
-          {isSkipping ? 'Loading...' : 'Continue a previous session'}
-        </button>
-      </div>
+      {/* Previous Sessions link - only show if user has previous sessions */}
+      {hasPreviousSessions && (
+        <div className="mt-8 text-center">
+          <button
+            type="button"
+            onClick={handleContinuePrevious}
+            disabled={isSkipping}
+            className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
+          >
+            {isSkipping ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <BookOpen className="w-4 h-4" />
+            )}
+            {isSkipping ? 'Loading...' : 'Continue a previous session'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
