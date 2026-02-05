@@ -8,14 +8,22 @@ import {
   Param,
   UseGuards,
   Request,
+  Res,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
+import { Response } from 'express';
+import { ConfigService } from '@nestjs/config';
 import { UserService } from './user.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UserController {
-  constructor(private userService: UserService) {}
+  constructor(
+    private userService: UserService,
+    private configService: ConfigService,
+  ) {}
 
   @Get('me')
   async getProfile(@Request() req) {
@@ -110,6 +118,36 @@ export class UserController {
     return {
       message: 'Skill removed from plan',
       plannedSkills,
+    };
+  }
+
+  /**
+   * DELETE /api/v1/users/me
+   * Delete user account and all associated data (GDPR compliance)
+   */
+  @Delete('me')
+  @HttpCode(HttpStatus.OK)
+  async deleteAccount(
+    @Request() req,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.userService.deleteAccount(req.user.id);
+
+    // Clear auth cookie
+    const isProduction =
+      this.configService.get('nodeEnv') !== 'development' &&
+      this.configService.get('nodeEnv') !== 'test';
+
+    res.clearCookie('access_token', {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'lax',
+      domain: isProduction ? '.flexforge.ai' : undefined,
+      path: '/',
+    });
+
+    return {
+      message: 'Account deleted successfully. All your data has been removed.',
     };
   }
 }

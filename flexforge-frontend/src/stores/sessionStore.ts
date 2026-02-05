@@ -753,9 +753,9 @@ export const useSessionStore = create<SessionState>()(
         // Wait before retrying
         await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
 
-        // Retry with forceRegenerate=false to allow using cached content if available
-        // The backend may have completed generation during our wait
-        return loadDayDeferredContent(dayNumber, false, retryCount + 1);
+        // Preserve forceRegenerate on retry to avoid returning old cached content
+        // during regeneration. The backend will return new content once generated.
+        return loadDayDeferredContent(dayNumber, forceRegenerate, retryCount + 1);
       }
 
       // Final failure - update state but don't block UI
@@ -881,6 +881,7 @@ export const useSessionStore = create<SessionState>()(
       });
 
       // Start content loading in background (don't await)
+      // SessionPage's useEffect checks isDayLoading to prevent duplicate calls
       loadDayCoreContent(dayNumber, true).catch((err) => {
         // For 429 errors, the modal is shown by loadDayCoreContent
         // For other errors, the page will show loading state

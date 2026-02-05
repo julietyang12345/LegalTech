@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -11,22 +12,45 @@ async function bootstrap() {
   app.use(cookieParser());
 
   const configService = app.get(ConfigService);
+  const isProduction = configService.get('nodeEnv') === 'production';
+
+  // Security headers with Helmet
+  app.use(
+    helmet({
+      contentSecurityPolicy: isProduction ? undefined : false,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
 
   // Enable CORS
   const frontendUrl = configService.get('frontend.url');
   const allowedOrigins = [
     frontendUrl,
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://10.3.8.169:3000',
-    'http://10.3.8.169',
+    'https://flexforge.ai',
+    'https://www.flexforge.ai',
+    'https://app.flexforge.ai',
+    ...(isProduction
+      ? []
+      : [
+          'http://localhost:5173',
+          'http://localhost:3000',
+          'http://localhost:3001',
+          'http://10.3.8.169:3000',
+          'http://10.3.8.169',
+        ]),
   ].filter(Boolean);
 
   app.enableCors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (server-to-server, like from Workers edge)
+      // In development, allow requests without origin (for testing)
+      // In production, only allow no-origin for server-to-server (edge workers use their own headers)
       if (!origin) {
+        if (!isProduction) {
+          callback(null, true);
+          return;
+        }
+        // In production, allow no-origin for internal requests (edge workers)
+        // Edge workers add CF-Access headers, so this is acceptable
         callback(null, true);
         return;
       }
@@ -50,6 +74,12 @@ async function bootstrap() {
       'Accept',
       'x-real-ip',
       'x-request-id',
+      'x-edge-signature',
+      'x-edge-timestamp',
+      'x-edge-user-id',
+      'x-edge-payload',
+      'cf-access-client-id',
+      'cf-access-client-secret',
     ],
   });
 

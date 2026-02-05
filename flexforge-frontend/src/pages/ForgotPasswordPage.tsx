@@ -69,9 +69,12 @@ export function ForgotPasswordPage() {
                   If an account exists with <span className="font-medium">{email}</span>,
                   you'll receive a password reset link shortly.
                 </p>
-                <p className="text-sm text-gray-500 mb-6">
-                  The link will expire in 1 hour. Check your spam folder if you don't see it.
-                </p>
+                <div className="text-sm text-gray-500 mb-6 space-y-2">
+                  <p>The link will expire in 1 hour.</p>
+                  <p className="font-medium text-amber-700 bg-amber-50 p-2 rounded">
+                    Can't find it? Check your spam or junk folder.
+                  </p>
+                </div>
                 <Link to="/login">
                   <Button variant="secondary" className="w-full">
                     Back to login

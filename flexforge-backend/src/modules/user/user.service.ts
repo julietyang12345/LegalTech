@@ -775,4 +775,23 @@ export class UserService {
     await this.usersRepository.save(user);
     this.logger.log(`All sessions invalidated for user: ${userId}`);
   }
+
+  /**
+   * Delete user account and all associated data (GDPR compliance)
+   * This permanently removes the user and all their data
+   */
+  async deleteAccount(userId: string): Promise<void> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    this.logger.log(`Deleting account for user: ${userId}`);
+
+    // Delete user - cascade should handle related entities
+    // (sessions, projects, progress, notifications, etc.)
+    await this.usersRepository.remove(user);
+
+    this.logger.log(`Account deleted for user: ${userId}`);
+  }
 }

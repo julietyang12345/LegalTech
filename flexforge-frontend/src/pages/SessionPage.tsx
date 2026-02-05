@@ -467,6 +467,7 @@ export function SessionPage() {
     loadDayCoreContent,
     loadDayDeferredContent,
     isCoreLoaded,
+    isDayLoading,
     showRegenLimitModal,
     dismissRegenLimitModal,
   } = useSessionStore();
@@ -489,15 +490,17 @@ export function SessionPage() {
 
   // Continue loading content if not fully loaded (TodayPage started it, we continue)
   // SKIP this during regeneration - regenerateDayContent handles its own loading
+  // SKIP if already loading - prevents race condition where this calls without forceRegenerate
+  // while regenerateDayContent's call (with forceRegenerate) is still in progress
   useEffect(() => {
-    if (activeSession && !isCoreLoaded && !isRegenerating) {
+    if (activeSession && !isCoreLoaded && !isRegenerating && !isDayLoading) {
       // Content loading started by TodayPage, continues here
       // Each section will show its own loader until content arrives
       loadDayCoreContent(activeSession.currentDay).then(() => {
         loadDayDeferredContent(activeSession.currentDay).catch(console.error);
       }).catch(console.error);
     }
-  }, [activeSession, isCoreLoaded, isRegenerating, loadDayCoreContent, loadDayDeferredContent]);
+  }, [activeSession, isCoreLoaded, isRegenerating, isDayLoading, loadDayCoreContent, loadDayDeferredContent]);
 
 
   // Get available steps (filter out skipped ones)

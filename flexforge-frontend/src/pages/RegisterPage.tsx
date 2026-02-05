@@ -104,10 +104,13 @@ export function RegisterPage() {
                   We've sent a verification link to:
                 </p>
                 <p className="font-medium text-gray-900 mb-6">{pendingVerificationEmail}</p>
-                <p className="text-sm text-gray-500 mb-6">
-                  Please check your email and click the link to verify your account.
-                  The link expires in 24 hours.
-                </p>
+                <div className="text-sm text-gray-500 mb-6 space-y-2">
+                  <p>Please check your email and click the link to verify your account.</p>
+                  <p className="font-medium text-amber-700 bg-amber-50 p-2 rounded">
+                    Can't find it? Check your spam or junk folder.
+                  </p>
+                  <p>The link expires in 24 hours.</p>
+                </div>
 
                 {resendSuccess ? (
                   <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center justify-center gap-2">
