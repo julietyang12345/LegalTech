@@ -281,22 +281,41 @@ export class UserService {
   }
 
   /**
-   * Increment AI usage
+   * Increment AI usage (both monthly and daily tracking)
    */
   async incrementUsage(
     userId: string,
     tokensUsed: number,
     curriculaGenerated: number = 0,
     codeReviews: number = 0,
+    costUsd: number = 0,
   ): Promise<void> {
     const user = await this.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
+    // Monthly tracking
     user.tokensUsedThisMonth += tokensUsed;
     user.curriculaGeneratedThisMonth += curriculaGenerated;
     user.codeReviewsThisMonth += codeReviews;
+
+    // Daily tracking - reset if new day
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const userDate = user.aiUsageDate ? new Date(user.aiUsageDate) : null;
+    userDate?.setHours(0, 0, 0, 0);
+
+    if (!userDate || userDate.getTime() !== today.getTime()) {
+      // New day - reset daily counters
+      user.aiTokensUsedToday = tokensUsed;
+      user.aiSpendingToday = costUsd;
+      user.aiUsageDate = today;
+    } else {
+      // Same day - increment
+      user.aiTokensUsedToday += tokensUsed;
+      user.aiSpendingToday = Number(user.aiSpendingToday) + costUsd;
+    }
 
     await this.usersRepository.save(user);
   }

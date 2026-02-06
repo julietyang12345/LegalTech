@@ -244,12 +244,9 @@ export const useSessionStore = create<SessionState>()(
   fetchSessions: async () => {
     set({ isLoading: true });
     try {
-      console.log('[sessionStore] Fetching sessions...');
       const response = await sessionService.getAll();
-      console.log('[sessionStore] Sessions response:', response);
       set({ sessions: response.sessions, isLoading: false });
     } catch (error: any) {
-      console.error('[sessionStore] Failed to fetch sessions:', error);
       set({
         error: error.response?.data?.message || 'Failed to fetch sessions',
         isLoading: false,

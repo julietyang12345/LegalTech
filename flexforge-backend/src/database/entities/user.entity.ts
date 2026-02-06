@@ -53,7 +53,7 @@ export class User {
   })
   role: UserRole;
 
-  // Quota tracking
+  // Quota tracking (monthly)
   @Column({ default: 0 })
   curriculaGeneratedThisMonth: number;
 
@@ -71,6 +71,16 @@ export class User {
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   quotaResetDate: Date;
+
+  // Daily AI usage tracking
+  @Column({ default: 0 })
+  aiTokensUsedToday: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 4, default: 0 })
+  aiSpendingToday: number;
+
+  @Column({ type: 'date', nullable: true })
+  aiUsageDate: Date;
 
   // Feature access flags
   @Column({ default: false })

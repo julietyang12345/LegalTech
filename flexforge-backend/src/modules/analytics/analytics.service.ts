@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuditLog } from '../../database/entities/audit-log.entity';
+import { User } from '../../database/entities/user.entity';
 
 @Injectable()
 export class AnalyticsService {
@@ -10,6 +11,8 @@ export class AnalyticsService {
   constructor(
     @InjectRepository(AuditLog)
     private auditLogRepo: Repository<AuditLog>,
+    @InjectRepository(User)
+    private userRepo: Repository<User>,
   ) {}
 
   private async track(
@@ -255,5 +258,47 @@ export class AnalyticsService {
   ): Promise<void> {
     await this.track(userId, action, userId, metadata);
     this.logger.debug(`📊 Tracked ${action}: user=${userId}`);
+  }
+
+  // ==========================================================================
+  // USER SPENDING REPORTS
+  // ==========================================================================
+
+  /**
+   * Get all users' daily AI spending (for admin dashboard)
+   */
+  async getUsersDailySpending(): Promise<
+    Array<{
+      email: string;
+      name: string | null;
+      tokensToday: number;
+      spendingToday: number;
+      usageDate: string | null;
+      tokensThisMonth: number;
+      quotaTier: string;
+    }>
+  > {
+    const users = await this.userRepo.find({
+      select: [
+        'email',
+        'name',
+        'aiTokensUsedToday',
+        'aiSpendingToday',
+        'aiUsageDate',
+        'tokensUsedThisMonth',
+        'quotaTier',
+      ],
+      order: { aiSpendingToday: 'DESC' },
+    });
+
+    return users.map((u) => ({
+      email: u.email,
+      name: u.name,
+      tokensToday: u.aiTokensUsedToday || 0,
+      spendingToday: Number(u.aiSpendingToday) || 0,
+      usageDate: u.aiUsageDate ? u.aiUsageDate.toISOString().split('T')[0] : null,
+      tokensThisMonth: u.tokensUsedThisMonth || 0,
+      quotaTier: u.quotaTier,
+    }));
   }
 }

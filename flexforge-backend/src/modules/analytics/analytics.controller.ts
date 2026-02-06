@@ -1,17 +1,22 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   UseGuards,
   HttpCode,
   HttpStatus,
   BadRequestException,
+  Query,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { IsString, IsObject, IsOptional } from 'class-validator';
+import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { User } from '../../database/entities/user.entity';
 import { AnalyticsService } from './analytics.service';
+import { AiService } from '../ai/ai.service';
 
 class TrackEventDto {
   @IsString()
@@ -34,15 +39,100 @@ const ALLOWED_FRONTEND_ACTIONS = [
 ];
 
 @Controller('analytics')
-@UseGuards(JwtAuthGuard)
 export class AnalyticsController {
-  constructor(private readonly analyticsService: AnalyticsService) {}
+  constructor(
+    private readonly analyticsService: AnalyticsService,
+    private readonly aiService: AiService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  /**
+   * GET /api/v1/analytics/spending
+   * Get current AI spending status (requires admin secret)
+   * Usage: GET /api/v1/analytics/spending?secret=YOUR_EDGE_SIGNING_SECRET
+   */
+  @Get('spending')
+  async getSpendingStatus(
+    @Query('secret') secret: string,
+  ): Promise<{
+    spending: number;
+    limit: number;
+    remaining: number;
+    paused: boolean;
+    date: string;
+    percentUsed: number;
+  }> {
+    // Use EDGE_SIGNING_SECRET as admin auth (reuse existing secret)
+    const adminSecret = this.configService.get<string>('EDGE_SIGNING_SECRET');
+    if (!adminSecret || secret !== adminSecret) {
+      throw new UnauthorizedException('Invalid admin secret');
+    }
+
+    const status = this.aiService.getSpendingStatus();
+    return {
+      ...status,
+      percentUsed: status.limit > 0 ? Math.round((status.spending / status.limit) * 100) : 0,
+    };
+  }
+
+  /**
+   * POST /api/v1/analytics/spending/reset
+   * Reset daily spending counter (requires admin secret)
+   */
+  @Post('spending/reset')
+  @HttpCode(HttpStatus.OK)
+  async resetSpending(
+    @Query('secret') secret: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const adminSecret = this.configService.get<string>('EDGE_SIGNING_SECRET');
+    if (!adminSecret || secret !== adminSecret) {
+      throw new UnauthorizedException('Invalid admin secret');
+    }
+
+    this.aiService.resetSpending();
+    return { success: true, message: 'Spending reset successfully' };
+  }
+
+  /**
+   * GET /api/v1/analytics/spending/users
+   * Get per-user daily AI spending (requires admin secret)
+   * Usage: GET /api/v1/analytics/spending/users?secret=YOUR_EDGE_SIGNING_SECRET
+   */
+  @Get('spending/users')
+  async getUsersSpending(
+    @Query('secret') secret: string,
+  ): Promise<{
+    globalSpending: { spending: number; limit: number; remaining: number; paused: boolean; date: string };
+    users: Array<{
+      email: string;
+      name: string | null;
+      tokensToday: number;
+      spendingToday: number;
+      usageDate: string | null;
+      tokensThisMonth: number;
+      quotaTier: string;
+    }>;
+  }> {
+    const adminSecret = this.configService.get<string>('EDGE_SIGNING_SECRET');
+    if (!adminSecret || secret !== adminSecret) {
+      throw new UnauthorizedException('Invalid admin secret');
+    }
+
+    const globalStatus = this.aiService.getSpendingStatus();
+    const users = await this.analyticsService.getUsersDailySpending();
+
+    return {
+      globalSpending: globalStatus,
+      users,
+    };
+  }
 
   /**
    * POST /api/v1/analytics/track
    * Track frontend events (onboarding steps, user actions)
    */
   @Post('track')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   async trackEvent(
     @Body() dto: TrackEventDto,

@@ -245,7 +245,7 @@ export class SessionService {
 
     // Increment user's usage (only if we generated new content)
     if (tokensUsed > 0) {
-      await this.userService.incrementUsage(userId, tokensUsed, 1);
+      await this.userService.incrementUsage(userId, tokensUsed, 1, 0, cost);
     }
 
     // Create session
@@ -1024,8 +1024,8 @@ export class SessionService {
       );
     }
 
-    // Increment usage
-    await this.userService.incrementUsage(userId, result.tokensUsed, 0);
+    // Increment usage (with cost for daily tracking)
+    await this.userService.incrementUsage(userId, result.tokensUsed, 0, 0, result.cost || 0);
     await this.sessionsRepository.save(session);
 
     this.logger.log(
@@ -1149,7 +1149,7 @@ export class SessionService {
         session.currentDay = dayNumber;
       }
 
-      await this.userService.incrementUsage(userId, finalResult.tokensUsed, 0);
+      await this.userService.incrementUsage(userId, finalResult.tokensUsed, 0, 0, finalResult.cost || 0);
       await this.sessionsRepository.save(session);
 
       this.logger.log(
@@ -1226,6 +1226,7 @@ export class SessionService {
     );
 
     let totalTokensUsed = result.tokensUsed;
+    let totalCost = result.cost || 0;
 
     // Load boss project details if needed
     if (bossProject && !bossProject.detailsLoaded) {
@@ -1263,6 +1264,7 @@ export class SessionService {
         }
 
         totalTokensUsed += bossResult.tokensUsed;
+        totalCost += bossResult.cost || 0;
       } catch (error) {
         this.logger.warn(`Failed to load boss details: ${error.message}`);
       }
@@ -1288,8 +1290,8 @@ export class SessionService {
       days: updatedDays,
     };
 
-    // Increment usage
-    await this.userService.incrementUsage(userId, totalTokensUsed, 0);
+    // Increment usage (with cost for daily tracking)
+    await this.userService.incrementUsage(userId, totalTokensUsed, 0, 0, totalCost);
     await this.sessionsRepository.save(session);
 
     this.logger.log(
@@ -1409,7 +1411,7 @@ export class SessionService {
         days: updatedDays,
       };
 
-      await this.userService.incrementUsage(userId, finalResult.tokensUsed, 0);
+      await this.userService.incrementUsage(userId, finalResult.tokensUsed, 0, 0, finalResult.cost || 0);
       await this.sessionsRepository.save(session);
 
       this.logger.log(
@@ -1603,8 +1605,8 @@ export class SessionService {
       days: updatedDays,
     };
 
-    // Increment usage
-    await this.userService.incrementUsage(userId, result.tokensUsed, 0);
+    // Increment usage (with cost for daily tracking)
+    await this.userService.incrementUsage(userId, result.tokensUsed, 0, 0, result.cost || 0);
     await this.sessionsRepository.save(session);
 
     this.logger.log(
@@ -1691,8 +1693,8 @@ export class SessionService {
       dayNumber,
     });
 
-    // Increment usage
-    await this.userService.incrementUsage(userId, result.tokensUsed, 0);
+    // Increment usage (with cost for daily tracking)
+    await this.userService.incrementUsage(userId, result.tokensUsed, 0, 0, result.cost || 0);
 
     this.logger.log(
       `💡 Concept boost generated for "${concept}" in session ${sessionId}`,
@@ -1872,8 +1874,8 @@ ${jsonInstruction}`;
       const newCount = countToday + 1;
       await this.userService.updateSkillComboGeneration(userId, newCount);
 
-      // Increment token usage
-      await this.userService.incrementUsage(userId, response.tokensUsed, 0);
+      // Increment token usage (with cost for daily tracking)
+      await this.userService.incrementUsage(userId, response.tokensUsed, 0, 0, response.cost || 0);
 
       this.logger.log(
         `🎨 Generated skill ${action} for user ${userId} (${newCount}/${dailyLimit} today)`,

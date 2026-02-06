@@ -24,12 +24,10 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue }: GoalInputSt
   useEffect(() => {
     const checkSessions = async () => {
       setIsCheckingSessions(true);
-      console.log('[GoalInputStep] Starting to fetch sessions...');
       try {
         await fetchSessions();
-        console.log('[GoalInputStep] fetchSessions completed');
-      } catch (err) {
-        console.error('[GoalInputStep] Failed to fetch sessions:', err);
+      } catch {
+        // Silently fail - user just won't see previous sessions option
       } finally {
         setIsCheckingSessions(false);
       }
@@ -37,13 +35,7 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue }: GoalInputSt
     checkSessions();
   }, [fetchSessions]);
 
-  // Debug: log sessions when they change
-  useEffect(() => {
-    console.log('[GoalInputStep] Sessions updated:', sessions.length, sessions);
-  }, [sessions]);
-
   const hasPreviousSessions = sessions.length > 0;
-  console.log('[GoalInputStep] hasPreviousSessions:', hasPreviousSessions, 'isCheckingSessions:', isCheckingSessions);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

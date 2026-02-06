@@ -72,6 +72,8 @@ export default () => {
       },
       primaryProvider: process.env.AI_PRIMARY_PROVIDER || 'anthropic',
       fallbackEnabled: process.env.AI_FALLBACK_ENABLED === 'true',
+      // Global daily spending limit in USD - pauses ALL AI calls when exceeded
+      dailySpendingLimitUsd: parseFloat(process.env.AI_DAILY_SPENDING_LIMIT_USD || '10'),
     },
     google: {
       cse: {

@@ -58,10 +58,82 @@ class Semaphore {
 // Max concurrent AI API calls (across all providers)
 const MAX_CONCURRENT_AI_CALLS = 20;
 
+// Default daily spending limit in USD (can be overridden via env)
+const DEFAULT_DAILY_SPENDING_LIMIT_USD = 10;
+
 // Retry configuration
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000; // 1 second
 const MAX_DELAY_MS = 60000; // 60 seconds
+
+/**
+ * Global daily spending tracker
+ * Tracks total AI API spending across all users for the current day
+ */
+class GlobalSpendingTracker {
+  private dailySpending: number = 0;
+  private currentDate: string = '';
+  private limitUsd: number;
+  private isPaused: boolean = false;
+
+  constructor(limitUsd: number) {
+    this.limitUsd = limitUsd;
+    this.resetIfNewDay();
+  }
+
+  private getTodayDate(): string {
+    return new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  }
+
+  private resetIfNewDay(): void {
+    const today = this.getTodayDate();
+    if (this.currentDate !== today) {
+      this.dailySpending = 0;
+      this.currentDate = today;
+      this.isPaused = false;
+    }
+  }
+
+  addSpending(costUsd: number): void {
+    this.resetIfNewDay();
+    this.dailySpending += costUsd;
+    if (this.dailySpending >= this.limitUsd) {
+      this.isPaused = true;
+    }
+  }
+
+  checkLimit(): { allowed: boolean; currentSpending: number; limit: number; remaining: number } {
+    this.resetIfNewDay();
+    return {
+      allowed: !this.isPaused && this.dailySpending < this.limitUsd,
+      currentSpending: this.dailySpending,
+      limit: this.limitUsd,
+      remaining: Math.max(0, this.limitUsd - this.dailySpending),
+    };
+  }
+
+  getStatus(): { spending: number; limit: number; paused: boolean; date: string } {
+    this.resetIfNewDay();
+    return {
+      spending: this.dailySpending,
+      limit: this.limitUsd,
+      paused: this.isPaused,
+      date: this.currentDate,
+    };
+  }
+
+  // For manual override (e.g., admin reset)
+  reset(): void {
+    this.dailySpending = 0;
+    this.isPaused = false;
+  }
+
+  setLimit(newLimit: number): void {
+    this.limitUsd = newLimit;
+    // Re-check if we should be paused with new limit
+    this.isPaused = this.dailySpending >= this.limitUsd;
+  }
+}
 
 /**
  * Sleep for a given number of milliseconds
@@ -137,6 +209,19 @@ export interface CacheablePrompt {
   dynamicPart: string; // User-specific context
 }
 
+// Custom exception for spending limit exceeded
+export class GlobalSpendingLimitExceededError extends Error {
+  constructor(
+    public readonly currentSpending: number,
+    public readonly limit: number,
+  ) {
+    super(
+      `Global daily AI spending limit exceeded. Current: $${currentSpending.toFixed(2)}, Limit: $${limit.toFixed(2)}. Service paused until midnight UTC.`,
+    );
+    this.name = 'GlobalSpendingLimitExceededError';
+  }
+}
+
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
@@ -147,6 +232,9 @@ export class AiService {
 
   // Semaphore to limit concurrent AI API calls globally
   private static aiSemaphore = new Semaphore(MAX_CONCURRENT_AI_CALLS);
+
+  // Global spending tracker (shared across all instances)
+  private static spendingTracker: GlobalSpendingTracker;
 
   // Cost per 1M tokens (input + output average)
   private readonly costs = {
@@ -164,6 +252,16 @@ export class AiService {
     private companionService?: CompanionService,
   ) {
     this.initializeClients();
+    this.initializeSpendingTracker();
+  }
+
+  private initializeSpendingTracker(): void {
+    // Initialize global spending tracker only once (static)
+    if (!AiService.spendingTracker) {
+      const limit = this.configService.get<number>('ai.dailySpendingLimitUsd') || DEFAULT_DAILY_SPENDING_LIMIT_USD;
+      AiService.spendingTracker = new GlobalSpendingTracker(limit);
+      this.logger.log(`💰 Global daily spending limit set to $${limit}`);
+    }
   }
 
   private initializeClients(): void {
@@ -198,6 +296,18 @@ export class AiService {
     prompt: string,
     systemPrompt?: string,
   ): Promise<AIResponse> {
+    // Check global spending limit BEFORE doing anything
+    const spendingStatus = AiService.spendingTracker.checkLimit();
+    if (!spendingStatus.allowed) {
+      this.logger.error(
+        `🚫 Global spending limit exceeded! Current: $${spendingStatus.currentSpending.toFixed(2)}, Limit: $${spendingStatus.limit.toFixed(2)}`,
+      );
+      throw new GlobalSpendingLimitExceededError(
+        spendingStatus.currentSpending,
+        spendingStatus.limit,
+      );
+    }
+
     const routing = this.getRoutingStrategy(task);
 
     // Acquire semaphore to limit concurrent AI calls
@@ -219,8 +329,12 @@ export class AiService {
             systemPrompt,
           );
 
+          // Track spending after successful call
+          AiService.spendingTracker.addSpending(response.cost);
+          const status = AiService.spendingTracker.getStatus();
+
           this.logger.log(
-            `✅ ${provider} success. Tokens: ${response.tokensUsed}, Cost: $${response.cost.toFixed(4)}`,
+            `✅ ${provider} success. Tokens: ${response.tokensUsed}, Cost: $${response.cost.toFixed(4)} (Daily total: $${status.spending.toFixed(2)}/$${status.limit})`,
           );
 
           return response;
@@ -886,5 +1000,37 @@ Return improved JSON with same format. Each direction must achieve user's comple
       return null;
     }
     return this.companionService.getUserContext(userId);
+  }
+
+  // ============ GLOBAL SPENDING MANAGEMENT ============
+
+  /**
+   * Get current global spending status
+   * @returns Current spending, limit, paused state, and date
+   */
+  getSpendingStatus(): { spending: number; limit: number; paused: boolean; date: string; remaining: number } {
+    const status = AiService.spendingTracker.getStatus();
+    return {
+      ...status,
+      remaining: Math.max(0, status.limit - status.spending),
+    };
+  }
+
+  /**
+   * Reset global daily spending (admin only)
+   * Use cautiously - this allows AI calls to resume if limit was hit
+   */
+  resetSpending(): void {
+    this.logger.warn('⚠️ Global spending manually reset by admin');
+    AiService.spendingTracker.reset();
+  }
+
+  /**
+   * Update the global daily spending limit (admin only)
+   * @param newLimitUsd New limit in USD
+   */
+  setSpendingLimit(newLimitUsd: number): void {
+    this.logger.log(`💰 Global spending limit updated to $${newLimitUsd}`);
+    AiService.spendingTracker.setLimit(newLimitUsd);
   }
 }
