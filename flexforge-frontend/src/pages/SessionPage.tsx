@@ -451,6 +451,8 @@ export function SessionPage() {
     loadDayCoreContent,
     loadDayDeferredContent,
     isCoreLoaded,
+    isDeferredLoaded,
+    isDeferredLoading,
     isDayLoading,
     showRegenLimitModal,
     dismissRegenLimitModal,
@@ -486,6 +488,13 @@ export function SessionPage() {
     }
   }, [activeSession, isCoreLoaded, isRegenerating, isDayLoading, loadDayCoreContent, loadDayDeferredContent]);
 
+  // Ensure deferred content is loaded even if core was already cached
+  // This handles the case where TodayPage loaded core content but deferred failed silently
+  useEffect(() => {
+    if (activeSession && isCoreLoaded && !isDeferredLoaded && !isDeferredLoading && !isRegenerating) {
+      loadDayDeferredContent(activeSession.currentDay).catch(console.error);
+    }
+  }, [activeSession, isCoreLoaded, isDeferredLoaded, isDeferredLoading, isRegenerating, loadDayDeferredContent]);
 
   // Get available steps (filter out skipped ones)
   const availableSteps = STEP_ORDER.filter(step => {

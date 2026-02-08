@@ -245,7 +245,7 @@ export class User {
         return {
           curriculumGenerations: 1, // 1 new curriculum per day
           dayContentRegens: 0, // No day content regenerations
-          curriculumRegens: 1, // 1 curriculum regenerations
+          curriculumRegens: 0, // No curriculum regenerations
           aiTutorConversations: 2, // 3 AI tutor messages per day
         };
       case QuotaTier.PRO:

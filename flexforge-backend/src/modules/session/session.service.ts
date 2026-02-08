@@ -248,6 +248,13 @@ export class SessionService {
       await this.userService.incrementUsage(userId, tokensUsed, 1, 0, cost);
     }
 
+    // Deactivate any existing active sessions for this user
+    // so getActiveSession always returns the newest one
+    await this.sessionsRepository.update(
+      { userId, status: SessionStatus.ACTIVE },
+      { status: SessionStatus.PAUSED },
+    );
+
     // Create session
     const session = this.sessionsRepository.create({
       userId,
@@ -470,6 +477,7 @@ export class SessionService {
         userId,
         status: SessionStatus.ACTIVE,
       },
+      order: { startedAt: 'DESC' },
       relations: ['progress'],
     });
 
