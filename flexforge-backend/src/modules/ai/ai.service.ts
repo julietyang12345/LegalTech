@@ -61,23 +61,45 @@ const MAX_CONCURRENT_AI_CALLS = 20;
 // Default daily spending limit in USD (can be overridden via env)
 const DEFAULT_DAILY_SPENDING_LIMIT_USD = 10;
 
+// Rolling window spending limits
+const HALF_HOUR_SPENDING_LIMIT_USD = 2;
+const HOURLY_SPENDING_LIMIT_USD = 4;
+const HALF_HOUR_MS = 30 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+
 // Retry configuration
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000; // 1 second
 const MAX_DELAY_MS = 60000; // 60 seconds
 
+interface SpendingEntry {
+  timestamp: number;
+  cost: number;
+}
+
+export interface WindowStatus {
+  spending: number;
+  limit: number;
+  remaining: number;
+  blocked: boolean;
+  resumesAt: string | null; // ISO timestamp when the oldest entry in the window expires
+}
+
 /**
- * Global daily spending tracker
- * Tracks total AI API spending across all users for the current day
+ * Global spending tracker with multiple circuit breakers:
+ * - $2 per rolling 30-minute window
+ * - $4 per rolling 1-hour window
+ * - $10 per day (resets at midnight UTC)
  */
 class GlobalSpendingTracker {
   private dailySpending: number = 0;
   private currentDate: string = '';
-  private limitUsd: number;
-  private isPaused: boolean = false;
+  private dailyLimitUsd: number;
+  private isDailyPaused: boolean = false;
+  private spendingEntries: SpendingEntry[] = [];
 
-  constructor(limitUsd: number) {
-    this.limitUsd = limitUsd;
+  constructor(dailyLimitUsd: number) {
+    this.dailyLimitUsd = dailyLimitUsd;
     this.resetIfNewDay();
   }
 
@@ -90,48 +112,143 @@ class GlobalSpendingTracker {
     if (this.currentDate !== today) {
       this.dailySpending = 0;
       this.currentDate = today;
-      this.isPaused = false;
+      this.isDailyPaused = false;
+      this.spendingEntries = [];
     }
+  }
+
+  private pruneEntries(): void {
+    // Remove entries older than 1 hour (the largest rolling window)
+    const cutoff = Date.now() - HOUR_MS;
+    this.spendingEntries = this.spendingEntries.filter(e => e.timestamp > cutoff);
+  }
+
+  private getWindowSpending(windowMs: number): { total: number; oldestTimestamp: number | null } {
+    const cutoff = Date.now() - windowMs;
+    let total = 0;
+    let oldestTimestamp: number | null = null;
+    for (const entry of this.spendingEntries) {
+      if (entry.timestamp > cutoff) {
+        total += entry.cost;
+        if (oldestTimestamp === null || entry.timestamp < oldestTimestamp) {
+          oldestTimestamp = entry.timestamp;
+        }
+      }
+    }
+    return { total, oldestTimestamp };
   }
 
   addSpending(costUsd: number): void {
     this.resetIfNewDay();
     this.dailySpending += costUsd;
-    if (this.dailySpending >= this.limitUsd) {
-      this.isPaused = true;
+    this.spendingEntries.push({ timestamp: Date.now(), cost: costUsd });
+    if (this.dailySpending >= this.dailyLimitUsd) {
+      this.isDailyPaused = true;
     }
+    this.pruneEntries();
   }
 
-  checkLimit(): { allowed: boolean; currentSpending: number; limit: number; remaining: number } {
+  checkLimit(): { allowed: boolean; currentSpending: number; limit: number; remaining: number; blockedBy: string | null } {
     this.resetIfNewDay();
+    this.pruneEntries();
+
+    // Check 30-minute window
+    const halfHour = this.getWindowSpending(HALF_HOUR_MS);
+    if (halfHour.total >= HALF_HOUR_SPENDING_LIMIT_USD) {
+      return {
+        allowed: false,
+        currentSpending: halfHour.total,
+        limit: HALF_HOUR_SPENDING_LIMIT_USD,
+        remaining: 0,
+        blockedBy: '30min',
+      };
+    }
+
+    // Check 1-hour window
+    const hourly = this.getWindowSpending(HOUR_MS);
+    if (hourly.total >= HOURLY_SPENDING_LIMIT_USD) {
+      return {
+        allowed: false,
+        currentSpending: hourly.total,
+        limit: HOURLY_SPENDING_LIMIT_USD,
+        remaining: 0,
+        blockedBy: '1hour',
+      };
+    }
+
+    // Check daily limit
+    if (this.isDailyPaused || this.dailySpending >= this.dailyLimitUsd) {
+      return {
+        allowed: false,
+        currentSpending: this.dailySpending,
+        limit: this.dailyLimitUsd,
+        remaining: 0,
+        blockedBy: 'daily',
+      };
+    }
+
     return {
-      allowed: !this.isPaused && this.dailySpending < this.limitUsd,
+      allowed: true,
       currentSpending: this.dailySpending,
-      limit: this.limitUsd,
-      remaining: Math.max(0, this.limitUsd - this.dailySpending),
+      limit: this.dailyLimitUsd,
+      remaining: Math.max(0, this.dailyLimitUsd - this.dailySpending),
+      blockedBy: null,
     };
   }
 
-  getStatus(): { spending: number; limit: number; paused: boolean; date: string } {
+  getStatus(): {
+    daily: { spending: number; limit: number; paused: boolean; date: string };
+    halfHour: WindowStatus;
+    hourly: WindowStatus;
+  } {
     this.resetIfNewDay();
+    this.pruneEntries();
+
+    const halfHourData = this.getWindowSpending(HALF_HOUR_MS);
+    const hourlyData = this.getWindowSpending(HOUR_MS);
+
+    const halfHourBlocked = halfHourData.total >= HALF_HOUR_SPENDING_LIMIT_USD;
+    const hourlyBlocked = hourlyData.total >= HOURLY_SPENDING_LIMIT_USD;
+
     return {
-      spending: this.dailySpending,
-      limit: this.limitUsd,
-      paused: this.isPaused,
-      date: this.currentDate,
+      daily: {
+        spending: this.dailySpending,
+        limit: this.dailyLimitUsd,
+        paused: this.isDailyPaused,
+        date: this.currentDate,
+      },
+      halfHour: {
+        spending: halfHourData.total,
+        limit: HALF_HOUR_SPENDING_LIMIT_USD,
+        remaining: Math.max(0, HALF_HOUR_SPENDING_LIMIT_USD - halfHourData.total),
+        blocked: halfHourBlocked,
+        resumesAt: halfHourBlocked && halfHourData.oldestTimestamp
+          ? new Date(halfHourData.oldestTimestamp + HALF_HOUR_MS).toISOString()
+          : null,
+      },
+      hourly: {
+        spending: hourlyData.total,
+        limit: HOURLY_SPENDING_LIMIT_USD,
+        remaining: Math.max(0, HOURLY_SPENDING_LIMIT_USD - hourlyData.total),
+        blocked: hourlyBlocked,
+        resumesAt: hourlyBlocked && hourlyData.oldestTimestamp
+          ? new Date(hourlyData.oldestTimestamp + HOUR_MS).toISOString()
+          : null,
+      },
     };
   }
 
   // For manual override (e.g., admin reset)
   reset(): void {
     this.dailySpending = 0;
-    this.isPaused = false;
+    this.isDailyPaused = false;
+    this.spendingEntries = [];
   }
 
-  setLimit(newLimit: number): void {
-    this.limitUsd = newLimit;
+  setDailyLimit(newLimit: number): void {
+    this.dailyLimitUsd = newLimit;
     // Re-check if we should be paused with new limit
-    this.isPaused = this.dailySpending >= this.limitUsd;
+    this.isDailyPaused = this.dailySpending >= this.dailyLimitUsd;
   }
 }
 
@@ -214,9 +331,11 @@ export class GlobalSpendingLimitExceededError extends Error {
   constructor(
     public readonly currentSpending: number,
     public readonly limit: number,
+    public readonly window: '30min' | '1hour' | 'daily' = 'daily',
   ) {
+    const windowLabel = window === '30min' ? '30-minute' : window === '1hour' ? '1-hour' : 'daily';
     super(
-      `Global daily AI spending limit exceeded. Current: $${currentSpending.toFixed(2)}, Limit: $${limit.toFixed(2)}. Service paused until midnight UTC.`,
+      `Global ${windowLabel} AI spending limit exceeded. Current: $${currentSpending.toFixed(2)}, Limit: $${limit.toFixed(2)}. Service paused until window resets.`,
     );
     this.name = 'GlobalSpendingLimitExceededError';
   }
@@ -260,7 +379,7 @@ export class AiService {
     if (!AiService.spendingTracker) {
       const limit = this.configService.get<number>('ai.dailySpendingLimitUsd') || DEFAULT_DAILY_SPENDING_LIMIT_USD;
       AiService.spendingTracker = new GlobalSpendingTracker(limit);
-      this.logger.log(`💰 Global daily spending limit set to $${limit}`);
+      this.logger.log(`💰 Spending circuit breakers: $${HALF_HOUR_SPENDING_LIMIT_USD}/30min, $${HOURLY_SPENDING_LIMIT_USD}/hour, $${limit}/day`);
     }
   }
 
@@ -296,15 +415,16 @@ export class AiService {
     prompt: string,
     systemPrompt?: string,
   ): Promise<AIResponse> {
-    // Check global spending limit BEFORE doing anything
+    // Check global spending limits BEFORE doing anything (30min, 1hour, daily)
     const spendingStatus = AiService.spendingTracker.checkLimit();
     if (!spendingStatus.allowed) {
       this.logger.error(
-        `🚫 Global spending limit exceeded! Current: $${spendingStatus.currentSpending.toFixed(2)}, Limit: $${spendingStatus.limit.toFixed(2)}`,
+        `🚫 Global spending limit exceeded (${spendingStatus.blockedBy})! Current: $${spendingStatus.currentSpending.toFixed(2)}, Limit: $${spendingStatus.limit.toFixed(2)}`,
       );
       throw new GlobalSpendingLimitExceededError(
         spendingStatus.currentSpending,
         spendingStatus.limit,
+        spendingStatus.blockedBy as '30min' | '1hour' | 'daily',
       );
     }
 
@@ -334,7 +454,7 @@ export class AiService {
           const status = AiService.spendingTracker.getStatus();
 
           this.logger.log(
-            `✅ ${provider} success. Tokens: ${response.tokensUsed}, Cost: $${response.cost.toFixed(4)} (Daily total: $${status.spending.toFixed(2)}/$${status.limit})`,
+            `✅ ${provider} success. Tokens: ${response.tokensUsed}, Cost: $${response.cost.toFixed(4)} | 30m: $${status.halfHour.spending.toFixed(2)}/$${status.halfHour.limit} | 1h: $${status.hourly.spending.toFixed(2)}/$${status.hourly.limit} | Daily: $${status.daily.spending.toFixed(2)}/$${status.daily.limit}`,
           );
 
           return response;
@@ -1005,20 +1125,15 @@ Return improved JSON with same format. Each direction must achieve user's comple
   // ============ GLOBAL SPENDING MANAGEMENT ============
 
   /**
-   * Get current global spending status
-   * @returns Current spending, limit, paused state, and date
+   * Get current global spending status across all circuit breakers
    */
-  getSpendingStatus(): { spending: number; limit: number; paused: boolean; date: string; remaining: number } {
-    const status = AiService.spendingTracker.getStatus();
-    return {
-      ...status,
-      remaining: Math.max(0, status.limit - status.spending),
-    };
+  getSpendingStatus() {
+    return AiService.spendingTracker.getStatus();
   }
 
   /**
-   * Reset global daily spending (admin only)
-   * Use cautiously - this allows AI calls to resume if limit was hit
+   * Reset global spending (admin only)
+   * Use cautiously - this allows AI calls to resume if any limit was hit
    */
   resetSpending(): void {
     this.logger.warn('⚠️ Global spending manually reset by admin');
@@ -1030,7 +1145,7 @@ Return improved JSON with same format. Each direction must achieve user's comple
    * @param newLimitUsd New limit in USD
    */
   setSpendingLimit(newLimitUsd: number): void {
-    this.logger.log(`💰 Global spending limit updated to $${newLimitUsd}`);
-    AiService.spendingTracker.setLimit(newLimitUsd);
+    this.logger.log(`💰 Global daily spending limit updated to $${newLimitUsd}`);
+    AiService.spendingTracker.setDailyLimit(newLimitUsd);
   }
 }

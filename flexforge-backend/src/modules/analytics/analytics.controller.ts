@@ -54,14 +54,7 @@ export class AnalyticsController {
   @Get('spending')
   async getSpendingStatus(
     @Query('secret') secret: string,
-  ): Promise<{
-    spending: number;
-    limit: number;
-    remaining: number;
-    paused: boolean;
-    date: string;
-    percentUsed: number;
-  }> {
+  ) {
     // Use EDGE_SIGNING_SECRET as admin auth (reuse existing secret)
     const adminSecret = this.configService.get<string>('EDGE_SIGNING_SECRET');
     if (!adminSecret || secret !== adminSecret) {
@@ -71,7 +64,7 @@ export class AnalyticsController {
     const status = this.aiService.getSpendingStatus();
     return {
       ...status,
-      percentUsed: status.limit > 0 ? Math.round((status.spending / status.limit) * 100) : 0,
+      percentUsed: status.daily.limit > 0 ? Math.round((status.daily.spending / status.daily.limit) * 100) : 0,
     };
   }
 
@@ -101,18 +94,7 @@ export class AnalyticsController {
   @Get('spending/users')
   async getUsersSpending(
     @Query('secret') secret: string,
-  ): Promise<{
-    globalSpending: { spending: number; limit: number; remaining: number; paused: boolean; date: string };
-    users: Array<{
-      email: string;
-      name: string | null;
-      tokensToday: number;
-      spendingToday: number;
-      usageDate: string | null;
-      tokensThisMonth: number;
-      quotaTier: string;
-    }>;
-  }> {
+  ) {
     const adminSecret = this.configService.get<string>('EDGE_SIGNING_SECRET');
     if (!adminSecret || secret !== adminSecret) {
       throw new UnauthorizedException('Invalid admin secret');
