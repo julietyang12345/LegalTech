@@ -421,6 +421,7 @@ export function SessionPage() {
   const [incompleteItems, setIncompleteItems] = useState<{ step: string; label: string; icon: string }[]>([]);
   const [showAiTutor, setShowAiTutor] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showDayCompletionLimitModal, setShowDayCompletionLimitModal] = useState(false);
   const [showBookmarkToast, setShowBookmarkToast] = useState(false);
 
 
@@ -638,9 +639,25 @@ export function SessionPage() {
         // 3. Navigate to today page - user clicks "Start Learning" to load next day
         setIsAdvancingDay(false);
         navigate('/today');
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to advance day:', error);
         setIsAdvancingDay(false);
+
+        // Check if this is a daily day-completion limit error
+        const errorData = error?.response?.data;
+        if (errorData?.code === 'DAY_COMPLETION_LIMIT_REACHED') {
+          addSystemMessage(
+            `You've reached your daily learning limit (${errorData.currentLimit}/day). Come back tomorrow to continue!`,
+            'supportive'
+          );
+          // Show upgrade modal for FREE users
+          if (errorData?.requiresUpgrade) {
+            setShowDayCompletionLimitModal(true);
+          }
+          // Stay on the current page — don't navigate away
+          return;
+        }
+
         navigate('/today');
       }
     } else {
@@ -960,6 +977,14 @@ export function SessionPage() {
         onClose={dismissRegenLimitModal}
         source="rate_limit"
         reason="day_regen_limit"
+      />
+
+      {/* Day Completion Limit Modal - Upgrade prompt for FREE users */}
+      <FakePaywallModal
+        isOpen={showDayCompletionLimitModal}
+        onClose={() => setShowDayCompletionLimitModal(false)}
+        source="rate_limit"
+        reason="day_completion_limit"
       />
 
       {/* Bookmark Toast */}

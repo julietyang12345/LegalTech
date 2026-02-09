@@ -1637,6 +1637,11 @@ export interface PracticeSubmitResponse {
   message: string;
   nextDayUnlocked: boolean;
   feedback?: string;
+  daysCompletedToday?: {
+    used: number;
+    limit: number;
+    remaining: number;
+  };
 }
 
 export interface DayDetailsResponse {

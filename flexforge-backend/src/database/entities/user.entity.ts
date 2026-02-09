@@ -144,6 +144,10 @@ export class User {
       lastDate: string;
       count: number;
     };
+    dailyDayCompletionUsage?: {
+      lastDate: string;
+      count: number;
+    };
     // Security - password change timestamp for session invalidation
     passwordChangedAt?: string;
   };
@@ -247,6 +251,7 @@ export class User {
           dayContentRegens: 0, // No day content regenerations
           curriculumRegens: 0, // No curriculum regenerations
           aiTutorConversations: 2, // 3 AI tutor messages per day
+          dayCompletions: 1, // 2 day completions per day
         };
       case QuotaTier.PRO:
         return {
@@ -254,6 +259,7 @@ export class User {
           dayContentRegens: 4, // 4 day content regenerations per day
           curriculumRegens: 4,
           aiTutorConversations: 10, // 10 AI tutor messages per day
+          dayCompletions: 3, // 4 day completions per day
         };
       case QuotaTier.PREMIUM:
         return {
@@ -261,6 +267,7 @@ export class User {
           dayContentRegens: Infinity,
           curriculumRegens: Infinity,
           aiTutorConversations: Infinity, // Unlimited
+          dayCompletions: Infinity, // Unlimited
         };
       case QuotaTier.UNLIMITED:
         return {
@@ -268,6 +275,7 @@ export class User {
           dayContentRegens: Infinity,
           curriculumRegens: Infinity,
           aiTutorConversations: Infinity,
+          dayCompletions: Infinity, // Unlimited
         };
       default:
         return {
@@ -275,6 +283,7 @@ export class User {
           dayContentRegens: 2,
           curriculumRegens: 2,
           aiTutorConversations: 3,
+          dayCompletions: 2,
         };
     }
   }

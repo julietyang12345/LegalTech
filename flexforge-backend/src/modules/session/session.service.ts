@@ -1441,6 +1441,19 @@ export class SessionService {
     nextDayUnlocked: boolean;
     feedback?: string;
   }> {
+    // Check daily day-completion limit
+    const dayCompletionLimit = await this.userService.checkDayCompletionLimit(userId);
+    if (!dayCompletionLimit.allowed) {
+      const user = await this.userService.findById(userId);
+      throw new HttpException({
+        message: `Daily day completion limit reached (${dayCompletionLimit.limit}/day). Come back tomorrow to continue learning!`,
+        code: 'DAY_COMPLETION_LIMIT_REACHED',
+        requiresUpgrade: user?.quotaTier === 'FREE',
+        currentLimit: dayCompletionLimit.limit,
+        currentUsage: dayCompletionLimit.used,
+      }, HttpStatus.TOO_MANY_REQUESTS);
+    }
+
     const session = await this.findOne(sessionId, userId);
 
     const dayIndex = session.curriculum.days.findIndex(
@@ -1492,6 +1505,7 @@ export class SessionService {
     }
 
     await this.sessionsRepository.save(session);
+    await this.userService.incrementDayCompletionCount(userId);
 
     this.logger.log(
       `✅ Day ${dayNumber} practice submitted for session ${sessionId}. currentDay is now ${session.currentDay}`,

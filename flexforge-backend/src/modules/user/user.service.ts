@@ -600,6 +600,61 @@ export class UserService {
   }
 
   /**
+   * Check daily day-completion limit
+   * Returns { allowed: boolean, remaining: number, limit: number, used: number }
+   */
+  async checkDayCompletionLimit(userId: string): Promise<{
+    allowed: boolean;
+    remaining: number;
+    limit: number;
+    used: number;
+  }> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const dailyLimits = user.getDailyLimits();
+    const limit = dailyLimits.dayCompletions;
+
+    // Check if it's a new day
+    const today = new Date().toISOString().split('T')[0];
+    const dailyUsage = user.preferences?.dailyDayCompletionUsage;
+    const lastDate = dailyUsage?.lastDate?.split('T')[0];
+    const used = lastDate === today ? (dailyUsage?.count || 0) : 0;
+
+    const remaining = Math.max(0, limit - used);
+    const allowed = limit === Infinity || used < limit;
+
+    return { allowed, remaining, limit, used };
+  }
+
+  /**
+   * Increment daily day-completion count
+   */
+  async incrementDayCompletionCount(userId: string): Promise<void> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const dailyUsage = user.preferences?.dailyDayCompletionUsage;
+    const lastDate = dailyUsage?.lastDate?.split('T')[0];
+    const currentCount = lastDate === today ? (dailyUsage?.count || 0) : 0;
+
+    user.preferences = {
+      ...user.preferences,
+      dailyDayCompletionUsage: {
+        lastDate: new Date().toISOString(),
+        count: currentCount + 1,
+      },
+    };
+
+    await this.usersRepository.save(user);
+  }
+
+  /**
    * Check daily AI tutor message limit
    * Returns { allowed: boolean, remaining: number, limit: number }
    */

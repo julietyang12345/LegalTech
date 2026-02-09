@@ -10,6 +10,7 @@ type RateLimitReason =
   | 'curriculum_quota'     // Hit monthly curriculum creation quota
   | 'ai_tutor_limit'       // Hit AI tutor message limit
   | 'skill_tree_limit'     // Hit skill tree analysis limit
+  | 'day_completion_limit' // Hit daily day-completion limit
   | 'general';             // Generic rate limit
 
 interface FakePaywallModalProps {
@@ -40,6 +41,11 @@ const reasonMessages: Record<RateLimitReason, { icon: React.ReactNode; title: st
     icon: <Brain className="w-6 h-6" />,
     title: "Skill Tree Analysis Limit Reached",
     description: "You've used your weekly skill tree analysis. Upgrade to analyze your skills more frequently.",
+  },
+  day_completion_limit: {
+    icon: <Zap className="w-6 h-6" />,
+    title: "Daily Learning Limit Reached",
+    description: "You've completed the maximum number of days for today. Upgrade to complete more days per day and accelerate your learning.",
   },
   general: {
     icon: <AlertTriangle className="w-6 h-6" />,
