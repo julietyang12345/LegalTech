@@ -6,10 +6,13 @@ import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
 import { useCommunityShareStore } from '@/stores/communityShareStore';
+import { useAuthStore } from '@/stores/authStore';
 import { analyticsService } from '@/services/analyticsService';
 import { FocusModeLayout } from '@/components/layout';
 import { Button, GeneratingScreen, ExerciseLoadingScreen, FakePaywallModal } from '@/components/common';
 import { AiTutorPanel } from '@/components/session/AiTutorPanel';
+import { StepCelebration, STEP_CELEBRATION_LABELS } from '@/components/session/StepCelebration';
+import { DayCompletionScreen } from '@/components/session/DayCompletionScreen';
 import type { CurriculumDay } from '@/types';
 
 // Import step components
@@ -423,7 +426,10 @@ export function SessionPage() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showDayCompletionLimitModal, setShowDayCompletionLimitModal] = useState(false);
   const [showBookmarkToast, setShowBookmarkToast] = useState(false);
+  const [celebratingStep, setCelebratingStep] = useState<{ name: string; index: number; total: number } | null>(null);
+  const [showDayCompletion, setShowDayCompletion] = useState(false);
 
+  const { user } = useAuthStore();
 
   // Track what user has actually engaged with
   const [stepEngagement, setStepEngagement] = useState<StepEngagement>({
@@ -739,14 +745,20 @@ export function SessionPage() {
         return;
       }
 
-      // All work done, proceed
-      await proceedWithCompletion();
+      // All work done — show day completion screen instead of proceeding directly
+      setShowDayCompletion(true);
       return;
     }
 
-    // Only mark step as complete if user has engaged with it
+    // Show micro-celebration if the user engaged with this step, then advance
     if (isStepEngaged(currentStep)) {
-      completeStep(currentStep);
+      const stepLabel = STEP_CELEBRATION_LABELS[currentStep] || currentStep;
+      setCelebratingStep({
+        name: stepLabel,
+        index: currentStepIndex,
+        total: availableSteps.length,
+      });
+      // completeStep will be called from StepCelebration's onComplete callback
     } else {
       // Just move to next step without marking complete
       const nextStep = availableSteps[currentStepIndex + 1] as SessionStepType;
@@ -936,7 +948,7 @@ export function SessionPage() {
         onClose={() => setShowIncompleteModal(false)}
         onProceedAnyway={() => {
           setShowIncompleteModal(false);
-          proceedWithCompletion();
+          setShowDayCompletion(true);
         }}
         incompleteItems={incompleteItems}
       />
@@ -1001,6 +1013,37 @@ export function SessionPage() {
               <span className="text-sm font-medium">Bookmarked! Find it in your Vault.</span>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Step completion micro-celebration */}
+      <AnimatePresence>
+        {celebratingStep && (
+          <StepCelebration
+            stepName={celebratingStep.name}
+            stepIndex={celebratingStep.index}
+            totalSteps={celebratingStep.total}
+            onComplete={() => {
+              completeStep(currentStep);
+              setCelebratingStep(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Day completion celebration */}
+      <AnimatePresence>
+        {showDayCompletion && activeSession && currentDay && user && (
+          <DayCompletionScreen
+            session={activeSession}
+            currentDay={currentDay}
+            user={user}
+            onContinue={async () => {
+              setShowDayCompletion(false);
+              await proceedWithCompletion();
+            }}
+            isLoading={isAdvancingDay}
+          />
         )}
       </AnimatePresence>
     </FocusModeLayout>
