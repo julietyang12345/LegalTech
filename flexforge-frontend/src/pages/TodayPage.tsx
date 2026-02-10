@@ -330,10 +330,23 @@ export function TodayPage() {
   const { addSystemMessage } = useCompanionStore();
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [showCurriculum, setShowCurriculum] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
 
   useEffect(() => {
     fetchActiveSession();
   }, [fetchActiveSession]);
+
+  // Poll for preloaded Day 1 content (~5s after session creation)
+  // Skip if user already clicked "Start Learning" to avoid flashing the loading screen
+  useEffect(() => {
+    if (isStarting || isDayLoading) return;
+    if (!activeSession || activeSession.currentDay !== 1) return;
+    const day = activeSession.curriculum?.days?.find(d => d.day === 1);
+    if (day?.coreLoaded || day?.coreContent) return; // Already loaded
+
+    const timer = setTimeout(() => fetchActiveSession(), 5000);
+    return () => clearTimeout(timer);
+  }, [activeSession?.id, activeSession?.currentDay, isStarting, isDayLoading, fetchActiveSession]);
 
   // Handle regeneration - start a new course
   const handleRegenerateCurriculum = async () => {
@@ -372,8 +385,6 @@ export function TodayPage() {
       'welcoming'
     );
   }, [user?.name, addSystemMessage]);
-
-  const [isStarting, setIsStarting] = useState(false);
 
   const handleStartSession = async () => {
     if (!activeSession) return;

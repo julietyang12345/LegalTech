@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, CheckCircle, Shuffle, HelpCircle, FileText, Sparkles, Target, BookOpen, Trophy, GraduationCap, Bookmark } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Shuffle, HelpCircle, FileText, Sparkles, Target, BookOpen, Trophy, GraduationCap, Bookmark } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
@@ -11,7 +11,7 @@ import { analyticsService } from '@/services/analyticsService';
 import { FocusModeLayout } from '@/components/layout';
 import { Button, GeneratingScreen, ExerciseLoadingScreen, FakePaywallModal } from '@/components/common';
 import { AiTutorPanel } from '@/components/session/AiTutorPanel';
-import { StepCelebration, STEP_CELEBRATION_LABELS } from '@/components/session/StepCelebration';
+import { StepCelebration, getCelebrationLabel } from '@/components/session/StepCelebration';
 import { DayCompletionScreen } from '@/components/session/DayCompletionScreen';
 import type { CurriculumDay } from '@/types';
 
@@ -623,8 +623,9 @@ export function SessionPage() {
   };
 
   // Proceed with day completion (after validation or skip)
+  // Note: Visual celebration (confetti + achievement card) is handled by DayCompletionScreen
+  // which shows BEFORE this function is called via onContinue callback
   const proceedWithCompletion = async () => {
-    celebrate('dayComplete');
     const hasNextDay = activeSession && currentDay && currentDay.day < activeSession.durationDays;
 
     if (hasNextDay) {
@@ -752,7 +753,9 @@ export function SessionPage() {
 
     // Show micro-celebration if the user engaged with this step, then advance
     if (isStepEngaged(currentStep)) {
-      const stepLabel = STEP_CELEBRATION_LABELS[currentStep] || currentStep;
+      const videoUnavailable = !currentDay?.video?.videoId && !currentDay?.video?.backupVideo?.videoId;
+      const isProjectBased = !!(currentDay?.bossMilestone || currentDay?.hasBossProject);
+      const stepLabel = getCelebrationLabel(currentStep, { isProjectBased, videoUnavailable });
       setCelebratingStep({
         name: stepLabel,
         index: currentStepIndex,
@@ -816,26 +819,6 @@ export function SessionPage() {
           timeEstimate="This usually takes about 10 seconds"
         />
       </FocusModeLayout>
-    );
-  }
-
-  // Loading next day content
-  if (isAdvancingDay && currentDay) {
-    const nextDayNumber = currentDay.day + 1;
-    const nextDayData = activeSession.curriculum.days.find(d => d.day === nextDayNumber);
-    return (
-      <GeneratingScreen
-        steps={[
-          { icon: CheckCircle, text: `Saving Day ${currentDay.day} progress...`, duration: 2000 },
-          { icon: Sparkles, text: 'Generating fresh content...', duration: 20000 },
-          { icon: Target, text: 'Creating new exercises...', duration: 20000 },
-          { icon: BookOpen, text: 'Finding a new video...', duration: 22000 },
-          { icon: Trophy, text: 'Preparing your refreshed session...', duration: 15000 },
-        ]}
-        title={`Preparing Day ${nextDayNumber}`}
-        subtitle={nextDayData?.title || `Your next ${activeSession.skillName} lesson`}
-        timeEstimate="This usually takes about 90 seconds"
-      />
     );
   }
 
@@ -1039,8 +1022,10 @@ export function SessionPage() {
             currentDay={currentDay}
             user={user}
             onContinue={async () => {
-              setShowDayCompletion(false);
+              // Keep overlay visible during API call to avoid session page flash
               await proceedWithCompletion();
+              // Only dismiss after navigation (or on error where we stay on page)
+              setShowDayCompletion(false);
             }}
             isLoading={isAdvancingDay}
           />

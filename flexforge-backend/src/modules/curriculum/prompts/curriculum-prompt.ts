@@ -512,7 +512,7 @@ function getSkillLevelGuidance(skillLevel: SkillLevel): {
 - Basics: Skip basic definitions but include brief context connections. User knows core concepts but appreciates seeing how they connect to advanced material
 - Concepts: Focus on advanced patterns and techniques. Include edge cases as illustrative examples, not the main focus
 - Trade-offs: Discuss trade-offs, performance implications, and when to choose different approaches. Help user develop judgment
-- Questions: Include analysis and reasoning questions, but provide scaffolding. Mix challenging questions with confidence-building ones
+- Questions: Mix application and analysis. ~55% "which approach fits this production scenario?", ~35% reasoning/trade-off analysis, ~10% recall/confidence-builders. Every analysis question should be grounded in a concrete scenario, not abstract
 - Multiple Solutions: Present problems with multiple valid approaches. Explain the thinking behind each, not just the "expert choice"
 - Examples: Use realistic scenarios with meaningful complexity. Show how advanced users approach problems step-by-step
 - Hints: Provide sophisticated hints that guide thinking without giving answers. Available for all questions, not just hardest ones
@@ -526,8 +526,8 @@ function getSkillLevelGuidance(skillLevel: SkillLevel): {
         quizQuestionCount: '8-10',
         complexityGuidance: `BEGINNER LEVEL COMPLEXITY:
 - Concepts: Focus on core fundamentals with clear "what" and "how" explanations
-- Questions: Test understanding of basics with clear right/wrong answers. Avoid trick questions
-- Examples: Use simple, focused examples that demonstrate one concept at a time
+- Questions: Mix understanding checks with simple application scenarios. ~50% recall ("which is correct?"), ~50% apply ("which approach would you use here?"). Keep scenarios simple with clear right/wrong answers. Avoid trick questions
+- Examples: Use simple, focused examples that demonstrate one concept at a time. Include a mini-scenario showing the concept in action
 - Depth: Cover the essentials first. Mention but don't dwell on exceptions or advanced cases`,
         contentMultiplier: 1.0,
       };
@@ -866,8 +866,8 @@ Topics: ${skillsStr}
 ${levelGuidance.complexityGuidance}
 ${contextInstructions}${languageCaveats}
 TASK1: 4-6 questions testing today's foundationCards ONLY (no new knowledge)
-- Level 1 "Differentiation" (2-3 Qs): "X or Y?", compare/contrast, edge cases
-- Level 2 "Application" (2-3 Qs): "which approach fits?", "why would B fail?"
+- Level 1 "Differentiation" (1-2 Qs): "X or Y?", compare/contrast — keep brief, just enough to confirm basics
+- Level 2 "Application" (3-4 Qs): scenario-based — "which approach fits?", "why would B fail?", "given this situation, what would you do?"
 ${ctx?.generatedContent?.foundationCardConcepts?.length ? `- Reference these concepts: ${ctx.generatedContent.foundationCardConcepts.join(', ')}` : ''}
 
 BOSS MILESTONE - SOLUTION + CHALLENGE (${newCodeLines} new lines):
@@ -1525,8 +1525,8 @@ Topics: ${skillsStr}
 ${levelGuidance.complexityGuidance}
 ${contextInstructions}${languageCaveats}
 TASK1: 4-6 questions testing today's foundationCards ONLY (no new knowledge)
-- Level 1 "Differentiation" (2-3 Qs): "X or Y?", compare/contrast, edge cases
-- Level 2 "Application" (2-3 Qs): "which approach fits?", "why would B fail?"
+- Level 1 "Differentiation" (1-2 Qs): "X or Y?", compare/contrast — keep brief, just enough to confirm basics
+- Level 2 "Application" (3-4 Qs): scenario-based — "which approach fits?", "why would B fail?", "given this situation, what would you do?"
 ${ctx?.generatedContent?.foundationCardConcepts?.length ? `- Reference these concepts: ${ctx.generatedContent.foundationCardConcepts.join(', ')}` : ''}
 
 INTENSIVE PRACTICE:
@@ -1743,9 +1743,10 @@ FOUNDATION CARDS (5-6) - Include Level 1 Understanding:
   - Paragraph 1: Key insight / main point (always visible)
   - Paragraph 2+: Detailed explnation of the concept, supportingexamples, or nuances (collapsible)
   - Group by theme/logic, NOT by sentence. Each paragraph should be a complete thought.
-- microQuestion: Understanding check built into each card
-  - "Which statement about X is correct?"
-  - "Which example matches this concept?"
+- microQuestion: Quick check built into each card — mix of understanding and application
+  - Understanding: "Which statement about X is correct?" (1-2 cards)
+  - Application: "In this scenario, which approach would you use?" or "Why would approach B fail here?" (remaining cards)
+  - Prefer application-style questions — pure recall should be the minority
   - Types: gotit, understanding (MCQ)
 
 CASE STUDY CARDS (1-2 per day, optional - for decision-making concepts):
@@ -2125,7 +2126,7 @@ ${personalizationInstructions}${continuityInstructions}`;
   - Card 1: INTRO/RECAP connecting to previous day
   - Each card: 200-300 words, answers ONE question
   - explanation: Split into 2-3 paragraphs with \\n\\n between them (key insight first, then details)
-  - microQuestion: Understanding check on each card
+  - microQuestion: Quick check on each card (prefer application-style over pure recall)
   - caseStudy (optional, 1-2 cards): For decision-making concepts only`;
 
   const userPrompt = `Day ${params.dayNumber}: "${params.dayTitle}" for skill "${params.skillName}"

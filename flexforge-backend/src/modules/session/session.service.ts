@@ -27,6 +27,7 @@ import { AiService, AITask } from '../ai/ai.service';
 @Injectable()
 export class SessionService {
   private readonly logger = new Logger(SessionService.name);
+  private readonly preloadPromises = new Map<string, Promise<void>>();
 
   constructor(
     @InjectRepository(Session)
@@ -83,6 +84,79 @@ export class SessionService {
   ): boolean {
     if (forceRegenerate) return false;
     return dayOverview.deferredLoaded && dayOverview.deferredContent;
+  }
+
+  /**
+   * Preload Day 1 core content in the background after session creation.
+   * Fire-and-forget — errors are logged silently, normal startDayCore flow is the fallback.
+   */
+  private async preloadDay1Core(sessionId: string, userId: string): Promise<void> {
+    if (this.preloadPromises.has(sessionId)) return;
+
+    const promise = (async () => {
+      try {
+        this.logger.log(`🔮 Preloading Day 1 core content for session ${sessionId}...`);
+
+        const session = await this.findOne(sessionId, userId);
+        const dayOverview = session.curriculum?.days?.find((d: any) => d.day === 1);
+        if (!dayOverview) {
+          this.logger.warn(`🔮 Preload skipped: Day 1 not found in session ${sessionId}`);
+          return;
+        }
+
+        // Already loaded — nothing to do
+        if (this.isCoreContentValid(dayOverview, false)) {
+          this.logger.log(`🔮 Preload skipped: Day 1 already has core content`);
+          return;
+        }
+
+        const user = await this.userService.findById(userId);
+        const tierString = user.getEffectiveTier().toUpperCase();
+
+        const result = await this.curriculumService.generateDayCoreDetails(
+          session.curriculum,
+          1,
+          tierString,
+          false,
+          userId,
+          sessionId,
+          session.improvementAreas,
+          session.lessOfAreas,
+        );
+
+        // Save core content to session JSONB (do NOT set status: 'in_progress')
+        const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === 1);
+        if (dayIndex === -1) return;
+
+        const updatedDays = [...session.curriculum.days];
+        updatedDays[dayIndex] = {
+          ...updatedDays[dayIndex],
+          coreContent: result.coreContent,
+          coreLoaded: true,
+          variantId: result.variantId,
+          foundationCardConcepts: result.foundationCardConcepts,
+        };
+
+        session.curriculum = { ...session.curriculum, days: updatedDays };
+        await this.sessionsRepository.save(session);
+
+        // Token accounting
+        if (result.tokensUsed > 0) {
+          await this.userService.incrementUsage(userId, result.tokensUsed, 0, 0, result.cost || 0);
+        }
+
+        this.logger.log(
+          `🔮 Preloaded Day 1 core content for session ${sessionId} (variant=${result.variantId}, tokens=${result.tokensUsed})`,
+        );
+      } catch (error) {
+        this.logger.warn(`🔮 Preload Day 1 failed (will fall back to normal flow): ${error.message}`);
+      } finally {
+        this.preloadPromises.delete(sessionId);
+      }
+    })();
+
+    this.preloadPromises.set(sessionId, promise);
+    return promise;
   }
 
   /**
@@ -314,7 +388,8 @@ export class SessionService {
       );
     }
 
-    // Day 1 content will be generated when user clicks "Start Day 1" via startDay()
+    // Preload Day 1 core content in the background (fire-and-forget)
+    this.preloadDay1Core(savedSession.id, userId);
 
     return {
       session: savedSession,
@@ -797,6 +872,30 @@ export class SessionService {
         regenCount,
         regenLimit,
       };
+    }
+
+    // If a preload is in-flight, await it instead of making a duplicate AI call
+    if (!forceRegenerate) {
+      const existingPreload = this.preloadPromises.get(sessionId);
+      if (existingPreload) {
+        this.logger.log(`⏳ Awaiting in-flight preload for session ${sessionId}...`);
+        await existingPreload;
+        // Re-fetch session to pick up preloaded content
+        const refreshed = await this.findOne(sessionId, userId);
+        const refreshedDay = this.getDayOverview(refreshed, dayNumber);
+        if (this.isCoreContentValid(refreshedDay, false)) {
+          const regenCount = await this.cacheService.getDayRegenCount(sessionId, dayNumber);
+          this.logger.log(`✅ Preloaded content ready for Day ${dayNumber}`);
+          return {
+            coreContent: refreshedDay.coreContent,
+            tokensUsed: 0,
+            fromCache: true,
+            variantId: refreshedDay.variantId,
+            regenCount,
+            regenLimit,
+          };
+        }
+      }
     }
 
     if (forceRegenerate) {

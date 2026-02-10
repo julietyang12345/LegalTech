@@ -66,8 +66,8 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue }: GoalInputSt
         <h1 className="text-2xl font-bold text-gray-900 mb-2">
           What do you want to learn or build?
         </h1>
-        <p className="text-gray-500 text-sm">
-          Describe it however you want — we'll figure it out together.
+        <p className="text-gray-500 text-base">
+          Don't know what to ask yet? Just type any questions or confusion you have — we'll go from there.
         </p>
       </div>
 

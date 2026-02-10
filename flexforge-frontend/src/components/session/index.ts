@@ -7,6 +7,6 @@ export { CourseSidebar } from './CourseSidebar';
 export { VocabularyCard } from './VocabularyCard';
 export { StepContentPreview } from './StepContentPreview';
 export type { PreviewStep } from './StepContentPreview';
-export { StepCelebration, STEP_CELEBRATION_LABELS } from './StepCelebration';
+export { StepCelebration, getCelebrationLabel } from './StepCelebration';
 export { AchievementCard } from './AchievementCard';
 export { DayCompletionScreen } from './DayCompletionScreen';

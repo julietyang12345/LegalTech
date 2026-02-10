@@ -64,13 +64,19 @@ export function StepCelebration({ stepName, stepIndex, totalSteps, onComplete }:
   );
 }
 
-/** Map step keys to human-readable celebration labels */
-export const STEP_CELEBRATION_LABELS: Record<string, string> = {
-  prePrompt: 'Preparation',
-  video: 'Video Lesson',
-  foundationCards: 'Foundation Cards',
-  task1: 'Practice',
-  bossMilestone: 'Boss Milestone',
-  openTask: 'Real-World Challenge',
-  reflection: 'Reflection',
-};
+/** Map step keys to human-readable celebration labels (longer form of StepPills labels) */
+export function getCelebrationLabel(
+  step: string,
+  opts?: { isProjectBased?: boolean; videoUnavailable?: boolean },
+): string {
+  const labels: Record<string, string> = {
+    prePrompt: 'Preparation',
+    video: opts?.videoUnavailable ? 'AI Lesson' : 'Video Lesson',
+    foundationCards: 'Foundation Cards',
+    task1: 'Practice',
+    bossMilestone: opts?.isProjectBased !== false ? 'Boss Milestone' : 'Intensive Practice',
+    openTask: 'Real-World Challenge',
+    reflection: 'Reflection',
+  };
+  return labels[step] || step;
+}
