@@ -940,7 +940,6 @@ REQUIRED FIELDS:
 - AVOID REPETITION in solution code: Extract repeated values into constants, use helper functions for repeated logic
 ${ctx?.continuity?.bossProjectTarget ? `- Boss Project: "${ctx.continuity.bossProjectTarget}" - conceptConnection should reference a foundationCard concept` : ''}
 
-NOTE: Do NOT generate reflection - this is handled separately by a lightweight model.
 Only generate: task1 and bossMilestone.
 
 Output valid JSON.`;
@@ -1538,7 +1537,7 @@ INTENSIVE PRACTICE:
 ${sectionInstructions}
 Items per section: ${itemsPerSection}
 
-NOTE: Do NOT generate openTask or reflection - these are handled separately by a lightweight model.
+NOTE: Do NOT generate openTask or reflection - these are handled separately by a lightweight model (Haiku).
 Only generate: task1 and intensivePractice.
 
 Output valid JSON.`;
@@ -1749,7 +1748,7 @@ FOUNDATION CARDS (5-6) - Include Level 1 Understanding:
   - Prefer application-style questions — pure recall should be the minority
   - Types: gotit, understanding (MCQ)
 
-CASE STUDY CARDS (1-2 per day, optional - for decision-making concepts):
+CASE STUDY CARDS (2-3 per day - for decision-making concepts):
 For cards about choices, trade-offs, or "when to use X vs Y":
 - Add a caseStudy object with:
   - scenario: Real-world situation (2-3 sentences, e.g., "You're building X and encounter Y...")
@@ -1757,7 +1756,7 @@ For cards about choices, trade-offs, or "when to use X vs Y":
   - options: 3-4 choices, each with label (1-5 words) and consequence ("This works, but..." or "This fails because...")
   - bestChoice: Index of optimal choice (0-based)
   - explanation: Why it's best (1-2 sentences)
-- NOT every card needs a case study - only for decision-oriented concepts
+- Aim for at least 2 cards with case studies per day — they reinforce application thinking
 - User must answer case study before proceeding (gated like microQuestion)
 
 NOTE: task1 is generated in DEFERRED content (loads in background while user reads foundation cards)
@@ -2127,7 +2126,7 @@ ${personalizationInstructions}${continuityInstructions}`;
   - Each card: 200-300 words, answers ONE question
   - explanation: Split into 2-3 paragraphs with \\n\\n between them (key insight first, then details)
   - microQuestion: Quick check on each card (prefer application-style over pure recall)
-  - caseStudy (optional, 1-2 cards): For decision-making concepts only`;
+  - caseStudy (2-3 cards per day): For decision-making and application concepts`;
 
   const userPrompt = `Day ${params.dayNumber}: "${params.dayTitle}" for skill "${params.skillName}"
 Skill Type: ${params.skillType} | Level: ${params.skillLevel}
@@ -2194,8 +2193,8 @@ function getTask1SectionTemplate(skillType: SkillType): string {
 // ============================================
 
 /**
- * Lightweight prompt for generating reflection and openTask only.
- * Uses Haiku for cost efficiency - these are simpler content types.
+ * CORE phase lightweight prompt — primeQuestions only (Haiku).
+ * Reflection and openTask moved to DEFERRED phase (see buildDeferredLightweightPrompt).
  */
 export function buildLightweightContentPrompt(
   params: DayDetailParams,
@@ -2206,9 +2205,47 @@ export function buildLightweightContentPrompt(
 } {
   const dayNumber = params.dayNumber;
   const skillsStr = getSkillsString(params.skeleton, params.dayObjectives);
+
+  const conceptsContext = ctx?.generatedContent?.foundationCardConcepts?.length
+    ? `Today's concepts: ${ctx.generatedContent.foundationCardConcepts.join(', ')}`
+    : '';
+
+  const systemPrompt = `Generate primeQuestions for Day ${dayNumber}: "${params.skillName}"
+Skill Type: ${params.skillType} | Level: ${params.skillLevel}
+Topics: ${skillsStr}
+${conceptsContext}
+
+PRIME QUESTIONS (Think About):
+- 2-3 thought-provoking questions to prime the learner's mind BEFORE they start
+- Questions should spark curiosity about today's topics
+- Help users think about real-world applications and edge cases
+- Keep questions short and direct (under 15 words each)
+- Examples: "How do you handle failed requests when scraping?", "What's the best way to avoid rate limits?"
+
+Output valid JSON only.`;
+
+  const userPrompt = `{
+  "primeQuestions": ["Think about question 1?", "Think about question 2?"]
+}`;
+
+  return { systemPrompt, userPrompt };
+}
+
+/**
+ * DEFERRED phase lightweight prompt — reflection + openTask (Haiku).
+ * Runs in parallel with the Sonnet deferred call.
+ */
+export function buildDeferredLightweightPrompt(
+  params: DayDetailParams,
+  ctx?: ContentGenerationContext,
+): {
+  systemPrompt: string;
+  userPrompt: string;
+} {
+  const dayNumber = params.dayNumber;
+  const skillsStr = getSkillsString(params.skeleton, params.dayObjectives);
   const isProjectBased = params.isProjectBased ?? usesProjectBasedLearning(params.learningStyle);
 
-  // Get foundation card concepts for reflection context
   const conceptsContext = ctx?.generatedContent?.foundationCardConcepts?.length
     ? `Today's concepts: ${ctx.generatedContent.foundationCardConcepts.join(', ')}`
     : '';
@@ -2246,18 +2283,11 @@ OPEN TASK:
 `
     : '';
 
-  const systemPrompt = `Generate primeQuestions, reflection${!isProjectBased ? ', and open task' : ''} for Day ${dayNumber}: "${params.skillName}"
+  const systemPrompt = `Generate reflection${!isProjectBased ? ' and open task' : ''} for Day ${dayNumber}: "${params.skillName}"
 Skill Type: ${params.skillType} | Level: ${params.skillLevel}
 Topics: ${skillsStr}
 ${conceptsContext}
 ${openTaskInstructions}
-PRIME QUESTIONS (Think About):
-- 2-3 thought-provoking questions to prime the learner's mind BEFORE they start
-- Questions should spark curiosity about today's topics
-- Help users think about real-world applications and edge cases
-- Keep questions short and direct (under 15 words each)
-- Examples: "How do you handle failed requests when scraping?", "What's the best way to avoid rate limits?"
-
 REFLECTION:
 - Questions should help user self-assess and identify areas for improvement
 - Include confidence scale, what clicked, and what needs review
@@ -2336,7 +2366,6 @@ Output valid JSON only.`;
     : '';
 
   const userPrompt = `{
-  "primeQuestions": ["Think about question 1?", "Think about question 2?"],
   "reflection": {
     "questions": ${isLanguageLearning ? languageReflectionQuestions : genericReflectionQuestions}
   }${openTaskSection}

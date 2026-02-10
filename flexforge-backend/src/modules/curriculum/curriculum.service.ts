@@ -18,6 +18,7 @@ import {
   buildCacheableDayDetailCorePrompt,
   buildDayDetailDeferredPrompt,
   buildLightweightContentPrompt,
+  buildDeferredLightweightPrompt,
   buildBossDetailPrompt,
   usesProjectBasedLearning,
   DayDetailParams,
@@ -1186,15 +1187,7 @@ Return JSON only:
             lightweightContent = JSON.parse(fixedLight);
           }
 
-          // Add Haiku's lightweight content to core
-          if (lightweightContent.reflection) {
-            coreContent.reflection = lightweightContent.reflection;
-            this.logger.log(`✅ Day ${dayNumber} reflection generated with Haiku (in CORE)`);
-          }
-          if (lightweightContent.openTask) {
-            coreContent.openTask = lightweightContent.openTask;
-            this.logger.log(`✅ Day ${dayNumber} openTask generated with Haiku (in CORE)`);
-          }
+          // Add Haiku's primeQuestions to core (reflection + openTask moved to DEFERRED)
           if (lightweightContent.primeQuestions) {
             coreContent.primeQuestions = lightweightContent.primeQuestions;
             this.logger.log(`✅ Day ${dayNumber} primeQuestions generated with Haiku (in CORE)`);
@@ -2011,17 +2004,30 @@ Return JSON only:
       ctx,
     );
 
-    // NOTE: Lightweight content (reflection, openTask, primeQuestions) is now generated
-    // in CORE content phase via Haiku, running parallel with Sonnet core generation.
-    // This deferred phase only generates main content (bossMilestone/intensivePractice).
+    // Build lightweight prompt for Haiku (reflection + openTask)
+    const { systemPrompt: lightSystemPrompt, userPrompt: lightUserPrompt } =
+      buildDeferredLightweightPrompt(params, ctx);
 
-    this.logger.log(`🚀 Generating Day ${dayNumber} DEFERRED content (Sonnet)`);
+    // Run BOTH AI calls in parallel: Sonnet (task1/bossMilestone) + Haiku (reflection/openTask)
+    this.logger.log(`🚀 Generating Day ${dayNumber} DEFERRED content (Sonnet + Haiku)`);
 
-    const aiResponse = await this.aiService.routeRequest(
-      AITask.CURRICULUM_GENERATION,
-      userPrompt,
-      systemPrompt,
-    );
+    const [aiResponse, lightweightResponse] = await Promise.all([
+      this.aiService.routeRequest(
+        AITask.CURRICULUM_GENERATION,
+        userPrompt,
+        systemPrompt,
+      ),
+      this.aiService.routeRequest(
+        AITask.LIGHTWEIGHT_CONTENT,
+        lightUserPrompt,
+        lightSystemPrompt,
+      ).catch((error) => {
+        this.logger.warn(
+          `⚠️ Day ${dayNumber} lightweight content failed in DEFERRED: ${error.message}`,
+        );
+        return null;
+      }),
+    ]);
 
     let deferredContent: any;
     try {
@@ -2100,8 +2106,6 @@ Return JSON only:
         );
       }
 
-      // NOTE: openTask validation removed - openTask is now generated in CORE content phase
-      // via Haiku, alongside reflection and primeQuestions
     } catch (error) {
       this.logger.error(
         `❌ Failed to parse Day ${dayNumber} DEFERRED:`,
@@ -2112,17 +2116,54 @@ Return JSON only:
       );
     }
 
+    // Merge lightweight content (Haiku) into deferred content
+    if (lightweightResponse) {
+      try {
+        const cleanedLightweight = lightweightResponse.content
+          .replace(/```json\n?/g, '')
+          .replace(/```\n?/g, '')
+          .trim();
+
+        const lightJsonMatch = cleanedLightweight.match(/\{[\s\S]*\}/);
+        if (lightJsonMatch) {
+          let lightweightContent: any;
+          try {
+            lightweightContent = JSON.parse(lightJsonMatch[0]);
+          } catch {
+            const fixedLight = lightJsonMatch[0].replace(/,(\s*[}\]])/g, '$1');
+            lightweightContent = JSON.parse(fixedLight);
+          }
+
+          if (lightweightContent.reflection) {
+            deferredContent.reflection = lightweightContent.reflection;
+            this.logger.log(`✅ Day ${dayNumber} reflection generated with Haiku (in DEFERRED)`);
+          }
+          if (lightweightContent.openTask) {
+            deferredContent.openTask = lightweightContent.openTask;
+            this.logger.log(`✅ Day ${dayNumber} openTask generated with Haiku (in DEFERRED)`);
+          }
+        }
+      } catch (parseError) {
+        this.logger.warn(
+          `⚠️ Day ${dayNumber} lightweight content parse failed in DEFERRED: ${parseError.message}`,
+        );
+      }
+    }
+
     // Cache the result
     await this.cacheService.setDayContent(cacheKey, deferredContent);
 
+    const totalTokens = aiResponse.tokensUsed + (lightweightResponse?.tokensUsed || 0);
+    const totalCost = (aiResponse.cost || 0) + (lightweightResponse?.cost || 0);
+
     this.logger.log(
-      `✅ Day ${dayNumber} DEFERRED generated. Tokens: ${aiResponse.tokensUsed}`,
+      `✅ Day ${dayNumber} DEFERRED generated. Tokens: ${totalTokens} (Sonnet: ${aiResponse.tokensUsed}, Haiku: ${lightweightResponse?.tokensUsed || 0})`,
     );
 
     return {
       deferredContent,
-      tokensUsed: aiResponse.tokensUsed,
-      cost: aiResponse.cost,
+      tokensUsed: totalTokens,
+      cost: totalCost,
       fromCache: false,
     };
   }
