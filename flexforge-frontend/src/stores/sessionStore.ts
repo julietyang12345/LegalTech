@@ -471,8 +471,8 @@ export const useSessionStore = create<SessionState>()(
       // The component handles both cases, so we shouldn't skip it
     }
 
-    // Skip openTask only if explicitly not present (core content loaded but no openTask)
-    // openTask now comes from CORE content (Haiku), not deferred
+    // Skip openTask only if explicitly not present (deferred content loaded but no openTask)
+    // openTask comes from DEFERRED content (Haiku)
     // Don't skip if undefined - content might still be loading
     if (nextStep === 'openTask') {
       const openTask = currentDay?.openTask;
@@ -1093,7 +1093,7 @@ export const useSessionStore = create<SessionState>()(
   },
 
   getStepProgress: () => {
-    const { completedSteps, currentDay, isCoreLoaded, isDeferredLoading } = get();
+    const { completedSteps, currentDay, isCoreLoaded, isDeferredLoaded, isDeferredLoading } = get();
     const stepOrder = getStepOrder();
     let total = stepOrder.length;
 
@@ -1110,9 +1110,9 @@ export const useSessionStore = create<SessionState>()(
     // So we don't subtract for it
 
     // openTask - subtract if explicitly not present (null) and not still loading
-    // openTask now comes from CORE content (Haiku), not deferred
+    // openTask comes from DEFERRED content (Haiku)
     const openTask = currentDay?.openTask;
-    if (isCoreLoaded && openTask === null) total -= 1;
+    if (isDeferredLoaded && openTask === null) total -= 1;
 
     return {
       current: completedSteps.length,

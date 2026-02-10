@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
 
@@ -10,10 +10,14 @@ interface StepCelebrationProps {
 }
 
 export function StepCelebration({ stepName, stepIndex, totalSteps, onComplete }: StepCelebrationProps) {
+  // Use ref to keep stable reference — prevents timer reset on parent re-renders
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
   useEffect(() => {
-    const timer = setTimeout(onComplete, 1500);
+    const timer = setTimeout(() => onCompleteRef.current(), 1500);
     return () => clearTimeout(timer);
-  }, [onComplete]);
+  }, []);
 
   return (
     <motion.div

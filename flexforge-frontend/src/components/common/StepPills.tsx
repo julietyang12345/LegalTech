@@ -10,6 +10,8 @@ interface StepPillsProps {
   className?: string;
   isProjectBased?: boolean;
   videoUnavailable?: boolean;
+  /** Only reveal steps up to current+1; remaining show as tiny dots */
+  progressive?: boolean;
 }
 
 const getStepLabels = (isProjectBased: boolean, videoUnavailable: boolean): Record<SessionStep, string> => ({
@@ -30,41 +32,58 @@ export function StepPills({
   className,
   isProjectBased = true,
   videoUnavailable = false,
+  progressive = false,
 }: StepPillsProps) {
   const stepLabels = getStepLabels(isProjectBased, videoUnavailable);
+
+  // In progressive mode, find the "reveal boundary": current step + 1
+  const currentIndex = steps.indexOf(currentStep);
+  const revealUpTo = currentIndex + 1; // index of the next step after current
+
   return (
     <div className={clsx('flex items-center gap-0.5 sm:gap-1 flex-shrink min-w-0', className)}>
       {steps.map((step, index) => {
         const isComplete = completedSteps.includes(step);
         const isCurrent = step === currentStep;
         const isUpcoming = !isComplete && !isCurrent;
+        // In progressive mode, steps beyond current+1 are "hidden" (shown as tiny dots)
+        const isHidden = progressive && isUpcoming && index > revealUpTo;
 
         return (
           <div key={step} className="flex items-center">
-            <button
-              type="button"
-              onClick={() => onStepClick?.(step)}
-              className={clsx(
-                'w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center',
-                'text-xs sm:text-sm font-medium transition-all duration-200 cursor-pointer hover:scale-110',
-                isComplete && 'bg-focus-500 text-white',
-                isCurrent && 'bg-brand-500 text-white ring-2 sm:ring-4 ring-brand-200',
-                isUpcoming && 'bg-gray-200 text-gray-500 hover:bg-gray-300',
-              )}
-              title={stepLabels[step]}
-            >
-              {isComplete ? (
-                <Check className="w-3 h-3 sm:w-4 sm:h-4" />
-              ) : (
-                <span className="text-[10px] sm:text-xs">{index + 1}</span>
-              )}
-            </button>
+            {isHidden ? (
+              // Tiny dot for unrevealed future steps
+              <div
+                className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-gray-200 transition-all duration-300"
+                title={undefined}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => onStepClick?.(step)}
+                className={clsx(
+                  'w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center',
+                  'text-xs sm:text-sm font-medium transition-all duration-200 cursor-pointer hover:scale-110',
+                  isComplete && 'bg-focus-500 text-white',
+                  isCurrent && 'bg-brand-500 text-white ring-2 sm:ring-4 ring-brand-200',
+                  isUpcoming && 'bg-gray-200 text-gray-500 hover:bg-gray-300',
+                )}
+                title={stepLabels[step]}
+              >
+                {isComplete ? (
+                  <Check className="w-3 h-3 sm:w-4 sm:h-4" />
+                ) : (
+                  <span className="text-[10px] sm:text-xs">{index + 1}</span>
+                )}
+              </button>
+            )}
 
-            {/* Connector line - shorter on mobile */}
+            {/* Connector line - shorter on mobile, thinner for hidden steps */}
             {index < steps.length - 1 && (
               <div
                 className={clsx(
-                  'w-2 sm:w-4 h-0.5 mx-0.5',
+                  'h-0.5 mx-0.5',
+                  isHidden ? 'w-1.5 sm:w-2' : 'w-2 sm:w-4',
                   isComplete ? 'bg-focus-500' : 'bg-gray-200'
                 )}
               />

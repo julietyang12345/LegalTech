@@ -164,6 +164,7 @@ function PresenceBar() {
                 onStepClick={(step) => setCurrentStep(step)}
                 isProjectBased={isProjectBased}
                 videoUnavailable={videoUnavailable}
+                progressive
               />
             </div>
           </div>

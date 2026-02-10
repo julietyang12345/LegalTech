@@ -923,26 +923,29 @@ Return JSON only:
     // Get strategy fields from skeleton
     const contentLayer = dayOverview.contentLayer || 'framework';
     const contentSource = dayOverview.contentSource || 'youtube';
-    let videoStrategy = dayOverview.videoStrategy || 'helpful';
+    // TODO: Temporarily skip video search for all courses 
+    const videoStrategy = 'skip';
 
-    // Enforce video strategy by skill type and content type (override AI decision)
-    const skillType = curriculum.metadata?.skillType;
+    //   let videoStrategy = dayOverview.videoStrategy || 'helpful';
 
-    // Determine if this is a conceptual/theory day (doesn't benefit from video)
-    const isConceptualDay =
-      contentLayer === 'concept' ||
-      contentLayer === 'theory' ||
-      !curriculum.metadata.isProjectBased;
+    // // Enforce video strategy by skill type and content type (override AI decision)
+    // const skillType = curriculum.metadata?.skillType;
 
-    if (skillType === 'KNOWLEDGE' || skillType === 'LANGUAGE') {
-      videoStrategy = 'skip'; // Text + interaction is always better for concepts
-    } else if (isConceptualDay && !dayOverview.requiresDemo) {
-      videoStrategy = 'skip'; // Conceptual content doesn't need video
-    } else if (skillType === 'PHYSICAL' || dayOverview.requiresDemo) {
-      videoStrategy = 'recommended'; // Form demonstration requires visual
-    } else {
-      videoStrategy = dayOverview.videoStrategy || 'helpful';
-    }
+    // // Determine if this is a conceptual/theory day (doesn't benefit from video)
+    // const isConceptualDay =
+    //   contentLayer === 'concept' ||
+    //   contentLayer === 'theory' ||
+    //   !curriculum.metadata.isProjectBased;
+
+    // if (skillType === 'KNOWLEDGE' || skillType === 'LANGUAGE') {
+    //   videoStrategy = 'skip'; // Text + interaction is always better for concepts
+    // } else if (isConceptualDay && !dayOverview.requiresDemo) {
+    //   videoStrategy = 'skip'; // Conceptual content doesn't need video
+    // } else if (skillType === 'PHYSICAL' || dayOverview.requiresDemo) {
+    //   videoStrategy = 'recommended'; // Form demonstration requires visual
+    // } else {
+    //   videoStrategy = dayOverview.videoStrategy || 'helpful';
+    // }
 
     // Build search concept for university/docs searches
     const searchConcept = (dayOverview.title || '')
@@ -1512,24 +1515,25 @@ Return JSON only:
 
     const contentLayer = dayOverview.contentLayer || 'framework';
     const contentSource = dayOverview.contentSource || 'youtube';
-    let videoStrategy = dayOverview.videoStrategy || 'helpful';
-    const skillType = curriculum.metadata?.skillType;
+    // TODO: Temporarily skip video search for all courses 
+    const videoStrategy = 'skip';
+    //   let videoStrategy = dayOverview.videoStrategy || 'helpful';
+    // const skillType = curriculum.metadata?.skillType;
 
-    const isConceptualDay =
-      contentLayer === 'concept' ||
-      contentLayer === 'theory' ||
-      !curriculum.metadata.isProjectBased;
+    // const isConceptualDay =
+    //   contentLayer === 'concept' ||
+    //   contentLayer === 'theory' ||
+    //   !curriculum.metadata.isProjectBased;
 
-    if (skillType === 'KNOWLEDGE' || skillType === 'LANGUAGE') {
-      videoStrategy = 'skip';
-    } else if (isConceptualDay && !dayOverview.requiresDemo) {
-      videoStrategy = 'skip';
-    } else if (skillType === 'PHYSICAL' || dayOverview.requiresDemo) {
-      videoStrategy = 'recommended';
-    } else {
-      videoStrategy = dayOverview.videoStrategy || 'helpful';
-    }
-
+    // if (skillType === 'KNOWLEDGE' || skillType === 'LANGUAGE') {
+    //   videoStrategy = 'skip';
+    // } else if (isConceptualDay && !dayOverview.requiresDemo) {
+    //   videoStrategy = 'skip';
+    // } else if (skillType === 'PHYSICAL' || dayOverview.requiresDemo) {
+    //   videoStrategy = 'recommended';
+    // } else {
+    //   videoStrategy = dayOverview.videoStrategy || 'helpful';
+    // }
     const params = {
       skillName: curriculum.metadata.skillName,
       dayNumber,

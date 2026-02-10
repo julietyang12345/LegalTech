@@ -33,10 +33,18 @@ export function OpenTaskStep({ day, session, onComplete }: OpenTaskStepProps) {
   const [showTips, setShowTips] = useState(false);
   const [showReflection, setShowReflection] = useState(false);
   const [reflectionAnswers, setReflectionAnswers] = useState<Record<number, string>>({});
-  const { isCoreLoaded } = useSessionStore();
+  const { isDeferredLoaded } = useSessionStore();
 
-  // Show loading UI while core content is being loaded (openTask comes from core via Haiku)
-  if (!openTask && !isCoreLoaded) {
+  // Auto-skip if no open task after deferred content is loaded
+  // MUST be before any conditional returns to satisfy React hooks rules
+  useEffect(() => {
+    if (!openTask && isDeferredLoaded) {
+      onComplete();
+    }
+  }, [openTask, isDeferredLoaded, onComplete]);
+
+  // Show loading UI while deferred content is being loaded (openTask comes from deferred via Haiku)
+  if (!openTask && !isDeferredLoaded) {
     return (
       <div className="max-w-lg mx-auto">
         <ExerciseLoadingScreen
@@ -47,13 +55,6 @@ export function OpenTaskStep({ day, session, onComplete }: OpenTaskStepProps) {
       </div>
     );
   }
-
-  // Auto-skip if no open task - hide this section entirely
-  useEffect(() => {
-    if (!openTask && isCoreLoaded) {
-      onComplete();
-    }
-  }, [openTask, isCoreLoaded, onComplete]);
 
   if (!openTask) {
     return null;
