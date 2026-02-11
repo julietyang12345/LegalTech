@@ -57,10 +57,10 @@ export function RegisterPage() {
   };
 
   const benefits = [
-    'Personalized curriculum tailored to your goals',
-    'Structured daily sessions with videos & exercises',
-    'Build real projects as you learn',
-    'On-demand tutor when you get stuck',
+    'AI builds your personalized 7-day curriculum',
+    'Daily sessions with videos, concept cards & quizzes',
+    'Build a real project as you learn',
+    'On-demand AI tutor that knows your progress',
   ];
 
   return (
@@ -150,8 +150,8 @@ export function RegisterPage() {
             ) : (
               <>
             <div className="text-center mb-8">
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">Create your account</h1>
-              <p className="text-gray-600">Start your learning journey today</p>
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">Sign up to start learning</h1>
+              <p className="text-gray-600">Tell us your goal and we'll build your personalized curriculum</p>
             </div>
 
             {/* Benefits */}

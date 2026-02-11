@@ -14,3 +14,5 @@ export { ResetPasswordPage } from './ResetPasswordPage';
 export { VerifyEmailPage } from './VerifyEmailPage';
 export { TermsPage } from './TermsPage';
 export { PrivacyPage } from './PrivacyPage';
+export { DemoSessionPage } from './DemoSessionPage';
+export { ExplorePage } from './ExplorePage';

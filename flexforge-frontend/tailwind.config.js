@@ -87,6 +87,11 @@ export default {
         'bounce-soft': 'bounceSoft 1s ease-in-out infinite',
         'progress-fill': 'progressFill 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
         'typing-dot': 'typingDot 1.4s ease-in-out infinite',
+        'shimmer': 'shimmer 3s ease-in-out infinite',
+        'float-slow': 'floatSlow 6s ease-in-out infinite',
+        'float-medium': 'floatMedium 5s ease-in-out infinite',
+        'float-fast': 'floatFast 4s ease-in-out infinite',
+        'draw-line': 'drawLine 1.5s ease-out forwards',
       },
       keyframes: {
         fadeIn: {
@@ -121,6 +126,28 @@ export default {
         typingDot: {
           '0%, 60%, 100%': { transform: 'translateY(0)' },
           '30%': { transform: 'translateY(-4px)' },
+        },
+        shimmer: {
+          '0%': { backgroundPosition: '-200% center' },
+          '100%': { backgroundPosition: '200% center' },
+        },
+        floatSlow: {
+          '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+          '33%': { transform: 'translate(30px, -20px) scale(1.05)' },
+          '66%': { transform: 'translate(-20px, 10px) scale(0.95)' },
+        },
+        floatMedium: {
+          '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+          '50%': { transform: 'translate(-25px, -30px) scale(1.1)' },
+        },
+        floatFast: {
+          '0%, 100%': { transform: 'translate(0, 0)' },
+          '25%': { transform: 'translate(20px, -15px)' },
+          '75%': { transform: 'translate(-15px, 20px)' },
+        },
+        drawLine: {
+          '0%': { height: '0%' },
+          '100%': { height: '100%' },
         },
       },
       transitionTimingFunction: {
