@@ -4,12 +4,14 @@ import type { User } from '@/types';
 export interface LoginDto {
   email: string;
   password: string;
+  turnstileToken?: string;
 }
 
 export interface RegisterDto {
   email: string;
   password: string;
   name?: string;
+  turnstileToken?: string;
 }
 
 export interface AuthResponse {
@@ -21,6 +23,7 @@ export interface AuthResponse {
 
 export interface ForgotPasswordDto {
   email: string;
+  turnstileToken?: string;
 }
 
 export interface ResetPasswordDto {
@@ -38,7 +41,11 @@ export interface MessageResponse {
 
 export const authService = {
   async login(dto: LoginDto): Promise<AuthResponse> {
-    const { data } = await api.post<AuthResponse>('/auth/login', dto);
+    const headers: Record<string, string> = {};
+    if (dto.turnstileToken) {
+      headers['x-turnstile-required'] = '1';
+    }
+    const { data } = await api.post<AuthResponse>('/auth/login', dto, { headers });
     return data;
   },
 

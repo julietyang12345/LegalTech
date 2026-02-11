@@ -8,6 +8,7 @@ import {
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
+import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { IsString } from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -27,7 +28,7 @@ class ClassifySkillDto {
 }
 
 @Controller('onboarding')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ThrottlerGuard)
 export class OnboardingController {
   constructor(
     private readonly onboardingService: OnboardingService,
@@ -41,6 +42,7 @@ export class OnboardingController {
    */
   @Post('generate-directions')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async generateDirections(
     @Body() dto: GenerateDirectionsDto,
     @CurrentUser() user: User,
@@ -127,6 +129,7 @@ export class OnboardingController {
    */
   @Post('classify-skill')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   async classifySkill(
     @Body() dto: ClassifySkillDto,
   ): Promise<{ supportsProjectBased: boolean; skillType: string }> {

@@ -13,6 +13,7 @@ import {
   // Sse,  // SSE STREAMING DISABLED
   // MessageEvent,  // SSE STREAMING DISABLED
 } from '@nestjs/common';
+import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 // import { Observable } from 'rxjs';  // SSE STREAMING DISABLED
 import { SessionService } from './session.service';
 import { CreateSessionDto } from './dto/create-session.dto';
@@ -20,7 +21,7 @@ import { UpdateSessionDto } from './dto/update-session.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('sessions')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ThrottlerGuard)
 export class SessionController {
   constructor(private sessionService: SessionService) {}
 
@@ -175,6 +176,7 @@ export class SessionController {
    * Returns: prePrompt, video, foundationCards, task1
    */
   @Post(':id/days/:dayNumber/start-core')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async startDayCore(
     @Request() req,
     @Param('id') id: string,
@@ -244,6 +246,7 @@ export class SessionController {
    * @param body.forceRegenerate - If true, bypass cache and regenerate content
    */
   @Post(':id/days/:dayNumber/load-deferred')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async loadDayDeferred(
     @Request() req,
     @Param('id') id: string,
@@ -360,6 +363,7 @@ export class SessionController {
    * Generates on-demand and caches for future use
    */
   @Post(':id/days/:dayNumber/task-format')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   async getAlternativeTaskFormat(
     @Request() req,
     @Param('id') id: string,
@@ -420,6 +424,7 @@ export class SessionController {
    * Generate a quick concept boost for a confused student
    */
   @Post(':id/days/:dayNumber/concept-boost')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   async generateConceptBoost(
     @Request() req,
     @Param('id') id: string,

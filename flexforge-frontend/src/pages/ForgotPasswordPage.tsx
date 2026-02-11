@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, AlertCircle, ArrowLeft, CheckCircle2 } from 'lucide-react';
-import { Button, Card } from '@/components/common';
+import { Button, Card, TurnstileWidget } from '@/components/common';
 import { authService } from '@/services/authService';
 
 export function ForgotPasswordPage() {
@@ -10,6 +10,7 @@ export function ForgotPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,7 +18,7 @@ export function ForgotPasswordPage() {
     setIsLoading(true);
 
     try {
-      await authService.forgotPassword({ email });
+      await authService.forgotPassword({ email, turnstileToken });
       setIsSuccess(true);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to send reset email';
@@ -121,6 +122,8 @@ export function ForgotPasswordPage() {
                       />
                     </div>
                   </div>
+
+                  <TurnstileWidget onToken={setTurnstileToken} />
 
                   <Button
                     type="submit"

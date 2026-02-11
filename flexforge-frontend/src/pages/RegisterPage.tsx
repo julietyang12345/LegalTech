@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { Mail, Lock, User, AlertCircle, ArrowLeft, CheckCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { authService } from '@/services/authService';
-import { Button, Card } from '@/components/common';
+import { Button, Card, TurnstileWidget } from '@/components/common';
 
 export function RegisterPage() {
   const navigate = useNavigate();
@@ -16,13 +16,14 @@ export function RegisterPage() {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
 
     try {
-      const result = await register(email, password, name);
+      const result = await register(email, password, name, turnstileToken);
       // If verification is not required, navigate to confirm
       if (!result.requiresVerification) {
         navigate('/confirm', { replace: true });
@@ -258,6 +259,8 @@ export function RegisterPage() {
                   </Link>
                 </label>
               </div>
+
+              <TurnstileWidget onToken={setTurnstileToken} />
 
               <Button
                 type="submit"

@@ -15,3 +15,4 @@ export { MultipleChoiceQuestion } from './MultipleChoiceQuestion';
 export type { MultipleChoiceQuestionProps } from './MultipleChoiceQuestion';
 export { AnimatedReveal, RevealableContent, QuickPick, SentenceComplete } from './InteractiveInputs';
 export type { QuickPickOption } from './InteractiveInputs';
+export { TurnstileWidget } from './TurnstileWidget';

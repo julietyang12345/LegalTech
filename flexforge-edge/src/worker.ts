@@ -4,6 +4,7 @@ import { createMiddleware } from 'hono/factory';
 import { sendEmail } from './email';
 import { passwordResetEmail, emailVerificationEmail } from './email-templates';
 import { checkRateLimit } from './rate-limit';
+import { verifyTurnstile } from './turnstile';
 import { createSignedHeaders } from './signing';
 import {
   generateSecureToken,
@@ -35,6 +36,8 @@ type Bindings = {
   // Cloudflare Access Service Token for backend authentication
   CF_ACCESS_CLIENT_ID: string;
   CF_ACCESS_CLIENT_SECRET: string;
+  // Cloudflare Turnstile bot protection
+  TURNSTILE_SECRET_KEY: string;
 };
 
 // JWT payload type matching backend
@@ -135,7 +138,7 @@ app.use(
     ],
     credentials: true,
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
+    allowHeaders: ['Content-Type', 'Authorization', 'x-turnstile-required'],
     exposeHeaders: ['Content-Length', 'X-Request-Id'],
     maxAge: 86400,
   })
@@ -248,8 +251,32 @@ app.get('/health', (c) => {
 app.post('/api/v1/auth/register', async (c) => {
   try {
     // Clone the request body before proxying
-    const body = await c.req.json<{ email: string; password: string; name?: string }>();
+    const body = await c.req.json<{ email: string; password: string; name?: string; turnstileToken?: string }>();
     const email = body.email?.toLowerCase()?.trim();
+    const clientIp = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
+
+    // Turnstile verification (required for registration)
+    if (c.env.TURNSTILE_SECRET_KEY) {
+      if (!body.turnstileToken) {
+        return c.json({ message: 'Verification required' }, 400);
+      }
+      const turnstileValid = await verifyTurnstile(body.turnstileToken, clientIp, c.env.TURNSTILE_SECRET_KEY);
+      if (!turnstileValid) {
+        return c.json({ message: 'Verification failed' }, 400);
+      }
+    }
+
+    // Rate limit signup
+    if (email) {
+      const rateLimit = await checkRateLimit(email, clientIp, c.env.RATE_LIMIT_COUNTERS, 'signup', {
+        perEmail: { limit: 3, windowSeconds: 3600 },
+        perIp: { limit: 5, windowSeconds: 3600 },
+        global: { limit: 50, windowSeconds: 60 },
+      });
+      if (!rateLimit.allowed) {
+        return c.json({ message: 'Too many signup attempts. Please try again later.' }, 429);
+      }
+    }
 
     // Proxy to backend
     const backendResponse = await fetch(`${c.env.BACKEND_URL}/api/v1/auth/register`, {
@@ -292,7 +319,6 @@ app.post('/api/v1/auth/register', async (c) => {
 
     // Send verification email if we have a user ID
     if (responseData.user?.id && email) {
-      const clientIp = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
       const token = generateSecureToken();
       const ipHash = await hashIp(clientIp);
 
@@ -481,6 +507,88 @@ app.delete('/api/v1/cache/video/:videoId', async (c) => {
 });
 
 // ============================================================================
+// LOGIN ENDPOINT (with Turnstile + rate limiting)
+// ============================================================================
+
+/**
+ * POST /api/v1/auth/login
+ * Proxy login with optional Turnstile verification and rate limiting
+ */
+app.post('/api/v1/auth/login', async (c) => {
+  try {
+    const body = await c.req.json<{ email: string; password: string; turnstileToken?: string }>();
+    const email = body.email?.toLowerCase()?.trim();
+    const clientIp = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
+
+    // Rate limit login attempts
+    if (email) {
+      const rateLimit = await checkRateLimit(email, clientIp, c.env.RATE_LIMIT_COUNTERS, 'login', {
+        perEmail: { limit: 10, windowSeconds: 3600 },
+        perIp: { limit: 20, windowSeconds: 3600 },
+        global: { limit: 200, windowSeconds: 60 },
+      });
+      if (!rateLimit.allowed) {
+        return c.json({ message: 'Too many login attempts. Please try again later.' }, 429);
+      }
+    }
+
+    // Turnstile verification (only when frontend sends x-turnstile-required header, i.e. after 3 failures)
+    const turnstileRequired = c.req.header('x-turnstile-required');
+    if (turnstileRequired && c.env.TURNSTILE_SECRET_KEY) {
+      if (!body.turnstileToken) {
+        return c.json({ message: 'Verification required' }, 400);
+      }
+      const turnstileValid = await verifyTurnstile(body.turnstileToken, clientIp, c.env.TURNSTILE_SECRET_KEY);
+      if (!turnstileValid) {
+        return c.json({ message: 'Verification failed' }, 400);
+      }
+    }
+
+    // Proxy to backend
+    const backendResponse = await fetch(`${c.env.BACKEND_URL}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: createBackendHeaders(c),
+      body: JSON.stringify({ email: body.email, password: body.password }),
+    });
+
+    // Forward response headers including Set-Cookie
+    const responseHeaders = new Headers();
+    backendResponse.headers.forEach((value, key) => {
+      if (key.toLowerCase() !== 'set-cookie') {
+        responseHeaders.set(key, value);
+      }
+    });
+
+    const anyHeaders = backendResponse.headers as any;
+    const setCookies: string[] | undefined = anyHeaders.getSetCookie?.();
+    if (setCookies && setCookies.length > 0) {
+      for (const sc of setCookies) {
+        responseHeaders.append('Set-Cookie', sc);
+      }
+    } else {
+      const sc = backendResponse.headers.get('set-cookie');
+      if (sc) responseHeaders.append('Set-Cookie', sc);
+    }
+
+    const responseData = await backendResponse.text();
+    return new Response(responseData, {
+      status: backendResponse.status,
+      headers: responseHeaders,
+    });
+  } catch (error) {
+    console.error('Login intercept error:', error);
+    const url = new URL(c.req.url);
+    const backendUrl = `${c.env.BACKEND_URL}${url.pathname}${url.search}`;
+    const res = await fetch(backendUrl, {
+      method: 'POST',
+      headers: createBackendHeaders(c),
+      body: c.req.raw.body,
+    });
+    return new Response(res.body, { status: res.status, headers: res.headers });
+  }
+});
+
+// ============================================================================
 // PASSWORD RESET & EMAIL VERIFICATION ENDPOINTS
 // ============================================================================
 
@@ -490,7 +598,7 @@ app.delete('/api/v1/cache/video/:videoId', async (c) => {
  */
 app.post('/api/v1/auth/forgot-password', async (c) => {
   try {
-    const body = await c.req.json<{ email: string }>();
+    const body = await c.req.json<{ email: string; turnstileToken?: string }>();
     const email = body.email?.toLowerCase()?.trim();
 
     if (!email) {
@@ -499,6 +607,17 @@ app.post('/api/v1/auth/forgot-password', async (c) => {
 
     // Get client IP for rate limiting
     const clientIp = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
+
+    // Turnstile verification (required for forgot-password)
+    if (c.env.TURNSTILE_SECRET_KEY) {
+      if (!body.turnstileToken) {
+        return c.json({ message: 'Verification required' }, 400);
+      }
+      const turnstileValid = await verifyTurnstile(body.turnstileToken, clientIp, c.env.TURNSTILE_SECRET_KEY);
+      if (!turnstileValid) {
+        return c.json({ message: 'Verification failed' }, 400);
+      }
+    }
 
     // Check rate limits
     const rateLimit = await checkRateLimit(

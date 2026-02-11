@@ -7,6 +7,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
+import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { QuotaTier, UserRole } from '../../database/entities/user.entity';
 import { CurriculumService } from './curriculum.service';
 import { CurriculumCacheService } from './services/curriculum-cache.service';
@@ -31,7 +32,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { User } from '../../database/entities/user.entity';
 
 @Controller('curriculum')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ThrottlerGuard)
 export class CurriculumController {
   constructor(
     private curriculumService: CurriculumService,
@@ -71,6 +72,7 @@ export class CurriculumController {
    * Get AI estimation for how many days a skill will take to learn
    */
   @Post('estimate-days')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   async estimateDays(
     @Body() body: { skillName: string },
     @CurrentUser() user: User,
@@ -119,6 +121,7 @@ export class CurriculumController {
    * Daily limits: FREE=5, PRO=10, PREMIUM/ADMIN=unlimited
    */
   @Post('ai-tutor')
+  @Throttle({ default: { limit: 15, ttl: 60000 } })
   async askAiTutor(
     @Body()
     body: {
@@ -182,6 +185,7 @@ export class CurriculumController {
    * Returns cached content if available, otherwise generates new
    */
   @Post('generate-cached')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async generateWithCache(
     @Body() dto: GenerateCurriculumWithCacheDto,
     @CurrentUser() user: User,
@@ -262,6 +266,7 @@ export class CurriculumController {
    * User clicked "Generate New" - records negative signal and generates new
    */
   @Post('regenerate')
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   async regenerate(
     @Body() dto: RegenerateCurriculumDto,
     @CurrentUser() user: User,

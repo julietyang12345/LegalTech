@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { Mail, Lock, AlertCircle, ArrowLeft, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { authService } from '@/services/authService';
-import { Button, Card } from '@/components/common';
+import { Button, Card, TurnstileWidget } from '@/components/common';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -15,11 +15,15 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [isResending, setIsResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [turnstileToken, setTurnstileToken] = useState('');
 
   const from = (location.state as any)?.from?.pathname || '/today';
 
   // Check if error is related to email verification
   const isVerificationError = error?.toLowerCase().includes('verify');
+
+  const showTurnstile = failedAttempts >= 3;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,10 +31,11 @@ export function LoginPage() {
     setResendSuccess(false);
 
     try {
-      await login(email, password);
+      await login(email, password, showTurnstile ? turnstileToken : undefined);
+      setFailedAttempts(0);
       navigate(from, { replace: true });
     } catch (_err) {
-      // Error is handled by store
+      setFailedAttempts((prev) => prev + 1);
     }
   };
 
@@ -160,6 +165,8 @@ export function LoginPage() {
                   />
                 </div>
               </div>
+
+              {showTurnstile && <TurnstileWidget onToken={setTurnstileToken} />}
 
               <Button
                 type="submit"

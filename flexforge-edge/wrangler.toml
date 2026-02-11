@@ -52,6 +52,7 @@ id = "9c1b2e317e904d2195d4b2b49327ebe3"
 # - CF_ACCESS_CLIENT_SECRET: Cloudflare Access Service Token Client Secret
 # - EDGE_SIGNING_SECRET: Shared secret for HMAC signing edge->backend requests (32+ chars)
 # - RESEND_API_KEY: Resend API key for sending emails (get from https://resend.com)
+# - TURNSTILE_SECRET_KEY: Cloudflare Turnstile secret key (from dashboard.cloudflare.com → Turnstile)
 
 # Development overrides
 [env.development]

@@ -13,8 +13,8 @@ interface AuthState {
   pendingVerificationEmail: string | null; // Email that needs verification
 
   // Actions
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name?: string) => Promise<{ requiresVerification: boolean }>;
+  login: (email: string, password: string, turnstileToken?: string) => Promise<void>;
+  register: (email: string, password: string, name?: string, turnstileToken?: string) => Promise<{ requiresVerification: boolean }>;
   logout: () => Promise<void>;
   fetchProfile: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -43,10 +43,10 @@ export const useAuthStore = create<AuthState>()(
       requiresVerification: false,
       pendingVerificationEmail: null,
 
-      login: async (email: string, password: string) => {
+      login: async (email: string, password: string, turnstileToken?: string) => {
         set({ isLoading: true, error: null });
         try {
-          const response = await authService.login({ email, password });
+          const response = await authService.login({ email, password, turnstileToken });
           // Token is now stored in HTTP-only cookie by the server
           set({
             user: response.user,
@@ -64,10 +64,10 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      register: async (email: string, password: string, name?: string) => {
+      register: async (email: string, password: string, name?: string, turnstileToken?: string) => {
         set({ isLoading: true, error: null });
         try {
-          const response = await authService.register({ email, password, name });
+          const response = await authService.register({ email, password, name, turnstileToken });
 
           // Check if email verification is required
           if (response.requiresVerification) {
