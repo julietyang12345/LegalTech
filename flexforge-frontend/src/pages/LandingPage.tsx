@@ -4,10 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Play,
   CheckCircle,
-  Zap,
-  Brain,
   Trophy,
-  Clock,
   ChevronRight,
   ArrowRight,
   Menu,
@@ -304,80 +301,384 @@ function HeroSection() {
   );
 }
 
-// Features section
+// Animated chat simulation
+function ChatSimulation() {
+  const messages = [
+    { role: 'user' as const, text: 'Teach me systems thinking' },
+    { role: 'ai' as const, text: 'Systems thinking is a holistic approach to analysis that focuses on how components interrelate and work together over time within larger systems...' },
+    { role: 'user' as const, text: 'Can you give me an example?' },
+    { role: 'ai' as const, text: 'Sure! Consider a hospital. If you add more beds without more nurses, wait times may actually increase because...' },
+  ];
+
+  return (
+    <div className="space-y-3">
+      {messages.map((msg, i) => (
+        <motion.div
+          key={i}
+          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.3 + i * 0.25, duration: 0.3 }}
+          className={clsx('flex', msg.role === 'user' ? 'justify-end' : 'justify-start')}
+        >
+          <div className={clsx(
+            'rounded-2xl px-4 py-2.5 max-w-[85%] text-sm',
+            msg.role === 'user'
+              ? 'bg-gray-200 text-gray-800 rounded-br-md'
+              : 'bg-gray-100 text-gray-600 rounded-bl-md'
+          )}>
+            {msg.role === 'ai' && i === messages.length - 1 ? (
+              <span>
+                {msg.text.slice(0, 60)}
+                <motion.span
+                  animate={{ opacity: [0.3, 1, 0.3] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                  className="text-gray-400"
+                >
+                  ...
+                </motion.span>
+              </span>
+            ) : msg.role === 'ai' ? (
+              <span>{msg.text.slice(0, 80)}...</span>
+            ) : (
+              msg.text
+            )}
+          </div>
+        </motion.div>
+      ))}
+      <motion.p
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ once: true }}
+        transition={{ delay: 1.5 }}
+        className="text-xs text-gray-400 text-center pt-2 italic"
+      >
+        You read it, you nod, you forget it tomorrow.
+      </motion.p>
+    </div>
+  );
+}
+
+function CurriculumSimulation() {
+  const items = [
+    { icon: '🎯', label: 'Day 1: What is a system?', type: 'Concept cards + quiz' },
+    { icon: '🔗', label: 'Day 2: Feedback loops', type: 'Video + exercise' },
+    { icon: '⚖️', label: 'Day 3: Trade-off mapping', type: 'Build your first map' },
+    { icon: '🧪', label: 'Day 4: Apply to a real case', type: 'Mini-project' },
+  ];
+
+  return (
+    <div className="space-y-2">
+      {items.map((item, i) => (
+        <motion.div
+          key={i}
+          initial={{ opacity: 0, x: -20 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.4 + i * 0.2, duration: 0.4 }}
+          className="group/item"
+        >
+          <motion.div
+            whileHover={{ x: 4, transition: { duration: 0.15 } }}
+            className="flex items-center gap-3 bg-white rounded-xl px-4 py-3 border border-gray-100 shadow-sm"
+          >
+            <span className="text-lg">{item.icon}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900 truncate">{item.label}</p>
+              <p className="text-xs text-gray-400">{item.type}</p>
+            </div>
+            {i === 0 && (
+              <motion.div
+                initial={{ scale: 0 }}
+                whileInView={{ scale: 1 }}
+                viewport={{ once: true }}
+                transition={{ delay: 1.2, type: 'spring', stiffness: 300 }}
+                className="w-5 h-5 rounded-full bg-focus-500 flex items-center justify-center flex-shrink-0"
+              >
+                <CheckCircle className="w-3.5 h-3.5 text-white" />
+              </motion.div>
+            )}
+          </motion.div>
+        </motion.div>
+      ))}
+      <motion.div
+        initial={{ opacity: 0, y: 5 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ delay: 1.4 }}
+        className="flex items-center gap-2 pt-2 px-1"
+      >
+        <motion.div
+          animate={{ scale: [1, 1.2, 1] }}
+          transition={{ duration: 2, repeat: Infinity }}
+          className="w-2 h-2 rounded-full bg-focus-400"
+        />
+        <span className="text-xs font-medium text-focus-600">
+          You practice, you apply, you actually remember.
+        </span>
+      </motion.div>
+    </div>
+  );
+}
+
+// Features section — AI vs FlexForge comparison
 function FeaturesSection() {
-  const features = [
-    {
-      icon: Brain,
-      title: 'Any Topic, Any Depth',
-      description: 'From niche technical skills to soft skills to things you can\'t find on Udemy — describe it and get a real curriculum, not a generic overview.',
-      color: 'from-brand-500 to-brand-600',
-    },
-    {
-      icon: Clock,
-      title: 'Structured, Not Scattered',
-      description: 'No more bouncing between random tutorials. Each day builds on the last with concept cards, exercises, and quizzes in the right order.',
-      color: 'from-focus-500 to-emerald-500',
-    },
-    {
-      icon: Trophy,
-      title: 'Knowledge Becomes Skill',
-      description: 'Daily micro-projects force you to apply what you learned. By the end you\'ve built something real, not just watched someone else do it.',
-      color: 'from-purple-500 to-pink-500',
-    },
-    {
-      icon: Zap,
-      title: 'Ask When You\'re Stuck',
-      description: 'An AI tutor that knows your curriculum, your progress, and where you got confused. Ask questions in context, not from scratch.',
-      color: 'from-alert-500 to-orange-500',
-    },
+  const comparison = [
+    { ai: 'Gives you a wall of text', ff: 'Breaks it into daily bite-sized sessions' },
+    { ai: 'Answers what you ask', ff: 'Teaches what you don\'t know to ask' },
+    { ai: 'No structure or progression', ff: 'Day-by-day curriculum that builds on itself' },
+    { ai: 'You read and forget', ff: 'Quizzes, exercises, and projects that make it stick' },
+    { ai: 'Starts from scratch every time', ff: 'Remembers your progress and adapts' },
   ];
 
   return (
     <section id="features" className="py-20 px-4 bg-gray-50">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-5xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="text-center mb-16"
+          className="text-center mb-6"
         >
           <h2 className="text-3xl font-bold text-gray-900 mb-4">
-            Built for the things you can't Google
+            AI gives you knowledge.{' '}
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-500 to-focus-500">
+              We help you build skills.
+            </span>
           </h2>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Whether it's a career pivot, a niche technical skill, or a problem with no textbook answer.
+            Chatbots answer questions. FlexForge turns those answers into something you can actually do.
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {features.map((feature, index) => (
-            <motion.div
-              key={index}
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-50px' }}
-              transition={{ delay: index * 0.15, duration: 0.5 }}
-              whileHover={{ y: -4, transition: { duration: 0.2 } }}
-              className="bg-white rounded-2xl p-8 shadow-lg border border-gray-100 group cursor-default"
-            >
+        {/* Side-by-side visual */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+          {/* AI chat side */}
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+            className="rounded-2xl border border-gray-200 bg-white overflow-hidden"
+          >
+            <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center">
+                <MessageSquare className="w-3.5 h-3.5 text-gray-500" />
+              </div>
+              <span className="text-sm font-medium text-gray-500">Conversational AI</span>
+            </div>
+            <div className="p-5">
+              <ChatSimulation />
+            </div>
+          </motion.div>
+
+          {/* FlexForge side */}
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5, delay: 0.15 }}
+            className="rounded-2xl border-2 border-brand-200 bg-brand-50/30 overflow-hidden"
+          >
+            <div className="px-5 py-3 border-b border-brand-100 flex items-center gap-2">
+              <span className="text-lg">🔥</span>
+              <span className="text-sm font-bold text-brand-700">FlexForge</span>
+            </div>
+            <div className="p-5">
+              <CurriculumSimulation />
+            </div>
+          </motion.div>
+        </div>
+
+        {/* Comparison rows */}
+        <div className="max-w-3xl mx-auto">
+          <div className="grid grid-cols-2 gap-4 mb-3 px-2">
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Conversational AI</p>
+            <p className="text-xs font-medium text-brand-500 uppercase tracking-wider">FlexForge</p>
+          </div>
+          <div className="space-y-2">
+            {comparison.map((row, i) => (
               <motion.div
-                className={clsx(
-                  'w-14 h-14 rounded-xl bg-gradient-to-br flex items-center justify-center mb-6',
-                  feature.color
-                )}
-                whileHover={{ rotate: [0, -5, 5, 0], transition: { duration: 0.5 } }}
+                key={i}
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1, duration: 0.3 }}
+                className="grid grid-cols-2 gap-4"
               >
-                <feature.icon className="w-7 h-7 text-white" />
+                <div className="flex items-start gap-2 bg-white rounded-lg px-3 py-2.5 border border-gray-100">
+                  <X className="w-4 h-4 text-gray-300 flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-gray-500">{row.ai}</span>
+                </div>
+                <div className="flex items-start gap-2 bg-focus-50 rounded-lg px-3 py-2.5 border border-focus-100">
+                  <CheckCircle className="w-4 h-4 text-focus-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-gray-700">{row.ff}</span>
+                </div>
               </motion.div>
-              <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-brand-600 transition-colors">{feature.title}</h3>
-              <p className="text-gray-600">{feature.description}</p>
-            </motion.div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </section>
+  );
+}
+
+// Step illustrations
+function DescribeIllustration() {
+  const texts = ['Learn systems thinking for PMs', 'Debug production issues faster', 'Teach my kid to read'];
+  const [idx, setIdx] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setIdx((i) => (i + 1) % texts.length), 2500);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+      <div className="flex items-center gap-2 text-xs text-gray-400 font-medium">
+        <div className="w-2 h-2 rounded-full bg-focus-400" />
+        Your goal
+      </div>
+      <div className="relative h-6 overflow-hidden">
+        <AnimatePresence mode="wait">
+          <motion.p
+            key={idx}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.3 }}
+            className="text-sm font-medium text-gray-800 absolute inset-0"
+          >
+            {texts[idx]}
+            <motion.span
+              animate={{ opacity: [1, 0] }}
+              transition={{ duration: 0.6, repeat: Infinity }}
+              className="text-brand-500"
+            >
+              |
+            </motion.span>
+          </motion.p>
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+function LearnIllustration() {
+  return (
+    <div className="space-y-2">
+      {['Concept Cards', 'Video Lesson', 'Quiz'].map((label, i) => (
+        <motion.div
+          key={label}
+          initial={{ width: 0, opacity: 0 }}
+          whileInView={{ width: '100%', opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.3 + i * 0.2, duration: 0.6, ease: 'easeOut' }}
+          className="overflow-hidden"
+        >
+          <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
+            <motion.div
+              initial={{ scale: 0 }}
+              whileInView={{ scale: 1 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.6 + i * 0.2, type: 'spring', stiffness: 300 }}
+              className={clsx(
+                'w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0',
+                i < 2 ? 'bg-focus-500' : 'bg-gray-200'
+              )}
+            >
+              {i < 2 && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+            </motion.div>
+            <span className={clsx('text-xs font-medium', i < 2 ? 'text-gray-700' : 'text-gray-400')}>{label}</span>
+            {i === 2 && (
+              <motion.div
+                animate={{ x: [0, 3, 0] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+                className="ml-auto text-xs text-brand-500 font-medium"
+              >
+                In progress
+              </motion.div>
+            )}
+          </div>
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
+function BuildIllustration() {
+  const blocks = [
+    { w: 'w-full', color: 'bg-brand-200', label: 'Day 1' },
+    { w: 'w-5/6', color: 'bg-brand-300', label: 'Day 2' },
+    { w: 'w-4/6', color: 'bg-brand-400', label: 'Day 3' },
+    { w: 'w-3/6', color: 'bg-brand-500', label: 'Day 4' },
+  ];
+
+  return (
+    <div className="space-y-1.5">
+      {blocks.map((block, i) => (
+        <motion.div
+          key={i}
+          initial={{ scaleX: 0, opacity: 0 }}
+          whileInView={{ scaleX: 1, opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.2 + i * 0.15, duration: 0.5, ease: 'easeOut' }}
+          className={clsx('origin-left rounded', block.w)}
+        >
+          <div className={clsx('rounded px-3 py-1.5 flex items-center justify-between', block.color)}>
+            <span className="text-xs font-medium text-white/90">{block.label}</span>
+            <motion.span
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.5 + i * 0.15 }}
+              className="text-xs text-white/60"
+            >
+              +1 step
+            </motion.span>
+          </div>
+        </motion.div>
+      ))}
+      <motion.div
+        initial={{ opacity: 0, y: 5 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ delay: 1 }}
+        className="text-xs text-focus-600 font-medium pt-1 flex items-center gap-1"
+      >
+        <Trophy className="w-3.5 h-3.5" />
+        Project takes shape
+      </motion.div>
+    </div>
+  );
+}
+
+function TrackIllustration() {
+  const bars = [20, 40, 35, 60, 55, 80, 75];
+
+  return (
+    <div className="flex items-end gap-1.5 h-16">
+      {bars.map((h, i) => (
+        <motion.div
+          key={i}
+          initial={{ height: 0 }}
+          whileInView={{ height: `${h}%` }}
+          viewport={{ once: true }}
+          transition={{
+            delay: 0.2 + i * 0.1,
+            duration: 0.5,
+            ease: 'easeOut',
+          }}
+          className={clsx(
+            'flex-1 rounded-t',
+            i === bars.length - 1
+              ? 'bg-gradient-to-t from-brand-500 to-focus-400'
+              : 'bg-brand-200'
+          )}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -387,28 +688,36 @@ function HowItWorksSection() {
     {
       number: '01',
       title: 'Describe your goal',
-      description: 'Tell us what you want to learn. We pick the right direction, depth, and learning style for you.',
+      description: 'Tell us what you want to learn. We figure out the right direction, depth, and style.',
+      illustration: DescribeIllustration,
+      accent: 'from-brand-500 to-brand-600',
     },
     {
       number: '02',
       title: 'Learn with structure',
-      description: 'Each day: watch curated videos (or read AI explanations), work through foundation cards, and complete interactive exercises.',
+      description: 'Each day: concept cards, videos or explanations, and interactive exercises — in the right order.',
+      illustration: LearnIllustration,
+      accent: 'from-focus-500 to-emerald-500',
     },
     {
       number: '03',
       title: 'Build as you go',
-      description: 'Daily micro-steps contribute to a real project. By the end, you have working code you can show off.',
+      description: 'Daily micro-steps add up to a real project. You don\'t just learn — you make something.',
+      illustration: BuildIllustration,
+      accent: 'from-purple-500 to-pink-500',
     },
     {
       number: '04',
       title: 'Track your growth',
-      description: 'See your skill tree expand. Save sessions to your Vault. Pick up where you left off anytime.',
+      description: 'See your progress over time. Save sessions. Pick up where you left off.',
+      illustration: TrackIllustration,
+      accent: 'from-alert-500 to-orange-500',
     },
   ];
 
   return (
     <section id="how-it-works" className="py-20 px-4">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-5xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -417,52 +726,46 @@ function HowItWorksSection() {
           className="text-center mb-16"
         >
           <h2 className="text-3xl font-bold text-gray-900 mb-4">
-            How FlexForge Works
+            How It Works
           </h2>
           <p className="text-xl text-gray-600">
-            From zero to skilled in four simple steps
+            From idea to real skill in four steps
           </p>
         </motion.div>
 
-        <div className="relative">
-          {/* Animated connector line */}
-          <div className="absolute left-8 top-16 bottom-16 w-px hidden sm:block">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          {steps.map((step, index) => (
             <motion.div
-              initial={{ scaleY: 0 }}
-              whileInView={{ scaleY: 1 }}
-              viewport={{ once: true, margin: '-100px' }}
-              transition={{ duration: 1.2, ease: 'easeOut' }}
-              className="h-full w-full bg-gradient-to-b from-brand-300 via-focus-300 to-brand-300 origin-top"
-            />
-          </div>
+              key={index}
+              initial={{ opacity: 0, y: 30, rotateX: 10 }}
+              whileInView={{ opacity: 1, y: 0, rotateX: 0 }}
+              viewport={{ once: true, margin: '-40px' }}
+              transition={{ delay: index * 0.15, duration: 0.5 }}
+              whileHover={{ y: -4, transition: { duration: 0.2 } }}
+              className="bg-white rounded-2xl border border-gray-200 overflow-hidden group"
+            >
+              {/* Illustration area */}
+              <div className="p-5 pb-4 border-b border-gray-100 bg-gradient-to-br from-gray-50 to-white min-h-[120px] flex flex-col justify-center">
+                <step.illustration />
+              </div>
 
-          <div className="space-y-12">
-            {steps.map((step, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, x: -30 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true, margin: '-50px' }}
-                transition={{ delay: index * 0.2, duration: 0.5 }}
-                className="flex gap-6 items-start relative"
-              >
-                <motion.div
-                  className="flex-shrink-0 w-16 h-16 rounded-2xl bg-brand-100 flex items-center justify-center relative z-10"
-                  whileInView={{
-                    boxShadow: ['0 0 0 0 rgba(45,90,135,0)', '0 0 0 8px rgba(45,90,135,0.1)', '0 0 0 0 rgba(45,90,135,0)'],
-                  }}
-                  viewport={{ once: true }}
-                  transition={{ delay: 0.3 + index * 0.2, duration: 1.5 }}
-                >
-                  <span className="text-2xl font-bold text-brand-600">{step.number}</span>
-                </motion.div>
-                <div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">{step.title}</h3>
-                  <p className="text-gray-600">{step.description}</p>
+              {/* Text area */}
+              <div className="p-5">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className={clsx(
+                    'w-8 h-8 rounded-lg bg-gradient-to-br flex items-center justify-center text-sm font-bold text-white',
+                    step.accent
+                  )}>
+                    {step.number}
+                  </span>
+                  <h3 className="text-lg font-bold text-gray-900 group-hover:text-brand-600 transition-colors">
+                    {step.title}
+                  </h3>
                 </div>
-              </motion.div>
-            ))}
-          </div>
+                <p className="text-sm text-gray-600 ml-11">{step.description}</p>
+              </div>
+            </motion.div>
+          ))}
         </div>
       </div>
     </section>
