@@ -1112,11 +1112,12 @@ Return JSON only:
         coreContent = JSON.parse(fixedContent);
       }
 
-      // Normalize task1 sections (ensure IDs)
+      // Normalize task1 sections (ensure IDs only for sections with questions/items)
       if (coreContent.task1?.sections && Array.isArray(coreContent.task1.sections)) {
         coreContent.task1.sections = coreContent.task1.sections.map(
           (section: any, sIdx: number) => {
-            const items = section.questions || section.items || [];
+            if (!section.questions && !section.items) return section;
+            const items = section.questions || section.items;
             const normalizedItems = items.map((item: any, qIdx: number) => ({
               ...item,
               id: item.id || `s${sIdx + 1}-q${qIdx + 1}`,
@@ -1408,6 +1409,7 @@ Return JSON only:
   static readonly STREAM_EVENTS = {
     PRE_PROMPT: 'prePrompt',
     FOUNDATION_CARD: 'foundationCard', // Legacy - kept for backward compat
+    TASK1_SECTION: 'task1Section',
     TASK1: 'task1',
     VIDEO: 'video',
     COMPLETE: 'complete',
@@ -1465,8 +1467,16 @@ Return JSON only:
             data: cachedResult.content.prePrompt,
           };
         }
-        // Yield task1 if present (new format)
+        // Yield task1 sections individually, then complete task1
         if (cachedResult.content.task1) {
+          if (cachedResult.content.task1.sections?.length) {
+            for (const [i, section] of cachedResult.content.task1.sections.entries()) {
+              yield {
+                event: CurriculumService.STREAM_EVENTS.TASK1_SECTION,
+                data: { section, index: i },
+              };
+            }
+          }
           yield {
             event: CurriculumService.STREAM_EVENTS.TASK1,
             data: cachedResult.content.task1,
@@ -1591,6 +1601,14 @@ Return JSON only:
     // Stream from Anthropic
     let fullContent = '';
     let prePromptYielded = false;
+    // Incremental section parsing state
+    let sectionsArrayStarted = false;
+    let sectionStartIndex = -1;
+    let sectionBraceDepth = 0;
+    let yieldedSectionCount = 0;
+    let inString = false;
+    let escapeNext = false;
+    let parseOffset = 0; // Track where we left off scanning
 
     try {
       for await (const chunk of this.aiService.callAnthropicWithCacheStream(
@@ -1621,8 +1639,82 @@ Return JSON only:
             }
           }
 
-          // Task1 is yielded as a complete object once final parsing is done
-          // (too complex to stream incrementally since it's nested sections)
+          // Incremental task1 section parsing using bracket counting
+          // Detect "sections": [ and then find complete section objects
+          if (!sectionsArrayStarted) {
+            const sectionsMatch = fullContent.indexOf('"sections"');
+            if (sectionsMatch !== -1) {
+              const bracketPos = fullContent.indexOf('[', sectionsMatch);
+              if (bracketPos !== -1) {
+                sectionsArrayStarted = true;
+                parseOffset = bracketPos + 1;
+              }
+            }
+          }
+
+          if (sectionsArrayStarted) {
+            // Scan from where we left off
+            for (let i = parseOffset; i < fullContent.length; i++) {
+              const ch = fullContent[i];
+
+              if (escapeNext) {
+                escapeNext = false;
+                continue;
+              }
+              if (ch === '\\' && inString) {
+                escapeNext = true;
+                continue;
+              }
+              if (ch === '"') {
+                inString = !inString;
+                continue;
+              }
+              if (inString) continue;
+
+              if (ch === '{') {
+                if (sectionBraceDepth === 0) {
+                  sectionStartIndex = i;
+                }
+                sectionBraceDepth++;
+              } else if (ch === '}') {
+                sectionBraceDepth--;
+                if (sectionBraceDepth === 0 && sectionStartIndex !== -1) {
+                  // Found a complete section object
+                  const sectionJson = fullContent.slice(sectionStartIndex, i + 1);
+                  try {
+                    const section = JSON.parse(sectionJson);
+                    // Normalize IDs only for sections that use questions/items arrays
+                    const sIdx = yieldedSectionCount;
+                    let normalizedSection = section;
+                    if (section.questions || section.items) {
+                      const items = section.questions || section.items;
+                      const normalizedItems = items.map((item: any, qIdx: number) => ({
+                        ...item,
+                        id: item.id || `s${sIdx + 1}-q${qIdx + 1}`,
+                      }));
+                      normalizedSection = {
+                        ...section,
+                        ...(section.questions ? { questions: normalizedItems } : { items: normalizedItems }),
+                      };
+                    }
+
+                    yield {
+                      event: CurriculumService.STREAM_EVENTS.TASK1_SECTION,
+                      data: { section: normalizedSection, index: sIdx },
+                    };
+                    yieldedSectionCount++;
+                  } catch {
+                    // Partial JSON, not a valid section - skip
+                  }
+                  sectionStartIndex = -1;
+                }
+              } else if (ch === ']' && sectionBraceDepth === 0) {
+                // End of sections array
+                break;
+              }
+            }
+            parseOffset = fullContent.length;
+          }
         }
 
         if (chunk.type === 'done') {
@@ -1646,11 +1738,12 @@ Return JSON only:
               coreContent = JSON.parse(fixedContent);
             }
 
-            // Normalize task1 sections (ensure IDs)
+            // Normalize task1 sections (ensure IDs only for sections with questions/items)
             if (coreContent.task1?.sections && Array.isArray(coreContent.task1.sections)) {
               coreContent.task1.sections = coreContent.task1.sections.map(
                 (section: any, sIdx: number) => {
-                  const items = section.questions || section.items || [];
+                  if (!section.questions && !section.items) return section;
+                  const items = section.questions || section.items;
                   const normalizedItems = items.map((item: any, qIdx: number) => ({
                     ...item,
                     id: item.id || `s${sIdx + 1}-q${qIdx + 1}`,

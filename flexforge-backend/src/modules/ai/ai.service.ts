@@ -781,6 +781,8 @@ export class AiService {
       // Haiku has a lower max_tokens limit (8192) than Sonnet/Opus (16384)
       const maxTokens = model.includes('haiku') ? 8192 : 16384;
 
+      this.logger.log(`🤖 callAnthropicWithCache using model: ${model}`);
+
       const response = await this.anthropic.messages.create({
         model,
         max_tokens: maxTokens,
@@ -826,11 +828,12 @@ export class AiService {
     cacheWriteTokens: number,
     cacheReadTokens: number,
   ): number {
-    // Pricing per 1M tokens (Claude Sonnet 4)
-    const inputCost = 3.0; // $3/1M input
-    const outputCost = 15.0; // $15/1M output
-    const cacheWriteCost = 3.75; // $3.75/1M (25% more)
-    const cacheReadCost = 0.3; // $0.30/1M (90% less!)
+    // Pricing per 1M tokens - varies by model
+    const isHaiku = model.includes('haiku');
+    const inputCost = isHaiku ? 0.8 : 3.0;       // Haiku: $0.80/1M, Sonnet: $3/1M
+    const outputCost = isHaiku ? 4.0 : 15.0;      // Haiku: $4/1M, Sonnet: $15/1M
+    const cacheWriteCost = isHaiku ? 1.0 : 3.75;   // Haiku: $1/1M, Sonnet: $3.75/1M
+    const cacheReadCost = isHaiku ? 0.08 : 0.3;    // Haiku: $0.08/1M, Sonnet: $0.30/1M
 
     const normalInputTokens = inputTokens - cacheWriteTokens - cacheReadTokens;
 

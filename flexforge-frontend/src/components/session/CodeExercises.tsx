@@ -113,7 +113,7 @@ export function CodeCompletionExercise({ section, onComplete, savedProgress, onP
   const [currentHintIndex, setCurrentHintIndex] = useState(0);
   const [showSolution, setShowSolution] = useState(false);
 
-  const items = section.items;
+  const items = section.items || [];
   const currentItem = items[currentIndex];
   const hasAnswered = currentItem?.id in results;
 
@@ -316,7 +316,7 @@ export function DebuggingExercise({ section, onComplete, savedProgress, onProgre
   const [isCorrect, setIsCorrect] = useState(false);
   const [showHint, setShowHint] = useState(false);
 
-  const items = section.items;
+  const items = section.items || [];
   const currentItem = items[currentIndex];
   const hasAnswered = currentItem?.id in results;
 
@@ -479,7 +479,7 @@ export function OutputPredictionExercise({ section, onComplete, savedProgress, o
   const [showFeedback, setShowFeedback] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
 
-  const questions = section.questions;
+  const questions = section.questions || [];
   const currentQuestion = questions[currentIndex];
   const hasAnswered = currentQuestion?.id in answers;
 
@@ -650,7 +650,7 @@ export function AICodeReviewExercise({ section, onComplete, savedProgress, onPro
     return result;
   });
 
-  const items = section.items;
+  const items = section.items || [];
   const currentItem = items[currentItemIndex];
   const currentIssue = currentItem?.issues[currentIssueIndex];
   const totalIssues = items.reduce((sum, item) => sum + item.issues.length, 0);

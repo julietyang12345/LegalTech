@@ -104,8 +104,82 @@ export const sessionService = {
     return data;
   },
 
-  // SSE STREAMING DISABLED - using regular API calls instead
-  // startDayCoreStream(...) { ... },
+  /**
+   * Stream day CORE content via SSE (POST).
+   * Calls onEvent for each SSE event as it arrives.
+   * Returns an AbortController so the caller can cancel the stream.
+   */
+  startDayCoreStream(
+    sessionId: string,
+    dayNumber: number,
+    onEvent: (event: string, data: any) => void,
+    forceRegenerate?: boolean,
+  ): AbortController {
+    const controller = new AbortController();
+    const apiBaseUrl = import.meta.env.VITE_API_URL || '/api/v1';
+    const url = `${apiBaseUrl}/sessions/${sessionId}/days/${dayNumber}/start-core-stream`;
+
+    (async () => {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          credentials: 'include',
+          body: JSON.stringify({ forceRegenerate }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok || !response.body) {
+          onEvent('error', { error: `HTTP ${response.status}` });
+          return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          // Parse SSE messages: "event: <name>\ndata: <json>\n\n"
+          const messages = buffer.split('\n\n');
+          buffer = messages.pop() || ''; // Keep incomplete message in buffer
+
+          for (const msg of messages) {
+            if (!msg.trim()) continue;
+            let eventName = 'message';
+            let eventData = '';
+            for (const line of msg.split('\n')) {
+              if (line.startsWith('event: ')) {
+                eventName = line.slice(7).trim();
+              } else if (line.startsWith('data: ')) {
+                eventData = line.slice(6);
+              }
+            }
+            if (eventData) {
+              try {
+                onEvent(eventName, JSON.parse(eventData));
+              } catch {
+                onEvent(eventName, eventData);
+              }
+            }
+          }
+        }
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          onEvent('error', { error: err.message || 'Stream failed' });
+        }
+      }
+    })();
+
+    return controller;
+  },
 
   /**
    * Load deferred content in background

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight, Trophy, RotateCcw, Flame, Star, Zap } from 'lucide-react';
+import { ChevronRight, Trophy, RotateCcw, Flame, Star, Zap, Loader2 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useSessionStore } from '@/stores/sessionStore';
 import { ExerciseLoadingScreen } from '@/components/common';
 import {
   QuizSectionExercise,
@@ -166,10 +167,11 @@ function StarRating({ percentage }: { percentage: number }) {
 }
 
 export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, onShareQuestion }: SectionTaskStepProps) {
-  const task = day.task1 as QuizTask | FillBlankTask | MixedTask | SectionsTask;
-  const sections = getTaskSections(task);
+  const task = day.task1 as QuizTask | FillBlankTask | MixedTask | SectionsTask | undefined;
+  const sections = task ? getTaskSections(task) : [];
   const targetLanguage = session.curriculum?.metadata?.targetLanguage as TargetLanguage | undefined;
   const _skillType = session.curriculum?.skillType;
+  const isStreamingComplete = useSessionStore((s) => s.isStreamingComplete);
 
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
   const [sectionResults, setSectionResults] = useState<Record<number, SectionResult>>({});
@@ -183,10 +185,11 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
   const xpIdRef = useRef(0);
   const [questionsAnswered, setQuestionsAnswered] = useState(0);
 
-  // Total questions across all sections
+  // Total questions across all sections (guard against undefined sections during streaming)
   const totalQuestions = sections.reduce((sum, section) => {
+    if (!section) return sum;
     const items = (section as any).questions || (section as any).items || [];
-    return sum + items.length;
+    return sum + (items.length || 0);
   }, 0);
 
   const currentSection = sections[currentSectionIndex];
@@ -399,7 +402,7 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
     }
   };
 
-  if (!task || sections.length === 0) {
+  if (!task || sections.length === 0 || !currentSection) {
     return (
       <div className="max-w-lg mx-auto">
         <ExerciseLoadingScreen
@@ -496,7 +499,7 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
           <div className="bg-gray-50 rounded-lg p-4 mb-6 text-left">
             <h3 className="text-sm font-medium text-gray-500 mb-3">Section Breakdown</h3>
             <div className="space-y-2">
-              {sections.map((section, index) => {
+              {sections.filter(Boolean).map((section, index) => {
                 const result = sectionResults[index];
                 const sectionPct = result ? Math.round((result.score / result.total) * 100) : 0;
                 return (
@@ -639,6 +642,14 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Loading indicator while more sections are streaming in */}
+      {!isStreamingComplete && currentSectionIndex >= sections.length - 1 && (
+        <div className="mt-4 flex items-center justify-center gap-2 text-gray-400 text-sm">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span>Loading more exercises...</span>
+        </div>
+      )}
     </div>
   );
 }

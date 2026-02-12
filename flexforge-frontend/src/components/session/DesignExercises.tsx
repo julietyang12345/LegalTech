@@ -96,7 +96,7 @@ export function DesignCritiqueExercise({ section, onComplete, savedProgress, onP
   const [showFeedback, setShowFeedback] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
 
-  const items = section.items;
+  const items = section.items || [];
   const currentItem = items[currentIndex];
   const hasAnswered = currentItem?.id in answers;
 

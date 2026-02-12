@@ -10,11 +10,9 @@ import {
   Request,
   Header,
   Res,
-  // Sse,  // SSE STREAMING DISABLED
-  // MessageEvent,  // SSE STREAMING DISABLED
 } from '@nestjs/common';
 import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
-// import { Observable } from 'rxjs';  // SSE STREAMING DISABLED
+import { Response } from 'express';
 import { SessionService } from './session.service';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { UpdateSessionDto } from './dto/update-session.dto';
@@ -208,9 +206,40 @@ export class SessionController {
     };
   }
 
-  // SSE STREAMING DISABLED - using regular API calls instead
-  // @Sse(':id/days/:dayNumber/start-core-stream')
-  // startDayCoreStream(...) { ... }
+  /**
+   * POST /api/v1/sessions/:id/days/:dayNumber/start-core-stream
+   * Stream day CORE content via SSE (POST because we send forceRegenerate in body)
+   * Yields: prePrompt, task1Section (incremental), task1 (complete), video, complete
+   */
+  @Post(':id/days/:dayNumber/start-core-stream')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async startDayCoreStream(
+    @Res() res: Response,
+    @Request() req,
+    @Param('id') id: string,
+    @Param('dayNumber') dayNumber: string,
+    @Body() body?: { forceRegenerate?: boolean },
+  ) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    try {
+      for await (const chunk of this.sessionService.startDayCoreStream(
+        id,
+        req.user.id,
+        parseInt(dayNumber, 10),
+        body?.forceRegenerate,
+      )) {
+        res.write(`event: ${chunk.event}\ndata: ${JSON.stringify(chunk.data)}\n\n`);
+      }
+    } catch (error) {
+      res.write(`event: error\ndata: ${JSON.stringify({ error: error.message || 'Stream failed' })}\n\n`);
+    }
+    res.end();
+  }
 
   /**
    * GET /api/v1/sessions/:id/days/:dayNumber/regen-status

@@ -95,7 +95,7 @@ export function FormCheckExercise({ section, onComplete, savedProgress, onProgre
   });
   const [showCommonMistake, setShowCommonMistake] = useState<string | null>(null);
 
-  const items = section.items;
+  const items = section.items || [];
   const checkedCount = checkedItems.size;
 
   const toggleItem = (itemId: string) => {
@@ -234,7 +234,7 @@ export function SafetyCheckExercise({ section, onComplete, savedProgress, onProg
   const [showFeedback, setShowFeedback] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
 
-  const items = section.items;
+  const items = section.items || [];
   const currentItem = items[currentIndex];
   const hasAnswered = currentItem?.id in results;
 

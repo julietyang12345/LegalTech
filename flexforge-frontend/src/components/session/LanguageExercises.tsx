@@ -198,7 +198,7 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
     });
   }, []);
 
-  const questions = section.questions;
+  const questions = section.questions || [];
   const currentQuestion = questions[currentIndex];
   const isOpenEnded = currentQuestion?.responseType === 'openEnded';
   const hasAnswered = isOpenEnded
@@ -790,6 +790,7 @@ interface MatchingSectionProps {
 }
 
 export function MatchingSectionExercise({ section, onComplete, savedProgress, onProgressChange }: MatchingSectionProps) {
+  const pairs = section.pairs || [];
   const [selectedTerm, setSelectedTerm] = useState<string | null>(null);
   // Initialize matches from saved progress
   const [matches, setMatches] = useState<Record<string, string>>(() => {
@@ -806,9 +807,11 @@ export function MatchingSectionExercise({ section, onComplete, savedProgress, on
 
   useEffect(() => {
     // Shuffle definitions on mount
-    const defs = section.pairs.map(p => p.definition);
+    const defs = pairs.map(p => p.definition);
     setShuffledDefinitions(defs.sort(() => Math.random() - 0.5));
-  }, [section.pairs]);
+  }, [pairs]);
+
+  if (pairs.length === 0) return null;
 
   const handleTermClick = (term: string) => {
     if (matches[term]) return; // Already matched
@@ -819,7 +822,7 @@ export function MatchingSectionExercise({ section, onComplete, savedProgress, on
     if (!selectedTerm) return;
     if (Object.values(matches).includes(definition)) return; // Already used
 
-    const pair = section.pairs.find(p => p.term === selectedTerm);
+    const pair = pairs.find(p => p.term === selectedTerm);
     const correct = pair?.definition === definition;
 
     setIsCorrect(correct);
@@ -840,9 +843,9 @@ export function MatchingSectionExercise({ section, onComplete, savedProgress, on
       setSelectedTerm(null);
 
       // Check if complete
-      if (correct && Object.keys(matches).length + 1 === section.pairs.length) {
+      if (correct && Object.keys(matches).length + 1 === pairs.length) {
         const finalMatches = { ...matches, [selectedTerm]: definition };
-        onComplete(section.pairs.length, section.pairs.length, finalMatches as Record<string, number | string | boolean>);
+        onComplete(pairs.length, pairs.length, finalMatches as Record<string, number | string | boolean>);
       }
     }, 1000);
   };
@@ -853,14 +856,14 @@ export function MatchingSectionExercise({ section, onComplete, savedProgress, on
     <div className="space-y-4">
       <ExerciseHeader
         title={section.title}
-        progress={{ current: matchedCount, total: section.pairs.length }}
+        progress={{ current: matchedCount, total: pairs.length }}
       />
 
       <div className="grid grid-cols-2 gap-4">
         {/* Terms column */}
         <div className="space-y-2">
           <p className="text-sm font-medium text-gray-500 mb-2">Words</p>
-          {section.pairs.map(pair => (
+          {pairs.map(pair => (
             <button
               key={pair.term}
               onClick={() => handleTermClick(pair.term)}
@@ -936,7 +939,7 @@ export function ToneSelectSectionExercise({ section, targetLanguage, onComplete,
   const [isCorrect, setIsCorrect] = useState(false);
   const { speak, isSupported } = useBrowserTTS(targetLanguage || 'chinese');
 
-  const questions = section.questions;
+  const questions = section.questions || [];
   const currentQuestion = questions[currentIndex];
   const hasAnswered = currentQuestion?.id in answers;
 
@@ -1097,7 +1100,7 @@ export function FillBlankSectionExercise({ section, onComplete, savedProgress, o
   const [showFeedback, setShowFeedback] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
 
-  const items = section.items;
+  const items = section.items || [];
   const currentItem = items[currentIndex];
   const hasAnswered = currentItem?.id in results;
 
@@ -1305,7 +1308,7 @@ export function TranslationSectionExercise({ section, onComplete, savedProgress,
   const [showFeedback, setShowFeedback] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
 
-  const items = section.items;
+  const items = section.items || [];
   const currentItem = items[currentIndex];
   const hasAnswered = currentItem?.id in results;
 
@@ -1478,7 +1481,7 @@ export function ReorderSectionExercise({ section, onComplete, savedProgress, onP
   const [isCorrect, setIsCorrect] = useState(false);
   const [showHint, setShowHint] = useState(false);
 
-  const items = section.items;
+  const items = section.items || [];
   const currentItem = items[currentIndex];
   const hasAnswered = currentItem?.id in results;
 
@@ -1680,7 +1683,7 @@ export function TypingSectionExercise({ section, targetLanguage, onComplete, sav
   const [isCorrect, setIsCorrect] = useState(false);
   const { speak, isSupported } = useBrowserTTS(targetLanguage || 'chinese');
 
-  const items = section.items;
+  const items = section.items || [];
   const currentItem = items[currentIndex];
   const hasAnswered = currentItem?.id in results;
 
@@ -1848,7 +1851,7 @@ export function OpenEndedSectionExercise({ section, onComplete, savedProgress, o
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
 
-  const questions = section.questions;
+  const questions = section.questions || [];
   const currentQuestion = questions[currentIndex];
   const currentResponse = responses[currentQuestion.id] || '';
   const currentResult = results[currentQuestion.id];

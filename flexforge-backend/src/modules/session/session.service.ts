@@ -1192,8 +1192,13 @@ export class SessionService {
       if (dayOverview.coreContent.prePrompt) {
         yield { event: 'prePrompt', data: dayOverview.coreContent.prePrompt };
       }
-      // Yield task1 if present (new format)
+      // Yield task1 sections individually, then complete task1
       if (dayOverview.coreContent.task1) {
+        if (dayOverview.coreContent.task1.sections?.length) {
+          for (const [i, section] of dayOverview.coreContent.task1.sections.entries()) {
+            yield { event: 'task1Section', data: { section, index: i } };
+          }
+        }
         yield { event: 'task1', data: dayOverview.coreContent.task1 };
       }
       // Backward compat: yield foundation cards from old cached data
