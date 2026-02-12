@@ -707,7 +707,7 @@ Return JSON only:
       '🤖 Generating curriculum overview (Phase 1) with prompt caching...',
     );
     const aiResponse = await this.aiService.callAnthropicWithCache(
-      'claude-sonnet-4-20250514',
+      'claude-3-5-haiku-20241022',
       userPrompt,
       { staticPart, dynamicPart },
     );

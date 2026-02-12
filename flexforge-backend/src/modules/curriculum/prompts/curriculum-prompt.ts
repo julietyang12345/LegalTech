@@ -369,8 +369,8 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
 - Normal explanations (200-250 words per question)
 - Include all core sections`,
       long: `SESSION LENGTH: LONG (>1 hour/day)
-- Generate MORE content: 12-15 task1 questions
-- Detailed explanations (200-300 words per question)
+- Generate MORE content: 10-12 task1 questions
+- Detailed explanations (130-200 words per question)
 - Include deeper examples, edge cases, and additional practice
 - Add extra challenge questions and scenarios`,
     };
@@ -490,7 +490,7 @@ function getSkillLevelGuidance(skillLevel: SkillLevel): {
     case SkillLevel.INTERMEDIATE:
       return {
         foundationCardCount: '6-7',
-        quizQuestionCount: '10-12',
+        quizQuestionCount: '7-9',
         complexityGuidance: `INTERMEDIATE LEVEL COMPLEXITY:
 - Concepts: Include nuanced situations and common pitfalls. fewer basic definitions - user already knows terminology
 - Motivation: FEWER "why this matters" sections - user is already motivated. Focus on practical application
@@ -504,7 +504,7 @@ function getSkillLevelGuidance(skillLevel: SkillLevel): {
     case SkillLevel.ADVANCED:
       return {
         foundationCardCount: '7-9',
-        quizQuestionCount: '12-15',
+        quizQuestionCount: '9-12',
         complexityGuidance: `ADVANCED LEVEL COMPLEXITY:
 - Basics: Skip basic definitions but include brief context connections. User knows core concepts but appreciates seeing how they connect to advanced material
 - Concepts: Focus on advanced patterns and techniques. Include edge cases as illustrative examples, not the main focus
@@ -520,7 +520,7 @@ function getSkillLevelGuidance(skillLevel: SkillLevel): {
     default:
       return {
         foundationCardCount: '5-6',
-        quizQuestionCount: '8-10',
+        quizQuestionCount: '5-7',
         complexityGuidance: `BEGINNER LEVEL COMPLEXITY:
 - Concepts: Focus on core fundamentals with clear "what" and "how" explanations
 - Questions: Mix understanding checks with simple application scenarios. ~50% recall ("which is correct?"), ~50% apply ("which approach would you use here?"). Keep scenarios simple with clear right/wrong answers. Avoid trick questions
@@ -1650,30 +1650,8 @@ Generate JSON with:
 const CURRICULUM_STATIC_INSTRUCTIONS = `You generate curriculum skeletons.
 Skill type and sections are pre-determined - focus on curriculum structure and content.
 
-CONTENT STRATEGY - decide per day:
-
-contentLayer:
-  foundation    = core theoretical concepts (fundamentals, principles, theory)
-  language_core = language/domain basics (syntax, vocabulary, fundamentals)
-  framework     = patterns and methodologies (best practices, frameworks)
-  tool          = tools/platforms (software, equipment, resources)
-  project       = building/applying (hands-on practice, real projects)
-
-videoStrategy (ENFORCED BY SKILL TYPE):
-  KNOWLEDGE → ALWAYS "skip" (text + interaction is always better for concepts)
-  LANGUAGE  → ALWAYS "skip" (handled separately with audio)
-  PHYSICAL  → ALWAYS "recommended" (form demonstration requires visual)
-  CODE      → AI decides: "recommended" only when visual demo genuinely helps
-              (debugging flow, UI walkthrough, architecture animation).
-              "skip" for pure logic, algorithms, syntax, APIs.
-  DESIGN    → AI decides: "recommended" for tool workflows (Figma, software).
-              "skip" for principles, theory.
-
-  Values: skip | optional | helpful | recommended
-
-transferability: high (universal) | medium (similar domains) | low (specific context)
-
-Each day: title, subtitle, skills[], teaser, estimatedMinutes, contentLayer, videoStrategy, transferability
+Each day: day, title, subtitle, skills[], teaser, estimatedMinutes.
+Each day MUST cover different topics — no overlap between days. Day N+1 builds on Day N.
 
 TOPIC FILTER: Only include what blocks progress toward the goal. MEANS (tools/setup) → minimum to use. ENDS (goal itself) → full depth. No history, theory, or comparisons for things they just use.
 
@@ -1705,7 +1683,7 @@ QUESTION FLOW:
 - Question 1: INTRO/RECAP — connect to previous day's concepts. If Day 1, introduce the topic foundation
 - Questions 2+: Core concepts covering today's topics
 
-EXPLANATION STRUCTURE (200-300 words per question):
+EXPLANATION STRUCTURE (130-200 words per question):
 - Paragraph 1: Key insight / main point (bold/prominent in UI)
 - Paragraph 2+: Supporting details, examples, nuances, code snippets if applicable
 - Separate paragraphs with \\n\\n (double newline)
@@ -1714,7 +1692,7 @@ EXPLANATION STRUCTURE (200-300 words per question):
 
 REQUIRED FIELDS per question:
 - "conceptTitle": Short concept name (e.g., "REST API Basics", "Present Tense Conjugation")
-- "explanation": 200-300 words of teaching content (structured as above)
+- "explanation": 130-200 words of teaching content (structured as above)
 - "realWorldContext": 1 sentence — when/where this concept matters in practice
 
 QUESTION LEVELS:
@@ -1793,7 +1771,7 @@ ${skillGuidance}
 
 ${skeletonLevelGuidance}
 
-Per day: day, title, subtitle, skills[], teaser, estimatedMinutes:${time.totalMinutes}, ${isProjectBased ? 'hasBossProject:true, bossMilestonePreview,' : ''} contentLayer, videoStrategy, transferability.`;
+Per day: day, title, subtitle, skills[], teaser, estimatedMinutes:${time.totalMinutes}${isProjectBased ? ', hasBossProject:true, bossMilestonePreview' : ''}.`;
 
   // User prompt with day template
   const bossProjectsSection = isProjectBased
@@ -1820,16 +1798,13 @@ Per day: day, title, subtitle, skills[], teaser, estimatedMinutes:${time.totalMi
       "subtitle": "Tagline",
       "skills": ["Skill 1", "Skill 2"],
       "teaser": "What they'll learn",
-      "estimatedMinutes": ${time.totalMinutes},${
+      "estimatedMinutes": ${time.totalMinutes}${
         isProjectBased
-          ? `
+          ? `,
       "hasBossProject": true,
-      "bossMilestonePreview": "What code they'll add today",`
+      "bossMilestonePreview": "What code they'll add today"`
           : ''
       }
-      "contentLayer": "foundation|language_core|framework|tool|project",
-      "videoStrategy": "skip|optional|helpful|recommended",
-      "transferability": "high|medium|low"
     }
   ],
   ${bossProjectsSection},
@@ -2004,7 +1979,7 @@ REQUIREMENTS:
 - prePrompt: REQUIRED
 ${videoRequirement}
 - task1: REQUIRED - ${levelGuidance.quizQuestionCount} questions total across sections
-  - EVERY question must have "conceptTitle" and "explanation" (200-300 words, teaching content)
+  - EVERY question must have "conceptTitle" and "explanation" (130-200 words, teaching content)
   - EVERY question must have "realWorldContext" (1 sentence)
   - explanation: Split into 2-3 paragraphs with \\n\\n (key insight → details/examples)
   - 2-3 questions should include "caseStudy" for trade-off/decision concepts
