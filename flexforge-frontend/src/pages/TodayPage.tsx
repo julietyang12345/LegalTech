@@ -325,6 +325,7 @@ export function TodayPage() {
     deleteSession,
     isLoading,
     isDayLoading,
+    isCoreLoaded,
     canStartDay,
   } = useSessionStore();
   const { addSystemMessage } = useCompanionStore();
@@ -404,20 +405,31 @@ export function TodayPage() {
       return;
     }
 
-    // Content not cached - show loading screen
+    // Content not cached - show loading screen and start loading
     setIsStarting(true);
 
-    // Start loading content in background (don't await - let it continue)
+    // Start loading content in background (don't await - navigate reactively)
     loadDayContentSplit(activeSession.currentDay).catch((err) => {
       console.error('[TodayPage] Failed to load day content:', err);
     });
-
-    // Show loading screen for ~10 seconds, then navigate
-    // SessionPage will show section loaders while content continues loading
-    await new Promise(resolve => setTimeout(resolve, 10000));
-
-    navigate(`/session/${activeSession.id}`);
   };
+
+  // Navigate as soon as core content is loaded (or after max 15s fallback)
+  useEffect(() => {
+    if (!isStarting || !activeSession) return;
+
+    // Navigate immediately if core content arrived via SSE
+    if (isCoreLoaded) {
+      navigate(`/session/${activeSession.id}`);
+      return;
+    }
+
+    // Fallback: navigate after 15s even if still loading (SessionPage handles loading state)
+    const timer = setTimeout(() => {
+      navigate(`/session/${activeSession.id}`);
+    }, 15000);
+    return () => clearTimeout(timer);
+  }, [isStarting, isCoreLoaded, activeSession, navigate]);
 
   // Check if current day can be started
   const canStart = activeSession ? canStartDay(activeSession.currentDay) : false;

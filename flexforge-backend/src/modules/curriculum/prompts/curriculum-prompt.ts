@@ -109,33 +109,32 @@ export const SECTION_REGISTRY: Record<
   }
 > = {
   [SkillType.CODE]: {
-    task1: ['quiz', 'outputPrediction', 'fillBlank'],
+    task1: ['quiz', 'outputPrediction', 'fillBlank'], // quiz=70-85%, AI picks 1 secondary type for 15-30%
     intensive: ['aiCodeReview', 'fillBlank'], // Default: review AI-generated code for issues
     intensiveAdvanced: ['codeCompletion'], // Advanced: write code from scratch (opt-in)
   },
   [SkillType.PHYSICAL]: {
-    task1: ['quiz', 'reorder', 'matching'],
-    intensive: ['formCheck', 'quiz', 'reorder'], // formCheck includes safety items mixed in, quiz has estimation/troubleshooting/tool selection
+    task1: ['quiz', 'reorder', 'matching'], // quiz=70-85%, AI picks 1 secondary type for 15-30%
+    intensive: ['formCheck', 'quiz', 'reorder'],
   },
   [SkillType.KNOWLEDGE]: {
-    // AI chooses: quiz + matching + fillBlank (factual) OR quiz + fillBlank + openEnded (soft skills/leadership)
-    task1: ['quiz', 'matching', 'fillBlank', 'openEnded'],
-    intensive: ['fillBlank', 'reorder', 'quiz', 'openEnded'], // openEnded for soft skills scenarios
+    task1: ['quiz', 'matching', 'fillBlank', 'openEnded'], // quiz=70-85%, AI picks 1 secondary type for 15-30%
+    intensive: ['fillBlank', 'reorder', 'quiz', 'openEnded'],
   },
   [SkillType.DESIGN]: {
-    task1: ['quiz', 'designCritique', 'matching'],
+    task1: ['quiz', 'designCritique', 'matching'], // quiz=70-85%, AI picks 1 secondary type for 15-30%
     intensive: ['designCritique', 'quiz', 'matching'],
   },
   [SkillType.AI_AGENT]: {
-    task1: ['quiz', 'fillBlank', 'outputPrediction'],
-    intensive: ['aiCodeReview', 'fillBlank', 'quiz'], // Default: review AI-generated code
-    intensiveAdvanced: ['codeCompletion'], // Advanced: write code from scratch (opt-in)
+    task1: ['quiz', 'fillBlank', 'outputPrediction'], // quiz=70-85%, AI picks 1 secondary type for 15-30%
+    intensive: ['aiCodeReview', 'fillBlank', 'quiz'],
+    intensiveAdvanced: ['codeCompletion'],
   },
 };
 
 // Language learning extends KNOWLEDGE with language-specific sections
 export const LANGUAGE_SECTION_REGISTRY = {
-  task1: ['quiz', 'matching', 'toneSelect'] as SectionType[], // toneSelect only for tonal languages
+  task1: ['quiz', 'matching', 'toneSelect'] as SectionType[], // quiz=70-85%, AI picks 1 secondary; toneSelect only for tonal languages
   intensive: ['fillBlank', 'translation', 'reorder', 'typing'] as SectionType[],
 };
 
@@ -657,12 +656,14 @@ function buildLanguageTask1Template(lang: string, langHasTones: boolean): string
           ]
         },
         {
-          "type": "fillBlank",
+          "type": "matching",
           "level": 2,
-          "title": "Apply Your Learning",
-          "items": [
-            {"id": "fb1", "sentence": "Sentence with ___BLANK___", "translation": "English meaning", "blank": {"correctAnswers": ["answer"], "hint": "Grammar/form hint"}, "audioText": "Full sentence for TTS", "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "When to use this"}
-          ]
+          "title": "Match the Vocabulary",
+          "pairs": [
+            {"term": "word in ${lang}", "definition": "English meaning"},
+            {"term": "word in ${lang}", "definition": "English meaning"}
+          ],
+          "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "When to use this"
         }${langHasTones ? `,
         {
           "type": "toneSelect",
@@ -1526,9 +1527,6 @@ Output valid JSON.`;
       {"id": "mini1", "concept": "New Concept", "explanation": "100-150 words..."}
     ]`;
 
-  // NOTE: reflection and openTask templates removed - now handled by lightweight model (Haiku)
-  // See buildLightweightContentPrompt() for the templates
-
   const userPrompt = `{
   "day": ${dayNumber},
   "intensivePractice": {
@@ -1695,8 +1693,13 @@ REQUIRED FIELDS per question:
 - "explanation": 130-200 words of teaching content (structured as above)
 - "realWorldContext": 1 sentence — when/where this concept matters in practice
 
+SECTION RATIO: 70-85% quiz questions, 15-30% ONE secondary section type
+- Quiz section is ALWAYS the main section with most questions
+- Pick 1 secondary section type from the available types listed in "Sections:" (e.g., matching, outputPrediction, fillBlank, etc.)
+- Choose the secondary type that best fits today's topic content
+
 QUESTION LEVELS:
-- Level 1 "Differentiation" (2-3 Qs): compare/contrast, "X or Y?" — confirm basics
+- Level 1 "Differentiation" (1-2 Qs): compare/contrast, "X or Y?" — confirm basics
 - Level 2 "Application" (remaining Qs): scenario-based, "which approach?", "why would B fail?"
 - Prefer application-style questions — pure recall should be the minority
 
@@ -1930,7 +1933,7 @@ ${skillGuidance}${languageInstructions}
 
 ${levelGuidance.complexityGuidance}
 
-TASK1: Generate ${levelGuidance.quizQuestionCount} questions across 2 section levels (follow TASK1 instructions above).
+TASK1: Generate ${levelGuidance.quizQuestionCount} questions total. 70-85% in quiz section, 15-30% in secondary section.
 ${personalizationInstructions}${continuityInstructions}`;
 
   // User prompt - CORE content: prePrompt + video + task1 (the main learning activity)
@@ -1961,9 +1964,6 @@ ${skillsStr ? `Key topics: ${skillsStr}` : ''}
 
 Generate CORE content as JSON with this structure:
 {
-  "prePrompt": {
-    "text": "ONE sentence: Today you'll learn [specific topics]. Keep it simple and direct, no fluff."
-  },
   ${videoSection},
   "task1": {
     "id": "day${params.dayNumber}-task1",
@@ -1976,14 +1976,14 @@ Generate CORE content as JSON with this structure:
 }
 
 REQUIREMENTS:
-- prePrompt: REQUIRED
 ${videoRequirement}
-- task1: REQUIRED - ${levelGuidance.quizQuestionCount} questions total across sections
+- task1: REQUIRED - ${levelGuidance.quizQuestionCount} questions total (70-85% quiz, 15-30% secondary section)
   - EVERY question must have "conceptTitle" and "explanation" (130-200 words, teaching content)
   - EVERY question must have "realWorldContext" (1 sentence)
   - explanation: Split into 2-3 paragraphs with \\n\\n (key insight → details/examples)
   - 2-3 questions should include "caseStudy" for trade-off/decision concepts
   - Question 1 should be an INTRO/RECAP connecting to previous content
+  - matching section: generate 3-4 pairs with "pairs" array (NOT "questions" or "items")
 
 Output valid JSON only.`;
 
@@ -1996,81 +1996,37 @@ Output valid JSON only.`;
  * Each question teaches a concept through its rich explanation
  */
 function getTask1SectionTemplate(skillType: SkillType): string {
-  // Common quiz question template with concept-teaching fields
-  // Some questions include caseStudy for trade-off/decision concepts
+  // Quiz section template (70-85% of questions) — always included as main section
   const quizTemplate = `{"id": "q1", "question": "Compare/contrast question", "options": ["A", "B", "C", "D"], "correctIndex": 0, "conceptTitle": "Concept Name", "explanation": "Key insight paragraph.\\n\\nSupporting details and examples.", "realWorldContext": "Why this matters in practice"}, {"id": "q2", "question": "fallback question text", "options": ["Approach A", "Approach B", "Approach C", "Approach D"], "correctIndex": 1, "conceptTitle": "Decision Concept", "explanation": "Why this approach is best.\\n\\nDetails and trade-offs.", "realWorldContext": "When you face this decision", "caseStudy": {"scenario": "Real-world situation (2-3 sentences)", "question": "What would you do?", "options": [{"label": "Approach A", "consequence": "This fails because..."}, {"label": "Approach B", "consequence": "This works well because..."}, {"label": "Approach C", "consequence": "This works but..."}, {"label": "Approach D", "consequence": "This is overkill because..."}], "bestChoice": 1, "explanation": "Why Approach B is optimal here (1-2 sentences)"}}`;
 
-  switch (skillType) {
-    case SkillType.CODE:
-    case SkillType.AI_AGENT:
-      return `[
-        {"type": "quiz", "level": 1, "title": "Differentiation", "questions": [${quizTemplate}]},
-        {"type": "outputPrediction", "level": 2, "title": "Predict the Output", "questions": [{"id": "op1", "question": "What does this code output?", "code": "code here", "options": ["A", "B", "C", "D"], "correctIndex": 0, "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.\\n\\nContext.", "realWorldContext": "Why this matters"}]}
-      ]`;
+  // Secondary section templates (15-30%) — AI picks ONE based on topic fit
+  // All types shown so AI knows each schema. Pick the one listed in "Sections:".
+  const secondaryTemplates: Record<string, string> = {
+    matching: `{"type": "matching", "title": "Match the Concepts", "pairs": [{"term": "Concept A", "definition": "What A means"}, {"term": "Concept B", "definition": "What B means"}, {"term": "Concept C", "definition": "What C means"}]}`,
+    outputPrediction: `{"type": "outputPrediction", "title": "Predict the Output", "questions": [{"id": "op1", "question": "What does this code output?", "code": "code here", "options": ["A", "B", "C", "D"], "correctIndex": 0, "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "Why this matters"}]}`,
+    fillBlank: `{"type": "fillBlank", "title": "Complete the Statement", "items": [{"id": "fb1", "sentence": "Statement with ___BLANK___", "translation": "", "blank": {"correctAnswers": ["answer"], "hint": "Hint"}, "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "Why this matters"}]}`,
+    reorder: `{"type": "reorder", "title": "Order the Steps", "items": [{"id": "ro1", "scrambled": ["step2", "step1", "step3"], "correctOrder": ["step1", "step2", "step3"], "translation": "Complete sequence", "hint": "Think about dependencies", "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "Why this matters"}]}`,
+    designCritique: `{"type": "designCritique", "title": "Apply Design Thinking", "items": [{"id": "dc1", "description": "Design scenario", "question": "What would improve this?", "options": ["A", "B", "C", "D"], "correctIndex": 0, "principle": "Design Principle", "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "Why this matters"}]}`,
+    openEnded: `{"type": "openEnded", "title": "Think It Through", "questions": [{"id": "oe1", "question": "Scenario question", "responseType": "openEnded", "openEndedConfig": {"category": "analysis", "scenario": "Context", "constraints": ["Constraint 1"], "evaluationDimensions": [{"name": "Relevance", "weight": 1}]}, "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "Why this matters"}]}`,
+  };
 
-    case SkillType.PHYSICAL:
-      return `[
-        {"type": "quiz", "level": 1, "title": "Differentiation", "questions": [${quizTemplate}]},
-        {"type": "reorder", "level": 2, "title": "Order the Steps", "items": [{"id": "ro1", "scrambled": ["step2", "step1", "step3"], "correctOrder": ["step1", "step2", "step3"], "translation": "Complete sequence", "hint": "Think about dependencies", "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "Why this matters"}]}
-      ]`;
+  // Get the available secondary types for this skill (exclude 'quiz')
+  const registry = SECTION_REGISTRY[skillType] || SECTION_REGISTRY[SkillType.KNOWLEDGE];
+  const secondaryTypes = registry.task1.filter(t => t !== 'quiz');
 
-    case SkillType.DESIGN:
-      return `[
-        {"type": "quiz", "level": 1, "title": "Differentiation", "questions": [${quizTemplate}]},
-        {"type": "designCritique", "level": 2, "title": "Apply Design Thinking", "items": [{"id": "dc1", "description": "Design scenario", "question": "What would improve this?", "options": ["A", "B", "C", "D"], "correctIndex": 0, "principle": "Design Principle", "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "Why this matters"}]}
-      ]`;
+  // Show the first secondary type's template as the example
+  const defaultSecondary = secondaryTypes[0] || 'matching';
+  const secondaryExample = secondaryTemplates[defaultSecondary] || secondaryTemplates.matching;
 
-    case SkillType.KNOWLEDGE:
-    default:
-      return `[
-        {"type": "quiz", "level": 1, "title": "Differentiation", "questions": [${quizTemplate}]},
-        {"type": "fillBlank", "level": 2, "title": "Apply the Concepts", "items": [{"id": "fb1", "sentence": "Statement with ___BLANK___", "translation": "", "blank": {"correctAnswers": ["answer"], "hint": "Hint"}, "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "Why this matters"}]}
+  return `[
+        {"type": "quiz", "title": "Core Concepts", "questions": [${quizTemplate}]},
+        ${secondaryExample}
       ]`;
-  }
 }
 
 // ============================================
 // LIGHTWEIGHT CONTENT PROMPT (Haiku - reflection + openTask)
 // ============================================
-
-/**
- * CORE phase lightweight prompt — primeQuestions only (Haiku).
- * Reflection and openTask moved to DEFERRED phase (see buildDeferredLightweightPrompt).
- */
-export function buildLightweightContentPrompt(
-  params: DayDetailParams,
-  ctx?: ContentGenerationContext,
-): {
-  systemPrompt: string;
-  userPrompt: string;
-} {
-  const dayNumber = params.dayNumber;
-  const skillsStr = getSkillsString(params.skeleton, params.dayObjectives);
-
-  const conceptsContext = ctx?.generatedContent?.task1Concepts?.length
-    ? `Today's concepts: ${ctx.generatedContent.task1Concepts.join(', ')}`
-    : '';
-
-  const systemPrompt = `Generate primeQuestions for Day ${dayNumber}: "${params.skillName}"
-Skill Type: ${params.skillType} | Level: ${params.skillLevel}
-Topics: ${skillsStr}
-${conceptsContext}
-
-PRIME QUESTIONS (Think About):
-- 2-3 thought-provoking questions to prime the learner's mind BEFORE they start
-- Questions should spark curiosity about today's topics
-- Help users think about real-world applications and edge cases
-- Keep questions short and direct (under 15 words each)
-- Examples: "How do you handle failed requests when scraping?", "What's the best way to avoid rate limits?"
-
-Output valid JSON only.`;
-
-  const userPrompt = `{
-  "primeQuestions": ["Think about question 1?", "Think about question 2?"]
-}`;
-
-  return { systemPrompt, userPrompt };
-}
 
 /**
  * DEFERRED phase lightweight prompt — reflection + openTask (Haiku).

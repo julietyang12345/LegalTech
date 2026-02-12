@@ -194,9 +194,6 @@ export const sessionService = {
     return data;
   },
 
-  // SSE STREAMING DISABLED - using regular API calls instead
-  // loadDayDeferredStream(...) { ... },
-
   /**
    * Submit practice project answer - unlocks next day
    */

@@ -537,14 +537,48 @@ export const useSessionStore = create<SessionState>()(
       }
     }
 
-    set({
-      isDayLoading: true,
-      dayLoadingNumber: dayNumber,
-      isCoreLoaded: false,
-      isStreamingComplete: false,
-      isDeferredLoaded: false,
-      deferredContent: null,
-      error: null,
+    // Build prePrompt instantly from skeleton data (no network needed)
+    const skeletonDay = activeSession.curriculum.days.find((d) => d.day === dayNumber);
+    const skeletonSkills: string[] = (skeletonDay as any)?.skills || skeletonDay?.objectives || [];
+    const skeletonPrePrompt = {
+      text: `Today you'll learn about ${skeletonDay?.title || 'something new'}`,
+      skills: skeletonSkills,
+    };
+
+    // Determine if steps should reset
+    const isNewDayContent = !skeletonDay?.detailsLoaded && !skeletonDay?.coreContent;
+    const shouldResetSteps = isNewDayContent || forceRegenerate;
+
+    set((state) => {
+      if (!state.activeSession) return state;
+
+      // Set prePrompt on the day immediately from skeleton
+      const updatedDays = state.activeSession.curriculum.days.map((d) => {
+        if (d.day !== dayNumber) return d;
+        return { ...d, prePrompt: skeletonPrePrompt as any };
+      });
+      const newCurrentDayObj = updatedDays.find((d) => d.day === dayNumber)!;
+
+      return {
+        isDayLoading: true,
+        dayLoadingNumber: dayNumber,
+        isCoreLoaded: false,
+        isStreamingComplete: false,
+        isDeferredLoaded: false,
+        deferredContent: null,
+        error: null,
+        currentDayNumber: dayNumber,
+        currentDay: { ...newCurrentDayObj },
+        activeSession: {
+          ...state.activeSession,
+          curriculum: { ...state.activeSession.curriculum, days: updatedDays },
+        },
+        ...(shouldResetSteps ? {
+          currentStep: 'prePrompt' as const,
+          completedSteps: [],
+          stepStartTime: new Date(),
+        } : {}),
+      };
     });
 
     // Track whether the stream delivered content (for fallback logic)
@@ -554,7 +588,6 @@ export const useSessionStore = create<SessionState>()(
     try {
       // Try SSE streaming first for progressive loading
       coreContentResult = await new Promise<DayCoreContent>((resolve, reject) => {
-        let receivedPrePrompt = false;
         let receivedSections: any[] = [];
         let hasError = false;
 
@@ -563,30 +596,15 @@ export const useSessionStore = create<SessionState>()(
           dayNumber,
           (event, data) => {
             if (hasError) return;
-            console.log(`[SSE] event=${event}`, event === 'task1Section' ? `index=${data?.index}` : '');
+            if (event === 'task1Section') {
+              const s = data?.section;
+              const qCount = s?.questions?.length || s?.items?.length || s?.pairs?.length || 0;
+              console.log(`[SSE] task1Section index=${data?.index} type=${s?.type} questions=${qCount}`);
+            } else {
+              console.log(`[SSE] event=${event}`);
+            }
 
             switch (event) {
-              case 'prePrompt': {
-                receivedPrePrompt = true;
-                streamDelivered = true;
-                // Update currentDay with prePrompt data
-                set((state) => {
-                  if (!state.activeSession) return state;
-                  const existingDay = state.activeSession.curriculum.days.find((d) => d.day === dayNumber);
-                  const isNewDayContent = !existingDay?.detailsLoaded && !existingDay?.coreContent;
-                  const shouldResetSteps = isNewDayContent || forceRegenerate;
-
-                  return {
-                    currentDayNumber: dayNumber,
-                    ...(shouldResetSteps ? {
-                      currentStep: 'prePrompt' as const,
-                      completedSteps: [],
-                      stepStartTime: new Date(),
-                    } : {}),
-                  };
-                });
-                break;
-              }
               case 'task1Section': {
                 const { section, index } = data;
                 receivedSections[index] = section;

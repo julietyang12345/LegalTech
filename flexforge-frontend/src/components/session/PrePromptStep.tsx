@@ -86,20 +86,19 @@ function PrePromptLoader({ dayTitle }: { dayTitle: string }) {
 }
 
 export function PrePromptStep({ day, session }: PrePromptStepProps) {
-  const { regenerateDayContent, isCoreLoaded, isDeferredLoading } = useSessionStore();
+  const { regenerateDayContent } = useSessionStore();
   const { addSystemMessage } = useCompanionStore();
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
 
-  // Check if prePrompt content is available (has text or primeQuestions)
-  // primeQuestions can be at day.prePrompt.primeQuestions (legacy) or day.primeQuestions (from Haiku deferred)
-  const primeQuestions = day.prePrompt?.primeQuestions || (day as any).primeQuestions || [];
-  const hasPrePromptContent = day.prePrompt?.text || primeQuestions.length > 0;
+  // Skills from skeleton (shown as "Today you'll cover:")
+  // Support both new format (skills) and legacy (primeQuestions)
+  const skills: string[] = (day.prePrompt as any)?.skills || day.prePrompt?.primeQuestions || (day as any).primeQuestions || day.objectives || [];
+  const hasPrePromptContent = day.prePrompt?.text || skills.length > 0;
 
-  // Show inline loading when:
-  // 1. Core content not yet loaded, OR
-  // 2. PrePrompt content is missing (even if isCoreLoaded - might be resuming with stale state)
-  if (!isCoreLoaded || !hasPrePromptContent) {
+  // Show inline loading only when prePrompt content is truly missing
+  // (prePrompt is now built from skeleton data, so it's available instantly)
+  if (!hasPrePromptContent) {
     return (
       <StepLayout
         icon={Lightbulb}
@@ -155,11 +154,11 @@ export function PrePromptStep({ day, session }: PrePromptStepProps) {
             {day.prePrompt?.text || `Today you'll learn something new about ${day.title}`}
           </p>
 
-          {/* Prime questions */}
-          {primeQuestions.length > 0 ? (
+          {/* Skills/topics for today */}
+          {skills.length > 0 && (
             <div className="space-y-3">
-              <h3 className="font-medium text-gray-700">Think about:</h3>
-              {primeQuestions.map((question: string, index: number) => (
+              <h3 className="font-medium text-gray-700">Today you'll cover:</h3>
+              {skills.map((skill: string, index: number) => (
                 <motion.div
                   key={index}
                   initial={{ opacity: 0, x: -10 }}
@@ -171,22 +170,11 @@ export function PrePromptStep({ day, session }: PrePromptStepProps) {
                                  flex items-center justify-center text-sm font-medium text-brand-600">
                     {index + 1}
                   </span>
-                  <p className="text-gray-700">{question}</p>
+                  <p className="text-gray-700">{skill}</p>
                 </motion.div>
               ))}
             </div>
-          ) : isDeferredLoading ? (
-            /* Show skeleton while primeQuestions are loading */
-            <div className="space-y-3">
-              <h3 className="font-medium text-gray-700">Think about:</h3>
-              {[1, 2].map((i) => (
-                <div key={i} className="flex items-start gap-3 p-3 bg-white rounded-lg border border-brand-100 animate-pulse">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-100/50" />
-                  <div className="flex-1 h-4 bg-gray-100 rounded" style={{ width: `${60 + i * 15}%` }} />
-                </div>
-              ))}
-            </div>
-          ) : null}
+          )}
         </div>
       </Card>
 

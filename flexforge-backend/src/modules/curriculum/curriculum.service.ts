@@ -17,7 +17,6 @@ import {
   buildCacheableCurriculumPrompt,
   buildCacheableDayDetailCorePrompt,
   buildDayDetailDeferredPrompt,
-  buildLightweightContentPrompt,
   buildDeferredLightweightPrompt,
   buildBossDetailPrompt,
   usesProjectBasedLearning,
@@ -28,6 +27,8 @@ import {
   ContentGenerationContext,
   buildContentGenerationContext,
   extractTask1Concepts,
+  normalizeSectionIds,
+  normalizeTask1Sections,
 } from './prompts/content-generation-context';
 import { formatTime } from './utils/shared.utils';
 
@@ -926,29 +927,7 @@ Return JSON only:
     // Get strategy fields from skeleton
     const contentLayer = dayOverview.contentLayer || 'framework';
     const contentSource = dayOverview.contentSource || 'youtube';
-    // TODO: Temporarily skip video search for all courses 
     const videoStrategy = 'skip';
-
-    //   let videoStrategy = dayOverview.videoStrategy || 'helpful';
-
-    // // Enforce video strategy by skill type and content type (override AI decision)
-    // const skillType = curriculum.metadata?.skillType;
-
-    // // Determine if this is a conceptual/theory day (doesn't benefit from video)
-    // const isConceptualDay =
-    //   contentLayer === 'concept' ||
-    //   contentLayer === 'theory' ||
-    //   !curriculum.metadata.isProjectBased;
-
-    // if (skillType === 'KNOWLEDGE' || skillType === 'LANGUAGE') {
-    //   videoStrategy = 'skip'; // Text + interaction is always better for concepts
-    // } else if (isConceptualDay && !dayOverview.requiresDemo) {
-    //   videoStrategy = 'skip'; // Conceptual content doesn't need video
-    // } else if (skillType === 'PHYSICAL' || dayOverview.requiresDemo) {
-    //   videoStrategy = 'recommended'; // Form demonstration requires visual
-    // } else {
-    //   videoStrategy = dayOverview.videoStrategy || 'helpful';
-    // }
 
     // Build search concept for university/docs searches
     const searchConcept = (dayOverview.title || '')
@@ -1059,38 +1038,15 @@ Return JSON only:
     const { staticPart, dynamicPart, userPrompt } =
       buildCacheableDayDetailCorePrompt(params);
 
-    // Build unified content generation context for lightweight prompt
-    const ctx = buildContentGenerationContext(curriculum, dayNumber, {
-      userTier,
-      improvementAreas,
-      lessOfAreas,
-      previousDayReflection,
-    });
+    // Single Sonnet call for core content (prePrompt now from skeleton, no Haiku needed)
+    this.logger.log(`🚀 Starting Sonnet call for Day ${dayNumber} CORE`);
 
-    // Build lightweight prompt for Haiku (reflection, openTask, primeQuestions)
-    const { systemPrompt: lightSystemPrompt, userPrompt: lightUserPrompt } =
-      buildLightweightContentPrompt(params, ctx);
-
-    // Run BOTH AI calls in parallel: Sonnet (core) + Haiku (lightweight)
-    this.logger.log(`🚀 Starting parallel AI calls for Day ${dayNumber} CORE (Sonnet + Haiku)`);
-
-    const [aiResponse, lightweightResponse] = await Promise.all([
+    const [aiResponse] = await Promise.all([
       this.aiService.callAnthropicWithCache(
         'claude-sonnet-4-20250514',
         userPrompt,
         { staticPart, dynamicPart },
       ),
-      this.aiService.routeRequest(
-        AITask.LIGHTWEIGHT_CONTENT,
-        lightUserPrompt,
-        lightSystemPrompt,
-      ).catch((error) => {
-        // Non-fatal: log and return null so Sonnet content is still used
-        this.logger.warn(
-          `⚠️ Day ${dayNumber} lightweight content failed: ${error.message}`,
-        );
-        return null;
-      }),
     ]);
 
     let coreContent: any;
@@ -1112,25 +1068,7 @@ Return JSON only:
         coreContent = JSON.parse(fixedContent);
       }
 
-      // Normalize task1 sections (ensure IDs only for sections with questions/items)
-      if (coreContent.task1?.sections && Array.isArray(coreContent.task1.sections)) {
-        coreContent.task1.sections = coreContent.task1.sections.map(
-          (section: any, sIdx: number) => {
-            if (!section.questions && !section.items) return section;
-            const items = section.questions || section.items;
-            const normalizedItems = items.map((item: any, qIdx: number) => ({
-              ...item,
-              id: item.id || `s${sIdx + 1}-q${qIdx + 1}`,
-            }));
-            return {
-              ...section,
-              ...(section.questions ? { questions: normalizedItems } : { items: normalizedItems }),
-            };
-          },
-        );
-        // Ensure task1 has an id
-        coreContent.task1.id = coreContent.task1.id || `day${dayNumber}-task1`;
-      }
+      normalizeTask1Sections(coreContent, dayNumber);
 
       // Note: bossMilestone is now generated in DEFERRED content, not CORE
       // Remove any legacy bossMilestone from core if present (old cached data)
@@ -1161,41 +1099,17 @@ Return JSON only:
       );
     }
 
+    // Add prePrompt from skeleton (not AI-generated)
+    const skills: string[] = dayOverview.skills || dayOverview.objectives || [];
+    coreContent.prePrompt = {
+      text: `Today you'll learn about ${dayOverview.title}`,
+      skills,
+    };
+
     // Add metadata (using already-declared variables)
     coreContent.contentLayer = contentLayer;
     coreContent.videoStrategy = videoStrategy;
     coreContent.contentSource = contentSource;
-
-    // Merge lightweight content (Haiku) into core content
-    if (lightweightResponse) {
-      try {
-        const cleanedLightweight = lightweightResponse.content
-          .replace(/```json\n?/g, '')
-          .replace(/```\n?/g, '')
-          .trim();
-
-        const lightJsonMatch = cleanedLightweight.match(/\{[\s\S]*\}/);
-        if (lightJsonMatch) {
-          let lightweightContent: any;
-          try {
-            lightweightContent = JSON.parse(lightJsonMatch[0]);
-          } catch {
-            const fixedLight = lightJsonMatch[0].replace(/,(\s*[}\]])/g, '$1');
-            lightweightContent = JSON.parse(fixedLight);
-          }
-
-          // Add Haiku's primeQuestions to core (reflection + openTask moved to DEFERRED)
-          if (lightweightContent.primeQuestions) {
-            coreContent.primeQuestions = lightweightContent.primeQuestions;
-            this.logger.log(`✅ Day ${dayNumber} primeQuestions generated with Haiku (in CORE)`);
-          }
-        }
-      } catch (parseError) {
-        this.logger.warn(
-          `⚠️ Day ${dayNumber} lightweight content parse failed in CORE: ${parseError.message}`,
-        );
-      }
-    }
 
     // ====== VIDEO SEARCH FOR CORE CONTENT (using shared helper) ======
     // Includes multi-model alignment verification (Haiku checks Gemini's video selection)
@@ -1407,8 +1321,6 @@ Return JSON only:
    * Stream event types for real-time UI updates
    */
   static readonly STREAM_EVENTS = {
-    PRE_PROMPT: 'prePrompt',
-    FOUNDATION_CARD: 'foundationCard', // Legacy - kept for backward compat
     TASK1_SECTION: 'task1Section',
     TASK1: 'task1',
     VIDEO: 'video',
@@ -1461,16 +1373,15 @@ Return JSON only:
       if (cachedResult) {
         this.logger.log(`📦 Day ${dayNumber} CORE cache HIT (streaming)`);
         // Yield cached content piece by piece for consistent UX
-        if (cachedResult.content.prePrompt) {
-          yield {
-            event: CurriculumService.STREAM_EVENTS.PRE_PROMPT,
-            data: cachedResult.content.prePrompt,
-          };
-        }
+        // (prePrompt is built from skeleton on frontend — no need to stream it)
         // Yield task1 sections individually, then complete task1
         if (cachedResult.content.task1) {
           if (cachedResult.content.task1.sections?.length) {
             for (const [i, section] of cachedResult.content.task1.sections.entries()) {
+              const qCount = section.questions?.length || section.items?.length || section.pairs?.length || 0;
+              this.logger.log(
+                `📡 Stream (cached): section ${i} (${section.type}) with ${qCount} items`,
+              );
               yield {
                 event: CurriculumService.STREAM_EVENTS.TASK1_SECTION,
                 data: { section, index: i },
@@ -1480,17 +1391,6 @@ Return JSON only:
           yield {
             event: CurriculumService.STREAM_EVENTS.TASK1,
             data: cachedResult.content.task1,
-          };
-        }
-        // Backward compat: yield foundation cards from old cached data
-        const cards =
-          cachedResult.content.languageFoundationCards ||
-          cachedResult.content.foundationCards ||
-          [];
-        for (const card of cards) {
-          yield {
-            event: CurriculumService.STREAM_EVENTS.FOUNDATION_CARD,
-            data: card,
           };
         }
         if (cachedResult.content.video) {
@@ -1529,23 +1429,6 @@ Return JSON only:
     const contentSource = dayOverview.contentSource || 'youtube';
     // TODO: Temporarily skip video search for all courses 
     const videoStrategy = 'skip';
-    //   let videoStrategy = dayOverview.videoStrategy || 'helpful';
-    // const skillType = curriculum.metadata?.skillType;
-
-    // const isConceptualDay =
-    //   contentLayer === 'concept' ||
-    //   contentLayer === 'theory' ||
-    //   !curriculum.metadata.isProjectBased;
-
-    // if (skillType === 'KNOWLEDGE' || skillType === 'LANGUAGE') {
-    //   videoStrategy = 'skip';
-    // } else if (isConceptualDay && !dayOverview.requiresDemo) {
-    //   videoStrategy = 'skip';
-    // } else if (skillType === 'PHYSICAL' || dayOverview.requiresDemo) {
-    //   videoStrategy = 'recommended';
-    // } else {
-    //   videoStrategy = dayOverview.videoStrategy || 'helpful';
-    // }
     const params = {
       skillName: curriculum.metadata.skillName,
       dayNumber,
@@ -1573,34 +1456,15 @@ Return JSON only:
     const { staticPart, dynamicPart, userPrompt } =
       buildCacheableDayDetailCorePrompt(params);
 
-    // Build unified content generation context for lightweight prompt
-    const ctx = buildContentGenerationContext(curriculum, dayNumber, {
-      userTier,
-      improvementAreas,
-      lessOfAreas,
-      previousDayReflection,
-    });
-
-    // Build lightweight prompt for Haiku (reflection, openTask, primeQuestions)
-    const { systemPrompt: lightSystemPrompt, userPrompt: lightUserPrompt } =
-      buildLightweightContentPrompt(params, ctx);
-
-    // Start Haiku call early (non-blocking) - will merge at the end
-    this.logger.log(`🚀 Starting parallel Haiku call for Day ${dayNumber} lightweight content (streaming)`);
-    const lightweightPromise = this.aiService.routeRequest(
-      AITask.LIGHTWEIGHT_CONTENT,
-      lightUserPrompt,
-      lightSystemPrompt,
-    ).catch((error) => {
-      this.logger.warn(
-        `⚠️ Day ${dayNumber} lightweight content failed (streaming): ${error.message}`,
-      );
-      return null;
-    });
+    // Build prePrompt from skeleton data (no AI needed, no streaming — frontend builds it locally)
+    const skills: string[] = dayOverview.skills || dayOverview.objectives || [];
+    const skeletonPrePrompt = {
+      text: `Today you'll learn about ${dayOverview.title}`,
+      skills,
+    };
 
     // Stream from Anthropic
     let fullContent = '';
-    let prePromptYielded = false;
     // Incremental section parsing state
     let sectionsArrayStarted = false;
     let sectionStartIndex = -1;
@@ -1618,26 +1482,6 @@ Return JSON only:
       )) {
         if (chunk.type === 'text' && chunk.text) {
           fullContent += chunk.text;
-
-          // Try to parse partial JSON and yield new content
-          // Look for prePrompt first
-          if (!prePromptYielded) {
-            const prePromptMatch = fullContent.match(
-              /"prePrompt"\s*:\s*(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})/s,
-            );
-            if (prePromptMatch) {
-              try {
-                const prePrompt = JSON.parse(prePromptMatch[1]);
-                yield {
-                  event: CurriculumService.STREAM_EVENTS.PRE_PROMPT,
-                  data: prePrompt,
-                };
-                prePromptYielded = true;
-              } catch {
-                // Not complete yet, wait for more
-              }
-            }
-          }
 
           // Incremental task1 section parsing using bracket counting
           // Detect "sections": [ and then find complete section objects
@@ -1683,21 +1527,13 @@ Return JSON only:
                   const sectionJson = fullContent.slice(sectionStartIndex, i + 1);
                   try {
                     const section = JSON.parse(sectionJson);
-                    // Normalize IDs only for sections that use questions/items arrays
                     const sIdx = yieldedSectionCount;
-                    let normalizedSection = section;
-                    if (section.questions || section.items) {
-                      const items = section.questions || section.items;
-                      const normalizedItems = items.map((item: any, qIdx: number) => ({
-                        ...item,
-                        id: item.id || `s${sIdx + 1}-q${qIdx + 1}`,
-                      }));
-                      normalizedSection = {
-                        ...section,
-                        ...(section.questions ? { questions: normalizedItems } : { items: normalizedItems }),
-                      };
-                    }
+                    const normalizedSection = normalizeSectionIds(section, sIdx);
 
+                    const questionCount = normalizedSection.questions?.length || normalizedSection.items?.length || normalizedSection.pairs?.length || 0;
+                    this.logger.log(
+                      `📡 Stream: section ${sIdx} (${normalizedSection.type}) with ${questionCount} items`,
+                    );
                     yield {
                       event: CurriculumService.STREAM_EVENTS.TASK1_SECTION,
                       data: { section: normalizedSection, index: sIdx },
@@ -1738,30 +1574,18 @@ Return JSON only:
               coreContent = JSON.parse(fixedContent);
             }
 
-            // Normalize task1 sections (ensure IDs only for sections with questions/items)
-            if (coreContent.task1?.sections && Array.isArray(coreContent.task1.sections)) {
-              coreContent.task1.sections = coreContent.task1.sections.map(
-                (section: any, sIdx: number) => {
-                  if (!section.questions && !section.items) return section;
-                  const items = section.questions || section.items;
-                  const normalizedItems = items.map((item: any, qIdx: number) => ({
-                    ...item,
-                    id: item.id || `s${sIdx + 1}-q${qIdx + 1}`,
-                  }));
-                  return {
-                    ...section,
-                    ...(section.questions ? { questions: normalizedItems } : { items: normalizedItems }),
-                  };
-                },
-              );
-              coreContent.task1.id = coreContent.task1.id || `day${dayNumber}-task1`;
+            normalizeTask1Sections(coreContent, dayNumber);
 
+            if (coreContent.task1?.sections) {
               // Yield task1 as complete object
               yield {
                 event: CurriculumService.STREAM_EVENTS.TASK1,
                 data: coreContent.task1,
               };
             }
+
+            // Add prePrompt from skeleton (not AI-generated)
+            coreContent.prePrompt = skeletonPrePrompt;
 
             // Add metadata
             coreContent.contentLayer = contentLayer;
@@ -1798,46 +1622,6 @@ Return JSON only:
                 skipped: true,
               };
               // Don't yield video event when skipped - frontend will skip video step
-            }
-
-            // Merge lightweight content (Haiku) into core content
-            const lightweightResponse = await lightweightPromise;
-            if (lightweightResponse) {
-              try {
-                const cleanedLightweight = lightweightResponse.content
-                  .replace(/```json\n?/g, '')
-                  .replace(/```\n?/g, '')
-                  .trim();
-
-                const lightJsonMatch = cleanedLightweight.match(/\{[\s\S]*\}/);
-                if (lightJsonMatch) {
-                  let lightweightContent: any;
-                  try {
-                    lightweightContent = JSON.parse(lightJsonMatch[0]);
-                  } catch {
-                    const fixedLight = lightJsonMatch[0].replace(/,(\s*[}\]])/g, '$1');
-                    lightweightContent = JSON.parse(fixedLight);
-                  }
-
-                  // Add Haiku's lightweight content to core
-                  if (lightweightContent.reflection) {
-                    coreContent.reflection = lightweightContent.reflection;
-                    this.logger.log(`✅ Day ${dayNumber} reflection generated with Haiku (in CORE streaming)`);
-                  }
-                  if (lightweightContent.openTask) {
-                    coreContent.openTask = lightweightContent.openTask;
-                    this.logger.log(`✅ Day ${dayNumber} openTask generated with Haiku (in CORE streaming)`);
-                  }
-                  if (lightweightContent.primeQuestions) {
-                    coreContent.primeQuestions = lightweightContent.primeQuestions;
-                    this.logger.log(`✅ Day ${dayNumber} primeQuestions generated with Haiku (in CORE streaming)`);
-                  }
-                }
-              } catch (parseError) {
-                this.logger.warn(
-                  `⚠️ Day ${dayNumber} lightweight content parse failed in CORE streaming: ${parseError.message}`,
-                );
-              }
             }
 
             // Cache the result

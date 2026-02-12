@@ -822,7 +822,7 @@ export class SessionService {
 
   /**
    * Start a day - CORE content only (fast initial load)
-   * Returns: prePrompt, video, foundationCards, task1
+   * Returns: video, task1
    * With variant tracking and rate limiting for regeneration
    */
   async startDayCore(
@@ -1164,6 +1164,34 @@ export class SessionService {
   }
 
   /**
+   * Yield cached core content piece by piece for consistent SSE UX
+   */
+  private async *yieldCachedCoreContent(
+    dayOverview: any,
+  ): AsyncGenerator<{ event: string; data: any }> {
+    if (dayOverview.coreContent.task1) {
+      if (dayOverview.coreContent.task1.sections?.length) {
+        for (const [i, section] of dayOverview.coreContent.task1.sections.entries()) {
+          yield { event: 'task1Section', data: { section, index: i } };
+        }
+      }
+      yield { event: 'task1', data: dayOverview.coreContent.task1 };
+    }
+    if (dayOverview.coreContent.video) {
+      yield { event: 'video', data: dayOverview.coreContent.video };
+    }
+    yield {
+      event: 'complete',
+      data: {
+        coreContent: dayOverview.coreContent,
+        tokensUsed: 0,
+        fromCache: true,
+        variantId: dayOverview.variantId,
+      },
+    };
+  }
+
+  /**
    * Start a day with STREAMING - yields content as it's generated
    * Use for real-time UI updates (foundation cards appear one by one)
    */
@@ -1188,40 +1216,27 @@ export class SessionService {
     // Check if already loaded (quick return cached)
     if (!forceRegenerate && dayOverview.coreLoaded && dayOverview.coreContent) {
       this.logger.log(`📦 Day ${dayNumber} already loaded, streaming cached`);
-      // Yield cached content piece by piece
-      if (dayOverview.coreContent.prePrompt) {
-        yield { event: 'prePrompt', data: dayOverview.coreContent.prePrompt };
-      }
-      // Yield task1 sections individually, then complete task1
-      if (dayOverview.coreContent.task1) {
-        if (dayOverview.coreContent.task1.sections?.length) {
-          for (const [i, section] of dayOverview.coreContent.task1.sections.entries()) {
-            yield { event: 'task1Section', data: { section, index: i } };
-          }
-        }
-        yield { event: 'task1', data: dayOverview.coreContent.task1 };
-      }
-      // Backward compat: yield foundation cards from old cached data
-      const cards =
-        dayOverview.coreContent.languageFoundationCards ||
-        dayOverview.coreContent.foundationCards ||
-        [];
-      for (const card of cards) {
-        yield { event: 'foundationCard', data: card };
-      }
-      if (dayOverview.coreContent.video) {
-        yield { event: 'video', data: dayOverview.coreContent.video };
-      }
-      yield {
-        event: 'complete',
-        data: {
-          coreContent: dayOverview.coreContent,
-          tokensUsed: 0,
-          fromCache: true,
-          variantId: dayOverview.variantId,
-        },
-      };
+      yield* this.yieldCachedCoreContent(dayOverview);
       return;
+    }
+
+    // If a preload is in-flight, await it instead of making a duplicate AI call
+    if (!forceRegenerate) {
+      const existingPreload = this.preloadPromises.get(sessionId);
+      if (existingPreload) {
+        this.logger.log(`⏳ Awaiting in-flight preload for session ${sessionId} (stream)...`);
+        await existingPreload;
+        // Re-fetch session to pick up preloaded content
+        const refreshed = await this.findOne(sessionId, userId);
+        const refreshedDay = refreshed.curriculum?.days?.find(
+          (d: any) => d.day === dayNumber,
+        );
+        if (refreshedDay?.coreLoaded && refreshedDay?.coreContent) {
+          this.logger.log(`✅ Preloaded content ready for Day ${dayNumber} (stream)`);
+          yield* this.yieldCachedCoreContent(refreshedDay);
+          return;
+        }
+      }
     }
 
     // Stream from curriculum service

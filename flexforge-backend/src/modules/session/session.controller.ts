@@ -300,45 +300,6 @@ export class SessionController {
     };
   }
 
-  // SSE STREAMING DISABLED - using regular API calls instead
-  // @Sse(':id/days/:dayNumber/load-deferred-stream')
-  // loadDayDeferredStream(
-  //   @Request() req,
-  //   @Param('id') id: string,
-  //   @Param('dayNumber') dayNumber: string,
-  // ): Observable<MessageEvent> {
-  //   const userId = req.user.id;
-  //   const dayNum = parseInt(dayNumber, 10);
-  //
-  //   // Create Observable that properly streams from async generator
-  //   return new Observable<MessageEvent>((subscriber) => {
-  //     const streamGenerator = this.sessionService.loadDayDeferredStream(
-  //       id,
-  //       userId,
-  //       dayNum,
-  //     );
-  //
-  //     (async () => {
-  //       try {
-  //         for await (const chunk of streamGenerator) {
-  //           subscriber.next({
-  //             data: chunk,
-  //             type: chunk.event,
-  //           } as MessageEvent);
-  //         }
-  //         subscriber.complete();
-  //       } catch (error) {
-  //         console.error('[SSE Deferred Stream Error]', error);
-  //         subscriber.next({
-  //           data: { event: 'error', data: { error: error.message } },
-  //           type: 'error',
-  //         } as MessageEvent);
-  //         subscriber.complete();
-  //       }
-  //     })();
-  //   });
-  // }
-
   /**
    * POST /api/v1/sessions/:id/days/:dayNumber/practice/submit
    * Submit practice project answer - unlocks next day

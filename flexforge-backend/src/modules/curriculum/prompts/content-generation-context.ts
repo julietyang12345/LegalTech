@@ -235,6 +235,34 @@ export function buildContentGenerationContext(
  * Pulls conceptTitle from each question across all sections.
  * Falls back to foundation cards for backward compatibility with cached data.
  */
+/**
+ * Normalize a single task1 section: ensure question/item IDs exist.
+ * Sections that use other data structures (e.g., matching pairs) are passed through untouched.
+ */
+export function normalizeSectionIds(section: any, sectionIndex: number): any {
+  if (!section.questions && !section.items) return section;
+  const items = section.questions || section.items;
+  const normalizedItems = items.map((item: any, qIdx: number) => ({
+    ...item,
+    id: item.id || `s${sectionIndex + 1}-q${qIdx + 1}`,
+  }));
+  return {
+    ...section,
+    ...(section.questions ? { questions: normalizedItems } : { items: normalizedItems }),
+  };
+}
+
+/**
+ * Normalize all task1 sections in coreContent and ensure task1 has an ID.
+ */
+export function normalizeTask1Sections(coreContent: any, dayNumber: number): void {
+  if (!coreContent.task1?.sections || !Array.isArray(coreContent.task1.sections)) return;
+  coreContent.task1.sections = coreContent.task1.sections.map(
+    (section: any, sIdx: number) => normalizeSectionIds(section, sIdx),
+  );
+  coreContent.task1.id = coreContent.task1.id || `day${dayNumber}-task1`;
+}
+
 export function extractTask1Concepts(coreContent: any): string[] {
   // New format: extract from task1 sections
   const task1 = coreContent?.task1;
