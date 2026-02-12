@@ -18,7 +18,9 @@ export function LoginPage() {
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [turnstileToken, setTurnstileToken] = useState('');
 
-  const from = (location.state as any)?.from?.pathname || '/today';
+  const rawFrom = (location.state as any)?.from?.pathname || '/today';
+  // Prevent open redirect — only allow relative paths starting with /
+  const from = typeof rawFrom === 'string' && rawFrom.startsWith('/') && !rawFrom.startsWith('//') ? rawFrom : '/today';
 
   // Check if error is related to email verification
   const isVerificationError = error?.toLowerCase().includes('verify');

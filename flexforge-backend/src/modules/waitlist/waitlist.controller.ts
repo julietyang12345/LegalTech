@@ -12,6 +12,10 @@ import { Request } from 'express';
 import { WaitlistService } from './waitlist.service';
 import { WaitlistSignupDto, UpdatePricePreferenceDto } from './dto/waitlist.dto';
 import { OptionalAuthGuard } from '../auth/guards/optional-auth.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../../database/entities/user.entity';
 
 @Controller('waitlist')
 export class WaitlistController {
@@ -61,12 +65,16 @@ export class WaitlistController {
   }
 
   @Get('count')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   async getCount() {
     const count = await this.waitlistService.getCount();
     return { count };
   }
 
   @Get('stats')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   async getStats() {
     return this.waitlistService.getStats();
   }

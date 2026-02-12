@@ -19,6 +19,9 @@ import { SessionService } from './session.service';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { UpdateSessionDto } from './dto/update-session.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../../database/entities/user.entity';
 
 @Controller('sessions')
 @UseGuards(JwtAuthGuard, ThrottlerGuard)
@@ -455,6 +458,8 @@ export class SessionController {
    * Clear all deferred content from all sessions (admin endpoint)
    */
   @Post('admin/clear-deferred')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   async clearAllDeferredContent(@Request() req) {
     const result = await this.sessionService.clearAllDeferredContent();
     return {

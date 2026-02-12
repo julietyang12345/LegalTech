@@ -7,6 +7,7 @@ export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest', // CSRF protection — forms can't set custom headers
   },
   timeout: 600000, // 10 minutes for curriculum generation
   withCredentials: true, // Send HTTP-only cookies with requests

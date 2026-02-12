@@ -17,7 +17,20 @@ async function bootstrap() {
   // Security headers with Helmet
   app.use(
     helmet({
-      contentSecurityPolicy: isProduction ? undefined : false,
+      contentSecurityPolicy: isProduction
+        ? {
+            directives: {
+              defaultSrc: ["'self'"],
+              scriptSrc: ["'self'"],
+              styleSrc: ["'self'", "'unsafe-inline'"],
+              imgSrc: ["'self'", 'data:', 'https:'],
+              connectSrc: ["'self'"],
+              fontSrc: ["'self'"],
+              objectSrc: ["'none'"],
+              frameAncestors: ["'none'"],
+            },
+          }
+        : false,
       crossOriginEmbedderPolicy: false,
     }),
   );
@@ -76,7 +89,31 @@ async function bootstrap() {
       'x-edge-payload',
       'cf-access-client-id',
       'cf-access-client-secret',
+      'X-Requested-With',
+      'x-admin-secret',
     ],
+  });
+
+  // CSRF protection: require X-Requested-With header on state-changing requests with cookies
+  // Forms can't set custom headers, so this blocks cross-origin form submissions
+  app.use((req: any, res: any, next: any) => {
+    const method = req.method?.toUpperCase();
+    if (['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      return next();
+    }
+    // Skip for edge worker requests (they use service tokens, not cookies)
+    if (req.headers['cf-access-client-id']) {
+      return next();
+    }
+    // Skip for requests without cookies (no session to hijack)
+    if (!req.cookies?.access_token) {
+      return next();
+    }
+    // Require X-Requested-With for authenticated state-changing requests
+    if (!req.headers['x-requested-with']) {
+      return res.status(403).json({ message: 'Forbidden: missing CSRF header' });
+    }
+    next();
   });
 
   // Global validation pipe

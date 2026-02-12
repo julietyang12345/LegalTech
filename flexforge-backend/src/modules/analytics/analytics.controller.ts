@@ -7,11 +7,12 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
-  Query,
+  Headers,
   UnauthorizedException,
 } from '@nestjs/common';
 import { IsString, IsObject, IsOptional } from 'class-validator';
 import { ConfigService } from '@nestjs/config';
+import { timingSafeEqual } from 'crypto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { User } from '../../database/entities/user.entity';
@@ -46,20 +47,27 @@ export class AnalyticsController {
     private readonly configService: ConfigService,
   ) {}
 
+  private validateAdminSecret(secret: string | undefined): void {
+    const adminSecret = this.configService.get<string>('EDGE_SIGNING_SECRET');
+    if (!adminSecret || !secret) {
+      throw new UnauthorizedException('Invalid admin secret');
+    }
+    const secretBuf = Buffer.from(secret);
+    const adminBuf = Buffer.from(adminSecret);
+    if (secretBuf.length !== adminBuf.length || !timingSafeEqual(secretBuf, adminBuf)) {
+      throw new UnauthorizedException('Invalid admin secret');
+    }
+  }
+
   /**
    * GET /api/v1/analytics/spending
-   * Get current AI spending status (requires admin secret)
-   * Usage: GET /api/v1/analytics/spending?secret=YOUR_EDGE_SIGNING_SECRET
+   * Get current AI spending status (requires admin secret via x-admin-secret header)
    */
   @Get('spending')
   async getSpendingStatus(
-    @Query('secret') secret: string,
+    @Headers('x-admin-secret') secret: string,
   ) {
-    // Use EDGE_SIGNING_SECRET as admin auth (reuse existing secret)
-    const adminSecret = this.configService.get<string>('EDGE_SIGNING_SECRET');
-    if (!adminSecret || secret !== adminSecret) {
-      throw new UnauthorizedException('Invalid admin secret');
-    }
+    this.validateAdminSecret(secret);
 
     const status = this.aiService.getSpendingStatus();
     return {
@@ -75,12 +83,9 @@ export class AnalyticsController {
   @Post('spending/reset')
   @HttpCode(HttpStatus.OK)
   async resetSpending(
-    @Query('secret') secret: string,
+    @Headers('x-admin-secret') secret: string,
   ): Promise<{ success: boolean; message: string }> {
-    const adminSecret = this.configService.get<string>('EDGE_SIGNING_SECRET');
-    if (!adminSecret || secret !== adminSecret) {
-      throw new UnauthorizedException('Invalid admin secret');
-    }
+    this.validateAdminSecret(secret);
 
     this.aiService.resetSpending();
     return { success: true, message: 'Spending reset successfully' };
@@ -93,12 +98,9 @@ export class AnalyticsController {
    */
   @Get('spending/users')
   async getUsersSpending(
-    @Query('secret') secret: string,
+    @Headers('x-admin-secret') secret: string,
   ) {
-    const adminSecret = this.configService.get<string>('EDGE_SIGNING_SECRET');
-    if (!adminSecret || secret !== adminSecret) {
-      throw new UnauthorizedException('Invalid admin secret');
-    }
+    this.validateAdminSecret(secret);
 
     const globalStatus = this.aiService.getSpendingStatus();
     const users = await this.analyticsService.getUsersDailySpending();

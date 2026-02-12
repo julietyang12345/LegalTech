@@ -316,26 +316,25 @@ function SimpleExecutor({
 
   const runJavaScript = useCallback(() => {
     try {
-      const sandboxCode = `
-        (function() {
-          const logs = [];
-          const console = {
-            log: (...args) => logs.push(args.map(a =>
-              typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
-            ).join(' ')),
-            error: (...args) => logs.push('❌ Error: ' + args.join(' ')),
-            warn: (...args) => logs.push('⚠️ Warning: ' + args.join(' ')),
-            info: (...args) => logs.push('ℹ️ ' + args.join(' ')),
-          };
-          try {
-            ${code}
-          } catch (e) {
-            logs.push('❌ Error: ' + e.message);
-          }
-          return logs.join('\\n');
-        })()
-      `;
-      const result = eval(sandboxCode);
+      // Use Function constructor instead of eval() for better isolation
+      const sandboxFn = new Function(`
+        const logs = [];
+        const console = {
+          log: (...args) => logs.push(args.map(a =>
+            typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
+          ).join(' ')),
+          error: (...args) => logs.push('❌ Error: ' + args.join(' ')),
+          warn: (...args) => logs.push('⚠️ Warning: ' + args.join(' ')),
+          info: (...args) => logs.push('ℹ️ ' + args.join(' ')),
+        };
+        try {
+          ${code}
+        } catch (e) {
+          logs.push('❌ Error: ' + e.message);
+        }
+        return logs.join('\\n');
+      `);
+      const result = sandboxFn();
       onResult(result || '✅ Code executed successfully (no output)');
     } catch (error: any) {
       onResult(`❌ Error: ${error.message}`, true);

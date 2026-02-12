@@ -35,6 +35,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException();
     }
 
+    // Invalidate tokens issued before password change
+    const passwordChangedAt = user.preferences?.passwordChangedAt;
+    if (passwordChangedAt && payload.iat) {
+      const changedTimestamp = Math.floor(new Date(passwordChangedAt).getTime() / 1000);
+      if (payload.iat < changedTimestamp) {
+        throw new UnauthorizedException('Password was changed. Please log in again.');
+      }
+    }
+
     // Return full user object including preferences for curriculum personalization
     return user;
   }

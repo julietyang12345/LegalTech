@@ -132,13 +132,10 @@ app.use(
       'https://app.flexforge.ai',
       'https://flexforge.app',
       'https://www.flexforge.app',
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'http://localhost:3001',
     ],
     credentials: true,
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'x-turnstile-required'],
+    allowHeaders: ['Content-Type', 'Authorization', 'x-turnstile-required', 'X-Requested-With'],
     exposeHeaders: ['Content-Length', 'X-Request-Id'],
     maxAge: 86400,
   })
@@ -253,22 +250,24 @@ app.post('/api/v1/auth/register', async (c) => {
     // Clone the request body before proxying
     const body = await c.req.json<{ email: string; password: string; name?: string; turnstileToken?: string }>();
     const email = body.email?.toLowerCase()?.trim();
-    const clientIp = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
+    const clientIp = c.req.header('cf-connecting-ip') || 'unknown';
 
     // Turnstile verification (required for registration)
-    if (c.env.TURNSTILE_SECRET_KEY) {
-      if (!body.turnstileToken) {
-        return c.json({ message: 'Verification required' }, 400);
-      }
-      const turnstileValid = await verifyTurnstile(body.turnstileToken, clientIp, c.env.TURNSTILE_SECRET_KEY);
-      if (!turnstileValid) {
-        return c.json({ message: 'Verification failed' }, 400);
-      }
+    if (!body.turnstileToken) {
+      return c.json({ message: 'Verification required' }, 400);
+    }
+    if (!c.env.TURNSTILE_SECRET_KEY) {
+      console.error('TURNSTILE_SECRET_KEY is not configured');
+      return c.json({ message: 'Server configuration error' }, 500);
+    }
+    const turnstileValid = await verifyTurnstile(body.turnstileToken, clientIp, c.env.TURNSTILE_SECRET_KEY);
+    if (!turnstileValid) {
+      return c.json({ message: 'Verification failed' }, 400);
     }
 
-    // Rate limit signup
-    if (email) {
-      const rateLimit = await checkRateLimit(email, clientIp, c.env.RATE_LIMIT_COUNTERS, 'signup', {
+    // Rate limit signup (always enforce, even without valid email)
+    {
+      const rateLimit = await checkRateLimit(email || 'no-email', clientIp, c.env.RATE_LIMIT_COUNTERS, 'signup', {
         perEmail: { limit: 3, windowSeconds: 3600 },
         perIp: { limit: 5, windowSeconds: 3600 },
         global: { limit: 50, windowSeconds: 60 },
@@ -278,7 +277,7 @@ app.post('/api/v1/auth/register', async (c) => {
       }
     }
 
-    // Proxy to backend
+    // Proxy to backend (strip turnstileToken before forwarding)
     const backendResponse = await fetch(`${c.env.BACKEND_URL}/api/v1/auth/register`, {
       method: 'POST',
       headers: createBackendHeaders(c),
@@ -305,13 +304,15 @@ app.post('/api/v1/auth/register', async (c) => {
       if (sc) responseHeaders.append('Set-Cookie', sc);
     }
 
-    // If registration failed, return the error
+    // If registration failed, return sanitized error
     if (!backendResponse.ok) {
-      const errorData = await backendResponse.text();
-      return new Response(errorData, {
-        status: backendResponse.status,
-        headers: responseHeaders,
-      });
+      try {
+        const errorData = await backendResponse.json() as Record<string, unknown>;
+        const { stack, query, ...safeError } = errorData;
+        return c.json(safeError, backendResponse.status as any);
+      } catch {
+        return c.json({ message: 'Registration failed' }, backendResponse.status as any);
+      }
     }
 
     // Parse successful response to get user ID
@@ -518,11 +519,11 @@ app.post('/api/v1/auth/login', async (c) => {
   try {
     const body = await c.req.json<{ email: string; password: string; turnstileToken?: string }>();
     const email = body.email?.toLowerCase()?.trim();
-    const clientIp = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
+    const clientIp = c.req.header('cf-connecting-ip') || 'unknown';
 
-    // Rate limit login attempts
-    if (email) {
-      const rateLimit = await checkRateLimit(email, clientIp, c.env.RATE_LIMIT_COUNTERS, 'login', {
+    // Rate limit login attempts (always enforce, even without valid email)
+    {
+      const rateLimit = await checkRateLimit(email || 'no-email', clientIp, c.env.RATE_LIMIT_COUNTERS, 'login', {
         perEmail: { limit: 10, windowSeconds: 3600 },
         perIp: { limit: 20, windowSeconds: 3600 },
         global: { limit: 200, windowSeconds: 60 },
@@ -605,14 +606,14 @@ app.post('/api/v1/auth/forgot-password', async (c) => {
       return c.json({ error: 'Email is required' }, 400);
     }
 
-    // Get client IP for rate limiting
-    const clientIp = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
+    // Get client IP for rate limiting (only trust Cloudflare header)
+    const clientIp = c.req.header('cf-connecting-ip') || 'unknown';
 
     // Turnstile verification (required for forgot-password)
+    if (!body.turnstileToken) {
+      return c.json({ message: 'Verification required' }, 400);
+    }
     if (c.env.TURNSTILE_SECRET_KEY) {
-      if (!body.turnstileToken) {
-        return c.json({ message: 'Verification required' }, 400);
-      }
       const turnstileValid = await verifyTurnstile(body.turnstileToken, clientIp, c.env.TURNSTILE_SECRET_KEY);
       if (!turnstileValid) {
         return c.json({ message: 'Verification failed' }, 400);
@@ -859,8 +860,8 @@ app.post('/api/v1/auth/resend-verification', async (c) => {
       return c.json({ error: 'Email is required' }, 400);
     }
 
-    // Get client IP for rate limiting
-    const clientIp = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
+    // Get client IP for rate limiting (only trust Cloudflare header)
+    const clientIp = c.req.header('cf-connecting-ip') || 'unknown';
 
     // Check rate limits
     const rateLimit = await checkRateLimit(
@@ -974,7 +975,7 @@ app.all('*', async (c) => {
   const headers = createBackendHeaders(c);
 
   // Forward additional headers
-  const forwardHeaders = ['accept', 'user-agent', 'referer'];
+  const forwardHeaders = ['accept', 'user-agent', 'referer', 'x-requested-with'];
   for (const header of forwardHeaders) {
     const value = c.req.header(header);
     if (value) {
@@ -982,8 +983,8 @@ app.all('*', async (c) => {
     }
   }
 
-  // Add client IP for backend logging/rate limiting
-  const clientIp = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for');
+  // Add client IP for backend logging/rate limiting (only trust Cloudflare header)
+  const clientIp = c.req.header('cf-connecting-ip');
   if (clientIp) {
     headers.set('x-real-ip', clientIp);
   }
