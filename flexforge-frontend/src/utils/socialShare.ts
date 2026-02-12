@@ -1,9 +1,9 @@
 import type { Session, CurriculumDay } from '@/types';
+import { extractConceptsFromTask1 } from './extractConceptsFromTask1';
 
 export function buildShareText(session: Session, currentDay: CurriculumDay): string {
-  const concepts = currentDay.foundationCards
-    ?.slice(0, 4)
-    .map((c) => c.concept)
+  const concepts = extractConceptsFromTask1(currentDay.task1)
+    .slice(0, 4)
     .join(', ');
 
   const lines = [

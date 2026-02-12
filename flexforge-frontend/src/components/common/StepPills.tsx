@@ -14,10 +14,9 @@ interface StepPillsProps {
   progressive?: boolean;
 }
 
-const getStepLabels = (isProjectBased: boolean, videoUnavailable: boolean): Record<SessionStep, string> => ({
+const getStepLabels = (isProjectBased: boolean, videoUnavailable: boolean): Record<string, string> => ({
   prePrompt: 'Prep',
   video: videoUnavailable ? 'AI Learn' : 'Watch',
-  foundationCards: 'Cards',
   task1: 'Practice',
   bossMilestone: isProjectBased ? 'Boss' : 'Intensive',
   openTask: 'Apply',

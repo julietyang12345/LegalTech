@@ -203,7 +203,7 @@ export function getSectionsForSkillType(
 }
 
 // Consolidated time structure with all activities
-// New flow: Video → FoundationCards → Quiz/FillBlank → BossMilestone → Reflection
+// New flow: Video → Task1 (Duolingo-style) → BossMilestone → Reflection
 function getTimeStructure(hoursPerDay: number): {
   totalMinutes: number;
   mode: string;
@@ -361,19 +361,16 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
   if (prefs.sessionLength) {
     const sessionLengthGuidance: Record<string, string> = {
       short: `SESSION LENGTH: SHORT (<30 min/day)
-- Generate MINIMAL content: 4-5 foundation cards max
-- Keep explanations brief (150-200 words per card)
-- Only 6-8 quiz questions total
+- Generate MINIMAL content: 6-8 task1 questions
+- Keep explanations brief (150-200 words per question)
 - User needs quick wins, not comprehensive coverage`,
       medium: `SESSION LENGTH: MEDIUM (30-60 min/day)
-- Generate STANDARD content: 6-7 foundation cards
-- Normal explanations (200-300 words per card)
-- 8-10 quiz questions total
+- Generate STANDARD content: 8-10 task1 questions
+- Normal explanations (200-250 words per question)
 - Include all core sections`,
       long: `SESSION LENGTH: LONG (>1 hour/day)
-- Generate MORE content: 8-10 foundation cards
-- Detailed explanations (300-400 words per card)
-- 12-15 quiz questions total
+- Generate MORE content: 12-15 task1 questions
+- Detailed explanations (200-300 words per question)
 - Include deeper examples, edge cases, and additional practice
 - Add extra challenge questions and scenarios`,
     };
@@ -655,8 +652,8 @@ function buildLanguageTask1Template(lang: string, langHasTones: boolean): string
           "level": 1,
           "title": "Listening & Recognition",
           "questions": [
-            {"id": "q1", "question": "What does this mean?", "audioText": "word/phrase in ${lang}", "options": ["meaning1", "meaning2", "meaning3", "meaning4"], "correctIndex": 0, "explanation": "Explanation with romanization"},
-            {"id": "q2", "question": "Select the correct translation", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "Why this is correct"}
+            {"id": "q1", "question": "What does this mean?", "audioText": "word/phrase in ${lang}", "options": ["meaning1", "meaning2", "meaning3", "meaning4"], "correctIndex": 0, "conceptTitle": "Concept Name", "explanation": "Key insight about this word/grammar.\\n\\nUsage details and examples.\\n\\nWhen to use in conversation.", "realWorldContext": "Common situation where you'd use this"},
+            {"id": "q2", "question": "Select the correct translation", "options": ["A", "B", "C", "D"], "correctIndex": 0, "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.\\n\\nContext.", "realWorldContext": "Why this matters"}
           ]
         },
         {
@@ -664,14 +661,14 @@ function buildLanguageTask1Template(lang: string, langHasTones: boolean): string
           "level": 2,
           "title": "Apply Your Learning",
           "items": [
-            {"id": "fb1", "sentence": "Sentence with ___BLANK___", "translation": "English meaning", "blank": {"correctAnswers": ["answer"], "hint": "Grammar/form hint"}, "audioText": "Full sentence for TTS"}
+            {"id": "fb1", "sentence": "Sentence with ___BLANK___", "translation": "English meaning", "blank": {"correctAnswers": ["answer"], "hint": "Grammar/form hint"}, "audioText": "Full sentence for TTS", "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "When to use this"}
           ]
         }${langHasTones ? `,
         {
           "type": "toneSelect",
           "title": "Tone Recognition",
           "questions": [
-            {"id": "t1", "audioText": "word in ${lang}", "prompt": "Select the correct tone", "options": ["Tone 1", "Tone 2", "Tone 3", "Tone 4"], "correctIndex": 0, "explanation": "This is [tone name] - [description]"}
+            {"id": "t1", "audioText": "word in ${lang}", "prompt": "Select the correct tone", "options": ["Tone 1", "Tone 2", "Tone 3", "Tone 4"], "correctIndex": 0, "conceptTitle": "Tone Pattern", "explanation": "Key insight about this tone.\\n\\nHow to produce it.\\n\\nCommon words with this tone.", "realWorldContext": "Why tone matters here"}
           ]
         }` : ''}
       ]`;
@@ -849,11 +846,6 @@ function buildProjectBasedDeferredPrompt(
   // Get language features using shared helper (avoid duplication)
   const langFeatures = extractLangFeatures(params);
 
-  // Get skill-type-specific task1 template
-  const task1Template = params.isLanguageLearning
-    ? buildLanguageTask1Template(langFeatures.lang, langFeatures.hasTones)
-    : getTask1SectionTemplate(skillType);
-
   // Build unified context instructions if context is provided
   const contextInstructions = ctx ? buildFullContextInstructions(ctx) : '';
 
@@ -865,11 +857,6 @@ Type: ${params.skillType} | Level: ${params.skillLevel}${params.suggestedLanguag
 Topics: ${skillsStr}
 ${levelGuidance.complexityGuidance}
 ${contextInstructions}${languageCaveats}
-TASK1: 4-6 questions testing today's foundationCards ONLY (no new knowledge)
-- Level 1 "Differentiation" (1-2 Qs): "X or Y?", compare/contrast — keep brief, just enough to confirm basics
-- Level 2 "Application" (3-4 Qs): scenario-based — "which approach fits?", "why would B fail?", "given this situation, what would you do?"
-${ctx?.generatedContent?.foundationCardConcepts?.length ? `- Reference these concepts: ${ctx.generatedContent.foundationCardConcepts.join(', ')}` : ''}
-
 BOSS MILESTONE - SOLUTION + CHALLENGE (${newCodeLines} new lines):
 You provide a complete AI-generated solution. User chooses their path: write it themselves OR make the AI code run.
 
@@ -938,29 +925,21 @@ REQUIRED FIELDS:
   - For POST-only APIs: show curl command in test steps, NOT "open in browser"
 - DO NOT use placeholder text - generate ACTUAL code
 - AVOID REPETITION in solution code: Extract repeated values into constants, use helper functions for repeated logic
-${ctx?.continuity?.bossProjectTarget ? `- Boss Project: "${ctx.continuity.bossProjectTarget}" - conceptConnection should reference a foundationCard concept` : ''}
+${ctx?.continuity?.bossProjectTarget ? `- Boss Project: "${ctx.continuity.bossProjectTarget}" - conceptConnection should reference a task1 concept` : ''}
 
-Only generate: task1 and bossMilestone.
+Only generate: bossMilestone.
 
 Output valid JSON.`;
 
   const userPrompt = `{
   "day": ${dayNumber},
-  "task1": {
-    "id": "day${dayNumber}-task1",
-    "title": "Practice",
-    "estimatedMinutes": 8,
-    "format": "sections",
-    "passingScore": 0.7,
-    "sections": ${task1Template}
-  },
   "bossMilestone": {
     "day": ${dayNumber},
     "title": "Day ${dayNumber}: Build Your Piece",
     "description": "Today's contribution to the boss project",
     "microTask": "REQUIRED: What this code accomplishes (${newCodeLines} lines of code)",
     "dayContribution": "How this connects to the final project",
-    "conceptConnection": "Which foundationCard concept this applies",
+    "conceptConnection": "Which task1 concept this applies",
     "estimatedMinutes": 12,
 
     "solutionCode": "REQUIRED: ${solutionCodeLines} lines complete working ${params.suggestedLanguage || 'code'}. ${dayNumber > 1 ? `MUST include Day ${dayNumber - 1} code (provided above) PLUS todays additions. One complete file with all previous code + new code.` : 'Must be real, runnable code.'} GENERATE THIS FIRST.",
@@ -1009,7 +988,7 @@ function getIntensiveSectionInstructions(
   const newKnowledgeNote = `
 IMPORTANT - Each section MUST include:
 "newKnowledge": [{"term": "new concept", "meaning": "brief explanation"}]
-Introduce 2-4 NEW related concepts not covered in foundation cards.
+Introduce 2-4 NEW related concepts not covered in task1.
 Use DIFFERENT scenarios than task1 (new contexts, different domains).`;
 
   switch (skillType) {
@@ -1494,11 +1473,6 @@ IMPORTANT: Use "audioText" for TTS pronunciation in typing items.${langFeatures.
       ? languageSectionTemplate
       : getIntensiveSectionTemplate(skillType, dayNumber, codeWritingEnabled);
 
-  // Get skill-type-specific task1 template using shared helper
-  const task1Template = params.isLanguageLearning
-    ? buildLanguageTask1Template(lang, langFeatures.hasTones)
-    : getTask1SectionTemplate(skillType);
-
   // Build unified context instructions if context is provided
   const contextInstructions = ctx ? buildFullContextInstructions(ctx) : '';
 
@@ -1523,13 +1497,8 @@ Type: ${skillType}${params.customSections ? ' (hybrid)' : ''} | Level: ${params.
 Topics: ${skillsStr}
 ${levelGuidance.complexityGuidance}
 ${contextInstructions}${languageCaveats}
-TASK1: 4-6 questions testing today's foundationCards ONLY (no new knowledge)
-- Level 1 "Differentiation" (1-2 Qs): "X or Y?", compare/contrast — keep brief, just enough to confirm basics
-- Level 2 "Application" (3-4 Qs): scenario-based — "which approach fits?", "why would B fail?", "given this situation, what would you do?"
-${ctx?.generatedContent?.foundationCardConcepts?.length ? `- Reference these concepts: ${ctx.generatedContent.foundationCardConcepts.join(', ')}` : ''}
-
 INTENSIVE PRACTICE:
-- miniFoundationCards: ${miniCardCount} cards, NEW concepts not in foundation cards
+- miniFoundationCards: ${miniCardCount} cards, NEW concepts not covered in task1
   Format: {id, concept, explanation: "100-150 words"} - NO microQuestion
 - sections: EXACTLY 2, higher difficulty than task1
   For soft skills/decision-making → openEnded; for factual/code → quiz, fillBlank, etc.
@@ -1538,7 +1507,7 @@ ${sectionInstructions}
 Items per section: ${itemsPerSection}
 
 NOTE: Do NOT generate openTask or reflection - these are handled separately by a lightweight model (Haiku).
-Only generate: task1 and intensivePractice.
+Only generate: intensivePractice.
 
 Output valid JSON.`;
 
@@ -1562,14 +1531,6 @@ Output valid JSON.`;
 
   const userPrompt = `{
   "day": ${dayNumber},
-  "task1": {
-    "id": "day${dayNumber}-task1",
-    "title": "${params.isLanguageLearning ? 'Practice Check' : 'Practice'}",
-    "estimatedMinutes": ${params.isLanguageLearning ? 6 : 8},
-    "format": "sections",
-    "passingScore": 0.7,
-    "sections": ${task1Template}
-  },
   "intensivePractice": {
     "id": "day${dayNumber}-intensive",
     "title": "Intensive Practice: ${params.dayTitle}",
@@ -1733,33 +1694,47 @@ Output valid JSON only.`;
  */
 const DAY_DETAIL_STATIC_INSTRUCTIONS = `You generate day learning content using PROGRESSIVE LEARNING LEVELS.
 
-FOUNDATION CARDS (5-6) - Include Level 1 Understanding:
-- Card 1: INTRO/RECAP connecting to previous day
-- Cards 2-5: Core concepts with realWorldContext
-- Each card: 200-300 words, answers ONE question, not exhaustive
-- Format: "What is X?" → "It solves B, not A"
-- EXPLANATION STRUCTURE: Split into 2-3 paragraphs separated by \\n\\n (double newline):
-  - Paragraph 1: Key insight / main point (always visible)
-  - Paragraph 2+: Detailed explnation of the concept, supportingexamples, or nuances (collapsible)
-  - Group by theme/logic, NOT by sentence. Each paragraph should be a complete thought.
-- microQuestion: Quick check built into each card — mix of understanding and application
-  - Understanding: "Which statement about X is correct?" (1-2 cards)
-  - Application: "In this scenario, which approach would you use?" or "Why would approach B fail here?" (remaining cards)
-  - Prefer application-style questions — pure recall should be the minority
-  - Types: gotit, understanding (MCQ)
+TASK1 — THE CORE LEARNING ACTIVITY (Duolingo-style: question first, teach through feedback):
+- Users learn by answering questions, then reading rich explanations after answering
+- Each question's "explanation" field IS the primary teaching content (replaces passive reading)
+- Think of it as: test → reveal concept explanation → "aha!" moment
+- Each question teaches ONE concept — focused and clear, not exhaustive
+- Format: "What is X?" → "It solves B, not A" — answers one question well
 
-CASE STUDY CARDS (2-3 per day - for decision-making concepts):
-For cards about choices, trade-offs, or "when to use X vs Y":
-- Add a caseStudy object with:
-  - scenario: Real-world situation (2-3 sentences, e.g., "You're building X and encounter Y...")
-  - question: "What would you do?" or "Which approach fits?"
-  - options: 3-4 choices, each with label (1-5 words) and consequence ("This works, but..." or "This fails because...")
-  - bestChoice: Index of optimal choice (0-based)
-  - explanation: Why it's best (1-2 sentences)
-- Aim for at least 2 cards with case studies per day — they reinforce application thinking
-- User must answer case study before proceeding (gated like microQuestion)
+QUESTION FLOW:
+- Question 1: INTRO/RECAP — connect to previous day's concepts. If Day 1, introduce the topic foundation
+- Questions 2+: Core concepts covering today's topics
 
-NOTE: task1 is generated in DEFERRED content (loads in background while user reads foundation cards)
+EXPLANATION STRUCTURE (200-300 words per question):
+- Paragraph 1: Key insight / main point (bold/prominent in UI)
+- Paragraph 2+: Supporting details, examples, nuances, code snippets if applicable
+- Separate paragraphs with \\n\\n (double newline)
+- Group by theme/logic, NOT by sentence. Each paragraph should be a complete thought
+- If applicable: include code examples inline using backticks
+
+REQUIRED FIELDS per question:
+- "conceptTitle": Short concept name (e.g., "REST API Basics", "Present Tense Conjugation")
+- "explanation": 200-300 words of teaching content (structured as above)
+- "realWorldContext": 1 sentence — when/where this concept matters in practice
+
+QUESTION LEVELS:
+- Level 1 "Differentiation" (2-3 Qs): compare/contrast, "X or Y?" — confirm basics
+- Level 2 "Application" (remaining Qs): scenario-based, "which approach?", "why would B fail?"
+- Prefer application-style questions — pure recall should be the minority
+
+CASE STUDY QUESTIONS (2-3 per day — for trade-off/decision concepts):
+For questions about choices, trade-offs, or "when to use X vs Y":
+The case study IS the question — the scenario provides context, user picks an approach, consequences reveal after.
+- Add a "caseStudy" object to the question with:
+  - scenario: Real-world situation shown ABOVE the question (2-3 sentences)
+  - question: Replaces the regular question text — "What would you do?" or "Which approach fits?"
+  - options: 3-4 choices matching the MCQ options array, each with:
+    - label: 1-5 words naming the approach (MUST match the MCQ "options" array values)
+    - consequence: What happens if chosen — revealed AFTER answering ("This works, but..." or "This fails because...")
+  - bestChoice: Index of optimal choice (0-based, MUST match "correctIndex")
+  - explanation: Why it's best (1-2 sentences, shown inline after answering)
+- The MCQ "options" array and caseStudy "options[].label" MUST be identical
+- The "correctIndex" and caseStudy "bestChoice" MUST be identical
 
 INTENSIVE PRACTICE (deferred content) - NEW CONCEPTS ALLOWED:
 - Introduces NEW related concepts (must add to newKnowledge array)
@@ -1795,11 +1770,11 @@ export function buildCacheableCurriculumPrompt(
 - ONE boss project spans the ENTIRE ${params.durationDays}-day session
 - EVERY day includes bossMilestonePreview (what code they'll build that day)
 - Final day (Day ${params.durationDays}) is "Boss Day" - complete project assembly
-- Daily flow: Video → Cards → Quiz/FillBlank → Boss Micro-Step → Reflection`
+- Daily flow: Video → Quiz/Tasks → Boss Micro-Step → Reflection`
     : `PRACTICE-BASED STRUCTURE:
 - Each day is self-contained with standalone practice exercises
 - No multi-day projects - focus on mastering daily concepts
-- Daily flow: Video → Cards → Quiz/FillBlank → Practice Project → Reflection`;
+- Daily flow: Video → Quiz/Tasks → Practice Project → Reflection`;
 
   // Dynamic part - user-specific context with skill guidance
   const skillGuidance = getSkillTypeGuidance(
@@ -1910,24 +1885,15 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
     ? getLanguageFeatures(params.targetLanguage)
     : '';
 
-  // AI decides the mix of vocabulary vs grammar cards based on day's learning objectives
-  // Both card types are available in languageFoundationCards - AI chooses appropriate mix
-  // - Vocabulary cards: new words/phrases with term, definition, romanization
-  // - Grammar cards: rules, patterns, conjugation with examples
-  // AI determines based on: skill name, day objectives, what's being taught
-
   const languageInstructions = params.isLanguageLearning
     ? `\nLANGUAGE LEARNING: Target language is ${params.targetLanguage || 'specified'}. Level: ${params.proficiencyLevel || 'beginner'}.
 Features: ${langFeatures}
 - contentLayer: "language_core"
 - Video strategy: skip (use audio/TTS instead)
-- Include target language text with pronunciation/romanization in examples
+- Include target language text with pronunciation/romanization in explanations
 - Include "audioText" field in quiz questions for listening practice (TTS will speak it)
 - Include commonMistakes in explanations where relevant
-- AI DECIDES CARD MIX: Based on day's objectives, use the appropriate mix of:
-  * VOCABULARY cards (for new words/phrases) - include "vocabulary" object
-  * GRAMMAR cards (for rules/patterns/conjugation) - include "grammar" object
-  Choose the best mix for effective learning. Example: grammar lesson needs mostly grammar cards with a few vocab cards for key terms.
+- Task1 explanations should teach vocabulary/grammar concepts (word meanings, conjugation rules, usage patterns)
 ${langHasTones ? '- TONAL LANGUAGE: Include tone numbers/markers. Add toneSelect section in task1.' : ''}${langHasGender ? '\n- GENDERED LANGUAGE: Include grammatical gender (masculine/feminine/neuter) where applicable.' : ''}`
     : '';
 
@@ -1983,16 +1949,16 @@ ${langHasTones ? '- TONAL LANGUAGE: Include tone numbers/markers. Add toneSelect
   const dynamicPart = `SKILL: "${params.skillName}"
 Day ${params.dayNumber}: ${params.dayTitle}
 ${skillsStr ? `Topics: ${skillsStr}` : ''}
-${params.previousDayTitle ? `Previous: ${params.previousDayTitle}` : ''}
+${params.previousDayTitle ? `Previous day: ${params.previousDayTitle}` : 'This is Day 1 — introduce the topic foundation'}
 Type: ${params.skillType} | Level: ${params.skillLevel} | Sections: ${sectionTypes}
 ${skillGuidance}${languageInstructions}
 
 ${levelGuidance.complexityGuidance}
-CONTENT QUANTITY: ${levelGuidance.foundationCardCount} foundation cards covering the Topics above, ${levelGuidance.quizQuestionCount} quiz/exercise questions total
+
+TASK1: Generate ${levelGuidance.quizQuestionCount} questions across 2 section levels (follow TASK1 instructions above).
 ${personalizationInstructions}${continuityInstructions}`;
 
-  // User prompt - CORE content only (task1 moved to deferred)
-  // For language learning, video is null/skip and contentLayer is language_core
+  // User prompt - CORE content: prePrompt + video + task1 (the main learning activity)
   const videoSection = params.isLanguageLearning
     ? `"video": null,
   "videoStrategy": "skip",
@@ -2006,127 +1972,13 @@ ${personalizationInstructions}${continuityInstructions}`;
     ? '- video: null (language learning uses audio/TTS instead)\n- contentLayer: "language_core"'
     : '- video: REQUIRED (even if just searchQuery)';
 
-  // For language learning, always use languageFoundationCards - AI decides the mix of vocabulary/grammar
-  // For non-language skills, use regular foundationCards
-  const cardsArrayName = params.isLanguageLearning ? 'languageFoundationCards' : 'foundationCards';
-
-  // Language-specific card structure - AI chooses between vocabulary or grammar object per card
-  // Both are shown so AI understands both formats and can pick the right one
-  const languageCardStructure = params.isLanguageLearning
-    ? `VOCABULARY CARD (for teaching new words/phrases):
-    {
-      "id": "day${params.dayNumber}-vocab-1",
-      "concept": "Word/phrase in English (brief description)",
-      "visual": "relevant emoji",
-      "explanation": "Usage context and tips.\\n\\nWhen and how to use it.",
-      "vocabulary": {
-        "id": "vocab-day${params.dayNumber}-1",
-        "term": "word/phrase in ${params.targetLanguage}",
-        "definition": "English meaning",
-        "romanization": "pronunciation guide (pinyin/romaji/etc)"${langHasTones ? `,
-        "tone": 1` : ''}${langHasGender ? `,
-        "gender": "masculine"` : ''},
-        "partOfSpeech": "noun/verb/adjective/phrase",
-        "proficiencyLevel": "${params.proficiencyLevel || 'beginner'}",
-        "examples": [
-          {
-            "sentence": "Full example sentence in ${params.targetLanguage}",
-            "romanization": "pronunciation of sentence",
-            "translation": "English translation"
-          }
-        ]
-      },
-      "audioText": "The term in ${params.targetLanguage} for TTS",
-      "microQuestion": {
-        "type": "understanding",
-        "question": "Which is the correct meaning of [term]?",
-        "options": ["Correct meaning", "Similar but wrong", "Unrelated"],
-        "correctIndex": 0,
-        "explanation": "Why this is correct"
-      },
-      "order": 1
-    }
-
-    GRAMMAR CARD (for teaching rules/patterns/conjugation):
-    {
-      "concept": "Grammar rule name (e.g., Present Tense Conjugation)",
-      "explanation": "Explain the grammar rule clearly.\\n\\nProvide conjugation tables or sentence patterns.\\n\\nInclude examples in ${params.targetLanguage}.",
-      "realWorldContext": "When and how to use this in conversation",
-      "grammar": {
-        "rule": "Brief description of the grammar rule",
-        "pattern": "Subject + Verb + Object (structural pattern)",
-        "patternInTarget": "Pattern shown in ${params.targetLanguage}",${langHasGender ? `
-        "genderNotes": "How gender affects this pattern",` : ''}
-        "formality": "neutral",
-        "proficiencyLevel": "${params.proficiencyLevel || 'beginner'}",
-        "examples": [
-          {
-            "sentence": "Example sentence in ${params.targetLanguage}",
-            "breakdown": "Word-by-word breakdown",
-            "translation": "English translation",
-            "romanization": "pronunciation guide",
-            "notes": "Why this example demonstrates the rule"
-          }
-        ],
-        "commonMistakes": [
-          {
-            "wrong": "Incorrect usage",
-            "correct": "Correct usage",
-            "why": "Explanation of the mistake"
-          }
-        ]
-      },
-      "audioText": "Example sentence in ${params.targetLanguage} for TTS",
-      "microQuestion": {
-        "type": "understanding",
-        "question": "Which sentence uses correct grammar?",
-        "options": ["Correct sentence in ${params.targetLanguage}", "Wrong option", "Another wrong option"],
-        "correctIndex": 0,
-        "explanation": "Why this follows the grammar rule"
-      }
-    }
-
-    AI DECIDES: Use vocabulary cards for new words/phrases, grammar cards for rules/patterns. Mix as appropriate for the day's learning objectives.`
-    : `{
-      "concept": "Main concept title",
-      "explanation": "Key insight paragraph here.\\n\\nSupporting details, examples, or nuances in second paragraph.\\n\\nOptional third paragraph for additional context.",
-      "realWorldContext": "Why this matters in practice",
-      "microQuestion": {
-        "type": "understanding",
-        "question": "Which statement is correct?",
-        "options": ["Option A", "Option B", "Option C"],
-        "correctIndex": 0,
-        "explanation": "Why this is correct"
-      }
-    }`;
-
-  // Additional requirements based on content type (matching frontend VocabularyItem/GrammarRule interfaces)
-  const languageRequirements = params.isLanguageLearning
-    ? `
-- languageFoundationCards: REQUIRED - ${levelGuidance.foundationCardCount} cards total
-  - AI DECIDES: Mix vocabulary and grammar cards based on day's objectives
-
-  FOR VOCABULARY CARDS (use when teaching new words/phrases):
-  - MUST have "vocabulary" object with: id, term, definition, romanization, partOfSpeech, proficiencyLevel, examples[]${langHasTones ? '\n  - TONAL: Include tone number' : ''}${langHasGender ? '\n  - GENDERED: Include gender (masculine/feminine/neuter)' : ''}
-  - examples[]: Array with {sentence, romanization, translation}
-  - audioText: The term for TTS pronunciation
-
-  FOR GRAMMAR CARDS (use when teaching rules/patterns/conjugation):
-  - MUST have "grammar" object with: rule, pattern, proficiencyLevel, examples[], commonMistakes[]
-  - examples[]: Array with {sentence, breakdown, translation, romanization, notes}
-  - audioText: Example sentence for TTS pronunciation
-
-  GUIDELINES:
-  - Grammar-focused topics (conjugation, sentence structure): Mostly grammar cards, few vocab cards for key terms
-  - Vocabulary-focused topics (words, phrases): Mostly vocabulary cards, occasional grammar card for patterns
-  - General language learning: Balanced mix based on content`
-    : `
-- foundationCards: REQUIRED - ${levelGuidance.foundationCardCount} cards covering the key topics
-  - Card 1: INTRO/RECAP connecting to previous day
-  - Each card: 200-300 words, answers ONE question
-  - explanation: Split into 2-3 paragraphs with \\n\\n between them (key insight first, then details)
-  - microQuestion: Quick check on each card (prefer application-style over pure recall)
-  - caseStudy (2-3 cards per day): For decision-making and application concepts`;
+  // Get task1 template based on skill type
+  const task1Template = params.isLanguageLearning
+    ? buildLanguageTask1Template(
+        params.targetLanguage || 'target language',
+        langHasTones,
+      )
+    : getTask1SectionTemplate(params.skillType);
 
   const userPrompt = `Day ${params.dayNumber}: "${params.dayTitle}" for skill "${params.skillName}"
 Skill Type: ${params.skillType} | Level: ${params.skillLevel}
@@ -2138,14 +1990,25 @@ Generate CORE content as JSON with this structure:
     "text": "ONE sentence: Today you'll learn [specific topics]. Keep it simple and direct, no fluff."
   },
   ${videoSection},
-  "${cardsArrayName}": [
-    ${languageCardStructure}
-  ]
+  "task1": {
+    "id": "day${params.dayNumber}-task1",
+    "title": "${params.isLanguageLearning ? 'Practice' : 'Practice'}",
+    "estimatedMinutes": 10,
+    "format": "sections",
+    "passingScore": 0.7,
+    "sections": ${task1Template}
+  }
 }
 
-REQUIREMENTS:${languageRequirements}
+REQUIREMENTS:
 - prePrompt: REQUIRED
 ${videoRequirement}
+- task1: REQUIRED - ${levelGuidance.quizQuestionCount} questions total across sections
+  - EVERY question must have "conceptTitle" and "explanation" (200-300 words, teaching content)
+  - EVERY question must have "realWorldContext" (1 sentence)
+  - explanation: Split into 2-3 paragraphs with \\n\\n (key insight → details/examples)
+  - 2-3 questions should include "caseStudy" for trade-off/decision concepts
+  - Question 1 should be an INTRO/RECAP connecting to previous content
 
 Output valid JSON only.`;
 
@@ -2154,37 +2017,40 @@ Output valid JSON only.`;
 
 /**
  * Generate Task1 section template based on skill type
- * Uses 2 section types per skill type for variety while keeping it focused
+ * Task1 is now the CORE learning activity (replaces foundation cards)
+ * Each question teaches a concept through its rich explanation
  */
 function getTask1SectionTemplate(skillType: SkillType): string {
+  // Common quiz question template with concept-teaching fields
+  // Some questions include caseStudy for trade-off/decision concepts
+  const quizTemplate = `{"id": "q1", "question": "Compare/contrast question", "options": ["A", "B", "C", "D"], "correctIndex": 0, "conceptTitle": "Concept Name", "explanation": "Key insight paragraph.\\n\\nSupporting details and examples.", "realWorldContext": "Why this matters in practice"}, {"id": "q2", "question": "fallback question text", "options": ["Approach A", "Approach B", "Approach C", "Approach D"], "correctIndex": 1, "conceptTitle": "Decision Concept", "explanation": "Why this approach is best.\\n\\nDetails and trade-offs.", "realWorldContext": "When you face this decision", "caseStudy": {"scenario": "Real-world situation (2-3 sentences)", "question": "What would you do?", "options": [{"label": "Approach A", "consequence": "This fails because..."}, {"label": "Approach B", "consequence": "This works well because..."}, {"label": "Approach C", "consequence": "This works but..."}, {"label": "Approach D", "consequence": "This is overkill because..."}], "bestChoice": 1, "explanation": "Why Approach B is optimal here (1-2 sentences)"}}`;
+
   switch (skillType) {
     case SkillType.CODE:
     case SkillType.AI_AGENT:
       return `[
-        {"type": "quiz", "level": 1, "title": "Differentiation", "questions": [/* 2-3 compare/contrast Qs */]},
-        {"type": "outputPrediction", "level": 2, "title": "Predict the Output", "questions": [/* 2-3 code output Qs */]}
+        {"type": "quiz", "level": 1, "title": "Differentiation", "questions": [${quizTemplate}]},
+        {"type": "outputPrediction", "level": 2, "title": "Predict the Output", "questions": [{"id": "op1", "question": "What does this code output?", "code": "code here", "options": ["A", "B", "C", "D"], "correctIndex": 0, "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.\\n\\nContext.", "realWorldContext": "Why this matters"}]}
       ]`;
 
     case SkillType.PHYSICAL:
       return `[
-        {"type": "quiz", "level": 1, "title": "Differentiation", "questions": [/* 2-3 form/technique Qs */]},
-        {"type": "reorder", "level": 2, "title": "Order the Steps", "items": [/* 2-3 movement sequence items */]}
+        {"type": "quiz", "level": 1, "title": "Differentiation", "questions": [${quizTemplate}]},
+        {"type": "reorder", "level": 2, "title": "Order the Steps", "items": [{"id": "ro1", "scrambled": ["step2", "step1", "step3"], "correctOrder": ["step1", "step2", "step3"], "translation": "Complete sequence", "hint": "Think about dependencies", "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "Why this matters"}]}
       ]`;
 
     case SkillType.DESIGN:
       return `[
-        {"type": "quiz", "level": 1, "title": "Differentiation", "questions": [/* 2-3 principle Qs */]},
-        {"type": "designCritique", "level": 2, "title": "Apply Design Thinking", "items": [/* 2-3 critique items */]}
+        {"type": "quiz", "level": 1, "title": "Differentiation", "questions": [${quizTemplate}]},
+        {"type": "designCritique", "level": 2, "title": "Apply Design Thinking", "items": [{"id": "dc1", "description": "Design scenario", "question": "What would improve this?", "options": ["A", "B", "C", "D"], "correctIndex": 0, "principle": "Design Principle", "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "Why this matters"}]}
       ]`;
 
     case SkillType.KNOWLEDGE:
     default:
-      // For soft skills/leadership, AI can use openEnded instead of fillBlank
       return `[
-        {"type": "quiz", "level": 1, "title": "Differentiation", "questions": [/* 2-3 compare/contrast Qs */]},
-        {"type": "fillBlank", "level": 2, "title": "Apply the Concepts", "items": [/* 2-3 fill-blank items */]}
+        {"type": "quiz", "level": 1, "title": "Differentiation", "questions": [${quizTemplate}]},
+        {"type": "fillBlank", "level": 2, "title": "Apply the Concepts", "items": [{"id": "fb1", "sentence": "Statement with ___BLANK___", "translation": "", "blank": {"correctAnswers": ["answer"], "hint": "Hint"}, "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "Why this matters"}]}
       ]`;
-    // Note: For soft skills, AI may use openEnded instead of fillBlank
   }
 }
 
@@ -2206,8 +2072,8 @@ export function buildLightweightContentPrompt(
   const dayNumber = params.dayNumber;
   const skillsStr = getSkillsString(params.skeleton, params.dayObjectives);
 
-  const conceptsContext = ctx?.generatedContent?.foundationCardConcepts?.length
-    ? `Today's concepts: ${ctx.generatedContent.foundationCardConcepts.join(', ')}`
+  const conceptsContext = ctx?.generatedContent?.task1Concepts?.length
+    ? `Today's concepts: ${ctx.generatedContent.task1Concepts.join(', ')}`
     : '';
 
   const systemPrompt = `Generate primeQuestions for Day ${dayNumber}: "${params.skillName}"
@@ -2246,8 +2112,8 @@ export function buildDeferredLightweightPrompt(
   const skillsStr = getSkillsString(params.skeleton, params.dayObjectives);
   const isProjectBased = params.isProjectBased ?? usesProjectBasedLearning(params.learningStyle);
 
-  const conceptsContext = ctx?.generatedContent?.foundationCardConcepts?.length
-    ? `Today's concepts: ${ctx.generatedContent.foundationCardConcepts.join(', ')}`
+  const conceptsContext = ctx?.generatedContent?.task1Concepts?.length
+    ? `Today's concepts: ${ctx.generatedContent.task1Concepts.join(', ')}`
     : '';
 
   // Language learning detection
@@ -2262,7 +2128,7 @@ export function buildDeferredLightweightPrompt(
     ? `
 OPEN TASK:
 - A specific, actionable task to do outside the app
-- Must directly apply one of today's foundationCard concepts${ctx?.generatedContent?.foundationCardConcepts?.length ? `: ${ctx.generatedContent.foundationCardConcepts.join(', ')}` : ''}
+- Must directly apply one of today's task1 concepts${ctx?.generatedContent?.task1Concepts?.length ? `: ${ctx.generatedContent.task1Concepts.join(', ')}` : ''}
 - No correct answer - user self-reports completion
 - Choose task type based on skill:
   * Soft skills (leadership, communication, negotiation): Real interaction tasks
@@ -2277,7 +2143,7 @@ OPEN TASK:
   - icon: Emoji (💬 chat, 🎯 goal, 🤝 collab, ✍️ write, 🔍 observe, 🎤 speak, 👂 listen, 🧑‍🏫 teach, 🎙️ record)
   - context: Where/when (e.g., "Alone or with someone", "Out loud to yourself", "Write it down", "Record a voice note")
   - difficulty: "easy" (5-10 min) | "medium" (15-20 min) | "challenging" (30+ min)
-  - conceptConnection: Which foundationCard concept this applies
+  - conceptConnection: Which task1 concept this applies
   - tips: 2-3 practical tips for success
   - reflectionPrompts: 2-3 questions for after completion
 `
@@ -2345,7 +2211,7 @@ Output valid JSON only.`;
     "icon": "🎯",
     "context": "At work / With a friend / During your next meeting",
     "difficulty": "easy|medium|challenging",
-    "conceptConnection": "[Reference specific foundationCard concept]",
+    "conceptConnection": "[Reference specific task1 concept]",
     "estimatedMinutes": 15,
     "tips": [
       "Practical tip for success #1",

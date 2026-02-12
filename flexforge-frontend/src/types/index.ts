@@ -744,6 +744,9 @@ export interface ToneSelectQuestion {
   options: string[];        // e.g., ["mā (1st)", "má (2nd)", "mǎ (3rd)", "mà (4th)"]
   correctIndex: number;
   explanation: string;
+  // Concept-teaching fields
+  conceptTitle?: string;
+  realWorldContext?: string;
 }
 
 export interface ToneSelectSection {
@@ -770,6 +773,10 @@ export interface LanguageFillBlankItem {
     correctAnswers: string[];
     hint?: string;
   };
+  // Concept-teaching fields (task1 is core learning)
+  conceptTitle?: string;
+  explanation?: string;
+  realWorldContext?: string;
 }
 
 export interface LanguageFillBlankSection {
@@ -805,6 +812,10 @@ export interface ReorderItem {
   correctOrder: string[];   // Correct word order
   translation: string;      // English meaning
   hint?: string;
+  // Concept-teaching fields (task1 is core learning)
+  conceptTitle?: string;
+  explanation?: string;
+  realWorldContext?: string;
 }
 
 export interface ReorderSection {
@@ -901,10 +912,14 @@ export interface DebuggingSection {
 export interface OutputPredictionQuestion {
   id: string;
   code: string;
+  question?: string;
   options: string[];
   correctIndex: number;
   explanation: string;
   language?: string;
+  // Concept-teaching fields
+  conceptTitle?: string;
+  realWorldContext?: string;
 }
 
 export interface OutputPredictionSection {
@@ -958,6 +973,9 @@ export interface DesignCritiqueItem {
   principle: string;
   explanation: string;
   imageUrl?: string;
+  // Concept-teaching fields
+  conceptTitle?: string;
+  realWorldContext?: string;
 }
 
 export interface DesignCritiqueSection {
@@ -1243,6 +1261,11 @@ export interface QuizQuestion {
 
   // For 'openEnded' type (new)
   openEndedConfig?: OpenEndedConfig;
+
+  // Concept-teaching fields (task1 is now the core learning activity)
+  conceptTitle?: string;       // Short concept name (e.g., "REST API Basics")
+  realWorldContext?: string;   // Why this matters in practice (1 sentence)
+  caseStudy?: EmbeddedCaseStudy;  // Optional: decision-making scenario with consequences per option
 
   // Audio support for listening questions (language learning)
   audioText?: string;     // Text to speak via browser TTS before showing question
@@ -1551,10 +1574,11 @@ export interface DayCoreContent {
     primeQuestions: string[];
   };
   video: VideoMatch;            // Conditional based on skill type
-  foundationCards: FoundationCard[];
+  task1?: QuizTask | FillBlankTask | SectionsTask;  // Core learning activity (Duolingo-style)
+  foundationCards?: FoundationCard[];   // Legacy: kept for backward compat with cached data
+  languageFoundationCards?: LanguageFoundationCard[]; // Legacy: kept for backward compat
   bossMilestone?: BossMilestone;    // Daily micro-step for boss project coding
-  skipTest: SkipTest;
-  // Note: task1 moved to DayDeferredContent (loads in background)
+  skipTest?: SkipTest;
 }
 
 // Mini foundation card for intensive practice (shorter, no micro question)
@@ -1594,7 +1618,7 @@ export interface OpenTask {
 }
 
 export interface DayDeferredContent {
-  task1?: QuizTask | FillBlankTask | SectionsTask;  // Moved from core (loads in background)
+  task1?: QuizTask | FillBlankTask | SectionsTask;  // Legacy: old cached data may have task1 here
   task2?: Task;
   intensivePractice?: IntensivePractice;  // For practice-based learning
   openTask?: OpenTask;                     // Real-world practice challenge (practice-based)
@@ -1694,7 +1718,7 @@ export interface ReflectionData {
 export type SessionStep =
   | 'prePrompt'
   | 'video'
-  | 'foundationCards'
+  | 'foundationCards'  // Legacy: kept for backward compat with old sessions
   | 'task1'
   | 'bossMilestone'
   | 'openTask'

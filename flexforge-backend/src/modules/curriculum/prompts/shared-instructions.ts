@@ -27,13 +27,13 @@ export function buildPersonalizationInstructions(
   // Improvement areas - apply where it fits naturally
   if (personalization.improvementAreas?.length) {
     parts.push(`USER WANTS TO IMPROVE: ${personalization.improvementAreas.join(', ')}
-Apply to foundationCards content, examples, and task content and task explanations where it fits naturally. Not required.`);
+Apply to task1 questions, explanations, and examples where it fits naturally. Not required.`);
   }
 
   // Less-of areas - prefer to avoid, but not required
   if (personalization.lessOfAreas?.length) {
     parts.push(`USER WANTS LESS OF: ${personalization.lessOfAreas.join(', ')}
-When choosing foundationCards content, examples, pask content and task explanations, refer ones not focused on these areas. Not required - include if essential to the topic.`);
+When choosing task1 question topics, examples, and explanations, prefer ones not focused on these areas. Not required - include if essential to the topic.`);
   }
 
   // Handle "what's foggy" - adjust content based on user's confusion type
@@ -101,7 +101,7 @@ export function buildContinuityInstructions(
   // Previous day connection
   if (continuity.previousDayTitle) {
     parts.push(`PREVIOUS DAY: "${continuity.previousDayTitle}"
-- Card 1 should be an INTRO/RECAP connecting to this previous content
+- First question should RECAP/connect to previous content
 - Reference yesterday's concepts when building new understanding`);
   }
 
@@ -110,7 +110,7 @@ export function buildContinuityInstructions(
     parts.push(`BOSS PROJECT TARGET: "${continuity.bossProjectTarget}"
 - All content should build toward this final project
 - bossMilestone.dayContribution should explain how today's work helps the project
-- bossMilestone.conceptConnection should link to a foundationCard concept`);
+- bossMilestone.conceptConnection should link to a task1 concept`);
 
     if (continuity.bossProjectProgress) {
       parts.push(`BOSS PROJECT PROGRESS (what user has built so far):
@@ -188,25 +188,24 @@ ${parts.join('\n\n')}
 
 /**
  * Build content reference instructions for deferred prompts.
- * Ensures task1, bossMilestone, and intensivePractice reference today's foundation cards.
+ * Ensures bossMilestone and intensivePractice reference today's task1 concepts.
  *
- * @param foundationCardConcepts - Concepts from today's foundation cards
+ * @param task1Concepts - Concepts from today's task1 questions
  */
 export function buildContentReferenceInstructions(
   ctx: ContentGenerationContext,
 ): string {
-  const concepts = ctx.generatedContent?.foundationCardConcepts;
+  const concepts = ctx.generatedContent?.task1Concepts;
 
   if (!concepts || concepts.length === 0) {
     return '';
   }
 
   return `
-TODAY'S FOUNDATION CONCEPTS (reference these in task1, bossMilestone, intensivePractice):
+TODAY'S CORE CONCEPTS (from task1 - reference these in bossMilestone, intensivePractice):
 ${concepts.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
 IMPORTANT:
-- task1 questions should ONLY test these concepts (no new knowledge)
 - bossMilestone.conceptConnection should reference one of these concepts
 - intensivePractice can introduce NEW concepts, but should build on these
 `;

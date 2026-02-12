@@ -1,26 +1,17 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   Play,
   BookOpen,
-  Layers,
   Code,
   Trophy,
   Target,
   Lightbulb,
-  Volume2,
-  ChevronDown,
-  ChevronUp,
   CheckCircle2,
   Clock,
 } from 'lucide-react';
 import { Card } from '@/components/common';
-import { VocabularyCard } from './VocabularyCard';
 import { clsx } from 'clsx';
 import type {
   CurriculumDay,
-  FoundationCard,
-  LanguageFoundationCard,
   TargetLanguage,
   ReflectionQuestion,
 } from '@/types';
@@ -28,7 +19,6 @@ import type {
 export type PreviewStep =
   | 'overview'
   | 'video'
-  | 'foundationCards'
   | 'task1'
   | 'bossMilestone'
   | 'openTask'
@@ -64,107 +54,6 @@ function StepHeader({
         {subtitle && <p className="text-sm text-gray-500">{subtitle}</p>}
       </div>
     </div>
-  );
-}
-
-// Foundation card in preview mode (non-interactive)
-function FoundationCardPreview({
-  card,
-  index,
-  isLanguageLearning,
-  targetLanguage,
-}: {
-  card: FoundationCard | LanguageFoundationCard;
-  index: number;
-  isLanguageLearning?: boolean;
-  targetLanguage?: TargetLanguage;
-}) {
-  const [expanded, setExpanded] = useState(false);
-
-  const isVocabCard = 'vocabulary' in card && card.vocabulary;
-
-  if (isVocabCard && targetLanguage) {
-    return (
-      <div className="pointer-events-none">
-        <VocabularyCard
-          vocabulary={(card as LanguageFoundationCard).vocabulary!}
-          language={targetLanguage}
-          onMastered={() => {}}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <Card className="overflow-hidden border border-gray-200">
-      {/* Card header */}
-      <div className="relative">
-        <div className="absolute -top-8 -right-8 w-24 h-24 bg-gradient-to-br from-indigo-200/40 to-purple-200/40 rounded-full blur-2xl" />
-        <div className="relative p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0">
-              <span className="text-sm font-bold text-violet-600">{index + 1}</span>
-            </div>
-            <h4 className="font-semibold text-gray-900 flex-1">{card.concept}</h4>
-            {isLanguageLearning && (
-              <button className="p-2 rounded-full bg-purple-50 text-purple-600">
-                <Volume2 className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Explanation */}
-      <div className="px-4 pb-4">
-        {(() => {
-          const explanationText = card.explanation || (card as any).content || '';
-          return (
-            <>
-              <p className={clsx('text-sm text-gray-600', !expanded && 'line-clamp-3')}>
-                {explanationText}
-              </p>
-              {explanationText.length > 150 && (
-                <button
-                  onClick={() => setExpanded(!expanded)}
-                  className="mt-2 text-xs text-brand-600 flex items-center gap-1"
-                >
-                  {expanded ? (
-                    <>
-                      Show less <ChevronUp className="w-3 h-3" />
-                    </>
-                  ) : (
-                    <>
-                      Show more <ChevronDown className="w-3 h-3" />
-                    </>
-                  )}
-                </button>
-              )}
-            </>
-          );
-        })()}
-      </div>
-
-      {/* Real World Context */}
-      {card.realWorldContext && (
-        <div className="mx-4 mb-4 p-3 rounded-lg bg-gradient-to-r from-brand-50 to-purple-50 border border-brand-100">
-          <div className="flex items-start gap-2">
-            <span className="text-brand-500 flex-shrink-0">🎯</span>
-            <p className="text-sm text-brand-800">{card.realWorldContext}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Code Example */}
-      {card.codeExample && (
-        <div className="mx-4 mb-4 rounded-lg overflow-hidden">
-          <div className="bg-gray-800 px-3 py-1.5 text-xs text-gray-400 font-mono">Example</div>
-          <pre className="bg-gray-900 p-3 text-xs text-gray-100 overflow-x-auto">
-            <code>{card.codeExample}</code>
-          </pre>
-        </div>
-      )}
-    </Card>
   );
 }
 
@@ -258,52 +147,10 @@ export function StepContentPreview({
     );
   }
 
-  // Foundation Cards
-  if (step === 'foundationCards') {
-    // Check both direct properties and deferredContent
-    const cards = (
-      day.languageFoundationCards ||
-      day.foundationCards ||
-      (day as any).deferredContent?.languageFoundationCards ||
-      (day as any).deferredContent?.foundationCards ||
-      []
-    ) as (FoundationCard | LanguageFoundationCard)[];
-
-    if (cards.length === 0) {
-      return <p className="text-gray-500 text-sm">No foundation cards available</p>;
-    }
-
-    return (
-      <div className="space-y-4">
-        <StepHeader
-          icon={Layers}
-          iconColor="bg-gradient-to-br from-violet-500 to-purple-500"
-          title="Foundation Cards"
-          subtitle={`${cards.length} concept cards`}
-        />
-
-        <div
-          className="space-y-4 overflow-y-auto pr-2"
-          style={{ maxHeight }}
-        >
-          {cards.map((card, i) => (
-            <FoundationCardPreview
-              key={card.id}
-              card={card}
-              index={i}
-              isLanguageLearning={isLanguageLearning}
-              targetLanguage={targetLanguage}
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   // Task1
   if (step === 'task1') {
-    // Check both day.task1 and day.deferredContent?.task1
-    const task = (day.task1 || (day as any).deferredContent?.task1) as any;
+    // Check day.task1, coreContent, and legacy deferredContent
+    const task = (day.task1 || (day as any).coreContent?.task1 || (day as any).deferredContent?.task1) as any;
     if (!task) return <p className="text-gray-500 text-sm">No practice task available</p>;
 
     return (

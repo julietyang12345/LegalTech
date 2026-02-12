@@ -173,7 +173,7 @@ export class SessionController {
   /**
    * POST /api/v1/sessions/:id/days/:dayNumber/start-core
    * Start a day - CORE content only (fast initial load)
-   * Returns: prePrompt, video, foundationCards, task1
+   * Returns: prePrompt, video, task1
    */
   @Post(':id/days/:dayNumber/start-core')
   @Throttle({ default: { limit: 5, ttl: 60000 } })

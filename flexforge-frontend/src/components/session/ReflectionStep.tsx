@@ -9,7 +9,8 @@ import { useSessionStore } from '@/stores/sessionStore';
 import { sessionService } from '@/services/sessionService';
 import { QuotaTier } from '@/types';
 import { clsx } from 'clsx';
-import type { CurriculumDay, Session, ConceptBoost, FoundationCard } from '@/types';
+import type { CurriculumDay, Session, ConceptBoost } from '@/types';
+import { extractConceptsFromTask1 } from '@/utils/extractConceptsFromTask1';
 
 interface ReflectionStepProps {
   day: CurriculumDay;
@@ -89,8 +90,8 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
     });
   }, [confidence, whatClicked, whatsFoggy, warmupPlan, confusedConcepts, day.day, saveTaskProgress]);
 
-  // Get foundation cards for concept selection
-  const foundationCards: FoundationCard[] = day.foundationCards || [];
+  // Get concepts from task1 sections for concept selection (or fallback to foundationCards)
+  const conceptNames = extractConceptsFromTask1(day.task1, day);
 
   // Quick-pick options
   const clickedOptions = [
@@ -135,16 +136,13 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
   const handleFoggySelect = (value: string) => {
     setWhatsFoggy(value);
     setShowFoggyDetails(true);
-    if (foundationCards.length > 0 && value !== 'nothing') {
+    if (conceptNames.length > 0 && value !== 'nothing') {
       setShowConceptSelector(true);
     }
   };
 
   // Generate concept boost
   const handleRequestBoost = async (concept: string) => {
-    const card = foundationCards.find((c) => c.concept === concept);
-    if (!card) return;
-
     setBoostLoading(true);
     setShowBoostModal(true);
 
@@ -153,7 +151,7 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
         session.id,
         day.day,
         concept,
-        card.explanation
+        '' // Explanation context not available from task1 concept names
       );
       setCurrentBoost(response.boost);
     } catch (error) {
@@ -291,28 +289,27 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
           />
 
           {/* Concept selector */}
-          <AnimatedReveal show={showConceptSelector && foundationCards.length > 0} className="mt-4">
+          <AnimatedReveal show={showConceptSelector && conceptNames.length > 0} className="mt-4">
             <p className="text-sm text-gray-600 mb-3">
               Which concepts felt tricky? (Select any that apply)
             </p>
             <div className="space-y-2">
-              {foundationCards.map((card) => (
+              {conceptNames.map((concept) => (
                 <button
-                  key={card.id}
-                  onClick={() => toggleConcept(card.concept)}
+                  key={concept}
+                  onClick={() => toggleConcept(concept)}
                   className={clsx(
                     'w-full text-left p-3 rounded-lg border-2 transition-all',
-                    confusedConcepts.includes(card.concept)
+                    confusedConcepts.includes(concept)
                       ? 'border-amber-400 bg-amber-50'
                       : 'border-gray-200 hover:border-gray-300'
                   )}
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-gray-700">
-                      {card.visual && <span className="mr-2">{card.visual}</span>}
-                      {card.concept}
+                      {concept}
                     </span>
-                    {confusedConcepts.includes(card.concept) && (
+                    {confusedConcepts.includes(concept) && (
                       <span className="text-amber-600 text-xs font-medium">Selected</span>
                     )}
                   </div>

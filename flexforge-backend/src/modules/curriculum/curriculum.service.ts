@@ -27,7 +27,7 @@ import {
 import {
   ContentGenerationContext,
   buildContentGenerationContext,
-  extractFoundationCardConcepts,
+  extractTask1Concepts,
 } from './prompts/content-generation-context';
 import { formatTime } from './utils/shared.utils';
 
@@ -57,8 +57,8 @@ export interface DayCoreResult {
   cost: number;
   fromCache?: boolean;
   variantId?: string;
-  /** Concepts from foundation cards, passed to deferred generation for consistency */
-  foundationCardConcepts?: string[];
+  /** Concepts from task1 questions, passed to deferred generation for consistency */
+  task1Concepts?: string[];
 }
 
 export interface DayDeferredResult {
@@ -824,7 +824,7 @@ Return JSON only:
 
   /**
    * Generate CORE day content (fast initial load)
-   * Returns: prePrompt, video, foundationCards, task1
+   * Returns: prePrompt, video, task1
    * Includes caching for instant loads on repeat views
    */
   async generateDayCoreDetails(
@@ -860,13 +860,14 @@ Return JSON only:
           dayNumber,
         );
         if (cachedResult) {
-          // foundationCards are REQUIRED - if missing, bypass cache and regenerate
-          const cachedCards =
-            cachedResult.content?.foundationCards ||
-            cachedResult.content?.languageFoundationCards;
+          // task1 is REQUIRED - if missing, bypass cache and regenerate
+          const cachedTask1 = cachedResult.content?.task1;
+          // Also accept old format with foundationCards for backward compat
+          const hasOldCards = cachedResult.content?.foundationCards?.length > 0 ||
+            cachedResult.content?.languageFoundationCards?.length > 0;
 
-          if (!cachedCards || cachedCards.length === 0) {
-            // Continue to regeneration - foundationCards are missing
+          if (!cachedTask1?.sections && !hasOldCards) {
+            // Continue to regeneration - content is missing
           } else {
             this.logger.log(
               `📦 Day ${dayNumber} CORE variant cache HIT (variant=${cachedResult.variantId})`,
@@ -884,11 +885,13 @@ Return JSON only:
         // Fallback to legacy cache for backward compatibility
         const cached = await this.cacheService.getDayContent(cacheKey);
         if (cached) {
-          // foundationCards are REQUIRED - if missing, bypass cache and regenerate
-          const cachedCards = cached?.foundationCards || cached?.languageFoundationCards;
+          // task1 is REQUIRED - if missing, bypass cache and regenerate
+          const cachedTask1 = cached?.task1;
+          const hasOldCards = cached?.foundationCards?.length > 0 ||
+            cached?.languageFoundationCards?.length > 0;
 
-          if (!cachedCards || cachedCards.length === 0) {
-            // Continue to regeneration - foundationCards are missing
+          if (!cachedTask1?.sections && !hasOldCards) {
+            // Continue to regeneration - content is missing
           } else {
             this.logger.log(`📦 Day ${dayNumber} CORE cache HIT (legacy)`);
             return {
@@ -1109,33 +1112,23 @@ Return JSON only:
         coreContent = JSON.parse(fixedContent);
       }
 
-      // Normalize foundationCards
-      if (
-        coreContent.foundationCards &&
-        Array.isArray(coreContent.foundationCards)
-      ) {
-        coreContent.foundationCards = coreContent.foundationCards.map(
-          (card: any, index: number) => ({
-            ...card,
-            id: card.id || `day${dayNumber}-card-${index + 1}`,
-            order: card.order ?? index + 1,
-          }),
+      // Normalize task1 sections (ensure IDs)
+      if (coreContent.task1?.sections && Array.isArray(coreContent.task1.sections)) {
+        coreContent.task1.sections = coreContent.task1.sections.map(
+          (section: any, sIdx: number) => {
+            const items = section.questions || section.items || [];
+            const normalizedItems = items.map((item: any, qIdx: number) => ({
+              ...item,
+              id: item.id || `s${sIdx + 1}-q${qIdx + 1}`,
+            }));
+            return {
+              ...section,
+              ...(section.questions ? { questions: normalizedItems } : { items: normalizedItems }),
+            };
+          },
         );
-      }
-
-      // Normalize languageFoundationCards (for language learning)
-      if (
-        coreContent.languageFoundationCards &&
-        Array.isArray(coreContent.languageFoundationCards)
-      ) {
-        coreContent.languageFoundationCards =
-          coreContent.languageFoundationCards.map(
-            (card: any, index: number) => ({
-              ...card,
-              id: card.id || `day${dayNumber}-vocab-${index + 1}`,
-              order: card.order ?? index + 1,
-            }),
-          );
+        // Ensure task1 has an id
+        coreContent.task1.id = coreContent.task1.id || `day${dayNumber}-task1`;
       }
 
       // Note: bossMilestone is now generated in DEFERRED content, not CORE
@@ -1393,10 +1386,10 @@ Return JSON only:
       `✅ Day ${dayNumber} CORE generated. Tokens: ${aiResponse.tokensUsed}`,
     );
 
-    // Extract foundation card concepts for passing to deferred generation
-    const foundationCardConcepts = extractFoundationCardConcepts(coreContent);
+    // Extract task1 concepts for passing to deferred generation
+    const task1Concepts = extractTask1Concepts(coreContent);
     this.logger.log(
-      `📚 Extracted ${foundationCardConcepts.length} foundation card concepts for deferred generation`,
+      `📚 Extracted ${task1Concepts.length} task1 concepts for deferred generation`,
     );
 
     return {
@@ -1405,7 +1398,7 @@ Return JSON only:
       cost: aiResponse.cost,
       fromCache: false,
       variantId,
-      foundationCardConcepts,
+      task1Concepts,
     };
   }
 
@@ -1414,7 +1407,8 @@ Return JSON only:
    */
   static readonly STREAM_EVENTS = {
     PRE_PROMPT: 'prePrompt',
-    FOUNDATION_CARD: 'foundationCard',
+    FOUNDATION_CARD: 'foundationCard', // Legacy - kept for backward compat
+    TASK1: 'task1',
     VIDEO: 'video',
     COMPLETE: 'complete',
     ERROR: 'error',
@@ -1471,6 +1465,14 @@ Return JSON only:
             data: cachedResult.content.prePrompt,
           };
         }
+        // Yield task1 if present (new format)
+        if (cachedResult.content.task1) {
+          yield {
+            event: CurriculumService.STREAM_EVENTS.TASK1,
+            data: cachedResult.content.task1,
+          };
+        }
+        // Backward compat: yield foundation cards from old cached data
         const cards =
           cachedResult.content.languageFoundationCards ||
           cachedResult.content.foundationCards ||
@@ -1588,7 +1590,6 @@ Return JSON only:
 
     // Stream from Anthropic
     let fullContent = '';
-    let lastYieldedCardIndex = -1;
     let prePromptYielded = false;
 
     try {
@@ -1620,54 +1621,8 @@ Return JSON only:
             }
           }
 
-          // Look for foundation cards (stream each as it completes)
-          const cardArrayMatch = fullContent.match(
-            /"(?:foundation|languageFoundation)Cards"\s*:\s*\[/,
-          );
-          if (cardArrayMatch) {
-            // Find all complete card objects
-            const cardsSection = fullContent.slice(cardArrayMatch.index);
-            const cardMatches = cardsSection.matchAll(
-              /\{\s*"id"\s*:\s*"[^"]+(?:"[^"]*"[^{}]*|\{[^{}]*\}[^{}]*)*\}/g,
-            );
-
-            let cardIndex = 0;
-            for (const match of cardMatches) {
-              if (cardIndex > lastYieldedCardIndex) {
-                try {
-                  // Validate it's a complete card by attempting parse
-                  const card = JSON.parse(match[0]);
-                  // Check for required fields to ensure card is complete:
-                  // - Regular cards need: id, concept, explanation, microQuestion
-                  // - Vocabulary cards need: id, concept, vocabulary with term
-                  const isRegularCardComplete =
-                    card.id &&
-                    card.concept &&
-                    card.explanation &&
-                    card.microQuestion;
-                  const isVocabCardComplete =
-                    card.id &&
-                    card.concept &&
-                    card.vocabulary?.term;
-
-                  if (isRegularCardComplete || isVocabCardComplete) {
-                    yield {
-                      event: CurriculumService.STREAM_EVENTS.FOUNDATION_CARD,
-                      data: card,
-                    };
-                    lastYieldedCardIndex = cardIndex;
-                    this.logger.log(
-                      `📤 Streamed card ${cardIndex + 1}: ${card.concept || card.vocabulary?.term}`,
-                    );
-                  }
-                } catch {
-                  // Card not complete yet
-                  break;
-                }
-              }
-              cardIndex++;
-            }
-          }
+          // Task1 is yielded as a complete object once final parsing is done
+          // (too complex to stream incrementally since it's nested sections)
         }
 
         if (chunk.type === 'done') {
@@ -1691,25 +1646,28 @@ Return JSON only:
               coreContent = JSON.parse(fixedContent);
             }
 
-            // Normalize cards
-            if (coreContent.foundationCards) {
-              coreContent.foundationCards = coreContent.foundationCards.map(
-                (card: any, index: number) => ({
-                  ...card,
-                  id: card.id || `day${dayNumber}-card-${index + 1}`,
-                  order: card.order ?? index + 1,
-                }),
+            // Normalize task1 sections (ensure IDs)
+            if (coreContent.task1?.sections && Array.isArray(coreContent.task1.sections)) {
+              coreContent.task1.sections = coreContent.task1.sections.map(
+                (section: any, sIdx: number) => {
+                  const items = section.questions || section.items || [];
+                  const normalizedItems = items.map((item: any, qIdx: number) => ({
+                    ...item,
+                    id: item.id || `s${sIdx + 1}-q${qIdx + 1}`,
+                  }));
+                  return {
+                    ...section,
+                    ...(section.questions ? { questions: normalizedItems } : { items: normalizedItems }),
+                  };
+                },
               );
-            }
-            if (coreContent.languageFoundationCards) {
-              coreContent.languageFoundationCards =
-                coreContent.languageFoundationCards.map(
-                  (card: any, index: number) => ({
-                    ...card,
-                    id: card.id || `day${dayNumber}-vocab-${index + 1}`,
-                    order: card.order ?? index + 1,
-                  }),
-                );
+              coreContent.task1.id = coreContent.task1.id || `day${dayNumber}-task1`;
+
+              // Yield task1 as complete object
+              yield {
+                event: CurriculumService.STREAM_EVENTS.TASK1,
+                data: coreContent.task1,
+              };
             }
 
             // Add metadata
@@ -1805,8 +1763,7 @@ Return JSON only:
               await this.cacheService.setDayContent(cacheKey, coreContent);
             }
 
-            const foundationCardConcepts =
-              extractFoundationCardConcepts(coreContent);
+            const task1Concepts = extractTask1Concepts(coreContent);
             const tokensUsed =
               (chunk.usage?.inputTokens || 0) +
               (chunk.usage?.outputTokens || 0);
@@ -1819,7 +1776,7 @@ Return JSON only:
                 cost: this.calculateStreamingCost(chunk.usage),
                 fromCache: false,
                 variantId,
-                foundationCardConcepts,
+                task1Concepts,
               },
             };
 
@@ -1875,7 +1832,7 @@ Return JSON only:
    * Returns: reflection
    * Called after core loads, while user watches video
    *
-   * @param foundationCardConcepts - Concepts from core content for consistent personalization
+   * @param task1Concepts - Concepts from core content for consistent personalization
    * @param improvementAreas - User-specified areas to emphasize
    * @param lessOfAreas - User-specified areas to reduce content for
    */
@@ -1883,7 +1840,7 @@ Return JSON only:
     curriculum: any,
     dayNumber: number,
     userTier: string = 'FREE',
-    foundationCardConcepts?: string[],
+    task1Concepts?: string[],
     improvementAreas?: string[],
     lessOfAreas?: string[],
     forceRegenerate?: boolean,
@@ -1969,11 +1926,11 @@ Return JSON only:
       previousDayReflection,
     });
 
-    // Add foundation card concepts from core content
-    if (foundationCardConcepts?.length) {
-      ctx.generatedContent = { foundationCardConcepts };
+    // Add task1 concepts from core content
+    if (task1Concepts?.length) {
+      ctx.generatedContent = { task1Concepts };
       this.logger.log(
-        `📚 Using ${foundationCardConcepts.length} foundation concepts for deferred content`,
+        `📚 Using ${task1Concepts.length} task1 concepts for deferred content`,
       );
     }
 
@@ -2193,7 +2150,7 @@ Return JSON only:
     curriculum: any,
     dayNumber: number,
     userTier: string = 'FREE',
-    foundationCardConcepts?: string[],
+    task1Concepts?: string[],
     improvementAreas?: string[],
     lessOfAreas?: string[],
     forceRegenerate?: boolean,
@@ -2308,8 +2265,8 @@ Return JSON only:
       previousDayReflection,
     });
 
-    if (foundationCardConcepts?.length) {
-      ctx.generatedContent = { foundationCardConcepts };
+    if (task1Concepts?.length) {
+      ctx.generatedContent = { task1Concepts };
     }
 
     const params: DayDetailParams = {

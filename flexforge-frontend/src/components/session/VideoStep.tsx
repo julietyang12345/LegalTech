@@ -185,12 +185,12 @@ function AIExplanation({
   video,
   onSwitchToVideo,
   showVideoOption,
-  foundationCards,
+  task1Concepts,
 }: {
   video: VideoMatch;
   onSwitchToVideo?: () => void;
   showVideoOption: boolean;
-  foundationCards?: Array<{ concept: string; explanation: string }>;
+  task1Concepts?: Array<{ concept: string; explanation: string }>;
 }) {
   const [expandedCard, setExpandedCard] = useState<number | null>(0);
 
@@ -201,8 +201,8 @@ function AIExplanation({
   const wasVideoSkipped = video.videoAvailable === false;
   const keyLearningPoints = wasVideoSkipped ? video.keyLearningPoints : undefined;
 
-  // Get cards to display - prefer AI-generated concept breakdown, fallback to foundationCards
-  const conceptCards = video.aiConceptBreakdown || foundationCards || [];
+  // Get cards to display - prefer AI-generated concept breakdown, fallback to task1 concepts
+  const conceptCards = video.aiConceptBreakdown || task1Concepts || [];
 
   return (
     <div className="space-y-3">
@@ -453,9 +453,8 @@ export function VideoStep({ day, session }: VideoStepProps) {
   const hasActualVideo = !!(video?.videoId || video?.backupVideo?.videoId);
   const showVideoOption = hasActualVideo;
 
-  // Check for AI explanation from multiple sources (for backwards compatibility)
-  const hasAiContent = !!(video?.aiExplanation || video?.explanation ||
-    (day.foundationCards && day.foundationCards.length > 0));
+  // Check for AI explanation from multiple sources
+  const hasAiContent = !!(video?.aiExplanation || video?.explanation || video?.aiConceptBreakdown);
   const showAiOption = hasAiContent;
 
   // Support both single alternative and array of alternatives
@@ -584,7 +583,7 @@ export function VideoStep({ day, session }: VideoStepProps) {
       {currentMode === 'ai' && (
         <>
           {/* Show loading screen while content is generating */}
-          {!day.foundationCards && !day.languageFoundationCards && !video?.aiConceptBreakdown && (
+          {!video?.aiConceptBreakdown && !video?.aiExplanation && !video?.explanation && (
             <ExerciseLoadingScreen
               type="task"
               skillName={session.skillName}
@@ -592,12 +591,11 @@ export function VideoStep({ day, session }: VideoStepProps) {
             />
           )}
           {/* Show AI explanation once content is loaded */}
-          {(day.foundationCards || day.languageFoundationCards || video?.aiConceptBreakdown) && video && (
+          {(video?.aiConceptBreakdown || video?.aiExplanation || video?.explanation) && video && (
             <AIExplanation
               video={video}
               onSwitchToVideo={showVideoOption ? handleSwitchToVideo : undefined}
               showVideoOption={!!showVideoOption}
-              foundationCards={day.foundationCards}
             />
           )}
         </>

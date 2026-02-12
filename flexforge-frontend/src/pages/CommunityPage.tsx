@@ -997,24 +997,6 @@ function CreatePostModal({
       }
     }
 
-    if (selectedStep === 'foundationCards') {
-      const cards = (
-        dayData.languageFoundationCards ||
-        dayData.foundationCards ||
-        (dayData as any).deferredContent?.languageFoundationCards ||
-        (dayData as any).deferredContent?.foundationCards ||
-        []
-      ) as any[];
-
-      return cards
-        .filter((card: any) => card?.microQuestion?.question)
-        .map((card: any) => ({
-          question: card.microQuestion.question,
-          options: card.microQuestion.options,
-          correctAnswer: card.microQuestion.options?.[card.microQuestion.correctIndex],
-        }));
-    }
-
     if (selectedStep === 'reflection') {
       const reflection = dayData.reflection || (dayData as any).deferredContent?.reflection;
       if (!reflection?.questions) return [];
@@ -1440,7 +1422,6 @@ function CreatePostModal({
                                     <span className="flex items-center gap-2">
                                       {selectedStep === 'overview' && <><BookOpen className="w-4 h-4 text-brand-500" /> Day Overview</>}
                                       {selectedStep === 'video' && <><Play className="w-4 h-4 text-blue-500" /> Video Lesson</>}
-                                      {selectedStep === 'foundationCards' && <><BookOpen className="w-4 h-4 text-green-500" /> Foundation Cards</>}
                                       {selectedStep === 'task1' && <><Code className="w-4 h-4 text-blue-500" /> Practice Task</>}
                                       {selectedStep === 'bossMilestone' && <><Trophy className="w-4 h-4 text-purple-500" /> Boss Milestone</>}
                                       {selectedStep === 'openTask' && <><Target className="w-4 h-4 text-orange-500" /> Real-World Task</>}
@@ -1474,15 +1455,7 @@ function CreatePostModal({
                                               <Play className="w-4 h-4 text-blue-500" /> Video Lesson
                                             </button>
                                           )}
-                                          {(dayData.foundationCards || dayData.languageFoundationCards || (dayData as any).deferredContent?.foundationCards || (dayData as any).deferredContent?.languageFoundationCards) && (
-                                            <button
-                                              onClick={() => handleStepChange('foundationCards')}
-                                              className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'foundationCards' && 'bg-brand-50')}
-                                            >
-                                              <BookOpen className="w-4 h-4 text-green-500" /> Foundation Cards
-                                            </button>
-                                          )}
-                                          {(dayData.task1 || (dayData as any).deferredContent?.task1) && (
+                                          {(dayData.task1 || (dayData as any).coreContent?.task1 || (dayData as any).deferredContent?.task1) && (
                                             <button
                                               onClick={() => handleStepChange('task1')}
                                               className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'task1' && 'bg-brand-50')}

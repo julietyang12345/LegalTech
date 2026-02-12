@@ -2,7 +2,7 @@
  * Unified Content Generation Context
  *
  * This interface provides a single source of truth for all content generation prompts.
- * All components (foundationCards, task1, bossMilestone, intensivePractice) receive
+ * All components (task1, bossMilestone, intensivePractice) receive
  * the same personalization and continuity context for consistent learning experiences.
  */
 
@@ -51,8 +51,8 @@ export interface ContinuityContext {
  * Ensures deferred content references what the user has already learned.
  */
 export interface GeneratedContent {
-  /** Concepts from today's foundation cards (for task1, bossMilestone, intensive to reference) */
-  foundationCardConcepts: string[];
+  /** Concepts from today's task1 questions (for bossMilestone, intensive to reference) */
+  task1Concepts: string[];
 }
 
 /**
@@ -221,6 +221,7 @@ export function buildContentGenerationContext(
     continuity: {
       previousDayTitle: previousDay?.title,
       previousDayConcept:
+        previousDay?.coreContent?.task1?.sections?.[0]?.questions?.[0]?.conceptTitle ||
         previousDay?.coreContent?.foundationCards?.[0]?.concept,
       bossProjectTarget,
       bossProjectProgress,
@@ -230,21 +231,37 @@ export function buildContentGenerationContext(
 }
 
 /**
- * Helper to extract foundation card concepts from core content.
- * Use after AI generates core content to populate generatedContent.
+ * Helper to extract concepts from task1 sections in core content.
+ * Pulls conceptTitle from each question across all sections.
+ * Falls back to foundation cards for backward compatibility with cached data.
  */
-export function extractFoundationCardConcepts(coreContent: any): string[] {
-  const cards =
-    coreContent?.languageFoundationCards || coreContent?.foundationCards;
-
-  if (!cards || !Array.isArray(cards)) {
-    return [];
+export function extractTask1Concepts(coreContent: any): string[] {
+  // New format: extract from task1 sections
+  const task1 = coreContent?.task1;
+  if (task1?.sections && Array.isArray(task1.sections)) {
+    const concepts: string[] = [];
+    for (const section of task1.sections) {
+      const items = section.questions || section.items || [];
+      for (const item of items) {
+        if (item.conceptTitle) {
+          concepts.push(item.conceptTitle);
+        }
+      }
+    }
+    if (concepts.length > 0) {
+      // Deduplicate
+      return [...new Set(concepts)];
+    }
   }
 
-  return cards
-    .map((card: any) => {
-      // For vocabulary cards, use term; for regular cards, use concept
-      return card.vocabulary?.term || card.concept || '';
-    })
-    .filter((concept: string) => concept.length > 0);
+  // Backward compat: extract from foundation cards (old cached data)
+  const cards =
+    coreContent?.languageFoundationCards || coreContent?.foundationCards;
+  if (cards && Array.isArray(cards)) {
+    return cards
+      .map((card: any) => card.vocabulary?.term || card.concept || '')
+      .filter((concept: string) => concept.length > 0);
+  }
+
+  return [];
 }

@@ -8,21 +8,21 @@ import {
   Target,
   HelpCircle,
   Sparkles,
-  ChevronLeft,
-  ChevronRight,
   Rocket,
   BookOpen,
+  Lightbulb,
+  Zap,
+  Flame,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Button, MultipleChoiceQuestion } from '@/components/common';
 import {
   DEMO_TOPIC,
   DEMO_PREPROMPT,
-  DEMO_CARDS,
   DEMO_QUIZ,
 } from '@/data/demoContent';
 
-const STEP_LABELS = ['Objectives', 'Concepts', 'Quiz', 'Next Steps'];
+const STEP_LABELS = ['Objectives', 'Quiz', 'Next Steps'];
 
 // --- Step renderers ---
 
@@ -93,123 +93,48 @@ function PrePromptStep({ onContinue }: { onContinue: () => void }) {
   );
 }
 
-function FoundationCardsStep({ onContinue }: { onContinue: () => void }) {
-  const [cardIndex, setCardIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<number, number | null>>({});
-  const card = DEMO_CARDS[cardIndex];
-  const answered = answers[cardIndex] !== undefined && answers[cardIndex] !== null;
-  const allAnswered = DEMO_CARDS.every(
-    (_, i) => answers[i] !== undefined && answers[i] !== null
-  );
-  const isLast = cardIndex === DEMO_CARDS.length - 1;
-
-  const handleSelect = useCallback(
-    (optionIndex: number) => {
-      setAnswers((prev) => ({ ...prev, [cardIndex]: optionIndex }));
-    },
-    [cardIndex]
-  );
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="max-w-2xl mx-auto"
-    >
-      {/* Card counter */}
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-sm text-gray-500">
-          Card {cardIndex + 1} of {DEMO_CARDS.length}
-        </span>
-        <div className="flex gap-1.5">
-          {DEMO_CARDS.map((_, i) => (
-            <div
-              key={i}
-              className={clsx(
-                'w-2.5 h-2.5 rounded-full transition-colors',
-                i === cardIndex ? 'bg-brand-500' : i < cardIndex ? 'bg-focus-400' : 'bg-gray-200'
-              )}
-            />
-          ))}
-        </div>
-      </div>
-
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={cardIndex}
-          initial={{ opacity: 0, x: 40 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -40 }}
-          transition={{ duration: 0.25 }}
-        >
-          <div className="bg-white rounded-xl shadow-card p-6 mb-6">
-            <div className="flex items-center gap-3 mb-4">
-              <span className="text-3xl">{card.emoji}</span>
-              <h3 className="text-xl font-bold text-gray-900">{card.title}</h3>
-            </div>
-            <p className="text-gray-700 leading-relaxed mb-6">{card.content}</p>
-
-            <div className="border-t border-gray-100 pt-4">
-              <p className="text-sm font-medium text-gray-500 mb-3">
-                Quick check
-              </p>
-              <MultipleChoiceQuestion
-                question={card.microQuestion.question}
-                options={card.microQuestion.options}
-                correctIndex={card.microQuestion.correctIndex}
-                explanation={card.microQuestion.explanation}
-                selectedIndex={answers[cardIndex] ?? null}
-                onSelect={handleSelect}
-                showResult={answered}
-              />
-            </div>
-          </div>
-        </motion.div>
-      </AnimatePresence>
-
-      <div className="flex items-center justify-between">
-        <Button
-          variant="ghost"
-          onClick={() => setCardIndex((i) => Math.max(0, i - 1))}
-          disabled={cardIndex === 0}
-          leftIcon={<ChevronLeft className="w-4 h-4" />}
-        >
-          Previous
-        </Button>
-
-        {isLast && allAnswered ? (
-          <Button
-            onClick={onContinue}
-            rightIcon={<ArrowRight className="w-5 h-5" />}
-          >
-            Continue to Quiz
-          </Button>
-        ) : (
-          <Button
-            variant="secondary"
-            onClick={() =>
-              setCardIndex((i) => Math.min(DEMO_CARDS.length - 1, i + 1))
-            }
-            disabled={!answered || isLast}
-            rightIcon={<ChevronRight className="w-4 h-4" />}
-          >
-            Next Card
-          </Button>
-        )}
-      </div>
-    </motion.div>
-  );
-}
-
 function QuizStep({ onContinue }: { onContinue: () => void }) {
   const [answers, setAnswers] = useState<Record<number, number | null>>({});
+  const [streak, setStreak] = useState(0);
+  const [maxStreak, setMaxStreak] = useState(0);
+  const [xp, setXp] = useState(0);
+
+  const answeredCount = Object.values(answers).filter(v => v !== null && v !== undefined).length;
   const allAnswered = DEMO_QUIZ.every(
     (_, i) => answers[i] !== undefined && answers[i] !== null
   );
   const correctCount = DEMO_QUIZ.filter(
     (q, i) => answers[i] === q.correctIndex
   ).length;
+  const progress = (answeredCount / DEMO_QUIZ.length) * 100;
+
+  const handleSelect = useCallback(
+    (questionIndex: number, optionIndex: number) => {
+      if (answers[questionIndex] !== undefined && answers[questionIndex] !== null) return;
+      setAnswers((prev) => ({ ...prev, [questionIndex]: optionIndex }));
+
+      const isCorrect = optionIndex === DEMO_QUIZ[questionIndex].correctIndex;
+      if (isCorrect) {
+        setStreak((s) => {
+          const newStreak = s + 1;
+          setMaxStreak((m) => Math.max(m, newStreak));
+          // Bonus XP at streak milestones
+          if (newStreak === 3 || newStreak === 5) {
+            setXp((x) => x + 15); // 10 base + 5 bonus
+          } else {
+            setXp((x) => x + 10);
+          }
+          return newStreak;
+        });
+      } else {
+        setStreak(0);
+        setXp((x) => x + 0);
+      }
+    },
+    [answers]
+  );
+
+  const starCount = correctCount >= DEMO_QUIZ.length * 0.9 ? 3 : correctCount >= DEMO_QUIZ.length * 0.7 ? 2 : 1;
 
   return (
     <motion.div
@@ -218,44 +143,170 @@ function QuizStep({ onContinue }: { onContinue: () => void }) {
       exit={{ opacity: 0, y: -20 }}
       className="max-w-2xl mx-auto"
     >
-      <div className="text-center mb-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-1">
-          Knowledge Check
-        </h2>
+      {/* Duolingo-style header: progress bar + XP + streak */}
+      <div className="mb-6 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold text-gray-900">
+            Learn by Doing
+          </h2>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5 text-sm font-medium text-amber-600">
+              <Zap className="w-4 h-4" />
+              <span>{xp} XP</span>
+            </div>
+            {streak > 0 && (
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="flex items-center gap-1.5 text-sm font-medium text-orange-500"
+              >
+                <Flame className="w-4 h-4" />
+                <span>{streak}</span>
+              </motion.div>
+            )}
+          </div>
+        </div>
         <p className="text-gray-500 text-sm">
-          Test what you just learned — no pressure!
+          Answer questions and learn from the explanations — no pressure!
         </p>
+        {/* Green progress bar */}
+        <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden">
+          <motion.div
+            className="h-full bg-gradient-to-r from-green-400 to-green-500 rounded-full"
+            initial={{ width: 0 }}
+            animate={{ width: `${progress}%` }}
+            transition={{ duration: 0.4, ease: 'easeOut' }}
+          />
+        </div>
       </div>
 
       <div className="space-y-4">
-        {DEMO_QUIZ.map((q, i) => (
-          <MultipleChoiceQuestion
-            key={i}
-            questionNumber={i + 1}
-            question={q.question}
-            options={q.options}
-            correctIndex={q.correctIndex}
-            explanation={q.explanation}
-            selectedIndex={answers[i] ?? null}
-            onSelect={(opt) =>
-              setAnswers((prev) => ({ ...prev, [i]: opt }))
-            }
-            showResult={answers[i] !== undefined && answers[i] !== null}
-          />
-        ))}
+        {DEMO_QUIZ.map((q, i) => {
+          const hasAnswered = answers[i] !== undefined && answers[i] !== null;
+          const isCorrect = hasAnswered && answers[i] === q.correctIndex;
+
+          return (
+            <div key={i}>
+              <MultipleChoiceQuestion
+                questionNumber={i + 1}
+                question={q.question}
+                options={q.options}
+                correctIndex={q.correctIndex}
+                selectedIndex={answers[i] ?? null}
+                onSelect={(opt) => handleSelect(i, opt)}
+                showResult={hasAnswered}
+              />
+
+              {/* Rich concept explanation panel */}
+              {hasAnswered && q.explanation && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                  className="mt-2 rounded-xl border border-blue-200 overflow-hidden"
+                >
+                  {/* Correct/incorrect indicator + concept title */}
+                  <div className={clsx(
+                    'px-4 py-2.5 border-b flex items-center gap-2',
+                    isCorrect
+                      ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200'
+                      : 'bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200'
+                  )}>
+                    <span className={clsx('text-sm font-semibold', isCorrect ? 'text-green-700' : 'text-amber-700')}>
+                      {isCorrect ? '✓ Correct!' : '✗ Not quite —'}
+                    </span>
+                    {q.conceptTitle && (
+                      <>
+                        <Lightbulb className="w-3.5 h-3.5 text-blue-500 ml-1" />
+                        <span className="text-sm font-medium text-blue-800">{q.conceptTitle}</span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Explanation paragraphs */}
+                  <div className="px-4 py-3 bg-white space-y-2">
+                    {q.explanation.split('\n\n').map((paragraph, pIdx) => (
+                      <p
+                        key={pIdx}
+                        className={clsx(
+                          'text-sm leading-relaxed',
+                          pIdx === 0 ? 'font-medium text-gray-900' : 'text-gray-700'
+                        )}
+                      >
+                        {paragraph.split(/(`[^`]+`)/).map((part, partIdx) =>
+                          part.startsWith('`') && part.endsWith('`') ? (
+                            <code
+                              key={partIdx}
+                              className="px-1.5 py-0.5 bg-gray-100 text-indigo-700 rounded text-xs font-mono"
+                            >
+                              {part.slice(1, -1)}
+                            </code>
+                          ) : (
+                            <span key={partIdx}>{part}</span>
+                          )
+                        )}
+                      </p>
+                    ))}
+                  </div>
+
+                  {/* Real-world context footer */}
+                  {q.realWorldContext && (
+                    <div className="px-4 py-2.5 bg-amber-50 border-t border-amber-200 flex items-start gap-2">
+                      <Target className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-amber-800">{q.realWorldContext}</p>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {allAnswered && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mt-6"
+          className="mt-8"
         >
-          <div className="bg-white rounded-xl shadow-card p-5 text-center mb-4">
-            <p className="text-lg font-semibold text-gray-900">
+          <div className="bg-white rounded-2xl shadow-card p-6 text-center mb-4">
+            {/* Stars */}
+            <div className="flex justify-center gap-1 mb-3">
+              {[1, 2, 3].map((s) => (
+                <motion.div
+                  key={s}
+                  initial={{ scale: 0, rotate: -30 }}
+                  animate={{ scale: s <= starCount ? 1 : 0.6, rotate: 0, opacity: s <= starCount ? 1 : 0.3 }}
+                  transition={{ delay: s * 0.15, type: 'spring', stiffness: 300 }}
+                >
+                  <svg
+                    className={clsx('w-10 h-10', s <= starCount ? 'text-yellow-400' : 'text-gray-300')}
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                  </svg>
+                </motion.div>
+              ))}
+            </div>
+
+            <p className="text-2xl font-bold text-gray-900 mb-1">
               {correctCount}/{DEMO_QUIZ.length} correct
             </p>
-            <p className="text-sm text-gray-500 mt-1">
+
+            {/* XP + streak stats */}
+            <div className="flex items-center justify-center gap-4 mb-3">
+              <span className="text-sm font-medium text-amber-600 flex items-center gap-1">
+                <Zap className="w-4 h-4" /> {xp} XP earned
+              </span>
+              {maxStreak > 1 && (
+                <span className="text-sm font-medium text-orange-500 flex items-center gap-1">
+                  <Flame className="w-4 h-4" /> {maxStreak} best streak
+                </span>
+              )}
+            </div>
+
+            <p className="text-sm text-gray-500">
               {correctCount === DEMO_QUIZ.length
                 ? 'Perfect score! You nailed it.'
                 : correctCount >= DEMO_QUIZ.length / 2
@@ -297,7 +348,7 @@ function SignupWallStep() {
           That was just Day 1, Step 1.
         </h2>
         <p className="text-gray-600 mb-6">
-          A full day includes videos, more concept cards, coding exercises, and
+          A full day includes videos, more quiz challenges, coding exercises, and
           a project step. Sign up to get your own personalized 7-day curriculum
           — free.
         </p>
@@ -309,7 +360,7 @@ function SignupWallStep() {
           <ul className="space-y-2">
             {[
               'AI builds your personalized 7-day curriculum',
-              'Daily sessions with videos, concept cards & quizzes',
+              'Daily sessions with videos, quizzes & exercises',
               'Build a real project as you learn',
               'On-demand AI tutor that knows your progress',
             ].map((item, i) => (
@@ -415,12 +466,9 @@ export function DemoSessionPage() {
             <PrePromptStep key="preprompt" onContinue={() => setStep(1)} />
           )}
           {step === 1 && (
-            <FoundationCardsStep key="cards" onContinue={() => setStep(2)} />
+            <QuizStep key="quiz" onContinue={() => setStep(2)} />
           )}
-          {step === 2 && (
-            <QuizStep key="quiz" onContinue={() => setStep(3)} />
-          )}
-          {step === 3 && <SignupWallStep key="wall" />}
+          {step === 2 && <SignupWallStep key="wall" />}
         </AnimatePresence>
       </main>
     </div>

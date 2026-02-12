@@ -93,7 +93,7 @@ export const sessionService = {
 
   /**
    * Start a day - CORE content only (fast initial load)
-   * Returns: prePrompt, video, foundationCards, task1
+   * Returns: prePrompt, video, task1
    * @param forceRegenerate - If true, regenerates content even if already cached
    */
   async startDayCore(sessionId: string, dayNumber: number, forceRegenerate?: boolean): Promise<StartDayCoreResponse> {

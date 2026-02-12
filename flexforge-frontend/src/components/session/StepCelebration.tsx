@@ -76,7 +76,6 @@ export function getCelebrationLabel(
   const labels: Record<string, string> = {
     prePrompt: 'Preparation',
     video: opts?.videoUnavailable ? 'AI Lesson' : 'Video Lesson',
-    foundationCards: 'Foundation Cards',
     task1: 'Practice',
     bossMilestone: opts?.isProjectBased !== false ? 'Boss Milestone' : 'Intensive Practice',
     openTask: 'Real-World Challenge',

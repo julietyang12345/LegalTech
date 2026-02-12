@@ -405,9 +405,20 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
           </div>
         )}
 
+        {/* Case study scenario context (shown BEFORE answering) */}
+        {!isOpenEnded && currentQuestion.caseStudy && (
+          <div className="mb-4 p-3 bg-purple-50 rounded-xl border border-purple-200">
+            <p className="text-sm text-purple-900 leading-relaxed">{currentQuestion.caseStudy.scenario}</p>
+          </div>
+        )}
+
         {/* Question text with bookmark and share */}
         <div className="flex items-start justify-between gap-2 mb-4">
-          <p className="text-lg font-medium">{currentQuestion.question}</p>
+          <p className="text-lg font-medium">
+            {!isOpenEnded && currentQuestion.caseStudy
+              ? currentQuestion.caseStudy.question || currentQuestion.question
+              : currentQuestion.question}
+          </p>
           <div className="flex items-center gap-1 flex-shrink-0">
             {onShareQuestion && (
               <button
@@ -438,28 +449,47 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
           </div>
         </div>
 
-        {/* MCQ Options */}
+        {/* MCQ Options (with case study consequences revealed after answering) */}
         {!isOpenEnded && currentQuestion.options && (
           <div className="space-y-2">
-            {currentQuestion.options.map((option, index) => (
-              <button
-                key={index}
-                onClick={() => handleMcqAnswer(index)}
-                disabled={hasAnswered}
-                className={clsx(
-                  'w-full p-3 text-left rounded-lg border transition-all',
-                  hasAnswered
-                    ? index === currentQuestion.correctIndex
-                      ? 'bg-green-100 border-green-500'
-                      : index === mcqAnswers[currentQuestion.id]
-                      ? 'bg-red-100 border-red-500'
-                      : 'bg-gray-50 border-gray-200'
-                    : 'hover:bg-brand-50 hover:border-brand-300 border-gray-200'
-                )}
-              >
-                {option}
-              </button>
-            ))}
+            {currentQuestion.options.map((option, index) => {
+              const csOpt = hasAnswered && currentQuestion.caseStudy?.options?.[index];
+              const consequence = csOpt
+                ? typeof csOpt === 'string' ? '' : csOpt.consequence
+                : '';
+              const isBestChoice = hasAnswered && currentQuestion.caseStudy && index === currentQuestion.caseStudy.bestChoice;
+
+              return (
+                <div key={index}>
+                  <button
+                    onClick={() => handleMcqAnswer(index)}
+                    disabled={hasAnswered}
+                    className={clsx(
+                      'w-full p-3 text-left rounded-lg border transition-all',
+                      hasAnswered
+                        ? index === currentQuestion.correctIndex
+                          ? 'bg-green-100 border-green-500'
+                          : index === mcqAnswers[currentQuestion.id]
+                          ? 'bg-red-100 border-red-500'
+                          : 'bg-gray-50 border-gray-200'
+                        : 'hover:bg-brand-50 hover:border-brand-300 border-gray-200'
+                    )}
+                  >
+                    {option}
+                    {isBestChoice && <span className="ml-2 text-green-600 text-xs font-semibold">Best choice</span>}
+                  </button>
+                  {/* Consequence revealed after answering */}
+                  {hasAnswered && consequence && (
+                    <p className={clsx(
+                      'ml-4 mt-1 text-xs italic',
+                      isBestChoice ? 'text-green-700' : 'text-gray-500'
+                    )}>
+                      → {consequence}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -648,15 +678,67 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
           </motion.div>
         )}
 
-        {/* MCQ explanation */}
+        {/* Rich concept explanation panel (primary learning content) */}
         {!isOpenEnded && hasAnswered && currentQuestion.explanation && (
-          <motion.p
+          <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
-            className="mt-4 p-3 bg-blue-50 rounded-lg text-sm text-blue-800"
+            transition={{ duration: 0.3, ease: 'easeOut' }}
+            className="mt-4 rounded-xl border border-blue-200 overflow-hidden"
           >
-            {currentQuestion.explanation}
-          </motion.p>
+            {/* Header with concept title */}
+            {currentQuestion.conceptTitle && (
+              <div className="px-4 py-2.5 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-200 flex items-center gap-2">
+                <Lightbulb className="w-4 h-4 text-blue-600" />
+                <span className="font-semibold text-blue-900 text-sm">{currentQuestion.conceptTitle}</span>
+              </div>
+            )}
+
+            {/* Explanation body - structured paragraphs */}
+            <div className="px-4 py-3 bg-white space-y-2">
+              {currentQuestion.explanation.split('\n\n').map((paragraph: string, pIdx: number) => (
+                <p
+                  key={pIdx}
+                  className={clsx(
+                    'text-sm leading-relaxed',
+                    pIdx === 0 ? 'font-medium text-gray-900' : 'text-gray-700'
+                  )}
+                >
+                  {/* Render inline code backticks */}
+                  {paragraph.split(/(`[^`]+`)/).map((part: string, partIdx: number) =>
+                    part.startsWith('`') && part.endsWith('`') ? (
+                      <code key={partIdx} className="px-1.5 py-0.5 bg-gray-100 text-indigo-700 rounded text-xs font-mono">
+                        {part.slice(1, -1)}
+                      </code>
+                    ) : (
+                      <span key={partIdx}>{part}</span>
+                    )
+                  )}
+                </p>
+              ))}
+            </div>
+
+            {/* Real-world context footer */}
+            {currentQuestion.realWorldContext && (
+              <div className="px-4 py-2.5 bg-amber-50 border-t border-amber-200 flex items-start gap-2">
+                <span className="text-amber-500 flex-shrink-0 mt-0.5">🎯</span>
+                <p className="text-sm text-amber-800">{currentQuestion.realWorldContext}</p>
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* Case study verdict (shown inline after answering, separate from explanation panel) */}
+        {!isOpenEnded && hasAnswered && currentQuestion.caseStudy?.explanation && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+            className="mt-3 p-3 bg-purple-50 rounded-xl border border-purple-200 flex items-start gap-2"
+          >
+            <span className="text-purple-500 flex-shrink-0 mt-0.5">⚖️</span>
+            <p className="text-sm text-purple-800 font-medium">{currentQuestion.caseStudy.explanation}</p>
+          </motion.div>
         )}
 
         {/* MCQ Question Navigation */}

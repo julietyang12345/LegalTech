@@ -1,5 +1,6 @@
 import { Flame, Trophy, GraduationCap } from 'lucide-react';
 import type { Session, CurriculumDay, User } from '@/types';
+import { extractConceptsFromTask1 } from '@/utils/extractConceptsFromTask1';
 
 interface AchievementCardProps {
   session: Session;
@@ -8,9 +9,7 @@ interface AchievementCardProps {
 }
 
 export function AchievementCard({ session, currentDay, user }: AchievementCardProps) {
-  const concepts = currentDay.foundationCards
-    ?.slice(0, 6)
-    .map((c) => c.concept) ?? [];
+  const concepts = extractConceptsFromTask1(currentDay.task1, currentDay).slice(0, 6);
 
   const milestoneTitle = currentDay.bossMilestone?.title
     || (currentDay.bossMilestone as any)?.microTask;

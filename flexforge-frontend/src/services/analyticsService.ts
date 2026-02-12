@@ -16,7 +16,7 @@ export type AnalyticsEvent = OnboardingEvent | SessionStepEvent;
 export type SessionStepName =
   | 'prePrompt'
   | 'video'
-  | 'foundationCards'
+  | 'foundationCards'  // Legacy: kept for backward compat with old sessions
   | 'task1'
   | 'bossMilestone'
   | 'openTask'

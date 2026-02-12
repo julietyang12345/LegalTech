@@ -11,7 +11,6 @@ import type { SessionStep } from '@/types';
 const STEPS: SessionStep[] = [
   'prePrompt',
   'video',
-  'foundationCards',
   'task1',
   'bossMilestone',
   'openTask',
@@ -113,20 +112,6 @@ function PresenceBar() {
       if (!hasVideo) return false;
       // Has video - show the step
       return true;
-    }
-    // Skip foundationCards only if core is loaded AND explicitly has no cards (empty array)
-    // If undefined, content might not be properly loaded - show the step
-    if (step === 'foundationCards') {
-      const foundationCards = currentDay?.foundationCards;
-      const languageFoundationCards = currentDay?.languageFoundationCards;
-      // Still loading core content - show the step
-      if (!isCoreLoaded) return true;
-      // Content not properly populated (undefined) - show the step, component will handle
-      if (foundationCards === undefined && languageFoundationCards === undefined) return true;
-      // Explicitly empty arrays - hide the step
-      const hasCards = (foundationCards && foundationCards.length > 0) ||
-                       (languageFoundationCards && languageFoundationCards.length > 0);
-      if (!hasCards) return false;
     }
     // Skip openTask for project-based curricula (they have bossMilestone instead)
     // Always show for non-project curricula - component handles loading/empty state

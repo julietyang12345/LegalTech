@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight, Trophy, RotateCcw } from 'lucide-react';
+import { ChevronRight, Trophy, RotateCcw, Flame, Star, Zap } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ExerciseLoadingScreen } from '@/components/common';
 import {
@@ -126,6 +126,45 @@ function getTaskSections(task: QuizTask | FillBlankTask | MixedTask | SectionsTa
   return [];
 }
 
+// Floating XP animation component
+function FloatingXP({ amount, id }: { amount: number; id: number }) {
+  return (
+    <motion.div
+      key={id}
+      initial={{ opacity: 1, y: 0, scale: 1 }}
+      animate={{ opacity: 0, y: -60, scale: 1.2 }}
+      transition={{ duration: 0.8, ease: 'easeOut' }}
+      className="absolute top-0 right-4 text-green-500 font-bold text-lg pointer-events-none z-10"
+    >
+      +{amount} XP
+    </motion.div>
+  );
+}
+
+// Star rating based on percentage
+function StarRating({ percentage }: { percentage: number }) {
+  const stars = percentage >= 90 ? 3 : percentage >= 70 ? 2 : 1;
+  return (
+    <div className="flex gap-1 justify-center mb-3">
+      {[1, 2, 3].map((s) => (
+        <motion.div
+          key={s}
+          initial={{ scale: 0, rotate: -180 }}
+          animate={{ scale: s <= stars ? 1 : 0.6, rotate: 0 }}
+          transition={{ delay: 0.3 + s * 0.15, type: 'spring', stiffness: 200 }}
+        >
+          <Star
+            className={clsx(
+              'w-8 h-8',
+              s <= stars ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'
+            )}
+          />
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
 export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, onShareQuestion }: SectionTaskStepProps) {
   const task = day.task1 as QuizTask | FillBlankTask | MixedTask | SectionsTask;
   const sections = getTaskSections(task);
@@ -136,10 +175,62 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
   const [sectionResults, setSectionResults] = useState<Record<number, SectionResult>>({});
   const [showResults, setShowResults] = useState(false);
 
+  // Gamification state
+  const [streak, setStreak] = useState(0);
+  const [maxStreak, setMaxStreak] = useState(0);
+  const [xp, setXp] = useState(0);
+  const [floatingXPs, setFloatingXPs] = useState<Array<{ id: number; amount: number }>>([]);
+  const xpIdRef = useRef(0);
+  const [questionsAnswered, setQuestionsAnswered] = useState(0);
+
+  // Total questions across all sections
+  const totalQuestions = sections.reduce((sum, section) => {
+    const items = (section as any).questions || (section as any).items || [];
+    return sum + items.length;
+  }, 0);
+
   const currentSection = sections[currentSectionIndex];
   const passingScore = (task as any)?.passingScore || 0.7;
 
   const handleSectionComplete = (score: number, total: number) => {
+    // Update gamification: track answers from this section
+    const sectionCorrect = score;
+    const sectionTotal = total;
+
+    // Update streak and XP for each correct answer in this section
+    let newStreak = streak;
+    let newXp = xp;
+    let newAnswered = questionsAnswered;
+
+    for (let i = 0; i < sectionTotal; i++) {
+      newAnswered++;
+      if (i < sectionCorrect) {
+        newStreak++;
+        newXp += 10;
+        // Streak milestone bonuses
+        if (newStreak === 3 || newStreak === 5 || newStreak === 10) {
+          newXp += 5;
+        }
+      } else {
+        newStreak = 0;
+      }
+    }
+
+    setStreak(newStreak);
+    setMaxStreak(Math.max(maxStreak, newStreak));
+    setXp(newXp);
+    setQuestionsAnswered(newAnswered);
+
+    // Show floating XP for section score
+    if (sectionCorrect > 0) {
+      const xpGained = sectionCorrect * 10;
+      const id = ++xpIdRef.current;
+      setFloatingXPs(prev => [...prev, { id, amount: xpGained }]);
+      setTimeout(() => {
+        setFloatingXPs(prev => prev.filter(f => f.id !== id));
+      }, 1000);
+    }
+
     setSectionResults(prev => ({
       ...prev,
       [currentSectionIndex]: { score, total, completed: true },
@@ -176,6 +267,10 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
     setCurrentSectionIndex(0);
     setSectionResults({});
     setShowResults(false);
+    setStreak(0);
+    setMaxStreak(0);
+    setXp(0);
+    setQuestionsAnswered(0);
   };
 
   const renderSection = (section: TaskSection) => {
@@ -321,6 +416,13 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
     const { score, total } = getTotalScore();
     const passed = getPassStatus();
     const percentage = Math.round((score / total) * 100);
+    const encouragement = percentage >= 90
+      ? 'Outstanding! You nailed it!'
+      : percentage >= 70
+      ? 'Great job! Keep it up!'
+      : percentage >= 50
+      ? 'Good effort! Review the explanations to strengthen your understanding.'
+      : 'Keep practicing! Read through the concept explanations to build your knowledge.';
 
     return (
       <motion.div
@@ -329,24 +431,66 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
         className="max-w-lg mx-auto"
       >
         <div className="bg-white rounded-xl shadow-lg p-8 text-center">
-          <div className={clsx(
-            'w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-4',
-            passed ? 'bg-green-100' : 'bg-orange-100'
-          )}>
+          {/* Animated trophy */}
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.1 }}
+            className={clsx(
+              'w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-2',
+              passed ? 'bg-green-100' : 'bg-orange-100'
+            )}
+          >
             {passed ? (
               <Trophy className="w-10 h-10 text-green-600" />
             ) : (
               <RotateCcw className="w-10 h-10 text-orange-600" />
             )}
-          </div>
+          </motion.div>
 
-          <h2 className="text-2xl font-bold mb-2">
-            {passed ? 'Great Job!' : 'Keep Practicing!'}
-          </h2>
+          {/* Star rating */}
+          <StarRating percentage={percentage} />
 
-          <p className="text-gray-600 mb-6">
-            You scored {score} out of {total} ({percentage}%)
-          </p>
+          <motion.h2
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="text-2xl font-bold mb-1"
+          >
+            {passed ? 'Practice Complete!' : 'Keep Practicing!'}
+          </motion.h2>
+
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4 }}
+            className="text-gray-500 text-sm mb-4"
+          >
+            {encouragement}
+          </motion.p>
+
+          {/* XP and streak stats */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="flex justify-center gap-6 mb-6"
+          >
+            <div className="flex items-center gap-1.5">
+              <Zap className="w-5 h-5 text-green-500" />
+              <span className="text-lg font-bold text-green-600">{xp}</span>
+              <span className="text-sm text-gray-500">XP</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Flame className="w-5 h-5 text-orange-500" />
+              <span className="text-lg font-bold text-orange-600">{maxStreak}</span>
+              <span className="text-sm text-gray-500">best streak</span>
+            </div>
+            <div className="text-center">
+              <span className="text-lg font-bold text-gray-800">{percentage}%</span>
+              <span className="text-sm text-gray-500 ml-1">score</span>
+            </div>
+          </motion.div>
 
           {/* Section breakdown */}
           <div className="bg-gray-50 rounded-lg p-4 mb-6 text-left">
@@ -393,15 +537,54 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
-      {/* Task header */}
-      <div className="mb-6">
-        <h2 className="text-xl font-bold text-gray-800">{task.title}</h2>
-        <p className="text-gray-600">{task.description}</p>
+    <div className="max-w-2xl mx-auto relative">
+      {/* Floating XP animations */}
+      <AnimatePresence>
+        {floatingXPs.map(f => (
+          <FloatingXP key={f.id} id={f.id} amount={f.amount} />
+        ))}
+      </AnimatePresence>
+
+      {/* Task header with gamification bar */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-xl font-bold text-gray-800">{task.title}</h2>
+          <div className="flex items-center gap-3">
+            {/* XP counter */}
+            <div className="flex items-center gap-1">
+              <Zap className="w-4 h-4 text-green-500" />
+              <span className="text-sm font-bold text-green-600">{xp}</span>
+            </div>
+            {/* Streak counter */}
+            {streak > 0 && (
+              <motion.div
+                initial={{ scale: 0.8 }}
+                animate={{ scale: 1 }}
+                className="flex items-center gap-1"
+              >
+                <Flame className={clsx('w-4 h-4', streak >= 5 ? 'text-orange-500' : 'text-orange-400')} />
+                <span className={clsx('text-sm font-bold', streak >= 5 ? 'text-orange-600' : 'text-orange-500')}>
+                  {streak}
+                </span>
+              </motion.div>
+            )}
+          </div>
+        </div>
+        <p className="text-gray-600 text-sm">{task.description}</p>
+      </div>
+
+      {/* Green progress bar (overall across all sections) */}
+      <div className="h-2 bg-gray-200 rounded-full overflow-hidden mb-4">
+        <motion.div
+          className="h-full bg-green-500 rounded-full"
+          initial={{ width: 0 }}
+          animate={{ width: `${totalQuestions > 0 ? (questionsAnswered / totalQuestions) * 100 : 0}%` }}
+          transition={{ duration: 0.3 }}
+        />
       </div>
 
       {/* Section progress indicators */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex gap-2 mb-4">
         {sections.map((_, index) => {
           const result = sectionResults[index];
           const isActive = index === currentSectionIndex;
@@ -411,7 +594,7 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
             <div
               key={index}
               className={clsx(
-                'flex-1 h-2 rounded-full transition-all',
+                'flex-1 h-1.5 rounded-full transition-all',
                 isCompleted
                   ? 'bg-green-500'
                   : isActive

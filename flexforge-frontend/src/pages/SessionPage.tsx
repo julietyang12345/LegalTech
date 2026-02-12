@@ -18,7 +18,6 @@ import type { CurriculumDay } from '@/types';
 // Import step components
 import { PrePromptStep } from '@/components/session/PrePromptStep';
 import { VideoStep } from '@/components/session/VideoStep';
-import { FoundationCardsStep } from '@/components/session/FoundationCardsStep';
 import { QuizTaskStep, FillBlankTaskStep } from '@/components/session/AlternativeTaskSteps';
 import { SectionTaskStep } from '@/components/session/SectionTaskStep';
 import { BossMilestoneStep } from '@/components/session/BossMilestoneStep';
@@ -234,9 +233,9 @@ function TaskRouter({ day, session, onComplete, onBookmarkQuestion, onShareQuest
   const [loadingFormatType, setLoadingFormatType] = useState<TaskFormat | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const { getAlternativeTaskFormat, isDeferredLoading } = useSessionStore();
+  const { getAlternativeTaskFormat, isCoreLoaded } = useSessionStore();
 
-  // Show loading screen when task1 is not yet available (deferred content still loading)
+  // Show loading screen when task1 is not yet available (core content still loading)
   if (!task) {
     return (
       <div className="max-w-lg mx-auto">
@@ -245,7 +244,7 @@ function TaskRouter({ day, session, onComplete, onBookmarkQuestion, onShareQuest
           skillName={session.skillName}
           dayNumber={day.day}
         />
-        {!isDeferredLoading && (
+        {isCoreLoaded && (
           <div className="text-center mt-4">
             <button
               onClick={onComplete}
@@ -388,10 +387,9 @@ function TaskRouter({ day, session, onComplete, onBookmarkQuestion, onShareQuest
   );
 }
 
-const STEP_COMPONENTS: Record<SessionStepType, React.ComponentType<any>> = {
+const STEP_COMPONENTS: Record<string, React.ComponentType<any>> = {
   prePrompt: PrePromptStep,
   video: VideoStep,
-  foundationCards: FoundationCardsStep,
   task1: TaskRouter,
   bossMilestone: BossMilestoneStep,
   openTask: OpenTaskStep,
@@ -402,7 +400,6 @@ const STEP_COMPONENTS: Record<SessionStepType, React.ComponentType<any>> = {
 const STEP_ORDER: SessionStepType[] = [
   'prePrompt',
   'video',
-  'foundationCards',
   'task1',
   'bossMilestone',
   'openTask',
@@ -411,7 +408,6 @@ const STEP_ORDER: SessionStepType[] = [
 
 // Step engagement tracking - what user has actually done
 interface StepEngagement {
-  foundationCards: boolean;  // Clicked through all cards
   task1: boolean;            // Completed quiz/fill-blank
   bossMilestone: boolean;    // Submitted boss milestone code
   reflection: boolean;       // Filled reflection
@@ -433,7 +429,6 @@ export function SessionPage() {
 
   // Track what user has actually engaged with
   const [stepEngagement, setStepEngagement] = useState<StepEngagement>({
-    foundationCards: false,
     task1: false,
     bossMilestone: false,
     reflection: false,
@@ -522,20 +517,6 @@ export function SessionPage() {
       // Only skip if explicitly marked as no practice day (rare edge case)
       return true;
     }
-    // Skip foundationCards only if core is loaded AND explicitly has no cards (empty array)
-    // If undefined, content might not be properly loaded - show the step
-    if (step === 'foundationCards') {
-      const foundationCards = currentDay?.foundationCards;
-      const languageFoundationCards = currentDay?.languageFoundationCards;
-      // Still loading core content - show the step
-      if (!isCoreLoaded) return true;
-      // Content not properly populated (undefined) - show the step, component will handle
-      if (foundationCards === undefined && languageFoundationCards === undefined) return true;
-      // Explicitly empty arrays - hide the step
-      const hasCards = (foundationCards && foundationCards.length > 0) ||
-                       (languageFoundationCards && languageFoundationCards.length > 0);
-      if (!hasCards) return false;
-    }
     // Always show openTask step (renders as Real-World Challenge)
     // The OpenTaskStep component handles empty/loading states
     if (step === 'openTask') {
@@ -589,17 +570,6 @@ export function SessionPage() {
     if (!currentDay) return [];
     const incomplete: { step: string; label: string; icon: string }[] = [];
 
-    // Check foundation cards (if they exist in this flow) - uses local state
-    const hasCards = (currentDay?.foundationCards && currentDay.foundationCards.length > 0) ||
-                     (currentDay?.languageFoundationCards && currentDay.languageFoundationCards.length > 0);
-    if (hasCards && !stepEngagement.foundationCards) {
-      incomplete.push({
-        step: 'foundationCards',
-        label: 'Review Foundation Cards',
-        icon: '📚',
-      });
-    }
-
     // Check task completion (quiz or fillBlank) - uses store's persisted progress
     if (currentDay?.task1 && !hasStepEngagement(currentDay.day, 'task1')) {
       const taskFormat = (currentDay.task1 as any)?.format || 'quiz';
@@ -636,7 +606,7 @@ export function SessionPage() {
 
         // 2. Reset steps and engagement for new day
         resetSteps();
-        setStepEngagement({ foundationCards: false, task1: false, bossMilestone: false, reflection: false });
+        setStepEngagement({ task1: false, bossMilestone: false, reflection: false });
 
         addSystemMessage(
           `🎉 Day ${currentDay.day} complete! Ready for the next day!`,
@@ -683,7 +653,6 @@ export function SessionPage() {
     if (!currentDay) return false;
 
     // Steps that require explicit engagement - check store for persisted progress
-    if (step === 'foundationCards') return hasStepEngagement(currentDay.day, 'foundationCards');
     if (step === 'task1') return hasStepEngagement(currentDay.day, 'task1');
     if (step === 'bossMilestone') return hasStepEngagement(currentDay.day, 'bossMilestone');
     if (step === 'reflection') return stepEngagement.reflection;
@@ -842,10 +811,8 @@ export function SessionPage() {
   const handleStepComplete = () => {
     // Mark engagement based on current step
     // task1, bossMilestone are tracked in the store (persisted progress)
-    // foundationCards and reflection still use local state
-    if (currentStep === 'foundationCards') {
-      markStepEngaged('foundationCards');
-    } else if (currentStep === 'reflection') {
+    // reflection still uses local state
+    if (currentStep === 'reflection') {
       markStepEngaged('reflection');
     }
     // task1, bossMilestone engagement is automatically tracked

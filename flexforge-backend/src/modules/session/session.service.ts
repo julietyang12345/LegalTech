@@ -57,7 +57,7 @@ export class SessionService {
   }
 
   /**
-   * Check if core content is valid (has foundation cards)
+   * Check if core content is valid (has task1 or legacy foundation cards)
    * Returns false if forceRegenerate or content is missing/invalid
    */
   private isCoreContentValid(
@@ -67,6 +67,10 @@ export class SessionService {
     if (forceRegenerate) return false;
     if (!dayOverview.coreLoaded || !dayOverview.coreContent) return false;
 
+    // New format: check for task1
+    if (dayOverview.coreContent.task1?.sections?.length > 0) return true;
+
+    // Backward compat: check for legacy foundation cards
     const cards =
       dayOverview.coreContent.foundationCards ||
       dayOverview.coreContent.languageFoundationCards ||
@@ -134,7 +138,7 @@ export class SessionService {
           coreContent: result.coreContent,
           coreLoaded: true,
           variantId: result.variantId,
-          foundationCardConcepts: result.foundationCardConcepts,
+          task1Concepts: result.task1Concepts,
         };
 
         session.curriculum = { ...session.curriculum, days: updatedDays };
@@ -1113,7 +1117,7 @@ export class SessionService {
       coreLoaded: true,
       status: 'in_progress',
       variantId: result.variantId, // Store variant ID for regen tracking
-      foundationCardConcepts: result.foundationCardConcepts, // Store for deferred generation
+      task1Concepts: result.task1Concepts, // Store for deferred generation
     };
 
     // Force TypeORM to detect JSONB change by reassigning entire curriculum
@@ -1188,6 +1192,11 @@ export class SessionService {
       if (dayOverview.coreContent.prePrompt) {
         yield { event: 'prePrompt', data: dayOverview.coreContent.prePrompt };
       }
+      // Yield task1 if present (new format)
+      if (dayOverview.coreContent.task1) {
+        yield { event: 'task1', data: dayOverview.coreContent.task1 };
+      }
+      // Backward compat: yield foundation cards from old cached data
       const cards =
         dayOverview.coreContent.languageFoundationCards ||
         dayOverview.coreContent.foundationCards ||
@@ -1244,7 +1253,7 @@ export class SessionService {
         coreLoaded: true,
         status: 'in_progress',
         variantId: finalResult.variantId,
-        foundationCardConcepts: finalResult.foundationCardConcepts,
+        task1Concepts: finalResult.task1Concepts,
       };
 
       session.curriculum = {
@@ -1321,12 +1330,12 @@ export class SessionService {
     }
 
     // Generate deferred content with foundation card concepts for consistent personalization
-    // Pass foundationCardConcepts from core content and session's improvement areas
+    // Pass task1Concepts from core content and session's improvement areas
     const result = await this.curriculumService.generateDayDeferredDetails(
       session.curriculum,
       dayNumber,
       tierString,
-      dayOverview.foundationCardConcepts, // From core generation
+      dayOverview.task1Concepts, // From core generation
       session.improvementAreas,
       session.lessOfAreas,
       forceRegenerate, // Pass through to bypass L2 cache when day was force regenerated
@@ -1485,7 +1494,7 @@ export class SessionService {
       session.curriculum,
       dayNumber,
       tierString,
-      dayOverview.foundationCardConcepts,
+      dayOverview.task1Concepts,
       session.improvementAreas,
       session.lessOfAreas,
       forceRegenerate, // Pass through to bypass L2 cache when day was force regenerated

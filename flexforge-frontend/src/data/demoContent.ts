@@ -1,20 +1,10 @@
-export interface DemoCard {
-  title: string;
-  emoji: string;
-  content: string;
-  microQuestion: {
-    question: string;
-    options: string[];
-    correctIndex: number;
-    explanation: string;
-  };
-}
-
 export interface DemoQuizQuestion {
   question: string;
   options: string[];
   correctIndex: number;
   explanation: string;
+  conceptTitle?: string;
+  realWorldContext?: string;
 }
 
 export const DEMO_TOPIC = {
@@ -36,75 +26,51 @@ export const DEMO_PREPROMPT = {
   ],
 };
 
-export const DEMO_CARDS: DemoCard[] = [
-  {
-    title: 'The Instruction Frame',
-    emoji: '🎯',
-    content:
-      'Every effective prompt starts with a clear instruction. Instead of "tell me about dogs", write "Explain 3 key differences between golden retrievers and labrador retrievers in terms of temperament." The more specific your instruction, the more useful the response. Think of it like ordering food — "give me something good" vs "I\'d like a medium-rare ribeye with roasted vegetables."',
-    microQuestion: {
-      question: 'Which prompt would produce a more useful response?',
-      options: [
-        '"Write about marketing"',
-        '"List 5 low-budget marketing tactics for a new coffee shop targeting college students"',
-        '"Tell me everything you know about marketing strategies"',
-        '"Marketing help please"',
-      ],
-      correctIndex: 1,
-      explanation:
-        'Specific prompts with a clear scope (5 tactics), context (coffee shop), and audience (college students) produce focused, actionable responses.',
-    },
-  },
-  {
-    title: 'Context is King',
-    emoji: '👑',
-    content:
-      'Context tells the AI who you are, what you know, and what you need. Adding "I\'m a beginner" vs "I\'m a senior developer" changes the entire response. You can also set a role: "Act as a nutritionist" or "You are a patient Python tutor." Context doesn\'t need to be long — even one sentence of background dramatically improves results.',
-    microQuestion: {
-      question: 'What is the primary purpose of adding context to a prompt?',
-      options: [
-        'To make the prompt longer',
-        'To help the AI calibrate its response to your situation',
-        'To confuse the AI into trying harder',
-        'To bypass the AI\'s safety filters',
-      ],
-      correctIndex: 1,
-      explanation:
-        'Context helps the AI understand your knowledge level, goals, and constraints so it can tailor the response appropriately.',
-    },
-  },
-  {
-    title: 'Output Formatting',
-    emoji: '📋',
-    content:
-      'Telling the AI how to format its response saves you time. You can request: bullet points, numbered lists, tables, JSON, code blocks, or a specific word count. For example: "Give me a comparison table with columns for Feature, Pros, and Cons." You can even provide an example of the format you want and say "follow this structure."',
-    microQuestion: {
-      question: 'When should you specify the output format?',
-      options: [
-        'Only when writing code',
-        'Never — the AI knows best',
-        'Whenever you have a preference for how the answer should look',
-        'Only for creative writing tasks',
-      ],
-      correctIndex: 2,
-      explanation:
-        'Specifying format whenever you have a preference — whether it\'s a table, bullet list, or JSON — ensures you get a response you can immediately use.',
-    },
-  },
-];
-
 export const DEMO_QUIZ: DemoQuizQuestion[] = [
   {
-    question: 'What are the three building blocks of an effective prompt?',
+    question: 'Which prompt would produce a more useful response?',
     options: [
-      'Length, complexity, and politeness',
-      'Instruction, context, and output format',
-      'Role, temperature, and token count',
-      'Question, follow-up, and feedback',
+      '"Write about marketing"',
+      '"List 5 low-budget marketing tactics for a new coffee shop targeting college students"',
+      '"Tell me everything you know about marketing strategies"',
+      '"Marketing help please"',
     ],
     correctIndex: 1,
+    conceptTitle: 'The Instruction Frame',
     explanation:
-      'A clear instruction, relevant context, and a specified output format are the three building blocks covered in this lesson.',
+      'Every effective prompt starts with a clear instruction. Instead of "tell me about dogs", write "Explain 3 key differences between golden retrievers and labrador retrievers in terms of temperament." The more specific your instruction, the more useful the response.\n\nThink of it like ordering food — "give me something good" vs "I\'d like a medium-rare ribeye with roasted vegetables." Specific prompts with a clear scope (5 tactics), context (coffee shop), and audience (college students) produce focused, actionable responses.',
+    realWorldContext:
+      'In practice, spending 30 extra seconds crafting a specific prompt saves you minutes of follow-up questions and re-prompting.',
+  },
+  {
+    question: 'What is the primary purpose of adding context to a prompt?',
+    options: [
+      'To make the prompt longer',
+      'To help the AI calibrate its response to your situation',
+      'To confuse the AI into trying harder',
+      'To bypass the AI\'s safety filters',
+    ],
+    correctIndex: 1,
+    conceptTitle: 'Context is King',
+    explanation:
+      'Context tells the AI who you are, what you know, and what you need. Adding "I\'m a beginner" vs "I\'m a senior developer" changes the entire response. You can also set a role: "Act as a nutritionist" or "You are a patient Python tutor."\n\nContext doesn\'t need to be long — even one sentence of background dramatically improves results. It helps the AI understand your knowledge level, goals, and constraints so it can tailor the response appropriately.',
+    realWorldContext:
+      'Professional prompt engineers always include at least one line of context — it\'s the single highest-ROI improvement you can make to any prompt.',
+  },
+  {
+    question: 'When should you specify the output format in your prompt?',
+    options: [
+      'Only when writing code',
+      'Never — the AI knows best',
+      'Whenever you have a preference for how the answer should look',
+      'Only for creative writing tasks',
+    ],
+    correctIndex: 2,
+    conceptTitle: 'Output Formatting',
+    explanation:
+      'Telling the AI how to format its response saves you time. You can request: bullet points, numbered lists, tables, JSON, code blocks, or a specific word count. For example: "Give me a comparison table with columns for Feature, Pros, and Cons."\n\nYou can even provide an example of the format you want and say "follow this structure." Specifying format whenever you have a preference ensures you get a response you can immediately use without reformatting.',
+    realWorldContext:
+      'Teams that standardize on output formats (like JSON for data or markdown tables for comparisons) can automate their AI workflows much more easily.',
   },
   {
     question:
@@ -116,20 +82,11 @@ export const DEMO_QUIZ: DemoQuizQuestion[] = [
       '"Give me the best meal plan ever"',
     ],
     correctIndex: 1,
+    conceptTitle: 'Putting It All Together',
     explanation:
-      'This prompt combines a clear instruction (create a 7-day meal plan), context (vegetarian athlete, marathon training), and output format (table with specific columns).',
-  },
-  {
-    question: 'Why does adding "I\'m a beginner" to your prompt matter?',
-    options: [
-      'It makes the AI respond faster',
-      'It unlocks hidden features',
-      'It helps the AI calibrate the complexity of its explanation',
-      'It has no real effect',
-    ],
-    correctIndex: 2,
-    explanation:
-      'Stating your experience level is context that helps the AI adjust vocabulary, depth, and assumptions to match your understanding.',
+      'This prompt combines all three building blocks: a clear instruction (create a 7-day meal plan), context (vegetarian athlete, marathon training), and output format (table with specific columns).\n\nNotice how each element works together — the instruction defines what you want, the context helps the AI personalize it, and the format ensures the output is immediately useful. When all three align, you rarely need follow-up prompts.',
+    realWorldContext:
+      'The best prompts feel like filling out a brief: what do you need, who is it for, and how should it look?',
   },
   {
     question:
@@ -141,7 +98,10 @@ export const DEMO_QUIZ: DemoQuizQuestion[] = [
       'Just read the first paragraph and ignore the rest',
     ],
     correctIndex: 1,
+    conceptTitle: 'Iterating on Prompts',
     explanation:
-      'Adding an output format (3 bullet points) and context (knows HTML/CSS) constrains the response to exactly what you need.',
+      'Adding an output format (3 bullet points) and context (knows HTML/CSS) constrains the response to exactly what you need. This is the iterative approach — when a prompt doesn\'t work, diagnose which building block is missing and add it.\n\nIn this case, the original prompt lacked both format constraints and context about your experience level. The fix addresses both, turning a wall of text into a concise, targeted explanation.',
+    realWorldContext:
+      'Even expert prompt engineers iterate. The key is knowing which building block to adjust rather than starting from scratch.',
   },
 ];
