@@ -152,7 +152,7 @@ export default function OnboardingPage() {
         selectedLanguage: selectedLanguage,
         // Output type - what user wants to achieve
         outputType,
-        // Include refinement context if used
+        // Usage context from refinement panel (if used)
         usageContext: refinementContext?.usageContext,
         // Feeling-based inputs
         familiarity,

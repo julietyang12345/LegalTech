@@ -51,10 +51,9 @@ export class GenerateCurriculumDto {
     | 'apply_skill'
     | 'ship_project'
     | 'understand_concept'
-    | 'pass_exam'
+    | 'get_hired'
     | 'teach_others'
-    | 'compete'
-    | 'master_basics';
+    | 'compete';
 
   // Feeling-based inputs (from onboarding)
   @IsOptional()

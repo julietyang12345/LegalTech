@@ -14,10 +14,9 @@ type OutputType =
   | 'apply_skill'
   | 'ship_project'
   | 'understand_concept'
-  | 'pass_exam'
+  | 'get_hired'
   | 'teach_others'
-  | 'compete'
-  | 'master_basics';
+  | 'compete';
 
 interface LearnerPrefsForPrompt {
   selectedDirection?: string; // The direction they picked (more specific than skillName)
@@ -25,7 +24,6 @@ interface LearnerPrefsForPrompt {
   directionKeywords?: string[]; // Keywords for the selected direction
   selectedLanguage?: string; // User's chosen language (overrides auto-detection)
   outputType?: OutputType; // What user wants to achieve (affects content style)
-  usageContext?: 'work' | 'personal' | 'interview' | 'school';
   contentDepth?: 'fast' | 'medium' | 'deep';
   // Feeling-based inputs (easier for users than explicit skill level/time questions)
   familiarity?: 'new' | 'know_basics' | 'skilled'; // How familiar with topic
@@ -284,20 +282,6 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
     parts.push(`KEY TOPICS: ${prefs.directionKeywords.join(', ')}`);
   }
 
-  // Usage context affects examples and focus
-  if (prefs.usageContext) {
-    const contextGuidance: Record<string, string> = {
-      work: 'FOR WORK: Use professional examples, enterprise patterns, team collaboration scenarios.',
-      personal:
-        'FOR PERSONAL PROJECT: Use hobbyist-friendly examples, fun projects, creative applications.',
-      interview:
-        'FOR INTERVIEW PREP: Include common interview questions, algorithmic thinking, optimization.',
-      school:
-        'FOR LEARNING: Include foundational concepts, academic rigor, theoretical understanding.',
-    };
-    parts.push(contextGuidance[prefs.usageContext] || '');
-  }
-
   // Content depth affects how much detail to include
   if (prefs.contentDepth) {
     const depthGuidance: Record<string, string> = {
@@ -324,10 +308,19 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
 - Explain "why" not just "how"
 - Mental models, underlying principles
 - Tasks: "Explain why", conceptual questions`,
-      pass_exam: `OUTPUT GOAL: PASS AN EXAM
-- Memorizable definitions, formal facts
-- Edge cases, common exam traps
-- Tasks: MCQ, "what's the output", drills`,
+      get_hired: `OUTPUT GOAL: GET HIRED - JOB & INTERVIEW READY
+- Use real-world professional examples, NOT toy "Hello World" projects
+- Emphasize production code quality: error handling, logging, type safety, edge cases
+- Include code review perspective: "what would a senior engineer flag here?"
+- Teach patterns used in real teams: PR workflow, naming conventions, documentation
+- Portfolio-worthy examples: problems that demonstrate competence to hiring managers
+- Mention WHY each pattern matters in production (scalability, maintainability, debugging)
+- Include interview-style questions: "explain WHY you'd choose X over Y"
+- Teach problem-solving approach, not just syntax (break down → plan → implement → verify)
+- Cover common interview topics: trade-offs, time/space complexity, design decisions
+- Include "talking points" — how to explain concepts clearly to an interviewer
+- Emphasize edge cases and error handling (interviewers test these)
+- Tasks: Production-quality features, interview-style problems, "explain your approach"`,
       teach_others: `OUTPUT GOAL: TEACH OTHERS
 - Analogies, intuitive explanations
 - Address common misconceptions
@@ -336,10 +329,6 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
 - Advanced techniques, optimization
 - Competitive strategies, edge over others
 - Tasks: Challenging scenarios, performance focus`,
-      master_basics: `OUTPUT GOAL: MASTER FUNDAMENTALS
-- Core techniques, solid foundation
-- Consistency over complexity
-- Tasks: Fundamentals drill, build muscle memory`,
     };
     parts.push(outputGuidance[prefs.outputType] || '');
   }

@@ -56,19 +56,17 @@ export interface LearningDirection {
  * - apply_skill: Use the skill proficiently. Practical application, make it work.
  * - ship_project: Ship something real. End-to-end, deployment, best practices.
  * - understand_concept: Deep understanding. Theory, mental models, "why" explanations.
- * - pass_exam: Pass an exam. Memorizable facts, practice questions, exam strategies.
+ * - get_hired: Job & interview ready. Production code quality, portfolio-worthy, interview prep, real-world patterns.
  * - teach_others: Teach others. Analogies, clear explanations, common misconceptions.
  * - compete: Compete with others. Advanced techniques, competitive strategies.
- * - master_basics: Master fundamentals. Core techniques, solid foundation.
  */
 export type OutputType =
   | 'apply_skill'
   | 'ship_project'
   | 'understand_concept'
-  | 'pass_exam'
+  | 'get_hired'
   | 'teach_others'
-  | 'compete'
-  | 'master_basics';
+  | 'compete';
 
 /**
  * Refinement context from Step 3b of onboarding.

@@ -20,10 +20,9 @@ export type OutputType =
   | 'apply_skill'
   | 'ship_project'
   | 'understand_concept'
-  | 'pass_exam'
+  | 'get_hired'
   | 'teach_others'
-  | 'compete'
-  | 'master_basics';
+  | 'compete';
 export type LearningStyle = 'projects' | 'practice';
 
 interface Option<T> {
@@ -81,10 +80,9 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
   const outputTypeOptions: Option<OutputType>[] = [
     { value: 'apply_skill', label: 'Use it well', sublabel: 'Practical proficiency' },
     { value: 'ship_project', label: 'Ship something', sublabel: 'Build end-to-end' },
-    { value: 'pass_exam', label: 'Pass an exam', sublabel: 'Test preparation' },
+    { value: 'get_hired', label: 'Get hired', sublabel: 'Job & interview ready' },
     { value: 'teach_others', label: 'Teach others', sublabel: 'Explain clearly' },
     { value: 'compete', label: 'Compete', sublabel: 'Beat the competition' },
-    { value: 'master_basics', label: 'Master basics', sublabel: 'Solid foundation' },
   ];
 
   const toolPreferenceOptions: Option<ToolPreference>[] = [
@@ -99,10 +97,9 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
       case 'apply_skill': return 'medium';
       case 'ship_project': return 'medium';
       case 'understand_concept': return 'medium';
-      case 'pass_exam': return 'medium';
+      case 'get_hired': return 'medium';
       case 'teach_others': return 'deep';
       case 'compete': return 'deep';
-      case 'master_basics': return 'fast';
     }
   };
 
@@ -325,7 +322,7 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
                     </>
                   ) : (
                     <>
-                    
+
                       <span className="block mt-1 text-gray-400">
                         Enabling this requires more time and effort every day
                       </span>
