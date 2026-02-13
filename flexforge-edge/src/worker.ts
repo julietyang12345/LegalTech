@@ -64,6 +64,7 @@ const PUBLIC_ROUTES = [
   '/api/v1/auth/verify-email',
   '/api/v1/auth/resend-verification',
   '/api/v1/auth/check-email-exists', // Internal endpoint for edge worker
+  '/api/v1/auth/google',
 ];
 
 // Allowed API route prefixes (security: only proxy known routes to backend)
@@ -505,6 +506,72 @@ app.delete('/api/v1/cache/video/:videoId', async (c) => {
   ]);
 
   return c.json({ success: true, message: `Cache cleared for video ${videoId}` });
+});
+
+// ============================================================================
+// GOOGLE AUTH ENDPOINT (with rate limiting)
+// ============================================================================
+
+/**
+ * POST /api/v1/auth/google
+ * Proxy Google OAuth with rate limiting
+ */
+app.post('/api/v1/auth/google', async (c) => {
+  try {
+    const clientIp = c.req.header('cf-connecting-ip') || 'unknown';
+
+    // Rate limit Google auth (prevent abuse)
+    const rateLimit = await checkRateLimit('google-auth', clientIp, c.env.RATE_LIMIT_COUNTERS, 'google-auth', {
+      perEmail: { limit: 20, windowSeconds: 3600 },
+      perIp: { limit: 10, windowSeconds: 3600 },
+      global: { limit: 200, windowSeconds: 60 },
+    });
+    if (!rateLimit.allowed) {
+      return c.json({ message: 'Too many attempts. Please try again later.' }, 429);
+    }
+
+    // Proxy to backend
+    const backendResponse = await fetch(`${c.env.BACKEND_URL}/api/v1/auth/google`, {
+      method: 'POST',
+      headers: createBackendHeaders(c),
+      body: c.req.raw.body,
+    });
+
+    // Forward response headers including Set-Cookie
+    const responseHeaders = new Headers();
+    backendResponse.headers.forEach((value, key) => {
+      if (key.toLowerCase() !== 'set-cookie') {
+        responseHeaders.set(key, value);
+      }
+    });
+
+    const anyHeaders = backendResponse.headers as any;
+    const setCookies: string[] | undefined = anyHeaders.getSetCookie?.();
+    if (setCookies && setCookies.length > 0) {
+      for (const sc of setCookies) {
+        responseHeaders.append('Set-Cookie', sc);
+      }
+    } else {
+      const sc = backendResponse.headers.get('set-cookie');
+      if (sc) responseHeaders.append('Set-Cookie', sc);
+    }
+
+    const responseData = await backendResponse.text();
+    return new Response(responseData, {
+      status: backendResponse.status,
+      headers: responseHeaders,
+    });
+  } catch (error) {
+    console.error('Google auth intercept error:', error);
+    const url = new URL(c.req.url);
+    const backendUrl = `${c.env.BACKEND_URL}${url.pathname}${url.search}`;
+    const res = await fetch(backendUrl, {
+      method: 'POST',
+      headers: createBackendHeaders(c),
+      body: c.req.raw.body,
+    });
+    return new Response(res.body, { status: res.status, headers: res.headers });
+  }
 });
 
 // ============================================================================

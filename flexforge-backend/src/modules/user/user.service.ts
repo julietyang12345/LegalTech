@@ -106,9 +106,60 @@ export class UserService {
   }
 
   /**
+   * Find user by Google ID
+   */
+  async findByGoogleId(googleId: string): Promise<User | null> {
+    const user = await this.usersRepository.findOne({
+      where: { googleId },
+    });
+
+    if (user && this.isAdminEmail(user.email)) {
+      user.role = UserRole.ADMIN;
+    }
+    return user;
+  }
+
+  /**
+   * Create user from Google OAuth (no password, email pre-verified)
+   */
+  async createFromGoogle(data: {
+    email: string;
+    name: string;
+    googleId: string;
+  }): Promise<User> {
+    const isAdmin = this.isAdminEmail(data.email);
+
+    const user = this.usersRepository.create({
+      email: data.email.toLowerCase(),
+      googleId: data.googleId,
+      fullName: data.name,
+      emailVerified: true,
+      role: isAdmin ? UserRole.ADMIN : UserRole.MEMBER,
+      quotaTier: QuotaTier.FREE,
+      tokensUsedThisMonth: 0,
+      curriculaGeneratedThisMonth: 0,
+      codeReviewsThisMonth: 0,
+      quotaResetDate: new Date(),
+      hasStepByStepAccess: true,
+      hasCodeReviewAccess: false,
+      hasCareerPathAccess: false,
+    });
+
+    return this.usersRepository.save(user);
+  }
+
+  /**
+   * Link Google account to existing user
+   */
+  async linkGoogleAccount(userId: string, googleId: string): Promise<void> {
+    await this.usersRepository.update(userId, { googleId });
+  }
+
+  /**
    * Validate user password
    */
   async validatePassword(user: User, password: string): Promise<boolean> {
+    if (!user.password) return false;
     return bcrypt.compare(password, user.password);
   }
 

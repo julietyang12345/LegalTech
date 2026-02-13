@@ -74,6 +74,7 @@ docker exec -it flexforge-db-prod psql -U flexforge -d flexforge_dev -c 'SELECT 
 - **Server**: `ssh j@10.3.8.169`
 - **Deploy method**: Docker
 - **Backend path**: `/home/j/flexforge-backend/`
+- **Env file**: `/home/j/.env`
 
 ```bash
 # SSH into server

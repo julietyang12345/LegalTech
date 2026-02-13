@@ -1,15 +1,22 @@
 import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import { OAuth2Client, LoginTicket } from 'google-auth-library';
 import { UserService } from '../user/user.service';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  private readonly googleClient: OAuth2Client;
 
   constructor(
     private userService: UserService,
     private jwtService: JwtService,
-  ) {}
+    private configService: ConfigService,
+  ) {
+    const googleClientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+    this.googleClient = new OAuth2Client(googleClientId);
+  }
 
   async register(email: string, password: string, name?: string) {
     const user = await this.userService.create({
@@ -53,6 +60,71 @@ export class AuthService {
         quotaTier: user.quotaTier,
       },
       access_token: token,
+    };
+  }
+
+  async googleLogin(idToken: string) {
+    // Verify the Google ID token
+    const googleClientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+    let ticket: LoginTicket;
+    try {
+      ticket = await this.googleClient.verifyIdToken({
+        idToken,
+        audience: googleClientId,
+      });
+    } catch (error) {
+      this.logger.error('Google token verification failed:', error);
+      throw new UnauthorizedException('Invalid Google credential');
+    }
+
+    const googlePayload = ticket.getPayload();
+    if (!googlePayload || !googlePayload.email) {
+      throw new UnauthorizedException('Invalid Google credential');
+    }
+
+    const { sub: googleId, email, name, email_verified } = googlePayload;
+
+    if (!email_verified) {
+      throw new UnauthorizedException('Google email is not verified');
+    }
+
+    // Try to find user by googleId first
+    let user = await this.userService.findByGoogleId(googleId);
+
+    if (!user) {
+      // Try to find by email (link existing account)
+      user = await this.userService.findByEmail(email.toLowerCase());
+
+      if (user) {
+        // Link Google account to existing user
+        await this.userService.linkGoogleAccount(user.id, googleId);
+        // Also verify email if not already verified
+        if (!user.emailVerified) {
+          await this.userService.setEmailVerified(user.id, true);
+        }
+      } else {
+        // Create new user from Google
+        user = await this.userService.createFromGoogle({
+          email: email.toLowerCase(),
+          name: name || email.split('@')[0],
+          googleId,
+        });
+      }
+    }
+
+    const payload = { email: user.email, sub: user.id, role: user.role };
+    const token = this.jwtService.sign(payload);
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name || user.fullName,
+        role: user.role,
+        quotaTier: user.quotaTier,
+      },
+      access_token: token,
+      isNewUser: !user.preferences?.learner?.completedOnboarding,
     };
   }
 

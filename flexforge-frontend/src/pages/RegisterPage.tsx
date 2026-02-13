@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Lock, User, AlertCircle, ArrowLeft, CheckCircle, CheckCircle2, RefreshCw } from 'lucide-react';
+import { GoogleLogin } from '@react-oauth/google';
 import { useAuthStore } from '@/stores/authStore';
 import { authService } from '@/services/authService';
 import { Button, Card, TurnstileWidget } from '@/components/common';
 
 export function RegisterPage() {
   const navigate = useNavigate();
-  const { register, isLoading, error, clearError, requiresVerification, pendingVerificationEmail, clearVerificationState } = useAuthStore();
+  const { register, googleLogin, isLoading, error, clearError, requiresVerification, pendingVerificationEmail, clearVerificationState } = useAuthStore();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -54,6 +55,21 @@ export function RegisterPage() {
     setEmail('');
     setPassword('');
     setName('');
+  };
+
+  const handleGoogleSuccess = async (credentialResponse: { credential?: string }) => {
+    if (!credentialResponse.credential) return;
+    clearError();
+    try {
+      const result = await googleLogin(credentialResponse.credential);
+      if (result.isNewUser) {
+        navigate('/onboarding', { replace: true });
+      } else {
+        navigate('/today', { replace: true });
+      }
+    } catch (_err) {
+      // Error is handled by store
+    }
   };
 
   const benefits = [
@@ -177,6 +193,26 @@ export function RegisterPage() {
                 <p className="text-red-700 text-sm">{error}</p>
               </motion.div>
             )}
+
+            {/* Google Sign Up */}
+            <div className="flex justify-center">
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() => clearError()}
+                size="large"
+                width="100%"
+                text="signup_with"
+              />
+            </div>
+
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="bg-white px-4 text-gray-500">or sign up with email</span>
+              </div>
+            </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>

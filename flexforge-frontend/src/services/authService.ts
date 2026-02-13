@@ -19,6 +19,7 @@ export interface AuthResponse {
   user: User;
   // Token is now stored in HTTP-only cookie, not returned in response body
   requiresVerification?: boolean;
+  isNewUser?: boolean;
 }
 
 export interface ForgotPasswordDto {
@@ -46,6 +47,11 @@ export const authService = {
       headers['x-turnstile-required'] = '1';
     }
     const { data } = await api.post<AuthResponse>('/auth/login', dto, { headers });
+    return data;
+  },
+
+  async googleLogin(credential: string): Promise<AuthResponse> {
+    const { data } = await api.post<AuthResponse>('/auth/google', { credential });
     return data;
   },
 

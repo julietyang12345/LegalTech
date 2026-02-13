@@ -14,6 +14,7 @@ import { AuthService } from './auth.service';
 import { IsEmail, IsString, MinLength, Matches } from 'class-validator';
 import { EdgeSignatureGuard } from './guards/edge-signature.guard';
 import { ResetPasswordDto, CheckEmailExistsDto } from './dto/password-reset.dto';
+import { GoogleAuthDto } from './dto/google-auth.dto';
 
 // Extend Express Request to include edge-related properties
 interface EdgeRequest extends Request {
@@ -101,6 +102,22 @@ export class AuthController {
     return {
       message: 'Login successful',
       user: result.user,
+    };
+  }
+
+  @Post('google')
+  @HttpCode(HttpStatus.OK)
+  async googleLogin(
+    @Body() dto: GoogleAuthDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.googleLogin(dto.credential);
+    this.setAuthCookie(res, result.access_token);
+
+    return {
+      message: 'Login successful',
+      user: result.user,
+      isNewUser: result.isNewUser,
     };
   }
 
