@@ -29,6 +29,16 @@ export class SessionService {
   private readonly logger = new Logger(SessionService.name);
   private readonly preloadPromises = new Map<string, Promise<void>>();
 
+  /**
+   * Buffered streaming preloads — allows startDayCoreStream to tap into
+   * an already-running preload stream and replay events progressively.
+   */
+  private readonly streamPreloads = new Map<string, {
+    buffer: Array<{ event: string; data: any }>;
+    done: boolean;
+    notify: (() => void) | null;
+  }>();
+
   constructor(
     @InjectRepository(Session)
     private sessionsRepository: Repository<Session>,
@@ -99,7 +109,7 @@ export class SessionService {
 
     const promise = (async () => {
       try {
-        this.logger.log(`🔮 Preloading Day 1 core content for session ${sessionId}...`);
+        this.logger.log(`🔮 Preloading Day 1 via streaming for session ${sessionId}...`);
 
         const session = await this.findOne(sessionId, userId);
         const dayOverview = session.curriculum?.days?.find((d: any) => d.day === 1);
@@ -108,7 +118,6 @@ export class SessionService {
           return;
         }
 
-        // Already loaded — nothing to do
         if (this.isCoreContentValid(dayOverview, false)) {
           this.logger.log(`🔮 Preload skipped: Day 1 already has core content`);
           return;
@@ -117,7 +126,12 @@ export class SessionService {
         const user = await this.userService.findById(userId);
         const tierString = user.getEffectiveTier().toUpperCase();
 
-        const result = await this.curriculumService.generateDayCoreDetails(
+        // Create buffered stream so startDayCoreStream can tap in
+        const preload = { buffer: [] as Array<{ event: string; data: any }>, done: false, notify: null as (() => void) | null };
+        this.streamPreloads.set(sessionId, preload);
+
+        let finalResult: any = null;
+        for await (const chunk of this.curriculumService.generateDayCoreDetailsStream(
           session.curriculum,
           1,
           tierString,
@@ -126,36 +140,59 @@ export class SessionService {
           sessionId,
           session.improvementAreas,
           session.lessOfAreas,
-        );
+        )) {
+          // Buffer event for any SSE subscriber
+          preload.buffer.push(chunk);
+          if (preload.notify) {
+            const cb = preload.notify;
+            preload.notify = null;
+            cb();
+          }
 
-        // Save core content to session JSONB (do NOT set status: 'in_progress')
-        const dayIndex = session.curriculum.days.findIndex((d: any) => d.day === 1);
-        if (dayIndex === -1) return;
-
-        const updatedDays = [...session.curriculum.days];
-        updatedDays[dayIndex] = {
-          ...updatedDays[dayIndex],
-          coreContent: result.coreContent,
-          coreLoaded: true,
-          variantId: result.variantId,
-          task1Concepts: result.task1Concepts,
-        };
-
-        session.curriculum = { ...session.curriculum, days: updatedDays };
-        await this.sessionsRepository.save(session);
-
-        // Token accounting
-        if (result.tokensUsed > 0) {
-          await this.userService.incrementUsage(userId, result.tokensUsed, 0, 0, result.cost || 0);
+          if (chunk.event === 'complete') {
+            finalResult = chunk.data;
+          }
         }
 
-        this.logger.log(
-          `🔮 Preloaded Day 1 core content for session ${sessionId} (variant=${result.variantId}, tokens=${result.tokensUsed})`,
-        );
+        // Mark stream done and wake any waiting subscriber
+        preload.done = true;
+        if (preload.notify) {
+          const cb = preload.notify;
+          preload.notify = null;
+          cb();
+        }
+
+        // Save to session
+        if (finalResult?.coreContent) {
+          const freshSession = await this.findOne(sessionId, userId);
+          const dayIndex = freshSession.curriculum.days.findIndex((d: any) => d.day === 1);
+          if (dayIndex === -1) return;
+
+          const updatedDays = [...freshSession.curriculum.days];
+          updatedDays[dayIndex] = {
+            ...updatedDays[dayIndex],
+            coreContent: finalResult.coreContent,
+            coreLoaded: true,
+            variantId: finalResult.variantId,
+            task1Concepts: finalResult.task1Concepts,
+          };
+
+          freshSession.curriculum = { ...freshSession.curriculum, days: updatedDays };
+          await this.sessionsRepository.save(freshSession);
+
+          if (finalResult.tokensUsed > 0) {
+            await this.userService.incrementUsage(userId, finalResult.tokensUsed, 0, 0, finalResult.cost || 0);
+          }
+
+          this.logger.log(
+            `🔮 Preloaded Day 1 for session ${sessionId} (variant=${finalResult.variantId}, tokens=${finalResult.tokensUsed})`,
+          );
+        }
       } catch (error) {
         this.logger.warn(`🔮 Preload Day 1 failed (will fall back to normal flow): ${error.message}`);
       } finally {
         this.preloadPromises.delete(sessionId);
+        this.streamPreloads.delete(sessionId);
       }
     })();
 
@@ -1171,9 +1208,12 @@ export class SessionService {
     dayOverview: any,
   ): AsyncGenerator<{ event: string; data: any }> {
     if (dayOverview.coreContent.task1?.sections?.length) {
+      const sectionCount = dayOverview.coreContent.task1.sections.length;
+      this.logger.log(`📡 Yielding cached task1: ${sectionCount} sections`);
       for (const [i, section] of dayOverview.coreContent.task1.sections.entries()) {
         const items = section.questions || section.items || section.pairs || [];
         const containerKey = section.questions ? 'questions' : section.items ? 'items' : 'pairs';
+        this.logger.log(`📡 Cached section ${i} (${section.type}): ${items.length} questions, containerKey=${containerKey}`);
         yield { event: 'task1SectionStart', data: { index: i, type: section.type, title: section.title, containerKey } };
         for (const [qIdx, question] of items.entries()) {
           yield { event: 'task1Question', data: { sectionIndex: i, questionIndex: qIdx, question } };
@@ -1181,6 +1221,8 @@ export class SessionService {
         yield { event: 'task1Section', data: { section, index: i } };
       }
       yield { event: 'task1', data: dayOverview.coreContent.task1 };
+    } else {
+      this.logger.warn(`⚠️ Cached content has no task1 sections: task1=${!!dayOverview.coreContent.task1}, sections=${dayOverview.coreContent.task1?.sections?.length}`);
     }
     if (dayOverview.coreContent.video) {
       yield { event: 'video', data: dayOverview.coreContent.video };
@@ -1225,26 +1267,28 @@ export class SessionService {
       return;
     }
 
-    // If a preload is in-flight, await it instead of making a duplicate AI call
+    // If a streaming preload is in-flight, tap into it — replay buffered events
+    // then subscribe to new events as they arrive. No duplicate AI call needed.
     if (!forceRegenerate) {
-      const existingPreload = this.preloadPromises.get(sessionId);
-      if (existingPreload) {
-        this.logger.log(`⏳ Awaiting in-flight preload for session ${sessionId} (stream)...`);
-        await existingPreload;
-        // Re-fetch session to pick up preloaded content
-        const refreshed = await this.findOne(sessionId, userId);
-        const refreshedDay = refreshed.curriculum?.days?.find(
-          (d: any) => d.day === dayNumber,
-        );
-        if (refreshedDay?.coreLoaded && refreshedDay?.coreContent) {
-          this.logger.log(`✅ Preloaded content ready for Day ${dayNumber} (stream)`);
-          yield* this.yieldCachedCoreContent(refreshedDay);
-          return;
+      const preload = this.streamPreloads.get(sessionId);
+      if (preload) {
+        this.logger.log(`🔗 Tapping into in-flight streaming preload for session ${sessionId}`);
+        let index = 0;
+        while (true) {
+          // Drain all buffered events
+          while (index < preload.buffer.length) {
+            yield preload.buffer[index++];
+          }
+          if (preload.done) break;
+          // Wait for new event from preload
+          await new Promise<void>(resolve => { preload.notify = resolve; });
         }
+        // Preload handles saving — just return
+        return;
       }
     }
 
-    // Stream from curriculum service
+    // Stream from curriculum service (no preload available)
     let finalResult: any = null;
     for await (const chunk of this.curriculumService.generateDayCoreDetailsStream(
       session.curriculum,
