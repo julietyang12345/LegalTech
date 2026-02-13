@@ -1704,7 +1704,7 @@ QUESTION LEVELS:
 - Level 2 "Application" (remaining Qs): scenario-based, "which approach?", "why would B fail?"
 - Prefer application-style questions — pure recall should be the minority
 
-CASE STUDY QUESTIONS (2-3 per day — for trade-off/decision concepts):
+CASE STUDY QUESTIONS (4-5 per day — for trade-off/decision concepts):
 For questions about choices, trade-offs, or "when to use X vs Y":
 The case study IS the question — the scenario provides context, user picks an approach, consequences reveal after.
 - Add a "caseStudy" object to the question with:
@@ -1982,7 +1982,7 @@ ${videoRequirement}
   - EVERY question must have "conceptTitle" and "explanation" (130-200 words, teaching content)
   - EVERY question must have "realWorldContext" (1 sentence)
   - explanation: Split into 2-3 paragraphs with \\n\\n (key insight → details/examples)
-  - 2-3 questions should include "caseStudy" for trade-off/decision concepts
+  - 4-5 questions should include "caseStudy" for trade-off/decision concepts
   - Question 1 should be an INTRO/RECAP connecting to previous content
   - matching section: generate 3-4 pairs with "pairs" array (NOT "questions" or "items")
 

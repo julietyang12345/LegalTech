@@ -226,6 +226,10 @@ export class SessionController {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
+    // Disable Nagle's algorithm so each res.write() is sent immediately
+    // Without this, Node.js buffers small SSE events and sends them as a batch
+    (res as any).socket?.setNoDelay?.(true);
+
     try {
       for await (const chunk of this.sessionService.startDayCoreStream(
         id,

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Shuffle, HelpCircle, FileText, Sparkles, Target, BookOpen, Trophy, GraduationCap, Bookmark, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Shuffle, HelpCircle, FileText, Sparkles, Target, BookOpen, Trophy, GraduationCap, Bookmark } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
@@ -9,7 +9,7 @@ import { useCommunityShareStore } from '@/stores/communityShareStore';
 import { useAuthStore } from '@/stores/authStore';
 import { analyticsService } from '@/services/analyticsService';
 import { FocusModeLayout } from '@/components/layout';
-import { Button, GeneratingScreen, ExerciseLoadingScreen, FakePaywallModal } from '@/components/common';
+import { Button, GeneratingScreen, FakePaywallModal } from '@/components/common';
 import { AiTutorPanel } from '@/components/session/AiTutorPanel';
 import { StepCelebration, getCelebrationLabel } from '@/components/session/StepCelebration';
 import { DayCompletionScreen } from '@/components/session/DayCompletionScreen';
@@ -233,7 +233,7 @@ function TaskRouter({ day, session, onComplete, onBookmarkQuestion, onShareQuest
   const [loadingFormatType, setLoadingFormatType] = useState<TaskFormat | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const { getAlternativeTaskFormat, isCoreLoaded, isStreamingComplete } = useSessionStore();
+  const { getAlternativeTaskFormat } = useSessionStore();
 
   // Show quiz-shaped skeleton when task1 is not yet available (streaming in progress)
   // This replaces the big ExerciseLoadingScreen with a per-question skeleton
@@ -256,23 +256,7 @@ function TaskRouter({ day, session, onComplete, onBookmarkQuestion, onShareQuest
               <div className="h-12 bg-gray-100 rounded-lg" />
             </div>
           </div>
-          {!isStreamingComplete && (
-            <div className="mt-4 flex items-center justify-center gap-2 text-gray-400 text-sm">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Generating questions...</span>
-            </div>
-          )}
         </div>
-        {isCoreLoaded && (
-          <div className="text-center mt-4">
-            <button
-              onClick={onComplete}
-              className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              Skip for now
-            </button>
-          </div>
-        )}
       </div>
     );
   }
@@ -325,11 +309,19 @@ function TaskRouter({ day, session, onComplete, onBookmarkQuestion, onShareQuest
   const renderTaskComponent = () => {
     if (isLoadingFormat) {
       return (
-        <ExerciseLoadingScreen
-          type={loadingFormatType === 'quiz' ? 'quiz' : 'task'}
-          skillName={session.skillName}
-          dayNumber={day.day}
-        />
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <div className="space-y-4 animate-pulse">
+              <div className="h-5 bg-gray-200 rounded w-3/4" />
+              <div className="space-y-2">
+                <div className="h-12 bg-gray-100 rounded-lg" />
+                <div className="h-12 bg-gray-100 rounded-lg" />
+                <div className="h-12 bg-gray-100 rounded-lg" />
+                <div className="h-12 bg-gray-100 rounded-lg" />
+              </div>
+            </div>
+          </div>
+        </div>
       );
     }
 

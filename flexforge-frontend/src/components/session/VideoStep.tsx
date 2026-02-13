@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Play, Clock, CheckCircle2, MessageCircle, Youtube, RefreshCw, Loader2, BookOpen, Video, Sparkles, Info, ChevronDown, ChevronUp, Zap } from 'lucide-react';
-import { Card, Button, ExerciseLoadingScreen } from '@/components/common';
+import { Card, Button } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { useSessionStore } from '@/stores/sessionStore';
 import { sessionService } from '@/services/sessionService';
@@ -582,13 +582,21 @@ export function VideoStep({ day, session }: VideoStepProps) {
       {/* AI Explanation Mode - "Learn & Understand" */}
       {currentMode === 'ai' && (
         <>
-          {/* Show loading screen while content is generating */}
+          {/* Show skeleton while content is generating */}
           {!video?.aiConceptBreakdown && !video?.aiExplanation && !video?.explanation && (
-            <ExerciseLoadingScreen
-              type="task"
-              skillName={session.skillName}
-              dayNumber={day.day}
-            />
+            <div className="space-y-4 animate-pulse">
+              <div className="h-5 bg-gray-200 rounded w-2/3" />
+              <div className="space-y-2">
+                <div className="h-4 bg-gray-100 rounded w-full" />
+                <div className="h-4 bg-gray-100 rounded w-5/6" />
+                <div className="h-4 bg-gray-100 rounded w-4/6" />
+              </div>
+              <div className="h-5 bg-gray-200 rounded w-1/2 mt-6" />
+              <div className="space-y-2">
+                <div className="h-4 bg-gray-100 rounded w-full" />
+                <div className="h-4 bg-gray-100 rounded w-3/4" />
+              </div>
+            </div>
           )}
           {/* Show AI explanation once content is loaded */}
           {(video?.aiConceptBreakdown || video?.aiExplanation || video?.explanation) && video && (

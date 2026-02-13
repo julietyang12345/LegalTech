@@ -11,8 +11,8 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { CurriculumDay, OpenTask } from '@/types';
-import { ExerciseLoadingScreen } from '@/components/common';
 import { useSessionStore } from '@/stores/sessionStore';
+import { ExerciseLoadingScreen } from '@/components/common';
 
 interface OpenTaskStepProps {
   day: CurriculumDay;
