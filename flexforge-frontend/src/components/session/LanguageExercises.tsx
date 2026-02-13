@@ -42,6 +42,23 @@ interface OpenEndedFeedbackResult {
 // Shared Components
 // ============================================
 
+// Skeleton shown while a question is still streaming in
+function QuestionStreamingSkeleton({ title, current, total }: { title?: string; current: number; total: number }) {
+  return (
+    <div className="space-y-4">
+      {title && <ExerciseHeader title={title} progress={{ current, total }} />}
+      <div className="bg-white rounded-lg p-6 shadow-sm border animate-pulse">
+        <div className="h-5 bg-gray-200 rounded w-3/4 mb-4" />
+        <div className="space-y-2">
+          <div className="h-12 bg-gray-100 rounded-lg" />
+          <div className="h-12 bg-gray-100 rounded-lg" />
+          <div className="h-12 bg-gray-100 rounded-lg" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Display new knowledge/vocabulary before exercises
 interface NewKnowledgeBoxProps {
   items?: NewKnowledgeItem[];
@@ -361,7 +378,9 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
     setTextInput('');
   }, [currentIndex]);
 
-  if (!currentQuestion) return null;
+  if (!currentQuestion) {
+    return <QuestionStreamingSkeleton title={section.title} current={currentIndex + 1} total={Math.max(questions.length, currentIndex + 1)} />;
+  }
 
   return (
     <div className="space-y-4">
@@ -989,7 +1008,9 @@ export function ToneSelectSectionExercise({ section, targetLanguage, onComplete,
     }
   }, [currentIndex, currentQuestion?.audioText, isSupported, playAudio]);
 
-  if (!currentQuestion) return null;
+  if (!currentQuestion) {
+    return <QuestionStreamingSkeleton title={section.title} current={currentIndex + 1} total={Math.max(questions.length, currentIndex + 1)} />;
+  }
 
   return (
     <div className="space-y-4">
@@ -1155,7 +1176,7 @@ export function FillBlankSectionExercise({ section, onComplete, savedProgress, o
     }
   };
 
-  if (!currentItem || !currentItem.blank) return null;
+  if (!currentItem || !currentItem.blank) return <QuestionStreamingSkeleton title={section.title} current={currentIndex + 1} total={Math.max(items?.length || 0, currentIndex + 1)} />;
 
   // Replace ___BLANK___ with input field indicator
   const sentenceParts = currentItem.sentence.split('___BLANK___');
@@ -1355,7 +1376,7 @@ export function TranslationSectionExercise({ section, onComplete, savedProgress,
     }
   };
 
-  if (!currentItem) return null;
+  if (!currentItem) return <QuestionStreamingSkeleton title={section.title} current={currentIndex + 1} total={Math.max(items?.length || 0, currentIndex + 1)} />;
 
   return (
     <div className="space-y-4">
@@ -1536,7 +1557,7 @@ export function ReorderSectionExercise({ section, onComplete, savedProgress, onP
     setSelectedWords([]);
   };
 
-  if (!currentItem) return null;
+  if (!currentItem) return <QuestionStreamingSkeleton title={section.title} current={currentIndex + 1} total={Math.max(items?.length || 0, currentIndex + 1)} />;
 
   return (
     <div className="space-y-4">
@@ -1733,7 +1754,7 @@ export function TypingSectionExercise({ section, targetLanguage, onComplete, sav
     }
   };
 
-  if (!currentItem) return null;
+  if (!currentItem) return <QuestionStreamingSkeleton title={section.title} current={currentIndex + 1} total={Math.max(items?.length || 0, currentIndex + 1)} />;
 
   return (
     <div className="space-y-4">

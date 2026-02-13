@@ -526,12 +526,19 @@ export const useSessionStore = create<SessionState>()(
     if (!forceRegenerate) {
       const existingDay = activeSession.curriculum.days.find((d) => d.day === dayNumber);
       if (existingDay?.coreLoaded && existingDay?.coreContent) {
+        // Reset steps if switching to a different day (prevents stale step from previous day)
+        const isDifferentDay = get().currentDayNumber !== dayNumber;
         // Update zustand state to reflect cached content
         set({
           isCoreLoaded: true,
           isStreamingComplete: true,
           currentDayNumber: dayNumber,
           currentDay: { ...existingDay },
+          ...(isDifferentDay ? {
+            currentStep: 'prePrompt' as const,
+            completedSteps: [],
+            stepStartTime: new Date(),
+          } : {}),
         });
         return existingDay.coreContent as unknown as DayCoreContent;
       }
@@ -545,9 +552,10 @@ export const useSessionStore = create<SessionState>()(
       skills: skeletonSkills,
     };
 
-    // Determine if steps should reset
+    // Determine if steps should reset — always reset when switching to a different day
+    const isDifferentDay = get().currentDayNumber !== dayNumber;
     const isNewDayContent = !skeletonDay?.detailsLoaded && !skeletonDay?.coreContent;
-    const shouldResetSteps = isNewDayContent || forceRegenerate;
+    const shouldResetSteps = isDifferentDay || isNewDayContent || forceRegenerate;
 
     set((state) => {
       if (!state.activeSession) return state;
@@ -596,25 +604,23 @@ export const useSessionStore = create<SessionState>()(
           dayNumber,
           (event, data) => {
             if (hasError) return;
-            if (event === 'task1Section') {
-              const s = data?.section;
-              const qCount = s?.questions?.length || s?.items?.length || s?.pairs?.length || 0;
-              console.log(`[SSE] task1Section index=${data?.index} type=${s?.type} questions=${qCount}`);
-            } else {
-              console.log(`[SSE] event=${event}`);
-            }
 
             switch (event) {
-              case 'task1Section': {
-                const { section, index } = data;
-                receivedSections[index] = section;
+              case 'task1SectionStart': {
+                // Section shell — create empty section, set isCoreLoaded on first
+                const { index, type, title, containerKey: key } = data;
+                const emptySection: any = { type, title, questions: [] };
+                if (key && key !== 'questions') {
+                  delete emptySection.questions;
+                  emptySection[key] = [];
+                }
+                receivedSections[index] = emptySection;
                 streamDelivered = true;
 
-                // On first section: set isCoreLoaded so loading screen disappears
                 if (index === 0) {
+                  // First section start → show UI immediately
                   set((state) => {
                     if (!state.activeSession) return state;
-                    // Build a partial task1 with just the first section
                     const partialTask1 = {
                       id: `day${dayNumber}-task1`,
                       format: 'sections' as const,
@@ -622,20 +628,17 @@ export const useSessionStore = create<SessionState>()(
                       description: '',
                       estimatedMinutes: 10,
                       passingScore: 0.7,
-                      sections: [section],
+                      sections: [emptySection],
                     };
-
                     const updatedDays = state.activeSession.curriculum.days.map((d) => {
                       if (d.day !== dayNumber) return d;
                       const newStatus = (d.status === DayStatus.COMPLETED || d.status === DayStatus.SKIPPED)
                         ? d.status : DayStatus.IN_PROGRESS;
                       return { ...d, task1: partialTask1, detailsLoaded: false, status: newStatus };
                     });
-
                     const newCurrentDay = dayNumber > state.activeSession.currentDay
                       ? dayNumber : state.activeSession.currentDay;
                     const newCurrentDayObj = updatedDays.find((d) => d.day === dayNumber)!;
-
                     return {
                       activeSession: {
                         ...state.activeSession,
@@ -649,20 +652,17 @@ export const useSessionStore = create<SessionState>()(
                     };
                   });
                 } else {
-                  // Append subsequent sections to existing task1
+                  // Subsequent section start — append empty section shell
                   set((state) => {
                     if (!state.activeSession || !state.currentDay) return state;
                     const currentTask1 = (state.currentDay as any).task1;
                     if (!currentTask1?.sections) return state;
-
                     const updatedSections = [...currentTask1.sections];
-                    updatedSections[index] = section;
+                    updatedSections[index] = emptySection;
                     const updatedTask1 = { ...currentTask1, sections: updatedSections };
-
                     const updatedDays = state.activeSession.curriculum.days.map((d) =>
                       d.day === dayNumber ? { ...d, task1: updatedTask1 } : d
                     );
-
                     return {
                       activeSession: {
                         ...state.activeSession,
@@ -674,9 +674,123 @@ export const useSessionStore = create<SessionState>()(
                 }
                 break;
               }
+              case 'task1Question': {
+                // Individual question — idempotent insert by questionIndex
+                const { sectionIndex, questionIndex, question } = data;
+                // Update local tracking
+                if (receivedSections[sectionIndex]) {
+                  const sec = receivedSections[sectionIndex];
+                  const key = sec.questions ? 'questions' : sec.items ? 'items' : sec.pairs ? 'pairs' : 'questions';
+                  if (!sec[key]) sec[key] = [];
+                  sec[key][questionIndex] = question;
+                }
+                // Update store (idempotent — index-based, no duplicate risk)
+                set((state) => {
+                  if (!state.activeSession || !state.currentDay) return state;
+                  const currentTask1 = (state.currentDay as any).task1;
+                  if (!currentTask1?.sections?.[sectionIndex]) return state;
+
+                  const section = { ...currentTask1.sections[sectionIndex] };
+                  const key = section.questions ? 'questions' : section.items ? 'items' : section.pairs ? 'pairs' : 'questions';
+                  const items = [...(section[key] || [])];
+                  // Skip if already set (dedup for cached path emitting both question + section)
+                  if (items[questionIndex]?.id === question.id) return state;
+                  items[questionIndex] = question;
+                  section[key] = items;
+
+                  const updatedSections = [...currentTask1.sections];
+                  updatedSections[sectionIndex] = section;
+                  const updatedTask1 = { ...currentTask1, sections: updatedSections };
+                  const updatedDays = state.activeSession.curriculum.days.map((d) =>
+                    d.day === dayNumber ? { ...d, task1: updatedTask1 } : d
+                  );
+                  return {
+                    activeSession: {
+                      ...state.activeSession,
+                      curriculum: { ...state.activeSession.curriculum, days: updatedDays },
+                    },
+                    currentDay: { ...state.currentDay, task1: updatedTask1 },
+                  };
+                });
+                break;
+              }
+              case 'task1Section': {
+                // Section finalization — merge normalized IDs into existing section
+                const { section: authoritative, index } = data;
+                receivedSections[index] = authoritative;
+                streamDelivered = true;
+                set((state) => {
+                  if (!state.activeSession || !state.currentDay) return state;
+                  const currentTask1 = (state.currentDay as any).task1;
+
+                  // If task1 structure doesn't exist yet (task1SectionStart didn't fire),
+                  // create it now — backward compat with old backend or batched events
+                  if (!currentTask1?.sections) {
+                    const newTask1 = {
+                      id: `day${dayNumber}-task1`,
+                      format: 'sections' as const,
+                      title: 'Practice',
+                      description: '',
+                      estimatedMinutes: 10,
+                      passingScore: 0.7,
+                      sections: [authoritative],
+                    };
+                    const updatedDays = state.activeSession.curriculum.days.map((d) => {
+                      if (d.day !== dayNumber) return d;
+                      const newStatus = (d.status === DayStatus.COMPLETED || d.status === DayStatus.SKIPPED)
+                        ? d.status : DayStatus.IN_PROGRESS;
+                      return { ...d, task1: newTask1, detailsLoaded: false, status: newStatus };
+                    });
+                    const newCurrentDay = dayNumber > state.activeSession.currentDay
+                      ? dayNumber : state.activeSession.currentDay;
+                    const newCurrentDayObj = updatedDays.find((d) => d.day === dayNumber)!;
+                    return {
+                      activeSession: {
+                        ...state.activeSession,
+                        currentDay: newCurrentDay,
+                        curriculum: { ...state.activeSession.curriculum, days: updatedDays },
+                      },
+                      currentDay: { ...newCurrentDayObj },
+                      isDayLoading: false,
+                      dayLoadingNumber: null,
+                      isCoreLoaded: true,
+                    };
+                  }
+
+                  const existing = currentTask1.sections[index];
+                  const merged = { ...authoritative };
+                  if (existing) {
+                    const existKey = existing.questions ? 'questions' : existing.items ? 'items' : existing.pairs ? 'pairs' : null;
+                    const authKey = authoritative.questions ? 'questions' : authoritative.items ? 'items' : authoritative.pairs ? 'pairs' : null;
+                    if (existKey && authKey && existKey === authKey) {
+                      const existingItems = existing[existKey] || [];
+                      const authItems = authoritative[authKey] || [];
+                      merged[authKey] = authItems.map((authQ: any, qi: number) => ({
+                        ...authQ,
+                        ...(existingItems[qi] ? { id: authQ.id || existingItems[qi].id } : {}),
+                      }));
+                    }
+                  }
+
+                  const updatedSections = [...currentTask1.sections];
+                  updatedSections[index] = merged;
+                  const updatedTask1 = { ...currentTask1, sections: updatedSections };
+                  const updatedDays = state.activeSession.curriculum.days.map((d) =>
+                    d.day === dayNumber ? { ...d, task1: updatedTask1 } : d
+                  );
+                  return {
+                    activeSession: {
+                      ...state.activeSession,
+                      curriculum: { ...state.activeSession.curriculum, days: updatedDays },
+                    },
+                    currentDay: { ...state.currentDay, task1: updatedTask1 },
+                    isCoreLoaded: true,
+                  };
+                });
+                break;
+              }
               case 'complete': {
                 const { coreContent, variantId, fromCache, task1Concepts } = data;
-                console.log(`[SSE] complete: fromCache=${fromCache}, sections=${coreContent?.task1?.sections?.length || 0}`);
 
                 // Final state update with complete content (authoritative)
                 set((state) => {
@@ -1000,17 +1114,16 @@ export const useSessionStore = create<SessionState>()(
         }
       });
 
-      // Clear ALL content fields from currentDay so components show loading state
+      // Clear generated content fields so components show loading state
+      // Keep prePrompt — it's from skeleton data (static) and prevents a UI flash
       const clearedCurrentDay = state.currentDay ? {
         ...state.currentDay,
         detailsLoaded: false,
         coreLoaded: false,
-        // Clear core content fields
+        // Clear generated content fields (prePrompt kept — skeleton data doesn't change)
         video: undefined,
         foundationCards: undefined,
         languageFoundationCards: undefined,
-        prePrompt: undefined,
-        primeQuestions: undefined,
         // Clear deferred content fields
         task1: undefined,
         task2: undefined,
@@ -1036,17 +1149,10 @@ export const useSessionStore = create<SessionState>()(
     });
 
     try {
-      // Show GeneratingScreen for 10 seconds for visual feedback
-      // Then transition to page with loading spinners (like initial load)
-      const displayPromise = new Promise(resolve => {
-        setTimeout(() => resolve(true), 10000);
-      });
-
       // Start content loading in background (don't await)
-      // SessionPage's useEffect checks isDayLoading to prevent duplicate calls
+      // loadDayCoreContent sets prePrompt from skeleton data synchronously,
+      // so PrePromptStep will render instantly once isRegenerating clears
       loadDayCoreContent(dayNumber, true).catch((err) => {
-        // For 429 errors, the modal is shown by loadDayCoreContent
-        // For other errors, the page will show loading state
         console.error('Core content loading failed:', err.message);
       });
 
@@ -1055,12 +1161,11 @@ export const useSessionStore = create<SessionState>()(
         console.error('Deferred content loading failed:', err.message);
       });
 
-      // Wait for 10s display, then show page with loading spinners
-      await displayPromise;
-
+      // Show GeneratingScreen for 10s for visual feedback,
+      // then transition to PrePromptStep with skeleton data
+      await new Promise(resolve => setTimeout(resolve, 10000));
       set({ isRegenerating: false });
     } catch (err: any) {
-      // Always set isRegenerating to false on ANY error to prevent stuck UI
       const is429 = err?.response?.status === 429 || err?.message === 'Rate limit reached';
       if (!is429) {
         set({ isRegenerating: false });

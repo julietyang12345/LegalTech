@@ -17,6 +17,22 @@ export interface SectionSavedProgress {
 // Shared Components
 // ============================================
 
+function QuestionStreamingSkeleton({ title, current, total }: { title?: string; current: number; total: number }) {
+  return (
+    <div className="space-y-4">
+      {title && <ExerciseHeader title={title} progress={{ current, total }} />}
+      <div className="bg-white rounded-lg p-6 shadow-sm border animate-pulse">
+        <div className="h-5 bg-gray-200 rounded w-3/4 mb-4" />
+        <div className="space-y-2">
+          <div className="h-12 bg-gray-100 rounded-lg" />
+          <div className="h-12 bg-gray-100 rounded-lg" />
+          <div className="h-12 bg-gray-100 rounded-lg" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface ExerciseHeaderProps {
   title: string;
   instructions?: string;
@@ -273,7 +289,7 @@ export function SafetyCheckExercise({ section, onComplete, savedProgress, onProg
     }, 2000);
   };
 
-  if (!currentItem) return null;
+  if (!currentItem) return <QuestionStreamingSkeleton title={section.title} current={currentIndex + 1} total={Math.max(items?.length || 0, currentIndex + 1)} />;
 
   return (
     <div className="space-y-4">

@@ -1165,15 +1165,20 @@ export class SessionService {
 
   /**
    * Yield cached core content piece by piece for consistent SSE UX
+   * Emits per-question events so frontend sees the same flow as fresh streaming
    */
   private async *yieldCachedCoreContent(
     dayOverview: any,
   ): AsyncGenerator<{ event: string; data: any }> {
-    if (dayOverview.coreContent.task1) {
-      if (dayOverview.coreContent.task1.sections?.length) {
-        for (const [i, section] of dayOverview.coreContent.task1.sections.entries()) {
-          yield { event: 'task1Section', data: { section, index: i } };
+    if (dayOverview.coreContent.task1?.sections?.length) {
+      for (const [i, section] of dayOverview.coreContent.task1.sections.entries()) {
+        const items = section.questions || section.items || section.pairs || [];
+        const containerKey = section.questions ? 'questions' : section.items ? 'items' : 'pairs';
+        yield { event: 'task1SectionStart', data: { index: i, type: section.type, title: section.title, containerKey } };
+        for (const [qIdx, question] of items.entries()) {
+          yield { event: 'task1Question', data: { sectionIndex: i, questionIndex: qIdx, question } };
         }
+        yield { event: 'task1Section', data: { section, index: i } };
       }
       yield { event: 'task1', data: dayOverview.coreContent.task1 };
     }

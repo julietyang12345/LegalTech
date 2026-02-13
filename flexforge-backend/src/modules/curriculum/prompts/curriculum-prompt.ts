@@ -110,24 +110,24 @@ export const SECTION_REGISTRY: Record<
 > = {
   [SkillType.CODE]: {
     task1: ['quiz', 'outputPrediction', 'fillBlank'], // quiz=70-85%, AI picks 1 secondary type for 15-30%
-    intensive: ['aiCodeReview', 'fillBlank'], // Default: review AI-generated code for issues
+    intensive: ['quiz', 'aiCodeReview', 'fillBlank'], // quiz=majority, AI picks up to 2 others (1 each)
     intensiveAdvanced: ['codeCompletion'], // Advanced: write code from scratch (opt-in)
   },
   [SkillType.PHYSICAL]: {
     task1: ['quiz', 'reorder', 'matching'], // quiz=70-85%, AI picks 1 secondary type for 15-30%
-    intensive: ['formCheck', 'quiz', 'reorder'],
+    intensive: ['quiz', 'formCheck', 'reorder'], // quiz=majority, AI picks up to 2 others (1 each)
   },
   [SkillType.KNOWLEDGE]: {
     task1: ['quiz', 'matching', 'fillBlank', 'openEnded'], // quiz=70-85%, AI picks 1 secondary type for 15-30%
-    intensive: ['fillBlank', 'reorder', 'quiz', 'openEnded'],
+    intensive: ['quiz', 'fillBlank', 'reorder', 'openEnded'], // quiz=majority, AI picks up to 2 others (1 each)
   },
   [SkillType.DESIGN]: {
     task1: ['quiz', 'designCritique', 'matching'], // quiz=70-85%, AI picks 1 secondary type for 15-30%
-    intensive: ['designCritique', 'quiz', 'matching'],
+    intensive: ['quiz', 'designCritique', 'matching'], // quiz=majority, AI picks up to 2 others (1 each)
   },
   [SkillType.AI_AGENT]: {
     task1: ['quiz', 'fillBlank', 'outputPrediction'], // quiz=70-85%, AI picks 1 secondary type for 15-30%
-    intensive: ['aiCodeReview', 'fillBlank', 'quiz'],
+    intensive: ['quiz', 'aiCodeReview', 'fillBlank'], // quiz=majority, AI picks up to 2 others (1 each)
     intensiveAdvanced: ['codeCompletion'],
   },
 };
@@ -480,7 +480,6 @@ CONTENT APPROACH:
  * ADVANCED: 1.5x content, advanced concepts, challenging questions
  */
 function getSkillLevelGuidance(skillLevel: SkillLevel): {
-  foundationCardCount: string;
   quizQuestionCount: string;
   complexityGuidance: string;
   contentMultiplier: number;
@@ -488,8 +487,7 @@ function getSkillLevelGuidance(skillLevel: SkillLevel): {
   switch (skillLevel) {
     case SkillLevel.INTERMEDIATE:
       return {
-        foundationCardCount: '6-7',
-        quizQuestionCount: '7-9',
+        quizQuestionCount: '5-8',
         complexityGuidance: `INTERMEDIATE LEVEL COMPLEXITY:
 - Concepts: Include nuanced situations and common pitfalls. fewer basic definitions - user already knows terminology
 - Motivation: FEWER "why this matters" sections - user is already motivated. Focus on practical application
@@ -502,8 +500,7 @@ function getSkillLevelGuidance(skillLevel: SkillLevel): {
       };
     case SkillLevel.ADVANCED:
       return {
-        foundationCardCount: '7-9',
-        quizQuestionCount: '9-12',
+        quizQuestionCount: '6-10',
         complexityGuidance: `ADVANCED LEVEL COMPLEXITY:
 - Basics: Skip basic definitions but include brief context connections. User knows core concepts but appreciates seeing how they connect to advanced material
 - Concepts: Focus on advanced patterns and techniques. Include edge cases as illustrative examples, not the main focus
@@ -518,8 +515,7 @@ function getSkillLevelGuidance(skillLevel: SkillLevel): {
     case SkillLevel.BEGINNER:
     default:
       return {
-        foundationCardCount: '5-6',
-        quizQuestionCount: '5-7',
+        quizQuestionCount: '4-6',
         complexityGuidance: `BEGINNER LEVEL COMPLEXITY:
 - Concepts: Focus on core fundamentals with clear "what" and "how" explanations
 - Questions: Mix understanding checks with simple application scenarios. ~50% recall ("which is correct?"), ~50% apply ("which approach would you use here?"). Keep scenarios simple with clear right/wrong answers. Avoid trick questions
@@ -994,35 +990,38 @@ Use DIFFERENT scenarios than task1 (new contexts, different domains).`;
 
   switch (skillType) {
     case SkillType.CODE:
-      // Default: AI code review (review AI-generated code for issues)
-      // Advanced: + code completion (write code from scratch)
+      // quiz = majority, AI picks up to 2 others (1 item each)
       if (codeWritingEnabled) {
-        return `SECTION TYPES TO INCLUDE:
-1. aiCodeReview - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations (2-3 items)
+        return `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
+
+AVAILABLE TYPES:
+1. quiz (REQUIRED, 4-6 questions) - Questions on NEW coding concepts, patterns, and best practices not covered in task1
+2. aiCodeReview (1 item) - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations
    Each item: code (AI-generated with line numbers), context, issues array
    Each issue: {type, location (include code snippet like "line 3: if (x === y)"), severity, options (4 MCQ choices), correctIndex, explanation}
    Issue types: bug, security, assumption, scalability, hallucination, edge-case
    TWO-STEP FLOW: User first selects the problematic line, then chooses WHY from options
-2. fillBlank - Complete code with NEW syntax/methods related to today's topic (3-4 items)
-3. codeCompletion - Complete partial code introducing NEW patterns/methods (3-4 items)
+3. fillBlank (1 item) - Complete code with NEW syntax/methods related to today's topic
+4. codeCompletion (1 item) - Complete partial code introducing NEW patterns/methods
 ${newKnowledgeNote}`;
       }
-      return `SECTION TYPES TO INCLUDE:
-1. aiCodeReview - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations (2-3 items)
+      return `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
+
+AVAILABLE TYPES:
+1. quiz (REQUIRED, 4-6 questions) - Questions on NEW coding concepts, patterns, and best practices not covered in task1
+2. aiCodeReview (1 item) - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations
    Each item: code (AI-generated with line numbers), context, issues array
    Each issue: {type, location (include code snippet like "line 3: if (x === y)"), severity, options (4 MCQ choices), correctIndex, explanation}
    Issue types: bug, security, assumption, scalability, hallucination, edge-case
    TWO-STEP FLOW: User first selects the problematic line, then chooses WHY from options
-2. fillBlank - Complete code with NEW syntax/methods related to today's topic (3-4 items)
+3. fillBlank (1 item) - Complete code with NEW syntax/methods related to today's topic
 ${newKnowledgeNote}`;
 
     case SkillType.PHYSICAL:
-      return `SECTION TYPES TO INCLUDE:
-1. formCheck - Mixed checklist with BOTH technique checkpoints AND safety items (5-7 items total)
-   - Include form/technique checkpoints (posture, grip, alignment, stance, etc.)
-   - Include safety checkpoints (protective gear, environment check, weight limits, etc.)
-   - Mix them together so users verify EVERYTHING before proceeding
-2. quiz - Varied practical questions (4-6 questions). Include a MIX of different question types appropriate for this specific skill. Examples:
+      return `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
+
+AVAILABLE TYPES:
+1. quiz (REQUIRED, 4-6 questions) - Varied practical questions. Include a MIX of different question types appropriate for this specific skill. Examples:
    - Estimation/calculation (materials, measurements, quantities, time)
    - Troubleshooting scenarios (diagnose problems, identify causes)
    - Tool/material selection (choosing the right equipment)
@@ -1034,57 +1033,70 @@ ${newKnowledgeNote}`;
    - Environmental factors (weather, conditions)
    - Maintenance and care
    Choose question types that make sense for THIS skill - not all types apply to every project!
-3. reorder - Order steps for NEW movement/task sequences (3-4 items)
+2. formCheck (1 item) - Mixed checklist with BOTH technique checkpoints AND safety items (5-7 checklist items total)
+   - Include form/technique checkpoints (posture, grip, alignment, stance, etc.)
+   - Include safety checkpoints (protective gear, environment check, weight limits, etc.)
+   - Mix them together so users verify EVERYTHING before proceeding
+3. reorder (1 item) - Order steps for a NEW movement/task sequence
 ${newKnowledgeNote}`;
 
     case SkillType.KNOWLEDGE:
-      return `SECTION TYPES TO INCLUDE (AI chooses based on topic):
-For FACTUAL topics:
-1. fillBlank - Statements introducing RELATED facts/concepts (4-5 items)
-2. reorder - Sequences from DIFFERENT contexts (3-4 items)
-3. quiz - Questions requiring synthesis of NEW information (4-5 questions)
+      return `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
+AI chooses the best secondary types based on topic:
 
-For SOFT SKILLS/LEADERSHIP:
-1. fillBlank - Statements with NEW frameworks/models (3-4 items)
-2. quiz - Complex scenarios with NEW variables (3-4 questions)
-3. openEnded - Challenging scenarios in NEW domains (2-3 items)
+AVAILABLE TYPES:
+1. quiz (REQUIRED, 4-6 questions) - Questions requiring synthesis of NEW information not covered in task1
+   For FACTUAL topics: questions testing recall and application of new facts
+   For SOFT SKILLS/LEADERSHIP: complex scenarios with NEW variables
+2. fillBlank (1 item) - Statements introducing RELATED facts/concepts (factual) or NEW frameworks/models (soft skills)
+3. reorder (1 item) - Sequences from DIFFERENT contexts than task1
+4. openEnded (1 item) - Challenging scenario in a NEW domain
 ${newKnowledgeNote}`;
 
     case SkillType.DESIGN:
-      return `SECTION TYPES TO INCLUDE:
-1. designCritique - Evaluate designs using NEW principles/heuristics (3-4 items)
-2. quiz - Questions on ADVANCED principles not covered in task1 (3-4 questions)
-3. matching - Match NEW design concepts and terminology (4-5 pairs)
+      return `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
+
+AVAILABLE TYPES:
+1. quiz (REQUIRED, 4-6 questions) - Questions on ADVANCED design principles not covered in task1
+2. designCritique (1 item) - Evaluate designs using NEW principles/heuristics (3-4 critique points)
+3. matching (1 item) - Match NEW design concepts and terminology (4-5 pairs)
 ${newKnowledgeNote}`;
 
     case SkillType.AI_AGENT:
-      // Default: AI code review (review AI-generated code for issues)
-      // Advanced: + code completion (write code from scratch)
+      // quiz = majority, AI picks up to 2 others (1 item each)
       if (codeWritingEnabled) {
-        return `SECTION TYPES TO INCLUDE:
-1. aiCodeReview - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations (2-3 items)
+        return `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
+
+AVAILABLE TYPES:
+1. quiz (REQUIRED, 4-6 questions) - Questions on NEW AI/agent concepts, patterns, and best practices not covered in task1
+2. aiCodeReview (1 item) - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations
    Each item: code (AI-generated with line numbers), context, issues array
    Each issue: {type, location (include code snippet like "line 3: response = api.call()"), severity, options (4 MCQ choices), correctIndex, explanation}
    Issue types: bug, security, assumption, scalability, hallucination, edge-case
    TWO-STEP FLOW: User first selects the problematic line, then chooses WHY from options
-2. fillBlank - Statements introducing NEW AI concepts/terminology (3-4 items)
-3. codeCompletion - Complete AI/API code with NEW parameters/methods (3-4 items)
+3. fillBlank (1 item) - Statements introducing NEW AI concepts/terminology
+4. codeCompletion (1 item) - Complete AI/API code with NEW parameters/methods
 ${newKnowledgeNote}`;
       }
-      return `SECTION TYPES TO INCLUDE:
-1. aiCodeReview - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations (2-3 items)
+      return `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
+
+AVAILABLE TYPES:
+1. quiz (REQUIRED, 4-6 questions) - Questions on NEW AI/agent concepts, patterns, and best practices not covered in task1
+2. aiCodeReview (1 item) - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations
    Each item: code (AI-generated with line numbers), context, issues array
    Each issue: {type, location (include code snippet like "line 3: response = api.call()"), severity, options (4 MCQ choices), correctIndex, explanation}
    Issue types: bug, security, assumption, scalability, hallucination, edge-case
    TWO-STEP FLOW: User first selects the problematic line, then chooses WHY from options
-2. fillBlank - Statements introducing NEW AI concepts/terminology (3-4 items)
+3. fillBlank (1 item) - Statements introducing NEW AI concepts/terminology
 ${newKnowledgeNote}`;
 
     default:
-      return `SECTION TYPES TO INCLUDE:
-1. fillBlank - Statements with NEW related terms (4-5 items)
-2. quiz - Questions requiring NEW knowledge synthesis (4-5 questions)
-3. matching - Match NEW concepts to definitions (4-5 pairs)
+      return `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
+
+AVAILABLE TYPES:
+1. quiz (REQUIRED, 4-6 questions) - Questions requiring NEW knowledge synthesis not covered in task1
+2. fillBlank (1 item) - Statements with NEW related terms
+3. matching (1 item) - Match NEW concepts to definitions
 ${newKnowledgeNote}`;
   }
 }

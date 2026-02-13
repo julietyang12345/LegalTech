@@ -1321,6 +1321,8 @@ Return JSON only:
    * Stream event types for real-time UI updates
    */
   static readonly STREAM_EVENTS = {
+    TASK1_SECTION_START: 'task1SectionStart',
+    TASK1_QUESTION: 'task1Question',
     TASK1_SECTION: 'task1Section',
     TASK1: 'task1',
     VIDEO: 'video',
@@ -1372,21 +1374,29 @@ Return JSON only:
       );
       if (cachedResult) {
         this.logger.log(`📦 Day ${dayNumber} CORE cache HIT (streaming)`);
-        // Yield cached content piece by piece for consistent UX
-        // (prePrompt is built from skeleton on frontend — no need to stream it)
-        // Yield task1 sections individually, then complete task1
-        if (cachedResult.content.task1) {
-          if (cachedResult.content.task1.sections?.length) {
-            for (const [i, section] of cachedResult.content.task1.sections.entries()) {
-              const qCount = section.questions?.length || section.items?.length || section.pairs?.length || 0;
-              this.logger.log(
-                `📡 Stream (cached): section ${i} (${section.type}) with ${qCount} items`,
-              );
+        // Yield cached content per-question for consistent progressive UX
+        if (cachedResult.content.task1?.sections?.length) {
+          for (const [i, section] of cachedResult.content.task1.sections.entries()) {
+            const items = section.questions || section.items || section.pairs || [];
+            const containerKey = section.questions ? 'questions' : section.items ? 'items' : 'pairs';
+            this.logger.log(
+              `📡 Stream (cached): section ${i} (${section.type}) with ${items.length} items`,
+            );
+            yield {
+              event: CurriculumService.STREAM_EVENTS.TASK1_SECTION_START,
+              data: { index: i, type: section.type, title: section.title, containerKey },
+            };
+            for (const [qIdx, question] of items.entries()) {
               yield {
-                event: CurriculumService.STREAM_EVENTS.TASK1_SECTION,
-                data: { section, index: i },
+                event: CurriculumService.STREAM_EVENTS.TASK1_QUESTION,
+                data: { sectionIndex: i, questionIndex: qIdx, question },
               };
             }
+            // Also yield complete section for finalization
+            yield {
+              event: CurriculumService.STREAM_EVENTS.TASK1_SECTION,
+              data: { section, index: i },
+            };
           }
           yield {
             event: CurriculumService.STREAM_EVENTS.TASK1,
@@ -1465,14 +1475,22 @@ Return JSON only:
 
     // Stream from Anthropic
     let fullContent = '';
-    // Incremental section parsing state
+    // Two-level incremental parser: sections → questions
     let sectionsArrayStarted = false;
-    let sectionStartIndex = -1;
-    let sectionBraceDepth = 0;
-    let yieldedSectionCount = 0;
     let inString = false;
     let escapeNext = false;
-    let parseOffset = 0; // Track where we left off scanning
+    let parseOffset = 0;
+    // Section-level tracking
+    let sectionStartIndex = -1;
+    let sectionBraceDepth = 0; // braces within current section
+    let yieldedSectionCount = 0;
+    let sectionStartEmitted = false; // whether we emitted task1SectionStart for current section
+    // Question-level tracking (within current section)
+    let questionsArrayFound = false;
+    let questionStartIndex = -1;
+    let questionBraceDepth = 0;
+    let yieldedQuestionCount = 0; // per section
+    let containerKey = 'questions'; // questions, items, or pairs
 
     try {
       for await (const chunk of this.aiService.callAnthropicWithCacheStream(
@@ -1483,8 +1501,7 @@ Return JSON only:
         if (chunk.type === 'text' && chunk.text) {
           fullContent += chunk.text;
 
-          // Incremental task1 section parsing using bracket counting
-          // Detect "sections": [ and then find complete section objects
+          // Phase 1: Find "sections": [
           if (!sectionsArrayStarted) {
             const sectionsMatch = fullContent.indexOf('"sections"');
             if (sectionsMatch !== -1) {
@@ -1496,57 +1513,140 @@ Return JSON only:
             }
           }
 
+          // Phase 2: Parse sections and questions incrementally
           if (sectionsArrayStarted) {
-            // Scan from where we left off
             for (let i = parseOffset; i < fullContent.length; i++) {
               const ch = fullContent[i];
 
-              if (escapeNext) {
-                escapeNext = false;
-                continue;
-              }
-              if (ch === '\\' && inString) {
-                escapeNext = true;
-                continue;
-              }
-              if (ch === '"') {
-                inString = !inString;
-                continue;
-              }
+              if (escapeNext) { escapeNext = false; continue; }
+              if (ch === '\\' && inString) { escapeNext = true; continue; }
+              if (ch === '"') { inString = !inString; continue; }
               if (inString) continue;
 
-              if (ch === '{') {
-                if (sectionBraceDepth === 0) {
+              // Between sections (depth 0)
+              if (sectionBraceDepth === 0) {
+                if (ch === '{') {
+                  // Section starts
                   sectionStartIndex = i;
+                  sectionBraceDepth = 1;
+                  questionsArrayFound = false;
+                  sectionStartEmitted = false;
+                  yieldedQuestionCount = 0;
+                  questionBraceDepth = 0;
+                  questionStartIndex = -1;
+                } else if (ch === ']') {
+                  break; // End of sections array
                 }
+                continue;
+              }
+
+              // Inside a section (depth >= 1)
+              if (ch === '{') {
                 sectionBraceDepth++;
+                if (questionsArrayFound && questionBraceDepth === 0) {
+                  // Question object starts
+                  questionStartIndex = i;
+                  questionBraceDepth = 1;
+                } else if (questionsArrayFound) {
+                  questionBraceDepth++;
+                }
               } else if (ch === '}') {
+                if (questionsArrayFound && questionBraceDepth > 0) {
+                  questionBraceDepth--;
+                  if (questionBraceDepth === 0 && questionStartIndex !== -1) {
+                    // Complete question found — parse and yield
+                    const questionJson = fullContent.slice(questionStartIndex, i + 1);
+                    try {
+                      const question = JSON.parse(questionJson);
+                      const sIdx = yieldedSectionCount;
+                      const qIdx = yieldedQuestionCount;
+                      question.id = question.id || `s${sIdx + 1}-q${qIdx + 1}`;
+
+                      this.logger.log(`📡 Stream: section ${sIdx} question ${qIdx}`);
+                      yield {
+                        event: CurriculumService.STREAM_EVENTS.TASK1_QUESTION,
+                        data: { sectionIndex: sIdx, questionIndex: qIdx, question },
+                      };
+                      yieldedQuestionCount++;
+                    } catch {
+                      // Partial JSON — not a valid question yet
+                    }
+                    questionStartIndex = -1;
+                  }
+                }
+
                 sectionBraceDepth--;
                 if (sectionBraceDepth === 0 && sectionStartIndex !== -1) {
-                  // Found a complete section object
+                  // Section complete — yield full section for finalization
                   const sectionJson = fullContent.slice(sectionStartIndex, i + 1);
                   try {
                     const section = JSON.parse(sectionJson);
                     const sIdx = yieldedSectionCount;
                     const normalizedSection = normalizeSectionIds(section, sIdx);
-
                     const questionCount = normalizedSection.questions?.length || normalizedSection.items?.length || normalizedSection.pairs?.length || 0;
                     this.logger.log(
-                      `📡 Stream: section ${sIdx} (${normalizedSection.type}) with ${questionCount} items`,
+                      `📡 Stream: section ${sIdx} complete (${normalizedSection.type}) with ${questionCount} items`,
                     );
+
+                    // Emit sectionStart if questions array was never found (fallback)
+                    if (!sectionStartEmitted) {
+                      yield {
+                        event: CurriculumService.STREAM_EVENTS.TASK1_SECTION_START,
+                        data: {
+                          index: sIdx,
+                          type: normalizedSection.type || 'quiz',
+                          title: normalizedSection.title || '',
+                          containerKey: normalizedSection.questions ? 'questions' : normalizedSection.items ? 'items' : 'pairs',
+                        },
+                      };
+                    }
+
                     yield {
                       event: CurriculumService.STREAM_EVENTS.TASK1_SECTION,
                       data: { section: normalizedSection, index: sIdx },
                     };
                     yieldedSectionCount++;
                   } catch {
-                    // Partial JSON, not a valid section - skip
+                    // Skip malformed section
                   }
                   sectionStartIndex = -1;
+                  questionsArrayFound = false;
+                  sectionStartEmitted = false;
                 }
-              } else if (ch === ']' && sectionBraceDepth === 0) {
-                // End of sections array
-                break;
+              } else if (ch === '[' && !questionsArrayFound && sectionBraceDepth === 1) {
+                // Check if this [ follows "questions", "items", or "pairs"
+                const lookback = fullContent.slice(Math.max(0, i - 30), i);
+                const keyMatch = lookback.match(/"(questions|items|pairs)"\s*:\s*$/);
+                if (keyMatch) {
+                  questionsArrayFound = true;
+                  containerKey = keyMatch[1];
+                  questionBraceDepth = 0;
+                  questionStartIndex = -1;
+
+                  // Emit sectionStart immediately — we have type/title from content before the array
+                  if (!sectionStartEmitted) {
+                    const sectionSoFar = fullContent.slice(sectionStartIndex, i);
+                    const typeMatch = sectionSoFar.match(/"type"\s*:\s*"([^"]+)"/);
+                    const titleMatch = sectionSoFar.match(/"title"\s*:\s*"([^"]+)"/);
+                    const sIdx = yieldedSectionCount;
+                    this.logger.log(
+                      `📡 Stream: section ${sIdx} start (${typeMatch?.[1] || '?'}) containerKey=${containerKey}`,
+                    );
+                    yield {
+                      event: CurriculumService.STREAM_EVENTS.TASK1_SECTION_START,
+                      data: {
+                        index: sIdx,
+                        type: typeMatch?.[1] || 'quiz',
+                        title: titleMatch?.[1] || '',
+                        containerKey,
+                      },
+                    };
+                    sectionStartEmitted = true;
+                  }
+                }
+              } else if (ch === ']' && questionsArrayFound && questionBraceDepth === 0) {
+                // End of questions/items/pairs array
+                questionsArrayFound = false;
               }
             }
             parseOffset = fullContent.length;

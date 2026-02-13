@@ -200,19 +200,16 @@ export const CONTENT_DEPTH_CONFIG = {
   fast: {
     searchModifier: 'quick tutorial', // Favor shorter, focused content
     maxVideoMinutes: 10,
-    foundationCardCount: { min: 4, max: 6 }, // Legacy name, now controls task1 question count range
     preferUniversity: false,
   },
   medium: {
     searchModifier: 'tutorial', // Standard content
     maxVideoMinutes: 15,
-    foundationCardCount: { min: 6, max: 8 }, // Legacy name, now controls task1 question count range
     preferUniversity: false,
   },
   deep: {
     searchModifier: 'explained in depth', // Comprehensive content
     maxVideoMinutes: 25,
-    foundationCardCount: { min: 8, max: 10 }, // Legacy name, now controls task1 question count range
     preferUniversity: true, // Prefer university/lecture-style content
   },
 } as const;

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Shuffle, HelpCircle, FileText, Sparkles, Target, BookOpen, Trophy, GraduationCap, Bookmark } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Shuffle, HelpCircle, FileText, Sparkles, Target, BookOpen, Trophy, GraduationCap, Bookmark, Loader2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
@@ -233,17 +233,36 @@ function TaskRouter({ day, session, onComplete, onBookmarkQuestion, onShareQuest
   const [loadingFormatType, setLoadingFormatType] = useState<TaskFormat | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const { getAlternativeTaskFormat, isCoreLoaded } = useSessionStore();
+  const { getAlternativeTaskFormat, isCoreLoaded, isStreamingComplete } = useSessionStore();
 
-  // Show loading screen when task1 is not yet available (core content still loading)
+  // Show quiz-shaped skeleton when task1 is not yet available (streaming in progress)
+  // This replaces the big ExerciseLoadingScreen with a per-question skeleton
+  // so the transition to real questions is seamless
   if (!task) {
     return (
-      <div className="max-w-lg mx-auto">
-        <ExerciseLoadingScreen
-          type="task"
-          skillName={session.skillName}
-          dayNumber={day.day}
-        />
+      <div className="max-w-2xl mx-auto">
+        <div className="mb-4">
+          <div className="h-7 bg-gray-200 rounded w-1/3 animate-pulse mb-2" />
+          <div className="h-4 bg-gray-100 rounded w-2/3 animate-pulse" />
+        </div>
+        <div className="h-2 bg-gray-200 rounded-full mb-4" />
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="space-y-4 animate-pulse">
+            <div className="h-5 bg-gray-200 rounded w-3/4" />
+            <div className="space-y-2">
+              <div className="h-12 bg-gray-100 rounded-lg" />
+              <div className="h-12 bg-gray-100 rounded-lg" />
+              <div className="h-12 bg-gray-100 rounded-lg" />
+              <div className="h-12 bg-gray-100 rounded-lg" />
+            </div>
+          </div>
+          {!isStreamingComplete && (
+            <div className="mt-4 flex items-center justify-center gap-2 text-gray-400 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Generating questions...</span>
+            </div>
+          )}
+        </div>
         {isCoreLoaded && (
           <div className="text-center mt-4">
             <button

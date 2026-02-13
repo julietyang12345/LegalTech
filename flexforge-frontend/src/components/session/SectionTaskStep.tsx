@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, Trophy, RotateCcw, Flame, Star, Zap, Loader2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
-import { ExerciseLoadingScreen } from '@/components/common';
 import {
   QuizSectionExercise,
   MatchingSectionExercise,
@@ -404,12 +403,57 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
 
   if (!task || sections.length === 0 || !currentSection) {
     return (
+      <div className="max-w-2xl mx-auto">
+        <div className="mb-4">
+          <div className="h-7 bg-gray-200 rounded w-1/3 animate-pulse mb-2" />
+          <div className="h-4 bg-gray-100 rounded w-2/3 animate-pulse" />
+        </div>
+        <div className="h-2 bg-gray-200 rounded-full mb-4" />
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="space-y-4 animate-pulse">
+            <div className="h-5 bg-gray-200 rounded w-3/4" />
+            <div className="space-y-2">
+              <div className="h-12 bg-gray-100 rounded-lg" />
+              <div className="h-12 bg-gray-100 rounded-lg" />
+              <div className="h-12 bg-gray-100 rounded-lg" />
+              <div className="h-12 bg-gray-100 rounded-lg" />
+            </div>
+          </div>
+          {!isStreamingComplete && (
+            <div className="mt-4 flex items-center justify-center gap-2 text-gray-400 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Generating questions...</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Section exists but has no questions yet (streaming in progress)
+  const currentItems = (currentSection as any).questions || (currentSection as any).items || (currentSection as any).pairs || [];
+  if (currentItems.length === 0 && !isStreamingComplete) {
+    return (
       <div className="max-w-lg mx-auto">
-        <ExerciseLoadingScreen
-          type="task"
-          skillName={session.skillName}
-          dayNumber={day.day}
-        />
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-sm px-2 py-0.5 bg-gray-100 rounded-full capitalize">{currentSection.type}</span>
+            {currentSection.title && <span className="text-sm text-gray-500">{currentSection.title}</span>}
+          </div>
+          <div className="space-y-4 animate-pulse">
+            <div className="h-5 bg-gray-200 rounded w-3/4" />
+            <div className="space-y-2">
+              <div className="h-12 bg-gray-100 rounded-lg" />
+              <div className="h-12 bg-gray-100 rounded-lg" />
+              <div className="h-12 bg-gray-100 rounded-lg" />
+              <div className="h-12 bg-gray-100 rounded-lg" />
+            </div>
+          </div>
+          <div className="mt-4 flex items-center justify-center gap-2 text-gray-400 text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Generating questions...</span>
+          </div>
+        </div>
       </div>
     );
   }

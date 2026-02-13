@@ -20,6 +20,22 @@ export interface SectionSavedProgress {
 // Shared Components
 // ============================================
 
+function QuestionStreamingSkeleton({ title, current, total }: { title?: string; current: number; total: number }) {
+  return (
+    <div className="space-y-4">
+      {title && <ExerciseHeader title={title} progress={{ current, total }} />}
+      <div className="bg-white rounded-lg p-6 shadow-sm border animate-pulse">
+        <div className="h-5 bg-gray-200 rounded w-3/4 mb-4" />
+        <div className="space-y-2">
+          <div className="h-12 bg-gray-100 rounded-lg" />
+          <div className="h-12 bg-gray-100 rounded-lg" />
+          <div className="h-12 bg-gray-100 rounded-lg" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface ExerciseHeaderProps {
   title: string;
   instructions?: string;
@@ -161,7 +177,7 @@ export function CodeCompletionExercise({ section, onComplete, savedProgress, onP
     setShowHint(true);
   };
 
-  if (!currentItem) return null;
+  if (!currentItem) return <QuestionStreamingSkeleton title={section.title} current={currentIndex + 1} total={Math.max(items?.length || 0, currentIndex + 1)} />;
 
   return (
     <div className="space-y-4">
@@ -361,7 +377,7 @@ export function DebuggingExercise({ section, onComplete, savedProgress, onProgre
     }
   };
 
-  if (!currentItem) return null;
+  if (!currentItem) return <QuestionStreamingSkeleton title={section.title} current={currentIndex + 1} total={Math.max(items?.length || 0, currentIndex + 1)} />;
 
   return (
     <div className="space-y-4">
@@ -521,7 +537,7 @@ export function OutputPredictionExercise({ section, onComplete, savedProgress, o
     }
   };
 
-  if (!currentQuestion) return null;
+  if (!currentQuestion) return <QuestionStreamingSkeleton title={section.title} current={currentIndex + 1} total={Math.max(questions?.length || 0, currentIndex + 1)} />;
 
   return (
     <div className="space-y-4">
@@ -743,7 +759,7 @@ export function AICodeReviewExercise({ section, onComplete, savedProgress, onPro
     }
   };
 
-  if (!currentItem || !currentIssue) return null;
+  if (!currentItem || !currentIssue) return <QuestionStreamingSkeleton title={section.title} current={currentItemIndex + 1} total={Math.max(items?.length || 0, currentItemIndex + 1)} />;
 
   const typeInfo = ISSUE_TYPE_LABELS[currentIssue.type];
   const locationOptions = getLocationOptions();
