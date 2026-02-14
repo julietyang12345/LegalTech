@@ -220,7 +220,7 @@ export function CodeCompletionExercise({ section, onComplete, savedProgress, onP
                 value={userCode}
                 onChange={(e) => setUserCode(e.target.value)}
                 placeholder="Write your code here..."
-                className="w-full h-40 p-3 font-mono text-base border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-surface-secondary"
+                className="w-full h-40 p-3 font-mono text-base text-content border border-border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-surface-secondary"
               />
             </div>
 
@@ -427,7 +427,7 @@ export function DebuggingExercise({ section, onComplete, savedProgress, onProgre
               <textarea
                 value={userCode}
                 onChange={(e) => setUserCode(e.target.value)}
-                className="w-full h-40 p-3 font-mono text-base border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-surface-secondary"
+                className="w-full h-40 p-3 font-mono text-base text-content border border-border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-surface-secondary"
               />
             </div>
 

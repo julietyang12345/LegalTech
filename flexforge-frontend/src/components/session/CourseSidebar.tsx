@@ -78,7 +78,7 @@ function DayPreviewModal({
         <div className="bg-gradient-to-r from-brand-50 to-brand-100 p-4 border-b border-brand-200">
           <div className="flex items-start justify-between">
             <div>
-              <span className="text-xs font-medium text-brand-600 bg-brand-200/50 px-2 py-0.5 rounded-full">
+              <span className="text-xs font-medium text-brand-600 bg-brand-200/50 dark:bg-brand-900/40 px-2 py-0.5 rounded-full">
                 Day {day.day} Preview
               </span>
               <h3 className="text-lg font-semibold text-content mt-2">
@@ -344,7 +344,7 @@ function DayItem({
                   'text-xs px-1.5 py-0.5 rounded-md',
                   status === DayStatus.LOCKED
                     ? 'bg-surface-tertiary text-content-tertiary'
-                    : 'bg-surface/80 text-content-secondary border border-border'
+                    : 'bg-surface text-content-secondary border border-border'
                 )}
               >
                 {skill}

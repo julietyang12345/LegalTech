@@ -44,6 +44,7 @@
 .dark .text-brand-600 { color: #75abd5 }
 .dark .text-brand-700 { color: #a3c7e3 }
 .dark .text-brand-800 { color: #d1e3f1 }
+.dark .border-brand-100 { border-color: rgb(45 90 135 / 0.3) }
 .dark .border-brand-200 { border-color: rgb(45 90 135 / 0.4) }
 .dark .border-brand-300 { border-color: rgb(45 90 135 / 0.5) }
 
@@ -83,6 +84,7 @@
 .dark .text-blue-600  { color: #60a5fa }
 .dark .text-blue-700  { color: #93bbfd }
 .dark .text-blue-800  { color: #bfdbfe }
+.dark .text-blue-900  { color: #dbeafe }
 .dark .border-blue-200 { border-color: rgb(59 130 246 / 0.3) }
 
 /* --- Purple --- */
@@ -110,6 +112,125 @@
 /* --- Pink --- */
 .dark .bg-pink-50     { background-color: rgb(236 72 153 / 0.12) }
 .dark .bg-pink-100    { background-color: rgb(236 72 153 / 0.2) }
+
+/* --- Rose --- */
+.dark .bg-rose-50     { background-color: rgb(244 63 94 / 0.12) }
+.dark .bg-rose-100    { background-color: rgb(244 63 94 / 0.2) }
+.dark .text-rose-600  { color: #fb7185 }
+
+/* --- Indigo --- */
+.dark .bg-indigo-50   { background-color: rgb(99 102 241 / 0.12) }
+.dark .bg-indigo-100  { background-color: rgb(99 102 241 / 0.2) }
+.dark .text-indigo-600 { color: #818cf8 }
+.dark .text-indigo-700 { color: #a5b4fc }
+.dark .border-indigo-200 { border-color: rgb(99 102 241 / 0.3) }
+
+/* --- Emerald --- */
+.dark .bg-emerald-50  { background-color: rgb(16 185 129 / 0.12) }
+.dark .bg-emerald-100 { background-color: rgb(16 185 129 / 0.2) }
+
+/* --- Amber text (missing shades) --- */
+.dark .text-amber-700 { color: #fcd34d }
+.dark .text-amber-800 { color: #fde68a }
+
+/* --- Purple (missing shades) --- */
+.dark .border-purple-100 { border-color: rgb(168 85 247 / 0.15) }
+
+/* --- Blue (missing shades) --- */
+.dark .border-blue-100 { border-color: rgb(59 130 246 / 0.2) }
+
+/* --- Focus (custom teal) --- */
+.dark .bg-focus-50    { background-color: rgb(16 185 129 / 0.12) }
+.dark .text-focus-700 { color: #6ee7b7 }
+.dark .text-focus-800 { color: #a7f3d0 }
+.dark .border-focus-200 { border-color: rgb(16 185 129 / 0.3) }
+
+/* --- Alert (custom amber) --- */
+.dark .bg-alert-50    { background-color: rgb(245 158 11 / 0.12) }
+.dark .text-alert-700 { color: #fcd34d }
+.dark .text-alert-800 { color: #fde68a }
+.dark .border-alert-200 { border-color: rgb(245 158 11 / 0.3) }
+
+/* --- Ring color overrides --- */
+.dark .ring-brand-100 { --tw-ring-color: rgb(45 90 135 / 0.3) }
+.dark .ring-brand-200 { --tw-ring-color: rgb(45 90 135 / 0.4) }
+
+/* ============================================
+   Dark Mode: Gradient from/to/via Overrides
+   Tailwind gradient utilities (from-*, to-*, via-*)
+   use different CSS vars than bg-* so they need
+   separate overrides.
+   ============================================ */
+
+/* --- Brand gradients --- */
+.dark .from-brand-50  { --tw-gradient-from: rgb(45 90 135 / 0.15) }
+.dark .from-brand-100 { --tw-gradient-from: rgb(45 90 135 / 0.25) }
+.dark .to-brand-50    { --tw-gradient-to: rgb(45 90 135 / 0.15) }
+.dark .to-brand-100   { --tw-gradient-to: rgb(45 90 135 / 0.25) }
+
+/* --- Purple gradients --- */
+.dark .from-purple-50 { --tw-gradient-from: rgb(168 85 247 / 0.12) }
+.dark .to-purple-50   { --tw-gradient-to: rgb(168 85 247 / 0.12) }
+.dark .via-purple-50  { --tw-gradient-stops: var(--tw-gradient-from), rgb(168 85 247 / 0.12), var(--tw-gradient-to) }
+
+/* --- Indigo gradients --- */
+.dark .from-indigo-50 { --tw-gradient-from: rgb(99 102 241 / 0.12) }
+.dark .to-indigo-50   { --tw-gradient-to: rgb(99 102 241 / 0.12) }
+.dark .via-indigo-50  { --tw-gradient-stops: var(--tw-gradient-from), rgb(99 102 241 / 0.12), var(--tw-gradient-to) }
+
+/* --- Blue gradients --- */
+.dark .from-blue-50   { --tw-gradient-from: rgb(59 130 246 / 0.12) }
+.dark .to-blue-50     { --tw-gradient-to: rgb(59 130 246 / 0.12) }
+.dark .via-blue-50    { --tw-gradient-stops: var(--tw-gradient-from), rgb(59 130 246 / 0.12), var(--tw-gradient-to) }
+
+/* --- Green gradients --- */
+.dark .from-green-50  { --tw-gradient-from: rgb(22 163 74 / 0.12) }
+.dark .to-green-50    { --tw-gradient-to: rgb(22 163 74 / 0.12) }
+
+/* --- Amber gradients --- */
+.dark .from-amber-50  { --tw-gradient-from: rgb(245 158 11 / 0.12) }
+.dark .to-amber-50    { --tw-gradient-to: rgb(245 158 11 / 0.12) }
+
+/* --- Orange gradients --- */
+.dark .from-orange-50 { --tw-gradient-from: rgb(249 115 22 / 0.12) }
+.dark .to-orange-50   { --tw-gradient-to: rgb(249 115 22 / 0.12) }
+
+/* --- Pink gradients --- */
+.dark .from-pink-50   { --tw-gradient-from: rgb(236 72 153 / 0.12) }
+.dark .to-pink-50     { --tw-gradient-to: rgb(236 72 153 / 0.12) }
+
+/* --- Cyan gradients --- */
+.dark .from-cyan-50   { --tw-gradient-from: rgb(6 182 212 / 0.12) }
+.dark .to-cyan-50     { --tw-gradient-to: rgb(6 182 212 / 0.12) }
+
+/* --- Red gradients --- */
+.dark .from-red-50    { --tw-gradient-from: rgb(239 68 68 / 0.12) }
+.dark .to-red-50      { --tw-gradient-to: rgb(239 68 68 / 0.12) }
+
+/* --- Emerald gradients --- */
+.dark .from-emerald-50 { --tw-gradient-from: rgb(16 185 129 / 0.12) }
+.dark .to-emerald-50   { --tw-gradient-to: rgb(16 185 129 / 0.12) }
+
+/* --- Rose gradients --- */
+.dark .from-rose-50   { --tw-gradient-from: rgb(244 63 94 / 0.12) }
+.dark .to-rose-50     { --tw-gradient-to: rgb(244 63 94 / 0.12) }
+
+/* --- White gradient endpoints (common in from-*-50 to-white patterns) --- */
+.dark .to-white       { --tw-gradient-to: rgb(255 255 255 / 0.05) }
+.dark .from-white     { --tw-gradient-from: rgb(255 255 255 / 0.05) }
+
+/* ============================================
+   Dark Mode: Opacity-Modified Background Overrides
+   Classes like bg-brand-50/50 generate escaped
+   selectors that bg-brand-50 overrides don't catch.
+   ============================================ */
+.dark .bg-brand-50\/50  { background-color: rgb(45 90 135 / 0.08) }
+.dark .bg-green-50\/50  { background-color: rgb(22 163 74 / 0.06) }
+.dark .bg-amber-50\/50  { background-color: rgb(245 158 11 / 0.06) }
+.dark .bg-purple-50\/70 { background-color: rgb(168 85 247 / 0.09) }
+.dark .bg-green-100\/50 { background-color: rgb(22 163 74 / 0.1) }
+.dark .bg-amber-100\/50 { background-color: rgb(245 158 11 / 0.1) }
+.dark .bg-surface\/50   { background-color: rgb(31 41 55 / 0.5) }
 
 /* ============================================
    Dark Mode: Hover Variant Overrides

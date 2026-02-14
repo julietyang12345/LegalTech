@@ -554,7 +554,7 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
               value={textInput}
               onChange={(e) => setTextInput(e.target.value)}
               placeholder="Type your response here..."
-              className="w-full h-32 p-3 border rounded-lg resize-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-base"
+              className="w-full h-32 p-3 bg-surface text-content border border-border rounded-lg resize-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-base"
             />
             <div className={clsx(
               'text-sm',
@@ -2119,7 +2119,7 @@ export function OpenEndedSectionExercise({ section, onComplete, savedProgress, o
               placeholder="Type your response here..."
               disabled={!!currentResult}
               className={clsx(
-                'w-full p-4 rounded-xl border-2 resize-none transition-all min-h-[150px] text-base',
+                'w-full p-4 rounded-xl border-2 resize-none transition-all min-h-[150px] text-base bg-surface text-content',
                 currentResult
                   ? currentResult.passed
                     ? 'border-green-300 bg-green-50'

@@ -1623,7 +1623,7 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
             placeholder="Write your notes here..."
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="w-full min-h-[120px] p-3 border border-border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
+            className="w-full min-h-[120px] p-3 bg-surface text-content border border-border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
           />
         </div>
       </Card>

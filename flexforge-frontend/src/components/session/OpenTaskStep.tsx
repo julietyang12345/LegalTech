@@ -122,7 +122,7 @@ export function OpenTaskStep({ day, session, onComplete }: OpenTaskStepProps) {
           </p>
 
           {/* Concept Connection */}
-          <div className="flex items-start gap-2.5 p-3 bg-purple-50/70 rounded-lg mb-4">
+          <div className="flex items-start gap-2.5 p-3 bg-purple-50/70 dark:bg-purple-900/20 rounded-lg mb-4">
             <Sparkles className="w-4 h-4 text-purple-500 flex-shrink-0 mt-0.5" />
             <p className="text-sm text-purple-700">
               <span className="font-medium">Practicing:</span> {openTask.conceptConnection}
@@ -203,7 +203,7 @@ export function OpenTaskStep({ day, session, onComplete }: OpenTaskStepProps) {
                     value={reflectionAnswers[index] || ''}
                     onChange={(e) => setReflectionAnswers(prev => ({ ...prev, [index]: e.target.value }))}
                     placeholder="Optional..."
-                    className="w-full px-3 py-2 border border-border rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm text-content resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     rows={2}
                   />
                 </div>
