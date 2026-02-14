@@ -515,8 +515,8 @@ export function SessionPage() {
     // But show it while core content is still loading (video might not be populated yet)
     if (step === 'video') {
       if (!isCoreLoaded) return true; // Still loading - show the step
-      // Video undefined means content not properly loaded - show the step
-      if (currentDay?.video === undefined) return true;
+      // If core is loaded but video is still undefined, backend didn't send video → skip
+      if (currentDay?.video === undefined) return false;
       const hasActualVideo = !!(currentDay?.video?.videoId || currentDay?.video?.backupVideo?.videoId);
       const videoSkipped = currentDay?.video?.skipped === true;
       if (!hasActualVideo || videoSkipped) return false;

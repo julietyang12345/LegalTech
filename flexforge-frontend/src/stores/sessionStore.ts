@@ -838,12 +838,29 @@ export const useSessionStore = create<SessionState>()(
                 resolve(coreContent);
                 break;
               }
+              case 'video': {
+                // Set video data immediately so video step can be skipped during streaming
+                set((state) => {
+                  if (!state.activeSession || !state.currentDay) return state;
+                  const updatedDays = state.activeSession.curriculum.days.map((d) =>
+                    d.day === dayNumber ? { ...d, video: data } : d
+                  );
+                  return {
+                    activeSession: {
+                      ...state.activeSession,
+                      curriculum: { ...state.activeSession.curriculum, days: updatedDays },
+                    },
+                    currentDay: { ...state.currentDay, video: data },
+                  };
+                });
+                break;
+              }
               case 'error': {
                 hasError = true;
                 reject(new Error(data.error || 'Stream error'));
                 break;
               }
-              // Ignore other events (video, foundationCard, etc.) - handled in complete
+              // Ignore other events (foundationCard, etc.) - handled in complete
             }
           },
           forceRegenerate,

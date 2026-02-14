@@ -1403,12 +1403,11 @@ Return JSON only:
             data: cachedResult.content.task1,
           };
         }
-        if (cachedResult.content.video) {
-          yield {
-            event: CurriculumService.STREAM_EVENTS.VIDEO,
-            data: cachedResult.content.video,
-          };
-        }
+        // Always emit video event (even when skipped) so frontend can skip video step
+        yield {
+          event: CurriculumService.STREAM_EVENTS.VIDEO,
+          data: cachedResult.content.video || { skipped: true },
+        };
         yield {
           event: CurriculumService.STREAM_EVENTS.COMPLETE,
           data: {
@@ -1721,7 +1720,11 @@ Return JSON only:
                 showVideoOption: false,
                 skipped: true,
               };
-              // Don't yield video event when skipped - frontend will skip video step
+              // Yield video event even when skipped so frontend can skip video step immediately
+              yield {
+                event: CurriculumService.STREAM_EVENTS.VIDEO,
+                data: coreContent.video,
+              };
             }
 
             // Cache the result
