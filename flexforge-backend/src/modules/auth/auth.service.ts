@@ -14,7 +14,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
   ) {
-    const googleClientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+    const googleClientId = this.configService.get<string>('google.clientId');
     this.googleClient = new OAuth2Client(googleClientId);
   }
 
@@ -65,7 +65,7 @@ export class AuthService {
 
   async googleLogin(idToken: string) {
     // Verify the Google ID token
-    const googleClientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+    const googleClientId = this.configService.get<string>('google.clientId');
     let ticket: LoginTicket;
     try {
       ticket = await this.googleClient.verifyIdToken({

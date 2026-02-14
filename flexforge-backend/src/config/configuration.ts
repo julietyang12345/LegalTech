@@ -76,6 +76,7 @@ export default () => {
       dailySpendingLimitUsd: parseFloat(process.env.AI_DAILY_SPENDING_LIMIT_USD || '10'),
     },
     google: {
+      clientId: process.env.GOOGLE_CLIENT_ID || '',
       cse: {
         apiKey: process.env.GOOGLE_CSE_API_KEY || '',
         engineId: process.env.GOOGLE_CSE_ID || '',
