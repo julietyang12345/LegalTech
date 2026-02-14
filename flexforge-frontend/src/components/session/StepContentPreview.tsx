@@ -50,8 +50,8 @@ function StepHeader({
         <Icon className="w-5 h-5 text-white" />
       </div>
       <div>
-        <h3 className="font-semibold text-gray-900">{title}</h3>
-        {subtitle && <p className="text-sm text-gray-500">{subtitle}</p>}
+        <h3 className="font-semibold text-content">{title}</h3>
+        {subtitle && <p className="text-sm text-content-tertiary">{subtitle}</p>}
       </div>
     </div>
   );
@@ -80,10 +80,10 @@ export function StepContentPreview({
 
         {day.objectives && day.objectives.length > 0 && (
           <div className="space-y-2">
-            <h4 className="text-sm font-medium text-gray-700">Objectives</h4>
+            <h4 className="text-sm font-medium text-content-secondary">Objectives</h4>
             <ul className="space-y-1.5">
               {day.objectives.map((obj, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
+                <li key={i} className="flex items-start gap-2 text-sm text-content-secondary">
                   <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
                   {obj}
                 </li>
@@ -93,7 +93,7 @@ export function StepContentPreview({
         )}
 
         {day.estimatedMinutes && (
-          <div className="flex items-center gap-2 text-sm text-gray-500">
+          <div className="flex items-center gap-2 text-sm text-content-tertiary">
             <Clock className="w-4 h-4" />
             <span>{day.estimatedMinutes} minutes</span>
           </div>
@@ -105,7 +105,7 @@ export function StepContentPreview({
   // Video
   if (step === 'video') {
     const video = day.video || (day as any).deferredContent?.video;
-    if (!video) return <p className="text-gray-500 text-sm">No video available</p>;
+    if (!video) return <p className="text-content-tertiary text-sm">No video available</p>;
 
     return (
       <div className="space-y-4">
@@ -119,23 +119,23 @@ export function StepContentPreview({
         {/* Video placeholder */}
         <div className="aspect-video bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center">
           <div className="text-center">
-            <div className="w-16 h-16 rounded-full bg-white shadow-lg flex items-center justify-center mx-auto mb-3">
+            <div className="w-16 h-16 rounded-full bg-surface shadow-lg flex items-center justify-center mx-auto mb-3">
               <Play className="w-8 h-8 text-brand-600 ml-1" />
             </div>
-            <p className="text-sm text-gray-600">{video.title || 'Video Lesson'}</p>
+            <p className="text-sm text-content-secondary">{video.title || 'Video Lesson'}</p>
           </div>
         </div>
 
         {(video as any).description && (
-          <p className="text-sm text-gray-600">{(video as any).description}</p>
+          <p className="text-sm text-content-secondary">{(video as any).description}</p>
         )}
 
         {(video as any).keyPoints && (video as any).keyPoints.length > 0 && (
           <div className="space-y-2">
-            <h4 className="text-sm font-medium text-gray-700">Key Points</h4>
+            <h4 className="text-sm font-medium text-content-secondary">Key Points</h4>
             <ul className="space-y-1">
               {(video as any).keyPoints.map((point: string, i: number) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
+                <li key={i} className="flex items-start gap-2 text-sm text-content-secondary">
                   <span className="text-brand-500">•</span>
                   {point}
                 </li>
@@ -151,7 +151,7 @@ export function StepContentPreview({
   if (step === 'task1') {
     // Check day.task1, coreContent, and legacy deferredContent
     const task = (day.task1 || (day as any).coreContent?.task1 || (day as any).deferredContent?.task1) as any;
-    if (!task) return <p className="text-gray-500 text-sm">No practice task available</p>;
+    if (!task) return <p className="text-content-tertiary text-sm">No practice task available</p>;
 
     return (
       <div className="space-y-4">
@@ -162,18 +162,18 @@ export function StepContentPreview({
           subtitle="Interactive Practice"
         />
 
-        {task.description && <p className="text-sm text-gray-600">{task.description}</p>}
+        {task.description && <p className="text-sm text-content-secondary">{task.description}</p>}
 
         {/* Questions preview */}
         {task.questions && task.questions.length > 0 && (
           <div className="space-y-3">
-            <h4 className="text-sm font-medium text-gray-700">
+            <h4 className="text-sm font-medium text-content-secondary">
               Questions ({task.questions.length})
             </h4>
             <div className="space-y-3 max-h-[300px] overflow-y-auto">
               {task.questions.map((q: any, i: number) => (
-                <Card key={i} className="p-4 border border-gray-200">
-                  <p className="font-medium text-gray-900 mb-3">
+                <Card key={i} className="p-4 border border-border">
+                  <p className="font-medium text-content mb-3">
                     {i + 1}. {q.question || q.text}
                   </p>
                   {q.options && (
@@ -185,7 +185,7 @@ export function StepContentPreview({
                             'p-2 rounded-lg text-sm',
                             (q.correctAnswer === opt || q.answer === opt)
                               ? 'bg-green-100 text-green-800 border border-green-200'
-                              : 'bg-gray-50 text-gray-600 border border-gray-100'
+                              : 'bg-surface-secondary text-content-secondary border border-border-secondary'
                           )}
                         >
                           {opt}
@@ -217,7 +217,7 @@ export function StepContentPreview({
                     {section.type}
                   </span>
                   {itemCount > 0 && (
-                    <span className="text-sm font-medium text-gray-700">
+                    <span className="text-sm font-medium text-content-secondary">
                       {itemCount} {itemCount === 1 ? 'question' : 'questions'}
                     </span>
                   )}
@@ -225,8 +225,8 @@ export function StepContentPreview({
                 {sectionItems.length > 0 && (
                   <div className="space-y-3 max-h-[400px] overflow-y-auto">
                     {sectionItems.map((item: any, itemIndex: number) => (
-                      <Card key={itemIndex} className="p-4 border border-gray-200">
-                        <p className="font-medium text-gray-900 mb-3">
+                      <Card key={itemIndex} className="p-4 border border-border">
+                        <p className="font-medium text-content mb-3">
                           {itemIndex + 1}. {item.question || item.text}
                         </p>
                         {item.options && (
@@ -238,7 +238,7 @@ export function StepContentPreview({
                                   'p-2 rounded-lg text-sm',
                                   (item.correctAnswer === opt || item.answer === opt)
                                     ? 'bg-green-100 text-green-800 border border-green-200'
-                                    : 'bg-gray-50 text-gray-600 border border-gray-100'
+                                    : 'bg-surface-secondary text-content-secondary border border-border-secondary'
                                 )}
                               >
                                 {opt}
@@ -269,7 +269,7 @@ export function StepContentPreview({
         {/* Code snippet */}
         {(task.code || task.starterCode) && (
           <div className="rounded-lg overflow-hidden">
-            <div className="bg-gray-800 px-3 py-1.5 text-xs text-gray-400 font-mono">
+            <div className="bg-gray-800 px-3 py-1.5 text-xs text-content-tertiary font-mono">
               Starter Code
             </div>
             <pre className="bg-gray-900 p-3 text-xs text-gray-100 overflow-x-auto max-h-[200px]">
@@ -284,7 +284,7 @@ export function StepContentPreview({
   // Boss Milestone
   if (step === 'bossMilestone') {
     const boss = day.bossMilestone || (day as any).deferredContent?.bossMilestone;
-    if (!boss) return <p className="text-gray-500 text-sm">No boss milestone available</p>;
+    if (!boss) return <p className="text-content-tertiary text-sm">No boss milestone available</p>;
 
     return (
       <div className="space-y-4">
@@ -295,7 +295,7 @@ export function StepContentPreview({
           subtitle="Boss Milestone"
         />
 
-        <p className="text-sm text-gray-600">{boss.description}</p>
+        <p className="text-sm text-content-secondary">{boss.description}</p>
 
         {boss.microTask && (
           <div className="p-4 bg-purple-50 rounded-xl border border-purple-200">
@@ -313,7 +313,7 @@ export function StepContentPreview({
 
         {boss.starterCode && (
           <div className="rounded-lg overflow-hidden">
-            <div className="bg-gray-800 px-3 py-1.5 text-xs text-gray-400 font-mono">
+            <div className="bg-gray-800 px-3 py-1.5 text-xs text-content-tertiary font-mono">
               Starter Code
             </div>
             <pre className="bg-gray-900 p-3 text-xs text-gray-100 overflow-x-auto max-h-[200px]">
@@ -324,7 +324,7 @@ export function StepContentPreview({
 
         {boss.hints && boss.hints.length > 0 && (
           <div className="space-y-2">
-            <h4 className="text-sm font-medium text-gray-700">Hints</h4>
+            <h4 className="text-sm font-medium text-content-secondary">Hints</h4>
             <div className="space-y-2">
               {boss.hints.slice(0, 3).map((hint: string | { hint: string }, i: number) => (
                 <div key={i} className="p-3 bg-yellow-50 rounded-lg border border-yellow-200 text-sm text-yellow-800">
@@ -342,7 +342,7 @@ export function StepContentPreview({
   if (step === 'openTask') {
     // Check both day.openTask and day.deferredContent?.openTask
     const openTask = (day.openTask || (day as any).deferredContent?.openTask) as any;
-    if (!openTask) return <p className="text-gray-500 text-sm">No real-world task available</p>;
+    if (!openTask) return <p className="text-content-tertiary text-sm">No real-world task available</p>;
 
     return (
       <div className="space-y-4">
@@ -353,7 +353,7 @@ export function StepContentPreview({
           subtitle="Apply what you learned"
         />
 
-        {openTask.description && <p className="text-sm text-gray-600">{openTask.description}</p>}
+        {openTask.description && <p className="text-sm text-content-secondary">{openTask.description}</p>}
 
         {openTask.challenge && (
           <div className="p-4 bg-orange-50 rounded-xl border border-orange-200">
@@ -363,18 +363,18 @@ export function StepContentPreview({
         )}
 
         {openTask.context && (
-          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-            <h4 className="text-sm font-medium text-gray-700 mb-2">Context</h4>
-            <p className="text-sm text-gray-600">{openTask.context}</p>
+          <div className="p-4 bg-surface-secondary rounded-xl border border-border">
+            <h4 className="text-sm font-medium text-content-secondary mb-2">Context</h4>
+            <p className="text-sm text-content-secondary">{openTask.context}</p>
           </div>
         )}
 
         {openTask.successCriteria && openTask.successCriteria.length > 0 && (
           <div className="space-y-2">
-            <h4 className="text-sm font-medium text-gray-700">Success Criteria</h4>
+            <h4 className="text-sm font-medium text-content-secondary">Success Criteria</h4>
             <ul className="space-y-1.5">
               {openTask.successCriteria.map((criteria: string, i: number) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
+                <li key={i} className="flex items-start gap-2 text-sm text-content-secondary">
                   <CheckCircle2 className="w-4 h-4 text-orange-500 mt-0.5 flex-shrink-0" />
                   {criteria}
                 </li>
@@ -391,7 +391,7 @@ export function StepContentPreview({
     // Check both day.reflection and day.deferredContent?.reflection
     const reflection = day.reflection || (day as any).deferredContent?.reflection;
     if (!reflection?.questions || reflection.questions.length === 0) {
-      return <p className="text-gray-500 text-sm">No reflection questions available</p>;
+      return <p className="text-content-tertiary text-sm">No reflection questions available</p>;
     }
 
     return (
@@ -410,7 +410,7 @@ export function StepContentPreview({
                 <div className="w-8 h-8 rounded-lg bg-yellow-100 flex items-center justify-center flex-shrink-0">
                   <span className="text-sm font-bold text-yellow-700">{i + 1}</span>
                 </div>
-                <p className="text-gray-800 font-medium">{q.question}</p>
+                <p className="text-content font-medium">{q.question}</p>
               </div>
             </Card>
           ))}
@@ -419,5 +419,5 @@ export function StepContentPreview({
     );
   }
 
-  return <p className="text-gray-500 text-sm">Select a step to preview</p>;
+  return <p className="text-content-tertiary text-sm">Select a step to preview</p>;
 }

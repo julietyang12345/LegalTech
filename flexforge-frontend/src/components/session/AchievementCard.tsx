@@ -21,7 +21,7 @@ export function AchievementCard({ session, currentDay, user }: AchievementCardPr
   });
 
   return (
-    <div className="w-full max-w-sm mx-auto bg-white rounded-2xl shadow-xl overflow-hidden">
+    <div className="w-full max-w-sm mx-auto bg-surface rounded-2xl shadow-xl overflow-hidden">
       {/* Gradient accent bar */}
       <div className="h-2 bg-gradient-to-r from-pink-500 to-purple-500" />
 
@@ -31,7 +31,7 @@ export function AchievementCard({ session, currentDay, user }: AchievementCardPr
           <p className="text-sm font-medium text-purple-600 uppercase tracking-wide">
             {currentDay.day >= session.durationDays ? 'Course Complete' : `Day ${currentDay.day} of ${session.durationDays}`}
           </p>
-          <h3 className="text-lg font-bold text-gray-900 mt-1">
+          <h3 className="text-lg font-bold text-content mt-1">
             {session.skillName}
           </h3>
         </div>
@@ -39,7 +39,7 @@ export function AchievementCard({ session, currentDay, user }: AchievementCardPr
         {/* Concepts learned */}
         {concepts.length > 0 && (
           <div>
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+            <p className="text-xs font-medium text-content-tertiary uppercase tracking-wide mb-2">
               Concepts Learned
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -87,7 +87,7 @@ export function AchievementCard({ session, currentDay, user }: AchievementCardPr
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between text-xs text-gray-400 pt-2 border-t border-gray-100">
+        <div className="flex items-center justify-between text-xs text-content-tertiary pt-2 border-t border-border-secondary">
           <span>{user.name || 'Learner'}</span>
           <span>{dateStr}</span>
         </div>

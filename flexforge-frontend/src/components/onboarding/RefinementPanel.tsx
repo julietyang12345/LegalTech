@@ -56,24 +56,24 @@ export function RefinementPanel({
       <div className="mb-6">
         <button
           onClick={onBack}
-          className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-4"
+          className="flex items-center gap-1 text-sm text-content-tertiary hover:text-content-secondary mb-4"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to directions
         </button>
 
-        <h2 className="text-xl font-bold text-gray-900 mb-2">
+        <h2 className="text-xl font-bold text-content mb-2">
           Help us understand better
         </h2>
-        <p className="text-gray-500 text-sm">
+        <p className="text-content-tertiary text-sm">
           What's missing from the directions above?
         </p>
       </div>
 
       {/* Original goal reminder */}
-      <div className="bg-gray-50 rounded-lg p-3 mb-6 text-sm">
-        <span className="text-gray-500">Your goal:</span>{' '}
-        <span className="text-gray-800">{originalGoal}</span>
+      <div className="bg-surface-secondary rounded-lg p-3 mb-6 text-sm">
+        <span className="text-content-tertiary">Your goal:</span>{' '}
+        <span className="text-content">{originalGoal}</span>
       </div>
 
       {/* Questions */}
@@ -93,7 +93,7 @@ export function RefinementPanel({
             value={userFeedback}
             onChange={(e) => setUserFeedback(e.target.value)}
             placeholder="What specifically are you looking for? e.g., 'I want to use Python, not no-code' or 'Focus on the automation part'"
-            className="w-full p-3 rounded-lg border border-gray-200 text-base resize-none
+            className="w-full p-3 rounded-lg border border-border text-base resize-none
                      focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
             rows={3}
             autoFocus
@@ -128,7 +128,7 @@ function QuestionSection({
 }) {
   return (
     <div>
-      <h3 className="text-sm font-medium text-gray-700 mb-2">
+      <h3 className="text-sm font-medium text-content-secondary mb-2">
         {emoji} {title}
       </h3>
       {children}
@@ -157,7 +157,7 @@ function ChipGroup<T extends string | number>({
             'px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap overflow-hidden',
             selected === option.value
               ? 'bg-brand-500 text-white shadow-md'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              : 'bg-surface-tertiary text-content-secondary hover:bg-surface-tertiary'
           )}
         >
           {option.emoji && <span className="mr-1">{option.emoji}</span>}

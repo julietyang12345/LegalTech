@@ -265,7 +265,7 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
       {/* What clicked - Quick pick */}
       <Card>
         <div className="p-6">
-          <h3 className="font-medium text-gray-900 mb-4">
+          <h3 className="font-medium text-content mb-4">
             What clicked today? 💡
           </h3>
           <QuickPick
@@ -279,7 +279,7 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
       {/* What's foggy - Quick pick with concept selector */}
       <Card>
         <div className="p-6">
-          <h3 className="font-medium text-gray-900 mb-4">
+          <h3 className="font-medium text-content mb-4">
             What's still confusing? 🌫️
           </h3>
           <QuickPick
@@ -290,7 +290,7 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
 
           {/* Concept selector */}
           <AnimatedReveal show={showConceptSelector && conceptNames.length > 0} className="mt-4">
-            <p className="text-sm text-gray-600 mb-3">
+            <p className="text-sm text-content-secondary mb-3">
               Which concepts felt tricky? (Select any that apply)
             </p>
             <div className="space-y-2">
@@ -302,11 +302,11 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
                     'w-full text-left p-3 rounded-lg border-2 transition-all',
                     confusedConcepts.includes(concept)
                       ? 'border-amber-400 bg-amber-50'
-                      : 'border-gray-200 hover:border-gray-300'
+                      : 'border-border hover:border-content-tertiary'
                   )}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-700">
+                    <span className="text-sm font-medium text-content-secondary">
                       {concept}
                     </span>
                     {confusedConcepts.includes(concept) && (
@@ -325,7 +325,7 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
               value={foggyDetails}
               onChange={(e) => setFoggyDetails(e.target.value)}
               placeholder="Any specific part? (optional)"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm
+              className="w-full px-3 py-2 border border-border rounded-lg text-sm
                         focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
             />
           </AnimatedReveal>
@@ -341,10 +341,10 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
                 <Lightbulb className="w-5 h-5 text-amber-600" />
               </div>
               <div className="flex-1">
-                <h3 className="font-medium text-gray-900 mb-1">
+                <h3 className="font-medium text-content mb-1">
                   Quick Boost Available
                 </h3>
-                <p className="text-sm text-gray-600 mb-4">
+                <p className="text-sm text-content-secondary mb-4">
                   We can explain "{confusedConcepts[0]}" from a different angle.
                   Takes about 2 minutes.
                 </p>
@@ -394,8 +394,8 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
               <Target className="w-5 h-5 text-purple-600" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Shape Future Days</h3>
-              <p className="text-sm text-gray-600">Adjust what upcoming lessons emphasize</p>
+              <h3 className="font-semibold text-content">Shape Future Days</h3>
+              <p className="text-sm text-content-secondary">Adjust what upcoming lessons emphasize</p>
             </div>
           </div>
 
@@ -403,9 +403,9 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
           <div className="mb-5">
             <div className="flex items-center gap-2 mb-2">
               <TrendingUp className="w-4 h-4 text-green-600" />
-              <span className="text-sm font-medium text-gray-700">I want more of...</span>
+              <span className="text-sm font-medium text-content-secondary">I want more of...</span>
             </div>
-            <p className="text-xs text-gray-500 mb-2">Topics or skills to emphasize in examples and practice</p>
+            <p className="text-xs text-content-tertiary mb-2">Topics or skills to emphasize in examples and practice</p>
 
             {moreOfAreas.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-2">
@@ -433,7 +433,7 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
                 onChange={(e) => setMoreOfInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddMoreOf())}
                 placeholder="e.g., real-world examples, hands-on practice..."
-                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white
+                className="flex-1 px-3 py-2 text-sm border border-border rounded-lg bg-surface
                           focus:border-purple-400 focus:ring-2 focus:ring-purple-100 focus:outline-none"
               />
               <button
@@ -451,9 +451,9 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
           <div>
             <div className="flex items-center gap-2 mb-2">
               <TrendingDown className="w-4 h-4 text-orange-500" />
-              <span className="text-sm font-medium text-gray-700">I want less of...</span>
+              <span className="text-sm font-medium text-content-secondary">I want less of...</span>
             </div>
-            <p className="text-xs text-gray-500 mb-2">Topics you're already comfortable with or want to skip</p>
+            <p className="text-xs text-content-tertiary mb-2">Topics you're already comfortable with or want to skip</p>
 
             {lessOfAreas.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-2">
@@ -481,7 +481,7 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
                 onChange={(e) => setLessOfInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddLessOf())}
                 placeholder="e.g., basic theory, tool setup..."
-                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white
+                className="flex-1 px-3 py-2 text-sm border border-border rounded-lg bg-surface
                           focus:border-purple-400 focus:ring-2 focus:ring-purple-100 focus:outline-none"
               />
               <button
@@ -511,10 +511,10 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
       {/* Tomorrow's warm-up - Quick pick */}
       <Card>
         <div className="p-6">
-          <h3 className="font-medium text-gray-900 mb-4">
+          <h3 className="font-medium text-content mb-4">
             Tomorrow's 5-min warm-up 🌅
           </h3>
-          <p className="text-sm text-gray-500 mb-4">
+          <p className="text-sm text-content-tertiary mb-4">
             Set yourself up for an easy start
           </p>
           <QuickPick
@@ -530,7 +530,7 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
               value={warmupCustom}
               onChange={(e) => setWarmupCustom(e.target.value)}
               placeholder="Customize your plan (optional)"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm
+              className="w-full px-3 py-2 border border-border rounded-lg text-sm
                         focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
             />
           </AnimatedReveal>
@@ -566,7 +566,7 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
       </div>
 
       {/* Micro footer */}
-      <p className="text-center text-xs text-gray-400">
+      <p className="text-center text-xs text-content-tertiary">
         Quick reflections → 23% better retention
       </p>
 

@@ -17,7 +17,7 @@ export function DirectionCard({ direction, isSelected, onClick }: DirectionCardP
         'hover:shadow-md hover:-translate-y-0.5',
         isSelected
           ? 'border-brand-500 bg-brand-50 shadow-md'
-          : 'border-gray-200 bg-white hover:border-brand-300'
+          : 'border-border bg-surface hover:border-brand-300'
       )}
     >
       <div className="flex items-start gap-3">
@@ -38,7 +38,7 @@ export function DirectionCard({ direction, isSelected, onClick }: DirectionCardP
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <h3 className="font-semibold text-gray-900">{direction.title}</h3>
+            <h3 className="font-semibold text-content">{direction.title}</h3>
             <span
               className={clsx(
                 'text-xs px-2 py-0.5 rounded-full',
@@ -50,7 +50,7 @@ export function DirectionCard({ direction, isSelected, onClick }: DirectionCardP
               {direction.isToolSpecific ? 'Tool-specific' : 'Concept'}
             </span>
             {direction.isFree === false && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 flex items-center gap-1">
+              <span className="text-xs px-2 py-0.5 rounded-full bg-surface-tertiary text-content-secondary flex items-center gap-1">
                 <DollarSign className="w-3 h-3" />
                 Paid tool
               </span>
@@ -65,7 +65,7 @@ export function DirectionCard({ direction, isSelected, onClick }: DirectionCardP
             </p>
           )}
 
-          <p className="text-sm text-gray-600 mb-2">{direction.outcome}</p>
+          <p className="text-sm text-content-secondary mb-2">{direction.outcome}</p>
 
           {/* Language badge (for CODE/AI_AGENT directions) */}
           {direction.languageConfig && (
@@ -77,7 +77,7 @@ export function DirectionCard({ direction, isSelected, onClick }: DirectionCardP
             </div>
           )}
 
-          <div className="flex items-center gap-4 text-xs text-gray-500">
+          <div className="flex items-center gap-4 text-xs text-content-tertiary">
             <span className="flex items-center gap-1">
               <Clock className="w-3.5 h-3.5" />
               ~{direction.estimatedMinutes} min
@@ -86,7 +86,7 @@ export function DirectionCard({ direction, isSelected, onClick }: DirectionCardP
               {direction.keywords.slice(0, 3).map((keyword) => (
                 <span
                   key={keyword}
-                  className="bg-gray-100 px-2 py-0.5 rounded text-gray-600"
+                  className="bg-surface-tertiary px-2 py-0.5 rounded text-content-secondary"
                 >
                   {keyword}
                 </span>

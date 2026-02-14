@@ -73,12 +73,12 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-50 to-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-brand-50 dark:from-brand-900/20 to-surface-secondary flex flex-col">
       {/* Back button */}
       <div className="p-4">
         <Link
           to="/"
-          className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+          className="inline-flex items-center gap-2 text-content-secondary hover:text-content transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to home
@@ -95,14 +95,14 @@ export function LoginPage() {
           <div className="text-center mb-8">
             <Link to="/" className="inline-flex items-center gap-2">
               <span className="text-4xl">🔥</span>
-              <span className="font-display font-bold text-2xl text-gray-900">FlexForge</span>
+              <span className="font-display font-bold text-2xl text-content">FlexForge</span>
             </Link>
           </div>
 
           <Card className="p-8">
             <div className="text-center mb-8">
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">Welcome back</h1>
-              <p className="text-gray-600">Sign in to continue your learning journey</p>
+              <h1 className="text-2xl font-bold text-content mb-2">Welcome back</h1>
+              <p className="text-content-secondary">Sign in to continue your learning journey</p>
             </div>
 
             {error && (
@@ -150,27 +150,27 @@ export function LoginPage() {
 
             <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-200" />
+                <div className="w-full border-t border-border" />
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="bg-white px-4 text-gray-500">or sign in with email</span>
+                <span className="bg-surface px-4 text-content-tertiary">or sign in with email</span>
               </div>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-sm font-medium text-content-secondary mb-1.5">
                   Email
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-content-tertiary" />
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
                     required
-                    className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg 
+                    className="w-full pl-10 pr-4 py-2.5 border border-border rounded-lg 
                              focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                              transition-colors"
                   />
@@ -179,7 +179,7 @@ export function LoginPage() {
 
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className="block text-sm font-medium text-content-secondary">
                     Password
                   </label>
                   <Link
@@ -190,14 +190,14 @@ export function LoginPage() {
                   </Link>
                 </div>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-content-tertiary" />
                   <input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
                     required
-                    className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg 
+                    className="w-full pl-10 pr-4 py-2.5 border border-border rounded-lg 
                              focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                              transition-colors"
                   />
@@ -217,7 +217,7 @@ export function LoginPage() {
             </form>
 
             <div className="mt-6 text-center">
-              <p className="text-gray-600">
+              <p className="text-content-secondary">
                 Don't have an account?{' '}
                 <Link to="/register" className="text-brand-600 hover:text-brand-700 font-medium">
                   Sign up free

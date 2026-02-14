@@ -37,11 +37,11 @@ export function ProgressBar({
     <div className={clsx('w-full', className)}>
       {showLabel && (
         <div className="flex justify-between mb-1">
-          <span className="text-sm font-medium text-gray-700">Progress</span>
-          <span className="text-sm text-gray-500">{Math.round(percentage)}%</span>
+          <span className="text-sm font-medium text-content-secondary">Progress</span>
+          <span className="text-sm text-content-tertiary">{Math.round(percentage)}%</span>
         </div>
       )}
-      <div className={clsx('bg-gray-200 rounded-full overflow-hidden', sizes[size])}>
+      <div className={clsx('bg-surface-tertiary rounded-full overflow-hidden', sizes[size])}>
         <div
           className={clsx(
             'h-full rounded-full transition-all duration-300',
@@ -94,7 +94,7 @@ export function CircularProgress({
           cy={size / 2}
           r={radius}
           fill="none"
-          className="stroke-gray-200"
+          className="stroke-surface-tertiary"
           strokeWidth={strokeWidth}
         />
         {/* Progress circle */}
@@ -111,7 +111,7 @@ export function CircularProgress({
         />
       </svg>
       {showValue && (
-        <span className="absolute text-xs font-semibold text-gray-700">
+        <span className="absolute text-xs font-semibold text-content-secondary">
           {Math.round(percentage)}%
         </span>
       )}

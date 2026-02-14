@@ -12,26 +12,26 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="w-full">
         {label && (
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+          <label className="block text-sm font-medium text-content-secondary mb-1.5">
             {label}
           </label>
         )}
         <input
           ref={ref}
           className={clsx(
-            'w-full px-4 py-2.5 bg-white border rounded-lg',
-            'text-base text-gray-900 placeholder-gray-400', // text-base (16px) prevents iOS zoom on focus
+            'w-full px-4 py-2.5 bg-surface border rounded-lg',
+            'text-base text-content placeholder-content-tertiary', // text-base (16px) prevents iOS zoom on focus
             'transition-colors duration-200',
             'focus:outline-none focus:ring-2 focus:ring-brand-500/20',
             error
               ? 'border-red-500 focus:border-red-500'
-              : 'border-gray-300 hover:border-gray-400 focus:border-brand-500',
+              : 'border-border hover:border-content-tertiary focus:border-brand-500',
             className
           )}
           {...props}
         />
         {error && <p className="mt-1.5 text-sm text-red-500">{error}</p>}
-        {hint && !error && <p className="mt-1.5 text-sm text-gray-500">{hint}</p>}
+        {hint && !error && <p className="mt-1.5 text-sm text-content-tertiary">{hint}</p>}
       </div>
     );
   }
@@ -54,7 +54,7 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
     return (
       <div className="w-full">
         {label && (
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+          <label className="block text-sm font-medium text-content-secondary mb-1.5">
             {label}
           </label>
         )}
@@ -63,13 +63,13 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
           value={value}
           maxLength={maxLength}
           className={clsx(
-            'w-full px-4 py-3 bg-white border rounded-lg resize-none min-h-[100px]',
-            'text-base text-gray-900 placeholder-gray-400', // text-base (16px) prevents iOS zoom on focus
+            'w-full px-4 py-3 bg-surface border rounded-lg resize-none min-h-[100px]',
+            'text-base text-content placeholder-content-tertiary', // text-base (16px) prevents iOS zoom on focus
             'transition-colors duration-200',
             'focus:outline-none focus:ring-2 focus:ring-brand-500/20',
             error
               ? 'border-red-500 focus:border-red-500'
-              : 'border-gray-300 hover:border-gray-400 focus:border-brand-500',
+              : 'border-border hover:border-content-tertiary focus:border-brand-500',
             className
           )}
           {...props}
@@ -78,14 +78,14 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
           {error ? (
             <p className="text-sm text-red-500">{error}</p>
           ) : hint ? (
-            <p className="text-sm text-gray-500">{hint}</p>
+            <p className="text-sm text-content-tertiary">{hint}</p>
           ) : (
             <span />
           )}
           {showCount && maxLength && (
             <span className={clsx(
               'text-sm',
-              charCount >= maxLength * 0.9 ? 'text-alert-500' : 'text-gray-400'
+              charCount >= maxLength * 0.9 ? 'text-alert-500' : 'text-content-tertiary'
             )}>
               {charCount}/{maxLength}
             </span>

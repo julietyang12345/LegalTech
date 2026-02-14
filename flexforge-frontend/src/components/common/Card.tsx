@@ -15,9 +15,9 @@ export function Card({
   ...props
 }: CardProps) {
   const variants = {
-    default: 'bg-white rounded-xl shadow-card',
-    hover: 'bg-white rounded-xl shadow-card transition-all duration-200 hover:shadow-card-hover hover:-translate-y-0.5',
-    active: 'bg-white rounded-xl shadow-card border-l-4 border-l-brand-500',
+    default: 'bg-surface rounded-xl shadow-card dark:shadow-none dark:border dark:border-border',
+    hover: 'bg-surface rounded-xl shadow-card dark:shadow-none dark:border dark:border-border transition-all duration-200 hover:shadow-card-hover hover:-translate-y-0.5',
+    active: 'bg-surface rounded-xl shadow-card dark:shadow-none dark:border dark:border-border border-l-4 border-l-brand-500',
   };
 
   const paddings = {
@@ -45,8 +45,8 @@ export function CardHeader({ title, subtitle, action, className }: CardHeaderPro
   return (
     <div className={clsx('flex items-start justify-between mb-4', className)}>
       <div>
-        <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-        {subtitle && <p className="text-sm text-gray-500 mt-1">{subtitle}</p>}
+        <h3 className="text-lg font-semibold text-content">{title}</h3>
+        {subtitle && <p className="text-sm text-content-tertiary mt-1">{subtitle}</p>}
       </div>
       {action}
     </div>

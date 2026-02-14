@@ -3,13 +3,13 @@ import { ArrowLeft } from 'lucide-react';
 
 export function PrivacyPage() {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-surface-secondary">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200">
+      <div className="bg-surface border-b border-border">
         <div className="max-w-3xl mx-auto px-4 py-4">
           <Link
             to="/"
-            className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+            className="inline-flex items-center gap-2 text-content-secondary hover:text-content transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             Back to home
@@ -19,10 +19,10 @@ export function PrivacyPage() {
 
       {/* Content */}
       <div className="max-w-3xl mx-auto px-4 py-12">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Privacy Policy</h1>
-        <p className="text-gray-500 mb-8">Last updated: {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+        <h1 className="text-3xl font-bold text-content mb-2">Privacy Policy</h1>
+        <p className="text-content-tertiary mb-8">Last updated: {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
 
-        <div className="prose prose-gray max-w-none">
+        <div className="prose prose-gray dark:prose-invert max-w-none">
           <h2>1. Introduction</h2>
           <p>
             FlexForge ("we", "our", or "us") is committed to protecting your privacy.

@@ -298,7 +298,7 @@ function ProjectCard({
 
       <div className="p-4">
         <div className="flex items-start justify-between gap-2 mb-2">
-          <h3 className="font-semibold text-gray-900 line-clamp-1">{project.title}</h3>
+          <h3 className="font-semibold text-content line-clamp-1">{project.title}</h3>
           {project.isBossProject && (
             <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded-full flex-shrink-0">
               Boss
@@ -307,12 +307,12 @@ function ProjectCard({
         </div>
 
         {project.description && (
-          <p className="text-sm text-gray-600 line-clamp-2 mb-3">{project.description}</p>
+          <p className="text-sm text-content-secondary line-clamp-2 mb-3">{project.description}</p>
         )}
 
         <div className="flex flex-wrap gap-1 mb-3">
           {project.skillsTags?.slice(0, 2).map((tag, i) => (
-            <span key={i} className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">
+            <span key={i} className="px-2 py-0.5 bg-surface-tertiary text-content-secondary text-xs rounded-full">
               {tag}
             </span>
           ))}
@@ -325,7 +325,7 @@ function ProjectCard({
                 href={project.demoUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-1.5 text-gray-500 hover:text-brand-600 hover:bg-brand-50 rounded"
+                className="p-1.5 text-content-tertiary hover:text-brand-600 hover:bg-brand-50 rounded"
               >
                 <ExternalLink className="w-4 h-4" />
               </a>
@@ -335,7 +335,7 @@ function ProjectCard({
                 href={project.githubUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
+                className="p-1.5 text-content-tertiary hover:text-content-secondary hover:bg-surface-tertiary rounded"
               >
                 <Github className="w-4 h-4" />
               </a>
@@ -397,10 +397,10 @@ function CoursePreviewCard({
   onViewSource?: () => void;
 }) {
   return (
-    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-between">
+    <div className="p-3 bg-surface-secondary rounded-lg border border-border flex items-center justify-between">
       <div className="flex items-center gap-2">
         <BookOpen className="w-4 h-4 text-brand-600" />
-        <span className="text-sm font-medium text-gray-900">{course.skillName}</span>
+        <span className="text-sm font-medium text-content">{course.skillName}</span>
       </div>
       {onViewSource && (
         <button
@@ -428,18 +428,18 @@ function GroupCard({ group, onClick }: { group: Group; onClick: () => void }) {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <h3 className="font-semibold text-gray-900">{group.name}</h3>
-            <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">
+            <h3 className="font-semibold text-content">{group.name}</h3>
+            <span className="px-2 py-0.5 bg-surface-tertiary text-content-secondary text-xs rounded-full">
               {group.topic}
             </span>
           </div>
-          <p className="text-sm text-gray-600 line-clamp-2 mb-2">{group.description}</p>
-          <div className="flex items-center gap-4 text-xs text-gray-500">
+          <p className="text-sm text-content-secondary line-clamp-2 mb-2">{group.description}</p>
+          <div className="flex items-center gap-4 text-xs text-content-tertiary">
             <span>{group.memberCount} members</span>
             <span>{group.postCount} posts</span>
           </div>
         </div>
-        <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
+        <ChevronRight className="w-5 h-5 text-content-tertiary flex-shrink-0" />
       </div>
     </Card>
   );
@@ -468,7 +468,7 @@ function StateBadge({ state }: { state: Post['currentState'] }) {
   if (!state) return null;
 
   const config = {
-    started: 'bg-gray-100 text-gray-600',
+    started: 'bg-surface-tertiary text-content-secondary',
     'in-progress': 'bg-yellow-100 text-yellow-700',
     paused: 'bg-orange-100 text-orange-700',
     completed: 'bg-green-100 text-green-700',
@@ -493,7 +493,7 @@ function CommentTypeLabel({ type }: { type: Comment['commentType'] }) {
   if (type === 'general') return null;
 
   return (
-    <span className="text-xs text-gray-500 italic mb-1 block">{labels[type]}</span>
+    <span className="text-xs text-content-tertiary italic mb-1 block">{labels[type]}</span>
   );
 }
 
@@ -508,31 +508,31 @@ function CommentItem({ comment, canMarkHelpful, onMarkHelpful }: {
   return (
     <div className={clsx(
       'p-3 rounded-lg',
-      comment.isHelpful ? 'bg-gray-100 border border-gray-300' : 'bg-gray-50'
+      comment.isHelpful ? 'bg-surface-tertiary border border-border' : 'bg-surface-secondary'
     )}>
       <div className="flex items-start gap-3">
-        <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-          <span className="text-xs font-medium text-gray-600">
+        <div className="w-8 h-8 rounded-full bg-surface-tertiary flex items-center justify-center flex-shrink-0">
+          <span className="text-xs font-medium text-content-secondary">
             {comment.authorName.charAt(0)}
           </span>
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-sm font-medium text-gray-900">{comment.authorName}</span>
-            <span className="text-xs text-gray-500">{timeAgo}</span>
+            <span className="text-sm font-medium text-content">{comment.authorName}</span>
+            <span className="text-xs text-content-tertiary">{timeAgo}</span>
             {comment.isHelpful && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-gray-200 text-gray-700 text-xs rounded">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-surface-tertiary text-content-secondary text-xs rounded">
                 <Check className="w-3 h-3" />
                 Helpful
               </span>
             )}
           </div>
           <CommentTypeLabel type={comment.commentType} />
-          <p className="text-sm text-gray-700">{comment.content}</p>
+          <p className="text-sm text-content-secondary">{comment.content}</p>
           {canMarkHelpful && !comment.isHelpful && (
             <button
               onClick={onMarkHelpful}
-              className="mt-2 text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+              className="mt-2 text-xs text-content-tertiary hover:text-content-secondary flex items-center gap-1"
             >
               <Check className="w-3 h-3" />
               Mark as helpful
@@ -581,20 +581,20 @@ function PostCard({
       <div className="p-4">
         {/* Header */}
         <div className="flex items-start gap-3 mb-3">
-          <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-            <span className="text-sm font-medium text-gray-600">
+          <div className="w-10 h-10 rounded-full bg-surface-tertiary flex items-center justify-center flex-shrink-0">
+            <span className="text-sm font-medium text-content-secondary">
               {post.authorName.charAt(0)}
             </span>
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium text-gray-900">{post.authorName}</span>
+              <span className="font-medium text-content">{post.authorName}</span>
               <PostTypeBadge type={post.type} />
               {post.currentState && <StateBadge state={post.currentState} />}
             </div>
-            <span className="text-xs text-gray-500">{timeAgo}</span>
+            <span className="text-xs text-content-tertiary">{timeAgo}</span>
           </div>
-          <button className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded">
+          <button className="p-1.5 text-content-tertiary hover:text-content-secondary hover:bg-surface-tertiary rounded">
             <MoreVertical className="w-4 h-4" />
           </button>
         </div>
@@ -603,7 +603,7 @@ function PostCard({
         {post.type === 'project' && (
           <div className="space-y-3">
             {post.title && (
-              <h3 className="font-semibold text-gray-900">{post.title}</h3>
+              <h3 className="font-semibold text-content">{post.title}</h3>
             )}
 
             {/* Linked course preview */}
@@ -622,18 +622,18 @@ function PostCard({
                 target="_blank"
                 rel="noopener noreferrer"
                 className={clsx(
-                  'block p-3 bg-gray-50 rounded-lg border border-gray-200 transition-colors',
-                  (post.linkedProject.demoUrl || post.linkedProject.githubUrl) && 'hover:bg-gray-100 hover:border-gray-300 cursor-pointer'
+                  'block p-3 bg-surface-secondary rounded-lg border border-border transition-colors',
+                  (post.linkedProject.demoUrl || post.linkedProject.githubUrl) && 'hover:bg-surface-tertiary hover:border-content-tertiary cursor-pointer'
                 )}
               >
                 <div className="flex items-center gap-2 mb-2">
                   <Trophy className="w-4 h-4 text-purple-600" />
-                  <span className="text-sm font-medium text-gray-900">Linked Project</span>
+                  <span className="text-sm font-medium text-content">Linked Project</span>
                   {post.linkedProject.isBossProject && (
                     <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-xs rounded">Boss</span>
                   )}
                 </div>
-                <p className="text-sm text-gray-700">{post.linkedProject.title}</p>
+                <p className="text-sm text-content-secondary">{post.linkedProject.title}</p>
                 <div className="flex items-center gap-3 mt-2">
                   {post.linkedProject.demoUrl && (
                     <span className="text-xs text-brand-600 flex items-center gap-1">
@@ -642,7 +642,7 @@ function PostCard({
                     </span>
                   )}
                   {post.linkedProject.githubUrl && (
-                    <span className="text-xs text-gray-600 flex items-center gap-1">
+                    <span className="text-xs text-content-secondary flex items-center gap-1">
                       <Github className="w-3 h-3" />
                       View Code
                     </span>
@@ -660,7 +660,7 @@ function PostCard({
                     Shared Question {post.stepType && `(${post.stepType})`}
                   </span>
                 </div>
-                <p className="font-medium text-gray-900 mb-2">{post.sharedContent.question}</p>
+                <p className="font-medium text-content mb-2">{post.sharedContent.question}</p>
                 {post.sharedContent.options && post.sharedContent.options.length > 0 && (
                   <div className="space-y-1.5 ml-2">
                     {post.sharedContent.options.map((opt, i) => (
@@ -670,7 +670,7 @@ function PostCard({
                           'p-2 rounded-lg text-sm',
                           post.sharedContent?.correctAnswer === opt
                             ? 'bg-green-100 text-green-800 border border-green-200'
-                            : 'bg-white text-gray-600 border border-gray-100'
+                            : 'bg-surface text-content-secondary border border-border-secondary'
                         )}
                       >
                         {opt}
@@ -693,14 +693,14 @@ function PostCard({
 
             {post.whatDone && (
               <div>
-                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">What I've done</span>
-                <p className="text-sm text-gray-700 mt-1">{post.whatDone}</p>
+                <span className="text-xs font-medium text-content-tertiary uppercase tracking-wide">What I've done</span>
+                <p className="text-sm text-content-secondary mt-1">{post.whatDone}</p>
               </div>
             )}
             {post.feedbackWanted && (
-              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Feedback wanted</span>
-                <p className="text-sm text-gray-700 mt-1">{post.feedbackWanted}</p>
+              <div className="p-3 bg-surface-secondary rounded-lg border border-border">
+                <span className="text-xs font-medium text-content-tertiary uppercase tracking-wide">Feedback wanted</span>
+                <p className="text-sm text-content-secondary mt-1">{post.feedbackWanted}</p>
               </div>
             )}
           </div>
@@ -709,25 +709,25 @@ function PostCard({
         {post.type === 'question' && (
           <div className="space-y-3">
             {post.question && (
-              <h3 className="font-semibold text-gray-900">{post.question}</h3>
+              <h3 className="font-semibold text-content">{post.question}</h3>
             )}
             <div className="space-y-2 text-sm">
               {post.whatTrying && (
                 <div>
-                  <span className="font-medium text-gray-700">What I'm trying to do: </span>
-                  <span className="text-gray-600">{post.whatTrying}</span>
+                  <span className="font-medium text-content-secondary">What I'm trying to do: </span>
+                  <span className="text-content-secondary">{post.whatTrying}</span>
                 </div>
               )}
               {post.whatTried && (
                 <div>
-                  <span className="font-medium text-gray-700">What I've tried: </span>
-                  <span className="text-gray-600">{post.whatTried}</span>
+                  <span className="font-medium text-content-secondary">What I've tried: </span>
+                  <span className="text-content-secondary">{post.whatTried}</span>
                 </div>
               )}
               {post.whereStuck && (
-                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                  <span className="font-medium text-gray-700">Where I'm stuck: </span>
-                  <span className="text-gray-600">{post.whereStuck}</span>
+                <div className="p-3 bg-surface-secondary rounded-lg border border-border">
+                  <span className="font-medium text-content-secondary">Where I'm stuck: </span>
+                  <span className="text-content-secondary">{post.whereStuck}</span>
                 </div>
               )}
             </div>
@@ -735,14 +735,14 @@ function PostCard({
         )}
 
         {post.type === 'progress' && (
-          <p className="text-gray-700">{post.progressNote}</p>
+          <p className="text-content-secondary">{post.progressNote}</p>
         )}
 
         {/* Footer */}
-        <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+        <div className="mt-4 pt-3 border-t border-border-secondary flex items-center justify-between">
           <button
             onClick={onToggle}
-            className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-brand-600"
+            className="flex items-center gap-1.5 text-sm text-content-secondary hover:text-brand-600"
           >
             <MessageCircle className="w-4 h-4" />
             {post.comments.length} {post.comments.length === 1 ? 'comment' : 'comments'}
@@ -786,7 +786,7 @@ function PostCard({
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              className="mt-4 pt-4 border-t border-gray-100 overflow-hidden"
+              className="mt-4 pt-4 border-t border-border-secondary overflow-hidden"
             >
               <div className="flex gap-2">
                 <Input
@@ -1127,12 +1127,12 @@ function CreatePostModal({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-auto"
+        className="relative bg-surface rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-auto"
       >
         <div className="p-6">
           {/* Header with preview toggle */}
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold text-gray-900">
+            <h2 className="text-lg font-semibold text-content">
               {showPreview ? 'Preview Post' : `New Post in ${groupName}`}
             </h2>
             <div className="flex items-center gap-2">
@@ -1142,13 +1142,13 @@ function CreatePostModal({
                   'px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5',
                   showPreview
                     ? 'bg-brand-100 text-brand-700'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    : 'bg-surface-tertiary text-content-secondary hover:bg-surface-tertiary'
                 )}
               >
                 <Eye className="w-3.5 h-3.5" />
                 {showPreview ? 'Edit' : 'Preview'}
               </button>
-              <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg">
+              <button onClick={onClose} className="p-2 text-content-tertiary hover:text-content-secondary rounded-lg">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1157,8 +1157,8 @@ function CreatePostModal({
           {/* Preview Mode */}
           {showPreview ? (
             <div className="space-y-4">
-              <p className="text-sm text-gray-500 mb-4">This is how your post will appear:</p>
-              <div className="border border-gray-200 rounded-xl overflow-hidden">
+              <p className="text-sm text-content-tertiary mb-4">This is how your post will appear:</p>
+              <div className="border border-border rounded-xl overflow-hidden">
                 <PostCard
                   post={previewPost}
                   isExpanded={false}
@@ -1173,7 +1173,7 @@ function CreatePostModal({
               <div className="space-y-4">
                 {/* Link type selector - first */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-content-secondary mb-2">
                     Link to your work (optional)
                   </label>
                   <div className="grid grid-cols-3 gap-2">
@@ -1185,8 +1185,8 @@ function CreatePostModal({
                       className={clsx(
                         'py-2.5 px-3 rounded-lg text-sm font-medium transition-colors border text-center',
                         linkType === 'none'
-                          ? 'bg-gray-100 border-gray-300 text-gray-700'
-                          : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                          ? 'bg-surface-tertiary border-border text-content-secondary'
+                          : 'bg-surface border-border text-content-tertiary hover:border-content-tertiary'
                       )}
                     >
                       No link
@@ -1197,7 +1197,7 @@ function CreatePostModal({
                         'py-2.5 px-3 rounded-lg text-sm font-medium transition-colors border flex items-center justify-center gap-1.5',
                         linkType === 'project'
                           ? 'bg-purple-50 border-purple-300 text-purple-700'
-                          : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                          : 'bg-surface border-border text-content-tertiary hover:border-content-tertiary'
                       )}
                     >
                       <Trophy className="w-4 h-4" />
@@ -1209,7 +1209,7 @@ function CreatePostModal({
                         'py-2.5 px-3 rounded-lg text-sm font-medium transition-colors border flex items-center justify-center gap-1.5',
                         linkType === 'session'
                           ? 'bg-brand-50 border-brand-300 text-brand-700'
-                          : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                          : 'bg-surface border-border text-content-tertiary hover:border-content-tertiary'
                       )}
                     >
                       <Code className="w-4 h-4" />
@@ -1225,8 +1225,8 @@ function CreatePostModal({
                       <HelpCircle className="w-4 h-4 inline mr-1.5" />
                       Sharing this question
                     </label>
-                    <div className="bg-white rounded-lg border border-blue-200 p-4">
-                      <p className="font-medium text-gray-900 mb-3">{sharedQuestion.question}</p>
+                    <div className="bg-surface rounded-lg border border-blue-200 p-4">
+                      <p className="font-medium text-content mb-3">{sharedQuestion.question}</p>
                       {sharedQuestion.options && sharedQuestion.options.length > 0 && (
                         <div className="space-y-2 ml-2">
                           {sharedQuestion.options.map((opt, i) => (
@@ -1236,7 +1236,7 @@ function CreatePostModal({
                                 'p-2 rounded-lg text-sm',
                                 sharedQuestion.correctAnswer === opt
                                   ? 'bg-green-100 text-green-800 border border-green-200'
-                                  : 'bg-gray-50 text-gray-600 border border-gray-100'
+                                  : 'bg-surface-secondary text-content-secondary border border-border-secondary'
                               )}
                             >
                               {opt}
@@ -1280,8 +1280,8 @@ function CreatePostModal({
                           className={clsx(
                             'px-3 py-2 text-sm rounded-lg border transition-colors flex items-center gap-2',
                             selectedProject?.id === project.id
-                              ? 'border-purple-500 bg-white text-purple-700 shadow-sm'
-                              : 'border-purple-200 bg-white/50 text-purple-600 hover:border-purple-300'
+                              ? 'border-purple-500 bg-surface text-purple-700 shadow-sm'
+                              : 'border-purple-200 bg-surface/50 text-purple-600 hover:border-purple-300'
                           )}
                         >
                           {project.isBossProject && <Trophy className="w-4 h-4" />}
@@ -1316,8 +1316,8 @@ function CreatePostModal({
                             className={clsx(
                               'px-3 py-2 text-sm rounded-lg border transition-colors flex items-center gap-2',
                               (selectedSessionId || activeSession?.id) === session.id
-                                ? 'border-brand-500 bg-white text-brand-700 shadow-sm'
-                                : 'border-brand-200 bg-white/50 text-brand-600 hover:border-brand-300'
+                                ? 'border-brand-500 bg-surface text-brand-700 shadow-sm'
+                                : 'border-brand-200 bg-surface/50 text-brand-600 hover:border-brand-300'
                             )}
                           >
                             <Trophy className="w-4 h-4" />
@@ -1358,8 +1358,8 @@ function CreatePostModal({
                               className={clsx(
                                 'flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors border',
                                 shareScope === 'task'
-                                  ? 'bg-white border-brand-400 text-brand-700 shadow-sm'
-                                  : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-white'
+                                  ? 'bg-surface border-brand-400 text-brand-700 shadow-sm'
+                                  : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-surface'
                               )}
                             >
                               <Code className="w-4 h-4 inline mr-1.5" />
@@ -1370,8 +1370,8 @@ function CreatePostModal({
                               className={clsx(
                                 'flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors border',
                                 shareScope === 'course'
-                                  ? 'bg-white border-brand-400 text-brand-700 shadow-sm'
-                                  : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-white'
+                                  ? 'bg-surface border-brand-400 text-brand-700 shadow-sm'
+                                  : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-surface'
                               )}
                             >
                               <Trophy className="w-4 h-4 inline mr-1.5" />
@@ -1398,8 +1398,8 @@ function CreatePostModal({
                                     className={clsx(
                                       'w-10 h-10 rounded-lg text-sm font-medium transition-colors border',
                                       selectedDay === day
-                                        ? 'bg-white border-brand-400 text-brand-700 shadow-sm'
-                                        : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-white'
+                                        ? 'bg-surface border-brand-400 text-brand-700 shadow-sm'
+                                        : 'bg-brand-50 border-brand-200 text-brand-600 hover:bg-surface'
                                     )}
                                   >
                                     {day}
@@ -1417,7 +1417,7 @@ function CreatePostModal({
                                 <div className="relative">
                                   <button
                                     onClick={() => setShowStepDropdown(!showStepDropdown)}
-                                    className="w-full px-3 py-2 bg-white border border-brand-200 rounded-lg text-sm text-left flex items-center justify-between hover:border-brand-300 transition-colors"
+                                    className="w-full px-3 py-2 bg-surface border border-brand-200 rounded-lg text-sm text-left flex items-center justify-between hover:border-brand-300 transition-colors"
                                   >
                                     <span className="flex items-center gap-2">
                                       {selectedStep === 'overview' && <><BookOpen className="w-4 h-4 text-brand-500" /> Day Overview</>}
@@ -1427,7 +1427,7 @@ function CreatePostModal({
                                       {selectedStep === 'openTask' && <><Target className="w-4 h-4 text-orange-500" /> Real-World Task</>}
                                       {selectedStep === 'reflection' && <><Lightbulb className="w-4 h-4 text-yellow-500" /> Reflection</>}
                                     </span>
-                                    <ChevronDown className={clsx('w-4 h-4 text-gray-400 transition-transform', showStepDropdown && 'rotate-180')} />
+                                    <ChevronDown className={clsx('w-4 h-4 text-content-tertiary transition-transform', showStepDropdown && 'rotate-180')} />
                                   </button>
 
                                   {/* Dropdown menu */}
@@ -1439,18 +1439,18 @@ function CreatePostModal({
                                           initial={{ opacity: 0, y: -5 }}
                                           animate={{ opacity: 1, y: 0 }}
                                           exit={{ opacity: 0, y: -5 }}
-                                          className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden"
+                                          className="absolute z-20 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-lg overflow-hidden"
                                         >
                                           <button
                                             onClick={() => handleStepChange('overview')}
-                                            className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'overview' && 'bg-brand-50')}
+                                            className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-surface-secondary', selectedStep === 'overview' && 'bg-brand-50')}
                                           >
                                             <BookOpen className="w-4 h-4 text-brand-500" /> Day Overview
                                           </button>
                                           {(dayData.video || (dayData as any).deferredContent?.video) && (
                                             <button
                                               onClick={() => handleStepChange('video')}
-                                              className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'video' && 'bg-brand-50')}
+                                              className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-surface-secondary', selectedStep === 'video' && 'bg-brand-50')}
                                             >
                                               <Play className="w-4 h-4 text-blue-500" /> Video Lesson
                                             </button>
@@ -1458,7 +1458,7 @@ function CreatePostModal({
                                           {(dayData.task1 || (dayData as any).coreContent?.task1 || (dayData as any).deferredContent?.task1) && (
                                             <button
                                               onClick={() => handleStepChange('task1')}
-                                              className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'task1' && 'bg-brand-50')}
+                                              className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-surface-secondary', selectedStep === 'task1' && 'bg-brand-50')}
                                             >
                                               <Code className="w-4 h-4 text-blue-500" /> Practice Task
                                             </button>
@@ -1466,7 +1466,7 @@ function CreatePostModal({
                                           {(dayData.bossMilestone || (dayData as any).deferredContent?.bossMilestone) && (
                                             <button
                                               onClick={() => handleStepChange('bossMilestone')}
-                                              className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'bossMilestone' && 'bg-brand-50')}
+                                              className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-surface-secondary', selectedStep === 'bossMilestone' && 'bg-brand-50')}
                                             >
                                               <Trophy className="w-4 h-4 text-purple-500" /> Boss Milestone
                                             </button>
@@ -1474,7 +1474,7 @@ function CreatePostModal({
                                           {(dayData.openTask || (dayData as any).deferredContent?.openTask) && (
                                             <button
                                               onClick={() => handleStepChange('openTask')}
-                                              className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'openTask' && 'bg-brand-50')}
+                                              className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-surface-secondary', selectedStep === 'openTask' && 'bg-brand-50')}
                                             >
                                               <Target className="w-4 h-4 text-orange-500" /> Real-World Task
                                             </button>
@@ -1482,7 +1482,7 @@ function CreatePostModal({
                                           {(dayData.reflection || (dayData as any).deferredContent?.reflection) && (
                                             <button
                                               onClick={() => handleStepChange('reflection')}
-                                              className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50', selectedStep === 'reflection' && 'bg-brand-50')}
+                                              className={clsx('w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-surface-secondary', selectedStep === 'reflection' && 'bg-brand-50')}
                                             >
                                               <Lightbulb className="w-4 h-4 text-yellow-500" /> Reflection
                                             </button>
@@ -1504,7 +1504,7 @@ function CreatePostModal({
                                 <div className="relative">
                                   <button
                                     onClick={() => setShowQuestionDropdown(!showQuestionDropdown)}
-                                    className="w-full px-3 py-2 bg-white border border-brand-200 rounded-lg text-sm text-left flex items-center justify-between hover:border-brand-300 transition-colors"
+                                    className="w-full px-3 py-2 bg-surface border border-brand-200 rounded-lg text-sm text-left flex items-center justify-between hover:border-brand-300 transition-colors"
                                   >
                                     <span className="flex items-center gap-2 truncate">
                                       <HelpCircle className="w-4 h-4 text-brand-500 flex-shrink-0" />
@@ -1514,7 +1514,7 @@ function CreatePostModal({
                                           : `Q${(selectedQuestionIndex || 0) + 1}: ${(selectedQuestion.question || '').length > 40 ? (selectedQuestion.question || '').slice(0, 40) + '...' : (selectedQuestion.question || '')}`}
                                       </span>
                                     </span>
-                                    <ChevronDown className={clsx('w-4 h-4 text-gray-400 transition-transform flex-shrink-0', showQuestionDropdown && 'rotate-180')} />
+                                    <ChevronDown className={clsx('w-4 h-4 text-content-tertiary transition-transform flex-shrink-0', showQuestionDropdown && 'rotate-180')} />
                                   </button>
 
                                   {/* Question dropdown menu */}
@@ -1526,12 +1526,12 @@ function CreatePostModal({
                                           initial={{ opacity: 0, y: -5 }}
                                           animate={{ opacity: 1, y: 0 }}
                                           exit={{ opacity: 0, y: -5 }}
-                                          className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden max-h-[200px] overflow-y-auto"
+                                          className="absolute z-20 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-lg overflow-hidden max-h-[200px] overflow-y-auto"
                                         >
                                           <button
                                             onClick={() => { setSelectedQuestionIndex(null); setShowQuestionDropdown(false); }}
                                             className={clsx(
-                                              'w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-gray-50',
+                                              'w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-surface-secondary',
                                               selectedQuestionIndex === null && 'bg-brand-50'
                                             )}
                                           >
@@ -1542,12 +1542,12 @@ function CreatePostModal({
                                               key={idx}
                                               onClick={() => { setSelectedQuestionIndex(idx); setShowQuestionDropdown(false); }}
                                               className={clsx(
-                                                'w-full px-3 py-2 text-sm text-left hover:bg-gray-50',
+                                                'w-full px-3 py-2 text-sm text-left hover:bg-surface-secondary',
                                                 selectedQuestionIndex === idx && 'bg-brand-50'
                                               )}
                                             >
-                                              <span className="font-medium text-gray-700">Q{idx + 1}:</span>{' '}
-                                              <span className="text-gray-600 line-clamp-1">{q.question}</span>
+                                              <span className="font-medium text-content-secondary">Q{idx + 1}:</span>{' '}
+                                              <span className="text-content-secondary line-clamp-1">{q.question}</span>
                                             </button>
                                           ) : null)}
                                         </motion.div>
@@ -1559,7 +1559,7 @@ function CreatePostModal({
                                 {/* Selected question preview */}
                                 {selectedQuestion && (
                                   <div className="mt-2 p-3 bg-brand-50 rounded-lg border border-brand-200">
-                                    <p className="text-sm font-medium text-gray-800 mb-2">
+                                    <p className="text-sm font-medium text-content mb-2">
                                       {selectedQuestion.question}
                                     </p>
                                     {selectedQuestion.options && selectedQuestion.options.length > 0 && (
@@ -1571,7 +1571,7 @@ function CreatePostModal({
                                               'px-2 py-1 rounded text-xs',
                                               opt === selectedQuestion.correctAnswer
                                                 ? 'bg-green-100 text-green-800'
-                                                : 'bg-white text-gray-600'
+                                                : 'bg-surface text-content-secondary'
                                             )}
                                           >
                                             {opt}
@@ -1590,19 +1590,19 @@ function CreatePostModal({
                                 Content Preview
                               </label>
                               {isLoadingDay ? (
-                                <div className="p-4 bg-white rounded-lg border border-brand-200 animate-pulse">
-                                  <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
-                                  <div className="h-3 bg-gray-200 rounded w-1/2" />
+                                <div className="p-4 bg-surface rounded-lg border border-brand-200 animate-pulse">
+                                  <div className="h-4 bg-surface-tertiary rounded w-3/4 mb-2" />
+                                  <div className="h-3 bg-surface-tertiary rounded w-1/2" />
                                 </div>
                               ) : selectedQuestion ? (
                                 // Show only the selected question
-                                <div className="bg-white rounded-lg border border-brand-200 p-4">
+                                <div className="bg-surface rounded-lg border border-brand-200 p-4">
                                   <div className="flex items-start gap-3">
                                     <div className="w-8 h-8 rounded-lg bg-brand-100 flex items-center justify-center flex-shrink-0">
                                       <HelpCircle className="w-4 h-4 text-brand-600" />
                                     </div>
                                     <div className="flex-1">
-                                      <p className="font-medium text-gray-900 mb-3">{selectedQuestion.question}</p>
+                                      <p className="font-medium text-content mb-3">{selectedQuestion.question}</p>
                                       {selectedQuestion.options && selectedQuestion.options.length > 0 && (
                                         <div className="space-y-2">
                                           {selectedQuestion.options.map((opt: string, i: number) => (
@@ -1612,7 +1612,7 @@ function CreatePostModal({
                                                 'p-2 rounded-lg text-sm',
                                                 selectedQuestion.correctAnswer === opt
                                                   ? 'bg-green-100 text-green-800 border border-green-200'
-                                                  : 'bg-gray-50 text-gray-600 border border-gray-100'
+                                                  : 'bg-surface-secondary text-content-secondary border border-border-secondary'
                                               )}
                                             >
                                               {opt}
@@ -1628,7 +1628,7 @@ function CreatePostModal({
                                 </div>
                               ) : dayData ? (
                                 // Show full step content when "All questions" is selected
-                                <div className="bg-white rounded-lg border border-brand-200 p-4">
+                                <div className="bg-surface rounded-lg border border-brand-200 p-4">
                                   <StepContentPreview
                                     day={dayData}
                                     step={selectedStep as PreviewStep}
@@ -1637,9 +1637,9 @@ function CreatePostModal({
                                   />
                                 </div>
                               ) : (
-                                <div className="p-4 bg-white rounded-lg border border-brand-200 text-center text-sm text-gray-500">
+                                <div className="p-4 bg-surface rounded-lg border border-brand-200 text-center text-sm text-content-tertiary">
                                   <p>Content not available for this step</p>
-                                  <p className="text-xs text-gray-400 mt-1">Try selecting a different step or day</p>
+                                  <p className="text-xs text-content-tertiary mt-1">Try selecting a different step or day</p>
                                 </div>
                               )}
                             </div>
@@ -1652,7 +1652,7 @@ function CreatePostModal({
 
                 {/* What are you building - second */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-content-secondary mb-1">
                     What are you building/working on? *
                   </label>
                   <Input
@@ -1665,15 +1665,15 @@ function CreatePostModal({
                 {/* Code snippet (optional) */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label className="block text-sm font-medium text-content-secondary">
                       Code snippet (optional)
                     </label>
                     {!showCodeEditor && (
                       <button
                         onClick={() => setShowCodeEditor(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-surface-secondary"
                       >
-                        <Code className="w-3.5 h-3.5 text-gray-500" />
+                        <Code className="w-3.5 h-3.5 text-content-tertiary" />
                         Add Code
                       </button>
                     )}
@@ -1692,7 +1692,7 @@ function CreatePostModal({
                           setCodeSnippet('');
                           setShowCodeEditor(false);
                         }}
-                        className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-200"
+                        className="absolute top-2 right-2 p-1 text-content-tertiary hover:text-gray-200"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -1702,14 +1702,14 @@ function CreatePostModal({
 
                 {/* Comments - single simple textarea */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-content-secondary mb-1">
                     Comments
                   </label>
                   <textarea
                     value={formData.comments}
                     onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
                     placeholder="Share your thoughts, progress, questions, or what feedback you're looking for..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
+                    className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
                     rows={4}
                   />
                 </div>
@@ -1718,7 +1718,7 @@ function CreatePostModal({
           )}
 
           {/* Footer */}
-          <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
+          <div className="flex gap-3 mt-6 pt-4 border-t border-border-secondary">
             <Button variant="secondary" onClick={onClose} className="flex-1">
               Cancel
             </Button>
@@ -1800,12 +1800,12 @@ function SharedContentViewer({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="relative bg-white rounded-xl shadow-xl w-full max-w-md"
+        className="relative bg-surface rounded-xl shadow-xl w-full max-w-md"
       >
         {/* Header */}
-        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="font-semibold text-gray-900">Course Source</h2>
-          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg">
+        <div className="p-4 border-b border-border flex items-center justify-between">
+          <h2 className="font-semibold text-content">Course Source</h2>
+          <button onClick={onClose} className="p-2 text-content-tertiary hover:text-content-secondary rounded-lg">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -1817,8 +1817,8 @@ function SharedContentViewer({
               <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
                 <Eye className="w-7 h-7 text-green-600" />
               </div>
-              <p className="font-medium text-gray-900 mb-2">Full course available</p>
-              <p className="text-sm text-gray-500 mb-4">
+              <p className="font-medium text-content mb-2">Full course available</p>
+              <p className="text-sm text-content-tertiary mb-4">
                 {post.authorName} has shared the full course with you.
               </p>
               <Button onClick={onViewFullCourse} className="w-full">
@@ -1832,8 +1832,8 @@ function SharedContentViewer({
               <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
                 <Check className="w-7 h-7 text-green-600" />
               </div>
-              <p className="font-medium text-gray-900 mb-2">Request Sent!</p>
-              <p className="text-sm text-gray-500">
+              <p className="font-medium text-content mb-2">Request Sent!</p>
+              <p className="text-sm text-content-tertiary">
                 {post.authorName} will be notified about your request.
               </p>
             </div>
@@ -1841,24 +1841,24 @@ function SharedContentViewer({
             // Request form
             <div className="space-y-4">
               <div className="text-center">
-                <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
-                  <Lock className="w-7 h-7 text-gray-400" />
+                <div className="w-14 h-14 rounded-full bg-surface-tertiary flex items-center justify-center mx-auto mb-4">
+                  <Lock className="w-7 h-7 text-content-tertiary" />
                 </div>
-                <p className="font-medium text-gray-900 mb-1">Full course not shared</p>
-                <p className="text-sm text-gray-500">
+                <p className="font-medium text-content mb-1">Full course not shared</p>
+                <p className="text-sm text-content-tertiary">
                   {post.authorName} hasn't shared the full course yet. Send them a request.
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-content-secondary mb-2">
                   Message (optional)
                 </label>
                 <textarea
                   value={requestMessage}
                   onChange={(e) => setRequestMessage(e.target.value)}
                   placeholder={`Hi ${post.authorName}, I'd love to see your full ${course.skillName} course!`}
-                  className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
+                  className="w-full p-3 border border-border rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
                   rows={3}
                 />
               </div>
@@ -2096,7 +2096,7 @@ export function CommunityPage() {
         <div className="mb-6">
           <button
             onClick={() => setSelectedGroup(null)}
-            className="flex items-center gap-1 text-gray-600 hover:text-gray-900"
+            className="flex items-center gap-1 text-content-secondary hover:text-content"
           >
             <ChevronRight className="w-4 h-4 rotate-180" />
             Back to Groups
@@ -2113,8 +2113,8 @@ export function CommunityPage() {
               {/* Title row - stacks on mobile */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
                 <div className="flex items-center gap-2 flex-wrap min-w-0">
-                  <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{selectedGroup.name}</h1>
-                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs sm:text-sm rounded-full flex-shrink-0">
+                  <h1 className="text-lg sm:text-xl font-bold text-content truncate">{selectedGroup.name}</h1>
+                  <span className="px-2 py-0.5 bg-surface-tertiary text-content-secondary text-xs sm:text-sm rounded-full flex-shrink-0">
                     {selectedGroup.topic}
                   </span>
                 </div>
@@ -2139,8 +2139,8 @@ export function CommunityPage() {
                   )}
                 </div>
               </div>
-              <p className="text-sm sm:text-base text-gray-600 mb-3">{selectedGroup.description}</p>
-              <div className="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm text-gray-500 flex-wrap">
+              <p className="text-sm sm:text-base text-content-secondary mb-3">{selectedGroup.description}</p>
+              <div className="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm text-content-tertiary flex-wrap">
                 <span>{selectedGroup.memberCount + (isGroupJoined(selectedGroup.id) ? 1 : 0)} members</span>
                 <span>Curated by {selectedGroup.curatorName}</span>
               </div>
@@ -2176,18 +2176,18 @@ export function CommunityPage() {
             // Loading skeleton
             <div className="space-y-4">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="animate-pulse p-4 bg-white rounded-xl shadow-sm">
-                  <div className="h-5 bg-gray-200 rounded w-3/4 mb-2" />
-                  <div className="h-4 bg-gray-100 rounded w-full mb-2" />
-                  <div className="h-4 bg-gray-100 rounded w-2/3" />
+                <div key={i} className="animate-pulse p-4 bg-surface rounded-xl shadow-sm">
+                  <div className="h-5 bg-surface-tertiary rounded w-3/4 mb-2" />
+                  <div className="h-4 bg-surface-tertiary rounded w-full mb-2" />
+                  <div className="h-4 bg-surface-tertiary rounded w-2/3" />
                 </div>
               ))}
             </div>
           ) : groupPosts.length === 0 ? (
             <Card className="p-8 text-center">
-              <MessageCircle className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No posts yet</h3>
-              <p className="text-gray-600 mb-4">
+              <MessageCircle className="w-12 h-12 mx-auto text-content-tertiary mb-4" />
+              <h3 className="text-lg font-semibold text-content mb-2">No posts yet</h3>
+              <p className="text-content-secondary mb-4">
                 Be the first to share something in this group!
               </p>
               <Button onClick={() => setShowCreatePost(true)}>Create Post</Button>
@@ -2227,8 +2227,8 @@ export function CommunityPage() {
     <div className="max-w-3xl mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">Community</h1>
-        <p className="text-gray-600">
+        <h1 className="text-2xl font-bold text-content mb-1">Community</h1>
+        <p className="text-content-secondary">
           Share your projects and learn together.
         </p>
       </div>
@@ -2241,7 +2241,7 @@ export function CommunityPage() {
             'px-3 py-2 min-h-[40px] rounded-lg text-sm font-medium transition-colors',
             viewMode === 'groups'
               ? 'bg-brand-100 text-brand-700'
-              : 'text-gray-600 hover:bg-gray-100 active:bg-gray-200'
+              : 'text-content-secondary hover:bg-surface-tertiary active:bg-surface-tertiary'
           )}
         >
           <Users className="w-4 h-4 inline mr-1.5" />
@@ -2253,7 +2253,7 @@ export function CommunityPage() {
             'px-3 py-2 min-h-[40px] rounded-lg text-sm font-medium transition-colors',
             viewMode === 'my-posts'
               ? 'bg-brand-100 text-brand-700'
-              : 'text-gray-600 hover:bg-gray-100 active:bg-gray-200'
+              : 'text-content-secondary hover:bg-surface-tertiary active:bg-surface-tertiary'
           )}
         >
           <Folder className="w-4 h-4 inline mr-1.5" />
@@ -2265,7 +2265,7 @@ export function CommunityPage() {
             'px-3 py-2 min-h-[40px] rounded-lg text-sm font-medium transition-colors',
             viewMode === 'my-comments'
               ? 'bg-brand-100 text-brand-700'
-              : 'text-gray-600 hover:bg-gray-100 active:bg-gray-200'
+              : 'text-content-secondary hover:bg-surface-tertiary active:bg-surface-tertiary'
           )}
         >
           <MessageCircle className="w-4 h-4 inline mr-1.5" />
@@ -2279,7 +2279,7 @@ export function CommunityPage() {
           {/* Search */}
           <div className="mb-6">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-content-tertiary" />
               <Input
                 placeholder="Search groups by name or topic..."
                 value={searchQuery}
@@ -2306,12 +2306,12 @@ export function CommunityPage() {
 
           {/* Groups list */}
           <div className="space-y-4">
-            <h2 className="font-semibold text-gray-900">Browse Groups</h2>
+            <h2 className="font-semibold text-content">Browse Groups</h2>
             {filteredGroups.length === 0 ? (
               <Card className="p-8 text-center">
-                <Users className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No groups found</h3>
-                <p className="text-gray-600">Try a different search term.</p>
+                <Users className="w-12 h-12 mx-auto text-content-tertiary mb-4" />
+                <h3 className="text-lg font-semibold text-content mb-2">No groups found</h3>
+                <p className="text-content-secondary">Try a different search term.</p>
               </Card>
             ) : (
               filteredGroups.map((group) => (
@@ -2325,9 +2325,9 @@ export function CommunityPage() {
           </div>
 
           {/* Create group CTA */}
-          <Card className="mt-8 p-6 text-center bg-gradient-to-br from-gray-50 to-gray-100">
-            <h3 className="font-semibold text-gray-900 mb-2">Want to start a group?</h3>
-            <p className="text-sm text-gray-600 mb-4">
+          <Card className="mt-8 p-6 text-center bg-gradient-to-br from-surface-secondary to-surface-tertiary">
+            <h3 className="font-semibold text-content mb-2">Want to start a group?</h3>
+            <p className="text-sm text-content-secondary mb-4">
               Be a curator for a topic you're passionate about.
             </p>
             <Button variant="secondary">Request to create a group</Button>
@@ -2342,26 +2342,26 @@ export function CommunityPage() {
             <div className="space-y-4">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="animate-pulse">
-                  <div className="p-4 bg-white rounded-xl shadow-sm">
-                    <div className="h-5 bg-gray-200 rounded w-3/4 mb-2" />
-                    <div className="h-4 bg-gray-100 rounded w-full mb-2" />
-                    <div className="h-4 bg-gray-100 rounded w-2/3" />
+                  <div className="p-4 bg-surface rounded-xl shadow-sm">
+                    <div className="h-5 bg-surface-tertiary rounded w-3/4 mb-2" />
+                    <div className="h-4 bg-surface-tertiary rounded w-full mb-2" />
+                    <div className="h-4 bg-surface-tertiary rounded w-2/3" />
                   </div>
                 </div>
               ))}
             </div>
           ) : myPosts.length === 0 ? (
             <Card className="p-8 text-center">
-              <Folder className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No posts yet</h3>
-              <p className="text-gray-600 mb-4">
+              <Folder className="w-12 h-12 mx-auto text-content-tertiary mb-4" />
+              <h3 className="text-lg font-semibold text-content mb-2">No posts yet</h3>
+              <p className="text-content-secondary mb-4">
                 Share your progress, ask questions, or showcase your projects in a group!
               </p>
               <Button onClick={() => setViewMode('groups')}>Browse Groups</Button>
             </Card>
           ) : (
             <div className="space-y-4">
-              <p className="text-sm text-gray-500 mb-4">
+              <p className="text-sm text-content-tertiary mb-4">
                 {myPosts.length} post{myPosts.length !== 1 ? 's' : ''} you've shared
               </p>
               {myPosts.map((post) => (
@@ -2382,7 +2382,7 @@ export function CommunityPage() {
           {/* Current task card */}
           {activeSession && currentDay && (
             <div className="mt-8">
-              <h2 className="font-semibold text-gray-900 mb-4">Currently Working On</h2>
+              <h2 className="font-semibold text-content mb-4">Currently Working On</h2>
               <CurrentTaskLink
                 onShare={() => {
                   setSelectedGroup(MOCK_GROUPS[0]);
@@ -2401,26 +2401,26 @@ export function CommunityPage() {
             <div className="space-y-4">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="animate-pulse">
-                  <div className="p-4 bg-white rounded-xl shadow-sm">
-                    <div className="h-5 bg-gray-200 rounded w-3/4 mb-2" />
-                    <div className="h-4 bg-gray-100 rounded w-full mb-2" />
-                    <div className="h-4 bg-gray-100 rounded w-2/3" />
+                  <div className="p-4 bg-surface rounded-xl shadow-sm">
+                    <div className="h-5 bg-surface-tertiary rounded w-3/4 mb-2" />
+                    <div className="h-4 bg-surface-tertiary rounded w-full mb-2" />
+                    <div className="h-4 bg-surface-tertiary rounded w-2/3" />
                   </div>
                 </div>
               ))}
             </div>
           ) : commentedPosts.length === 0 ? (
             <Card className="p-8 text-center">
-              <MessageCircle className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No comments yet</h3>
-              <p className="text-gray-600 mb-4">
+              <MessageCircle className="w-12 h-12 mx-auto text-content-tertiary mb-4" />
+              <h3 className="text-lg font-semibold text-content mb-2">No comments yet</h3>
+              <p className="text-content-secondary mb-4">
                 Help others by commenting on their posts. Your comments will appear here!
               </p>
               <Button onClick={() => setViewMode('groups')}>Browse Groups</Button>
             </Card>
           ) : (
             <div className="space-y-4">
-              <p className="text-sm text-gray-500 mb-4">
+              <p className="text-sm text-content-tertiary mb-4">
                 {commentedPosts.length} post{commentedPosts.length !== 1 ? 's' : ''} you've commented on
               </p>
               {commentedPosts.map((post) => (

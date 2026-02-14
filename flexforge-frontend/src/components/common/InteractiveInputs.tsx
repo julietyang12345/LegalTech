@@ -51,7 +51,7 @@ const variantStyles = {
   focus: 'bg-focus-50 border-focus-200',
   amber: 'bg-amber-50 border-amber-200',
   green: 'bg-green-50 border-green-200',
-  gray: 'bg-gray-50 border-gray-200',
+  gray: 'bg-surface-secondary border-border',
 };
 
 export function RevealableContent({
@@ -85,7 +85,7 @@ export function RevealableContent({
       </Button>
 
       {disabled && disabledReason && (
-        <p className="text-xs text-gray-400">{disabledReason}</p>
+        <p className="text-xs text-content-tertiary">{disabledReason}</p>
       )}
 
       <AnimatedReveal show={isVisible}>
@@ -134,7 +134,7 @@ export function QuickPick({ options, selected, onSelect, columns = 2 }: QuickPic
               'min-h-[80px] h-full',
               isSelected
                 ? 'border-[3px] border-brand-500 bg-brand-50 shadow-sm'
-                : 'border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                : 'border-2 border-border hover:border-content-tertiary hover:bg-surface-secondary'
             )}
           >
             {/* Content wrapper - ensures vertical centering */}
@@ -145,7 +145,7 @@ export function QuickPick({ options, selected, onSelect, columns = 2 }: QuickPic
               {/* Label - wraps and centers */}
               <span className={clsx(
                 'text-xs font-medium leading-tight text-center w-full',
-                isSelected ? 'text-brand-700' : 'text-gray-600'
+                isSelected ? 'text-brand-700' : 'text-content-secondary'
               )}>
                 {option.label}
               </span>
@@ -174,7 +174,7 @@ export function SentenceComplete({ suggestions, value, onChange, prefix }: Sente
 
   return (
     <div className="space-y-2">
-      <p className="text-sm text-gray-600 mb-3">{prefix}</p>
+      <p className="text-sm text-content-secondary mb-3">{prefix}</p>
       <div className="flex flex-wrap gap-2">
         {suggestions.map((suggestion) => (
           <button
@@ -187,7 +187,7 @@ export function SentenceComplete({ suggestions, value, onChange, prefix }: Sente
               'px-3 py-2 rounded-lg text-sm transition-all',
               value === suggestion
                 ? 'bg-brand-500 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                : 'bg-surface-tertiary text-content-secondary hover:bg-surface-tertiary'
             )}
           >
             {suggestion}
@@ -199,7 +199,7 @@ export function SentenceComplete({ suggestions, value, onChange, prefix }: Sente
             'px-3 py-2 rounded-lg text-sm transition-all',
             isCustom
               ? 'bg-brand-500 text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              : 'bg-surface-tertiary text-content-secondary hover:bg-surface-tertiary'
           )}
         >
           Custom...
@@ -212,7 +212,7 @@ export function SentenceComplete({ suggestions, value, onChange, prefix }: Sente
           value={isCustom ? value : ''}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Type your own..."
-          className="w-full mt-2 px-3 py-2 border border-gray-200 rounded-lg text-sm
+          className="w-full mt-2 px-3 py-2 border border-border rounded-lg text-sm
                     focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
           autoFocus
         />

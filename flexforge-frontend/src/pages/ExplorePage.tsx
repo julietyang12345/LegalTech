@@ -186,12 +186,12 @@ function ExploreNav() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-lg border-b border-gray-200/50">
+    <nav className="sticky top-0 z-50 bg-surface/80 backdrop-blur-lg border-b border-border/50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between h-16">
           <Link to="/" className="flex items-center gap-2">
             <span className="text-2xl">🔥</span>
-            <span className="font-display font-bold text-xl text-gray-900">
+            <span className="font-display font-bold text-xl text-content">
               FlexForge
             </span>
           </Link>
@@ -219,7 +219,7 @@ function ExploreNav() {
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="md:hidden py-4 border-t border-gray-100"
+            className="md:hidden py-4 border-t border-border-secondary"
           >
             <div className="flex flex-col gap-3">
               <Button variant="ghost" onClick={() => navigate('/login')}>
@@ -247,16 +247,16 @@ export function ExplorePage() {
   }, [activeCategory]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-surface-secondary">
       <ExploreNav />
 
       {/* Hero */}
-      <section className="bg-white border-b border-gray-100">
+      <section className="bg-surface border-b border-border-secondary">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 text-center">
-          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-3">
+          <h1 className="text-3xl sm:text-4xl font-bold text-content mb-3">
             Explore Skills
           </h1>
-          <p className="text-lg text-gray-600 max-w-xl mx-auto mb-8">
+          <p className="text-lg text-content-secondary max-w-xl mx-auto mb-8">
             Topics you won't find on Udemy. Pick one or describe your own — we'll build a
             structured curriculum around it.
           </p>
@@ -275,7 +275,7 @@ export function ExplorePage() {
                 'px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap',
                 activeCategory === cat
                   ? 'bg-brand-500 text-white'
-                  : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                  : 'bg-surface text-content-secondary hover:bg-surface-tertiary border border-border'
               )}
             >
               {cat}
@@ -288,7 +288,7 @@ export function ExplorePage() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-16">
         {filtered.length === 0 ? (
           <div className="text-center py-16">
-            <p className="text-gray-500 text-lg">
+            <p className="text-content-tertiary text-lg">
               No skills match your search. Try a different term.
             </p>
           </div>
@@ -300,7 +300,7 @@ export function ExplorePage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: Math.min(i * 0.05, 0.4) }}
-                className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
+                className="bg-surface rounded-xl border border-border p-5 flex flex-col hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
               >
                 <div className="flex items-start justify-between mb-3">
                   <span className="text-3xl">{skill.emoji}</span>
@@ -314,14 +314,14 @@ export function ExplorePage() {
                   </span>
                 </div>
 
-                <h3 className="font-semibold text-gray-900 mb-1">
+                <h3 className="font-semibold text-content mb-1">
                   {skill.name}
                 </h3>
-                <p className="text-sm text-gray-500 mb-4 flex-1">
+                <p className="text-sm text-content-tertiary mb-4 flex-1">
                   {skill.description}
                 </p>
 
-                <div className="flex items-center justify-between text-xs text-gray-400 mb-4">
+                <div className="flex items-center justify-between text-xs text-content-tertiary mb-4">
                   <span>{skill.duration}</span>
                   <span>{skill.category}</span>
                 </div>

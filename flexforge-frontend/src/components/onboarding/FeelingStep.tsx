@@ -117,7 +117,7 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
     return (
       <div className="max-w-xl mx-auto flex flex-col items-center justify-center py-16">
         <Loader2 className="w-8 h-8 text-brand-500 animate-spin mb-4" />
-        <p className="text-gray-500 text-sm">Analyzing your learning path...</p>
+        <p className="text-content-tertiary text-sm">Analyzing your learning path...</p>
       </div>
     );
   }
@@ -129,18 +129,18 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
         <p className="text-sm text-brand-600 font-medium mb-2">
           We'll figure this out together
         </p>
-        <h2 className="text-xl font-bold text-gray-900 mb-2">
+        <h2 className="text-xl font-bold text-content mb-2">
           Just a few quick questions
         </h2>
-        <p className="text-gray-500 text-sm">
+        <p className="text-content-tertiary text-sm">
           No right or wrong answers. We'll adjust as you learn.
         </p>
       </div>
 
       {/* Direction reminder */}
-      <div className="bg-gray-50 rounded-lg px-4 py-3 mb-8 text-sm">
-        <span className="text-gray-500">Learning:</span>{' '}
-        <span className="text-gray-800 font-medium">{selectedDirection}</span>
+      <div className="bg-surface-secondary rounded-lg px-4 py-3 mb-8 text-sm">
+        <span className="text-content-tertiary">Learning:</span>{' '}
+        <span className="text-content font-medium">{selectedDirection}</span>
       </div>
 
       {/* Questions */}
@@ -163,7 +163,7 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
 
         {/* Q3: Output type - What's your goal? */}
         <div>
-          <h3 className="text-sm font-medium text-gray-700 mb-3">What do you want from this?</h3>
+          <h3 className="text-sm font-medium text-content-secondary mb-3">What do you want from this?</h3>
 
           {/* Learn & Understand - prominent single option */}
           <div className="flex justify-center mb-3">
@@ -174,7 +174,7 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
                 'hover:border-brand-300',
                 outputType === 'understand_concept'
                   ? 'border-brand-500 bg-brand-50'
-                  : 'border-gray-200 bg-white'
+                  : 'border-border bg-surface'
               )}
             >
               {outputType === 'understand_concept' && (
@@ -182,10 +182,10 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
                   <Check className="w-2.5 h-2.5 text-white" />
                 </div>
               )}
-              <div className="text-sm font-medium text-gray-900 mb-0.5">
+              <div className="text-sm font-medium text-content mb-0.5">
                 Learn & Understand
               </div>
-              <div className="text-xs text-gray-500">Know the why behind it</div>
+              <div className="text-xs text-content-tertiary">Know the why behind it</div>
             </button>
           </div>
 
@@ -200,7 +200,7 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
                   'hover:border-brand-300',
                   outputType === option.value
                     ? 'border-brand-500 bg-brand-50'
-                    : 'border-gray-200 bg-white'
+                    : 'border-border bg-surface'
                 )}
               >
                 {outputType === option.value && (
@@ -208,10 +208,10 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
                     <Check className="w-2.5 h-2.5 text-white" />
                   </div>
                 )}
-                <div className="text-sm font-medium text-gray-900 mb-0.5">
+                <div className="text-sm font-medium text-content mb-0.5">
                   {option.label}
                 </div>
-                <div className="text-xs text-gray-500">{option.sublabel}</div>
+                <div className="text-xs text-content-tertiary">{option.sublabel}</div>
               </button>
             ))}
           </div>
@@ -228,7 +228,7 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
         {/* Q5: Learning style - Projects vs Practice (only for programming-related skills) */}
         {supportsProjectBased && (
           <div>
-            <h3 className="text-sm font-medium text-gray-700 mb-3">How do you want to learn?</h3>
+            <h3 className="text-sm font-medium text-content-secondary mb-3">How do you want to learn?</h3>
             <div className="grid grid-cols-2 gap-3">
               {/* Practice - default/recommended option on the left */}
               <button
@@ -238,7 +238,7 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
                   'hover:border-brand-300',
                   learningStyle === 'practice'
                     ? 'border-brand-500 bg-brand-50'
-                    : 'border-gray-200 bg-white'
+                    : 'border-border bg-surface'
                 )}
               >
                 {learningStyle === 'practice' && (
@@ -249,10 +249,10 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
                 <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center mb-3">
                   <BookOpen className="w-5 h-5 text-blue-600" />
                 </div>
-                <div className="text-sm font-semibold text-gray-900 mb-1">
+                <div className="text-sm font-semibold text-content mb-1">
                   Practice & Exercises
                 </div>
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-content-tertiary">
                   Daily practice, exercises, and hands-on activities. Great for mastering concepts.
                 </div>
               </button>
@@ -262,10 +262,10 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
                 onClick={() => setLearningStyle('projects')}
                 className={clsx(
                   'relative p-4 rounded-xl border-2 text-left transition-all',
-                  'hover:border-gray-300',
+                  'hover:border-border',
                   learningStyle === 'projects'
                     ? 'border-brand-500 bg-brand-50'
-                    : 'border-gray-200 bg-white'
+                    : 'border-border bg-surface'
                 )}
               >
                 {learningStyle === 'projects' && (
@@ -273,13 +273,13 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
                     <Check className="w-3 h-3 text-white" />
                   </div>
                 )}
-                <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center mb-3">
-                  <Rocket className="w-5 h-5 text-gray-500" />
+                <div className="w-10 h-10 rounded-lg bg-surface-tertiary flex items-center justify-center mb-3">
+                  <Rocket className="w-5 h-5 text-content-tertiary" />
                 </div>
-                <div className="text-sm font-semibold text-gray-900 mb-1">
+                <div className="text-sm font-semibold text-content mb-1">
                   I know what to build
                 </div>
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-content-tertiary">
                   Already have a specific project in mind? End the course with it complete.
                 </div>
               </button>
@@ -289,7 +289,7 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
 
         {/* Advanced Mode Toggle - only for practice mode on code skills */}
         {supportsProjectBased && learningStyle === 'practice' && (
-          <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+          <div className="mt-4 p-4 bg-surface-secondary rounded-xl border border-border">
             <div className="flex items-start gap-3">
               <button
                 onClick={() => setCodeWritingEnabled(!codeWritingEnabled)}
@@ -297,22 +297,22 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
                   'mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-all',
                   codeWritingEnabled
                     ? 'bg-brand-500 border-brand-500'
-                    : 'bg-white border-gray-300 hover:border-gray-400'
+                    : 'bg-surface border-border hover:border-border'
                 )}
               >
                 {codeWritingEnabled && <Check className="w-3 h-3 text-white" />}
               </button>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <Code2 className="w-4 h-4 text-gray-600" />
-                  <span className="text-sm font-medium text-gray-900">
+                  <Code2 className="w-4 h-4 text-content-secondary" />
+                  <span className="text-sm font-medium text-content">
                     Include code writing exercises
                   </span>
                   <span className="text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-medium">
                     Advanced
                   </span>
                 </div>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-content-tertiary">
                   {codeWritingEnabled ? (
                     <>
                       Write code from scratch + review AI-generated code
@@ -323,7 +323,7 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
                   ) : (
                     <>
 
-                      <span className="block mt-1 text-gray-400">
+                      <span className="block mt-1 text-content-tertiary">
                         Enabling this requires more time and effort every day
                       </span>
                     </>
@@ -350,7 +350,7 @@ export function FeelingStep({ selectedDirection, onSelect, isLoading }: FeelingS
       </div>
 
       {/* Reassurance */}
-      <p className="text-center text-xs text-gray-400 mt-4">
+      <p className="text-center text-xs text-content-tertiary mt-4">
         These preferences adapt as you go. No pressure to get it "right".
       </p>
     </div>
@@ -370,7 +370,7 @@ function QuestionBlock<T extends string>({
 }) {
   return (
     <div>
-      <h3 className="text-sm font-medium text-gray-700 mb-3">{question}</h3>
+      <h3 className="text-sm font-medium text-content-secondary mb-3">{question}</h3>
       <div className="grid grid-cols-3 gap-2">
         {options.map((option) => (
           <button
@@ -381,7 +381,7 @@ function QuestionBlock<T extends string>({
               'hover:border-brand-300',
               selected === option.value
                 ? 'border-brand-500 bg-brand-50'
-                : 'border-gray-200 bg-white'
+                : 'border-border bg-surface'
             )}
           >
             {selected === option.value && (
@@ -389,10 +389,10 @@ function QuestionBlock<T extends string>({
                 <Check className="w-2.5 h-2.5 text-white" />
               </div>
             )}
-            <div className="text-sm font-medium text-gray-900 mb-0.5">
+            <div className="text-sm font-medium text-content mb-0.5">
               {option.label}
             </div>
-            <div className="text-xs text-gray-500">{option.sublabel}</div>
+            <div className="text-xs text-content-tertiary">{option.sublabel}</div>
           </button>
         ))}
       </div>

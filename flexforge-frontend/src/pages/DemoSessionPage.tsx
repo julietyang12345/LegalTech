@@ -39,20 +39,20 @@ function PrePromptStep({ onContinue }: { onContinue: () => void }) {
           <Target className="w-4 h-4" />
           {DEMO_TOPIC.day}
         </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">
+        <h2 className="text-2xl font-bold text-content mb-2">
           {DEMO_TOPIC.title}
         </h2>
-        <p className="text-gray-500">{DEMO_TOPIC.skill}</p>
+        <p className="text-content-tertiary">{DEMO_TOPIC.skill}</p>
       </div>
 
-      <div className="bg-white rounded-xl shadow-card p-6 mb-6">
-        <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+      <div className="bg-surface rounded-xl shadow-card p-6 mb-6">
+        <h3 className="font-semibold text-content mb-4 flex items-center gap-2">
           <CheckCircle className="w-5 h-5 text-focus-500" />
           What you'll learn
         </h3>
         <ul className="space-y-3">
           {DEMO_PREPROMPT.objectives.map((obj, i) => (
-            <li key={i} className="flex items-start gap-3 text-gray-700">
+            <li key={i} className="flex items-start gap-3 text-content-secondary">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-focus-100 text-focus-700 flex items-center justify-center text-xs font-medium">
                 {i + 1}
               </span>
@@ -62,8 +62,8 @@ function PrePromptStep({ onContinue }: { onContinue: () => void }) {
         </ul>
       </div>
 
-      <div className="bg-white rounded-xl shadow-card p-6 mb-8">
-        <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+      <div className="bg-surface rounded-xl shadow-card p-6 mb-8">
+        <h3 className="font-semibold text-content mb-4 flex items-center gap-2">
           <HelpCircle className="w-5 h-5 text-brand-500" />
           Think about this before we start
         </h3>
@@ -71,7 +71,7 @@ function PrePromptStep({ onContinue }: { onContinue: () => void }) {
           {DEMO_PREPROMPT.primeQuestions.map((q, i) => (
             <li
               key={i}
-              className="flex items-start gap-3 text-gray-600 italic"
+              className="flex items-start gap-3 text-content-secondary italic"
             >
               <span className="flex-shrink-0 text-brand-400 mt-0.5">?</span>
               {q}
@@ -146,7 +146,7 @@ function QuizStep({ onContinue }: { onContinue: () => void }) {
       {/* Duolingo-style header: progress bar + XP + streak */}
       <div className="mb-6 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-gray-900">
+          <h2 className="text-xl font-bold text-content">
             Learn by Doing
           </h2>
           <div className="flex items-center gap-4">
@@ -166,11 +166,11 @@ function QuizStep({ onContinue }: { onContinue: () => void }) {
             )}
           </div>
         </div>
-        <p className="text-gray-500 text-sm">
+        <p className="text-content-tertiary text-sm">
           Answer questions and learn from the explanations — no pressure!
         </p>
         {/* Green progress bar */}
-        <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden">
+        <div className="w-full h-2.5 bg-surface-tertiary rounded-full overflow-hidden">
           <motion.div
             className="h-full bg-gradient-to-r from-green-400 to-green-500 rounded-full"
             initial={{ width: 0 }}
@@ -224,20 +224,20 @@ function QuizStep({ onContinue }: { onContinue: () => void }) {
                   </div>
 
                   {/* Explanation paragraphs */}
-                  <div className="px-4 py-3 bg-white space-y-2">
+                  <div className="px-4 py-3 bg-surface space-y-2">
                     {q.explanation.split('\n\n').map((paragraph, pIdx) => (
                       <p
                         key={pIdx}
                         className={clsx(
                           'text-sm leading-relaxed',
-                          pIdx === 0 ? 'font-medium text-gray-900' : 'text-gray-700'
+                          pIdx === 0 ? 'font-medium text-content' : 'text-content-secondary'
                         )}
                       >
                         {paragraph.split(/(`[^`]+`)/).map((part, partIdx) =>
                           part.startsWith('`') && part.endsWith('`') ? (
                             <code
                               key={partIdx}
-                              className="px-1.5 py-0.5 bg-gray-100 text-indigo-700 rounded text-xs font-mono"
+                              className="px-1.5 py-0.5 bg-surface-tertiary text-indigo-700 rounded text-xs font-mono"
                             >
                               {part.slice(1, -1)}
                             </code>
@@ -269,7 +269,7 @@ function QuizStep({ onContinue }: { onContinue: () => void }) {
           animate={{ opacity: 1, y: 0 }}
           className="mt-8"
         >
-          <div className="bg-white rounded-2xl shadow-card p-6 text-center mb-4">
+          <div className="bg-surface rounded-2xl shadow-card p-6 text-center mb-4">
             {/* Stars */}
             <div className="flex justify-center gap-1 mb-3">
               {[1, 2, 3].map((s) => (
@@ -280,7 +280,7 @@ function QuizStep({ onContinue }: { onContinue: () => void }) {
                   transition={{ delay: s * 0.15, type: 'spring', stiffness: 300 }}
                 >
                   <svg
-                    className={clsx('w-10 h-10', s <= starCount ? 'text-yellow-400' : 'text-gray-300')}
+                    className={clsx('w-10 h-10', s <= starCount ? 'text-yellow-400' : 'text-content-tertiary')}
                     fill="currentColor"
                     viewBox="0 0 24 24"
                   >
@@ -290,7 +290,7 @@ function QuizStep({ onContinue }: { onContinue: () => void }) {
               ))}
             </div>
 
-            <p className="text-2xl font-bold text-gray-900 mb-1">
+            <p className="text-2xl font-bold text-content mb-1">
               {correctCount}/{DEMO_QUIZ.length} correct
             </p>
 
@@ -306,7 +306,7 @@ function QuizStep({ onContinue }: { onContinue: () => void }) {
               )}
             </div>
 
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-content-tertiary">
               {correctCount === DEMO_QUIZ.length
                 ? 'Perfect score! You nailed it.'
                 : correctCount >= DEMO_QUIZ.length / 2
@@ -339,22 +339,22 @@ function SignupWallStep() {
       exit={{ opacity: 0, y: -20 }}
       className="max-w-lg mx-auto text-center"
     >
-      <div className="bg-white rounded-2xl shadow-card p-8">
+      <div className="bg-surface rounded-2xl shadow-card p-8">
         <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/30">
           <Rocket className="w-8 h-8 text-white" />
         </div>
 
-        <h2 className="text-2xl font-bold text-gray-900 mb-3">
+        <h2 className="text-2xl font-bold text-content mb-3">
           That was just Day 1, Step 1.
         </h2>
-        <p className="text-gray-600 mb-6">
+        <p className="text-content-secondary mb-6">
           A full day includes videos, more quiz challenges, coding exercises, and
           a project step. Sign up to get your own personalized 7-day curriculum
           — free.
         </p>
 
-        <div className="text-left mb-6 bg-gray-50 rounded-lg p-4">
-          <p className="text-sm font-medium text-gray-700 mb-3">
+        <div className="text-left mb-6 bg-surface-secondary rounded-lg p-4">
+          <p className="text-sm font-medium text-content-secondary mb-3">
             Your full experience includes:
           </p>
           <ul className="space-y-2">
@@ -366,7 +366,7 @@ function SignupWallStep() {
             ].map((item, i) => (
               <li
                 key={i}
-                className="flex items-center gap-2 text-sm text-gray-600"
+                className="flex items-center gap-2 text-sm text-content-secondary"
               >
                 <CheckCircle className="w-4 h-4 text-focus-500 flex-shrink-0" />
                 {item}
@@ -394,7 +394,7 @@ function SignupWallStep() {
           </Button>
         </div>
 
-        <p className="mt-4 text-xs text-gray-400">
+        <p className="mt-4 text-xs text-content-tertiary">
           No credit card required. Free plan includes 1 full curriculum.
         </p>
       </div>
@@ -409,22 +409,22 @@ export function DemoSessionPage() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-surface-secondary to-surface flex flex-col">
       {/* Top bar */}
-      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-lg border-b border-gray-200/50">
+      <header className="sticky top-0 z-40 bg-surface/80 backdrop-blur-lg border-b border-border/50">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
           <button
             onClick={() => navigate('/')}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+            className="flex items-center gap-2 text-content-secondary hover:text-content transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             <span className="text-2xl">🔥</span>
-            <span className="font-display font-bold text-lg text-gray-900">
+            <span className="font-display font-bold text-lg text-content">
               FlexForge
             </span>
           </button>
 
-          <div className="flex items-center gap-2 text-sm text-gray-500">
+          <div className="flex items-center gap-2 text-sm text-content-tertiary">
             <Sparkles className="w-4 h-4 text-brand-500" />
             <span className="hidden sm:inline">Demo Session</span>
           </div>
@@ -442,13 +442,13 @@ export function DemoSessionPage() {
                       ? 'bg-focus-500'
                       : i === step
                         ? 'bg-brand-500'
-                        : 'bg-gray-200'
+                        : 'bg-surface-tertiary'
                   )}
                 />
                 <span
                   className={clsx(
                     'text-xs hidden sm:block',
-                    i <= step ? 'text-gray-700 font-medium' : 'text-gray-400'
+                    i <= step ? 'text-content-secondary font-medium' : 'text-content-tertiary'
                   )}
                 >
                   {label}

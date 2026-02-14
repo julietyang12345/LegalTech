@@ -53,7 +53,7 @@ export function StepPills({
             {isHidden ? (
               // Tiny dot for unrevealed future steps
               <div
-                className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-gray-200 transition-all duration-300"
+                className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-surface-tertiary transition-all duration-300"
                 title={undefined}
               />
             ) : (
@@ -65,7 +65,7 @@ export function StepPills({
                   'text-xs sm:text-sm font-medium transition-all duration-200 cursor-pointer hover:scale-110',
                   isComplete && 'bg-focus-500 text-white',
                   isCurrent && 'bg-brand-500 text-white ring-2 sm:ring-4 ring-brand-200',
-                  isUpcoming && 'bg-gray-200 text-gray-500 hover:bg-gray-300',
+                  isUpcoming && 'bg-surface-tertiary text-content-tertiary hover:bg-border',
                 )}
                 title={stepLabels[step]}
               >
@@ -83,7 +83,7 @@ export function StepPills({
                 className={clsx(
                   'h-0.5 mx-0.5',
                   isHidden ? 'w-1.5 sm:w-2' : 'w-2 sm:w-4',
-                  isComplete ? 'bg-focus-500' : 'bg-gray-200'
+                  isComplete ? 'bg-focus-500' : 'bg-surface-tertiary'
                 )}
               />
             )}
@@ -126,7 +126,7 @@ export function StepPillsExpanded({
               'text-sm font-medium transition-all duration-200 whitespace-nowrap cursor-pointer hover:scale-105',
               isComplete && 'bg-focus-100 text-focus-700',
               isCurrent && 'bg-brand-500 text-white shadow-md',
-              isUpcoming && 'bg-gray-100 text-gray-400 hover:bg-gray-200',
+              isUpcoming && 'bg-surface-tertiary text-content-tertiary hover:bg-border',
             )}
           >
             {isComplete ? (

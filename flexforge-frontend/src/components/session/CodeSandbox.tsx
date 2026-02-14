@@ -142,10 +142,10 @@ function BoundaryNotification({
           boundary.layer === 'environment' ? 'text-amber-600' : 'text-blue-600'
         )} />
         <div className="flex-1">
-          <h4 className="font-semibold text-gray-900 mb-1">{boundary.title}</h4>
-          <p className="text-sm text-gray-700 mb-3">{boundary.description}</p>
+          <h4 className="font-semibold text-content mb-1">{boundary.title}</h4>
+          <p className="text-sm text-content-secondary mb-3">{boundary.description}</p>
 
-          <div className="text-sm text-gray-600 mb-3">
+          <div className="text-sm text-content-secondary mb-3">
             <p className="font-medium mb-1">What you can do:</p>
             <ul className="list-disc list-inside space-y-0.5">
               {boundary.suggestions.map((s, i) => (
@@ -155,7 +155,7 @@ function BoundaryNotification({
           </div>
 
           {boundary.showPaidOptions && (
-            <div className="text-xs text-gray-500 bg-white/50 rounded p-2 border border-gray-200">
+            <div className="text-xs text-content-tertiary bg-surface/50 rounded p-2 border border-border">
               <p className="font-medium mb-1 flex items-center gap-1">
                 <Lightbulb className="w-3 h-3" />
                 Going Further (Production Solutions):
@@ -839,7 +839,7 @@ export function CodeSandbox({
       return (
         <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900 text-gray-100">
           <Loader2 className="w-8 h-8 animate-spin text-purple-500 mb-3" />
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-content-tertiary">
             {isPyodideLoading ? 'Loading Python runtime...' : 'Running...'}
           </p>
         </div>
@@ -849,10 +849,10 @@ export function CodeSandbox({
     // Copy-only mode: show instructions
     if (sandboxMode === 'copy_only') {
       return (
-        <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 p-6 text-center">
+        <div className="w-full h-full flex flex-col items-center justify-center bg-surface-secondary p-6 text-center">
           <AlertTriangle className="w-12 h-12 text-amber-500 mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Local Environment Required</h3>
-          <p className="text-sm text-gray-600 mb-4 max-w-md">
+          <h3 className="text-lg font-semibold text-content mb-2">Local Environment Required</h3>
+          <p className="text-sm text-content-secondary mb-4 max-w-md">
             This code requires Docker, servers, or multi-service architecture that can't run in the browser.
           </p>
           <div className="flex gap-3">
@@ -864,7 +864,7 @@ export function CodeSandbox({
               {copied === 'code' ? 'Copied!' : 'Copy Code'}
             </button>
           </div>
-          <p className="text-xs text-gray-400 mt-4">
+          <p className="text-xs text-content-tertiary mt-4">
             Run this code locally with Docker, VS Code, or your preferred IDE
           </p>
         </div>
@@ -902,7 +902,7 @@ export function CodeSandbox({
       return (
         <iframe
           ref={simpleExecutor.iframeRef}
-          className="w-full h-full bg-white"
+          className="w-full h-full bg-surface"
           title="Code Preview"
           sandbox="allow-scripts"
         />
@@ -942,7 +942,7 @@ export function CodeSandbox({
       case 'copy_only':
         return { label: 'Local Only', icon: Copy, color: 'bg-amber-100 text-amber-700' };
       default:
-        return { label: language.toUpperCase(), icon: Code2, color: 'bg-gray-200 text-gray-600' };
+        return { label: language.toUpperCase(), icon: Code2, color: 'bg-surface-tertiary text-content-secondary' };
     }
   };
 
@@ -952,15 +952,15 @@ export function CodeSandbox({
     <motion.div
       layout
       className={clsx(
-        'rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm',
+        'rounded-xl border border-border overflow-hidden bg-surface shadow-sm',
         isExpanded && 'fixed inset-4 z-50'
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-200">
+      <div className="flex items-center justify-between px-4 py-2 bg-surface-secondary border-b border-border">
         <div className="flex items-center gap-2">
-          <Code2 className="w-4 h-4 text-gray-500" />
-          <span className="text-sm font-medium text-gray-700">{title}</span>
+          <Code2 className="w-4 h-4 text-content-tertiary" />
+          <span className="text-sm font-medium text-content-secondary">{title}</span>
           <span className={clsx('flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium', modeInfo.color)}>
             <modeInfo.icon className="w-3 h-3" />
             {modeInfo.label}
@@ -970,7 +970,7 @@ export function CodeSandbox({
           {sandboxMode === 'codesandbox' && sandboxId && (
             <button
               onClick={openInCodeSandbox}
-              className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
+              className="p-1.5 text-content-tertiary hover:text-content-secondary hover:bg-surface-tertiary rounded transition-colors"
               title="Open in CodeSandbox"
             >
               <ExternalLink className="w-4 h-4" />
@@ -978,14 +978,14 @@ export function CodeSandbox({
           )}
           <button
             onClick={resetCode}
-            className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
+            className="p-1.5 text-content-tertiary hover:text-content-secondary hover:bg-surface-tertiary rounded transition-colors"
             title="Reset code"
           >
             <RotateCcw className="w-4 h-4" />
           </button>
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
+            className="p-1.5 text-content-tertiary hover:text-content-secondary hover:bg-surface-tertiary rounded transition-colors"
             title={isExpanded ? 'Minimize' : 'Expand'}
           >
             {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
@@ -994,14 +994,14 @@ export function CodeSandbox({
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200">
+      <div className="flex border-b border-border">
         <button
           onClick={() => setActiveTab('code')}
           className={clsx(
             'flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors',
             activeTab === 'code'
               ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              : 'text-content-secondary hover:text-content hover:bg-surface-secondary'
           )}
         >
           <Code2 className="w-4 h-4" />
@@ -1013,7 +1013,7 @@ export function CodeSandbox({
             'flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors',
             activeTab === 'preview'
               ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              : 'text-content-secondary hover:text-content hover:bg-surface-secondary'
           )}
         >
           <Eye className="w-4 h-4" />
@@ -1045,7 +1045,7 @@ export function CodeSandbox({
       </div>
 
       {/* Run Button + Cloud Options */}
-      <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 space-y-2">
+      <div className="px-4 py-3 bg-surface-secondary border-t border-border space-y-2">
         {/* Copy-only mode: just show copy button */}
         {sandboxMode === 'copy_only' ? (
           <div className="space-y-2">
@@ -1065,7 +1065,7 @@ export function CodeSandbox({
               </button>
               <button
                 onClick={openInCodespaces}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium text-gray-700"
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-border rounded-lg hover:bg-surface-secondary transition-colors font-medium text-content-secondary"
               >
                 <Code2 className="w-4 h-4" />
                 Open VS Code
@@ -1101,7 +1101,7 @@ export function CodeSandbox({
             <div className="flex gap-2">
               <button
                 onClick={() => copyToClipboard(code, 'code')}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-content-secondary hover:bg-surface-tertiary rounded-lg transition-colors border border-border"
               >
                 {copied === 'code' ? '✓ Copied' : 'Copy Code'}
               </button>
@@ -1147,7 +1147,7 @@ export function CodeSandbox({
                 </button>
                 <button
                   onClick={() => copyToClipboard(code, 'code')}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-content-secondary hover:bg-surface-tertiary rounded-lg transition-colors border border-border"
                 >
                   {copied === 'code' ? '✓' : '📋'} Copy
                 </button>
@@ -1184,7 +1184,7 @@ export function ExternalSandbox({
     : `https://stackblitz.com/edit/${sandboxId}?embed=1&file=index.js`;
 
   return (
-    <div className="rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+    <div className="rounded-xl overflow-hidden border border-border shadow-sm">
       <iframe
         src={src}
         style={{ width: '100%', height: `${height}px`, border: 0 }}

@@ -219,8 +219,8 @@ export function ShowcasePage() {
     <div className="max-w-5xl mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Your Showcase</h1>
-        <p className="text-gray-600">
+        <h1 className="text-2xl font-bold text-content mb-2">Your Showcase</h1>
+        <p className="text-content-secondary">
           Track your learning journey. Select skills to discover combo project ideas!
         </p>
       </div>
@@ -230,22 +230,22 @@ export function ShowcasePage() {
         <div>
           <div className="flex items-center gap-2 mb-4">
             <Sparkles className="w-5 h-5 text-brand-500" />
-            <h2 className="font-semibold text-gray-900">Your Skill Tree</h2>
+            <h2 className="font-semibold text-content">Your Skill Tree</h2>
           </div>
 
           {isLoading ? (
             <Card className="h-[500px] flex items-center justify-center">
               <div className="text-center">
                 <div className="w-12 h-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                <p className="text-gray-500">Loading your skills...</p>
+                <p className="text-content-tertiary">Loading your skills...</p>
               </div>
             </Card>
           ) : skills.length === 0 ? (
             <Card className="h-[300px] flex items-center justify-center">
               <div className="text-center">
                 <Sparkles className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                <h3 className="font-semibold text-gray-900 mb-2">No skills yet</h3>
-                <p className="text-gray-500 mb-4">Start a learning session to build your skill tree!</p>
+                <h3 className="font-semibold text-content mb-2">No skills yet</h3>
+                <p className="text-content-tertiary mb-4">Start a learning session to build your skill tree!</p>
                 <Button onClick={() => navigate('/plan')}>
                   Start Learning
                 </Button>
@@ -269,7 +269,7 @@ export function ShowcasePage() {
           )}
 
           <div className="mt-4 flex items-center justify-between">
-            <div className="flex items-center gap-4 text-xs text-gray-500">
+            <div className="flex items-center gap-4 text-xs text-content-tertiary">
               <span className="flex items-center gap-1">
                 <span className="w-3 h-3 rounded bg-green-500" />
                 Complete
@@ -283,7 +283,7 @@ export function ShowcasePage() {
                 Planned
               </span>
             </div>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-content-tertiary">
               Click skills for AI analysis • Check ✓ for combos
             </p>
           </div>
@@ -292,8 +292,8 @@ export function ShowcasePage() {
         {/* CTA to Community */}
         <Card className="p-6 text-center">
           <Users className="w-10 h-10 mx-auto text-brand-500 mb-3" />
-          <h3 className="font-semibold text-gray-900 mb-2">Join the Community</h3>
-          <p className="text-sm text-gray-600 mb-4">
+          <h3 className="font-semibold text-content mb-2">Join the Community</h3>
+          <p className="text-sm text-content-secondary mb-4">
             Share your projects, ask questions, and connect with other learners.
           </p>
           <Button onClick={() => navigate('/community')} className="inline-flex items-center gap-2">
@@ -318,14 +318,14 @@ export function ShowcasePage() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6"
+              className="relative bg-surface rounded-xl shadow-xl w-full max-w-md p-6"
             >
               {/* Header */}
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Start New Course?</h3>
+                <h3 className="text-lg font-semibold text-content">Start New Course?</h3>
                 <button
                   onClick={() => setShowStartConfirm(false)}
-                  className="p-2 text-gray-400 hover:text-gray-600 rounded-lg"
+                  className="p-2 text-content-tertiary hover:text-content-secondary rounded-lg"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -336,20 +336,20 @@ export function ShowcasePage() {
                 {/* Skill preview */}
                 <div className="p-4 bg-gradient-to-br from-brand-50 to-purple-50 rounded-xl border border-brand-200">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center">
+                    <div className="w-12 h-12 rounded-xl bg-surface shadow-sm flex items-center justify-center">
                       <BookOpen className="w-6 h-6 text-brand-600" />
                     </div>
                     <div>
-                      <p className="font-semibold text-gray-900">{selectedSkillToStart}</p>
-                      <p className="text-sm text-gray-500">New learning journey</p>
+                      <p className="font-semibold text-content">{selectedSkillToStart}</p>
+                      <p className="text-sm text-content-tertiary">New learning journey</p>
                     </div>
                   </div>
                 </div>
 
                 {/* Rate limit info */}
                 <div className="flex items-center gap-2 text-sm">
-                  <Clock className="w-4 h-4 text-gray-400" />
-                  <span className="text-gray-600">
+                  <Clock className="w-4 h-4 text-content-tertiary" />
+                  <span className="text-content-secondary">
                     {courseRateLimit.limit}
                     {courseRateLimit.remaining !== undefined && courseRateLimit.remaining > 0 && (
                       <span className="text-brand-600 ml-1">
@@ -380,7 +380,7 @@ export function ShowcasePage() {
 
                 {/* Info text */}
                 {courseRateLimit.allowed && (
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-content-tertiary">
                     You'll be guided through setting up your personalized learning path for <strong>{selectedSkillToStart}</strong>.
                   </p>
                 )}

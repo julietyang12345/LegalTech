@@ -50,12 +50,12 @@ function TimelineDayItem({
   const getCircleStyles = () => {
     if (isCompleted || isSkipped) return 'bg-gray-800 text-white border-gray-800';
     if (isInProgress || isCurrentDay) return 'bg-gray-900 text-white border-gray-900';
-    return 'bg-gray-100 text-gray-400 border-gray-200';
+    return 'bg-surface-tertiary text-content-tertiary border-border';
   };
 
   const getLineStyles = () => {
     if (isCompleted || isSkipped) return 'bg-gray-400';
-    return 'bg-gray-200';
+    return 'bg-surface-tertiary';
   };
 
   return (
@@ -86,27 +86,27 @@ function TimelineDayItem({
         <div
           className={clsx(
             'p-3 rounded-lg border transition-all',
-            (isInProgress || isCurrentDay) && 'bg-gray-100 border-gray-300',
-            isCompleted && 'bg-gray-50 border-gray-200',
-            !isInProgress && !isCurrentDay && !isCompleted && 'bg-white border-gray-200'
+            (isInProgress || isCurrentDay) && 'bg-surface-tertiary border-border',
+            isCompleted && 'bg-surface-secondary border-border',
+            !isInProgress && !isCurrentDay && !isCompleted && 'bg-surface border-border'
           )}
         >
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-xs font-medium text-gray-500">Day {day}</span>
+                <span className="text-xs font-medium text-content-tertiary">Day {day}</span>
                 {isSkipped && (
-                  <span className="px-1.5 py-0.5 text-xs bg-gray-200 text-gray-600 rounded">
+                  <span className="px-1.5 py-0.5 text-xs bg-surface-tertiary text-content-secondary rounded">
                     Mastered
                   </span>
                 )}
               </div>
-              <h3 className="font-medium text-gray-900 text-sm line-clamp-1">{title}</h3>
+              <h3 className="font-medium text-content text-sm line-clamp-1">{title}</h3>
               {teaser && (
-                <p className="text-gray-500 text-xs mt-0.5 line-clamp-1">{teaser}</p>
+                <p className="text-content-tertiary text-xs mt-0.5 line-clamp-1">{teaser}</p>
               )}
             </div>
-            <div className="flex items-center gap-1 text-gray-400 flex-shrink-0">
+            <div className="flex items-center gap-1 text-content-tertiary flex-shrink-0">
               <Clock className="w-3 h-3" />
               <span className="text-xs">{estimatedMinutes}m</span>
             </div>
@@ -139,21 +139,21 @@ function CurriculumModal({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="relative bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col"
+        className="relative bg-surface rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col"
       >
         {/* Header */}
-        <div className="p-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+        <div className="p-4 border-b border-border flex items-center justify-between flex-shrink-0">
           <div>
-            <h2 className="font-semibold text-gray-900">{durationDays}-Day Learning Path</h2>
-            <p className="text-sm text-gray-500">{skillName} • {progress}% complete</p>
+            <h2 className="font-semibold text-content">{durationDays}-Day Learning Path</h2>
+            <p className="text-sm text-content-tertiary">{skillName} • {progress}% complete</p>
           </div>
-          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg">
+          <button onClick={onClose} className="p-2 text-content-tertiary hover:text-content-secondary rounded-lg">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Progress bar */}
-        <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0">
+        <div className="px-4 py-3 border-b border-border-secondary flex-shrink-0">
           <ProgressBar value={currentDay - 1} max={durationDays} />
         </div>
 
@@ -184,16 +184,16 @@ function KnowledgeRecall({ yesterdayTopic, question }: { yesterdayTopic: string;
       <div className="p-6">
         <div className="flex items-center gap-2 mb-3">
           <span className="text-xl">🧠</span>
-          <h3 className="font-semibold text-gray-900">Knowledge Recall</h3>
+          <h3 className="font-semibold text-content">Knowledge Recall</h3>
         </div>
-        <p className="text-sm text-gray-600 mb-4">
+        <p className="text-sm text-content-secondary mb-4">
           Quick recall before we start:
         </p>
-        <div className="bg-white rounded-lg p-4 border border-brand-200">
-          <p className="text-gray-800 font-medium mb-2">
+        <div className="bg-surface rounded-lg p-4 border border-brand-200">
+          <p className="text-content font-medium mb-2">
             Yesterday you learned about <span className="text-brand-600">{yesterdayTopic}</span>.
           </p>
-          <p className="text-gray-700">{question}</p>
+          <p className="text-content-secondary">{question}</p>
         </div>
         {!revealed && (
           <button
@@ -207,7 +207,7 @@ function KnowledgeRecall({ yesterdayTopic, question }: { yesterdayTopic: string;
           <motion.p
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mt-4 text-sm text-gray-600 italic"
+            className="mt-4 text-sm text-content-secondary italic"
           >
             ✓ Great! You've primed your brain. Let's build on that foundation today.
           </motion.p>
@@ -228,18 +228,18 @@ function BossProjectCountdown({ daysUntil, projectTitle, todayContribution }: {
       <div className="p-6">
         <div className="flex items-center gap-2 mb-3">
           <Trophy className="w-5 h-5 text-purple-600" />
-          <h3 className="font-semibold text-gray-900">Boss Project Countdown</h3>
+          <h3 className="font-semibold text-content">Boss Project Countdown</h3>
         </div>
         <div className="flex items-center gap-3 mb-4">
           <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
             <span className="text-xl font-bold text-purple-600">{daysUntil}</span>
           </div>
           <div>
-            <p className="font-medium text-gray-900">{projectTitle}</p>
-            <p className="text-sm text-gray-500">days until Boss Day</p>
+            <p className="font-medium text-content">{projectTitle}</p>
+            <p className="text-sm text-content-tertiary">days until Boss Day</p>
           </div>
         </div>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-content-secondary">
           <span className="font-medium text-purple-600">Today's milestone:</span>{' '}
           {todayContribution}
         </p>
@@ -260,8 +260,8 @@ function SessionCompleteState({ nextDayTopic }: { nextDayTopic: string }) {
                       flex items-center justify-center">
         <span className="text-4xl">🎉</span>
       </div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">You crushed it today!</h2>
-      <p className="text-gray-600 mb-8">
+      <h2 className="text-2xl font-bold text-content mb-2">You crushed it today!</h2>
+      <p className="text-content-secondary mb-8">
         Come back tomorrow for: <span className="font-medium text-brand-600">{nextDayTopic}</span>
       </p>
       <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -272,7 +272,7 @@ function SessionCompleteState({ nextDayTopic }: { nextDayTopic: string }) {
           Work on Boss Project
         </Button>
       </div>
-      <p className="mt-8 text-sm text-gray-500">See you tomorrow! 👋</p>
+      <p className="mt-8 text-sm text-content-tertiary">See you tomorrow! 👋</p>
     </motion.div>
   );
 }
@@ -291,8 +291,8 @@ function NoSessionState() {
                       flex items-center justify-center">
         <Sparkles className="w-10 h-10 text-white" />
       </div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-3">Ready to learn something new?</h2>
-      <p className="text-gray-600 mb-8 max-w-md mx-auto">
+      <h2 className="text-2xl font-bold text-content mb-3">Ready to learn something new?</h2>
+      <p className="text-content-secondary mb-8 max-w-md mx-auto">
         Start your learning journey with an AI-generated curriculum tailored just for you.
       </p>
       <Button
@@ -306,7 +306,7 @@ function NoSessionState() {
       {/* Link to existing courses */}
       <button
         onClick={() => navigate('/vault')}
-        className="mt-6 text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1.5 mx-auto transition-colors"
+        className="mt-6 text-sm text-content-tertiary hover:text-content-secondary flex items-center gap-1.5 mx-auto transition-colors"
       >
         <BookOpen className="w-4 h-4" />
         Previous Sessions
@@ -439,9 +439,9 @@ export function TodayPage() {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12">
         <div className="animate-pulse space-y-6">
-          <div className="h-24 bg-gray-200 rounded-xl" />
-          <div className="h-40 bg-gray-200 rounded-xl" />
-          <div className="h-32 bg-gray-200 rounded-xl" />
+          <div className="h-24 bg-surface-tertiary rounded-xl" />
+          <div className="h-40 bg-surface-tertiary rounded-xl" />
+          <div className="h-32 bg-surface-tertiary rounded-xl" />
         </div>
       </div>
     );
@@ -473,9 +473,9 @@ export function TodayPage() {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12">
         <div className="animate-pulse space-y-6">
-          <div className="h-24 bg-gray-200 rounded-xl" />
-          <div className="h-40 bg-gray-200 rounded-xl" />
-          <div className="h-32 bg-gray-200 rounded-xl" />
+          <div className="h-24 bg-surface-tertiary rounded-xl" />
+          <div className="h-40 bg-surface-tertiary rounded-xl" />
+          <div className="h-32 bg-surface-tertiary rounded-xl" />
         </div>
       </div>
     );
@@ -519,7 +519,7 @@ export function TodayPage() {
       >
         <div className="flex items-center justify-center gap-3 mb-2">
           <span className="text-3xl">😊</span>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-2xl font-bold text-content">
             Good {new Date().getHours() < 12 ? 'morning' : 'afternoon'}, {user?.name || 'friend'}!
           </h1>
         </div>
@@ -549,7 +549,7 @@ export function TodayPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
       >
-        <Card className="bg-white border-2 border-brand-100">
+        <Card className="bg-surface border-2 border-brand-100">
           <div className="p-8 text-center">
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-50 text-brand-600 
                           rounded-full text-sm font-medium mb-4">
@@ -557,27 +557,27 @@ export function TodayPage() {
               Day {activeSession.currentDay} of {activeSession.durationDays}
             </div>
             
-            <h2 className="text-xl font-bold text-gray-900 mb-2">
+            <h2 className="text-xl font-bold text-content mb-2">
               {currentDayData?.title || `Day ${activeSession.currentDay}`}
             </h2>
 
             {/* Show objectives or skeleton preview */}
             {currentDayData?.objectives && currentDayData.objectives.length > 0 ? (
-              <p className="text-gray-600 mb-6">
+              <p className="text-content-secondary mb-6">
                 {currentDayData.objectives[0]}
               </p>
             ) : currentDayData?.skeleton?.videoDescription ? (
-              <p className="text-gray-600 mb-6">
+              <p className="text-content-secondary mb-6">
                 {currentDayData.skeleton.videoDescription}
               </p>
             ) : (
-              <p className="text-gray-600 mb-6">
+              <p className="text-content-secondary mb-6">
                 {currentDayData?.prePrompt?.primeQuestions?.[0] ||
                   'Ready to learn something new today?'}
               </p>
             )}
 
-            <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-6">
+            <div className="flex items-center justify-center gap-2 text-sm text-content-tertiary mb-6">
               <span>⏱️ ~{currentDayData?.estimatedMinutes || 45} minutes</span>
             </div>
 
@@ -599,11 +599,11 @@ export function TodayPage() {
 
 
             {/* Generate New Course option */}
-            <div className="mt-6 pt-4 border-t border-gray-100">
+            <div className="mt-6 pt-4 border-t border-border-secondary">
               <button
                 onClick={handleRegenerateCurriculum}
                 disabled={isRegenerating || isDayLoading}
-                className="text-sm text-gray-400 hover:text-gray-600 flex items-center gap-1.5 mx-auto
+                className="text-sm text-content-tertiary hover:text-content-secondary flex items-center gap-1.5 mx-auto
                          disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {isRegenerating ? (
@@ -645,10 +645,10 @@ export function TodayPage() {
         <Card padding="sm">
           <div className="p-4">
             <div className="flex justify-between items-center mb-2">
-              <span className="text-sm font-medium text-gray-700">Sprint Progress</span>
+              <span className="text-sm font-medium text-content-secondary">Sprint Progress</span>
               <button
                 onClick={() => setShowCurriculum(true)}
-                className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
+                className="text-sm text-content-secondary hover:text-content flex items-center gap-1"
               >
                 <Calendar className="w-3.5 h-3.5" />
                 View Full Curriculum
@@ -658,7 +658,7 @@ export function TodayPage() {
               value={activeSession.currentDay}
               max={activeSession.durationDays}
             />
-            <p className="text-xs text-gray-500 mt-2">
+            <p className="text-xs text-content-tertiary mt-2">
               Day {activeSession.currentDay} of {activeSession.durationDays} • {activeSession.durationDays ? Math.round((activeSession.currentDay / activeSession.durationDays) * 100) : 0}% complete
             </p>
           </div>

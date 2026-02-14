@@ -80,6 +80,7 @@ export interface User {
     notifications?: boolean;
     dailyReminders?: boolean;
     weeklyDigest?: boolean;
+    theme?: 'light' | 'dark';
     learner?: LearnerPrefs;
   };
 }

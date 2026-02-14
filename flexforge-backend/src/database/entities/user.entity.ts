@@ -128,6 +128,7 @@ export class User {
     notifications?: boolean;
     dailyReminders?: boolean;
     weeklyDigest?: boolean;
+    theme?: 'light' | 'dark';
     learner?: LearnerPrefs; // AI-assisted onboarding preferences
     plannedSkills?: Array<{
       skill: string;

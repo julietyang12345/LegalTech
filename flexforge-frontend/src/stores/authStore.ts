@@ -3,6 +3,14 @@ import { persist } from 'zustand/middleware';
 import { QuotaTier, getEffectiveTier } from '@/types';
 import type { User } from '@/types';
 import { authService } from '@/services/authService';
+import { useThemeStore } from '@/stores/themeStore';
+
+function syncThemeFromUser(user: User) {
+  const theme = user.preferences?.theme;
+  if (theme === 'light' || theme === 'dark') {
+    useThemeStore.getState().setMode(theme);
+  }
+}
 
 interface AuthState {
   user: User | null;
@@ -56,6 +64,7 @@ export const useAuthStore = create<AuthState>()(
             requiresVerification: false,
             pendingVerificationEmail: null,
           });
+          syncThemeFromUser(response.user);
         } catch (error: any) {
           set({
             error: error.response?.data?.message || 'Login failed',
@@ -76,6 +85,7 @@ export const useAuthStore = create<AuthState>()(
             requiresVerification: false,
             pendingVerificationEmail: null,
           });
+          syncThemeFromUser(response.user);
           return { isNewUser: response.isNewUser ?? false };
         } catch (error: any) {
           set({
@@ -142,6 +152,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const response = await authService.getProfile();
           set({ user: response.user, isLoading: false });
+          syncThemeFromUser(response.user);
         } catch (_error) {
           set({ isLoading: false });
           get().logout();

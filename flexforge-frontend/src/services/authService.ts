@@ -115,6 +115,11 @@ export const authService = {
     return response;
   },
 
+  async updatePreferences(preferences: Record<string, unknown>): Promise<{ message: string; preferences: Record<string, unknown> }> {
+    const { data: response } = await api.patch<{ message: string; preferences: Record<string, unknown> }>('/users/preferences', preferences);
+    return response;
+  },
+
   // Password Reset & Email Verification
 
   async forgotPassword(dto: ForgotPasswordDto): Promise<MessageResponse> {

@@ -65,10 +65,14 @@ export class UserController {
       notifications?: boolean;
       dailyReminders?: boolean;
       weeklyDigest?: boolean;
+      theme?: 'light' | 'dark';
     },
   ) {
+    // Deep-merge: preserve existing preferences (learner, plannedSkills, etc.)
+    const existing = await this.userService.findById(req.user.id);
+    const merged = { ...(existing.preferences || {}), ...preferences };
     const user = await this.userService.updateProfile(req.user.id, {
-      preferences,
+      preferences: merged,
     });
 
     return {

@@ -230,7 +230,7 @@ function BrainAnimation() {
 function ShimmerProgress({ progress }: { progress: number }) {
   return (
     <div className="w-full max-w-xs mx-auto">
-      <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+      <div className="h-2 bg-surface-tertiary rounded-full overflow-hidden">
         <motion.div
           className="h-full relative"
           style={{
@@ -332,7 +332,7 @@ export function ExerciseLoadingScreen({ type, skillName, dayNumber }: ExerciseLo
         transition={{ delay: 0.2 }}
         className="text-center mb-6"
       >
-        <h2 className="text-xl font-bold text-gray-800 mb-1">
+        <h2 className="text-xl font-bold text-content mb-1">
           {type === 'intensive' && 'Intensive Practice'}
           {type === 'reflection' && 'Preparing Reflection'}
           {type === 'quiz' && 'Loading Practice'}
@@ -340,7 +340,7 @@ export function ExerciseLoadingScreen({ type, skillName, dayNumber }: ExerciseLo
           {type === 'task' && 'Preparing Exercises'}
         </h2>
         {skillName && (
-          <p className="text-gray-500 text-sm">
+          <p className="text-content-tertiary text-sm">
             {dayNumber ? `Day ${dayNumber} - ` : ''}{skillName}
           </p>
         )}
@@ -374,7 +374,7 @@ export function ExerciseLoadingScreen({ type, skillName, dayNumber }: ExerciseLo
         transition={{ delay: 1 }}
         className="max-w-sm text-center"
       >
-        <div className="inline-flex items-center gap-2 px-4 py-2 bg-purple-50 rounded-full mb-2">
+        <div className="inline-flex items-center gap-2 px-4 py-2 bg-purple-50 dark:bg-purple-900/30 rounded-full mb-2">
           <Sparkles className="w-4 h-4 text-purple-500" />
           <span className="text-xs font-medium text-purple-600">Did you know?</span>
         </div>
@@ -384,7 +384,7 @@ export function ExerciseLoadingScreen({ type, skillName, dayNumber }: ExerciseLo
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="text-sm text-gray-500"
+            className="text-sm text-content-tertiary"
           >
             {FUN_FACTS[factIndex]}
           </motion.p>

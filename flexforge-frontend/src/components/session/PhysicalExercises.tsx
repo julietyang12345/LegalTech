@@ -22,12 +22,12 @@ function QuestionStreamingSkeleton({ title, current, total }: { title?: string; 
   return (
     <div className="space-y-4">
       {title && <ExerciseHeader title={title} progress={{ current, total }} />}
-      <div className="bg-white rounded-lg p-6 shadow-sm border animate-pulse">
-        <div className="h-5 bg-gray-200 rounded w-3/4 mb-4" />
+      <div className="bg-surface rounded-lg p-6 shadow-sm border animate-pulse">
+        <div className="h-5 bg-surface-tertiary rounded w-3/4 mb-4" />
         <div className="space-y-2">
-          <div className="h-12 bg-gray-100 rounded-lg" />
-          <div className="h-12 bg-gray-100 rounded-lg" />
-          <div className="h-12 bg-gray-100 rounded-lg" />
+          <div className="h-12 bg-surface-tertiary rounded-lg" />
+          <div className="h-12 bg-surface-tertiary rounded-lg" />
+          <div className="h-12 bg-surface-tertiary rounded-lg" />
         </div>
       </div>
     </div>
@@ -44,15 +44,15 @@ function ExerciseHeader({ title, instructions, progress }: ExerciseHeaderProps) 
   return (
     <div className="mb-4">
       <div className="flex justify-between items-center mb-2">
-        <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
-        <span className="text-sm text-gray-500">
+        <h3 className="text-lg font-semibold text-content">{title}</h3>
+        <span className="text-sm text-content-tertiary">
           {progress.current} / {progress.total}
         </span>
       </div>
       {instructions && (
-        <p className="text-sm text-gray-600">{instructions}</p>
+        <p className="text-sm text-content-secondary">{instructions}</p>
       )}
-      <div className="mt-2 h-1 bg-gray-200 rounded-full overflow-hidden">
+      <div className="mt-2 h-1 bg-surface-tertiary rounded-full overflow-hidden">
         <motion.div
           className="h-full bg-brand-500"
           initial={{ width: 0 }}
@@ -148,33 +148,33 @@ export function FormCheckExercise({ section, onComplete, savedProgress, onProgre
         progress={{ current: checkedCount, total: items.length }}
       />
 
-      <div className="bg-white rounded-lg p-6 shadow-sm border">
+      <div className="bg-surface rounded-lg p-6 shadow-sm border">
         <div className="space-y-4">
           {items.map((item) => {
             const isChecked = checkedItems.has(item.id);
             return (
-              <div key={item.id} className="border-b border-gray-100 pb-4 last:border-0 last:pb-0">
+              <div key={item.id} className="border-b border-border-secondary pb-4 last:border-0 last:pb-0">
                 <button
                   onClick={() => toggleItem(item.id)}
                   className={clsx(
                     'w-full flex items-start gap-3 text-left transition-all p-3 rounded-lg',
-                    isChecked ? 'bg-green-50' : 'hover:bg-gray-50'
+                    isChecked ? 'bg-green-50' : 'hover:bg-surface-secondary'
                   )}
                 >
                   <div className={clsx(
                     'w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5',
-                    isChecked ? 'bg-green-500 border-green-500' : 'border-gray-300'
+                    isChecked ? 'bg-green-500 border-green-500' : 'border-border'
                   )}>
                     {isChecked && <Check className="w-4 h-4 text-white" />}
                   </div>
                   <div className="flex-1">
                     <p className={clsx(
                       'font-medium',
-                      isChecked ? 'text-green-800' : 'text-gray-800'
+                      isChecked ? 'text-green-800' : 'text-content'
                     )}>
                       {item.checkpoint}
                     </p>
-                    <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+                    <p className="text-sm text-content-secondary mt-1">{item.description}</p>
                   </div>
                 </button>
 
@@ -314,7 +314,7 @@ export function SafetyCheckExercise({ section, onComplete, savedProgress, onProg
         progress={{ current: currentIndex + 1, total: items.length }}
       />
 
-      <div className="bg-white rounded-lg p-6 shadow-sm border">
+      <div className="bg-surface rounded-lg p-6 shadow-sm border">
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
           <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
           <p className="text-sm text-red-800">
@@ -322,7 +322,7 @@ export function SafetyCheckExercise({ section, onComplete, savedProgress, onProg
           </p>
         </div>
 
-        <p className="text-lg font-medium text-gray-800 mb-6">{currentItem.question}</p>
+        <p className="text-lg font-medium text-content mb-6">{currentItem.question}</p>
 
         {!hasAnswered && (
           <div className="flex gap-4">
@@ -367,7 +367,7 @@ export function SafetyCheckExercise({ section, onComplete, savedProgress, onProg
                   : `The correct answer is: ${currentItem.correctAnswer ? 'True' : 'False'}`}
               </p>
             </div>
-            <p className="text-sm text-gray-700">{currentItem.explanation}</p>
+            <p className="text-sm text-content-secondary">{currentItem.explanation}</p>
           </motion.div>
         )}
       </div>

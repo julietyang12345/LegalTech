@@ -97,10 +97,10 @@ function VideoCard({
   // No video found - show minimal message without video frame
   if (!embedUrl) {
     return (
-      <div className={`rounded-xl overflow-hidden ${isAlternative ? 'border-2' : ''} ${isActive ? 'border-brand-500 ring-2 ring-brand-200' : 'border-gray-200'}`}>
+      <div className={`rounded-xl overflow-hidden ${isAlternative ? 'border-2' : ''} ${isActive ? 'border-brand-500 ring-2 ring-brand-200' : 'border-border'}`}>
         <div className="p-6">
-          <div className="flex items-center gap-3 text-gray-500">
-            <Info className="w-5 h-5 text-gray-400" />
+          <div className="flex items-center gap-3 text-content-tertiary">
+            <Info className="w-5 h-5 text-content-tertiary" />
             <p className="text-sm">No matching video found for this topic.</p>
           </div>
         </div>
@@ -109,7 +109,7 @@ function VideoCard({
   }
 
   return (
-    <div className={`rounded-xl overflow-hidden ${isAlternative ? 'border-2' : ''} ${isActive ? 'border-brand-500 ring-2 ring-brand-200' : 'border-gray-200'}`}>
+    <div className={`rounded-xl overflow-hidden ${isAlternative ? 'border-2' : ''} ${isActive ? 'border-brand-500 ring-2 ring-brand-200' : 'border-border'}`}>
       {/* Video embed */}
       <div className={`aspect-video bg-gray-900 relative ${isAlternative ? 'max-h-48' : ''}`}>
         <iframe
@@ -124,10 +124,10 @@ function VideoCard({
       </div>
 
       {/* Video source attribution */}
-      <div className={`flex items-center gap-2 ${isAlternative ? 'px-4 py-2' : 'px-6 py-2'} bg-gray-50 border-b border-gray-100 text-xs text-gray-500`}>
+      <div className={`flex items-center gap-2 ${isAlternative ? 'px-4 py-2' : 'px-6 py-2'} bg-surface-secondary border-b border-border-secondary text-xs text-content-tertiary`}>
         <Youtube className="w-4 h-4 text-red-500" />
         <span>
-          Source: <span className="font-medium text-gray-700">{video?.channelName || 'YouTube'}</span> on YouTube
+          Source: <span className="font-medium text-content-secondary">{video?.channelName || 'YouTube'}</span> on YouTube
         </span>
       </div>
 
@@ -135,11 +135,11 @@ function VideoCard({
       <div className={isAlternative ? 'p-4' : 'p-6'}>
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <h3 className={`font-semibold text-gray-900 ${isAlternative ? 'text-sm' : 'text-lg'} line-clamp-2`}>
+            <h3 className={`font-semibold text-content ${isAlternative ? 'text-sm' : 'text-lg'} line-clamp-2`}>
               {video?.title || fallbackTitle}
             </h3>
             {video?.channelName && (
-              <p className="text-xs text-gray-500 mt-1">{video.channelName}</p>
+              <p className="text-xs text-content-tertiary mt-1">{video.channelName}</p>
             )}
             {/* Content type badge */}
             {video?.contentType && (
@@ -165,7 +165,7 @@ function VideoCard({
 
         {/* Timestamps */}
         {video?.startTime && video?.endTime && (
-          <div className="flex items-center gap-2 text-xs text-gray-500 mt-2">
+          <div className="flex items-center gap-2 text-xs text-content-tertiary mt-2">
             <Clock className="w-3 h-3" />
             <span>Watch {video.startTime} → {video.endTime}</span>
           </div>
@@ -215,16 +215,16 @@ function AIExplanation({
                 <Sparkles className="w-5 h-5 text-purple-600" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900">AI-Curated Learning</h3>
+                <h3 className="font-semibold text-content">AI-Curated Learning</h3>
                 {video.reason && (
-                  <p className="text-sm text-gray-600 mt-0.5">{video.reason}</p>
+                  <p className="text-sm text-content-secondary mt-0.5">{video.reason}</p>
                 )}
               </div>
             </div>
             {showVideoOption && onSwitchToVideo && (
               <button
                 onClick={onSwitchToVideo}
-                className="flex items-center gap-1.5 text-xs font-medium text-gray-600 bg-white hover:bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-lg transition-colors shrink-0"
+                className="flex items-center gap-1.5 text-xs font-medium text-content-secondary bg-surface hover:bg-surface-secondary border border-border px-3 py-1.5 rounded-lg transition-colors shrink-0"
               >
                 <Video className="w-3.5 h-3.5" />
                 Watch video instead
@@ -243,10 +243,10 @@ function AIExplanation({
                 <BookOpen className="w-5 h-5 text-purple-600" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900">{concept}</h3>
+                <h3 className="font-semibold text-content">{concept}</h3>
               </div>
             </div>
-            <div className="text-gray-700 leading-relaxed whitespace-pre-line">
+            <div className="text-content-secondary leading-relaxed whitespace-pre-line">
               {video.explanation}
             </div>
           </div>
@@ -262,13 +262,13 @@ function AIExplanation({
                 <Zap className="w-5 h-5 text-amber-600" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900">Key Learning Points</h3>
-                <p className="text-sm text-gray-600">Focus on these core concepts</p>
+                <h3 className="font-semibold text-content">Key Learning Points</h3>
+                <p className="text-sm text-content-secondary">Focus on these core concepts</p>
               </div>
             </div>
             <ul className="space-y-2">
               {keyLearningPoints.map((point, index) => (
-                <li key={index} className="flex items-start gap-2 text-sm text-gray-700">
+                <li key={index} className="flex items-start gap-2 text-sm text-content-secondary">
                   <span className="w-5 h-5 flex items-center justify-center bg-amber-100 text-amber-700 rounded-full text-xs font-medium shrink-0 mt-0.5">
                     {index + 1}
                   </span>
@@ -301,8 +301,8 @@ function AIExplanation({
                 <div className="flex items-center gap-3">
                   <span className="text-2xl">{emoji}</span>
                   <div>
-                    <h3 className="font-semibold text-gray-900">{card.concept}</h3>
-                    <p className="text-sm text-gray-500">
+                    <h3 className="font-semibold text-content">{card.concept}</h3>
+                    <p className="text-sm text-content-tertiary">
                       {isExpanded ? 'Click to collapse' : 'Click to expand'}
                     </p>
                   </div>
@@ -314,9 +314,9 @@ function AIExplanation({
                     </span>
                   )}
                   {isExpanded ? (
-                    <ChevronUp className="w-5 h-5 text-gray-400" />
+                    <ChevronUp className="w-5 h-5 text-content-tertiary" />
                   ) : (
-                    <ChevronDown className="w-5 h-5 text-gray-400" />
+                    <ChevronDown className="w-5 h-5 text-content-tertiary" />
                   )}
                 </div>
               </button>
@@ -331,8 +331,8 @@ function AIExplanation({
                   className="overflow-hidden"
                 >
                   <div className="px-4 pb-4 pt-0">
-                    <div className="p-4 bg-gray-50 rounded-xl">
-                      <p className="text-gray-700 leading-relaxed">{card.explanation}</p>
+                    <div className="p-4 bg-surface-secondary rounded-xl">
+                      <p className="text-content-secondary leading-relaxed">{card.explanation}</p>
                     </div>
                   </div>
                 </motion.div>
@@ -348,10 +348,10 @@ function AIExplanation({
               <BookOpen className="w-6 h-6 text-purple-600" />
             </div>
             <div className="flex-1">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              <h3 className="text-lg font-semibold text-content mb-2">
                 {video.title || `Understanding ${concept}`}
               </h3>
-              <p className="text-gray-600">
+              <p className="text-content-secondary">
                 {video.explanation || video.aiExplanation ||
                   'Continue to the interactive exercises below to learn the key concepts step by step.'}
               </p>
@@ -363,14 +363,14 @@ function AIExplanation({
       {/* Video backup option */}
       {showVideoOption && video.backupVideo && (
         <Card className="overflow-hidden">
-          <div className="p-4 flex items-center justify-between bg-gray-50">
+          <div className="p-4 flex items-center justify-between bg-surface-secondary">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-red-100 rounded-lg">
                 <Video className="w-4 h-4 text-red-600" />
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-900">Video Available</p>
-                <p className="text-xs text-gray-500 truncate max-w-[140px] sm:max-w-[200px]">
+                <p className="text-sm font-medium text-content">Video Available</p>
+                <p className="text-xs text-content-tertiary truncate max-w-[140px] sm:max-w-[200px]">
                   {video.backupVideo.title}
                 </p>
               </div>
@@ -409,14 +409,14 @@ function ModeToggle({
 
   return (
     <div className="flex items-center justify-center mb-6">
-      <div className="flex items-center gap-2 p-1.5 bg-gray-100 rounded-2xl shadow-sm">
+      <div className="flex items-center gap-2 p-1.5 bg-surface-tertiary rounded-2xl shadow-sm">
         <button
           onClick={() => onModeChange('video')}
           disabled={!showVideoOption && currentMode !== 'video'}
           className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
             currentMode === 'video'
-              ? 'bg-white text-gray-900 shadow-md'
-              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              ? 'bg-surface text-content shadow-md'
+              : 'text-content-tertiary hover:text-content-secondary hover:bg-surface-secondary'
           } ${!showVideoOption && currentMode !== 'video' ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           <Video className="w-5 h-5" />
@@ -427,8 +427,8 @@ function ModeToggle({
           disabled={!showAiOption && currentMode !== 'ai'}
           className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
             currentMode === 'ai'
-              ? 'bg-white text-gray-900 shadow-md'
-              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              ? 'bg-surface text-content shadow-md'
+              : 'text-content-tertiary hover:text-content-secondary hover:bg-surface-secondary'
           } ${!showAiOption && currentMode !== 'ai' ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           <BookOpen className="w-5 h-5" />
@@ -585,16 +585,16 @@ export function VideoStep({ day, session }: VideoStepProps) {
           {/* Show skeleton while content is generating */}
           {!video?.aiConceptBreakdown && !video?.aiExplanation && !video?.explanation && (
             <div className="space-y-4 animate-pulse">
-              <div className="h-5 bg-gray-200 rounded w-2/3" />
+              <div className="h-5 bg-surface-tertiary rounded w-2/3" />
               <div className="space-y-2">
-                <div className="h-4 bg-gray-100 rounded w-full" />
-                <div className="h-4 bg-gray-100 rounded w-5/6" />
-                <div className="h-4 bg-gray-100 rounded w-4/6" />
+                <div className="h-4 bg-surface-tertiary rounded w-full" />
+                <div className="h-4 bg-surface-tertiary rounded w-5/6" />
+                <div className="h-4 bg-surface-tertiary rounded w-4/6" />
               </div>
-              <div className="h-5 bg-gray-200 rounded w-1/2 mt-6" />
+              <div className="h-5 bg-surface-tertiary rounded w-1/2 mt-6" />
               <div className="space-y-2">
-                <div className="h-4 bg-gray-100 rounded w-full" />
-                <div className="h-4 bg-gray-100 rounded w-3/4" />
+                <div className="h-4 bg-surface-tertiary rounded w-full" />
+                <div className="h-4 bg-surface-tertiary rounded w-3/4" />
               </div>
             </div>
           )}
@@ -624,7 +624,7 @@ export function VideoStep({ day, session }: VideoStepProps) {
               <div className="px-6 pb-6">
                 <div className="flex flex-wrap gap-2">
                   {video.whyThisVideo.map((reason, idx) => (
-                    <span key={idx} className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded-full">
+                    <span key={idx} className="text-xs text-content-secondary bg-surface-tertiary px-2 py-1 rounded-full">
                       ✓ {reason}
                     </span>
                   ))}
@@ -637,7 +637,7 @@ export function VideoStep({ day, session }: VideoStepProps) {
               <div className="px-6 pb-4">
                 <button
                   onClick={handleUseMain}
-                  className="text-sm text-gray-500 hover:text-gray-700 underline"
+                  className="text-sm text-content-tertiary hover:text-content-secondary underline"
                 >
                   ← Back to recommended video
                 </button>
@@ -647,13 +647,13 @@ export function VideoStep({ day, session }: VideoStepProps) {
             {/* Key topics */}
             {video?.keyTopics && video.keyTopics.length > 0 && (
               <div className="px-6 pb-6 space-y-2">
-                <h3 className="text-sm font-medium text-gray-700">Key topics to focus on:</h3>
+                <h3 className="text-sm font-medium text-content-secondary">Key topics to focus on:</h3>
                 <ul className="space-y-1">
                   {video.keyTopics.map((topic, index) => {
                     const topicText = typeof topic === 'string' ? topic : (topic as any)?.note || (topic as any)?.title || '';
                     if (!topicText) return null;
                     return (
-                      <li key={index} className="flex items-center gap-2 text-sm text-gray-600">
+                      <li key={index} className="flex items-center gap-2 text-sm text-content-secondary">
                         <span className="w-1.5 h-1.5 rounded-full bg-brand-500" />
                         {topicText}
                       </li>
@@ -664,11 +664,11 @@ export function VideoStep({ day, session }: VideoStepProps) {
             )}
 
             {/* Actions footer */}
-            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+            <div className="px-6 py-4 border-t border-border-secondary flex items-center justify-between">
               <button
                 onClick={handleTryDifferent}
                 disabled={isSearchingNew}
-                className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700
+                className="flex items-center gap-2 text-sm text-content-tertiary hover:text-content-secondary
                            transition-colors disabled:opacity-50"
               >
                 {isSearchingNew ? (
@@ -705,7 +705,7 @@ export function VideoStep({ day, session }: VideoStepProps) {
           className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
             hasWatched
               ? 'bg-focus-100 text-focus-700 border-2 border-focus-500'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              : 'bg-surface-tertiary text-content-secondary hover:bg-surface-tertiary'
           }`}
         >
           <CheckCircle2 className={`w-5 h-5 ${hasWatched ? 'text-focus-500' : ''}`} />

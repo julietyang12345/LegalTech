@@ -76,11 +76,11 @@ export function ResetPasswordPage() {
   // No token provided
   if (!token && !isSuccess) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-brand-50 to-gray-50 flex flex-col">
+      <div className="min-h-screen bg-gradient-to-br from-brand-50 dark:from-brand-900/20 to-surface-secondary flex flex-col">
         <div className="p-4">
           <Link
             to="/login"
-            className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+            className="inline-flex items-center gap-2 text-content-secondary hover:text-content transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             Back to login
@@ -92,8 +92,8 @@ export function ResetPasswordPage() {
             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <AlertCircle className="w-8 h-8 text-red-600" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Invalid reset link</h1>
-            <p className="text-gray-600 mb-6">
+            <h1 className="text-2xl font-bold text-content mb-2">Invalid reset link</h1>
+            <p className="text-content-secondary mb-6">
               This password reset link is invalid or has expired. Please request a new one.
             </p>
             <Link to="/forgot-password">
@@ -106,12 +106,12 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-50 to-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-brand-50 dark:from-brand-900/20 to-surface-secondary flex flex-col">
       {/* Back button */}
       <div className="p-4">
         <Link
           to="/login"
-          className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+          className="inline-flex items-center gap-2 text-content-secondary hover:text-content transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to login
@@ -128,7 +128,7 @@ export function ResetPasswordPage() {
           <div className="text-center mb-8">
             <Link to="/" className="inline-flex items-center gap-2">
               <span className="text-4xl">🔥</span>
-              <span className="font-display font-bold text-2xl text-gray-900">FlexForge</span>
+              <span className="font-display font-bold text-2xl text-content">FlexForge</span>
             </Link>
           </div>
 
@@ -142,8 +142,8 @@ export function ResetPasswordPage() {
                 <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <CheckCircle2 className="w-8 h-8 text-green-600" />
                 </div>
-                <h1 className="text-2xl font-bold text-gray-900 mb-2">Password reset!</h1>
-                <p className="text-gray-600 mb-6">
+                <h1 className="text-2xl font-bold text-content mb-2">Password reset!</h1>
+                <p className="text-content-secondary mb-6">
                   Your password has been successfully reset. You can now sign in with your new password.
                 </p>
                 <Button
@@ -156,8 +156,8 @@ export function ResetPasswordPage() {
             ) : (
               <>
                 <div className="text-center mb-8">
-                  <h1 className="text-2xl font-bold text-gray-900 mb-2">Set new password</h1>
-                  <p className="text-gray-600">
+                  <h1 className="text-2xl font-bold text-content mb-2">Set new password</h1>
+                  <p className="text-content-secondary">
                     Must be at least 8 characters with uppercase, lowercase, and a number.
                   </p>
                 </div>
@@ -175,11 +175,11 @@ export function ResetPasswordPage() {
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    <label className="block text-sm font-medium text-content-secondary mb-1.5">
                       New password
                     </label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-content-tertiary" />
                       <input
                         type={showPassword ? 'text' : 'password'}
                         value={password}
@@ -187,14 +187,14 @@ export function ResetPasswordPage() {
                         placeholder="••••••••"
                         required
                         autoFocus
-                        className="w-full pl-10 pr-12 py-2.5 border border-gray-300 rounded-lg
+                        className="w-full pl-10 pr-12 py-2.5 border border-border rounded-lg
                                  focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                                  transition-colors"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-content-tertiary hover:text-content-secondary"
                       >
                         {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                       </button>
@@ -202,18 +202,18 @@ export function ResetPasswordPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    <label className="block text-sm font-medium text-content-secondary mb-1.5">
                       Confirm password
                     </label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-content-tertiary" />
                       <input
                         type={showPassword ? 'text' : 'password'}
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         placeholder="••••••••"
                         required
-                        className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg
+                        className="w-full pl-10 pr-4 py-2.5 border border-border rounded-lg
                                  focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                                  transition-colors"
                       />
@@ -260,8 +260,8 @@ export function ResetPasswordPage() {
 
 function PasswordRequirement({ met, children }: { met: boolean; children: React.ReactNode }) {
   return (
-    <div className={`flex items-center gap-2 text-sm ${met ? 'text-green-600' : 'text-gray-500'}`}>
-      <CheckCircle2 className={`w-4 h-4 ${met ? 'text-green-500' : 'text-gray-300'}`} />
+    <div className={`flex items-center gap-2 text-sm ${met ? 'text-green-600' : 'text-content-tertiary'}`}>
+      <CheckCircle2 className={`w-4 h-4 ${met ? 'text-green-500' : 'text-content-tertiary'}`} />
       {children}
     </div>
   );

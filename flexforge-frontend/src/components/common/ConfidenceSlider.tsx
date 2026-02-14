@@ -35,8 +35,8 @@ export function ConfidenceSlider({
               'transition-all duration-200',
               disabled && 'opacity-50 cursor-not-allowed',
               value === level.value
-                ? 'border-brand-500 bg-brand-50 text-brand-700'
-                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400'
+                : 'border-border hover:border-content-tertiary hover:bg-surface-secondary'
             )}
           >
             <span className="text-xl">{level.emoji}</span>
@@ -73,7 +73,7 @@ export function ConfidenceDisplay({
     <div className={clsx('flex items-center gap-2', className)}>
       <span className={sizes[size]}>{level.emoji}</span>
       {showLabel && (
-        <span className="text-sm text-gray-600">{level.label}</span>
+        <span className="text-sm text-content-secondary">{level.label}</span>
       )}
     </div>
   );

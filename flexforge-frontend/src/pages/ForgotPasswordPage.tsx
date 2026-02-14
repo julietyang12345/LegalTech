@@ -29,12 +29,12 @@ export function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-50 to-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-brand-50 dark:from-brand-900/20 to-surface-secondary flex flex-col">
       {/* Back button */}
       <div className="p-4">
         <Link
           to="/login"
-          className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+          className="inline-flex items-center gap-2 text-content-secondary hover:text-content transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to login
@@ -51,7 +51,7 @@ export function ForgotPasswordPage() {
           <div className="text-center mb-8">
             <Link to="/" className="inline-flex items-center gap-2">
               <span className="text-4xl">🔥</span>
-              <span className="font-display font-bold text-2xl text-gray-900">FlexForge</span>
+              <span className="font-display font-bold text-2xl text-content">FlexForge</span>
             </Link>
           </div>
 
@@ -65,12 +65,12 @@ export function ForgotPasswordPage() {
                 <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <CheckCircle2 className="w-8 h-8 text-green-600" />
                 </div>
-                <h1 className="text-2xl font-bold text-gray-900 mb-2">Check your email</h1>
-                <p className="text-gray-600 mb-6">
+                <h1 className="text-2xl font-bold text-content mb-2">Check your email</h1>
+                <p className="text-content-secondary mb-6">
                   If an account exists with <span className="font-medium">{email}</span>,
                   you'll receive a password reset link shortly.
                 </p>
-                <div className="text-sm text-gray-500 mb-6 space-y-2">
+                <div className="text-sm text-content-tertiary mb-6 space-y-2">
                   <p>The link will expire in 1 hour.</p>
                   <p className="font-medium text-amber-700 bg-amber-50 p-2 rounded">
                     Can't find it? Check your spam or junk folder.
@@ -85,8 +85,8 @@ export function ForgotPasswordPage() {
             ) : (
               <>
                 <div className="text-center mb-8">
-                  <h1 className="text-2xl font-bold text-gray-900 mb-2">Forgot password?</h1>
-                  <p className="text-gray-600">
+                  <h1 className="text-2xl font-bold text-content mb-2">Forgot password?</h1>
+                  <p className="text-content-secondary">
                     No worries, we'll send you reset instructions.
                   </p>
                 </div>
@@ -104,11 +104,11 @@ export function ForgotPasswordPage() {
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    <label className="block text-sm font-medium text-content-secondary mb-1.5">
                       Email
                     </label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-content-tertiary" />
                       <input
                         type="email"
                         value={email}
@@ -116,7 +116,7 @@ export function ForgotPasswordPage() {
                         placeholder="you@example.com"
                         required
                         autoFocus
-                        className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg
+                        className="w-full pl-10 pr-4 py-2.5 border border-border rounded-lg
                                  focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                                  transition-colors"
                       />
@@ -136,7 +136,7 @@ export function ForgotPasswordPage() {
                 </form>
 
                 <div className="mt-6 text-center">
-                  <p className="text-gray-600">
+                  <p className="text-content-secondary">
                     Remember your password?{' '}
                     <Link to="/login" className="text-brand-600 hover:text-brand-700 font-medium">
                       Sign in

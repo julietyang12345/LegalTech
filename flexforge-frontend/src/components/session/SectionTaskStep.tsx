@@ -156,7 +156,7 @@ function StarRating({ percentage }: { percentage: number }) {
           <Star
             className={clsx(
               'w-8 h-8',
-              s <= stars ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'
+              s <= stars ? 'text-yellow-400 fill-yellow-400' : 'text-content-tertiary'
             )}
           />
         </motion.div>
@@ -395,7 +395,7 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
 
       default:
         return (
-          <div className="text-center py-8 text-gray-500">
+          <div className="text-center py-8 text-content-tertiary">
             Unknown section type: {(section as any).type}
           </div>
         );
@@ -406,18 +406,18 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
     return (
       <div className="max-w-2xl mx-auto">
         <div className="mb-4">
-          <div className="h-7 bg-gray-200 rounded w-1/3 animate-pulse mb-2" />
-          <div className="h-4 bg-gray-100 rounded w-2/3 animate-pulse" />
+          <div className="h-7 bg-surface-tertiary rounded w-1/3 animate-pulse mb-2" />
+          <div className="h-4 bg-surface-tertiary rounded w-2/3 animate-pulse" />
         </div>
-        <div className="h-2 bg-gray-200 rounded-full mb-4" />
-        <div className="bg-white rounded-xl shadow-lg p-6">
+        <div className="h-2 bg-surface-tertiary rounded-full mb-4" />
+        <div className="bg-surface rounded-xl shadow-lg p-6">
           <div className="space-y-4 animate-pulse">
-            <div className="h-5 bg-gray-200 rounded w-3/4" />
+            <div className="h-5 bg-surface-tertiary rounded w-3/4" />
             <div className="space-y-2">
-              <div className="h-12 bg-gray-100 rounded-lg" />
-              <div className="h-12 bg-gray-100 rounded-lg" />
-              <div className="h-12 bg-gray-100 rounded-lg" />
-              <div className="h-12 bg-gray-100 rounded-lg" />
+              <div className="h-12 bg-surface-tertiary rounded-lg" />
+              <div className="h-12 bg-surface-tertiary rounded-lg" />
+              <div className="h-12 bg-surface-tertiary rounded-lg" />
+              <div className="h-12 bg-surface-tertiary rounded-lg" />
             </div>
           </div>
         </div>
@@ -433,14 +433,14 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
     return (
       <div className="max-w-2xl mx-auto">
         <div className="mb-4">
-          <h2 className="text-xl font-bold text-gray-800">{task.title}</h2>
-          <p className="text-gray-600 text-sm">{task.description}</p>
+          <h2 className="text-xl font-bold text-content">{task.title}</h2>
+          <p className="text-content-secondary text-sm">{task.description}</p>
         </div>
-        <div className="bg-white rounded-xl shadow-lg p-8">
+        <div className="bg-surface rounded-xl shadow-lg p-8">
           <div className="flex flex-col items-center justify-center py-8 gap-4">
             <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
-            <p className="text-gray-600 font-medium">Loading next exercise...</p>
-            <p className="text-gray-400 text-sm">Section {sections.length + 1} is being prepared</p>
+            <p className="text-content-secondary font-medium">Loading next exercise...</p>
+            <p className="text-content-tertiary text-sm">Section {sections.length + 1} is being prepared</p>
           </div>
         </div>
       </div>
@@ -466,7 +466,7 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
         animate={{ opacity: 1, scale: 1 }}
         className="max-w-lg mx-auto"
       >
-        <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+        <div className="bg-surface rounded-xl shadow-lg p-8 text-center">
           {/* Animated trophy */}
           <motion.div
             initial={{ scale: 0 }}
@@ -500,7 +500,7 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.4 }}
-            className="text-gray-500 text-sm mb-4"
+            className="text-content-tertiary text-sm mb-4"
           >
             {encouragement}
           </motion.p>
@@ -515,22 +515,22 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
             <div className="flex items-center gap-1.5">
               <Zap className="w-5 h-5 text-green-500" />
               <span className="text-lg font-bold text-green-600">{xp}</span>
-              <span className="text-sm text-gray-500">XP</span>
+              <span className="text-sm text-content-tertiary">XP</span>
             </div>
             <div className="flex items-center gap-1.5">
               <Flame className="w-5 h-5 text-orange-500" />
               <span className="text-lg font-bold text-orange-600">{maxStreak}</span>
-              <span className="text-sm text-gray-500">best streak</span>
+              <span className="text-sm text-content-tertiary">best streak</span>
             </div>
             <div className="text-center">
-              <span className="text-lg font-bold text-gray-800">{percentage}%</span>
-              <span className="text-sm text-gray-500 ml-1">score</span>
+              <span className="text-lg font-bold text-content">{percentage}%</span>
+              <span className="text-sm text-content-tertiary ml-1">score</span>
             </div>
           </motion.div>
 
           {/* Section breakdown */}
-          <div className="bg-gray-50 rounded-lg p-4 mb-6 text-left">
-            <h3 className="text-sm font-medium text-gray-500 mb-3">Section Breakdown</h3>
+          <div className="bg-surface-secondary rounded-lg p-4 mb-6 text-left">
+            <h3 className="text-sm font-medium text-content-tertiary mb-3">Section Breakdown</h3>
             <div className="space-y-2">
               {sections.filter(Boolean).map((section, index) => {
                 const result = sectionResults[index];
@@ -554,7 +554,7 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
             {!passed && (
               <button
                 onClick={resetTask}
-                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                className="flex-1 px-4 py-3 border border-border rounded-lg hover:bg-surface-secondary transition-colors"
               >
                 Try Again
               </button>
@@ -584,7 +584,7 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
       {/* Task header with gamification bar */}
       <div className="mb-4">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-xl font-bold text-gray-800">{task.title}</h2>
+          <h2 className="text-xl font-bold text-content">{task.title}</h2>
           <div className="flex items-center gap-3">
             {/* XP counter */}
             <div className="flex items-center gap-1">
@@ -606,11 +606,11 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
             )}
           </div>
         </div>
-        <p className="text-gray-600 text-sm">{task.description}</p>
+        <p className="text-content-secondary text-sm">{task.description}</p>
       </div>
 
       {/* Green progress bar (overall across all sections) */}
-      <div className="h-2 bg-gray-200 rounded-full overflow-hidden mb-4">
+      <div className="h-2 bg-surface-tertiary rounded-full overflow-hidden mb-4">
         <motion.div
           className="h-full bg-green-500 rounded-full"
           initial={{ width: 0 }}
@@ -635,7 +635,7 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
                   ? 'bg-green-500'
                   : isActive
                   ? 'bg-brand-500'
-                  : 'bg-gray-200'
+                  : 'bg-surface-tertiary'
               )}
             />
           );
@@ -644,10 +644,10 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
 
       {/* Section label */}
       <div className="mb-4 flex items-center gap-2">
-        <span className="text-sm text-gray-500">
+        <span className="text-sm text-content-tertiary">
           Section {currentSectionIndex + 1} of {sections.length}
         </span>
-        <span className="text-sm px-2 py-0.5 bg-gray-100 rounded-full capitalize">
+        <span className="text-sm px-2 py-0.5 bg-surface-tertiary rounded-full capitalize">
           {currentSection.type}
         </span>
       </div>
@@ -668,14 +668,14 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
       {/* Subtle continue button - always visible */}
       <div className="mt-6 flex justify-end">
         {!isStreamingComplete && currentSectionIndex >= sections.length - 1 ? (
-          <div className="flex items-center gap-2 text-gray-400 text-sm">
+          <div className="flex items-center gap-2 text-content-tertiary text-sm">
             <Loader2 className="w-4 h-4 animate-spin" />
             <span>Loading more exercises...</span>
           </div>
         ) : (
           <button
             onClick={handleContinue}
-            className="text-sm text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
+            className="text-sm text-content-tertiary hover:text-content-secondary transition-colors flex items-center gap-1"
           >
             {currentSectionIndex < sections.length - 1 ? 'Skip section' : 'Finish'}
             <ChevronRight className="w-4 h-4" />

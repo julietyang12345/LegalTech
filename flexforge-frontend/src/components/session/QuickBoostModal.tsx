@@ -52,22 +52,22 @@ export function QuickBoostModal({
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
-          className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl"
+          className="bg-surface rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-100">
+          <div className="flex items-center justify-between p-4 border-b border-border-secondary">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
                 <Lightbulb className="w-4 h-4 text-amber-600" />
               </div>
-              <h2 className="font-semibold text-gray-900">Quick Boost</h2>
+              <h2 className="font-semibold text-content">Quick Boost</h2>
             </div>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              className="p-2 hover:bg-surface-tertiary rounded-full transition-colors"
             >
-              <X className="w-5 h-5 text-gray-500" />
+              <X className="w-5 h-5 text-content-tertiary" />
             </button>
           </div>
 
@@ -76,8 +76,8 @@ export function QuickBoostModal({
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-12">
                 <Loader2 className="w-8 h-8 text-brand-500 animate-spin mb-4" />
-                <p className="text-gray-600">Generating a fresh explanation...</p>
-                <p className="text-sm text-gray-400 mt-1">This takes just a few seconds</p>
+                <p className="text-content-secondary">Generating a fresh explanation...</p>
+                <p className="text-sm text-content-tertiary mt-1">This takes just a few seconds</p>
               </div>
             ) : boost ? (
               <>
@@ -92,8 +92,8 @@ export function QuickBoostModal({
                 {/* New explanation */}
                 <Card className="bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200">
                   <div className="p-4">
-                    <h3 className="font-medium text-gray-900 mb-2">Let's try a different angle:</h3>
-                    <p className="text-gray-700">{boost.explanation}</p>
+                    <h3 className="font-medium text-content mb-2">Let's try a different angle:</h3>
+                    <p className="text-content-secondary">{boost.explanation}</p>
                   </div>
                 </Card>
 
@@ -101,8 +101,8 @@ export function QuickBoostModal({
                 {boost.analogy && (
                   <Card>
                     <div className="p-4">
-                      <h3 className="font-medium text-gray-900 mb-2">Think of it like this:</h3>
-                      <p className="text-gray-600 italic">"{boost.analogy}"</p>
+                      <h3 className="font-medium text-content mb-2">Think of it like this:</h3>
+                      <p className="text-content-secondary italic">"{boost.analogy}"</p>
                     </div>
                   </Card>
                 )}
@@ -111,7 +111,7 @@ export function QuickBoostModal({
                 {boost.codeExample && (
                   <Card>
                     <div className="p-4">
-                      <h3 className="font-medium text-gray-900 mb-2">Quick example:</h3>
+                      <h3 className="font-medium text-content mb-2">Quick example:</h3>
                       <pre className="bg-gray-900 text-gray-100 p-3 rounded-lg text-sm overflow-x-auto">
                         <code>{boost.codeExample}</code>
                       </pre>
@@ -122,22 +122,22 @@ export function QuickBoostModal({
                 {/* Quick check question */}
                 <Card className="border-2 border-brand-100">
                   <div className="p-4">
-                    <h3 className="font-medium text-gray-900 mb-3">Quick check:</h3>
-                    <p className="text-gray-700 mb-4">{boost.quickCheck.question}</p>
+                    <h3 className="font-medium text-content mb-3">Quick check:</h3>
+                    <p className="text-content-secondary mb-4">{boost.quickCheck.question}</p>
 
                     <div className="space-y-2">
                       {boost.quickCheck.options.map((option, index) => {
                         const isSelected = selectedAnswer === index;
                         const isCorrectOption = index === boost.quickCheck.correctIndex;
 
-                        let optionClass = 'border-gray-200 hover:border-brand-300 hover:bg-brand-50';
+                        let optionClass = 'border-border hover:border-brand-300 hover:bg-brand-50';
                         if (showResult) {
                           if (isCorrectOption) {
                             optionClass = 'border-green-500 bg-green-50';
                           } else if (isSelected && !isCorrectOption) {
                             optionClass = 'border-red-500 bg-red-50';
                           } else {
-                            optionClass = 'border-gray-200 opacity-50';
+                            optionClass = 'border-border opacity-50';
                           }
                         } else if (isSelected) {
                           optionClass = 'border-brand-500 bg-brand-50';
@@ -151,7 +151,7 @@ export function QuickBoostModal({
                             className={`w-full text-left p-3 rounded-lg border-2 transition-all ${optionClass}`}
                           >
                             <div className="flex items-center justify-between">
-                              <span className="text-gray-700">{option}</span>
+                              <span className="text-content-secondary">{option}</span>
                               {showResult && isCorrectOption && (
                                 <CheckCircle className="w-5 h-5 text-green-500" />
                               )}
@@ -176,7 +176,7 @@ export function QuickBoostModal({
                             <p className={`font-medium ${isCorrect ? 'text-green-700' : 'text-amber-700'}`}>
                               {isCorrect ? '🎉 Got it!' : '💡 Almost!'}
                             </p>
-                            <p className="text-sm text-gray-600 mt-1">
+                            <p className="text-sm text-content-secondary mt-1">
                               {boost.quickCheck.explanation}
                             </p>
                           </div>
@@ -191,7 +191,7 @@ export function QuickBoostModal({
 
           {/* Footer */}
           {!isLoading && boost && showResult && (
-            <div className="p-4 border-t border-gray-100">
+            <div className="p-4 border-t border-border-secondary">
               <Button
                 onClick={handleComplete}
                 className="w-full"

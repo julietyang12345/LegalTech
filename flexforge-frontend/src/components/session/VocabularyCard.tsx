@@ -65,8 +65,8 @@ export function VocabularyCard({
       2: 'bg-yellow-100 text-yellow-700', // Rising
       3: 'bg-green-100 text-green-700',   // Dipping
       4: 'bg-blue-100 text-blue-700',     // Falling
-      0: 'bg-gray-100 text-gray-600',     // Neutral
-      5: 'bg-gray-100 text-gray-600',     // Neutral (alternative)
+      0: 'bg-surface-tertiary text-content-secondary',     // Neutral
+      5: 'bg-surface-tertiary text-content-secondary',     // Neutral (alternative)
     };
 
     return (
@@ -74,7 +74,7 @@ export function VocabularyCard({
         {tones.map((tone, idx) => (
           <span
             key={idx}
-            className={`px-1.5 py-0.5 text-xs font-medium rounded ${toneColors[tone] || 'bg-gray-100'}`}
+            className={`px-1.5 py-0.5 text-xs font-medium rounded ${toneColors[tone] || 'bg-surface-tertiary'}`}
           >
             T{tone}
           </span>
@@ -90,7 +90,7 @@ export function VocabularyCard({
     const genderConfig: Record<string, { label: string; color: string }> = {
       masculine: { label: 'm', color: 'bg-blue-100 text-blue-700' },
       feminine: { label: 'f', color: 'bg-pink-100 text-pink-700' },
-      neuter: { label: 'n', color: 'bg-gray-100 text-gray-600' },
+      neuter: { label: 'n', color: 'bg-surface-tertiary text-content-secondary' },
     };
 
     const config = genderConfig[vocabulary.gender];
@@ -107,8 +107,8 @@ export function VocabularyCard({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`rounded-xl border-2 overflow-hidden bg-white shadow-sm ${
-        isReview ? 'border-amber-200' : 'border-gray-200'
+      className={`rounded-xl border-2 overflow-hidden bg-surface shadow-sm ${
+        isReview ? 'border-amber-200' : 'border-border'
       }`}
     >
       {/* Review badge */}
@@ -126,7 +126,7 @@ export function VocabularyCard({
             {/* Term in target language */}
             <div className="flex items-center gap-2 flex-wrap">
               <h3
-                className={`font-bold text-gray-900 ${
+                className={`font-bold text-content ${
                   features?.hasScript ? 'text-3xl' : 'text-2xl'
                 }`}
                 lang={language}
@@ -140,7 +140,7 @@ export function VocabularyCard({
 
             {/* Secondary script variant (e.g., traditional Chinese, kanji) */}
             {vocabulary.scriptVariants?.secondary && (
-              <p className="text-lg text-gray-500 mt-1">
+              <p className="text-lg text-content-tertiary mt-1">
                 {vocabulary.scriptVariants.secondary}
               </p>
             )}
@@ -153,19 +153,19 @@ export function VocabularyCard({
                     {vocabulary.romanization}
                   </p>
                 ) : (
-                  <p className="text-lg text-gray-400 italic">
+                  <p className="text-lg text-content-tertiary italic">
                     (tap to show)
                   </p>
                 )}
                 <button
                   onClick={() => setShowRomanization(!showRomanization)}
-                  className="p-1 rounded-lg hover:bg-gray-100 transition-colors"
+                  className="p-1 rounded-lg hover:bg-surface-tertiary transition-colors"
                   title={showRomanization ? 'Hide romanization' : 'Show romanization'}
                 >
                   {showRomanization ? (
-                    <EyeOff className="w-4 h-4 text-gray-400" />
+                    <EyeOff className="w-4 h-4 text-content-tertiary" />
                   ) : (
-                    <Eye className="w-4 h-4 text-gray-400" />
+                    <Eye className="w-4 h-4 text-content-tertiary" />
                   )}
                 </button>
               </div>
@@ -196,10 +196,10 @@ export function VocabularyCard({
         </div>
 
         {/* Definition */}
-        <div className="mt-4 pt-4 border-t border-gray-100">
-          <p className="text-gray-700 text-lg">{vocabulary.definition}</p>
+        <div className="mt-4 pt-4 border-t border-border-secondary">
+          <p className="text-content-secondary text-lg">{vocabulary.definition}</p>
           {vocabulary.partOfSpeech && (
-            <span className="inline-block mt-2 px-2 py-0.5 text-xs font-medium text-gray-500 bg-gray-100 rounded">
+            <span className="inline-block mt-2 px-2 py-0.5 text-xs font-medium text-content-tertiary bg-surface-tertiary rounded">
               {vocabulary.partOfSpeech}
             </span>
           )}
@@ -219,7 +219,7 @@ export function VocabularyCard({
           <div className="mt-4">
             <button
               onClick={() => setShowExamples(!showExamples)}
-              className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+              className="flex items-center gap-2 text-sm text-content-tertiary hover:text-content-secondary transition-colors"
             >
               {showExamples ? (
                 <ChevronUp className="w-4 h-4" />
@@ -239,12 +239,12 @@ export function VocabularyCard({
                 {vocabulary.examples.map((example, idx) => (
                   <div
                     key={idx}
-                    className="p-3 bg-gray-50 rounded-lg"
+                    className="p-3 bg-surface-secondary rounded-lg"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
                         <p
-                          className="text-gray-900 font-medium"
+                          className="text-content font-medium"
                           lang={language}
                           dir={features?.isRTL ? 'rtl' : 'ltr'}
                         >
@@ -255,7 +255,7 @@ export function VocabularyCard({
                             {example.romanization}
                           </p>
                         )}
-                        <p className="text-sm text-gray-600 mt-1">
+                        <p className="text-sm text-content-secondary mt-1">
                           {example.translation}
                         </p>
                       </div>
@@ -268,10 +268,10 @@ export function VocabularyCard({
                             speak(example.sentence);
                           }
                         }}
-                        className="p-2 rounded-full bg-white hover:bg-gray-100 transition-colors"
+                        className="p-2 rounded-full bg-surface hover:bg-surface-tertiary transition-colors"
                         title="Play example"
                       >
-                        <Volume2 className="w-4 h-4 text-gray-500" />
+                        <Volume2 className="w-4 h-4 text-content-tertiary" />
                       </button>
                     </div>
                   </div>
@@ -284,7 +284,7 @@ export function VocabularyCard({
 
       {/* Bottom action (optional) */}
       {onMastered && (
-        <div className="px-5 py-3 bg-gray-50 border-t border-gray-100">
+        <div className="px-5 py-3 bg-surface-secondary border-t border-border-secondary">
           <button
             onClick={onMastered}
             className="w-full py-2 text-sm font-medium text-green-600 hover:bg-green-50 rounded-lg transition-colors"

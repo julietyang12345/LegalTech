@@ -7,6 +7,13 @@
     <meta name="description" content="FlexForge - AI-Powered Rapid Skill Acquisition Platform" />
     <title>FlexForge - Learn Any Skill in Days</title>
 
+    <!-- Prevent FOUC: apply dark class before paint -->
+    <script>
+      (function() {
+        if (localStorage.getItem('flexforge-theme') === 'dark') document.documentElement.classList.add('dark');
+      })();
+    </script>
+
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

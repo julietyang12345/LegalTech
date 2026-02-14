@@ -161,24 +161,24 @@ function IncompleteWorkModal({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden"
+        className="bg-surface rounded-2xl shadow-xl max-w-md w-full overflow-hidden"
       >
         {/* Header */}
-        <div className="p-6 border-b border-gray-100">
+        <div className="p-6 border-b border-border-secondary">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
               <span className="text-xl">⚠️</span>
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Hold on!</h3>
-              <p className="text-sm text-gray-500">You have uncompleted activities</p>
+              <h3 className="font-semibold text-content">Hold on!</h3>
+              <p className="text-sm text-content-tertiary">You have uncompleted activities</p>
             </div>
           </div>
         </div>
 
         {/* Content */}
         <div className="p-6">
-          <p className="text-gray-600 mb-4">
+          <p className="text-content-secondary mb-4">
             You haven't finished these activities yet:
           </p>
           <div className="space-y-3">
@@ -192,13 +192,13 @@ function IncompleteWorkModal({
               </div>
             ))}
           </div>
-          <p className="text-sm text-gray-500 mt-4">
+          <p className="text-sm text-content-tertiary mt-4">
             Completing these activities helps reinforce your learning and improves retention.
           </p>
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-100 flex gap-3">
+        <div className="p-4 border-t border-border-secondary flex gap-3">
           <button
             onClick={onClose}
             className="flex-1 py-2.5 px-4 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-medium transition-colors"
@@ -207,7 +207,7 @@ function IncompleteWorkModal({
           </button>
           <button
             onClick={onProceedAnyway}
-            className="py-2.5 px-4 min-h-[44px] text-gray-500 hover:text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-xl font-medium transition-colors"
+            className="py-2.5 px-4 min-h-[44px] text-content-tertiary hover:text-content-secondary hover:bg-surface-tertiary active:bg-surface-tertiary rounded-xl font-medium transition-colors"
           >
             Continue Anyway
           </button>
@@ -242,18 +242,18 @@ function TaskRouter({ day, session, onComplete, onBookmarkQuestion, onShareQuest
     return (
       <div className="max-w-2xl mx-auto">
         <div className="mb-4">
-          <div className="h-7 bg-gray-200 rounded w-1/3 animate-pulse mb-2" />
-          <div className="h-4 bg-gray-100 rounded w-2/3 animate-pulse" />
+          <div className="h-7 bg-surface-tertiary rounded w-1/3 animate-pulse mb-2" />
+          <div className="h-4 bg-surface-tertiary rounded w-2/3 animate-pulse" />
         </div>
-        <div className="h-2 bg-gray-200 rounded-full mb-4" />
-        <div className="bg-white rounded-xl shadow-lg p-6">
+        <div className="h-2 bg-surface-tertiary rounded-full mb-4" />
+        <div className="bg-surface rounded-xl shadow-lg p-6">
           <div className="space-y-4 animate-pulse">
-            <div className="h-5 bg-gray-200 rounded w-3/4" />
+            <div className="h-5 bg-surface-tertiary rounded w-3/4" />
             <div className="space-y-2">
-              <div className="h-12 bg-gray-100 rounded-lg" />
-              <div className="h-12 bg-gray-100 rounded-lg" />
-              <div className="h-12 bg-gray-100 rounded-lg" />
-              <div className="h-12 bg-gray-100 rounded-lg" />
+              <div className="h-12 bg-surface-tertiary rounded-lg" />
+              <div className="h-12 bg-surface-tertiary rounded-lg" />
+              <div className="h-12 bg-surface-tertiary rounded-lg" />
+              <div className="h-12 bg-surface-tertiary rounded-lg" />
             </div>
           </div>
         </div>
@@ -310,14 +310,14 @@ function TaskRouter({ day, session, onComplete, onBookmarkQuestion, onShareQuest
     if (isLoadingFormat) {
       return (
         <div className="max-w-2xl mx-auto">
-          <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="bg-surface rounded-xl shadow-lg p-6">
             <div className="space-y-4 animate-pulse">
-              <div className="h-5 bg-gray-200 rounded w-3/4" />
+              <div className="h-5 bg-surface-tertiary rounded w-3/4" />
               <div className="space-y-2">
-                <div className="h-12 bg-gray-100 rounded-lg" />
-                <div className="h-12 bg-gray-100 rounded-lg" />
-                <div className="h-12 bg-gray-100 rounded-lg" />
-                <div className="h-12 bg-gray-100 rounded-lg" />
+                <div className="h-12 bg-surface-tertiary rounded-lg" />
+                <div className="h-12 bg-surface-tertiary rounded-lg" />
+                <div className="h-12 bg-surface-tertiary rounded-lg" />
+                <div className="h-12 bg-surface-tertiary rounded-lg" />
               </div>
             </div>
           </div>
@@ -358,7 +358,7 @@ function TaskRouter({ day, session, onComplete, onBookmarkQuestion, onShareQuest
       {/* Alternative formats banner (quiz and fillBlank only) */}
       <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-100 rounded-xl p-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2 text-sm text-gray-600">
+          <div className="flex items-center gap-2 text-sm text-content-secondary">
             <Shuffle className="w-4 h-4" />
             <span>Try a different style:</span>
           </div>
@@ -369,7 +369,7 @@ function TaskRouter({ day, session, onComplete, onBookmarkQuestion, onShareQuest
               className={clsx(
                 'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors',
                 selectedFormat === 'quiz'
-                  ? 'bg-white text-purple-700 shadow-sm font-medium'
+                  ? 'bg-surface text-purple-700 shadow-sm font-medium'
                   : 'text-purple-600 hover:text-purple-700 hover:bg-purple-100'
               )}
             >
@@ -382,7 +382,7 @@ function TaskRouter({ day, session, onComplete, onBookmarkQuestion, onShareQuest
               className={clsx(
                 'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors',
                 selectedFormat === 'fillBlank'
-                  ? 'bg-white text-blue-700 shadow-sm font-medium'
+                  ? 'bg-surface text-blue-700 shadow-sm font-medium'
                   : 'text-blue-600 hover:text-blue-700 hover:bg-blue-100'
               )}
             >
@@ -762,9 +762,9 @@ export function SessionPage() {
       <FocusModeLayout>
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="animate-pulse space-y-4 w-full max-w-lg">
-            <div className="h-8 bg-gray-200 rounded w-3/4 mx-auto" />
-            <div className="h-64 bg-gray-200 rounded-xl" />
-            <div className="h-12 bg-gray-200 rounded-lg" />
+            <div className="h-8 bg-surface-tertiary rounded w-3/4 mx-auto" />
+            <div className="h-64 bg-surface-tertiary rounded-xl" />
+            <div className="h-12 bg-surface-tertiary rounded-lg" />
           </div>
         </div>
       </FocusModeLayout>
@@ -863,7 +863,7 @@ export function SessionPage() {
       </AnimatePresence>
 
       {/* Navigation footer */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 py-3 sm:py-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className="fixed bottom-0 left-0 right-0 bg-surface border-t border-border py-3 sm:py-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <div className="max-w-focus mx-auto px-3 sm:px-4">
           {/* Navigation buttons */}
           <div className="flex justify-between items-center">
@@ -881,10 +881,10 @@ export function SessionPage() {
               {/* AI Tutor Button - available to all users with daily limits */}
               <button
                 onClick={() => setShowAiTutor(true)}
-                className="group flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-xl text-sm font-medium transition-all duration-300 bg-white hover:bg-gray-50 active:bg-gray-100 border border-gray-200 hover:border-purple-300 hover:shadow-md hover:shadow-purple-100"
+                className="group flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-xl text-sm font-medium transition-all duration-300 bg-surface hover:bg-surface-secondary active:bg-surface-tertiary border border-border hover:border-purple-300 hover:shadow-md hover:shadow-purple-100"
               >
                 <Sparkles className="w-4 h-4 text-purple-500 group-hover:text-purple-600" />
-                <span className="text-gray-700 group-hover:text-gray-900">Ask AI Tutor</span>
+                <span className="text-content-secondary group-hover:text-content">Ask AI Tutor</span>
               </button>
             </div>
 

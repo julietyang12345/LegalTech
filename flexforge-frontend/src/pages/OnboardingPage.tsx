@@ -202,9 +202,9 @@ export default function OnboardingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-50 to-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-brand-50 dark:from-brand-900/20 to-surface-secondary">
       {/* Progress bar */}
-      <div className="fixed top-0 left-0 right-0 h-1 bg-gray-200 z-50">
+      <div className="fixed top-0 left-0 right-0 h-1 bg-surface-tertiary z-50">
         <motion.div
           className="h-full bg-brand-500"
           initial={{ width: 0 }}
@@ -398,8 +398,8 @@ function LoadingState({
         </div>
       </div>
 
-      <h2 className="text-xl font-semibold text-gray-900 mb-2">{title}</h2>
-      <p className="text-gray-600 mb-8">{subtitle}</p>
+      <h2 className="text-xl font-semibold text-content mb-2">{title}</h2>
+      <p className="text-content-secondary mb-8">{subtitle}</p>
 
       {/* Animated steps with checkmarks */}
       {steps && steps.length > 0 && (

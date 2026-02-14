@@ -168,10 +168,10 @@ export function AiTutorPanel({ isOpen, onClose, sessionId, dayNumber, context }:
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl z-50 flex flex-col"
+            className="fixed right-0 top-0 h-full w-full max-w-md bg-surface shadow-2xl z-50 flex flex-col"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-violet-500 to-purple-600">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-gradient-to-r from-violet-500 to-purple-600">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
                   <Sparkles className="w-5 h-5 text-white" />
@@ -211,7 +211,7 @@ export function AiTutorPanel({ isOpen, onClose, sessionId, dayNumber, context }:
                 </div>
                 <a
                   href="/settings?upgrade=true"
-                  className="px-3 py-1 bg-white text-violet-600 text-sm font-medium rounded-full hover:bg-violet-50 transition-colors"
+                  className="px-3 py-1 bg-surface text-violet-600 text-sm font-medium rounded-full hover:bg-violet-50 transition-colors"
                 >
                   Upgrade to Pro
                 </a>
@@ -235,12 +235,12 @@ export function AiTutorPanel({ isOpen, onClose, sessionId, dayNumber, context }:
                     'w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0',
                     message.role === 'assistant'
                       ? 'bg-gradient-to-br from-violet-500 to-purple-600'
-                      : 'bg-gray-200'
+                      : 'bg-surface-tertiary'
                   )}>
                     {message.role === 'assistant' ? (
                       <Bot className="w-4 h-4 text-white" />
                     ) : (
-                      <User className="w-4 h-4 text-gray-600" />
+                      <User className="w-4 h-4 text-content-secondary" />
                     )}
                   </div>
 
@@ -248,7 +248,7 @@ export function AiTutorPanel({ isOpen, onClose, sessionId, dayNumber, context }:
                   <div className={clsx(
                     'max-w-[80%] rounded-2xl px-4 py-2.5',
                     message.role === 'assistant'
-                      ? 'bg-gray-100 text-gray-800 rounded-tl-sm'
+                      ? 'bg-surface-tertiary text-content rounded-tl-sm'
                       : 'bg-violet-500 text-white rounded-tr-sm'
                   )}>
                     <p className="text-sm whitespace-pre-wrap leading-relaxed">
@@ -268,10 +268,10 @@ export function AiTutorPanel({ isOpen, onClose, sessionId, dayNumber, context }:
                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center flex-shrink-0">
                     <Bot className="w-4 h-4 text-white" />
                   </div>
-                  <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-4 py-3">
+                  <div className="bg-surface-tertiary rounded-2xl rounded-tl-sm px-4 py-3">
                     <div className="flex items-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin text-violet-500" />
-                      <span className="text-sm text-gray-500">Thinking...</span>
+                      <span className="text-sm text-content-tertiary">Thinking...</span>
                     </div>
                   </div>
                 </motion.div>
@@ -283,7 +283,7 @@ export function AiTutorPanel({ isOpen, onClose, sessionId, dayNumber, context }:
             {/* Quick prompts */}
             {messages.length <= 1 && !quotaExceeded && (
               <div className="px-4 pb-2">
-                <p className="text-xs text-gray-500 mb-2 flex items-center gap-1">
+                <p className="text-xs text-content-tertiary mb-2 flex items-center gap-1">
                   <Lightbulb className="w-3 h-3" />
                   Quick questions
                 </p>
@@ -303,7 +303,7 @@ export function AiTutorPanel({ isOpen, onClose, sessionId, dayNumber, context }:
             )}
 
             {/* Input */}
-            <div className="p-4 border-t border-gray-200 bg-gray-50">
+            <div className="p-4 border-t border-border bg-surface-secondary">
               <div className="flex gap-2">
                 <div className="flex-1 relative">
                   <textarea
@@ -315,8 +315,8 @@ export function AiTutorPanel({ isOpen, onClose, sessionId, dayNumber, context }:
                     rows={1}
                     disabled={quotaExceeded}
                     className={clsx(
-                      'w-full px-4 py-2.5 pr-12 bg-white border border-gray-300 rounded-xl resize-none',
-                      'text-base text-gray-900 placeholder-gray-400', // text-base (16px) prevents iOS zoom on focus
+                      'w-full px-4 py-2.5 pr-12 bg-surface border border-border rounded-xl resize-none',
+                      'text-base text-content placeholder-content-tertiary', // text-base (16px) prevents iOS zoom on focus
                       'focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500',
                       'transition-all duration-200',
                       quotaExceeded && 'opacity-50 cursor-not-allowed'
@@ -341,11 +341,11 @@ export function AiTutorPanel({ isOpen, onClose, sessionId, dayNumber, context }:
               {/* Mobile close button */}
               <button
                 onClick={onClose}
-                className="w-full mt-3 py-2.5 text-sm text-gray-600 bg-gray-200 rounded-xl hover:bg-gray-300 transition-colors md:hidden"
+                className="w-full mt-3 py-2.5 text-sm text-content-secondary bg-surface-tertiary rounded-xl hover:bg-border transition-colors md:hidden"
               >
                 Close Tutor
               </button>
-              <p className="text-xs text-gray-400 mt-2 text-center hidden md:block">
+              <p className="text-xs text-content-tertiary mt-2 text-center hidden md:block">
                 Press Enter to send, Shift+Enter for new line
               </p>
             </div>

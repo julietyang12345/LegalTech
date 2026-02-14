@@ -54,12 +54,12 @@ function BossMilestoneLoader({ dayTitle, bossTitle }: { dayTitle: string; bossTi
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center">
+              <div className="w-12 h-12 rounded-xl bg-surface shadow-sm flex items-center justify-center">
                 <Trophy className="w-6 h-6 text-purple-600" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900">{bossTitle || 'Boss Project'}</h3>
-                <p className="text-sm text-gray-500">Building your project...</p>
+                <h3 className="font-semibold text-content">{bossTitle || 'Boss Project'}</h3>
+                <p className="text-sm text-content-tertiary">Building your project...</p>
               </div>
             </div>
           </div>
@@ -91,7 +91,7 @@ function BossMilestoneLoader({ dayTitle, bossTitle }: { dayTitle: string; bossTi
       <Card className="border-2 border-purple-200">
         <div className="p-6">
           <div className="mb-4">
-            <h3 className="font-bold text-lg text-gray-900 mb-1">
+            <h3 className="font-bold text-lg text-content mb-1">
               Today: {dayTitle}
             </h3>
           </div>
@@ -509,7 +509,7 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
         );
       default:
         return (
-          <div className="text-center py-8 text-gray-500">
+          <div className="text-center py-8 text-content-tertiary">
             Unknown section type: {(section as any).type}
           </div>
         );
@@ -534,7 +534,7 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           <div className="text-center mt-4">
             <button
               onClick={onComplete}
-              className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+              className="text-sm text-content-tertiary hover:text-content-secondary transition-colors"
             >
               Skip for now
             </button>
@@ -560,15 +560,15 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
         >
           <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-100">
             <div className="p-8 text-center">
-              <div className="w-16 h-16 mx-auto bg-white rounded-full shadow-sm flex items-center justify-center mb-4">
+              <div className="w-16 h-16 mx-auto bg-surface rounded-full shadow-sm flex items-center justify-center mb-4">
                 <BookOpen className="w-8 h-8 text-blue-600" />
               </div>
 
               <h2 className="text-2xl font-bold mb-2">{intensivePractice.title}</h2>
-              <p className="text-gray-600 mb-6">{intensivePractice.description}</p>
+              <p className="text-content-secondary mb-6">{intensivePractice.description}</p>
 
-              <div className="bg-white/80 rounded-lg p-4 mb-6 text-left">
-                <h3 className="text-sm font-medium text-gray-500 mb-3">What you'll practice:</h3>
+              <div className="bg-surface/80 rounded-lg p-4 mb-6 text-left">
+                <h3 className="text-sm font-medium text-content-tertiary mb-3">What you'll practice:</h3>
                 <ul className="space-y-2">
                   {sections.map((section, index) => (
                     <li key={index} className="flex items-center gap-2 text-sm">
@@ -581,7 +581,7 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
                 </ul>
               </div>
 
-              <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-6">
+              <div className="flex items-center justify-center gap-2 text-sm text-content-tertiary mb-6">
                 <span>Estimated time:</span>
                 <span className="font-medium">{intensivePractice.estimatedMinutes} minutes</span>
               </div>
@@ -589,7 +589,7 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
               <div className="flex gap-3">
                 <button
                   onClick={onComplete}
-                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="flex-1 px-4 py-3 border border-border rounded-lg hover:bg-surface-secondary transition-colors"
                 >
                   Skip for now
                 </button>
@@ -642,13 +642,13 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
               {passed ? 'Great Job!' : 'Keep Practicing!'}
             </h2>
 
-            <p className="text-gray-600 mb-6">
+            <p className="text-content-secondary mb-6">
               You scored {score} out of {total} ({percentage}%)
             </p>
 
             {/* Section breakdown */}
-            <div className="bg-gray-50 rounded-lg p-4 mb-6 text-left">
-              <h3 className="text-sm font-medium text-gray-500 mb-3">Section Breakdown</h3>
+            <div className="bg-surface-secondary rounded-lg p-4 mb-6 text-left">
+              <h3 className="text-sm font-medium text-content-tertiary mb-3">Section Breakdown</h3>
               <div className="space-y-2">
                 {sections.map((section, index) => {
                   const result = sectionResults[index];
@@ -672,7 +672,7 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
               {!passed && (
                 <button
                   onClick={resetPractice}
-                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+                  className="flex-1 px-4 py-3 border border-border rounded-lg hover:bg-surface-secondary transition-colors flex items-center justify-center gap-2"
                 >
                   <RotateCcw className="w-4 h-4" />
                   Try Again
@@ -711,7 +711,7 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
                 key={i}
                 className={clsx(
                   'w-2.5 h-2.5 rounded-full transition-all',
-                  i === miniCardIndex ? 'bg-purple-500 scale-125' : i < miniCardIndex ? 'bg-purple-300' : 'bg-gray-200'
+                  i === miniCardIndex ? 'bg-purple-500 scale-125' : i < miniCardIndex ? 'bg-purple-300' : 'bg-surface-tertiary'
                 )}
               />
             ))}
@@ -733,11 +733,11 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
                   </span>
                 </div>
 
-                <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">
+                <h3 className="text-xl font-bold text-content mb-4 text-center">
                   {currentMiniCard.concept}
                 </h3>
 
-                <p className="text-gray-700 leading-relaxed">
+                <p className="text-content-secondary leading-relaxed">
                   {currentMiniCard.explanation}
                 </p>
               </Card>
@@ -751,7 +751,7 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
               disabled={miniCardIndex === 0}
               className={clsx(
                 'px-4 py-2 rounded-lg flex items-center gap-2',
-                miniCardIndex === 0 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100'
+                miniCardIndex === 0 ? 'text-gray-300 cursor-not-allowed' : 'text-content-secondary hover:bg-surface-tertiary'
               )}
             >
               <ChevronLeft className="w-5 h-5" />
@@ -800,7 +800,7 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
               'p-2 rounded-lg transition-colors flex-shrink-0',
               currentSectionIndex === 0 && !hasMiniCards
                 ? 'text-gray-300 cursor-not-allowed'
-                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 active:bg-gray-200'
+                : 'text-content-tertiary hover:bg-surface-tertiary hover:text-content-secondary active:bg-surface-tertiary'
             )}
             title={currentSectionIndex === 0 && hasMiniCards ? 'Back to Concepts' : 'Previous Section'}
           >
@@ -831,7 +831,7 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
                       ? 'bg-green-100 text-green-700 hover:bg-green-200 active:bg-green-300'
                       : isActive
                       ? 'bg-blue-100 text-blue-700'
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200 active:bg-gray-300'
+                      : 'bg-surface-tertiary text-content-tertiary hover:bg-surface-tertiary active:bg-border'
                   )}
                 >
                   <span className="truncate max-w-[60px] sm:max-w-none">{sectionLabel}</span>
@@ -848,7 +848,7 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
               'p-2 rounded-lg transition-colors flex-shrink-0',
               currentSectionCompleted
                 ? 'text-blue-600 hover:bg-blue-50 active:bg-blue-100'
-                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 active:bg-gray-200'
+                : 'text-content-tertiary hover:bg-surface-tertiary hover:text-content-secondary active:bg-surface-tertiary'
             )}
             title={currentSectionIndex < sections.length - 1 ? 'Next Section' : 'Finish'}
           >
@@ -861,7 +861,7 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           <div className="text-right mb-2">
             <button
               onClick={handleNext}
-              className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+              className="text-xs text-content-tertiary hover:text-content-secondary transition-colors"
             >
               Skip this section →
             </button>
@@ -1089,12 +1089,12 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center">
+              <div className="w-12 h-12 rounded-xl bg-surface shadow-sm flex items-center justify-center">
                 <Trophy className="w-6 h-6 text-purple-600" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900">{activeBoss?.title || 'Boss Project'}</h3>
-                <p className="text-sm text-gray-500">
+                <h3 className="font-semibold text-content">{activeBoss?.title || 'Boss Project'}</h3>
+                <p className="text-sm text-content-tertiary">
                   {daysUntilBoss > 0 ? `${daysUntilBoss} day${daysUntilBoss !== 1 ? 's' : ''} away` : 'Due today!'}
                 </p>
               </div>
@@ -1103,7 +1103,7 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
               <span className="text-2xl font-bold text-purple-600">
                 {Math.round(progressPercent)}%
               </span>
-              <p className="text-xs text-gray-500">complete</p>
+              <p className="text-xs text-content-tertiary">complete</p>
             </div>
           </div>
 
@@ -1125,7 +1125,7 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
                     isSaved ? 'bg-purple-500 text-white' :
                     isCurrent ? 'bg-purple-200 text-purple-700 ring-2 ring-purple-500' :
-                    'bg-gray-200 text-gray-500'
+                    'bg-surface-tertiary text-content-tertiary'
                   }`}>
                     {isSaved ? <CheckCircle2 className="w-4 h-4" /> : d}
                   </div>
@@ -1145,11 +1145,11 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
       <Card className="border-2 border-purple-200">
         <div className="p-6">
           <div className="mb-4">
-            <h3 className="font-bold text-lg text-gray-900 mb-1">
+            <h3 className="font-bold text-lg text-content mb-1">
               {milestone?.title || `Day ${day.day} Task`}
             </h3>
             {milestone?.description && (
-              <p className="text-gray-600">{milestone.description}</p>
+              <p className="text-content-secondary">{milestone.description}</p>
             )}
           </div>
 
@@ -1164,8 +1164,8 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
 
           {/* Fallback if no task data at all */}
           {!milestone?.microTask && !taskPreview && (
-            <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg mb-4">
-              <p className="text-gray-600">
+            <div className="p-4 bg-surface-secondary border border-border rounded-lg mb-4">
+              <p className="text-content-secondary">
                 Build your contribution to "{activeBoss?.title}" today.
               </p>
             </div>
@@ -1182,8 +1182,8 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
 
           {/* Validation instructions */}
           {milestone?.validationInstructions && (
-            <div className="p-3 bg-gray-100 rounded-lg">
-              <p className="text-sm text-gray-600">
+            <div className="p-3 bg-surface-tertiary rounded-lg">
+              <p className="text-sm text-content-secondary">
                 <span className="font-medium">To verify:</span> {milestone.validationInstructions}
               </p>
             </div>
@@ -1204,10 +1204,10 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
             >
               <Card className="border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 to-purple-50">
                 <div className="p-6">
-                  <h3 className="font-bold text-lg text-gray-900 mb-2 text-center">
+                  <h3 className="font-bold text-lg text-content mb-2 text-center">
                     Choose Your Approach
                   </h3>
-                  <p className="text-gray-600 text-sm text-center mb-6">
+                  <p className="text-content-secondary text-sm text-center mb-6">
                     You get a solution. Practice understanding it by choosing your path.
                   </p>
 
@@ -1215,13 +1215,13 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
                     {/* Write it yourself */}
                     <button
                       onClick={() => setChallengeChoice('write')}
-                      className="p-4 rounded-xl border-2 border-indigo-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 transition-all text-left group"
+                      className="p-4 rounded-xl border-2 border-indigo-200 bg-surface hover:border-indigo-400 hover:bg-indigo-50 transition-all text-left group"
                     >
                       <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center mb-3 group-hover:bg-indigo-200 transition-colors">
                         <PenLine className="w-5 h-5 text-indigo-600" />
                       </div>
-                      <h4 className="font-semibold text-gray-900 mb-1">Write it yourself</h4>
-                      <p className="text-xs text-gray-500">
+                      <h4 className="font-semibold text-content mb-1">Write it yourself</h4>
+                      <p className="text-xs text-content-tertiary">
                         {challengeOptions?.writeYourself?.description || 'Write this code from scratch to prove you understand it'}
                       </p>
                     </button>
@@ -1229,19 +1229,19 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
                     {/* Make AI code run */}
                     <button
                       onClick={() => setChallengeChoice('run')}
-                      className="p-4 rounded-xl border-2 border-emerald-200 bg-white hover:border-emerald-400 hover:bg-emerald-50 transition-all text-left group"
+                      className="p-4 rounded-xl border-2 border-emerald-200 bg-surface hover:border-emerald-400 hover:bg-emerald-50 transition-all text-left group"
                     >
                       <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center mb-3 group-hover:bg-emerald-200 transition-colors">
                         <Play className="w-5 h-5 text-emerald-600" />
                       </div>
-                      <h4 className="font-semibold text-gray-900 mb-1">Make AI code run</h4>
-                      <p className="text-xs text-gray-500">
+                      <h4 className="font-semibold text-content mb-1">Make AI code run</h4>
+                      <p className="text-xs text-content-tertiary">
                         {challengeOptions?.makeItRun?.description || 'Copy the AI code and make it run on your machine'}
                       </p>
                     </button>
                   </div>
 
-                  <p className="text-xs text-gray-400 text-center mt-4">
+                  <p className="text-xs text-content-tertiary text-center mt-4">
                     Both paths prove you understand the code. Choose what works for you.
                   </p>
                 </div>
@@ -1265,12 +1265,12 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
                       <PenLine className="w-5 h-5 text-indigo-600" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-gray-900">Write It Yourself</h3>
-                      <p className="text-sm text-gray-500">Build this code from scratch</p>
+                      <h3 className="font-semibold text-content">Write It Yourself</h3>
+                      <p className="text-sm text-content-tertiary">Build this code from scratch</p>
                     </div>
                     <button
                       onClick={() => setChallengeChoice(null)}
-                      className="ml-auto text-xs text-gray-400 hover:text-gray-600"
+                      className="ml-auto text-xs text-content-tertiary hover:text-content-secondary"
                     >
                       Change path
                     </button>
@@ -1287,14 +1287,14 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
                   {starterCode && starterCode.trim() !== '// Start coding here...\n\n' && (
                     <div className="relative mb-4">
                       <div className="flex items-center justify-between mb-2">
-                        <p className="text-sm font-medium text-gray-700">Starter code:</p>
+                        <p className="text-sm font-medium text-content-secondary">Starter code:</p>
                         <button
                           onClick={() => {
                             navigator.clipboard.writeText(starterCode);
                             setCopiedCode(true);
                             setTimeout(() => setCopiedCode(false), 2000);
                           }}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs text-content-secondary hover:text-content hover:bg-surface-tertiary rounded transition-colors"
                         >
                           {copiedCode ? (
                             <>
@@ -1317,7 +1317,7 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
 
                   {/* Progressive hints */}
                   <div className="space-y-2 mb-4">
-                    <p className="text-sm font-medium text-gray-700">Hints (click to reveal):</p>
+                    <p className="text-sm font-medium text-content-secondary">Hints (click to reveal):</p>
                     {hints.map((hint, index) => (
                       <button
                         key={index}
@@ -1326,17 +1326,17 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
                           'w-full p-3 rounded-lg text-left transition-all',
                           revealedHintLevel > index
                             ? 'bg-amber-50 border border-amber-200'
-                            : 'bg-gray-100 hover:bg-gray-200 cursor-pointer'
+                            : 'bg-surface-tertiary hover:bg-surface-tertiary cursor-pointer'
                         )}
                       >
                         <div className="flex items-start gap-2">
-                          <span className="text-xs font-medium text-gray-500 bg-white px-1.5 py-0.5 rounded">
+                          <span className="text-xs font-medium text-content-tertiary bg-surface px-1.5 py-0.5 rounded">
                             Hint {index + 1}
                           </span>
                           {revealedHintLevel > index ? (
                             <span className="text-sm text-amber-800">{hint}</span>
                           ) : (
-                            <span className="text-sm text-gray-400 italic">Click to reveal...</span>
+                            <span className="text-sm text-content-tertiary italic">Click to reveal...</span>
                           )}
                         </div>
                       </button>
@@ -1345,9 +1345,9 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
 
                   {/* Setup instructions */}
                   {(milestone?.setupInstructions || activeBoss?.setupInstructions) && (
-                    <div className="p-3 bg-white border border-gray-200 rounded-lg mb-4">
-                      <p className="text-sm font-medium text-gray-700 mb-2">Setup:</p>
-                      <ul className="text-sm text-gray-600 space-y-1">
+                    <div className="p-3 bg-surface border border-border rounded-lg mb-4">
+                      <p className="text-sm font-medium text-content-secondary mb-2">Setup:</p>
+                      <ul className="text-sm text-content-secondary space-y-1">
                         {(milestone?.setupInstructions || activeBoss?.setupInstructions)?.steps?.map((step: string, i: number) => (
                           <li key={i} className="flex items-start gap-2">
                             <span className="text-indigo-500">{i + 1}.</span>
@@ -1356,8 +1356,8 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
                         ))}
                       </ul>
                       {(milestone?.setupInstructions || activeBoss?.setupInstructions)?.runCommand && (
-                        <p className="text-xs text-gray-500 mt-2">
-                          Run: <code className="bg-gray-100 px-1 rounded">{(milestone?.setupInstructions || activeBoss?.setupInstructions)?.runCommand}</code>
+                        <p className="text-xs text-content-tertiary mt-2">
+                          Run: <code className="bg-surface-tertiary px-1 rounded">{(milestone?.setupInstructions || activeBoss?.setupInstructions)?.runCommand}</code>
                         </p>
                       )}
                     </div>
@@ -1366,15 +1366,15 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
                   {/* Stuck? Show AI solution */}
                   <button
                     onClick={() => setShowSolution(!showSolution)}
-                    className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+                    className="text-xs text-content-tertiary hover:text-content-secondary flex items-center gap-1"
                   >
                     {showSolution ? 'Hide AI solution' : 'Stuck? View AI solution'}
                     {showSolution ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                   </button>
 
                   {showSolution && (
-                    <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                      <p className="text-xs text-gray-500 mb-2">AI-generated solution:</p>
+                    <div className="mt-3 p-3 bg-surface-secondary border border-border rounded-lg">
+                      <p className="text-xs text-content-tertiary mb-2">AI-generated solution:</p>
                       <pre className="p-3 bg-gray-900 text-gray-100 rounded-lg overflow-x-auto text-sm font-mono whitespace-pre-wrap max-h-48">
                         {solutionCode}
                       </pre>
@@ -1401,12 +1401,12 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
                       <Play className="w-5 h-5 text-emerald-600" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-gray-900">Make the AI Code Run</h3>
-                      <p className="text-sm text-gray-500">Copy, set up, and debug</p>
+                      <h3 className="font-semibold text-content">Make the AI Code Run</h3>
+                      <p className="text-sm text-content-tertiary">Copy, set up, and debug</p>
                     </div>
                     <button
                       onClick={() => setChallengeChoice(null)}
-                      className="ml-auto text-xs text-gray-400 hover:text-gray-600"
+                      className="ml-auto text-xs text-content-tertiary hover:text-content-secondary"
                     >
                       Change path
                     </button>
@@ -1415,14 +1415,14 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
                   {/* AI Solution Code */}
                   <div className="relative mb-4">
                     <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm font-medium text-gray-700">AI-generated solution:</p>
+                      <p className="text-sm font-medium text-content-secondary">AI-generated solution:</p>
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(solutionCode);
                           setCopiedCode(true);
                           setTimeout(() => setCopiedCode(false), 2000);
                         }}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs text-content-secondary hover:text-content hover:bg-surface-tertiary rounded transition-colors"
                       >
                         {copiedCode ? (
                           <>
@@ -1454,20 +1454,20 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
                   {/* Setup steps */}
                   {(makeItRunSetupSteps.length > 0 || milestone?.setupInstructions?.steps) && (
                     <div className="mb-4">
-                      <p className="text-sm font-medium text-gray-700 mb-2">Setup Steps:</p>
+                      <p className="text-sm font-medium text-content-secondary mb-2">Setup Steps:</p>
                       <ul className="space-y-2">
                         {(makeItRunSetupSteps.length > 0 ? makeItRunSetupSteps : milestone?.setupInstructions?.steps || []).map((step: string, i: number) => (
                           <li key={i} className="flex items-start gap-2 text-sm">
                             <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-xs font-medium flex-shrink-0">
                               {i + 1}
                             </span>
-                            <span className="text-gray-700">{step}</span>
+                            <span className="text-content-secondary">{step}</span>
                           </li>
                         ))}
                       </ul>
                       {milestone?.setupInstructions?.runCommand && (
-                        <p className="text-xs text-gray-500 mt-3">
-                          Run: <code className="bg-gray-100 px-1.5 py-0.5 rounded">{milestone.setupInstructions.runCommand}</code>
+                        <p className="text-xs text-content-tertiary mt-3">
+                          Run: <code className="bg-surface-tertiary px-1.5 py-0.5 rounded">{milestone.setupInstructions.runCommand}</code>
                         </p>
                       )}
                     </div>
@@ -1502,20 +1502,20 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
         <Card>
           <button
             onClick={() => setShowHints(!showHints)}
-            className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
+            className="w-full p-4 flex items-center justify-between text-left hover:bg-surface-secondary transition-colors"
           >
             <div className="flex items-center gap-2">
               <Lightbulb className="w-5 h-5 text-amber-500" />
-              <span className="font-medium text-gray-900">Need help? View hints</span>
+              <span className="font-medium text-content">Need help? View hints</span>
             </div>
             {showHints ? (
-              <ChevronUp className="w-5 h-5 text-gray-400" />
+              <ChevronUp className="w-5 h-5 text-content-tertiary" />
             ) : (
-              <ChevronDown className="w-5 h-5 text-gray-400" />
+              <ChevronDown className="w-5 h-5 text-content-tertiary" />
             )}
           </button>
           {showHints && (
-            <div className="px-4 pb-4 border-t border-gray-100 pt-4">
+            <div className="px-4 pb-4 border-t border-border-secondary pt-4">
               <ul className="space-y-3">
                 {hints.map((hint, index) => (
                   <li key={index} className="flex items-start gap-2 p-3 bg-amber-50 rounded-lg">
@@ -1538,14 +1538,14 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
               <Monitor className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Requires External Tools</h3>
-              <p className="text-sm text-gray-600">Complete this task in your preferred code editor</p>
+              <h3 className="font-semibold text-content">Requires External Tools</h3>
+              <p className="text-sm text-content-secondary">Complete this task in your preferred code editor</p>
             </div>
           </div>
 
           {/* Suggested Tools */}
           <div className="mb-4">
-            <p className="text-xs font-medium text-gray-500 mb-2">Suggested tools:</p>
+            <p className="text-xs font-medium text-content-tertiary mb-2">Suggested tools:</p>
             <div className="flex flex-wrap gap-2">
               {externalTools.map((tool) => (
                 <a
@@ -1553,7 +1553,7 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
                   href={tool.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface border border-border rounded-lg text-sm text-content-secondary hover:border-blue-300 hover:bg-blue-50 transition-colors"
                 >
                   {tool.name}
                   <ExternalLink className="w-3 h-3" />
@@ -1564,9 +1564,9 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
 
           {/* Setup Instructions */}
           {(milestone?.setupInstructions || activeBoss?.setupInstructions) && (
-            <div className="p-3 bg-white/80 border border-blue-100 rounded-lg mb-4">
-              <p className="text-sm font-medium text-gray-700 mb-2">Setup:</p>
-              <ul className="text-sm text-gray-600 space-y-1">
+            <div className="p-3 bg-surface/80 border border-blue-100 rounded-lg mb-4">
+              <p className="text-sm font-medium text-content-secondary mb-2">Setup:</p>
+              <ul className="text-sm text-content-secondary space-y-1">
                 {(milestone?.setupInstructions || activeBoss?.setupInstructions)?.steps?.map((step: string, i: number) => (
                   <li key={i} className="flex items-start gap-2">
                     <span className="text-blue-500">{i + 1}.</span>
@@ -1581,14 +1581,14 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
           {starterCode && starterCode.trim() !== '// Start coding here...\n\n' && (
             <div className="relative">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-medium text-gray-500">Starter code:</p>
+                <p className="text-xs font-medium text-content-tertiary">Starter code:</p>
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(starterCode);
                     setCopiedCode(true);
                     setTimeout(() => setCopiedCode(false), 2000);
                   }}
-                  className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs text-content-secondary hover:text-content hover:bg-surface-tertiary rounded transition-colors"
                 >
                   {copiedCode ? (
                     <>
@@ -1616,14 +1616,14 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
       {!hasChallengeOptions && (
       <Card>
         <div className="p-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-content-secondary mb-2">
             Your notes & reflection
           </label>
           <textarea
             placeholder="Write your notes here..."
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="w-full min-h-[120px] p-3 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
+            className="w-full min-h-[120px] p-3 border border-border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
           />
         </div>
       </Card>
@@ -1649,7 +1649,7 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
              'Mark as Complete'}
           </Button>
           {!hasChallengeOptions && (
-          <p className="text-xs text-center text-gray-400 mt-2">
+          <p className="text-xs text-center text-content-tertiary mt-2">
             Add a quick note about what you accomplished
           </p>
           )}
@@ -1689,10 +1689,10 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
       {(isSubmitted || currentDayAlreadySaved) && hasChallengeOptions && solutionAnnotations.length > 0 && (
         <Card className="border border-purple-200 bg-gradient-to-br from-purple-50 to-indigo-50">
           <div className="p-4">
-            <h4 className="font-semibold text-gray-900 mb-3">Solution Walkthrough</h4>
+            <h4 className="font-semibold text-content mb-3">Solution Walkthrough</h4>
             <ul className="space-y-2">
               {solutionAnnotations.map((annotation: string, index: number) => (
-                <li key={index} className="flex items-start gap-2 text-sm text-gray-700">
+                <li key={index} className="flex items-start gap-2 text-sm text-content-secondary">
                   <CheckCircle2 className="w-4 h-4 text-purple-500 flex-shrink-0 mt-0.5" />
                   {annotation}
                 </li>
@@ -1707,7 +1707,7 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
       <div className="text-center">
         <button
           onClick={() => setShowSolution(!showSolution)}
-          className="text-xs text-gray-400 hover:text-gray-500 transition-colors inline-flex items-center gap-1"
+          className="text-xs text-content-tertiary hover:text-content-tertiary transition-colors inline-flex items-center gap-1"
         >
           {showSolution ? (
             <>Hide solution <ChevronUp className="w-3 h-3" /></>
@@ -1725,10 +1725,10 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
                   </pre>
                   {solutionAnnotations.length > 0 && (
                     <div className="mt-4 space-y-2">
-                      <p className="text-sm font-medium text-gray-700">Key points:</p>
+                      <p className="text-sm font-medium text-content-secondary">Key points:</p>
                       <ul className="space-y-1">
                         {solutionAnnotations.map((annotation: string, index: number) => (
-                          <li key={index} className="flex items-start gap-2 text-sm text-gray-600">
+                          <li key={index} className="flex items-start gap-2 text-sm text-content-secondary">
                             <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
                             {annotation}
                           </li>
@@ -1738,7 +1738,7 @@ function ProjectMilestoneStep({ day, session, onComplete: _onComplete }: Project
                   )}
                 </>
               ) : (
-                <p className="text-gray-500 text-sm">
+                <p className="text-content-tertiary text-sm">
                   Solution not available for this milestone. Try completing the task on your own, or check the hints above!
                 </p>
               )}

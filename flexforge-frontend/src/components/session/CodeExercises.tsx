@@ -25,12 +25,12 @@ function QuestionStreamingSkeleton({ title, current, total }: { title?: string; 
   return (
     <div className="space-y-4">
       {title && <ExerciseHeader title={title} progress={{ current, total }} />}
-      <div className="bg-white rounded-lg p-6 shadow-sm border animate-pulse">
-        <div className="h-5 bg-gray-200 rounded w-3/4 mb-4" />
+      <div className="bg-surface rounded-lg p-6 shadow-sm border animate-pulse">
+        <div className="h-5 bg-surface-tertiary rounded w-3/4 mb-4" />
         <div className="space-y-2">
-          <div className="h-12 bg-gray-100 rounded-lg" />
-          <div className="h-12 bg-gray-100 rounded-lg" />
-          <div className="h-12 bg-gray-100 rounded-lg" />
+          <div className="h-12 bg-surface-tertiary rounded-lg" />
+          <div className="h-12 bg-surface-tertiary rounded-lg" />
+          <div className="h-12 bg-surface-tertiary rounded-lg" />
         </div>
       </div>
     </div>
@@ -47,15 +47,15 @@ function ExerciseHeader({ title, instructions, progress }: ExerciseHeaderProps) 
   return (
     <div className="mb-4">
       <div className="flex justify-between items-center mb-2">
-        <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
-        <span className="text-sm text-gray-500">
+        <h3 className="text-lg font-semibold text-content">{title}</h3>
+        <span className="text-sm text-content-tertiary">
           {progress.current} / {progress.total}
         </span>
       </div>
       {instructions && (
-        <p className="text-sm text-gray-600">{instructions}</p>
+        <p className="text-sm text-content-secondary">{instructions}</p>
       )}
-      <div className="mt-2 h-1 bg-gray-200 rounded-full overflow-hidden">
+      <div className="mt-2 h-1 bg-surface-tertiary rounded-full overflow-hidden">
         <motion.div
           className="h-full bg-brand-500"
           initial={{ width: 0 }}
@@ -202,12 +202,12 @@ export function CodeCompletionExercise({ section, onComplete, savedProgress, onP
         progress={{ current: currentIndex + 1, total: items.length }}
       />
 
-      <div className="bg-white rounded-lg p-6 shadow-sm border">
-        <p className="text-gray-700 mb-4">{currentItem.description}</p>
+      <div className="bg-surface rounded-lg p-6 shadow-sm border">
+        <p className="text-content-secondary mb-4">{currentItem.description}</p>
 
         {/* Starter code */}
         <div className="mb-4">
-          <p className="text-sm font-medium text-gray-500 mb-2">Starter Code:</p>
+          <p className="text-sm font-medium text-content-tertiary mb-2">Starter Code:</p>
           <CodeBlock code={currentItem.starterCode} language={currentItem.language} />
         </div>
 
@@ -215,12 +215,12 @@ export function CodeCompletionExercise({ section, onComplete, savedProgress, onP
         {!hasAnswered && (
           <>
             <div className="mb-4">
-              <label className="text-sm font-medium text-gray-500 mb-2 block">Your Solution:</label>
+              <label className="text-sm font-medium text-content-tertiary mb-2 block">Your Solution:</label>
               <textarea
                 value={userCode}
                 onChange={(e) => setUserCode(e.target.value)}
                 placeholder="Write your code here..."
-                className="w-full h-40 p-3 font-mono text-base border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-gray-50"
+                className="w-full h-40 p-3 font-mono text-base border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-surface-secondary"
               />
             </div>
 
@@ -228,7 +228,7 @@ export function CodeCompletionExercise({ section, onComplete, savedProgress, onP
               <button
                 onClick={showNextHint}
                 disabled={showHint && currentHintIndex >= currentItem.hints.length - 1}
-                className="flex items-center gap-1 px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg"
+                className="flex items-center gap-1 px-3 py-2 text-content-secondary hover:text-content hover:bg-surface-tertiary rounded-lg"
               >
                 <Lightbulb className="w-4 h-4" />
                 {showHint ? `Hint ${currentHintIndex + 1}/${currentItem.hints.length}` : 'Show Hint'}
@@ -236,7 +236,7 @@ export function CodeCompletionExercise({ section, onComplete, savedProgress, onP
 
               <button
                 onClick={() => setShowSolution(!showSolution)}
-                className="flex items-center gap-1 px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg"
+                className="flex items-center gap-1 px-3 py-2 text-content-secondary hover:text-content hover:bg-surface-tertiary rounded-lg"
               >
                 {showSolution ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 {showSolution ? 'Hide Solution' : 'Reveal Solution'}
@@ -270,7 +270,7 @@ export function CodeCompletionExercise({ section, onComplete, savedProgress, onP
                 animate={{ opacity: 1, height: 'auto' }}
                 className="mt-3"
               >
-                <p className="text-sm font-medium text-gray-500 mb-2">Solution:</p>
+                <p className="text-sm font-medium text-content-tertiary mb-2">Solution:</p>
                 <CodeBlock code={currentItem.solution} language={currentItem.language} />
               </motion.div>
             )}
@@ -414,7 +414,7 @@ export function DebuggingExercise({ section, onComplete, savedProgress, onProgre
         progress={{ current: currentIndex + 1, total: items.length }}
       />
 
-      <div className="bg-white rounded-lg p-6 shadow-sm border">
+      <div className="bg-surface rounded-lg p-6 shadow-sm border">
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
           <p className="text-sm text-red-800 font-medium">Bug Report:</p>
           <p className="text-sm text-red-700">There's a bug in this code. Find and fix it!</p>
@@ -423,11 +423,11 @@ export function DebuggingExercise({ section, onComplete, savedProgress, onProgre
         {!hasAnswered && (
           <>
             <div className="mb-4">
-              <label className="text-sm font-medium text-gray-500 mb-2 block">Fix the code:</label>
+              <label className="text-sm font-medium text-content-tertiary mb-2 block">Fix the code:</label>
               <textarea
                 value={userCode}
                 onChange={(e) => setUserCode(e.target.value)}
-                className="w-full h-40 p-3 font-mono text-base border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-gray-50"
+                className="w-full h-40 p-3 font-mono text-base border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-surface-secondary"
               />
             </div>
 
@@ -435,7 +435,7 @@ export function DebuggingExercise({ section, onComplete, savedProgress, onProgre
               {currentItem.hint && (
                 <button
                   onClick={() => setShowHint(true)}
-                  className="flex items-center gap-1 px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg"
+                  className="flex items-center gap-1 px-3 py-2 text-content-secondary hover:text-content hover:bg-surface-tertiary rounded-lg"
                 >
                   <Lightbulb className="w-4 h-4" />
                   {showHint ? currentItem.hint : 'Show Hint'}
@@ -588,8 +588,8 @@ export function OutputPredictionExercise({ section, onComplete, savedProgress, o
         progress={{ current: currentIndex + 1, total: questions.length }}
       />
 
-      <div className="bg-white rounded-lg p-6 shadow-sm border">
-        <p className="text-sm font-medium text-gray-500 mb-2">What will this code output?</p>
+      <div className="bg-surface rounded-lg p-6 shadow-sm border">
+        <p className="text-sm font-medium text-content-tertiary mb-2">What will this code output?</p>
         <div className="mb-4">
           <CodeBlock code={currentQuestion.code} language={currentQuestion.language} />
         </div>
@@ -607,8 +607,8 @@ export function OutputPredictionExercise({ section, onComplete, savedProgress, o
                     ? 'bg-green-100 border-green-500'
                     : index === answers[currentQuestion.id]
                     ? 'bg-red-100 border-red-500'
-                    : 'bg-gray-50 border-gray-200'
-                  : 'hover:bg-brand-50 hover:border-brand-300 border-gray-200'
+                    : 'bg-surface-secondary border-border'
+                  : 'hover:bg-brand-50 hover:border-brand-300 border-border'
               )}
             >
               {option}
@@ -640,7 +640,7 @@ export function OutputPredictionExercise({ section, onComplete, savedProgress, o
                 'px-3 sm:px-4 py-2.5 rounded-lg transition-colors flex items-center gap-1.5 sm:gap-2 text-sm',
                 currentIndex === 0
                   ? 'text-gray-300 cursor-not-allowed'
-                  : 'text-gray-600 hover:bg-gray-100 active:bg-gray-200'
+                  : 'text-content-secondary hover:bg-surface-tertiary active:bg-surface-tertiary'
               )}
             >
               <ChevronLeft className="w-4 h-4" />
@@ -829,7 +829,7 @@ export function AICodeReviewExercise({ section, onComplete, savedProgress, onPro
         progress={{ current: completedIssues + 1, total: totalIssues }}
       />
 
-      <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+      <div className="bg-surface rounded-lg shadow-sm border overflow-hidden">
         {/* Context */}
         <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 border-b">
           <div className="flex items-start gap-2">
@@ -853,12 +853,12 @@ export function AICodeReviewExercise({ section, onComplete, savedProgress, onPro
 
         {/* Step 1: Select Location */}
         {step === 'location' && (
-          <div className="p-4 border-t bg-gray-50">
+          <div className="p-4 border-t bg-surface-secondary">
             <div className="flex items-center gap-2 mb-3">
               <div className={clsx('px-2 py-0.5 rounded text-xs font-medium border', typeInfo.color)}>
                 {typeInfo.icon} {typeInfo.label}
               </div>
-              <p className="text-sm font-medium text-gray-700">
+              <p className="text-sm font-medium text-content-secondary">
                 Find the {typeInfo.label.toLowerCase()} issue - which line has the problem?
               </p>
             </div>
@@ -876,7 +876,7 @@ export function AICodeReviewExercise({ section, onComplete, savedProgress, onPro
                     disabled={showFeedback}
                     className={clsx(
                       'p-3 rounded-lg border text-left transition-all font-mono text-sm',
-                      !showFeedback && 'hover:bg-brand-50 hover:border-brand-300 border-gray-200',
+                      !showFeedback && 'hover:bg-brand-50 hover:border-brand-300 border-border',
                       showResult && isCorrectLocation && 'bg-green-100 border-green-500',
                       showResult && !isCorrectLocation && 'bg-red-100 border-red-500',
                       showFeedback && !isSelected && isCorrectLocation && 'bg-green-50 border-green-300'
@@ -930,14 +930,14 @@ export function AICodeReviewExercise({ section, onComplete, savedProgress, onPro
 
         {/* Step 2: Select Reason */}
         {step === 'reason' && currentIssue.options && (
-          <div className="p-4 border-t bg-gray-50">
+          <div className="p-4 border-t bg-surface-secondary">
             <div className="flex items-center gap-2 mb-1">
               <div className={clsx('px-2 py-0.5 rounded text-xs font-medium border', typeInfo.color)}>
                 {typeInfo.icon} {typeInfo.label}
               </div>
-              <p className="text-sm text-gray-500 font-mono">{currentIssue.location}</p>
+              <p className="text-sm text-content-tertiary font-mono">{currentIssue.location}</p>
             </div>
-            <p className="text-sm font-medium text-gray-700 mb-3">
+            <p className="text-sm font-medium text-content-secondary mb-3">
               Why is this line problematic?
             </p>
 
@@ -954,7 +954,7 @@ export function AICodeReviewExercise({ section, onComplete, savedProgress, onPro
                     disabled={showFeedback}
                     className={clsx(
                       'p-3 rounded-lg border text-left transition-all text-sm',
-                      !showFeedback && 'hover:bg-brand-50 hover:border-brand-300 border-gray-200',
+                      !showFeedback && 'hover:bg-brand-50 hover:border-brand-300 border-border',
                       showResult && isSelected && isCorrect && 'bg-green-100 border-green-500',
                       showResult && isSelected && !isCorrect && 'bg-red-100 border-red-500',
                       showResult && !isSelected && isCorrect && 'bg-green-50 border-green-300'

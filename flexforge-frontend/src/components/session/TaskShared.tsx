@@ -52,7 +52,7 @@ export function TaskResultsScreen({
           {Math.round(score * 100)}%
         </div>
 
-        <p className="text-gray-600 mb-6">
+        <p className="text-content-secondary mb-6">
           {passed ? passedMessage : (failedMessage || defaultFailedMessage)}
         </p>
 
@@ -106,7 +106,7 @@ export function TaskProgress({
     <>
       {/* Progress indicator */}
       <div className="flex items-center justify-between mb-4">
-        <span className="text-sm text-gray-500">
+        <span className="text-sm text-content-tertiary">
           {label} {currentIndex + 1} of {totalItems}
         </span>
         <div className="flex gap-1.5">
@@ -120,7 +120,7 @@ export function TaskProgress({
                 i !== currentIndex && item.status === 'correct' && 'bg-green-400',
                 i !== currentIndex && item.status === 'incorrect' && 'bg-red-400',
                 i !== currentIndex && item.status === 'submitted' && colors.correct,
-                i !== currentIndex && (!item.status || item.status === 'pending') && 'bg-gray-200'
+                i !== currentIndex && (!item.status || item.status === 'pending') && 'bg-surface-tertiary'
               )}
             />
           ))}
@@ -128,7 +128,7 @@ export function TaskProgress({
       </div>
 
       {/* Progress bar */}
-      <div className="w-full h-1 bg-gray-200 rounded-full overflow-hidden mb-6">
+      <div className="w-full h-1 bg-surface-tertiary rounded-full overflow-hidden mb-6">
         <motion.div
           className={`h-full ${colors.bar}`}
           initial={{ width: 0 }}

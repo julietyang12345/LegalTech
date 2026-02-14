@@ -1,22 +1,29 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Shield, Save, Eye, EyeOff, ChevronRight } from 'lucide-react';
+import { User, Shield, Save, Eye, EyeOff, ChevronRight, Sun, Moon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/authStore';
+import { useThemeStore, type ThemeMode } from '@/stores/themeStore';
 import { authService } from '@/services/authService';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 
 const tierColors: Record<string, string> = {
-  FREE: 'bg-gray-100 text-gray-700',
-  PRO: 'bg-brand-100 text-brand-700',
-  PREMIUM: 'bg-purple-100 text-purple-700',
-  UNLIMITED: 'bg-amber-100 text-amber-700',
+  FREE: 'bg-surface-tertiary text-content-secondary',
+  PRO: 'bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-400',
+  PREMIUM: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400',
+  UNLIMITED: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
 };
+
+const THEME_OPTIONS: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
+  { value: 'light', label: 'Light', icon: Sun },
+  { value: 'dark', label: 'Dark', icon: Moon },
+];
 
 export function SettingsPage() {
   const navigate = useNavigate();
   const { user, fetchProfile, logout } = useAuthStore();
+  const { mode, setMode } = useThemeStore();
 
   // Profile state
   const [name, setName] = useState(user?.name || '');
@@ -48,6 +55,12 @@ export function SettingsPage() {
     } finally {
       setSavingProfile(false);
     }
+  };
+
+  const handleThemeChange = (newMode: ThemeMode) => {
+    setMode(newMode);
+    // Fire-and-forget save to backend
+    authService.updatePreferences({ theme: newMode }).catch(() => {});
   };
 
   const handleChangePassword = async () => {
@@ -99,13 +112,38 @@ export function SettingsPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-8">Settings</h1>
+      <h1 className="text-2xl font-bold text-content mb-8">Settings</h1>
+
+      {/* Appearance Section */}
+      <section className="bg-surface rounded-xl border border-border p-6 mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Sun className="w-5 h-5 text-content-secondary" />
+          <h2 className="text-lg font-semibold text-content">Appearance</h2>
+        </div>
+
+        <div className="flex gap-2">
+          {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
+            <button
+              key={value}
+              onClick={() => handleThemeChange(value)}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors border ${
+                mode === value
+                  ? 'border-brand-500 bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400'
+                  : 'border-border bg-surface text-content-secondary hover:bg-surface-tertiary'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+      </section>
 
       {/* Profile Section */}
-      <section className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+      <section className="bg-surface rounded-xl border border-border p-6 mb-6">
         <div className="flex items-center gap-2 mb-4">
-          <User className="w-5 h-5 text-gray-600" />
-          <h2 className="text-lg font-semibold text-gray-900">Profile</h2>
+          <User className="w-5 h-5 text-content-secondary" />
+          <h2 className="text-lg font-semibold text-content">Profile</h2>
         </div>
 
         <div className="space-y-4">
@@ -124,13 +162,13 @@ export function SettingsPage() {
           />
 
           <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-600">Tier:</span>
+            <span className="text-sm text-content-secondary">Tier:</span>
             <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${tierColors[user.quotaTier] || tierColors.FREE}`}>
               {user.quotaTier}
             </span>
           </div>
 
-          <p className="text-sm text-gray-500">Member since {memberSince}</p>
+          <p className="text-sm text-content-tertiary">Member since {memberSince}</p>
 
           <div className="pt-2">
             <Button
@@ -148,10 +186,10 @@ export function SettingsPage() {
 
       {/* Password Section */}
       {user.hasPassword && (
-        <section className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+        <section className="bg-surface rounded-xl border border-border p-6 mb-6">
           <div className="flex items-center gap-2 mb-4">
-            <Shield className="w-5 h-5 text-gray-600" />
-            <h2 className="text-lg font-semibold text-gray-900">Change Password</h2>
+            <Shield className="w-5 h-5 text-content-secondary" />
+            <h2 className="text-lg font-semibold text-content">Change Password</h2>
           </div>
 
           <div className="space-y-4">
@@ -165,7 +203,7 @@ export function SettingsPage() {
               <button
                 type="button"
                 onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                className="absolute right-3 top-[34px] text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-[34px] text-content-tertiary hover:text-content-secondary"
               >
                 {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -182,7 +220,7 @@ export function SettingsPage() {
               <button
                 type="button"
                 onClick={() => setShowNewPassword(!showNewPassword)}
-                className="absolute right-3 top-[34px] text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-[34px] text-content-tertiary hover:text-content-secondary"
               >
                 {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -211,10 +249,10 @@ export function SettingsPage() {
       )}
 
       {/* Account Management - subtle, collapsed */}
-      <div className="mt-10 pt-6 border-t border-gray-100">
+      <div className="mt-10 pt-6 border-t border-border-secondary">
         <button
           onClick={() => setShowDangerZone(!showDangerZone)}
-          className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-500 transition-colors"
+          className="flex items-center gap-1.5 text-sm text-content-tertiary hover:text-content-secondary transition-colors"
         >
           <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showDangerZone ? 'rotate-90' : ''}`} />
           Account management
@@ -222,12 +260,12 @@ export function SettingsPage() {
 
         {showDangerZone && (
           <div className="mt-4 pl-5">
-            <p className="text-sm text-gray-500 mb-3">
+            <p className="text-sm text-content-tertiary mb-3">
               Permanently delete your account and all associated data.
             </p>
             <button
               onClick={() => setShowDeleteModal(true)}
-              className="text-sm text-gray-400 hover:text-red-500 underline underline-offset-2 transition-colors"
+              className="text-sm text-content-tertiary hover:text-red-500 underline underline-offset-2 transition-colors"
             >
               Delete my account
             </button>
@@ -238,11 +276,11 @@ export function SettingsPage() {
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Account</h3>
-            <p className="text-sm text-gray-600 mb-4">
+          <div className="bg-surface rounded-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-content mb-2">Delete Account</h3>
+            <p className="text-sm text-content-secondary mb-4">
               This will permanently delete your account, all curricula, sessions, and progress.
-              Type <span className="font-mono font-semibold text-red-600">delete</span> to confirm.
+              Type <span className="font-mono font-semibold text-red-600 dark:text-red-400">delete</span> to confirm.
             </p>
             <Input
               value={deleteConfirmText}

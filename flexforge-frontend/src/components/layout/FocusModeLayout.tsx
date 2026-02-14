@@ -34,18 +34,18 @@ function ExitConfirmModal({ isOpen, onClose, onConfirm }: {
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl p-6 max-w-md mx-4 shadow-xl"
+        className="bg-surface rounded-2xl p-6 max-w-md mx-4 shadow-xl"
       >
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+        <h3 className="text-lg font-semibold text-content mb-2">
           Leave session?
         </h3>
-        <p className="text-gray-600 mb-6 pb-[env(safe-area-inset-bottom)]">
+        <p className="text-content-secondary mb-6 pb-[env(safe-area-inset-bottom)]">
           Your progress has been saved. You can continue later from where you left off.
         </p>
         <div className="flex gap-3 justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2.5 min-h-[44px] text-gray-600 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors"
+            className="px-4 py-2.5 min-h-[44px] text-content-secondary hover:bg-surface-tertiary active:bg-surface-tertiary rounded-lg transition-colors"
           >
             Stay
           </button>
@@ -129,12 +129,12 @@ function PresenceBar() {
 
   return (
     <>
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-gray-200">
+      <header className="sticky top-0 z-30 bg-surface/95 backdrop-blur border-b border-border">
         <div className="relative h-12 sm:h-14">
           {/* Exit button - fixed to left corner */}
           <button
             onClick={() => setShowExitModal(true)}
-            className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors z-10"
+            className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-content-secondary hover:text-content hover:bg-surface-tertiary rounded-lg transition-colors z-10"
           >
             <X className="w-5 h-5" />
           </button>
@@ -157,7 +157,7 @@ function PresenceBar() {
           {/* Right side: timer (always visible, topic desktop only) */}
           <div className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 sm:gap-3">
             {/* Topic - desktop only */}
-            <span className="hidden lg:block text-sm text-gray-600 max-w-[120px] sm:max-w-[200px] truncate">
+            <span className="hidden lg:block text-sm text-content-secondary max-w-[120px] sm:max-w-[200px] truncate">
               Day {currentDay?.day}: {currentDay?.title?.split(':')[1]?.trim() || 'Loading...'}
             </span>
 
@@ -165,7 +165,7 @@ function PresenceBar() {
             {showTimer && (
               <button
                 onClick={() => setShowTimer(false)}
-                className="flex items-center gap-1 px-2 py-1.5 text-xs sm:text-sm text-gray-500 hover:bg-gray-100 active:bg-gray-200 rounded transition-colors"
+                className="flex items-center gap-1 px-2 py-1.5 text-xs sm:text-sm text-content-tertiary hover:bg-surface-tertiary active:bg-surface-tertiary rounded transition-colors"
               >
                 <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 {formatTime(elapsedSeconds)}
@@ -175,7 +175,7 @@ function PresenceBar() {
         </div>
 
         {/* Progress bar */}
-        <div className="h-1 bg-gray-100">
+        <div className="h-1 bg-surface-tertiary">
           <motion.div
             className="h-full bg-brand-500"
             initial={{ width: 0 }}
@@ -211,7 +211,7 @@ export function FocusModeLayout({ children, showSidebar = true }: FocusModeLayou
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-sm sm:text-base">
+    <div className="min-h-screen bg-surface-secondary text-sm sm:text-base">
       <PresenceBar />
 
       {/* Course Sidebar */}

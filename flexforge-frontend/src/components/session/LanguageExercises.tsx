@@ -57,12 +57,12 @@ function QuestionStreamingSkeleton({ title, current, total }: { title?: string; 
   return (
     <div className="space-y-4">
       {title && <ExerciseHeader title={title} progress={{ current, total }} />}
-      <div className="bg-white rounded-lg p-6 shadow-sm border animate-pulse">
-        <div className="h-5 bg-gray-200 rounded w-3/4 mb-4" />
+      <div className="bg-surface rounded-lg p-6 shadow-sm border animate-pulse">
+        <div className="h-5 bg-surface-tertiary rounded w-3/4 mb-4" />
         <div className="space-y-2">
-          <div className="h-12 bg-gray-100 rounded-lg" />
-          <div className="h-12 bg-gray-100 rounded-lg" />
-          <div className="h-12 bg-gray-100 rounded-lg" />
+          <div className="h-12 bg-surface-tertiary rounded-lg" />
+          <div className="h-12 bg-surface-tertiary rounded-lg" />
+          <div className="h-12 bg-surface-tertiary rounded-lg" />
         </div>
       </div>
     </div>
@@ -85,10 +85,10 @@ function NewKnowledgeBox({ items }: NewKnowledgeBoxProps) {
       </div>
       <div className="flex flex-wrap gap-2">
         {items.map((item, idx) => (
-          <span key={idx} className="inline-flex items-center gap-1 px-2 py-1 bg-white rounded border border-amber-200 text-sm">
-            <strong className="text-gray-900">{item.term}</strong>
-            <span className="text-gray-500">= {item.meaning}</span>
-            {item.pronunciation && <span className="text-gray-400 text-xs">[{item.pronunciation}]</span>}
+          <span key={idx} className="inline-flex items-center gap-1 px-2 py-1 bg-surface rounded border border-amber-200 text-sm">
+            <strong className="text-content">{item.term}</strong>
+            <span className="text-content-tertiary">= {item.meaning}</span>
+            {item.pronunciation && <span className="text-content-tertiary text-xs">[{item.pronunciation}]</span>}
           </span>
         ))}
       </div>
@@ -106,15 +106,15 @@ function ExerciseHeader({ title, instructions, progress }: ExerciseHeaderProps) 
   return (
     <div className="mb-4">
       <div className="flex justify-between items-center mb-2">
-        <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
-        <span className="text-sm text-gray-500">
+        <h3 className="text-lg font-semibold text-content">{title}</h3>
+        <span className="text-sm text-content-tertiary">
           {progress.current} / {progress.total}
         </span>
       </div>
       {instructions && (
-        <p className="text-sm text-gray-600">{instructions}</p>
+        <p className="text-sm text-content-secondary">{instructions}</p>
       )}
-      <div className="mt-2 h-1 bg-gray-200 rounded-full overflow-hidden">
+      <div className="mt-2 h-1 bg-surface-tertiary rounded-full overflow-hidden">
         <motion.div
           className="h-full bg-brand-500"
           initial={{ width: 0 }}
@@ -424,7 +424,7 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
         progress={{ current: currentIndex + 1, total: questions.length }}
       />
 
-      <div className="bg-white rounded-lg p-6 shadow-sm border">
+      <div className="bg-surface rounded-lg p-6 shadow-sm border">
         {/* Audio button */}
         {currentQuestion.audioText && (
           <button
@@ -443,8 +443,8 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
               {currentQuestion.openEndedConfig.category}
             </span>
             {currentQuestion.openEndedConfig.scenario && (
-              <div className="bg-gray-50 rounded-lg p-3 mb-3">
-                <p className="text-sm text-gray-700">{currentQuestion.openEndedConfig.scenario}</p>
+              <div className="bg-surface-secondary rounded-lg p-3 mb-3">
+                <p className="text-sm text-content-secondary">{currentQuestion.openEndedConfig.scenario}</p>
               </div>
             )}
             {currentQuestion.openEndedConfig.constraints && currentQuestion.openEndedConfig.constraints.length > 0 && (
@@ -481,7 +481,7 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
                   options: currentQuestion.options,
                   correctAnswer: currentQuestion.options?.[currentQuestion.correctIndex ?? 0],
                 })}
-                className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                className="p-1.5 text-content-tertiary hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
                 title="Share to community"
               >
                 <Share2 className="w-5 h-5" />
@@ -494,7 +494,7 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
                   options: currentQuestion.options,
                   correctAnswer: currentQuestion.options?.[currentQuestion.correctIndex ?? 0],
                 })}
-                className="p-1.5 text-gray-400 hover:text-brand-500 hover:bg-brand-50 rounded-lg transition-colors"
+                className="p-1.5 text-content-tertiary hover:text-brand-500 hover:bg-brand-50 rounded-lg transition-colors"
                 title="Bookmark this question"
               >
                 <Bookmark className="w-5 h-5" />
@@ -525,8 +525,8 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
                           ? 'bg-green-100 border-green-500'
                           : index === mcqAnswers[currentQuestion.id]
                           ? 'bg-red-100 border-red-500'
-                          : 'bg-gray-50 border-gray-200'
-                        : 'hover:bg-brand-50 hover:border-brand-300 border-gray-200'
+                          : 'bg-surface-secondary border-border'
+                        : 'hover:bg-brand-50 hover:border-brand-300 border-border'
                     )}
                   >
                     {option}
@@ -536,7 +536,7 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
                   {hasAnswered && consequence && (
                     <p className={clsx(
                       'ml-4 mt-1 text-xs italic',
-                      isBestChoice ? 'text-green-700' : 'text-gray-500'
+                      isBestChoice ? 'text-green-700' : 'text-content-tertiary'
                     )}>
                       → {consequence}
                     </p>
@@ -558,7 +558,7 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
             />
             <div className={clsx(
               'text-sm',
-              wordCount >= minWords ? 'text-green-600' : 'text-gray-500'
+              wordCount >= minWords ? 'text-green-600' : 'text-content-tertiary'
             )}>
               {wordCount} / {minWords} words minimum
             </div>
@@ -570,7 +570,7 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
                 'w-full py-3 rounded-lg font-medium transition-colors',
                 wordCount >= minWords
                   ? 'bg-brand-500 text-white hover:bg-brand-600'
-                  : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  : 'bg-surface-tertiary text-content-tertiary cursor-not-allowed'
               )}
             >
               Submit Response
@@ -664,15 +664,15 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
                   {dim.found ? (
                     <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
                   ) : (
-                    <X className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                    <X className="w-4 h-4 text-content-tertiary flex-shrink-0 mt-0.5" />
                   )}
                   <div>
-                    <span className={dim.found ? 'text-green-700' : 'text-gray-500'}>
+                    <span className={dim.found ? 'text-green-700' : 'text-content-tertiary'}>
                       {dim.label}
                     </span>
                     {/* AI-specific feedback per dimension (Pro only) */}
                     {dim.aiFeedback && (
-                      <p className="text-xs text-gray-500 mt-0.5">{dim.aiFeedback}</p>
+                      <p className="text-xs text-content-tertiary mt-0.5">{dim.aiFeedback}</p>
                     )}
                   </div>
                 </div>
@@ -698,7 +698,7 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
 
               {/* No AI remaining message */}
               {openEndedResults[currentQuestion.id].evaluationType === 'basic' && aiEvaluationsRemaining === 0 && (
-                <div className="flex-1 py-2 px-4 rounded-lg bg-gray-100 text-gray-500 text-sm text-center">
+                <div className="flex-1 py-2 px-4 rounded-lg bg-surface-tertiary text-content-tertiary text-sm text-center">
                   <Lock className="w-4 h-4 inline mr-1" />
                   Daily AI limit reached. Upgrade to Pro for unlimited.
                 </div>
@@ -714,7 +714,7 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
                   'px-3 sm:px-4 py-2.5 rounded-lg transition-colors flex items-center gap-1.5 sm:gap-2 text-sm',
                   currentIndex === 0
                     ? 'text-gray-300 cursor-not-allowed'
-                    : 'text-gray-600 hover:bg-gray-100 active:bg-gray-200'
+                    : 'text-content-secondary hover:bg-surface-tertiary active:bg-surface-tertiary'
                 )}
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -749,19 +749,19 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
             )}
 
             {/* Explanation body - structured paragraphs */}
-            <div className="px-4 py-3 bg-white space-y-2">
+            <div className="px-4 py-3 bg-surface space-y-2">
               {currentQuestion.explanation.split('\n\n').map((paragraph: string, pIdx: number) => (
                 <p
                   key={pIdx}
                   className={clsx(
                     'text-sm leading-relaxed',
-                    pIdx === 0 ? 'font-medium text-gray-900' : 'text-gray-700'
+                    pIdx === 0 ? 'font-medium text-content' : 'text-content-secondary'
                   )}
                 >
                   {/* Render inline code backticks */}
                   {paragraph.split(/(`[^`]+`)/).map((part: string, partIdx: number) =>
                     part.startsWith('`') && part.endsWith('`') ? (
-                      <code key={partIdx} className="px-1.5 py-0.5 bg-gray-100 text-indigo-700 rounded text-xs font-mono">
+                      <code key={partIdx} className="px-1.5 py-0.5 bg-surface-tertiary text-indigo-700 rounded text-xs font-mono">
                         {part.slice(1, -1)}
                       </code>
                     ) : (
@@ -809,7 +809,7 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
                 'px-3 sm:px-4 py-2.5 rounded-lg transition-colors flex items-center gap-1.5 sm:gap-2 text-sm',
                 currentIndex === 0
                   ? 'text-gray-300 cursor-not-allowed'
-                  : 'text-gray-600 hover:bg-gray-100 active:bg-gray-200'
+                  : 'text-content-secondary hover:bg-surface-tertiary active:bg-surface-tertiary'
               )}
             >
               <ChevronLeft className="w-4 h-4" />
@@ -916,7 +916,7 @@ export function MatchingSectionExercise({ section, onComplete, savedProgress, on
       <div className="grid grid-cols-2 gap-4">
         {/* Terms column */}
         <div className="space-y-2">
-          <p className="text-sm font-medium text-gray-500 mb-2">Words</p>
+          <p className="text-sm font-medium text-content-tertiary mb-2">Words</p>
           {pairs.map(pair => (
             <button
               key={pair.term}
@@ -928,7 +928,7 @@ export function MatchingSectionExercise({ section, onComplete, savedProgress, on
                   ? 'bg-green-100 border-green-500 text-green-800'
                   : selectedTerm === pair.term
                   ? 'bg-brand-100 border-brand-500'
-                  : 'hover:bg-gray-50 border-gray-200'
+                  : 'hover:bg-surface-secondary border-border'
               )}
             >
               {pair.term}
@@ -938,7 +938,7 @@ export function MatchingSectionExercise({ section, onComplete, savedProgress, on
 
         {/* Definitions column */}
         <div className="space-y-2">
-          <p className="text-sm font-medium text-gray-500 mb-2">Meanings</p>
+          <p className="text-sm font-medium text-content-tertiary mb-2">Meanings</p>
           {shuffledDefinitions.map(def => {
             const isUsed = Object.values(matches).includes(def);
             return (
@@ -951,8 +951,8 @@ export function MatchingSectionExercise({ section, onComplete, savedProgress, on
                   isUsed
                     ? 'bg-green-100 border-green-500 text-green-800'
                     : selectedTerm
-                    ? 'hover:bg-brand-50 hover:border-brand-300 border-gray-200'
-                    : 'border-gray-200 opacity-60'
+                    ? 'hover:bg-brand-50 hover:border-brand-300 border-border'
+                    : 'border-border opacity-60'
                 )}
               >
                 {def}
@@ -1068,7 +1068,7 @@ export function ToneSelectSectionExercise({ section, targetLanguage, onComplete,
         progress={{ current: currentIndex + 1, total: questions.length }}
       />
 
-      <div className="bg-white rounded-lg p-6 shadow-sm border">
+      <div className="bg-surface rounded-lg p-6 shadow-sm border">
         <button
           onClick={playAudio}
           className="mb-4 w-full py-4 flex items-center justify-center gap-2 bg-brand-50 rounded-lg text-brand-600 hover:bg-brand-100 transition-colors"
@@ -1092,8 +1092,8 @@ export function ToneSelectSectionExercise({ section, targetLanguage, onComplete,
                     ? 'bg-green-100 border-green-500'
                     : index === answers[currentQuestion.id]
                     ? 'bg-red-100 border-red-500'
-                    : 'bg-gray-50 border-gray-200'
-                  : 'hover:bg-brand-50 hover:border-brand-300 border-gray-200'
+                    : 'bg-surface-secondary border-border'
+                  : 'hover:bg-brand-50 hover:border-brand-300 border-border'
               )}
             >
               {option}
@@ -1256,7 +1256,7 @@ export function FillBlankSectionExercise({ section, onComplete, savedProgress, o
 
       <NewKnowledgeBox items={section.newKnowledge} />
 
-      <div className="bg-white rounded-lg p-6 shadow-sm border">
+      <div className="bg-surface rounded-lg p-6 shadow-sm border">
         <div className="text-lg mb-2">
           {sentenceParts[0]}
           <span className="inline-block mx-1 px-2 py-1 bg-brand-100 rounded border-b-2 border-brand-500 min-w-[60px] sm:min-w-[80px]">
@@ -1266,10 +1266,10 @@ export function FillBlankSectionExercise({ section, onComplete, savedProgress, o
         </div>
 
         {currentItem.romanization && (
-          <p className="text-sm text-gray-500 italic mb-2">{currentItem.romanization}</p>
+          <p className="text-sm text-content-tertiary italic mb-2">{currentItem.romanization}</p>
         )}
 
-        <p className="text-sm text-gray-600 mb-4">{currentItem.translation}</p>
+        <p className="text-sm text-content-secondary mb-4">{currentItem.translation}</p>
 
         {!hasAnswered && (
           <>
@@ -1295,7 +1295,7 @@ export function FillBlankSectionExercise({ section, onComplete, savedProgress, o
             {currentItem?.blank?.hint && (
               <button
                 onClick={() => setShowHint(true)}
-                className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+                className="flex items-center gap-1 text-sm text-content-tertiary hover:text-content-secondary"
               >
                 <Lightbulb className="w-4 h-4" />
                 {showHint ? currentItem.blank.hint : 'Show hint'}
@@ -1335,7 +1335,7 @@ export function FillBlankSectionExercise({ section, onComplete, savedProgress, o
                 'px-3 sm:px-4 py-2.5 rounded-lg transition-colors flex items-center gap-1.5 sm:gap-2 text-sm',
                 currentIndex === 0
                   ? 'text-gray-300 cursor-not-allowed'
-                  : 'text-gray-600 hover:bg-gray-100 active:bg-gray-200'
+                  : 'text-content-secondary hover:bg-surface-tertiary active:bg-surface-tertiary'
               )}
             >
               <ChevronLeft className="w-4 h-4" />
@@ -1469,7 +1469,7 @@ export function TranslationSectionExercise({ section, onComplete, savedProgress,
 
       <NewKnowledgeBox items={section.newKnowledge} />
 
-      <div className="bg-white rounded-lg p-6 shadow-sm border">
+      <div className="bg-surface rounded-lg p-6 shadow-sm border">
         <div className="mb-4">
           <span className={clsx(
             'inline-block px-2 py-1 rounded text-xs font-medium mb-2',
@@ -1479,7 +1479,7 @@ export function TranslationSectionExercise({ section, onComplete, savedProgress,
           </span>
           <p className="text-lg font-medium">{currentItem.prompt}</p>
           {currentItem.romanization && (
-            <p className="text-sm text-gray-500 italic">{currentItem.romanization}</p>
+            <p className="text-sm text-content-tertiary italic">{currentItem.romanization}</p>
           )}
         </div>
 
@@ -1507,7 +1507,7 @@ export function TranslationSectionExercise({ section, onComplete, savedProgress,
             {currentItem.hint && (
               <button
                 onClick={() => setShowHint(true)}
-                className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+                className="flex items-center gap-1 text-sm text-content-tertiary hover:text-content-secondary"
               >
                 <Lightbulb className="w-4 h-4" />
                 {showHint ? currentItem.hint : 'Show hint'}
@@ -1658,15 +1658,15 @@ export function ReorderSectionExercise({ section, onComplete, savedProgress, onP
         progress={{ current: currentIndex + 1, total: items.length }}
       />
 
-      <div className="bg-white rounded-lg p-6 shadow-sm border">
-        <p className="text-sm text-gray-600 mb-4">
+      <div className="bg-surface rounded-lg p-6 shadow-sm border">
+        <p className="text-sm text-content-secondary mb-4">
           <span className="font-medium">Meaning:</span> {currentItem.translation}
         </p>
 
         {/* Selected words area */}
-        <div className="min-h-[60px] p-3 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 mb-4">
+        <div className="min-h-[60px] p-3 bg-surface-secondary rounded-lg border-2 border-dashed border-border mb-4">
           {selectedWords.length === 0 ? (
-            <p className="text-gray-400 text-center">Click words below to build the sentence</p>
+            <p className="text-content-tertiary text-center">Click words below to build the sentence</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {selectedWords.map((word, index) => (
@@ -1697,7 +1697,7 @@ export function ReorderSectionExercise({ section, onComplete, savedProgress, onP
               <button
                 key={`available-${index}`}
                 onClick={() => handleWordClick(word, false)}
-                className="px-3 py-2 bg-gray-100 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                className="px-3 py-2 bg-surface-tertiary rounded-lg font-medium hover:bg-surface-tertiary transition-colors"
               >
                 {word}
               </button>
@@ -1709,7 +1709,7 @@ export function ReorderSectionExercise({ section, onComplete, savedProgress, onP
           <div className="flex gap-2">
             <button
               onClick={resetOrder}
-              className="flex items-center gap-1 px-3 py-2 text-gray-600 hover:text-gray-800"
+              className="flex items-center gap-1 px-3 py-2 text-content-secondary hover:text-content"
             >
               <RotateCcw className="w-4 h-4" />
               Reset
@@ -1717,7 +1717,7 @@ export function ReorderSectionExercise({ section, onComplete, savedProgress, onP
             {currentItem.hint && (
               <button
                 onClick={() => setShowHint(true)}
-                className="flex items-center gap-1 px-3 py-2 text-gray-600 hover:text-gray-800"
+                className="flex items-center gap-1 px-3 py-2 text-content-secondary hover:text-content"
               >
                 <Lightbulb className="w-4 h-4" />
                 {showHint ? currentItem.hint : 'Hint'}
@@ -1866,14 +1866,14 @@ export function TypingSectionExercise({ section, targetLanguage, onComplete, sav
         progress={{ current: currentIndex + 1, total: items.length }}
       />
 
-      <div className="bg-white rounded-lg p-6 shadow-sm border">
-        <p className="text-sm text-gray-600 mb-4">{currentItem.prompt}</p>
+      <div className="bg-surface rounded-lg p-6 shadow-sm border">
+        <p className="text-sm text-content-secondary mb-4">{currentItem.prompt}</p>
 
         {currentItem.displayText && (
           <div className="text-center mb-4">
             <p className="text-3xl font-medium mb-1">{currentItem.displayText}</p>
             {currentItem.romanization && (
-              <p className="text-sm text-gray-500 italic">{currentItem.romanization}</p>
+              <p className="text-sm text-content-tertiary italic">{currentItem.romanization}</p>
             )}
           </div>
         )}
@@ -2103,12 +2103,12 @@ export function OpenEndedSectionExercise({ section, onComplete, savedProgress, o
         >
           {/* Question/Scenario */}
           <div className="bg-gradient-to-r from-purple-50 to-indigo-50 p-4 rounded-xl border border-purple-100">
-            <p className="text-gray-800 font-medium">{currentQuestion.question}</p>
+            <p className="text-content font-medium">{currentQuestion.question}</p>
           </div>
 
           {/* Prompt */}
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <p className="text-gray-600 text-sm italic">{currentQuestion.prompt}</p>
+          <div className="bg-surface-secondary p-3 rounded-lg">
+            <p className="text-content-secondary text-sm italic">{currentQuestion.prompt}</p>
           </div>
 
           {/* Response textarea */}
@@ -2124,13 +2124,13 @@ export function OpenEndedSectionExercise({ section, onComplete, savedProgress, o
                   ? currentResult.passed
                     ? 'border-green-300 bg-green-50'
                     : 'border-amber-300 bg-amber-50'
-                  : 'border-gray-200 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
+                  : 'border-border focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
               )}
               rows={6}
             />
-            <div className="flex justify-between text-sm text-gray-500">
+            <div className="flex justify-between text-sm text-content-tertiary">
               <span>{wordCount} words</span>
-              <span className={wordCount >= 20 ? 'text-green-600' : 'text-gray-400'}>
+              <span className={wordCount >= 20 ? 'text-green-600' : 'text-content-tertiary'}>
                 Min: 20 words
               </span>
             </div>
@@ -2224,7 +2224,7 @@ export function OpenEndedSectionExercise({ section, onComplete, savedProgress, o
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.1 }}
-                  className="bg-white rounded-xl border border-green-200 p-4"
+                  className="bg-surface rounded-xl border border-green-200 p-4"
                 >
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center">
@@ -2234,7 +2234,7 @@ export function OpenEndedSectionExercise({ section, onComplete, savedProgress, o
                   </div>
                   <ul className="space-y-2">
                     {currentResult.aiStrengths.map((strength, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                      <li key={i} className="flex items-start gap-2 text-sm text-content-secondary">
                         <span className="text-green-500 mt-0.5">+</span>
                         {strength}
                       </li>
@@ -2249,7 +2249,7 @@ export function OpenEndedSectionExercise({ section, onComplete, savedProgress, o
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.2 }}
-                  className="bg-white rounded-xl border border-blue-200 p-4"
+                  className="bg-surface rounded-xl border border-blue-200 p-4"
                 >
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center">
@@ -2259,7 +2259,7 @@ export function OpenEndedSectionExercise({ section, onComplete, savedProgress, o
                   </div>
                   <ul className="space-y-2">
                     {currentResult.aiImprovements.map((improvement, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                      <li key={i} className="flex items-start gap-2 text-sm text-content-secondary">
                         <span className="text-blue-500 mt-0.5">→</span>
                         {improvement}
                       </li>
@@ -2274,29 +2274,29 @@ export function OpenEndedSectionExercise({ section, onComplete, savedProgress, o
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.3 }}
-                  className="bg-white rounded-xl border border-gray-200 p-4"
+                  className="bg-surface rounded-xl border border-border p-4"
                 >
                   <div className="flex items-center gap-2 mb-3">
-                    <span className="font-medium text-gray-800">Evaluation Criteria</span>
+                    <span className="font-medium text-content">Evaluation Criteria</span>
                   </div>
                   <div className="space-y-2">
                     {currentResult.dimensionResults.map((dim) => (
                       <div key={dim.dimensionId} className="flex items-center gap-3">
                         <div className={clsx(
                           'w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0',
-                          dim.found ? 'bg-green-100' : 'bg-gray-100'
+                          dim.found ? 'bg-green-100' : 'bg-surface-tertiary'
                         )}>
                           {dim.found ? (
                             <Check className="w-3 h-3 text-green-600" />
                           ) : (
-                            <X className="w-3 h-3 text-gray-400" />
+                            <X className="w-3 h-3 text-content-tertiary" />
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className={clsx(
                               'text-sm',
-                              dim.found ? 'text-gray-800' : 'text-gray-500'
+                              dim.found ? 'text-content' : 'text-content-tertiary'
                             )}>
                               {dim.label}
                             </span>
@@ -2305,14 +2305,14 @@ export function OpenEndedSectionExercise({ section, onComplete, savedProgress, o
                                 'text-xs px-1.5 py-0.5 rounded',
                                 dim.aiScore >= 0.7 ? 'bg-green-100 text-green-700' :
                                 dim.aiScore >= 0.4 ? 'bg-amber-100 text-amber-700' :
-                                'bg-gray-100 text-gray-500'
+                                'bg-surface-tertiary text-content-tertiary'
                               )}>
                                 {Math.round(dim.aiScore * 100)}%
                               </span>
                             )}
                           </div>
                           {dim.aiFeedback && (
-                            <p className="text-xs text-gray-500 mt-0.5">{dim.aiFeedback}</p>
+                            <p className="text-xs text-content-tertiary mt-0.5">{dim.aiFeedback}</p>
                           )}
                         </div>
                       </div>
@@ -2327,14 +2327,14 @@ export function OpenEndedSectionExercise({ section, onComplete, savedProgress, o
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.4 }}
-                  className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+                  className="bg-surface rounded-xl border border-border overflow-hidden"
                 >
-                  <summary className="px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <summary className="px-4 py-3 cursor-pointer hover:bg-surface-secondary transition-colors flex items-center gap-2 text-sm font-medium text-content-secondary">
                     <Lightbulb className="w-4 h-4 text-amber-500" />
                     View sample answer
                   </summary>
-                  <div className="px-4 pb-4 pt-2 border-t border-gray-100">
-                    <p className="text-sm text-gray-600 leading-relaxed">
+                  <div className="px-4 pb-4 pt-2 border-t border-border-secondary">
+                    <p className="text-sm text-content-secondary leading-relaxed">
                       {currentQuestion.sampleAnswer}
                     </p>
                   </div>
@@ -2353,7 +2353,7 @@ export function OpenEndedSectionExercise({ section, onComplete, savedProgress, o
                   'px-6 py-3 rounded-xl font-medium transition-all flex items-center gap-2',
                   wordCount >= 20 && !isEvaluating
                     ? 'bg-purple-600 text-white hover:bg-purple-700'
-                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    : 'bg-surface-tertiary text-content-tertiary cursor-not-allowed'
                 )}
               >
                 {isEvaluating ? (

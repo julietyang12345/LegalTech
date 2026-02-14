@@ -141,7 +141,7 @@ function SkillNode({ id, data, selected, dragging }: { id: string; data: SkillNo
             "absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full flex items-center justify-center z-10 border-2 transition-all cursor-pointer",
             selected
               ? "bg-purple-500 border-purple-500 text-white hover:bg-purple-600"
-              : "bg-white border-gray-300 hover:border-purple-400 hover:bg-purple-50"
+              : "bg-surface border-border hover:border-purple-400 hover:bg-purple-50"
           )}
           initial={false}
           animate={{ scale: selected ? 1 : 0.95 }}
@@ -151,7 +151,7 @@ function SkillNode({ id, data, selected, dragging }: { id: string; data: SkillNo
           {selected ? (
             <span className="text-[10px] font-bold">✓</span>
           ) : (
-            <Plus className="w-3 h-3 text-gray-400 group-hover:text-purple-500" />
+            <Plus className="w-3 h-3 text-content-tertiary group-hover:text-purple-500" />
           )}
         </motion.button>
 
@@ -268,11 +268,11 @@ function SkillActionMenu({
       initial={{ opacity: 0, scale: 0.95, y: -10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95, y: -10 }}
-      className="fixed z-[100] bg-white rounded-xl shadow-xl border border-gray-200 py-2 min-w-[200px]"
+      className="fixed z-[100] bg-surface rounded-xl shadow-xl border border-border py-2 min-w-[200px]"
       style={{ left: Math.min(x, window.innerWidth - 220), top: Math.min(y, window.innerHeight - 350) }}
     >
       {/* Header with skill name and select checkbox */}
-      <div className="px-4 py-2 border-b border-gray-100 mb-1">
+      <div className="px-4 py-2 border-b border-border-secondary mb-1">
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
@@ -282,12 +282,12 @@ function SkillActionMenu({
               "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
               isSelected
                 ? "bg-purple-500 border-purple-500 text-white"
-                : "border-gray-300 hover:border-purple-400"
+                : "border-border hover:border-purple-400"
             )}
           >
             {isSelected && <span className="text-xs">✓</span>}
           </button>
-          <span className="text-sm font-medium text-gray-800 truncate max-w-[120px]">
+          <span className="text-sm font-medium text-content truncate max-w-[120px]">
             {skillName}
           </span>
           {skillStatus === 'complete' && (
@@ -297,7 +297,7 @@ function SkillActionMenu({
             <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">Active</span>
           )}
         </div>
-        <p className="text-[10px] text-gray-400 mt-1 ml-7">
+        <p className="text-[10px] text-content-tertiary mt-1 ml-7">
           {isSelected ? 'Selected for combo' : 'Check to add to combo'}
         </p>
       </div>
@@ -330,11 +330,11 @@ function SkillActionMenu({
       )}
 
       {/* Divider */}
-      <div className="my-1 border-t border-gray-100" />
+      <div className="my-1 border-t border-border-secondary" />
 
       {/* AI Analysis Options - single skill actions */}
       <div className="px-4 py-1">
-        <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">
+        <p className="text-[10px] font-medium text-content-tertiary uppercase tracking-wide">
           AI Analysis
         </p>
       </div>
@@ -347,7 +347,7 @@ function SkillActionMenu({
           "w-full px-4 py-2 text-left text-sm flex items-center gap-2 transition-colors",
           rateLimit.allowed
             ? "text-blue-700 hover:bg-blue-50"
-            : "text-gray-400 cursor-not-allowed"
+            : "text-content-tertiary cursor-not-allowed"
         )}
       >
         <Lightbulb className={clsx("w-4 h-4", rateLimit.allowed ? "text-blue-500" : "text-gray-300")} />
@@ -362,7 +362,7 @@ function SkillActionMenu({
           "w-full px-4 py-2 text-left text-sm flex items-center gap-2 transition-colors",
           rateLimit.allowed
             ? "text-purple-700 hover:bg-purple-50"
-            : "text-gray-400 cursor-not-allowed"
+            : "text-content-tertiary cursor-not-allowed"
         )}
       >
         <Zap className={clsx("w-4 h-4", rateLimit.allowed ? "text-purple-500" : "text-gray-300")} />
@@ -370,8 +370,8 @@ function SkillActionMenu({
       </button>
 
       {/* Rate limit info */}
-      <div className="px-4 pt-1.5 pb-1 border-t border-gray-100 mt-1">
-        <p className="text-[10px] text-gray-400">
+      <div className="px-4 pt-1.5 pb-1 border-t border-border-secondary mt-1">
+        <p className="text-[10px] text-content-tertiary">
           {isPremium ? '✨ Unlimited' : isPro ? '⭐ 1/day' : '🌱 1/week'}
         </p>
       </div>
@@ -924,7 +924,7 @@ function SkillTreeCanvasInner({
     <div className="space-y-0">
     <div
       ref={containerRef}
-      className="w-full h-[500px] rounded-xl overflow-hidden border border-gray-200 bg-gradient-to-b from-sky-100 via-sky-50 to-green-100 relative"
+      className="w-full h-[500px] rounded-xl overflow-hidden border border-border bg-gradient-to-b from-sky-100 via-sky-50 to-green-100 relative"
     >
       {/* Tree trunk decoration */}
       <TreeTrunk />
@@ -952,15 +952,15 @@ function SkillTreeCanvasInner({
         }}
       >
         <Background gap={20} size={1} color="#bae6fd" className="opacity-30" />
-        <Controls className="!bg-white !border-gray-200 !rounded-lg !shadow-sm" />
+        <Controls className="!bg-surface !border-border !rounded-lg !shadow-sm" />
         {/* Hide MiniMap on mobile - takes up too much space */}
         <MiniMap
-          className="!bg-white !border-gray-200 !rounded-lg !hidden md:!block"
+          className="!bg-surface !border-border !rounded-lg !hidden md:!block"
           nodeColor={() => '#22c55e'}
         />
 
         <Panel position="top-left" className="flex gap-2">
-          <Card className="px-2.5 py-1.5 flex items-center gap-1.5 text-xs text-gray-600 bg-white/80 backdrop-blur-sm">
+          <Card className="px-2.5 py-1.5 flex items-center gap-1.5 text-xs text-content-secondary bg-surface/80 backdrop-blur-sm">
             <Sparkles className="w-3.5 h-3.5 text-amber-500" />
             <span>Click a skill for AI analysis • Check the + to select for combos</span>
           </Card>
@@ -1011,19 +1011,19 @@ function SkillTreeCanvasInner({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm text-center"
+              className="relative bg-surface rounded-2xl shadow-2xl p-6 w-full max-w-sm text-center"
             >
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center mx-auto mb-4">
-                <Sparkles className="w-8 h-8 text-gray-400" />
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-surface-tertiary to-surface-tertiary flex items-center justify-center mx-auto mb-4">
+                <Sparkles className="w-8 h-8 text-content-tertiary" />
               </div>
-              <h3 className="font-bold text-xl text-gray-900 mb-2">
+              <h3 className="font-bold text-xl text-content mb-2">
                 Limit Reached
               </h3>
-              <p className="text-gray-600 mb-2">
+              <p className="text-content-secondary mb-2">
                 You've used your AI Ideas generation for this period.
               </p>
-              <p className="text-sm text-gray-500 mb-6">
-                Available again <span className="font-medium text-gray-700">{limitModalNextAvailable}</span>
+              <p className="text-sm text-content-tertiary mb-6">
+                Available again <span className="font-medium text-content-secondary">{limitModalNextAvailable}</span>
               </p>
               <div className="space-y-3">
                 <Button
@@ -1038,12 +1038,12 @@ function SkillTreeCanvasInner({
                 </Button>
                 <button
                   onClick={() => setLimitModalOpen(false)}
-                  className="w-full py-2 text-sm text-gray-500 hover:text-gray-700"
+                  className="w-full py-2 text-sm text-content-tertiary hover:text-content-secondary"
                 >
                   Got it
                 </button>
               </div>
-              <p className="text-xs text-gray-400 mt-4">
+              <p className="text-xs text-content-tertiary mt-4">
                 {isPremium ? 'Premium: Unlimited' : hasAccess ? 'Pro: 1/day • Premium: Unlimited' : 'Free: 1/week • Pro: 1/day'}
               </p>
             </motion.div>
@@ -1118,18 +1118,18 @@ function BottomControlPanel({
       {/* Top row: Selected skills + AI action buttons */}
       <div className="flex gap-3">
         {/* Left: Selected skills */}
-        <div className="flex-1 p-3 bg-white rounded-xl border border-gray-200">
+        <div className="flex-1 p-3 bg-surface rounded-xl border border-border">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-medium text-gray-500">Selected Skills</p>
+            <p className="text-xs font-medium text-content-tertiary">Selected Skills</p>
             {hasSelection && (
-              <button onClick={onClearAll} className="text-[10px] text-gray-400 hover:text-red-500">
+              <button onClick={onClearAll} className="text-[10px] text-content-tertiary hover:text-red-500">
                 Clear
               </button>
             )}
           </div>
           <div className="min-h-[36px] flex items-center gap-1.5 flex-wrap">
             {!hasSelection ? (
-              <p className="text-xs text-gray-400">Click + on skills to select</p>
+              <p className="text-xs text-content-tertiary">Click + on skills to select</p>
             ) : (
               selectedSkills.map((skill) => (
                 <motion.div
@@ -1155,8 +1155,8 @@ function BottomControlPanel({
         </div>
 
         {/* Right: AI Action buttons */}
-        <div className="p-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200">
-          <p className="text-xs font-medium text-gray-500 mb-2">AI Actions</p>
+        <div className="p-3 bg-gradient-to-br from-surface-secondary to-surface-tertiary rounded-xl border border-border">
+          <p className="text-xs font-medium text-content-tertiary mb-2">AI Actions</p>
           <div className="flex gap-2">
             {/* Combo - requires 2+ skills selected */}
             <motion.button
@@ -1166,7 +1166,7 @@ function BottomControlPanel({
                 "px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all",
                 selectedSkills.length >= 2 && rateLimit.allowed
                   ? "bg-purple-500 text-white hover:bg-purple-600 shadow-sm"
-                  : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                  : "bg-surface-tertiary text-content-tertiary cursor-not-allowed"
               )}
               whileHover={selectedSkills.length >= 2 && rateLimit.allowed ? { scale: 1.02 } : {}}
               whileTap={selectedSkills.length >= 2 && rateLimit.allowed ? { scale: 0.98 } : {}}
@@ -1183,7 +1183,7 @@ function BottomControlPanel({
                 "px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all",
                 hasSelection && rateLimit.allowed
                   ? "bg-blue-500 text-white hover:bg-blue-600 shadow-sm"
-                  : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                  : "bg-surface-tertiary text-content-tertiary cursor-not-allowed"
               )}
               whileHover={hasSelection && rateLimit.allowed ? { scale: 1.02 } : {}}
               whileTap={hasSelection && rateLimit.allowed ? { scale: 0.98 } : {}}
@@ -1199,7 +1199,7 @@ function BottomControlPanel({
                 "px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all",
                 hasSelection && rateLimit.allowed
                   ? "bg-amber-500 text-white hover:bg-amber-600 shadow-sm"
-                  : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                  : "bg-surface-tertiary text-content-tertiary cursor-not-allowed"
               )}
               whileHover={hasSelection && rateLimit.allowed ? { scale: 1.02 } : {}}
               whileTap={hasSelection && rateLimit.allowed ? { scale: 0.98 } : {}}
@@ -1209,7 +1209,7 @@ function BottomControlPanel({
             </motion.button>
           </div>
           <div className="flex items-center gap-2 mt-1.5">
-            <p className="text-[9px] text-gray-400">
+            <p className="text-[9px] text-content-tertiary">
               {isAdmin ? '🔑 Admin' : isPremium ? '✨ Unlimited' : isPro ? '⭐ 1/day' : '🌱 1/week'}
               {!rateLimit.allowed && <span className="text-amber-500 ml-1">{rateLimit.nextAvailable}</span>}
             </p>
@@ -1275,15 +1275,15 @@ function BottomControlPanel({
             {/* Close button */}
             <button
               onClick={onCloseResults}
-              className="absolute top-3 right-3 w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center z-10"
+              className="absolute top-3 right-3 w-6 h-6 rounded-full bg-surface-tertiary hover:bg-surface-tertiary flex items-center justify-center z-10"
             >
-              <X className="w-3.5 h-3.5 text-gray-500" />
+              <X className="w-3.5 h-3.5 text-content-tertiary" />
             </button>
 
             {/* Results content based on type */}
-            <div className="p-4 bg-gradient-to-br from-white to-gray-50 rounded-xl border border-gray-200 shadow-lg">
+            <div className="p-4 bg-gradient-to-br from-surface to-surface-secondary rounded-xl border border-border shadow-lg">
               {/* Header */}
-              <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border-secondary">
                 <div className={clsx(
                   "w-8 h-8 rounded-lg flex items-center justify-center",
                   results.type === 'combo' && "bg-purple-100",
@@ -1295,12 +1295,12 @@ function BottomControlPanel({
                   {results.type === 'related' && <Zap className="w-4 h-4 text-amber-600" />}
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">
+                  <h3 className="font-semibold text-content">
                     {results.type === 'combo' && 'Combo Project Ideas'}
                     {results.type === 'analyze' && 'Skill Analysis'}
                     {results.type === 'related' && 'Related Skills'}
                   </h3>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-content-tertiary">
                     Based on: {selectedSkills.map(s => s.name).join(', ')}
                   </p>
                 </div>
@@ -1315,20 +1315,20 @@ function BottomControlPanel({
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ delay: i * 0.05 }}
-                      className="p-3 bg-white rounded-lg border border-gray-100 hover:border-purple-200 hover:shadow-md transition-all cursor-pointer group"
+                      className="p-3 bg-surface rounded-lg border border-border-secondary hover:border-purple-200 hover:shadow-md transition-all cursor-pointer group"
                     >
                       <div className="flex items-start gap-2">
                         <span className="text-2xl">{combo.icon}</span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 group-hover:text-purple-700 transition-colors">
+                          <p className="text-sm font-semibold text-content group-hover:text-purple-700 transition-colors">
                             {combo.project}
                           </p>
-                          <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{combo.description}</p>
+                          <p className="text-xs text-content-tertiary line-clamp-2 mt-0.5">{combo.description}</p>
                         </div>
                       </div>
                       <div className="mt-2 flex gap-1 flex-wrap">
                         {combo.skills.map((s, j) => (
-                          <span key={j} className="px-1.5 py-0.5 text-[9px] bg-gray-100 text-gray-600 rounded">
+                          <span key={j} className="px-1.5 py-0.5 text-[9px] bg-surface-tertiary text-content-secondary rounded">
                             {s}
                           </span>
                         ))}
@@ -1348,15 +1348,15 @@ function BottomControlPanel({
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.05 }}
                       onClick={() => onStartLearning(suggestion.skill)}
-                      className="p-3 bg-white rounded-lg border border-gray-100 hover:border-amber-200 hover:shadow-md transition-all cursor-pointer group"
+                      className="p-3 bg-surface rounded-lg border border-border-secondary hover:border-amber-200 hover:shadow-md transition-all cursor-pointer group"
                     >
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-xl">{suggestion.icon}</span>
-                        <span className="text-sm font-medium text-gray-800 group-hover:text-amber-700">
+                        <span className="text-sm font-medium text-content group-hover:text-amber-700">
                           {suggestion.skill}
                         </span>
                       </div>
-                      <p className="text-[10px] text-gray-400">
+                      <p className="text-[10px] text-content-tertiary">
                         Unlocks {suggestion.unlocks.length} project{suggestion.unlocks.length !== 1 ? 's' : ''}
                       </p>
                       <button className="mt-2 w-full py-1 text-[10px] font-medium text-amber-600 bg-amber-50 rounded hover:bg-amber-100 transition-colors">
@@ -1390,11 +1390,11 @@ function BottomControlPanel({
               {/* Empty state */}
               {results.combos.length === 0 && results.suggestions.length === 0 && (
                 <div className="text-center py-6">
-                  <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-                    <Sparkles className="w-6 h-6 text-gray-400" />
+                  <div className="w-12 h-12 rounded-full bg-surface-tertiary flex items-center justify-center mx-auto mb-3">
+                    <Sparkles className="w-6 h-6 text-content-tertiary" />
                   </div>
-                  <p className="text-sm text-gray-500">No results found</p>
-                  <p className="text-xs text-gray-400">Try selecting different skills</p>
+                  <p className="text-sm text-content-tertiary">No results found</p>
+                  <p className="text-xs text-content-tertiary">Try selecting different skills</p>
                 </div>
               )}
             </div>

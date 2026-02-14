@@ -35,9 +35,9 @@ export function MultipleChoiceQuestion({
       'p-4 rounded-lg border',
       showResult && isCorrect && 'bg-green-50 border-green-200',
       showResult && hasAnswered && !isCorrect && 'bg-amber-50 border-amber-200',
-      !showResult && 'bg-gray-50 border-gray-200'
+      !showResult && 'bg-surface-secondary border-border'
     )}>
-      <p className="font-medium text-gray-900 mb-4">
+      <p className="font-medium text-content mb-4">
         {questionNumber !== undefined && `${questionNumber}. `}{question}
       </p>
 
@@ -55,18 +55,18 @@ export function MultipleChoiceQuestion({
                 'w-full p-3 rounded-lg border text-left flex items-start gap-3 transition-all',
                 !hasAnswered && !disabled && 'hover:border-brand-300 hover:bg-brand-50 cursor-pointer',
                 (hasAnswered || disabled) && 'cursor-default',
-                !showResult && 'bg-white border-gray-200',
+                !showResult && 'bg-surface border-border',
                 showResult && isCorrectOption && 'bg-green-100 border-green-400',
                 showResult && isSelected && !isCorrectOption && 'bg-red-100 border-red-400',
-                showResult && !isSelected && !isCorrectOption && 'bg-gray-50 border-gray-200 opacity-60'
+                showResult && !isSelected && !isCorrectOption && 'bg-surface-secondary border-border opacity-60'
               )}
             >
               <span className={clsx(
                 'flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm font-medium',
-                !showResult && 'bg-gray-100 text-gray-600',
+                !showResult && 'bg-surface-tertiary text-content-secondary',
                 showResult && isCorrectOption && 'bg-green-500 text-white',
                 showResult && isSelected && !isCorrectOption && 'bg-red-500 text-white',
-                showResult && !isSelected && !isCorrectOption && 'bg-gray-200 text-gray-500'
+                showResult && !isSelected && !isCorrectOption && 'bg-surface-tertiary text-content-tertiary'
               )}>
                 {showResult && isCorrectOption ? (
                   <Check className="w-4 h-4" />
@@ -80,7 +80,7 @@ export function MultipleChoiceQuestion({
                 'text-sm',
                 showResult && isCorrectOption && 'text-green-800 font-medium',
                 showResult && isSelected && !isCorrectOption && 'text-red-800',
-                !showResult && 'text-gray-700'
+                !showResult && 'text-content-secondary'
               )}>
                 {option}
               </span>

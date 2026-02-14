@@ -65,7 +65,7 @@ function DayPreviewModal({
         initial={{ opacity: 0, x: -10 }}
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -10 }}
-        className="absolute bg-white rounded-2xl w-full max-w-[calc(100vw-2rem)] sm:max-w-[420px] shadow-xl overflow-hidden max-h-[calc(100vh-100px)] overflow-y-auto"
+        className="absolute bg-surface rounded-2xl w-full max-w-[calc(100vw-2rem)] sm:max-w-[420px] shadow-xl overflow-hidden max-h-[calc(100vh-100px)] overflow-y-auto"
         style={{
           top: isMobile ? 'auto' : topPosition,
           bottom: isMobile ? '1rem' : 'auto',
@@ -81,13 +81,13 @@ function DayPreviewModal({
               <span className="text-xs font-medium text-brand-600 bg-brand-200/50 px-2 py-0.5 rounded-full">
                 Day {day.day} Preview
               </span>
-              <h3 className="text-lg font-semibold text-gray-900 mt-2">
+              <h3 className="text-lg font-semibold text-content mt-2">
                 {topic || `Day ${day.day}`}
               </h3>
             </div>
             <button
               onClick={onClose}
-              className="p-2.5 text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded-lg transition-colors"
+              className="p-2.5 text-content-tertiary hover:text-content-secondary hover:bg-surface/50 rounded-lg transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -95,14 +95,14 @@ function DayPreviewModal({
 
           {/* Day description */}
           {description && (
-            <p className="text-sm text-gray-600 mt-2">
+            <p className="text-sm text-content-secondary mt-2">
               {description}
             </p>
           )}
 
           {/* Time estimate */}
           {day.estimatedMinutes && (
-            <div className="flex items-center gap-1.5 mt-3 text-sm text-gray-500">
+            <div className="flex items-center gap-1.5 mt-3 text-sm text-content-tertiary">
               <Clock className="w-4 h-4 text-brand-500" />
               <span>~{day.estimatedMinutes} minutes</span>
             </div>
@@ -114,13 +114,13 @@ function DayPreviewModal({
           {/* Learning Objectives */}
           {day.objectives && day.objectives.length > 0 && (
             <div>
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-content-secondary mb-2">
                 <Target className="w-4 h-4 text-brand-500" />
                 <span>What you'll learn</span>
               </div>
               <ul className="space-y-1.5">
                 {day.objectives.map((objective, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
+                  <li key={i} className="flex items-start gap-2 text-sm text-content-secondary">
                     <span className="text-brand-400 mt-1">•</span>
                     <span>{objective}</span>
                   </li>
@@ -132,11 +132,11 @@ function DayPreviewModal({
           {/* What you'll build (from skeleton) */}
           {day.skeleton && (day.skeleton.task1Preview || day.skeleton.practicePreview) && (
             <div>
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-content-secondary mb-2">
                 <Sparkles className="w-4 h-4 text-amber-500" />
                 <span>What you'll build</span>
               </div>
-              <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600 border border-gray-100">
+              <div className="bg-surface-secondary rounded-lg p-3 text-sm text-content-secondary border border-border-secondary">
                 {day.skeleton.task1Preview || day.skeleton.practicePreview}
               </div>
             </div>
@@ -145,11 +145,11 @@ function DayPreviewModal({
           {/* Video topic preview */}
           {day.skeleton?.videoTitle && (
             <div>
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-content-secondary mb-2">
                 <PlayCircle className="w-4 h-4 text-red-500" />
                 <span>Today's lesson</span>
               </div>
-              <p className="text-sm text-gray-600">{day.skeleton.videoTitle}</p>
+              <p className="text-sm text-content-secondary">{day.skeleton.videoTitle}</p>
             </div>
           )}
         </div>
@@ -157,14 +157,14 @@ function DayPreviewModal({
         {/* Footer */}
         <div className="px-4 pb-4 space-y-3">
           {/* Locked notice */}
-          <p className="text-sm text-center text-gray-500">
+          <p className="text-sm text-center text-content-tertiary">
             Complete previous days to unlock.
           </p>
 
           {/* Close button */}
           <button
             onClick={onClose}
-            className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors"
+            className="w-full py-2.5 bg-surface-tertiary hover:bg-surface-tertiary text-content-secondary rounded-xl font-medium transition-colors"
           >
             Got it
           </button>
@@ -178,13 +178,13 @@ function DayPreviewModal({
 const STATUS_CONFIG: Record<DayStatus, { icon: React.ReactNode; dotColor: string; lineColor: string }> = {
   [DayStatus.LOCKED]: {
     icon: <Eye className="w-3.5 h-3.5" />,
-    dotColor: 'bg-gray-100 text-gray-500 border-gray-300 hover:border-brand-300 hover:bg-brand-50',
-    lineColor: 'bg-gray-200'
+    dotColor: 'bg-surface-tertiary text-content-tertiary border-border hover:border-brand-300 hover:bg-brand-50',
+    lineColor: 'bg-surface-tertiary'
   },
   [DayStatus.UNLOCKABLE]: {
     icon: <Circle className="w-3.5 h-3.5" />,
-    dotColor: 'bg-white text-brand-500 border-brand-400 border-2',
-    lineColor: 'bg-gray-200'
+    dotColor: 'bg-surface text-brand-500 border-brand-400 border-2',
+    lineColor: 'bg-surface-tertiary'
   },
   [DayStatus.IN_PROGRESS]: {
     icon: <PlayCircle className="w-3.5 h-3.5" />,
@@ -281,7 +281,7 @@ function DayItem({
         className={clsx(
           'flex-1 text-left p-3 rounded-xl transition-all mb-2',
           'border cursor-pointer',
-          status === DayStatus.LOCKED && 'border-gray-200 bg-gray-50/80 hover:bg-gray-100 hover:border-brand-200',
+          status === DayStatus.LOCKED && 'border-border bg-surface-secondary/80 hover:bg-surface-tertiary hover:border-brand-200',
           status === DayStatus.UNLOCKABLE && 'border-brand-200 bg-brand-50/50 hover:bg-brand-50',
           status === DayStatus.IN_PROGRESS && 'border-brand-300 bg-brand-50 shadow-sm',
           status === DayStatus.COMPLETED && 'border-green-200 bg-green-50/50 hover:bg-green-50',
@@ -294,7 +294,7 @@ function DayItem({
           <div className="flex items-center gap-1.5">
             <span className={clsx(
               'text-xs font-medium px-2 py-0.5 rounded-full',
-              status === DayStatus.LOCKED && 'bg-gray-100 text-gray-500',
+              status === DayStatus.LOCKED && 'bg-surface-tertiary text-content-tertiary',
               status === DayStatus.UNLOCKABLE && 'bg-brand-100 text-brand-600',
               status === DayStatus.IN_PROGRESS && 'bg-brand-200 text-brand-700',
               status === DayStatus.COMPLETED && 'bg-green-100 text-green-700',
@@ -303,14 +303,14 @@ function DayItem({
               Day {day.day}
             </span>
             {isLocked && (
-              <span className="flex items-center gap-0.5 text-xs text-gray-400">
+              <span className="flex items-center gap-0.5 text-xs text-content-tertiary">
                 <Eye className="w-3 h-3" />
                 <span>Preview</span>
               </span>
             )}
           </div>
           {day.estimatedMinutes && (
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-content-tertiary">
               {day.estimatedMinutes}m
             </span>
           )}
@@ -319,7 +319,7 @@ function DayItem({
         {/* Title */}
         <h4 className={clsx(
           'font-medium text-sm leading-snug',
-          status === DayStatus.LOCKED ? 'text-gray-600' : 'text-gray-900'
+          status === DayStatus.LOCKED ? 'text-content-secondary' : 'text-content'
         )}>
           {topic || `Day ${day.day}`}
         </h4>
@@ -328,7 +328,7 @@ function DayItem({
         {((day as any).subtitle || (day as any).teaser) && (
           <p className={clsx(
             'text-xs mt-1 line-clamp-2',
-            status === DayStatus.LOCKED ? 'text-gray-400' : 'text-gray-500'
+            status === DayStatus.LOCKED ? 'text-content-tertiary' : 'text-content-tertiary'
           )}>
             {(day as any).subtitle || (day as any).teaser}
           </p>
@@ -343,8 +343,8 @@ function DayItem({
                 className={clsx(
                   'text-xs px-1.5 py-0.5 rounded-md',
                   status === DayStatus.LOCKED
-                    ? 'bg-gray-100 text-gray-500'
-                    : 'bg-white/80 text-gray-600 border border-gray-200'
+                    ? 'bg-surface-tertiary text-content-tertiary'
+                    : 'bg-surface/80 text-content-secondary border border-border'
                 )}
               >
                 {skill}
@@ -399,7 +399,7 @@ export function CourseSidebar({ onDayClick }: CourseSidebarProps) {
       animate={{ width: isCollapsed ? 56 : 320 }}
       transition={{ duration: 0.2, ease: 'easeInOut' }}
       className={clsx(
-        'fixed left-0 top-14 bottom-0 bg-white/95 backdrop-blur-sm border-r border-gray-200 z-20',
+        'fixed left-0 top-14 bottom-0 bg-surface/95 backdrop-blur-sm border-r border-border z-20',
         'hidden md:flex flex-col shadow-sm'
       )}
     >
@@ -408,16 +408,16 @@ export function CourseSidebar({ onDayClick }: CourseSidebarProps) {
         onClick={() => setIsCollapsed(!isCollapsed)}
         className={clsx(
           'absolute -right-3 top-6 z-30',
-          'w-6 h-6 rounded-full bg-white border border-gray-200 shadow-md',
+          'w-6 h-6 rounded-full bg-surface border border-border shadow-md',
           'flex items-center justify-center',
-          'hover:bg-gray-50 hover:scale-110 transition-all'
+          'hover:bg-surface-secondary hover:scale-110 transition-all'
         )}
       >
         <motion.div
           animate={{ rotate: isCollapsed ? 0 : 180 }}
           transition={{ duration: 0.2 }}
         >
-          <ChevronRight className="w-4 h-4 text-gray-600" />
+          <ChevronRight className="w-4 h-4 text-content-secondary" />
         </motion.div>
       </button>
 
@@ -483,11 +483,11 @@ export function CourseSidebar({ onDayClick }: CourseSidebarProps) {
             className="flex flex-col h-full"
           >
             {/* Header with skill name and progress */}
-            <div className="p-4 border-b border-gray-100">
+            <div className="p-4 border-b border-border-secondary">
               {/* Skill name card */}
               <div className="bg-gradient-to-br from-brand-500 to-brand-600 rounded-xl p-3 mb-3 shadow-sm">
                 <div className="flex items-start gap-2.5">
-                  <div className="w-9 h-9 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0">
+                  <div className="w-9 h-9 rounded-lg bg-surface/20 flex items-center justify-center flex-shrink-0">
                     <Target className="w-5 h-5 text-white" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -504,12 +504,12 @@ export function CourseSidebar({ onDayClick }: CourseSidebarProps) {
               {/* Progress bar */}
               <div>
                 <div className="flex justify-between text-xs mb-1.5">
-                  <span className="text-gray-500 font-medium">Progress</span>
+                  <span className="text-content-tertiary font-medium">Progress</span>
                   <span className="font-semibold text-brand-600">
                     {completedCount}/{days.length}
                   </span>
                 </div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-2 bg-surface-tertiary rounded-full overflow-hidden">
                   <motion.div
                     className="h-full bg-gradient-to-r from-brand-400 to-brand-500 rounded-full"
                     initial={{ width: 0 }}
@@ -523,7 +523,7 @@ export function CourseSidebar({ onDayClick }: CourseSidebarProps) {
             {/* Scrollable days list */}
             <div
               ref={scrollRef}
-              className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent"
+              className="flex-1 overflow-y-auto p-4 scrollbar-thin"
             >
               {days.map((day, index) => (
                 <div key={day.day} data-day={day.day}>
@@ -541,8 +541,8 @@ export function CourseSidebar({ onDayClick }: CourseSidebarProps) {
 
             {/* Footer - only show boss project info for project-based curricula */}
             {activeSession.curriculum.metadata?.isProjectBased !== false && bossProjectDays.size > 0 && (
-              <div className="p-3 border-t border-gray-100 bg-gray-50/80">
-                <div className="flex items-center gap-2 text-xs text-gray-500">
+              <div className="p-3 border-t border-border-secondary bg-surface-secondary/80">
+                <div className="flex items-center gap-2 text-xs text-content-tertiary">
                   <Trophy className="w-4 h-4 text-amber-500" />
                   <span>
                     Boss Projects: Days {Array.from(bossProjectDays).join(', ')}

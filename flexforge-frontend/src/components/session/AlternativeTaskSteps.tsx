@@ -95,7 +95,7 @@ export function QuizTaskStep({ day, session, onComplete, onBookmarkQuestion, onS
   if (!quiz || questions.length === 0) {
     return (
       <div className="text-center py-12">
-        <p className="text-gray-500">No quiz questions available.</p>
+        <p className="text-content-tertiary">No quiz questions available.</p>
       </div>
     );
   }
@@ -126,7 +126,7 @@ export function QuizTaskStep({ day, session, onComplete, onBookmarkQuestion, onS
                 <span className={isCorrect ? 'text-green-500' : 'text-red-500'}>
                   {isCorrect ? '✓' : '✗'}
                 </span>
-                <span className="text-sm text-gray-700 truncate">
+                <span className="text-sm text-content-secondary truncate">
                   Q{i + 1}: {q.question.substring(0, 50)}...
                 </span>
               </div>
@@ -179,8 +179,8 @@ export function QuizTaskStep({ day, session, onComplete, onBookmarkQuestion, onS
                   )} />
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">Listening Question</p>
-                  <p className="text-sm text-gray-500">
+                  <p className="font-medium text-content">Listening Question</p>
+                  <p className="text-sm text-content-tertiary">
                     {audioPlayed[currentQuestion.id] ? 'Tap to hear again' : 'Tap to listen'}
                   </p>
                 </div>
@@ -213,7 +213,7 @@ export function QuizTaskStep({ day, session, onComplete, onBookmarkQuestion, onS
                 options: currentQuestion.options,
                 correctAnswer: currentQuestion.options?.[currentQuestion.correctIndex ?? 0],
               })}
-              className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-1.5 text-sm"
+              className="p-2 text-content-tertiary hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-1.5 text-sm"
               title="Share to community"
             >
               <Share2 className="w-4 h-4" />
@@ -227,7 +227,7 @@ export function QuizTaskStep({ day, session, onComplete, onBookmarkQuestion, onS
                 options: currentQuestion.options,
                 correctAnswer: currentQuestion.options?.[currentQuestion.correctIndex ?? 0],
               })}
-              className="p-2 text-gray-400 hover:text-brand-500 hover:bg-brand-50 rounded-lg transition-colors flex items-center gap-1.5 text-sm"
+              className="p-2 text-content-tertiary hover:text-brand-500 hover:bg-brand-50 rounded-lg transition-colors flex items-center gap-1.5 text-sm"
               title="Bookmark this question"
             >
               <Bookmark className="w-4 h-4" />
@@ -266,7 +266,7 @@ export function QuizTaskStep({ day, session, onComplete, onBookmarkQuestion, onS
               delete updated[currentQuestion.id];
               return updated;
             })}
-            className="text-sm text-gray-500 hover:text-gray-700 underline underline-offset-2"
+            className="text-sm text-content-tertiary hover:text-content-secondary underline underline-offset-2"
           >
             Try again
           </button>
@@ -379,7 +379,7 @@ export function FillBlankTaskStep({ day, onComplete }: FillBlankTaskStepProps) {
                   {!isSubmitted && item.blanks[index].hint && (
                     <button
                       onClick={() => setShowHint(prev => ({ ...prev, [item.blanks[index].id]: !prev[item.blanks[index].id] }))}
-                      className="ml-1 text-gray-400 hover:text-yellow-400"
+                      className="ml-1 text-content-tertiary hover:text-yellow-400"
                     >
                       <Lightbulb className="w-4 h-4 inline" />
                     </button>
@@ -402,7 +402,7 @@ export function FillBlankTaskStep({ day, onComplete }: FillBlankTaskStepProps) {
   if (!task || items.length === 0) {
     return (
       <div className="text-center py-12">
-        <p className="text-gray-500">No fill-in-the-blank items available.</p>
+        <p className="text-content-tertiary">No fill-in-the-blank items available.</p>
       </div>
     );
   }

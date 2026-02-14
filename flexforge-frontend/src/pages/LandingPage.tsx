@@ -33,22 +33,22 @@ function LandingNav() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-lg border-b border-gray-200/50">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-surface/80 backdrop-blur-lg border-b border-border/50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex items-center gap-2">
             <span className="text-2xl">🔥</span>
-            <span className="font-display font-bold text-xl text-gray-900">FlexForge</span>
+            <span className="font-display font-bold text-xl text-content">FlexForge</span>
           </div>
 
           {/* Desktop nav */}
           <div className="hidden md:flex items-center gap-8">
-            <Link to="/explore" className="text-gray-600 hover:text-gray-900 transition-colors">Explore</Link>
-            <a href="#features" className="text-gray-600 hover:text-gray-900 transition-colors">Features</a>
-            <a href="#how-it-works" className="text-gray-600 hover:text-gray-900 transition-colors">How It Works</a>
-            {/* <a href="#pricing" className="text-gray-600 hover:text-gray-900 transition-colors">Pricing</a> */}
-            <a href="#contact" className="text-gray-600 hover:text-gray-900 transition-colors">Contact</a>
+            <Link to="/explore" className="text-content-secondary hover:text-content transition-colors">Explore</Link>
+            <a href="#features" className="text-content-secondary hover:text-content transition-colors">Features</a>
+            <a href="#how-it-works" className="text-content-secondary hover:text-content transition-colors">How It Works</a>
+            {/* <a href="#pricing" className="text-content-secondary hover:text-content transition-colors">Pricing</a> */}
+            <a href="#contact" className="text-content-secondary hover:text-content transition-colors">Contact</a>
           </div>
 
           {/* CTA buttons */}
@@ -75,15 +75,15 @@ function LandingNav() {
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="md:hidden py-4 border-t border-gray-100"
+            className="md:hidden py-4 border-t border-border-secondary"
           >
             <div className="flex flex-col gap-4">
-              <Link to="/explore" className="text-gray-600 hover:text-gray-900">Explore</Link>
-              <a href="#features" className="text-gray-600 hover:text-gray-900">Features</a>
-              <a href="#how-it-works" className="text-gray-600 hover:text-gray-900">How It Works</a>
-              {/* <a href="#pricing" className="text-gray-600 hover:text-gray-900">Pricing</a> */}
-              <a href="#contact" className="text-gray-600 hover:text-gray-900">Contact</a>
-              <hr className="border-gray-100" />
+              <Link to="/explore" className="text-content-secondary hover:text-content">Explore</Link>
+              <a href="#features" className="text-content-secondary hover:text-content">Features</a>
+              <a href="#how-it-works" className="text-content-secondary hover:text-content">How It Works</a>
+              {/* <a href="#pricing" className="text-content-secondary hover:text-content">Pricing</a> */}
+              <a href="#contact" className="text-content-secondary hover:text-content">Contact</a>
+              <hr className="border-border-secondary" />
               <Button variant="ghost" onClick={() => navigate('/login')}>Log In</Button>
               <Button onClick={() => navigate('/register')}>Start Free</Button>
             </div>
@@ -136,10 +136,10 @@ function TopicCycler() {
       transition={{ delay: 0.5 }}
       className="mt-16 max-w-3xl mx-auto"
     >
-      <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+      <div className="bg-surface rounded-2xl shadow-xl border border-border overflow-hidden">
         {/* Input area */}
-        <div className="p-5 sm:p-6 border-b border-gray-100">
-          <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">
+        <div className="p-5 sm:p-6 border-b border-border-secondary">
+          <p className="text-xs font-medium text-content-tertiary uppercase tracking-wider mb-2">
             I want to learn...
           </p>
           <div className="relative h-7 overflow-hidden">
@@ -150,7 +150,7 @@ function TopicCycler() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.4 }}
-                className="text-lg font-medium text-gray-900 absolute inset-0"
+                className="text-lg font-medium text-content absolute inset-0"
               >
                 {topic.query}
               </motion.p>
@@ -159,7 +159,7 @@ function TopicCycler() {
         </div>
 
         {/* Generated curriculum preview */}
-        <div className="p-5 sm:p-6 bg-gray-50/50">
+        <div className="p-5 sm:p-6 bg-surface-secondary/50">
           <p className="text-xs font-medium text-focus-600 uppercase tracking-wider mb-3">
             Your 7-day curriculum
           </p>
@@ -183,16 +183,16 @@ function TopicCycler() {
                   <span className="flex-shrink-0 w-6 h-6 rounded-full bg-focus-100 text-focus-700 flex items-center justify-center text-xs font-bold">
                     {i + 1}
                   </span>
-                  <span className="text-sm text-gray-700">{day}</span>
+                  <span className="text-sm text-content-secondary">{day}</span>
                 </motion.div>
               ))}
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.6 }}
-                className="flex items-center gap-3 text-gray-400"
+                className="flex items-center gap-3 text-content-tertiary"
               >
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-surface-tertiary flex items-center justify-center text-xs">
                   ...
                 </span>
                 <span className="text-sm">+ 4 more days</span>
@@ -202,14 +202,14 @@ function TopicCycler() {
         </div>
 
         {/* Progress dots */}
-        <div className="flex justify-center gap-1.5 py-3 bg-gray-50/50 border-t border-gray-100">
+        <div className="flex justify-center gap-1.5 py-3 bg-surface-secondary/50 border-t border-border-secondary">
           {HERO_TOPICS.map((_, i) => (
             <button
               key={i}
               onClick={() => setIndex(i)}
               className={clsx(
                 'w-2 h-2 rounded-full transition-all duration-300',
-                i === index ? 'bg-brand-500 w-6' : 'bg-gray-300 hover:bg-gray-400'
+                i === index ? 'bg-brand-500 w-6' : 'bg-surface-tertiary hover:bg-border'
               )}
             />
           ))}
@@ -233,7 +233,7 @@ function HeroSection() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 mb-6 leading-tight"
+          className="text-4xl sm:text-5xl lg:text-6xl font-bold text-content mb-6 leading-tight"
         >
           Learn what{' '}
           <span
@@ -252,7 +252,7 @@ function HeroSection() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto"
+          className="text-xl text-content-secondary mb-8 max-w-2xl mx-auto"
         >
           Niche skills, messy real-world problems, career pivots — describe what you need to learn and
           get a structured curriculum that turns knowledge into actual skill.
@@ -324,8 +324,8 @@ function ChatSimulation() {
           <div className={clsx(
             'rounded-2xl px-4 py-2.5 max-w-[85%] text-sm',
             msg.role === 'user'
-              ? 'bg-gray-200 text-gray-800 rounded-br-md'
-              : 'bg-gray-100 text-gray-600 rounded-bl-md'
+              ? 'bg-surface-tertiary text-content rounded-br-md'
+              : 'bg-surface-tertiary text-content-secondary rounded-bl-md'
           )}>
             {msg.role === 'ai' && i === messages.length - 1 ? (
               <span>
@@ -333,7 +333,7 @@ function ChatSimulation() {
                 <motion.span
                   animate={{ opacity: [0.3, 1, 0.3] }}
                   transition={{ duration: 1.5, repeat: Infinity }}
-                  className="text-gray-400"
+                  className="text-content-tertiary"
                 >
                   ...
                 </motion.span>
@@ -351,7 +351,7 @@ function ChatSimulation() {
         whileInView={{ opacity: 1 }}
         viewport={{ once: true }}
         transition={{ delay: 1.5 }}
-        className="text-xs text-gray-400 text-center pt-2 italic"
+        className="text-xs text-content-tertiary text-center pt-2 italic"
       >
         You read it, you nod, you forget it tomorrow.
       </motion.p>
@@ -380,12 +380,12 @@ function CurriculumSimulation() {
         >
           <motion.div
             whileHover={{ x: 4, transition: { duration: 0.15 } }}
-            className="flex items-center gap-3 bg-white rounded-xl px-4 py-3 border border-gray-100 shadow-sm"
+            className="flex items-center gap-3 bg-surface rounded-xl px-4 py-3 border border-border-secondary shadow-sm"
           >
             <span className="text-lg">{item.icon}</span>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">{item.label}</p>
-              <p className="text-xs text-gray-400">{item.type}</p>
+              <p className="text-sm font-medium text-content truncate">{item.label}</p>
+              <p className="text-xs text-content-tertiary">{item.type}</p>
             </div>
             {i === 0 && (
               <motion.div
@@ -432,7 +432,7 @@ function FeaturesSection() {
   ];
 
   return (
-    <section id="features" className="py-20 px-4 bg-gray-50">
+    <section id="features" className="py-20 px-4 bg-surface-secondary">
       <div className="max-w-5xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -441,13 +441,13 @@ function FeaturesSection() {
           transition={{ duration: 0.6 }}
           className="text-center mb-6"
         >
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">
+          <h2 className="text-3xl font-bold text-content mb-4">
             AI gives you knowledge.{' '}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-500 to-focus-500">
               We help you build skills.
             </span>
           </h2>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+          <p className="text-xl text-content-secondary max-w-2xl mx-auto">
             Chatbots answer questions. FlexForge turns those answers into something you can actually do.
           </p>
         </motion.div>
@@ -460,13 +460,13 @@ function FeaturesSection() {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5 }}
-            className="rounded-2xl border border-gray-200 bg-white overflow-hidden"
+            className="rounded-2xl border border-border bg-surface overflow-hidden"
           >
-            <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
-              <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center">
-                <MessageSquare className="w-3.5 h-3.5 text-gray-500" />
+            <div className="px-5 py-3 border-b border-border-secondary flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-surface-tertiary flex items-center justify-center">
+                <MessageSquare className="w-3.5 h-3.5 text-content-tertiary" />
               </div>
-              <span className="text-sm font-medium text-gray-500">Conversational AI</span>
+              <span className="text-sm font-medium text-content-tertiary">Conversational AI</span>
             </div>
             <div className="p-5">
               <ChatSimulation />
@@ -494,7 +494,7 @@ function FeaturesSection() {
         {/* Comparison rows */}
         <div className="max-w-3xl mx-auto">
           <div className="grid grid-cols-2 gap-4 mb-3 px-2">
-            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Conversational AI</p>
+            <p className="text-xs font-medium text-content-tertiary uppercase tracking-wider">Conversational AI</p>
             <p className="text-xs font-medium text-brand-500 uppercase tracking-wider">FlexForge</p>
           </div>
           <div className="space-y-2">
@@ -507,13 +507,13 @@ function FeaturesSection() {
                 transition={{ delay: i * 0.1, duration: 0.3 }}
                 className="grid grid-cols-2 gap-4"
               >
-                <div className="flex items-start gap-2 bg-white rounded-lg px-3 py-2.5 border border-gray-100">
-                  <X className="w-4 h-4 text-gray-300 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-gray-500">{row.ai}</span>
+                <div className="flex items-start gap-2 bg-surface rounded-lg px-3 py-2.5 border border-border-secondary">
+                  <X className="w-4 h-4 text-content-tertiary flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-content-tertiary">{row.ai}</span>
                 </div>
                 <div className="flex items-start gap-2 bg-focus-50 rounded-lg px-3 py-2.5 border border-focus-100">
                   <CheckCircle className="w-4 h-4 text-focus-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-gray-700">{row.ff}</span>
+                  <span className="text-sm text-content-secondary">{row.ff}</span>
                 </div>
               </motion.div>
             ))}
@@ -535,8 +535,8 @@ function DescribeIllustration() {
   }, []);
 
   return (
-    <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-      <div className="flex items-center gap-2 text-xs text-gray-400 font-medium">
+    <div className="bg-surface-secondary rounded-lg p-4 space-y-3">
+      <div className="flex items-center gap-2 text-xs text-content-tertiary font-medium">
         <div className="w-2 h-2 rounded-full bg-focus-400" />
         Your goal
       </div>
@@ -548,7 +548,7 @@ function DescribeIllustration() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12 }}
             transition={{ duration: 0.3 }}
-            className="text-sm font-medium text-gray-800 absolute inset-0"
+            className="text-sm font-medium text-content absolute inset-0"
           >
             {texts[idx]}
             <motion.span
@@ -577,7 +577,7 @@ function LearnIllustration() {
           transition={{ delay: 0.3 + i * 0.2, duration: 0.6, ease: 'easeOut' }}
           className="overflow-hidden"
         >
-          <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
+          <div className="flex items-center gap-2 bg-surface-secondary rounded-lg px-3 py-2">
             <motion.div
               initial={{ scale: 0 }}
               whileInView={{ scale: 1 }}
@@ -585,12 +585,12 @@ function LearnIllustration() {
               transition={{ delay: 0.6 + i * 0.2, type: 'spring', stiffness: 300 }}
               className={clsx(
                 'w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0',
-                i < 2 ? 'bg-focus-500' : 'bg-gray-200'
+                i < 2 ? 'bg-focus-500' : 'bg-surface-tertiary'
               )}
             >
               {i < 2 && <CheckCircle className="w-3.5 h-3.5 text-white" />}
             </motion.div>
-            <span className={clsx('text-xs font-medium', i < 2 ? 'text-gray-700' : 'text-gray-400')}>{label}</span>
+            <span className={clsx('text-xs font-medium', i < 2 ? 'text-content-secondary' : 'text-content-tertiary')}>{label}</span>
             {i === 2 && (
               <motion.div
                 animate={{ x: [0, 3, 0] }}
@@ -725,10 +725,10 @@ function HowItWorksSection() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">
+          <h2 className="text-3xl font-bold text-content mb-4">
             How It Works
           </h2>
-          <p className="text-xl text-gray-600">
+          <p className="text-xl text-content-secondary">
             From idea to real skill in four steps
           </p>
         </motion.div>
@@ -742,10 +742,10 @@ function HowItWorksSection() {
               viewport={{ once: true, margin: '-40px' }}
               transition={{ delay: index * 0.15, duration: 0.5 }}
               whileHover={{ y: -4, transition: { duration: 0.2 } }}
-              className="bg-white rounded-2xl border border-gray-200 overflow-hidden group"
+              className="bg-surface rounded-2xl border border-border overflow-hidden group"
             >
               {/* Illustration area */}
-              <div className="p-5 pb-4 border-b border-gray-100 bg-gradient-to-br from-gray-50 to-white min-h-[120px] flex flex-col justify-center">
+              <div className="p-5 pb-4 border-b border-border-secondary bg-gradient-to-br from-surface-secondary to-surface min-h-[120px] flex flex-col justify-center">
                 <step.illustration />
               </div>
 
@@ -758,11 +758,11 @@ function HowItWorksSection() {
                   )}>
                     {step.number}
                   </span>
-                  <h3 className="text-lg font-bold text-gray-900 group-hover:text-brand-600 transition-colors">
+                  <h3 className="text-lg font-bold text-content group-hover:text-brand-600 transition-colors">
                     {step.title}
                   </h3>
                 </div>
-                <p className="text-sm text-gray-600 ml-11">{step.description}</p>
+                <p className="text-sm text-content-secondary ml-11">{step.description}</p>
               </div>
             </motion.div>
           ))}
@@ -822,13 +822,13 @@ function PricingSection() {
   ];
 
   return (
-    <section id="pricing" className="py-20 px-4 bg-gray-50">
+    <section id="pricing" className="py-20 px-4 bg-surface-secondary">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-16">
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">
+          <h2 className="text-3xl font-bold text-content mb-4">
             Simple, Transparent Pricing
           </h2>
-          <p className="text-xl text-gray-600">
+          <p className="text-xl text-content-secondary">
             Start free, upgrade when you need more
           </p>
         </div>
@@ -841,17 +841,17 @@ function PricingSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: index * 0.1 }}
-              className="bg-white rounded-2xl p-8 shadow-lg flex flex-col h-full"
+              className="bg-surface rounded-2xl p-8 shadow-lg flex flex-col h-full"
             >
-              <h3 className="text-xl font-bold text-gray-900 mb-2">{plan.name}</h3>
+              <h3 className="text-xl font-bold text-content mb-2">{plan.name}</h3>
               <div className="mb-4">
-                <span className="text-4xl font-bold text-gray-900">{plan.price}</span>
-                {plan.period && <span className="text-gray-500">{plan.period}</span>}
+                <span className="text-4xl font-bold text-content">{plan.price}</span>
+                {plan.period && <span className="text-content-tertiary">{plan.period}</span>}
               </div>
-              <p className="text-gray-600 mb-6">{plan.description}</p>
+              <p className="text-content-secondary mb-6">{plan.description}</p>
               <ul className="space-y-3 mb-8 flex-1">
                 {plan.features.map((feature, i) => (
-                  <li key={i} className="flex items-start gap-2 text-gray-700">
+                  <li key={i} className="flex items-start gap-2 text-content-secondary">
                     <CheckCircle className="w-5 h-5 text-focus-500 flex-shrink-0 mt-0.5" />
                     {feature}
                   </li>
@@ -896,7 +896,7 @@ function CTASection() {
             variant="secondary"
             onClick={() => navigate('/register')}
             rightIcon={<ChevronRight className="w-5 h-5" />}
-            className="bg-white text-brand-600 hover:bg-gray-100"
+            className="bg-surface text-brand-600 hover:bg-surface-tertiary"
           >
             Start Learning for Free
           </Button>
@@ -944,16 +944,16 @@ function ContactSection() {
   };
 
   return (
-    <section id="contact" className="py-20 px-4 bg-gray-50">
+    <section id="contact" className="py-20 px-4 bg-surface-secondary">
       <div className="max-w-2xl mx-auto">
         <div className="text-center mb-12">
           <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-brand-500 to-brand-600 flex items-center justify-center mx-auto mb-6">
             <MessageSquare className="w-7 h-7 text-white" />
           </div>
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">
+          <h2 className="text-3xl font-bold text-content mb-4">
             We'd Love to Hear From You
           </h2>
-          <p className="text-xl text-gray-600">
+          <p className="text-xl text-content-secondary">
             Have feedback, questions, or ideas? Let us know what you think.
           </p>
         </div>
@@ -962,13 +962,13 @@ function ContactSection() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl p-8 shadow-lg text-center"
+            className="bg-surface rounded-2xl p-8 shadow-lg text-center"
           >
             <div className="w-16 h-16 bg-focus-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <CheckCircle className="w-8 h-8 text-focus-600" />
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Message Sent!</h3>
-            <p className="text-gray-600 mb-6">
+            <h3 className="text-xl font-bold text-content mb-2">Message Sent!</h3>
+            <p className="text-content-secondary mb-6">
               Thanks for reaching out. We'll get back to you soon.
             </p>
             <Button variant="secondary" onClick={() => setSubmitted(false)}>
@@ -981,7 +981,7 @@ function ContactSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             onSubmit={handleSubmit}
-            className="bg-white rounded-2xl p-8 shadow-lg space-y-6"
+            className="bg-surface rounded-2xl p-8 shadow-lg space-y-6"
           >
             {error && (
               <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
@@ -991,7 +991,7 @@ function ContactSection() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-sm font-medium text-content-secondary mb-1.5">
                   Name
                 </label>
                 <input
@@ -1000,13 +1000,13 @@ function ContactSection() {
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Your name"
                   required
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg
+                  className="w-full px-4 py-2.5 border border-border rounded-lg
                            focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                            transition-colors"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-sm font-medium text-content-secondary mb-1.5">
                   Email
                 </label>
                 <input
@@ -1015,7 +1015,7 @@ function ContactSection() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
                   required
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg
+                  className="w-full px-4 py-2.5 border border-border rounded-lg
                            focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                            transition-colors"
                 />
@@ -1023,7 +1023,7 @@ function ContactSection() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label className="block text-sm font-medium text-content-secondary mb-1.5">
                 Message
               </label>
               <textarea
@@ -1032,7 +1032,7 @@ function ContactSection() {
                 placeholder="What's on your mind?"
                 required
                 rows={5}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg
+                className="w-full px-4 py-2.5 border border-border rounded-lg
                          focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                          transition-colors resize-none"
               />
@@ -1080,7 +1080,7 @@ function Footer() {
 // Main landing page component
 export function LandingPage() {
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-surface">
       <LandingNav />
       <HeroSection />
       <FeaturesSection />

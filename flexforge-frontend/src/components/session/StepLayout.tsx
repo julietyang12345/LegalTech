@@ -28,10 +28,10 @@ export function StepLayout({
         )}>
           <Icon className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
         </div>
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1 sm:mb-2">
+        <h1 className="text-xl sm:text-2xl font-bold text-content mb-1 sm:mb-2">
           {title}
         </h1>
-        <p className="text-sm sm:text-base text-gray-600">
+        <p className="text-sm sm:text-base text-content-secondary">
           {subtitle}
         </p>
       </div>

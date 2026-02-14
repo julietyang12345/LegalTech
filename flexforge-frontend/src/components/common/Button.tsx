@@ -39,8 +39,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         focus-visible:ring-brand-500
       `,
       secondary: `
-        bg-white text-gray-700 border border-gray-300
-        hover:bg-gray-50 hover:border-gray-400
+        bg-surface text-content-secondary border border-border
+        hover:bg-surface-tertiary hover:border-content-tertiary
         focus-visible:ring-gray-500
       `,
       accent: `
@@ -49,7 +49,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         focus-visible:ring-alert-500
       `,
       ghost: `
-        text-gray-600 hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200
+        text-content-secondary hover:bg-surface-tertiary hover:text-content active:bg-surface-tertiary
       `,
       danger: `
         bg-red-500 text-white shadow-md

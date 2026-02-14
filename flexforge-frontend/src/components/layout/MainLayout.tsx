@@ -74,8 +74,8 @@ function NavItem({ path, label, icon: Icon }: { path: string; label: string; ico
         clsx(
           'flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors',
           isActive
-            ? 'bg-brand-50 text-brand-600'
-            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+            ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400'
+            : 'text-content-secondary hover:bg-surface-tertiary hover:text-content'
         )
       }
     >
@@ -109,21 +109,21 @@ function NotificationPanel({
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -10 }}
-        className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden"
+        className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-surface rounded-xl shadow-xl border border-border z-50 overflow-hidden"
       >
-        <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="font-semibold text-gray-900">
+        <div className="p-4 border-b border-border-secondary flex items-center justify-between">
+          <h3 className="font-semibold text-content">
             Notifications {unreadCount > 0 && `(${unreadCount})`}
           </h3>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="p-1 text-content-tertiary hover:text-content-secondary">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="max-h-96 overflow-auto">
           {notifications.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
-              <Bell className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+            <div className="p-8 text-center text-content-tertiary">
+              <Bell className="w-8 h-8 mx-auto mb-2 opacity-50" />
               <p className="text-sm">No notifications yet</p>
             </div>
           ) : (
@@ -131,20 +131,20 @@ function NotificationPanel({
               <div
                 key={notification.id}
                 className={clsx(
-                  'p-4 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer',
-                  !notification.isRead && 'bg-gray-100/50'
+                  'p-4 border-b border-border-secondary hover:bg-surface-tertiary transition-colors cursor-pointer',
+                  !notification.isRead && 'bg-surface-tertiary/50'
                 )}
                 onClick={() => onMarkRead(notification.id)}
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-gray-100">
-                    {notification.type === 'comment' && <MessageCircle className="w-4 h-4 text-gray-600" />}
-                    {notification.type === 'course_request' && <Eye className="w-4 h-4 text-gray-600" />}
-                    {notification.type === 'course_granted' && <Check className="w-4 h-4 text-gray-600" />}
-                    {notification.type === 'mention' && <MessageCircle className="w-4 h-4 text-gray-600" />}
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-surface-tertiary">
+                    {notification.type === 'comment' && <MessageCircle className="w-4 h-4 text-content-secondary" />}
+                    {notification.type === 'course_request' && <Eye className="w-4 h-4 text-content-secondary" />}
+                    {notification.type === 'course_granted' && <Check className="w-4 h-4 text-content-secondary" />}
+                    {notification.type === 'mention' && <MessageCircle className="w-4 h-4 text-content-secondary" />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-900">
+                    <p className="text-sm text-content">
                       <span className="font-medium">{notification.fromUserName}</span>
                       {notification.type === 'comment' && ' commented on '}
                       {notification.type === 'course_request' && ' requested to view your '}
@@ -155,11 +155,11 @@ function NotificationPanel({
                       </span>
                     </p>
                     {notification.message && (
-                      <p className="text-xs text-gray-500 mt-1 line-clamp-1">
+                      <p className="text-xs text-content-tertiary mt-1 line-clamp-1">
                         "{notification.message}"
                       </p>
                     )}
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs text-content-tertiary mt-1">
                       {getTimeAgo(notification.createdAt)}
                     </p>
 
@@ -170,13 +170,13 @@ function NotificationPanel({
                             e.stopPropagation();
                             onGrantAccess(notification.id);
                           }}
-                          className="px-3 py-1 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-800"
+                          className="px-3 py-1 text-xs bg-brand-500 text-white rounded-lg hover:bg-brand-600"
                         >
                           Grant Access
                         </button>
                         <button
                           onClick={(e) => e.stopPropagation()}
-                          className="px-3 py-1 text-xs text-gray-500 hover:text-gray-700"
+                          className="px-3 py-1 text-xs text-content-tertiary hover:text-content-secondary"
                         >
                           Ignore
                         </button>
@@ -184,7 +184,7 @@ function NotificationPanel({
                     )}
                   </div>
                   {!notification.isRead && (
-                    <div className="w-2 h-2 bg-gray-800 rounded-full flex-shrink-0" />
+                    <div className="w-2 h-2 bg-brand-500 rounded-full flex-shrink-0" />
                   )}
                 </div>
               </div>
@@ -251,13 +251,13 @@ function TopNav() {
   }
 
   return (
-    <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-lg border-b border-gray-200">
+    <header className="sticky top-0 z-30 bg-surface/80 backdrop-blur-lg border-b border-border">
       <div className="max-w-content mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <NavLink to="/today" className="flex items-center gap-2">
             <span className="text-2xl">🔥</span>
-            <span className="font-display font-bold text-xl text-gray-900">
+            <span className="font-display font-bold text-xl text-content">
               FlexForge
             </span>
           </NavLink>
@@ -275,7 +275,7 @@ function TopNav() {
             <div className="relative">
               <button
                 onClick={() => setShowNotifications(!showNotifications)}
-                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg relative"
+                className="p-2 text-content-tertiary hover:text-content-secondary hover:bg-surface-tertiary rounded-lg relative"
               >
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
@@ -300,30 +300,30 @@ function TopNav() {
 
             {/* User menu */}
             <div className="relative group">
-              <button className="flex items-center gap-2 p-2 rounded-full hover:bg-gray-100 transition-colors">
-                <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
-                  <User className="w-4 h-4 text-gray-600" />
+              <button className="flex items-center gap-2 p-2 rounded-full hover:bg-surface-tertiary transition-colors">
+                <div className="w-8 h-8 rounded-full bg-surface-tertiary flex items-center justify-center">
+                  <User className="w-4 h-4 text-content-secondary" />
                 </div>
               </button>
 
               {/* Dropdown */}
-              <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg
-                            border border-gray-200 py-2 opacity-0 invisible
+              <div className="absolute right-0 top-full mt-2 w-48 bg-surface rounded-xl shadow-lg
+                            border border-border py-2 opacity-0 invisible
                             group-hover:opacity-100 group-hover:visible transition-all">
-                <div className="px-4 py-2 border-b border-gray-100">
-                  <p className="font-medium text-gray-900">{user?.name || 'User'}</p>
-                  <p className="text-sm text-gray-500">{user?.email}</p>
+                <div className="px-4 py-2 border-b border-border-secondary">
+                  <p className="font-medium text-content">{user?.name || 'User'}</p>
+                  <p className="text-sm text-content-tertiary">{user?.email}</p>
                 </div>
                 <NavLink
                   to="/settings"
-                  className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-50"
+                  className="flex items-center gap-2 px-4 py-2 text-content-secondary hover:bg-surface-tertiary"
                 >
                   <Settings className="w-4 h-4" />
                   Settings
                 </NavLink>
                 <button
                   onClick={logout}
-                  className="w-full flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50"
+                  className="w-full flex items-center gap-2 px-4 py-2 text-red-500 hover:bg-red-500/10"
                 >
                   <LogOut className="w-4 h-4" />
                   Logout
@@ -346,7 +346,7 @@ function BottomNav() {
   }
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-30">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-surface border-t border-border z-30">
       <div className="flex items-center justify-around py-2">
         {NAV_ITEMS.map((item) => (
           <NavLink
@@ -355,7 +355,7 @@ function BottomNav() {
             className={({ isActive }) =>
               clsx(
                 'flex flex-col items-center gap-1 px-4 py-2 rounded-lg',
-                isActive ? 'text-brand-600' : 'text-gray-500'
+                isActive ? 'text-brand-600 dark:text-brand-400' : 'text-content-tertiary'
               )
             }
           >
@@ -370,9 +370,9 @@ function BottomNav() {
 
 export function MainLayout() {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-surface-secondary">
       <TopNav />
-      
+
       <main className="pb-20 md:pb-0">
         <Outlet />
       </main>

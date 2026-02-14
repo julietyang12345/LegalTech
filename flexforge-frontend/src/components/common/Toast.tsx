@@ -88,8 +88,8 @@ export function Toast({
           >
             <div className="flex-shrink-0 mt-0.5">{style.icon}</div>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-gray-900">{title || style.title}</p>
-              <p className="text-sm text-gray-700 mt-1">{message}</p>
+              <p className="font-semibold text-content">{title || style.title}</p>
+              <p className="text-sm text-content-secondary mt-1">{message}</p>
               {action && (
                 <button
                   onClick={action.onClick}
@@ -107,7 +107,7 @@ export function Toast({
             </div>
             <button
               onClick={handleClose}
-              className="flex-shrink-0 p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              className="flex-shrink-0 p-1 text-content-tertiary hover:text-content-secondary hover:bg-surface-tertiary rounded-lg transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -133,7 +133,7 @@ export function QuotaExceededModal({ isOpen, onClose, message }: QuotaExceededMo
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl"
+        className="bg-surface rounded-2xl max-w-md w-full p-6 shadow-xl"
       >
         {/* Icon */}
         <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-amber-100 flex items-center justify-center">
@@ -141,19 +141,19 @@ export function QuotaExceededModal({ isOpen, onClose, message }: QuotaExceededMo
         </div>
 
         {/* Title */}
-        <h2 className="text-xl font-bold text-gray-900 text-center mb-2">
+        <h2 className="text-xl font-bold text-content text-center mb-2">
           Monthly Quota Exceeded
         </h2>
 
         {/* Message */}
-        <p className="text-gray-600 text-center mb-6">
+        <p className="text-content-secondary text-center mb-6">
           {message || "You've used all your curricula for this month. Upgrade your plan to continue learning without limits."}
         </p>
 
         {/* Benefits of upgrading */}
         <div className="bg-gradient-to-br from-brand-50 to-focus-50 rounded-xl p-4 mb-6">
-          <p className="font-medium text-gray-900 mb-2">Upgrade to PRO for:</p>
-          <ul className="space-y-2 text-sm text-gray-700">
+          <p className="font-medium text-content mb-2">Upgrade to PRO for:</p>
+          <ul className="space-y-2 text-sm text-content-secondary">
             <li className="flex items-center gap-2">
               <CheckCircle className="w-4 h-4 text-green-500" />
               20 curricula per month
@@ -173,7 +173,7 @@ export function QuotaExceededModal({ isOpen, onClose, message }: QuotaExceededMo
         <div className="flex gap-3">
           <button
             onClick={onClose}
-            className="flex-1 py-3 px-4 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+            className="flex-1 py-3 px-4 rounded-xl border border-border text-content-secondary font-medium hover:bg-surface-secondary transition-colors"
           >
             Maybe Later
           </button>

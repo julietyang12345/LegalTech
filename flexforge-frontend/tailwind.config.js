@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
@@ -50,6 +51,21 @@ export default {
           celebratory: '#EC4899',
           supportive: '#06B6D4',
           focused: '#059669',
+        },
+        // Semantic tokens (CSS variable backed)
+        surface: {
+          DEFAULT: 'var(--surface)',
+          secondary: 'var(--surface-secondary)',
+          tertiary: 'var(--surface-tertiary)',
+        },
+        content: {
+          DEFAULT: 'var(--content)',
+          secondary: 'var(--content-secondary)',
+          tertiary: 'var(--content-tertiary)',
+        },
+        border: {
+          DEFAULT: 'var(--border)',
+          secondary: 'var(--border-secondary)',
         },
       },
       fontFamily: {

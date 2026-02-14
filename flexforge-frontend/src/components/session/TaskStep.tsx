@@ -77,7 +77,7 @@ export function TaskStep({ day, onComplete: _onComplete }: TaskStepProps) {
     >
       {/* Timer and progress */}
       <div className="flex items-center justify-between text-sm">
-        <div className="flex items-center gap-2 text-gray-500">
+        <div className="flex items-center gap-2 text-content-tertiary">
           <Clock className="w-4 h-4" />
           <span>{Math.floor(elapsedMinutes)}:{String(Math.floor((elapsedMinutes % 1) * 60)).padStart(2, '0')}</span>
         </div>
@@ -132,18 +132,18 @@ export function TaskStep({ day, onComplete: _onComplete }: TaskStepProps) {
       {/* Task description */}
       <Card>
         <div className="p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-2">
+          <h2 className="text-lg font-semibold text-content mb-2">
             {task?.title || 'Practice Task'}
           </h2>
-          <p className="text-gray-600 mb-4">
+          <p className="text-content-secondary mb-4">
             {task?.description || task?.free?.challengeDescription}
           </p>
 
           {/* Expected output */}
           {(task?.expectedOutput || task?.free?.expectedOutput) && (
-            <div className="p-4 bg-gray-100 rounded-lg mb-4">
-              <p className="text-sm font-medium text-gray-700 mb-1">Expected output:</p>
-              <pre className="text-sm text-gray-600 whitespace-pre-wrap">
+            <div className="p-4 bg-surface-tertiary rounded-lg mb-4">
+              <p className="text-sm font-medium text-content-secondary mb-1">Expected output:</p>
+              <pre className="text-sm text-content-secondary whitespace-pre-wrap">
                 {task?.expectedOutput || task?.free?.expectedOutput}
               </pre>
             </div>
@@ -172,7 +172,7 @@ export function TaskStep({ day, onComplete: _onComplete }: TaskStepProps) {
                     setCode(starterCode);
                     setHasModifiedCode(false);
                   }}
-                  className="text-xs text-gray-500 hover:text-gray-700 underline"
+                  className="text-xs text-content-tertiary hover:text-content-secondary underline"
                 >
                   Reset to starter
                 </button>
@@ -193,13 +193,13 @@ export function TaskStep({ day, onComplete: _onComplete }: TaskStepProps) {
               'w-full min-h-[240px] p-4 rounded-lg font-mono text-base resize-y',
               'focus:outline-none focus:ring-2 focus:ring-brand-500',
               starterCode && !hasModifiedCode
-                ? 'bg-brand-50 border-2 border-brand-200 text-gray-800'
+                ? 'bg-brand-50 border-2 border-brand-200 text-content'
                 : 'bg-gray-900 text-gray-100 border border-gray-700'
             )}
             spellCheck={false}
           />
 
-          <p className="text-xs text-gray-400 mt-2">
+          <p className="text-xs text-content-tertiary mt-2">
             {starterCode
               ? "Edit the starter code above — experiment freely!"
               : "Start typing... there's no wrong answer while learning!"}

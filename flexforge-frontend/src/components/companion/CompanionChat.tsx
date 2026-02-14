@@ -38,7 +38,7 @@ function TypingIndicator() {
   return (
     <div className="flex items-center gap-1 px-4 py-3">
       <CompanionAvatar mood="focused" size="sm" />
-      <div className="flex items-center gap-1 ml-2 px-3 py-2 bg-gray-100 rounded-2xl">
+      <div className="flex items-center gap-1 ml-2 px-3 py-2 bg-surface-tertiary rounded-2xl">
         <div className="typing-dot" />
         <div className="typing-dot" />
         <div className="typing-dot" />
@@ -62,7 +62,7 @@ function ChatMessage({ message }: { message: { content: string; mood: string; is
           'max-w-[80%] px-4 py-2 rounded-2xl',
           message.isUser
             ? 'bg-brand-500 text-white rounded-br-sm'
-            : 'bg-gray-100 text-gray-800 rounded-bl-sm'
+            : 'bg-surface-tertiary text-content rounded-bl-sm'
         )}
       >
         <p className="text-sm whitespace-pre-wrap">{message.content}</p>
@@ -76,13 +76,13 @@ function QuickActions() {
   const { quickActions, executeQuickAction } = useCompanionStore();
 
   return (
-    <div className="flex flex-wrap sm:flex-nowrap gap-2 px-4 py-2 border-t border-gray-100 sm:overflow-x-auto no-scrollbar">
+    <div className="flex flex-wrap sm:flex-nowrap gap-2 px-4 py-2 border-t border-border-secondary sm:overflow-x-auto no-scrollbar">
       {quickActions.map((action) => (
         <button
           key={action.id}
           onClick={() => executeQuickAction(action.id)}
-          className="flex items-center gap-1.5 px-3 py-2 min-h-[40px] bg-gray-100 hover:bg-gray-200 active:bg-gray-300
-                     rounded-full text-sm text-gray-700 whitespace-nowrap transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 min-h-[40px] bg-surface-tertiary hover:bg-surface-tertiary active:bg-border
+                     rounded-full text-sm text-content-secondary whitespace-nowrap transition-colors"
         >
           <span>{action.emoji}</span>
           <span>{action.label}</span>
@@ -131,7 +131,7 @@ export function CompanionChat() {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.9, y: 20 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="fixed bottom-24 left-4 right-4 max-w-96 max-h-[60vh] sm:max-h-[500px] bg-white rounded-2xl shadow-companion
+          className="fixed bottom-24 left-4 right-4 max-w-96 max-h-[60vh] sm:max-h-[500px] bg-surface rounded-2xl shadow-companion
                      flex flex-col overflow-hidden z-40 sm:left-auto sm:right-6 sm:w-96"
         >
           {/* Header */}
@@ -156,7 +156,7 @@ export function CompanionChat() {
             {messages.length === 0 && (
               <div className="px-4 py-8 text-center">
                 <Sparkles className="w-12 h-12 mx-auto text-brand-300 mb-3" />
-                <p className="text-gray-600 text-sm">
+                <p className="text-content-secondary text-sm">
                   Hi! I'm Flexi, your learning companion. 
                   Ask me anything or use the quick actions below!
                 </p>
@@ -173,15 +173,15 @@ export function CompanionChat() {
           <QuickActions />
 
           {/* Input */}
-          <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-100">
+          <div className="flex items-center gap-2 px-4 py-3 border-t border-border-secondary">
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Ask Flexi anything..."
-              className="flex-1 px-4 py-2 bg-gray-100 rounded-full text-sm 
-                       placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              className="flex-1 px-4 py-2 bg-surface-tertiary rounded-full text-sm 
+                       placeholder-content-tertiary focus:outline-none focus:ring-2 focus:ring-brand-500/20"
             />
             <button
               onClick={handleSend}

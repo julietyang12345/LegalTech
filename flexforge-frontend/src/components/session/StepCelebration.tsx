@@ -25,7 +25,7 @@ export function StepCelebration({ stepName, stepIndex, totalSteps, onComplete }:
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-surface/80 backdrop-blur-sm"
     >
       <div className="flex flex-col items-center gap-4 text-center">
         {/* Animated checkmark circle */}
@@ -49,7 +49,7 @@ export function StepCelebration({ stepName, stepIndex, totalSteps, onComplete }:
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.35 }}
-          className="text-xl font-bold text-gray-900"
+          className="text-xl font-bold text-content"
         >
           {stepName} Complete!
         </motion.h2>
@@ -59,7 +59,7 @@ export function StepCelebration({ stepName, stepIndex, totalSteps, onComplete }:
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="text-sm text-gray-500"
+          className="text-sm text-content-tertiary"
         >
           Step {stepIndex + 1} of {totalSteps}
         </motion.p>

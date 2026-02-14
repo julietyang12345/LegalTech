@@ -208,9 +208,9 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', rea
       return <Check className="w-4 h-4 text-green-500 mx-auto" />;
     }
     if (value === false) {
-      return <X className="w-4 h-4 text-gray-300 mx-auto" />;
+      return <X className="w-4 h-4 text-content-tertiary mx-auto" />;
     }
-    return <span className="text-sm font-medium text-gray-700">{value}</span>;
+    return <span className="text-sm font-medium text-content-secondary">{value}</span>;
   };
 
   if (!isOpen) return null;
@@ -228,21 +228,21 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', rea
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl"
+          className="bg-surface rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
           <div className="sticky top-0 bg-gradient-to-r from-brand-500 to-purple-600 p-6 text-white rounded-t-2xl">
             <button
               onClick={onClose}
-              className="absolute top-4 right-4 p-2 hover:bg-white/20 rounded-full transition-colors"
+              className="absolute top-4 right-4 p-2 hover:bg-surface/20 rounded-full transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
 
             {/* Reason-specific message */}
             <div className="flex items-start gap-3 mb-4">
-              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+              <div className="w-12 h-12 bg-surface/20 rounded-xl flex items-center justify-center flex-shrink-0">
                 {reasonInfo.icon}
               </div>
               <div>
@@ -252,7 +252,7 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', rea
             </div>
 
             {/* Early Access Banner */}
-            <div className="p-3 bg-white/10 rounded-xl border border-white/20">
+            <div className="p-3 bg-surface/10 rounded-xl border border-white/20">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-yellow-300" />
                 <span className="font-semibold">Early Access Offer: 50% off first 2 months!</span>
@@ -271,13 +271,13 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', rea
                 <div className="mb-6">
                   <button
                     onClick={() => setShowComparison(!showComparison)}
-                    className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
+                    className="w-full flex items-center justify-between p-3 bg-surface-secondary hover:bg-surface-tertiary rounded-xl transition-colors"
                   >
-                    <span className="font-medium text-gray-700">Compare Plans</span>
+                    <span className="font-medium text-content-secondary">Compare Plans</span>
                     {showComparison ? (
-                      <ChevronUp className="w-5 h-5 text-gray-500" />
+                      <ChevronUp className="w-5 h-5 text-content-tertiary" />
                     ) : (
-                      <ChevronDown className="w-5 h-5 text-gray-500" />
+                      <ChevronDown className="w-5 h-5 text-content-tertiary" />
                     )}
                   </button>
 
@@ -294,31 +294,31 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', rea
                           {/* Mobile: Card layout */}
                           <div className="md:hidden space-y-4">
                             {plans.map((plan) => (
-                              <div key={plan.name} className="p-4 rounded-xl border-2 border-gray-200">
+                              <div key={plan.name} className="p-4 rounded-xl border-2 border-border">
                                 <div className="flex items-center justify-between mb-3">
                                   <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                                    plan.name === 'Free' ? 'bg-gray-100 text-gray-600' :
+                                    plan.name === 'Free' ? 'bg-surface-tertiary text-content-secondary' :
                                     plan.name === 'Pro' ? 'bg-brand-100 text-brand-700' :
                                     'bg-purple-100 text-purple-700'
                                   }`}>
                                     {plan.name}
                                   </div>
                                   <div>
-                                    <span className="text-xl font-bold text-gray-900">{plan.price}</span>
-                                    <span className="text-gray-500 text-xs">{plan.period}</span>
+                                    <span className="text-xl font-bold text-content">{plan.price}</span>
+                                    <span className="text-content-tertiary text-xs">{plan.period}</span>
                                   </div>
                                 </div>
                                 <ul className="space-y-2">
                                   {featureOrder.slice(0, 6).map((feature) => (
                                     <li key={feature} className="flex items-center gap-2 text-sm">
                                       {plan.features[feature as keyof typeof plan.features] === false ? (
-                                        <X className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                                        <X className="w-4 h-4 text-content-tertiary flex-shrink-0" />
                                       ) : (
                                         <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
                                       )}
-                                      <span className="text-gray-700">{feature}</span>
+                                      <span className="text-content-secondary">{feature}</span>
                                       {typeof plan.features[feature as keyof typeof plan.features] === 'string' && (
-                                        <span className="text-gray-500 text-xs ml-auto">
+                                        <span className="text-content-tertiary text-xs ml-auto">
                                           {plan.features[feature as keyof typeof plan.features]}
                                         </span>
                                       )}
@@ -333,20 +333,20 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', rea
                           <div className="hidden md:block overflow-x-auto">
                             <table className="w-full text-sm">
                               <thead>
-                                <tr className="border-b border-gray-200">
-                                  <th className="py-3 px-2 text-left text-gray-500 font-medium">Features</th>
+                                <tr className="border-b border-border">
+                                  <th className="py-3 px-2 text-left text-content-tertiary font-medium">Features</th>
                                   {plans.map((plan) => (
                                     <th key={plan.name} className="py-3 px-2 text-center min-w-[100px]">
                                       <div className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
-                                        plan.name === 'Free' ? 'bg-gray-100 text-gray-600' :
+                                        plan.name === 'Free' ? 'bg-surface-tertiary text-content-secondary' :
                                         plan.name === 'Pro' ? 'bg-brand-100 text-brand-700' :
                                         'bg-purple-100 text-purple-700'
                                       }`}>
                                         {plan.name}
                                       </div>
                                       <div className="mt-2">
-                                        <span className="text-xl font-bold text-gray-900">{plan.price}</span>
-                                        <span className="text-gray-500 text-xs">{plan.period}</span>
+                                        <span className="text-xl font-bold text-content">{plan.price}</span>
+                                        <span className="text-content-tertiary text-xs">{plan.period}</span>
                                       </div>
                                     </th>
                                   ))}
@@ -354,8 +354,8 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', rea
                               </thead>
                               <tbody>
                                 {featureOrder.map((feature, index) => (
-                                  <tr key={feature} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                                    <td className="py-2.5 px-2 text-gray-700">{feature}</td>
+                                  <tr key={feature} className={index % 2 === 0 ? 'bg-surface-secondary' : ''}>
+                                    <td className="py-2.5 px-2 text-content-secondary">{feature}</td>
                                     {plans.map((plan) => (
                                       <td key={`${plan.name}-${feature}`} className="py-2.5 px-2 text-center">
                                         {renderFeatureValue(plan.features[feature as keyof typeof plan.features])}
@@ -375,10 +375,10 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', rea
                 {/* Signup Form or Price Question */}
                 {!showPriceQuestion ? (
                   <div className="bg-gradient-to-br from-brand-50 to-purple-50 rounded-xl p-6 border border-brand-100">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    <h3 className="text-lg font-semibold text-content mb-2">
                       Join the Early Access List
                     </h3>
-                    <p className="text-gray-600 text-sm mb-4">
+                    <p className="text-content-secondary text-sm mb-4">
                       Get notified when we launch + lock in your 50% discount for the first 2 months.
                     </p>
 
@@ -389,7 +389,7 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', rea
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="Enter your email"
                         required
-                        className="flex-1 px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                        className="flex-1 px-4 py-3 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                       />
                       <Button
                         type="submit"
@@ -417,20 +417,20 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', rea
                     </form>
 
                     {/* Social Proof */}
-                    <div className="flex items-center gap-2 mt-4 text-sm text-gray-500">
+                    <div className="flex items-center gap-2 mt-4 text-sm text-content-tertiary">
                       <Users className="w-4 h-4" />
-                      <span>Join <strong className="text-gray-700">{waitlistCount}</strong> learners waiting</span>
-                      <span className="text-gray-300">•</span>
+                      <span>Join <strong className="text-content-secondary">{waitlistCount}</strong> learners waiting</span>
+                      <span className="text-content-tertiary">•</span>
                       <span>No spam, just launch day</span>
                     </div>
                   </div>
                 ) : (
                   /* Price Question */
                   <div className="bg-gradient-to-br from-brand-50 to-purple-50 rounded-xl p-6 border border-brand-100">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    <h3 className="text-lg font-semibold text-content mb-2">
                       Thanks! One quick question
                     </h3>
-                    <p className="text-gray-600 text-sm mb-4">
+                    <p className="text-content-secondary text-sm mb-4">
                       What price feels fair for unlimited AI-powered learning? (This helps us price fairly)
                     </p>
 
@@ -442,7 +442,7 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', rea
                           className={`p-3 min-h-[48px] rounded-xl border-2 transition-all ${
                             selectedPrice === price
                               ? 'border-brand-500 bg-brand-50 text-brand-700'
-                              : 'border-gray-200 hover:border-gray-300 active:bg-gray-50 text-gray-700'
+                              : 'border-border hover:border-content-tertiary active:bg-surface-secondary text-content-secondary'
                           }`}
                         >
                           <span className="font-semibold">{price}</span>
@@ -481,8 +481,8 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', rea
                 >
                   <Check className="w-10 h-10 text-green-600" />
                 </motion.div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">You're on the list!</h3>
-                <p className="text-gray-600 mb-4">
+                <h3 className="text-2xl font-bold text-content mb-2">You're on the list!</h3>
+                <p className="text-content-secondary mb-4">
                   We'll email you at <strong>{email}</strong> when Premium launches.
                 </p>
                 <div className="inline-flex items-center gap-2 px-4 py-2 bg-brand-50 text-brand-700 rounded-full text-sm font-medium">
@@ -490,8 +490,8 @@ export function FakePaywallModal({ isOpen, onClose, source = 'feature_gate', rea
                   50% off first 2 months secured!
                 </div>
 
-                <div className="mt-6 pt-6 border-t border-gray-100">
-                  <p className="text-sm text-gray-500 mb-3">Share with friends who'd love this:</p>
+                <div className="mt-6 pt-6 border-t border-border-secondary">
+                  <p className="text-sm text-content-tertiary mb-3">Share with friends who'd love this:</p>
                   <div className="flex justify-center gap-2">
                     <button className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors">
                       Twitter

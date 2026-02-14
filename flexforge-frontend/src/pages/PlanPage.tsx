@@ -52,13 +52,13 @@ function TimelineDayItem({
   const getCircleStyles = () => {
     if (isCompleted || isSkipped) return 'bg-green-500 text-white border-green-500';
     if (isInProgress || isCurrentDay) return 'bg-brand-500 text-white border-brand-500';
-    if (isUnlockable) return 'bg-white text-brand-600 border-brand-500 border-2';
-    return 'bg-gray-100 text-gray-400 border-gray-200';
+    if (isUnlockable) return 'bg-surface text-brand-600 border-brand-500 border-2';
+    return 'bg-surface-tertiary text-content-tertiary border-border';
   };
 
   const getLineStyles = () => {
     if (isCompleted || isSkipped) return 'bg-green-300';
-    return 'bg-gray-200';
+    return 'bg-surface-tertiary';
   };
 
   return (
@@ -101,7 +101,7 @@ function TimelineDayItem({
             (isInProgress || isCurrentDay) && 'bg-brand-50 border-brand-200 shadow-sm',
             isCompleted && 'bg-green-50 border-green-200',
             isSkipped && 'bg-purple-50 border-purple-200',
-            !isInProgress && !isCurrentDay && !isCompleted && !isSkipped && 'bg-white border-gray-200 hover:border-gray-300'
+            !isInProgress && !isCurrentDay && !isCompleted && !isSkipped && 'bg-surface border-border hover:border-content-tertiary'
           )}
         >
           {/* Header row */}
@@ -109,7 +109,7 @@ function TimelineDayItem({
             <div className="flex-1">
               {/* Day label */}
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                <span className="text-xs font-medium text-content-tertiary uppercase tracking-wide">
                   Day {day}
                 </span>
                 {isSkipped && (
@@ -120,20 +120,20 @@ function TimelineDayItem({
               </div>
 
               {/* Title */}
-              <h3 className="font-semibold text-gray-900 text-lg">
+              <h3 className="font-semibold text-content text-lg">
                 {title}
               </h3>
 
               {/* Teaser / Learning objective */}
               {teaser && (
-                <p className="text-gray-600 mt-1 text-sm">
+                <p className="text-content-secondary mt-1 text-sm">
                   {teaser}
                 </p>
               )}
             </div>
 
             {/* Time */}
-            <div className="flex items-center gap-1.5 text-gray-500 flex-shrink-0">
+            <div className="flex items-center gap-1.5 text-content-tertiary flex-shrink-0">
               <Clock className="w-4 h-4" />
               <span className="text-sm font-medium">{estimatedMinutes}m</span>
             </div>
@@ -145,7 +145,7 @@ function TimelineDayItem({
               {skills.map((skill: string, i: number) => (
                 <span
                   key={i}
-                  className="px-2.5 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full"
+                  className="px-2.5 py-1 text-xs font-medium bg-surface-tertiary text-content-secondary rounded-full"
                 >
                   {skill}
                 </span>
@@ -175,11 +175,11 @@ function _ImproveAreasSection({
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Target className="w-4 h-4 text-purple-600" />
-            <span className="text-sm font-medium text-gray-900">Your Improvement Areas</span>
+            <span className="text-sm font-medium text-content">Your Improvement Areas</span>
           </div>
           <button
             onClick={onClear}
-            className="text-xs text-gray-500 hover:text-gray-700"
+            className="text-xs text-content-tertiary hover:text-content-secondary"
           >
             Clear all
           </button>
@@ -188,13 +188,13 @@ function _ImproveAreasSection({
           {improvementAreas.map((area) => (
             <span
               key={area}
-              className="px-3 py-1 bg-white/70 text-purple-700 rounded-full text-sm border border-purple-200"
+              className="px-3 py-1 bg-surface/70 text-purple-700 rounded-full text-sm border border-purple-200"
             >
               {area}
             </span>
           ))}
         </div>
-        <p className="text-xs text-gray-500 mt-3">
+        <p className="text-xs text-content-tertiary mt-3">
           Set during daily reflections. These shape examples in upcoming days.
         </p>
       </div>
@@ -237,9 +237,9 @@ export function PlanPage() {
     return (
       <div className="max-w-3xl mx-auto px-4 py-12">
         <Card className="p-8 text-center">
-          <Calendar className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">No Active Curriculum</h2>
-          <p className="text-gray-600 mb-6">
+          <Calendar className="w-12 h-12 mx-auto text-content-tertiary mb-4" />
+          <h2 className="text-xl font-semibold text-content mb-2">No Active Curriculum</h2>
+          <p className="text-content-secondary mb-6">
             Create a curriculum to see your learning timeline here.
           </p>
           <Button onClick={() => navigate('/confirm')} leftIcon={<Plus className="w-4 h-4" />}>
@@ -256,17 +256,17 @@ export function PlanPage() {
     <div className="max-w-2xl mx-auto px-4 py-8">
       {/* Learning Path Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">
+        <h1 className="text-2xl font-bold text-content mb-1">
           Your {activeSession.durationDays}-Day Learning Path
         </h1>
-        <p className="text-gray-600">
+        <p className="text-content-secondary">
           {activeSession.skillName} • Day {currentDay} of {activeSession.durationDays}
         </p>
       </div>
 
       {/* Progress bar */}
       <div className="mb-8">
-        <div className="flex justify-between text-sm text-gray-600 mb-2">
+        <div className="flex justify-between text-sm text-content-secondary mb-2">
           <span>Progress</span>
           <span>{activeSession.durationDays ? Math.round(((currentDay - 1) / activeSession.durationDays) * 100) : 0}% complete</span>
         </div>
@@ -308,7 +308,7 @@ export function PlanPage() {
         className="mt-8 p-6 bg-gradient-to-r from-brand-50 to-focus-50 rounded-2xl border border-brand-200"
       >
         <div className="text-center">
-          <p className="text-gray-600 mb-3">Ready to begin your journey?</p>
+          <p className="text-content-secondary mb-3">Ready to begin your journey?</p>
           <Button
             size="lg"
             onClick={handleStartLearning}
@@ -321,7 +321,7 @@ export function PlanPage() {
 
       {/* Create new curriculum button */}
       {hasTierAccess(QuotaTier.PRO) && (
-        <div className="mt-8 pt-6 border-t border-gray-200 text-center">
+        <div className="mt-8 pt-6 border-t border-border text-center">
           <Button
             variant="ghost"
             onClick={() => navigate('/confirm')}

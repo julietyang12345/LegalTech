@@ -99,7 +99,7 @@ function TabButton({
         'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
         activeTab === tab
           ? 'bg-brand-100 text-brand-700'
-          : 'text-gray-600 hover:bg-gray-100'
+          : 'text-content-secondary hover:bg-surface-tertiary'
       )}
     >
       <Icon className="w-4 h-4" />
@@ -107,7 +107,7 @@ function TabButton({
       {count !== undefined && count > 0 && (
         <span className={clsx(
           'px-1.5 py-0.5 text-xs rounded-full',
-          activeTab === tab ? 'bg-brand-200 text-brand-800' : 'bg-gray-200 text-gray-600'
+          activeTab === tab ? 'bg-brand-200 text-brand-800' : 'bg-surface-tertiary text-content-secondary'
         )}>
           {count}
         </span>
@@ -122,7 +122,7 @@ function StatusBadge({ status }: { status: SessionStatus }) {
     [SessionStatus.ACTIVE]: { icon: Play, color: 'bg-green-100 text-green-700', label: 'Active' },
     [SessionStatus.PAUSED]: { icon: PauseCircle, color: 'bg-yellow-100 text-yellow-700', label: 'Paused' },
     [SessionStatus.COMPLETED]: { icon: CheckCircle2, color: 'bg-blue-100 text-blue-700', label: 'Completed' },
-    [SessionStatus.ABANDONED]: { icon: AlertCircle, color: 'bg-gray-100 text-gray-500', label: 'Abandoned' },
+    [SessionStatus.ABANDONED]: { icon: AlertCircle, color: 'bg-surface-tertiary text-content-tertiary', label: 'Abandoned' },
   };
 
   const { icon: Icon, color, label } = config[status] || config[SessionStatus.ACTIVE];
@@ -175,8 +175,8 @@ function SessionCard({
         <div className="flex-1 min-w-0 overflow-hidden">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
-              <h3 className="font-semibold text-gray-900 truncate">{session.skillName}</h3>
-              <div className="flex items-center gap-2 sm:gap-3 mt-1 text-xs sm:text-sm text-gray-500 flex-wrap">
+              <h3 className="font-semibold text-content truncate">{session.skillName}</h3>
+              <div className="flex items-center gap-2 sm:gap-3 mt-1 text-xs sm:text-sm text-content-tertiary flex-wrap">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5" />
                   {startDate}
@@ -200,11 +200,11 @@ function SessionCard({
 
           {/* Progress bar */}
           <div className="mt-3">
-            <div className="flex justify-between text-xs text-gray-500 mb-1">
+            <div className="flex justify-between text-xs text-content-tertiary mb-1">
               <span>Day {session.currentDay} of {session.durationDays}</span>
               <span>{progress}%</span>
             </div>
-            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-1.5 bg-surface-tertiary rounded-full overflow-hidden">
               <motion.div
                 className="h-full bg-gradient-to-r from-brand-500 to-purple-500"
                 initial={{ width: 0 }}
@@ -229,7 +229,7 @@ function SessionCard({
             <div className="relative">
               <button
                 onClick={() => setShowMenu(!showMenu)}
-                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-1.5 text-content-tertiary hover:text-content-secondary hover:bg-surface-tertiary rounded-lg transition-colors"
               >
                 <MoreVertical className="w-4 h-4" />
               </button>
@@ -250,7 +250,7 @@ function SessionCard({
                       initial={{ opacity: 0, scale: 0.95, y: -5 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                      className="absolute right-0 top-full mt-1 z-20 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[140px]"
+                      className="absolute right-0 top-full mt-1 z-20 bg-surface rounded-lg shadow-lg border border-border py-1 min-w-[140px]"
                     >
                       <button
                         onClick={handleDelete}
@@ -280,9 +280,9 @@ function SessionCard({
 function EmptyState({ icon: Icon, title, description }: { icon: typeof GraduationCap; title: string; description: string }) {
   return (
     <Card className="p-8 text-center">
-      <Icon className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-      <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
-      <p className="text-gray-600">{description}</p>
+      <Icon className="w-12 h-12 mx-auto text-content-tertiary mb-4" />
+      <h3 className="text-lg font-semibold text-content mb-2">{title}</h3>
+      <p className="text-content-secondary">{description}</p>
     </Card>
   );
 }
@@ -325,8 +325,8 @@ function BookmarkCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <div>
-              <h3 className="font-medium text-gray-900">{bookmark.sectionTitle}</h3>
-              <p className="text-sm text-gray-500 mt-0.5">
+              <h3 className="font-medium text-content">{bookmark.sectionTitle}</h3>
+              <p className="text-sm text-content-tertiary mt-0.5">
                 {bookmark.skillName} · Day {bookmark.dayNumber} · {label}
               </p>
             </div>
@@ -335,15 +335,15 @@ function BookmarkCard({
                 e.stopPropagation();
                 onDelete();
               }}
-              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+              className="p-1.5 text-content-tertiary hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
             >
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
           {bookmark.note && (
-            <p className="text-sm text-gray-600 mt-2 line-clamp-2">{bookmark.note}</p>
+            <p className="text-sm text-content-secondary mt-2 line-clamp-2">{bookmark.note}</p>
           )}
-          <p className="text-xs text-gray-400 mt-2">{createdDate}</p>
+          <p className="text-xs text-content-tertiary mt-2">{createdDate}</p>
         </div>
       </div>
     </Card>
@@ -435,20 +435,20 @@ function BookmarkModal({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
+        className="relative bg-surface rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
       >
         {/* Header */}
-        <div className="p-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+        <div className="p-4 border-b border-border-secondary flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-brand-100 flex items-center justify-center">
               <Bookmark className="w-5 h-5 text-brand-600" />
             </div>
             <div>
-              <h2 className="font-semibold text-gray-900">{bookmark.sectionTitle}</h2>
-              <p className="text-sm text-gray-500">{bookmark.skillName} · Day {bookmark.dayNumber}</p>
+              <h2 className="font-semibold text-content">{bookmark.sectionTitle}</h2>
+              <p className="text-sm text-content-tertiary">{bookmark.skillName} · Day {bookmark.dayNumber}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg">
+          <button onClick={onClose} className="p-2 text-content-tertiary hover:text-content-secondary rounded-lg">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -461,7 +461,7 @@ function BookmarkModal({
               <Icon className="w-4 h-4" />
               {label}
             </span>
-            <span className="text-xs text-gray-400">Bookmarked {createdDate}</span>
+            <span className="text-xs text-content-tertiary">Bookmarked {createdDate}</span>
           </div>
 
           {/* Loading state */}
@@ -473,8 +473,8 @@ function BookmarkModal({
 
           {/* Error state */}
           {loadError && !isLoading && (
-            <div className="text-center py-8 text-gray-500">
-              <Bookmark className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+            <div className="text-center py-8 text-content-tertiary">
+              <Bookmark className="w-12 h-12 mx-auto mb-3 text-content-tertiary" />
               <p>{loadError}</p>
             </div>
           )}
@@ -483,16 +483,16 @@ function BookmarkModal({
           {bookmark.section === 'task1' && bookmark.content?.taskQuestions && bookmark.content.taskQuestions.length > 0 && !isLoading && (
             <div className="space-y-4">
               {bookmark.content?.taskTitle && (
-                <h3 className="font-semibold text-gray-900">{bookmark.content.taskTitle}</h3>
+                <h3 className="font-semibold text-content">{bookmark.content.taskTitle}</h3>
               )}
               <div className="space-y-3">
-                <h4 className="text-sm font-medium text-gray-700">
+                <h4 className="text-sm font-medium text-content-secondary">
                   {bookmark.content.taskQuestions.length} bookmarked {bookmark.content.taskQuestions.length === 1 ? 'question' : 'questions'}
                 </h4>
                 <div className="space-y-3 max-h-[400px] overflow-y-auto">
                   {bookmark.content.taskQuestions.map((q, i) => (
-                    <div key={i} className="p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
-                      <p className="font-medium text-gray-900 mb-3">
+                    <div key={i} className="p-4 bg-surface rounded-lg border border-border shadow-sm">
+                      <p className="font-medium text-content mb-3">
                         {i + 1}. {q.question}
                       </p>
                       {q.options && (
@@ -504,7 +504,7 @@ function BookmarkModal({
                                 'p-2 rounded-lg text-sm',
                                 q.correctAnswer === opt
                                   ? 'bg-green-100 text-green-800 border border-green-200'
-                                  : 'bg-gray-50 text-gray-600 border border-gray-100'
+                                  : 'bg-surface-secondary text-content-secondary border border-border-secondary'
                               )}
                             >
                               {opt}
@@ -521,7 +521,7 @@ function BookmarkModal({
               </div>
               {bookmark.content?.codeSnippet && (
                 <div className="rounded-lg overflow-hidden">
-                  <div className="bg-gray-800 px-3 py-1.5 text-xs text-gray-400 font-mono">Code</div>
+                  <div className="bg-gray-800 px-3 py-1.5 text-xs text-content-tertiary font-mono">Code</div>
                   <pre className="bg-gray-900 p-3 text-xs text-gray-100 overflow-x-auto max-h-[200px]">
                     <code>{bookmark.content.codeSnippet}</code>
                   </pre>
@@ -534,17 +534,17 @@ function BookmarkModal({
           {bookmark.section === 'boss' && !isLoading && (bookmark.content?.bossTitle || bookmark.content?.bossDescription) && (
             <div className="space-y-4">
               {bookmark.content?.bossTitle && (
-                <h3 className="font-semibold text-gray-900">{bookmark.content.bossTitle}</h3>
+                <h3 className="font-semibold text-content">{bookmark.content.bossTitle}</h3>
               )}
               {bookmark.content?.bossDescription && (
-                <p className="text-sm text-gray-600">{bookmark.content.bossDescription}</p>
+                <p className="text-sm text-content-secondary">{bookmark.content.bossDescription}</p>
               )}
               {bookmark.content?.bossRequirements && bookmark.content.bossRequirements.length > 0 && (
                 <div className="space-y-2">
-                  <h4 className="text-sm font-medium text-gray-700">Requirements</h4>
+                  <h4 className="text-sm font-medium text-content-secondary">Requirements</h4>
                   <ul className="space-y-1">
                     {bookmark.content.bossRequirements.map((req, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
+                      <li key={i} className="flex items-start gap-2 text-sm text-content-secondary">
                         <CheckCircle2 className="w-4 h-4 text-purple-500 mt-0.5 flex-shrink-0" />
                         {req}
                       </li>
@@ -554,7 +554,7 @@ function BookmarkModal({
               )}
               {bookmark.content?.codeSnippet && (
                 <div className="rounded-lg overflow-hidden">
-                  <div className="bg-gray-800 px-3 py-1.5 text-xs text-gray-400 font-mono">Starter Code</div>
+                  <div className="bg-gray-800 px-3 py-1.5 text-xs text-content-tertiary font-mono">Starter Code</div>
                   <pre className="bg-gray-900 p-3 text-xs text-gray-100 overflow-x-auto max-h-[200px]">
                     <code>{bookmark.content.codeSnippet}</code>
                   </pre>
@@ -591,8 +591,8 @@ function BookmarkModal({
             (bookmark.section === 'boss' && !bookmark.content?.bossTitle && !bookmark.content?.bossDescription)
           ) && !dayData && !isLoading && !loadError && (
             <div className="text-center py-8">
-              <Bookmark className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-              <p className="text-gray-500">Content not available. Resume the course to view this section.</p>
+              <Bookmark className="w-12 h-12 mx-auto mb-3 text-content-tertiary" />
+              <p className="text-content-tertiary">Content not available. Resume the course to view this section.</p>
             </div>
           )}
 
@@ -606,7 +606,7 @@ function BookmarkModal({
         </div>
 
         {/* Actions */}
-        <div className="p-4 border-t border-gray-100 flex gap-3 flex-shrink-0 bg-white">
+        <div className="p-4 border-t border-border-secondary flex gap-3 flex-shrink-0 bg-surface">
           <Button
             variant="secondary"
             onClick={onDelete}
@@ -778,8 +778,8 @@ export function VaultPage() {
     <div className="max-w-4xl mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">The Vault</h1>
-        <p className="text-gray-600">
+        <h1 className="text-2xl font-bold text-content mb-2">The Vault</h1>
+        <p className="text-content-secondary">
           Your courses and knowledge base. Everything you've learned, organized and ready to review.
         </p>
       </div>
@@ -787,7 +787,7 @@ export function VaultPage() {
       {/* Search */}
       <div className="mb-6">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-content-tertiary" />
           <Input
             placeholder="Search your vault..."
             value={searchQuery}
@@ -843,11 +843,11 @@ export function VaultPage() {
                 {[1, 2, 3].map(i => (
                   <Card key={i} className="p-4 animate-pulse">
                     <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-gray-200" />
+                      <div className="w-12 h-12 rounded-xl bg-surface-tertiary" />
                       <div className="flex-1">
-                        <div className="h-5 bg-gray-200 rounded w-1/3 mb-2" />
-                        <div className="h-4 bg-gray-100 rounded w-1/4 mb-3" />
-                        <div className="h-1.5 bg-gray-100 rounded-full" />
+                        <div className="h-5 bg-surface-tertiary rounded w-1/3 mb-2" />
+                        <div className="h-4 bg-surface-tertiary rounded w-1/4 mb-3" />
+                        <div className="h-1.5 bg-surface-tertiary rounded-full" />
                       </div>
                     </div>
                   </Card>
@@ -954,12 +954,12 @@ export function VaultPage() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6"
+              className="relative bg-surface rounded-xl shadow-xl w-full max-w-md p-6"
             >
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              <h3 className="text-lg font-semibold text-content mb-2">
                 Switch Course?
               </h3>
-              <p className="text-gray-600 mb-4">
+              <p className="text-content-secondary mb-4">
                 {activeSession ? (
                   <>
                     Your current course <span className="font-medium">{activeSession.skillName}</span> will be paused.

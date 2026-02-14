@@ -21,12 +21,12 @@ function QuestionStreamingSkeleton({ title, current, total }: { title?: string; 
   return (
     <div className="space-y-4">
       {title && <ExerciseHeader title={title} progress={{ current, total }} />}
-      <div className="bg-white rounded-lg p-6 shadow-sm border animate-pulse">
-        <div className="h-5 bg-gray-200 rounded w-3/4 mb-4" />
+      <div className="bg-surface rounded-lg p-6 shadow-sm border animate-pulse">
+        <div className="h-5 bg-surface-tertiary rounded w-3/4 mb-4" />
         <div className="space-y-2">
-          <div className="h-12 bg-gray-100 rounded-lg" />
-          <div className="h-12 bg-gray-100 rounded-lg" />
-          <div className="h-12 bg-gray-100 rounded-lg" />
+          <div className="h-12 bg-surface-tertiary rounded-lg" />
+          <div className="h-12 bg-surface-tertiary rounded-lg" />
+          <div className="h-12 bg-surface-tertiary rounded-lg" />
         </div>
       </div>
     </div>
@@ -43,15 +43,15 @@ function ExerciseHeader({ title, instructions, progress }: ExerciseHeaderProps) 
   return (
     <div className="mb-4">
       <div className="flex justify-between items-center mb-2">
-        <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
-        <span className="text-sm text-gray-500">
+        <h3 className="text-lg font-semibold text-content">{title}</h3>
+        <span className="text-sm text-content-tertiary">
           {progress.current} / {progress.total}
         </span>
       </div>
       {instructions && (
-        <p className="text-sm text-gray-600">{instructions}</p>
+        <p className="text-sm text-content-secondary">{instructions}</p>
       )}
-      <div className="mt-2 h-1 bg-gray-200 rounded-full overflow-hidden">
+      <div className="mt-2 h-1 bg-surface-tertiary rounded-full overflow-hidden">
         <motion.div
           className="h-full bg-brand-500"
           initial={{ width: 0 }}
@@ -170,7 +170,7 @@ export function DesignCritiqueExercise({ section, onComplete, savedProgress, onP
         progress={{ current: currentIndex + 1, total: items.length }}
       />
 
-      <div className="bg-white rounded-lg p-6 shadow-sm border">
+      <div className="bg-surface rounded-lg p-6 shadow-sm border">
         {/* Design principle badge */}
         <div className="mb-4 flex items-center gap-2">
           <Palette className="w-5 h-5 text-purple-600" />
@@ -180,8 +180,8 @@ export function DesignCritiqueExercise({ section, onComplete, savedProgress, onP
         </div>
 
         {/* Design scenario/description */}
-        <div className="mb-4 p-4 bg-gray-50 rounded-lg border">
-          <p className="text-gray-700">{currentItem.description}</p>
+        <div className="mb-4 p-4 bg-surface-secondary rounded-lg border">
+          <p className="text-content-secondary">{currentItem.description}</p>
         </div>
 
         {/* Optional design image */}
@@ -212,11 +212,11 @@ export function DesignCritiqueExercise({ section, onComplete, savedProgress, onP
                     ? 'bg-green-100 border-green-500'
                     : index === answers[currentItem.id]
                     ? 'bg-red-100 border-red-500'
-                    : 'bg-gray-50 border-gray-200'
-                  : 'hover:bg-purple-50 hover:border-purple-300 border-gray-200'
+                    : 'bg-surface-secondary border-border'
+                  : 'hover:bg-purple-50 hover:border-purple-300 border-border'
               )}
             >
-              <span className="text-gray-800">{option}</span>
+              <span className="text-content">{option}</span>
             </button>
           ))}
         </div>

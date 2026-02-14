@@ -19,7 +19,7 @@ function PrePromptLoader({ dayTitle }: { dayTitle: string }) {
     <Card className="bg-gradient-to-br from-brand-50 to-white border border-brand-100">
       <div className="p-6">
         {/* Show actual "Today you'll learn" text */}
-        <p className="text-lg text-gray-800 leading-relaxed mb-6">
+        <p className="text-lg text-content leading-relaxed mb-6">
           Today you'll learn about <span className="font-medium text-brand-600">{dayTitle}</span>
         </p>
 
@@ -42,7 +42,7 @@ function PrePromptLoader({ dayTitle }: { dayTitle: string }) {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}
-              className="flex items-start gap-3 p-3 bg-white rounded-lg border border-brand-100"
+              className="flex items-start gap-3 p-3 bg-surface rounded-lg border border-brand-100"
             >
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-100/50
                              flex items-center justify-center">
@@ -54,7 +54,7 @@ function PrePromptLoader({ dayTitle }: { dayTitle: string }) {
               </span>
               <div className="flex-1 space-y-2">
                 <motion.div
-                  className="h-4 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded"
+                  className="h-4 bg-gradient-to-r from-surface-tertiary via-surface-tertiary to-surface-tertiary rounded"
                   style={{ width: `${70 + i * 10}%` }}
                   animate={{ backgroundPosition: ['0% 0%', '100% 0%'] }}
                   transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
@@ -109,7 +109,7 @@ export function PrePromptStep({ day, session }: PrePromptStepProps) {
         <PrePromptLoader dayTitle={day.title} />
 
         {/* Tip - same as loaded state */}
-        <div className="text-center text-sm text-gray-500">
+        <div className="text-center text-sm text-content-tertiary">
           💡 Don't worry about knowing the answers yet - just let your brain start connecting!
         </div>
       </StepLayout>
@@ -150,27 +150,27 @@ export function PrePromptStep({ day, session }: PrePromptStepProps) {
       {/* Pre-prompt content */}
       <Card className="bg-gradient-to-br from-brand-50 to-white border border-brand-100">
         <div className="p-6">
-          <p className="text-lg text-gray-800 leading-relaxed mb-6">
+          <p className="text-lg text-content leading-relaxed mb-6">
             {day.prePrompt?.text || `Today you'll learn something new about ${day.title}`}
           </p>
 
           {/* Skills/topics for today */}
           {skills.length > 0 && (
             <div className="space-y-3">
-              <h3 className="font-medium text-gray-700">Today you'll cover:</h3>
+              <h3 className="font-medium text-content-secondary">Today you'll cover:</h3>
               {skills.map((skill: string, index: number) => (
                 <motion.div
                   key={index}
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.2 }}
-                  className="flex items-start gap-3 p-3 bg-white rounded-lg border border-brand-100"
+                  className="flex items-start gap-3 p-3 bg-surface rounded-lg border border-brand-100"
                 >
                   <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-100
                                  flex items-center justify-center text-sm font-medium text-brand-600">
                     {index + 1}
                   </span>
-                  <p className="text-gray-700">{skill}</p>
+                  <p className="text-content-secondary">{skill}</p>
                 </motion.div>
               ))}
             </div>
@@ -179,16 +179,16 @@ export function PrePromptStep({ day, session }: PrePromptStepProps) {
       </Card>
 
       {/* Tip */}
-      <div className="text-center text-sm text-gray-500">
+      <div className="text-center text-sm text-content-tertiary">
         💡 Don't worry about knowing the answers yet - just let your brain start connecting!
       </div>
 
       {/* Regenerate Day Content */}
-      <div className="pt-4 border-t border-gray-100">
+      <div className="pt-4 border-t border-border-secondary">
         <button
           onClick={() => setShowConfirmModal(true)}
           disabled={isRegenerating}
-          className="text-sm text-gray-400 hover:text-gray-600 flex items-center gap-1.5 mx-auto transition-colors disabled:opacity-50"
+          className="text-sm text-content-tertiary hover:text-content-secondary flex items-center gap-1.5 mx-auto transition-colors disabled:opacity-50"
         >
           <RotateCcw className="w-4 h-4" />
           Not satisfied? Regenerate today's content
@@ -209,31 +209,31 @@ export function PrePromptStep({ day, session }: PrePromptStepProps) {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-2xl max-w-md w-full shadow-xl"
+              className="bg-surface rounded-2xl max-w-md w-full shadow-xl"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="flex items-center justify-between p-4 border-b border-gray-100">
+              <div className="flex items-center justify-between p-4 border-b border-border-secondary">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
                     <AlertTriangle className="w-4 h-4 text-amber-600" />
                   </div>
-                  <h2 className="font-semibold text-gray-900">Regenerate Content?</h2>
+                  <h2 className="font-semibold text-content">Regenerate Content?</h2>
                 </div>
                 <button
                   onClick={() => setShowConfirmModal(false)}
-                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                  className="p-2 hover:bg-surface-tertiary rounded-full transition-colors"
                 >
-                  <X className="w-5 h-5 text-gray-500" />
+                  <X className="w-5 h-5 text-content-tertiary" />
                 </button>
               </div>
 
               {/* Content */}
               <div className="p-6">
-                <p className="text-gray-700 mb-4">
+                <p className="text-content-secondary mb-4">
                   Are you sure you want to regenerate today's content? This will:
                 </p>
-                <ul className="space-y-2 text-sm text-gray-600 mb-6">
+                <ul className="space-y-2 text-sm text-content-secondary mb-6">
                   <li className="flex items-start gap-2">
                     <span className="text-amber-500 mt-0.5">•</span>
                     Clear all quiz and task progress
@@ -251,13 +251,13 @@ export function PrePromptStep({ day, session }: PrePromptStepProps) {
                     Clear any practice project submissions
                   </li>
                 </ul>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-content-tertiary">
                   This action cannot be undone.
                 </p>
               </div>
 
               {/* Footer */}
-              <div className="flex gap-3 p-4 border-t border-gray-100">
+              <div className="flex gap-3 p-4 border-t border-border-secondary">
                 <Button
                   variant="secondary"
                   onClick={() => setShowConfirmModal(false)}

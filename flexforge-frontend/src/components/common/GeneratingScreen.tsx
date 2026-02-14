@@ -47,7 +47,7 @@ export function GeneratingScreen({ steps, title, subtitle, timeEstimate, inline 
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className={inline ? "py-8 px-4" : "min-h-screen bg-gradient-to-br from-brand-50 to-gray-50 py-12 px-4"}
+      className={inline ? "py-8 px-4" : "min-h-screen bg-gradient-to-br from-brand-50 dark:from-brand-900/20 to-surface-secondary py-12 px-4"}
     >
       <div className="max-w-md mx-auto">
         <motion.div
@@ -65,8 +65,8 @@ export function GeneratingScreen({ steps, title, subtitle, timeEstimate, inline 
               style={{ borderTopColor: 'transparent' }}
             />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">{title}</h2>
-          <p className="text-gray-600">{subtitle}</p>
+          <h2 className="text-xl font-bold text-content mb-2">{title}</h2>
+          <p className="text-content-secondary">{subtitle}</p>
         </motion.div>
 
         <Card className="p-6">
@@ -95,7 +95,7 @@ export function GeneratingScreen({ steps, title, subtitle, timeEstimate, inline 
                       'w-8 h-8 rounded-full flex items-center justify-center transition-colors',
                       isActive && 'bg-brand-100 text-brand-600',
                       isCompleted && 'bg-green-100 text-green-600',
-                      isPending && 'bg-gray-100 text-gray-400'
+                      isPending && 'bg-surface-tertiary text-content-tertiary'
                     )}
                   >
                     {isCompleted ? (
@@ -116,7 +116,7 @@ export function GeneratingScreen({ steps, title, subtitle, timeEstimate, inline 
                       'text-sm font-medium',
                       isActive && 'text-brand-700',
                       isCompleted && 'text-green-700',
-                      isPending && 'text-gray-400'
+                      isPending && 'text-content-tertiary'
                     )}
                   >
                     {step.text}
@@ -126,8 +126,8 @@ export function GeneratingScreen({ steps, title, subtitle, timeEstimate, inline 
             })}
           </div>
 
-          <div className="mt-4 sm:mt-6 pt-4 border-t border-gray-100">
-            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div className="mt-4 sm:mt-6 pt-4 border-t border-border-secondary">
+            <div className="h-2 bg-surface-tertiary rounded-full overflow-hidden">
               <motion.div
                 className="h-full bg-gradient-to-r from-brand-400 to-brand-500"
                 initial={{ width: '0%' }}
@@ -136,7 +136,7 @@ export function GeneratingScreen({ steps, title, subtitle, timeEstimate, inline 
               />
             </div>
             {/* Time estimate - hidden on mobile */}
-            <p className="hidden sm:block text-xs text-gray-500 text-center mt-2">
+            <p className="hidden sm:block text-xs text-content-tertiary text-center mt-2">
               {timeEstimate}
             </p>
           </div>
@@ -146,7 +146,7 @@ export function GeneratingScreen({ steps, title, subtitle, timeEstimate, inline 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1 }}
-          className="text-center text-sm text-gray-500 mt-6"
+          className="text-center text-sm text-content-tertiary mt-6"
         >
           Did you know? Active recall improves retention by 50%
         </motion.p>

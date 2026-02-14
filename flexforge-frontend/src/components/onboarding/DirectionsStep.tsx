@@ -32,19 +32,19 @@ export function DirectionsStep({
   return (
     <div className="max-w-2xl mx-auto">
       {/* Interpreted goal */}
-      <div className="bg-gray-50 rounded-xl p-4 mb-6">
-        <p className="text-sm text-gray-600">
+      <div className="bg-surface-secondary rounded-xl p-4 mb-6">
+        <p className="text-sm text-content-secondary">
           <span className="font-medium">Here's what I understood:</span>{' '}
-          <span className="text-gray-900">{interpretedGoal}</span>
+          <span className="text-content">{interpretedGoal}</span>
         </p>
       </div>
 
       {/* Question */}
       <div className="text-center mb-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-2">
+        <h2 className="text-xl font-bold text-content mb-2">
           Is this what you had in mind?
         </h2>
-        <p className="text-gray-600">
+        <p className="text-content-secondary">
           Pick the direction that best matches your learning goal
         </p>
       </div>

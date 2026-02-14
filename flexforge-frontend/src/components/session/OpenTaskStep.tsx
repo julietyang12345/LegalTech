@@ -78,7 +78,7 @@ export function OpenTaskStep({ day, session, onComplete }: OpenTaskStepProps) {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className={clsx(
-          'bg-white rounded-2xl shadow-md border overflow-hidden',
+          'bg-surface rounded-2xl shadow-md border overflow-hidden',
           isCompleted ? 'border-green-200' : 'border-purple-100'
         )}
       >
@@ -88,10 +88,10 @@ export function OpenTaskStep({ day, session, onComplete }: OpenTaskStepProps) {
             {openTask.icon || '🎯'}
           </div>
           <div className="flex-1">
-            <h2 className="font-semibold text-gray-900">
+            <h2 className="font-semibold text-content">
               {openTask.sectionTitle || 'Real-World Task'}
             </h2>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-content-tertiary">
               {openTask.sectionSubtitle || 'Take your learning beyond the screen'}
             </p>
           </div>
@@ -104,20 +104,20 @@ export function OpenTaskStep({ day, session, onComplete }: OpenTaskStepProps) {
         {/* Body */}
         <div className="p-5">
           {/* Title */}
-          <h3 className="font-medium text-gray-900 text-lg mb-2">
+          <h3 className="font-medium text-content text-lg mb-2">
             {openTask.title}
           </h3>
 
           {/* Context badge */}
           {openTask.context && (
-            <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-3">
+            <div className="flex items-center gap-1.5 text-xs text-content-tertiary mb-3">
               <MapPin className="w-3.5 h-3.5" />
               {openTask.context}
             </div>
           )}
 
           {/* Description */}
-          <p className="text-gray-600 text-sm leading-relaxed mb-4">
+          <p className="text-content-secondary text-sm leading-relaxed mb-4">
             {openTask.description}
           </p>
 
@@ -134,7 +134,7 @@ export function OpenTaskStep({ day, session, onComplete }: OpenTaskStepProps) {
             <div className="mb-4">
               <button
                 onClick={() => setShowTips(!showTips)}
-                className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900"
+                className="flex items-center gap-1.5 text-sm text-content-secondary hover:text-content"
               >
                 <Lightbulb className="w-4 h-4 text-amber-500" />
                 <span>Tips for success</span>
@@ -147,7 +147,7 @@ export function OpenTaskStep({ day, session, onComplete }: OpenTaskStepProps) {
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: 'auto' }}
                     exit={{ opacity: 0, height: 0 }}
-                    className="mt-2 space-y-1 pl-6 text-sm text-gray-600 list-disc overflow-hidden"
+                    className="mt-2 space-y-1 pl-6 text-sm text-content-secondary list-disc overflow-hidden"
                   >
                     {openTask.tips.map((tip, index) => (
                       <li key={index}>{tip}</li>
@@ -159,13 +159,13 @@ export function OpenTaskStep({ day, session, onComplete }: OpenTaskStepProps) {
           )}
 
           {/* Completion checkbox - subtle */}
-          <div className="pt-3 border-t border-gray-100">
+          <div className="pt-3 border-t border-border-secondary">
             {!isCompleted ? (
               <button
                 onClick={handleMarkComplete}
-                className="flex items-center gap-2 text-sm text-gray-500 hover:text-purple-600 transition-colors group"
+                className="flex items-center gap-2 text-sm text-content-tertiary hover:text-purple-600 transition-colors group"
               >
-                <div className="w-5 h-5 rounded border-2 border-gray-300 group-hover:border-purple-400 flex items-center justify-center transition-colors">
+                <div className="w-5 h-5 rounded border-2 border-border group-hover:border-purple-400 flex items-center justify-center transition-colors">
                   <Check className="w-3 h-3 text-transparent group-hover:text-purple-400" />
                 </div>
                 <span>I've completed this task</span>
@@ -189,21 +189,21 @@ export function OpenTaskStep({ day, session, onComplete }: OpenTaskStepProps) {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="mt-4 bg-white rounded-xl border border-gray-200 p-5 shadow-sm"
+            className="mt-4 bg-surface rounded-xl border border-border p-5 shadow-sm"
           >
-            <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <h4 className="text-sm font-semibold text-content mb-3 flex items-center gap-2">
               <span>🤔</span> Quick Reflection
             </h4>
 
             <div className="space-y-3">
               {openTask.reflectionPrompts.map((prompt, index) => (
                 <div key={index}>
-                  <label className="block text-sm text-gray-700 mb-1.5">{prompt}</label>
+                  <label className="block text-sm text-content-secondary mb-1.5">{prompt}</label>
                   <textarea
                     value={reflectionAnswers[index] || ''}
                     onChange={(e) => setReflectionAnswers(prev => ({ ...prev, [index]: e.target.value }))}
                     placeholder="Optional..."
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     rows={2}
                   />
                 </div>
@@ -230,7 +230,7 @@ export function OpenTaskStep({ day, session, onComplete }: OpenTaskStepProps) {
         >
           <button
             onClick={onComplete}
-            className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-sm text-content-tertiary hover:text-content-secondary transition-colors"
           >
             {isCompleted ? 'Continue →' : 'Skip for now'}
           </button>

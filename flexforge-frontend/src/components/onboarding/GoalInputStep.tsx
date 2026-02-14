@@ -63,10 +63,10 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue }: GoalInputSt
           <Sparkles className="w-8 h-8 text-brand-600" />
         </div>
 
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
+        <h1 className="text-2xl font-bold text-content mb-2">
           What do you want to learn or build?
         </h1>
-        <p className="text-gray-500 text-base">
+        <p className="text-content-tertiary text-base">
           Don't know what to ask yet? Just type any questions or confusion you have — we'll go from there.
         </p>
       </div>
@@ -77,9 +77,9 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue }: GoalInputSt
             value={goal}
             onChange={(e) => setGoal(e.target.value)}
             placeholder="I want to..."
-            className="w-full px-4 py-4 text-lg border border-gray-300 rounded-xl
+            className="w-full px-4 py-4 text-lg border border-border rounded-xl
                        focus:ring-2 focus:ring-brand-500 focus:border-brand-500
-                       placeholder:text-gray-400 resize-none"
+                       placeholder:text-content-tertiary resize-none"
             rows={3}
             autoFocus
           />
@@ -100,7 +100,7 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue }: GoalInputSt
       {/* Previous Sessions link - show if user has previous sessions or still checking */}
       <div className="mt-8 text-center">
         {isCheckingSessions ? (
-          <span className="inline-flex items-center gap-2 text-sm text-gray-400">
+          <span className="inline-flex items-center gap-2 text-sm text-content-tertiary">
             <Loader2 className="w-4 h-4 animate-spin" />
             Checking for previous courses...
           </span>
@@ -109,7 +109,7 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue }: GoalInputSt
             type="button"
             onClick={handleContinuePrevious}
             disabled={isSkipping}
-            className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-2 text-sm text-content-tertiary hover:text-content-secondary transition-colors disabled:opacity-50"
           >
             {isSkipping ? (
               <Loader2 className="w-4 h-4 animate-spin" />
