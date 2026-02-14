@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, X, Lightbulb, Eye, EyeOff, Play, ArrowRight, ChevronLeft } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useSessionStore } from '@/stores/sessionStore';
 import type {
   CodeCompletionSection,
   DebuggingSection,
@@ -113,6 +114,7 @@ interface CodeCompletionExerciseProps {
 }
 
 export function CodeCompletionExercise({ section, onComplete, savedProgress, onProgressChange }: CodeCompletionExerciseProps) {
+  const isStillStreaming = useSessionStore((s) => !s.isStreamingComplete);
   const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
   const [userCode, setUserCode] = useState('');
   const [results, setResults] = useState<Record<string, boolean>>(() => {
@@ -164,11 +166,24 @@ export function CodeCompletionExercise({ section, onComplete, savedProgress, onP
       setShowHint(false);
       setCurrentHintIndex(0);
       setShowSolution(false);
+    } else if (isStillStreaming) {
+      setCurrentIndex(prev => prev + 1);
+      setUserCode('');
+      setShowHint(false);
+      setCurrentHintIndex(0);
+      setShowSolution(false);
     } else {
       const correctCount = Object.values(results).filter(Boolean).length;
       onComplete(correctCount, items.length, results as Record<string, number | string | boolean>);
     }
   };
+
+  useEffect(() => {
+    if (!isStillStreaming && currentIndex >= items.length && items.length > 0) {
+      const correctCount = Object.values(results).filter(Boolean).length;
+      onComplete(correctCount, items.length, results as Record<string, number | string | boolean>);
+    }
+  }, [isStillStreaming, items.length]);
 
   const showNextHint = () => {
     if (currentHintIndex < currentItem.hints.length - 1) {
@@ -318,6 +333,7 @@ interface DebuggingExerciseProps {
 }
 
 export function DebuggingExercise({ section, onComplete, savedProgress, onProgressChange }: DebuggingExerciseProps) {
+  const isStillStreaming = useSessionStore((s) => !s.isStreamingComplete);
   const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
   const [userCode, setUserCode] = useState('');
   const [results, setResults] = useState<Record<string, boolean>>(() => {
@@ -371,11 +387,22 @@ export function DebuggingExercise({ section, onComplete, savedProgress, onProgre
       setCurrentIndex(prev => prev + 1);
       setUserCode(items[currentIndex + 1]?.buggyCode || '');
       setShowHint(false);
+    } else if (isStillStreaming) {
+      setCurrentIndex(prev => prev + 1);
+      setUserCode('');
+      setShowHint(false);
     } else {
       const correctCount = Object.values(results).filter(Boolean).length;
       onComplete(correctCount, items.length, results as Record<string, number | string | boolean>);
     }
   };
+
+  useEffect(() => {
+    if (!isStillStreaming && currentIndex >= items.length && items.length > 0) {
+      const correctCount = Object.values(results).filter(Boolean).length;
+      onComplete(correctCount, items.length, results as Record<string, number | string | boolean>);
+    }
+  }, [isStillStreaming, items.length]);
 
   if (!currentItem) return <QuestionStreamingSkeleton title={section.title} current={currentIndex + 1} total={Math.max(items?.length || 0, currentIndex + 1)} />;
 
@@ -483,6 +510,7 @@ interface OutputPredictionExerciseProps {
 }
 
 export function OutputPredictionExercise({ section, onComplete, savedProgress, onProgressChange }: OutputPredictionExerciseProps) {
+  const isStillStreaming = useSessionStore((s) => !s.isStreamingComplete);
   const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
   const [answers, setAnswers] = useState<Record<string, number>>(() => {
     if (!savedProgress?.answers) return {};
@@ -521,6 +549,8 @@ export function OutputPredictionExercise({ section, onComplete, savedProgress, o
   const handleNext = () => {
     if (currentIndex < questions.length - 1) {
       setCurrentIndex(prev => prev + 1);
+    } else if (isStillStreaming) {
+      setCurrentIndex(prev => prev + 1);
     } else {
       const correctCount = Object.entries(answers)
         .filter(([id, ans]) => {
@@ -530,6 +560,17 @@ export function OutputPredictionExercise({ section, onComplete, savedProgress, o
       onComplete(correctCount, questions.length, answers as Record<string, number | string | boolean>);
     }
   };
+
+  useEffect(() => {
+    if (!isStillStreaming && currentIndex >= questions.length && questions.length > 0) {
+      const correctCount = Object.entries(answers)
+        .filter(([id, ans]) => {
+          const q = questions.find(q => q.id === id);
+          return q && ans === q.correctIndex;
+        }).length;
+      onComplete(correctCount, questions.length, answers as Record<string, number | string | boolean>);
+    }
+  }, [isStillStreaming, questions.length]);
 
   const handlePrevQuestion = () => {
     if (currentIndex > 0) {
@@ -645,6 +686,7 @@ interface AICodeReviewExerciseProps {
 }
 
 export function AICodeReviewExercise({ section, onComplete, savedProgress, onProgressChange }: AICodeReviewExerciseProps) {
+  const isStillStreaming = useSessionStore((s) => !s.isStreamingComplete);
   const [currentItemIndex, setCurrentItemIndex] = useState(savedProgress?.currentIndex ?? 0);
   const [currentIssueIndex, setCurrentIssueIndex] = useState(0);
   const [step, setStep] = useState<'location' | 'reason'>('location');
@@ -748,6 +790,10 @@ export function AICodeReviewExercise({ section, onComplete, savedProgress, onPro
       // Next code block
       setCurrentItemIndex(prev => prev + 1);
       setCurrentIssueIndex(0);
+    } else if (isStillStreaming) {
+      // More items may still be streaming in - advance to show skeleton
+      setCurrentItemIndex(prev => prev + 1);
+      setCurrentIssueIndex(0);
     } else {
       // All done - calculate score
       const correctCount = Object.values(currentResults).filter(r => r.locationCorrect && r.reasonCorrect).length;
@@ -758,6 +804,17 @@ export function AICodeReviewExercise({ section, onComplete, savedProgress, onPro
       onComplete(correctCount, totalIssues, serialized);
     }
   };
+
+  useEffect(() => {
+    if (!isStillStreaming && currentItemIndex >= items.length && items.length > 0) {
+      const correctCount = Object.values(results).filter(r => r.locationCorrect && r.reasonCorrect).length;
+      const serialized: Record<string, string> = {};
+      Object.entries(results).forEach(([k, v]) => {
+        serialized[k] = JSON.stringify(v);
+      });
+      onComplete(correctCount, totalIssues, serialized);
+    }
+  }, [isStillStreaming, items.length]);
 
   if (!currentItem || !currentIssue) return <QuestionStreamingSkeleton title={section.title} current={currentItemIndex + 1} total={Math.max(items?.length || 0, currentItemIndex + 1)} />;
 

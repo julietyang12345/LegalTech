@@ -244,9 +244,10 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
   const handleContinue = () => {
     if (currentSectionIndex < sections.length - 1) {
       setCurrentSectionIndex(prev => prev + 1);
-    } else {
+    } else if (isStreamingComplete) {
       setShowResults(true);
     }
+    // If streaming isn't complete and we're on the last section, do nothing - wait for more sections
   };
 
   const getTotalScore = () => {
@@ -418,6 +419,28 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
               <div className="h-12 bg-gray-100 rounded-lg" />
               <div className="h-12 bg-gray-100 rounded-lg" />
             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading state when current section is done but more sections are streaming in
+  const currentSectionDone = sectionResults[currentSectionIndex]?.completed;
+  const waitingForMore = !isStreamingComplete && currentSectionIndex >= sections.length - 1 && currentSectionDone;
+
+  if (waitingForMore) {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <div className="mb-4">
+          <h2 className="text-xl font-bold text-gray-800">{task.title}</h2>
+          <p className="text-gray-600 text-sm">{task.description}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-lg p-8">
+          <div className="flex flex-col items-center justify-center py-8 gap-4">
+            <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
+            <p className="text-gray-600 font-medium">Loading next exercise...</p>
+            <p className="text-gray-400 text-sm">Section {sections.length + 1} is being prepared</p>
           </div>
         </div>
       </div>
@@ -644,22 +667,21 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
 
       {/* Subtle continue button - always visible */}
       <div className="mt-6 flex justify-end">
-        <button
-          onClick={handleContinue}
-          className="text-sm text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
-        >
-          {currentSectionIndex < sections.length - 1 ? 'Skip section' : 'Finish'}
-          <ChevronRight className="w-4 h-4" />
-        </button>
+        {!isStreamingComplete && currentSectionIndex >= sections.length - 1 ? (
+          <div className="flex items-center gap-2 text-gray-400 text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Loading more exercises...</span>
+          </div>
+        ) : (
+          <button
+            onClick={handleContinue}
+            className="text-sm text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
+          >
+            {currentSectionIndex < sections.length - 1 ? 'Skip section' : 'Finish'}
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        )}
       </div>
-
-      {/* Loading indicator while more sections are streaming in */}
-      {!isStreamingComplete && currentSectionIndex >= sections.length - 1 && (
-        <div className="mt-4 flex items-center justify-center gap-2 text-gray-400 text-sm">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <span>Loading more exercises...</span>
-        </div>
-      )}
     </div>
   );
 }

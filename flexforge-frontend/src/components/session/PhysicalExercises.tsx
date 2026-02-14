@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, X, CheckCircle, AlertTriangle, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useSessionStore } from '@/stores/sessionStore';
 import type {
   FormCheckSection,
   SafetyCheckSection,
@@ -228,6 +229,7 @@ interface SafetyCheckExerciseProps {
 }
 
 export function SafetyCheckExercise({ section, onComplete, savedProgress, onProgressChange }: SafetyCheckExerciseProps) {
+  const isStillStreaming = useSessionStore((s) => !s.isStreamingComplete);
   const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
   const [answers, setAnswers] = useState<Record<string, boolean>>(() => {
     if (!savedProgress?.answers) return {};
@@ -278,6 +280,8 @@ export function SafetyCheckExercise({ section, onComplete, savedProgress, onProg
       setShowFeedback(false);
       if (currentIndex < items.length - 1) {
         setCurrentIndex(prev => prev + 1);
+      } else if (isStillStreaming) {
+        setCurrentIndex(prev => prev + 1);
       } else {
         const correctCount = Object.values(newResults).filter(Boolean).length;
         const finalAnswers: Record<string, number | string | boolean> = { ...newAnswers };
@@ -288,6 +292,17 @@ export function SafetyCheckExercise({ section, onComplete, savedProgress, onProg
       }
     }, 2000);
   };
+
+  useEffect(() => {
+    if (!isStillStreaming && currentIndex >= items.length && items.length > 0) {
+      const correctCount = Object.values(results).filter(Boolean).length;
+      const finalAnswers: Record<string, number | string | boolean> = { ...answers };
+      Object.entries(results).forEach(([k, v]) => {
+        finalAnswers[`${k}_result`] = v;
+      });
+      onComplete(correctCount, items.length, finalAnswers);
+    }
+  }, [isStillStreaming, items.length]);
 
   if (!currentItem) return <QuestionStreamingSkeleton title={section.title} current={currentIndex + 1} total={Math.max(items?.length || 0, currentIndex + 1)} />;
 

@@ -4,6 +4,7 @@ import { Check, X, Volume2, ArrowRight, ChevronLeft, RotateCcw, Lightbulb, Spark
 import { clsx } from 'clsx';
 import { useBrowserTTS } from '@/hooks/useBrowserTTS';
 import { useAuthStore } from '@/stores/authStore';
+import { useSessionStore } from '@/stores/sessionStore';
 import { progressService } from '@/services/progressService';
 import type {
   QuizSection,
@@ -41,6 +42,15 @@ interface OpenEndedFeedbackResult {
 // ============================================
 // Shared Components
 // ============================================
+
+/**
+ * Hook to check if streaming is still in progress.
+ * Used by exercise components to prevent completing a section
+ * while more questions may still be streaming in.
+ */
+function useIsStreaming() {
+  return useSessionStore((s) => !s.isStreamingComplete);
+}
 
 // Skeleton shown while a question is still streaming in
 function QuestionStreamingSkeleton({ title, current, total }: { title?: string; current: number; total: number }) {
@@ -172,6 +182,7 @@ interface QuizSectionProps {
 }
 
 export function QuizSectionExercise({ section, targetLanguage, onComplete, savedProgress, onProgressChange, onBookmarkQuestion, onShareQuestion }: QuizSectionProps) {
+  const isStillStreaming = useIsStreaming();
   // Initialize from saved progress if available
   const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
   // For MCQ answers (stores option index)
@@ -321,9 +332,33 @@ export function QuizSectionExercise({ section, targetLanguage, onComplete, saved
     }
   }, [mcqAnswers, openEndedAnswers, currentIndex, onProgressChange]);
 
+  // When streaming completes and user already answered all questions, auto-complete
+  useEffect(() => {
+    if (!isStillStreaming && currentIndex >= questions.length && questions.length > 0) {
+      let totalScore = 0;
+      questions.forEach(q => {
+        if (q.responseType === 'openEnded') {
+          totalScore += openEndedResults[q.id]?.score || 0;
+        } else {
+          const correct = mcqAnswers[q.id] === q.correctIndex;
+          totalScore += correct ? 1 : 0;
+        }
+      });
+      const finalAnswers: Record<string, number | string | boolean> = {
+        ...mcqAnswers,
+        ...openEndedAnswers,
+      };
+      onComplete(Math.round(totalScore), questions.length, finalAnswers);
+    }
+  }, [isStillStreaming, questions.length]);
+
   // Advance to next question or complete the section
   const advanceOrComplete = (questionScore: number) => {
     if (currentIndex < questions.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+      setTextInput('');
+    } else if (isStillStreaming) {
+      // More questions may still be streaming in - advance index to show skeleton
       setCurrentIndex(prev => prev + 1);
       setTextInput('');
     } else {
@@ -945,6 +980,7 @@ interface ToneSelectSectionProps {
 }
 
 export function ToneSelectSectionExercise({ section, targetLanguage, onComplete, savedProgress, onProgressChange }: ToneSelectSectionProps) {
+  const isStillStreaming = useIsStreaming();
   const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
   const [answers, setAnswers] = useState<Record<string, number>>(() => {
     if (!savedProgress?.answers) return {};
@@ -984,6 +1020,8 @@ export function ToneSelectSectionExercise({ section, targetLanguage, onComplete,
   const handleNext = () => {
     if (currentIndex < questions.length - 1) {
       setCurrentIndex(prev => prev + 1);
+    } else if (isStillStreaming) {
+      setCurrentIndex(prev => prev + 1);
     } else {
       const correctCount = Object.entries(answers)
         .filter(([id, ans]) => {
@@ -993,6 +1031,17 @@ export function ToneSelectSectionExercise({ section, targetLanguage, onComplete,
       onComplete(correctCount, questions.length, answers as Record<string, number | string | boolean>);
     }
   };
+
+  useEffect(() => {
+    if (!isStillStreaming && currentIndex >= questions.length && questions.length > 0) {
+      const correctCount = Object.entries(answers)
+        .filter(([id, ans]) => {
+          const q = questions.find(q => q.id === id);
+          return q && ans === q.correctIndex;
+        }).length;
+      onComplete(correctCount, questions.length, answers as Record<string, number | string | boolean>);
+    }
+  }, [isStillStreaming, questions.length]);
 
   const playAudio = useCallback(() => {
     if (currentQuestion?.audioText && isSupported) {
@@ -1097,6 +1146,7 @@ interface FillBlankSectionProps {
 }
 
 export function FillBlankSectionExercise({ section, onComplete, savedProgress, onProgressChange }: FillBlankSectionProps) {
+  const isStillStreaming = useIsStreaming();
   const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
   const [answers, setAnswers] = useState<Record<string, string>>(() => {
     if (!savedProgress?.answers) return {};
@@ -1158,6 +1208,10 @@ export function FillBlankSectionExercise({ section, onComplete, savedProgress, o
       setCurrentIndex(prev => prev + 1);
       setInputValue('');
       setShowHint(false);
+    } else if (isStillStreaming) {
+      setCurrentIndex(prev => prev + 1);
+      setInputValue('');
+      setShowHint(false);
     } else {
       const correctCount = Object.values(results).filter(Boolean).length;
       const finalAnswers: Record<string, number | string | boolean> = { ...answers };
@@ -1167,6 +1221,17 @@ export function FillBlankSectionExercise({ section, onComplete, savedProgress, o
       onComplete(correctCount, items.length, finalAnswers);
     }
   };
+
+  useEffect(() => {
+    if (!isStillStreaming && currentIndex >= items.length && items.length > 0) {
+      const correctCount = Object.values(results).filter(Boolean).length;
+      const finalAnswers: Record<string, number | string | boolean> = { ...answers };
+      Object.entries(results).forEach(([k, v]) => {
+        finalAnswers[`${k}_result`] = v;
+      });
+      onComplete(correctCount, items.length, finalAnswers);
+    }
+  }, [isStillStreaming, items.length]);
 
   const handlePrevQuestion = () => {
     if (currentIndex > 0) {
@@ -1305,6 +1370,7 @@ interface TranslationSectionProps {
 }
 
 export function TranslationSectionExercise({ section, onComplete, savedProgress, onProgressChange }: TranslationSectionProps) {
+  const isStillStreaming = useIsStreaming();
   const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
   const [answers, setAnswers] = useState<Record<string, string>>(() => {
     if (!savedProgress?.answers) return {};
@@ -1366,6 +1432,10 @@ export function TranslationSectionExercise({ section, onComplete, savedProgress,
       setCurrentIndex(prev => prev + 1);
       setInputValue('');
       setShowHint(false);
+    } else if (isStillStreaming) {
+      setCurrentIndex(prev => prev + 1);
+      setInputValue('');
+      setShowHint(false);
     } else {
       const correctCount = Object.values(results).filter(Boolean).length;
       const finalAnswers: Record<string, number | string | boolean> = { ...answers };
@@ -1375,6 +1445,17 @@ export function TranslationSectionExercise({ section, onComplete, savedProgress,
       onComplete(correctCount, items.length, finalAnswers);
     }
   };
+
+  useEffect(() => {
+    if (!isStillStreaming && currentIndex >= items.length && items.length > 0) {
+      const correctCount = Object.values(results).filter(Boolean).length;
+      const finalAnswers: Record<string, number | string | boolean> = { ...answers };
+      Object.entries(results).forEach(([k, v]) => {
+        finalAnswers[`${k}_result`] = v;
+      });
+      onComplete(correctCount, items.length, finalAnswers);
+    }
+  }, [isStillStreaming, items.length]);
 
   if (!currentItem) return <QuestionStreamingSkeleton title={section.title} current={currentIndex + 1} total={Math.max(items?.length || 0, currentIndex + 1)} />;
 
@@ -1487,6 +1568,7 @@ interface ReorderSectionProps {
 }
 
 export function ReorderSectionExercise({ section, onComplete, savedProgress, onProgressChange }: ReorderSectionProps) {
+  const isStillStreaming = useIsStreaming();
   const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
   const [selectedWords, setSelectedWords] = useState<string[]>([]);
   const [availableWords, setAvailableWords] = useState<string[]>([]);
@@ -1546,11 +1628,20 @@ export function ReorderSectionExercise({ section, onComplete, savedProgress, onP
   const handleNext = () => {
     if (currentIndex < items.length - 1) {
       setCurrentIndex(prev => prev + 1);
+    } else if (isStillStreaming) {
+      setCurrentIndex(prev => prev + 1);
     } else {
       const correctCount = Object.values(results).filter(Boolean).length;
       onComplete(correctCount, items.length, results as Record<string, number | string | boolean>);
     }
   };
+
+  useEffect(() => {
+    if (!isStillStreaming && currentIndex >= items.length && items.length > 0) {
+      const correctCount = Object.values(results).filter(Boolean).length;
+      onComplete(correctCount, items.length, results as Record<string, number | string | boolean>);
+    }
+  }, [isStillStreaming, items.length]);
 
   const resetOrder = () => {
     setAvailableWords([...currentItem.scrambled]);
@@ -1690,6 +1781,7 @@ interface TypingSectionProps {
 }
 
 export function TypingSectionExercise({ section, targetLanguage, onComplete, savedProgress, onProgressChange }: TypingSectionProps) {
+  const isStillStreaming = useIsStreaming();
   const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
   const [inputValue, setInputValue] = useState('');
   const [results, setResults] = useState<Record<string, boolean>>(() => {
@@ -1748,11 +1840,21 @@ export function TypingSectionExercise({ section, targetLanguage, onComplete, sav
     if (currentIndex < items.length - 1) {
       setCurrentIndex(prev => prev + 1);
       setInputValue('');
+    } else if (isStillStreaming) {
+      setCurrentIndex(prev => prev + 1);
+      setInputValue('');
     } else {
       const correctCount = Object.values(results).filter(Boolean).length;
       onComplete(correctCount, items.length, results as Record<string, number | string | boolean>);
     }
   };
+
+  useEffect(() => {
+    if (!isStillStreaming && currentIndex >= items.length && items.length > 0) {
+      const correctCount = Object.values(results).filter(Boolean).length;
+      onComplete(correctCount, items.length, results as Record<string, number | string | boolean>);
+    }
+  }, [isStillStreaming, items.length]);
 
   if (!currentItem) return <QuestionStreamingSkeleton title={section.title} current={currentIndex + 1} total={Math.max(items?.length || 0, currentIndex + 1)} />;
 
@@ -1859,6 +1961,7 @@ interface OpenEndedSectionProps {
 }
 
 export function OpenEndedSectionExercise({ section, onComplete, savedProgress, onProgressChange }: OpenEndedSectionProps) {
+  const isStillStreaming = useIsStreaming();
   const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
   const [responses, setResponses] = useState<Record<string, string>>(() => {
     if (!savedProgress?.answers) return {};
@@ -1964,12 +2067,22 @@ export function OpenEndedSectionExercise({ section, onComplete, savedProgress, o
     if (currentIndex < questions.length - 1) {
       setCurrentIndex(currentIndex + 1);
       setShowFeedback(false);
+    } else if (isStillStreaming) {
+      setCurrentIndex(currentIndex + 1);
+      setShowFeedback(false);
     } else {
       // Calculate final score
       const passed = Object.values(results).filter(r => r.passed).length;
       onComplete(passed, questions.length, responses as Record<string, number | string | boolean>);
     }
   };
+
+  useEffect(() => {
+    if (!isStillStreaming && currentIndex >= questions.length && questions.length > 0) {
+      const passed = Object.values(results).filter(r => r.passed).length;
+      onComplete(passed, questions.length, responses as Record<string, number | string | boolean>);
+    }
+  }, [isStillStreaming, questions.length]);
 
   const wordCount = currentResponse.trim().split(/\s+/).filter(w => w.length > 0).length;
 

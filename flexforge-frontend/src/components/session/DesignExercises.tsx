@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, X, Palette, Lightbulb } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useSessionStore } from '@/stores/sessionStore';
 import type {
   DesignCritiqueSection,
 } from '@/types';
@@ -100,6 +101,7 @@ interface DesignCritiqueExerciseProps {
 }
 
 export function DesignCritiqueExercise({ section, onComplete, savedProgress, onProgressChange }: DesignCritiqueExerciseProps) {
+  const isStillStreaming = useSessionStore((s) => !s.isStreamingComplete);
   const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0);
   const [answers, setAnswers] = useState<Record<string, number>>(() => {
     if (!savedProgress?.answers) return {};
@@ -134,6 +136,8 @@ export function DesignCritiqueExercise({ section, onComplete, savedProgress, onP
       setShowFeedback(false);
       if (currentIndex < items.length - 1) {
         setCurrentIndex(prev => prev + 1);
+      } else if (isStillStreaming) {
+        setCurrentIndex(prev => prev + 1);
       } else {
         const correctCount = Object.entries(newAnswers)
           .filter(([id, ans]) => {
@@ -144,6 +148,17 @@ export function DesignCritiqueExercise({ section, onComplete, savedProgress, onP
       }
     }, 2500);
   };
+
+  useEffect(() => {
+    if (!isStillStreaming && currentIndex >= items.length && items.length > 0) {
+      const correctCount = Object.entries(answers)
+        .filter(([id, ans]) => {
+          const item = items.find(i => i.id === id);
+          return item && ans === item.correctIndex;
+        }).length;
+      onComplete(correctCount, items.length, answers as Record<string, number | string | boolean>);
+    }
+  }, [isStillStreaming, items.length]);
 
   if (!currentItem) return <QuestionStreamingSkeleton title={section.title} current={currentIndex + 1} total={Math.max(items?.length || 0, currentIndex + 1)} />;
 
