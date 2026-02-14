@@ -66,6 +66,7 @@ export interface User {
   avatarUrl?: string;
   quotaTier: QuotaTier;
   role?: UserRole;
+  hasPassword?: boolean;
   currentStreak: number;
   longestStreak: number;
   totalSessionsCompleted: number;

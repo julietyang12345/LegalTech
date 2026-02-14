@@ -29,6 +29,7 @@ import {
   PrivacyPage,
   DemoSessionPage,
   ExplorePage,
+  SettingsPage,
 } from '@/pages';
 
 // React Query client
@@ -94,6 +95,7 @@ function App() {
             <Route path="/showcase" element={<ShowcasePage />} />
             <Route path="/vault" element={<VaultPage />} />
             <Route path="/community" element={<CommunityPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
 
           {/* Focus mode - full screen session */}

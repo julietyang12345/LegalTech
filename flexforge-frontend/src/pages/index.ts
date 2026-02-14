@@ -16,3 +16,4 @@ export { TermsPage } from './TermsPage';
 export { PrivacyPage } from './PrivacyPage';
 export { DemoSessionPage } from './DemoSessionPage';
 export { ExplorePage } from './ExplorePage';
+export { SettingsPage } from './SettingsPage';

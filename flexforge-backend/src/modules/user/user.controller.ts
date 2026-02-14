@@ -11,6 +11,8 @@ import {
   Res,
   HttpCode,
   HttpStatus,
+  BadRequestException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
@@ -29,10 +31,10 @@ export class UserController {
   async getProfile(@Request() req) {
     const user = await this.userService.findById(req.user.id);
 
-    // Don't send password
+    // Don't send password hash, but indicate if user has one set
     const { password, ...result } = user;
 
-    return { user: result };
+    return { user: { ...result, hasPassword: !!password } };
   }
 
   @Get('quota')
@@ -73,6 +75,38 @@ export class UserController {
       message: 'Preferences updated successfully',
       preferences: user.preferences,
     };
+  }
+
+  @Patch('password')
+  async changePassword(
+    @Request() req,
+    @Body() body: { currentPassword: string; newPassword: string },
+  ) {
+    if (!body.currentPassword || !body.newPassword) {
+      throw new BadRequestException('Current password and new password are required');
+    }
+
+    if (body.newPassword.length < 8) {
+      throw new BadRequestException('New password must be at least 8 characters');
+    }
+
+    const user = await this.userService.findById(req.user.id);
+
+    if (!user.password) {
+      throw new BadRequestException(
+        'Cannot change password for accounts without a password. Use Google sign-in instead.',
+      );
+    }
+
+    const isValid = await this.userService.validatePassword(user, body.currentPassword);
+    if (!isValid) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    await this.userService.updatePassword(req.user.id, body.newPassword);
+    await this.userService.invalidateAllSessions(req.user.id);
+
+    return { message: 'Password changed successfully' };
   }
 
   /**

@@ -98,6 +98,23 @@ export const authService = {
     return data;
   },
 
+  // Profile & Account Management
+
+  async updateProfile(data: { name?: string }): Promise<{ message: string; user: User }> {
+    const { data: response } = await api.patch<{ message: string; user: User }>('/users/profile', data);
+    return response;
+  },
+
+  async changePassword(data: { currentPassword: string; newPassword: string }): Promise<MessageResponse> {
+    const { data: response } = await api.patch<MessageResponse>('/users/password', data);
+    return response;
+  },
+
+  async deleteAccount(): Promise<MessageResponse> {
+    const { data: response } = await api.delete<MessageResponse>('/users/me');
+    return response;
+  },
+
   // Password Reset & Email Verification
 
   async forgotPassword(dto: ForgotPasswordDto): Promise<MessageResponse> {
