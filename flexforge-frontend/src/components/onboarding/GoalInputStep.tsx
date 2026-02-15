@@ -78,10 +78,10 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
       button: 'Find my learning path',
     },
     [GoalType.PROJECT]: {
-      heading: 'What do you want to build, learn, or become?',
-      subtitle: 'A specific project, a skill you want to sharpen, or a role you\'re growing into — we\'ll create the right path.',
-      placeholder: 'e.g. Build a budgeting app, get better at backend dev, become a full-stack developer...',
-      button: 'Plan my path',
+      heading: 'What do you want to build or get better at?',
+      subtitle: 'A project idea, a skill to sharpen, or a real work problem you\'re stuck on — we\'ll design the right project for you.',
+      placeholder: 'e.g. Build a budgeting app, get better at async code, I keep getting race conditions at work...',
+      button: 'Find my project',
     },
     [GoalType.AI_BUILDER]: {
       heading: 'What do you want to build, learn, or explore with AI?',

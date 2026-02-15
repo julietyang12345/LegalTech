@@ -4,7 +4,7 @@ import { TrainingConfig } from './types';
 export const projectConfig: TrainingConfig = {
   goalType: GoalType.PROJECT,
   name: 'Project Lab',
-  subtitle: 'Turn real work problems into a learning engine.',
+  subtitle: 'Turn real work problems into a learning project.',
   stepFlow: ['prePrompt', 'task1', 'bossMilestone', 'reflection'],
   stepLabels: {
     prePrompt: "Today's Focus",
@@ -50,12 +50,12 @@ prePrompt:
 - What the user will build/fix/optimize today
 - Expected deliverable
 
-task1 (sections format):
-- Generate exactly 3 quiz questions — mix of theory and application
-- Q1: Theory question testing understanding of today's concept (e.g., "What does X do?", "Which pattern solves Y?")
-- Q2-Q3: Application questions tied to today's build task (e.g., "Which approach would you use to implement this feature?", "What's wrong with this code?")
-- NO caseStudy — keep questions direct and focused
-- All questions must relate to what the user is about to build
+task1 (warm-up quiz):
+- Generate exactly 1 quiz section with 5 questions — mix of theory and application — NO other section types
+- Q1: Theory question testing understanding of today's concept
+- Q2-Q4: Application questions tied to today's build task at the user's current level
+- LAST QUESTION (stretch): One question ABOVE the user's current skill level — a harder scenario that pushes them to think deeper. For beginners: intermediate-level question. For intermediate: advanced-level question. For advanced: expert/edge-case question.
+- NO secondary sections (outputPrediction, fillBlank, etc.)
 
 bossMilestone:
 - Guide the user to produce a WORKING product step by step

@@ -326,24 +326,35 @@ Examples:
   }
 
   private buildProjectModeSystemPrompt(): string {
-    return `Generate 4-6 concrete PROJECT IDEAS the user can build to practice the skill they described.
+    return `Generate 4-6 concrete PROJECT IDEAS based on the user's input.
+
+INPUT DETECTION — the user may describe:
+A) A SKILL TO PRACTICE (e.g., "I want to practice React", "get better at backend dev")
+   → Generate projects that exercise different aspects of that skill
+B) A REAL WORK PROBLEM (e.g., "I keep getting race conditions", "my API error handling is messy", "I struggle with database queries")
+   → Generate projects that directly address and solve the problem through building
+   → Each project should teach the underlying concept the user is struggling with
+   → The interpretedGoal should acknowledge the problem: "You're struggling with [X] — here are projects to master it"
+C) A SPECIFIC PROJECT IDEA (e.g., "build a budgeting app")
+   → Generate variations of that project targeting different skill levels and approaches
 
 Each direction is a DIFFERENT PROJECT — not different approaches to the same project, not learning subtopics.
 Each project targets different aspects of the skill at varying difficulty levels.
 
 PROJECT DIRECTION REQUIREMENTS:
 1. CONCRETE: Each title is a buildable project (e.g., "Build a Weather Dashboard", "Build a Real-time Chat App")
-2. SKILL-TARGETED: Each project exercises different sub-skills of what the user wants to practice
+2. SKILL-TARGETED: Each project exercises different sub-skills of what the user wants to practice or fix
 3. PROGRESSIVE DIFFICULTY: Mix easy (30-60 min), medium (60-120 min), and ambitious (120+ min) projects
 4. PRACTICAL: Projects should be portfolio-worthy, useful, or fun — not toy examples
 5. PRESERVE CONTEXT: Keep the user's specific technology/topic in project titles
    Example: User says "practice React" → projects should use React specifically
+6. PROBLEM-SOLVING: For work problems, each project should directly help the user overcome their specific struggle
 
 DIRECTION FORMAT:
 - title: Project name (e.g., "Build a Task Manager App") — max 8 words
 - outcome: What you'll build AND what skills it covers. MUST reference the project itself.
-  GOOD: "You'll build a fully functional task manager with CRUD operations, practicing state management, forms, and component composition"
-  BAD: "You'll practice state management, CRUD operations, and component composition" (missing what they're building)
+  For skills: "You'll build a fully functional task manager with CRUD operations, practicing state management, forms, and component composition"
+  For problems: "You'll build a concurrent data pipeline that forces you to handle race conditions, deadlocks, and async coordination — the exact patterns you need at work"
 - keywords: Specific skills exercised (e.g., ["useState", "forms", "API calls", "responsive layout"])
 - estimatedMinutes: Realistic build time (30, 60, 90, 120, or 180)
 - skillType: CODE, AI_AGENT, DESIGN, KNOWLEDGE, or PHYSICAL
@@ -361,7 +372,7 @@ LANGUAGE CONFIG (for CODE/AI_AGENT skillTypes only):
 
 Return JSON:
 {
-  "interpretedGoal": "Summary of what user wants to practice",
+  "interpretedGoal": "Summary of what user wants to practice or fix",
   "directions": [{
     "title": "Build a [Project Name]",
     "outcome": "You'll build a [what the project produces] while practicing [skill1], [skill2], and [skill3]",
@@ -551,8 +562,12 @@ REFINEMENT CONTEXT (user clarified their intent):`;
       prompt += `
 
 MODE: PROJECT LAB
-Generate 4-6 concrete project ideas the user can build to practice this skill.
-Each project should target different sub-skills and vary in difficulty.
+First detect the input type:
+- If the user describes a SKILL to practice → generate projects exercising that skill
+- If the user describes a REAL WORK PROBLEM or struggle → generate projects that directly address and fix that problem through hands-on building
+- If the user describes a SPECIFIC PROJECT idea → generate variations at different difficulty levels
+
+Generate 4-6 concrete project ideas. Each project should target different sub-skills and vary in difficulty.
 The user's selected project will become their boss project for the entire learning session.`;
     } else if (isAIBuilderMode) {
       prompt += `

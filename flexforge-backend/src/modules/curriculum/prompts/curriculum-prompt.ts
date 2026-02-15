@@ -1822,7 +1822,9 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
     codeWritingEnabled: params.codeWritingEnabled,
     customSections: params.customSections,
   });
-  const sectionTypes = sections.task1.join(' + ');
+  // Training modes use quiz-only for task1 warm-up (3-4 questions)
+  const dayTrainingConfigForSections = params.goalType ? getTrainingConfig(params.goalType) : undefined;
+  const sectionTypes = dayTrainingConfigForSections ? 'quiz' : sections.task1.join(' + ');
 
   // Language learning specific instructions
   const langHasGender = params.isLanguageLearning && params.targetLanguage
@@ -1908,7 +1910,7 @@ ${skillGuidance}${languageInstructions}
 ${dayTrainingOverride ? `\n${dayTrainingOverride}\n` : ''}
 ${levelGuidance.complexityGuidance}
 
-TASK1: Generate ${dayTrainingConfig ? '3' : levelGuidance.quizQuestionCount} questions total. ${dayTrainingConfig ? `${params.goalType === GoalType.AI_BUILDER ? 'Each question presents a real-world use case or practical scenario tied to today\'s AI concept. NO caseStudy. Skip realWorldContext. Keep explanation brief (50-80 words).' : params.goalType === GoalType.PROJECT ? 'Mix of theory and application questions directly tied to today\'s build task. NO caseStudy. Skip realWorldContext. Keep explanation brief (50-80 words).' : `Same structure as curriculum questions (conceptTitle, explanation, realWorldContext, caseStudy).`} 100% quiz section.` : '70-85% in quiz section, 15-30% in secondary section.'}
+TASK1: Generate ${dayTrainingConfig ? '4' : levelGuidance.quizQuestionCount} questions total. ${dayTrainingConfig ? `Generate exactly 1 quiz section with 4 questions. NO secondary sections. ${params.goalType === GoalType.AI_BUILDER ? `Q1-Q3: practical scenarios tied to today's AI concept at the user's ${params.skillLevel} level. LAST QUESTION: one stretch question ABOVE ${params.skillLevel} level (harder scenario, edge case, or production-scale challenge). NO caseStudy. Skip realWorldContext. Keep explanation brief (50-80 words).` : params.goalType === GoalType.PROJECT ? `Q1-Q3: mix of theory and application at the user's ${params.skillLevel} level. LAST QUESTION: one stretch question ABOVE ${params.skillLevel} level (harder scenario requiring deeper understanding). NO caseStudy. Skip realWorldContext. Keep explanation brief (50-80 words).` : `Same structure as curriculum questions (conceptTitle, explanation, realWorldContext, caseStudy).`}` : '70-85% in quiz section, 15-30% in secondary section.'}
 ${personalizationInstructions}${continuityInstructions}`;
 
   // User prompt - CORE content: prePrompt + video + task1 (the main learning activity)
@@ -1953,12 +1955,12 @@ Generate CORE content as JSON with this structure:
 REQUIREMENTS:
 ${videoRequirement}
 - task1: REQUIRED - ${dayTrainingConfig
-    ? `3 quiz questions (conceptTitle, ${params.goalType === GoalType.PROJECT || params.goalType === GoalType.AI_BUILDER ? 'brief explanation 50-80 words, NO realWorldContext, NO caseStudy' : 'explanation, realWorldContext, caseStudy'})`
+    ? `4 quiz questions (conceptTitle, ${params.goalType === GoalType.PROJECT || params.goalType === GoalType.AI_BUILDER ? 'brief explanation 50-80 words, NO realWorldContext, NO caseStudy' : 'explanation, realWorldContext, caseStudy'})`
     : `${levelGuidance.quizQuestionCount} questions total (70-85% quiz, 15-30% secondary section)`}
   - EVERY question must have "conceptTitle" and "explanation" (${dayTrainingConfig && (params.goalType === GoalType.PROJECT || params.goalType === GoalType.AI_BUILDER) ? '50-80 words, brief' : '130-200 words, teaching content'})
   - ${dayTrainingConfig && (params.goalType === GoalType.PROJECT || params.goalType === GoalType.AI_BUILDER) ? 'Skip "realWorldContext" and "caseStudy" — keep questions focused on theory + application for today\'s build task' : 'EVERY question must have "realWorldContext" (1 sentence)'}
   - explanation: ${dayTrainingConfig && (params.goalType === GoalType.PROJECT || params.goalType === GoalType.AI_BUILDER) ? 'Keep it concise — 1 paragraph with the key insight' : 'Split into 2-3 paragraphs with \\\\n\\\\n (key insight → details/examples)'}
-  - ${params.goalType === GoalType.AI_BUILDER ? 'All 3 questions should present real-world use cases or practical scenarios (e.g., "A team wants to X. Which approach?"). The use case IS the question.' : params.goalType === GoalType.PROJECT ? 'Q1: theory question (test concept understanding). Q2-Q3: application questions (apply concept to today\'s build task)' : dayTrainingConfig ? 'Include caseStudy on each question' : '4-5 questions should include "caseStudy" for trade-off/decision concepts'}
+  - ${params.goalType === GoalType.AI_BUILDER ? `Q1-Q3: practical scenarios at ${params.skillLevel} level. Q4 (STRETCH): one question ABOVE ${params.skillLevel} — harder scenario, edge case, or production-scale challenge that pushes the user.` : params.goalType === GoalType.PROJECT ? `Q1: theory question (test concept understanding). Q2-Q3: application questions at ${params.skillLevel} level. Q4 (STRETCH): one question ABOVE ${params.skillLevel} — harder scenario requiring deeper understanding.` : dayTrainingConfig ? 'Include caseStudy on each question' : '4-5 questions should include "caseStudy" for trade-off/decision concepts'}
   - Question 1 should be an INTRO/RECAP connecting to previous content
   - matching section: generate 3-4 pairs with "pairs" array (NOT "questions" or "items")
 

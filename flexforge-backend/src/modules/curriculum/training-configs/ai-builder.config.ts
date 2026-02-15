@@ -50,12 +50,12 @@ prePrompt:
 - Expected output/artifact description
 - "Ship criteria" — minimum viable version
 
-task1 (sections format):
-- Generate exactly 3 quiz questions — all tied to real-world use cases of today's AI concept
-- Each question should present a practical scenario or use case, then test understanding
-- e.g., "A startup wants to summarize customer emails. Which approach would you use?", "Your chatbot keeps hallucinating product prices. What's the most likely cause?"
-- NO caseStudy field — the real-world context IS the question itself
-- Every question must connect to the specific AI tool/concept the user will build with today
+task1 (warm-up quiz):
+- Generate exactly 1 quiz section with 4 questions — NO other section types
+- Q1-Q3: Practical scenario or real-world use case of today's AI concept at the user's current level
+  e.g., "A startup wants to summarize customer emails. Which approach would you use?"
+- LAST QUESTION (stretch): One question ABOVE the user's current skill level — a harder AI architecture, scaling, or edge-case scenario. For beginners: intermediate-level question. For intermediate: advanced-level question. For advanced: expert/production-scale question.
+- NO caseStudy, NO secondary sections (outputPrediction, fillBlank, etc.)
 
 bossMilestone:
 - Guide the user to produce a WORKING AI product step by step

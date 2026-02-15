@@ -787,6 +787,9 @@ export const useSessionStore = create<SessionState>()(
                 const { coreContent, variantId, fromCache, task1Concepts } = data;
 
                 // Final state update with complete content (authoritative)
+                // Preserve the incrementally-streamed task1 instead of overwriting
+                // with the batch version from coreContent. This prevents a visual
+                // reset where streamed questions get replaced and re-rendered.
                 set((state) => {
                   if (!state.activeSession) return state;
 
@@ -794,9 +797,14 @@ export const useSessionStore = create<SessionState>()(
                     if (d.day !== dayNumber) return d;
                     const newStatus = (d.status === DayStatus.COMPLETED || d.status === DayStatus.SKIPPED)
                       ? d.status : DayStatus.IN_PROGRESS;
+                    // If streaming already delivered task1 progressively, keep it
+                    // to avoid overwriting the incrementally-built state
+                    const existingTask1 = streamDelivered ? d.task1 : undefined;
+                    const { task1: _batchTask1, ...coreContentWithoutTask1 } = coreContent;
                     return {
                       ...d,
-                      ...coreContent,
+                      ...coreContentWithoutTask1,
+                      ...(existingTask1 ? { task1: existingTask1 } : { task1: coreContent.task1 }),
                       coreLoaded: true,
                       coreContent,
                       detailsLoaded: false,
@@ -852,6 +860,38 @@ export const useSessionStore = create<SessionState>()(
               case 'error': {
                 hasError = true;
                 reject(new Error(data.error || 'Stream error'));
+                break;
+              }
+              case 'task1': {
+                // Complete task1 object — update store as authoritative task1
+                // This arrives before 'complete' and ensures task1 is set
+                // even if individual question events were missed or batched
+                streamDelivered = true;
+                set((state) => {
+                  if (!state.activeSession || !state.currentDay) return state;
+                  const currentTask1 = (state.currentDay as any).task1;
+                  // If streaming already built the task1 progressively, keep it
+                  // Only use this event's data if task1 hasn't been set yet
+                  if (currentTask1?.sections?.length > 0) return state;
+
+                  const updatedTask1 = {
+                    id: `day${dayNumber}-task1`,
+                    format: 'sections' as const,
+                    ...data,
+                  };
+                  const updatedDays = state.activeSession.curriculum.days.map((d) =>
+                    d.day === dayNumber ? { ...d, task1: updatedTask1 } : d
+                  );
+                  const newCurrentDayObj = updatedDays.find((d) => d.day === dayNumber)!;
+                  return {
+                    activeSession: {
+                      ...state.activeSession,
+                      curriculum: { ...state.activeSession.curriculum, days: updatedDays },
+                    },
+                    currentDay: { ...newCurrentDayObj },
+                    isCoreLoaded: true,
+                  };
+                });
                 break;
               }
               // Ignore other events (foundationCard, etc.) - handled in complete

@@ -4,7 +4,7 @@ const TRAINING_CONFIGS: Record<string, TrainingConfig> = {
   [GoalType.PROJECT]: {
     goalType: GoalType.PROJECT,
     name: 'Project Lab',
-    subtitle: 'Turn real work problems into a learning engine.',
+    subtitle: 'Turn real work problems into a learning project.',
     stepFlow: ['prePrompt', 'task1', 'bossMilestone', 'reflection'],
     stepLabels: {
       prePrompt: "Today's Focus",
