@@ -97,23 +97,23 @@ function LandingNav() {
 const HERO_TOPICS = [
   {
     query: 'How to make trade-off decisions as a tech lead',
+    mode: 'Learn & Master',
     days: ['Mental models for trade-offs', 'Stakeholder alignment', 'Deciding under uncertainty'],
   },
   {
-    query: 'Fun activities that don\'t bore me while playing with my toddler',
-    days: ['Sensory play that adults enjoy too', 'Storytelling games', 'Outdoor micro-adventures'],
+    query: 'Build a budget tracker app from scratch',
+    mode: 'Project Lab',
+    days: ['Set up the project and data model', 'Build the transaction input UI', 'Add charts and spending insights'],
   },
   {
-    query: 'Switching from marketing to product management',
-    days: ['Transferable skills audit', 'PM frameworks crash course', 'Building your first PRD'],
+    query: 'Build an email summarizer with the Claude API',
+    mode: 'AI Builder',
+    days: ['Connect to the Claude API', 'Parse and chunk email threads', 'Generate and display summaries'],
   },
   {
-    query: 'How to validate AI-generated code before shipping',
-    days: ['Common AI failure patterns', 'Testing strategies for AI output', 'Building a review checklist'],
-  },
-  {
-    query: 'Becoming more detail-oriented at work',
-    days: ['Attention training exercises', 'Checklists that actually work', 'Review habits that catch mistakes'],
+    query: 'Learn Japanese for my trip to Tokyo',
+    mode: 'Speak & Write',
+    days: ['Essential greetings and phrases', 'Ordering food and asking for directions', 'Reading signs and menus'],
   },
 ];
 
@@ -139,9 +139,23 @@ function TopicCycler() {
       <div className="bg-surface rounded-2xl shadow-xl border border-border overflow-hidden">
         {/* Input area */}
         <div className="p-5 sm:p-6 border-b border-border-secondary">
-          <p className="text-xs font-medium text-content-tertiary uppercase tracking-wider mb-2">
-            I want to learn...
-          </p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-medium text-content-tertiary uppercase tracking-wider">
+              I want to learn...
+            </p>
+            <AnimatePresence mode="wait">
+              <motion.span
+                key={index}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ duration: 0.3 }}
+                className="text-xs font-medium text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full"
+              >
+                {topic.mode}
+              </motion.span>
+            </AnimatePresence>
+          </div>
           <div className="relative h-7 overflow-hidden">
             <AnimatePresence mode="wait">
               <motion.p
@@ -161,7 +175,7 @@ function TopicCycler() {
         {/* Generated curriculum preview */}
         <div className="p-5 sm:p-6 bg-surface-secondary/50">
           <p className="text-xs font-medium text-focus-600 uppercase tracking-wider mb-3">
-            Your 7-day curriculum
+            Your learning path
           </p>
           <AnimatePresence mode="wait">
             <motion.div
@@ -235,7 +249,7 @@ function HeroSection() {
           transition={{ delay: 0.1 }}
           className="text-4xl sm:text-5xl lg:text-6xl font-bold text-content mb-6 leading-tight"
         >
-          Learn what{' '}
+          Learn by doing,{' '}
           <span
             className="text-transparent bg-clip-text animate-shimmer"
             style={{
@@ -243,7 +257,7 @@ function HeroSection() {
               backgroundSize: '200% auto',
             }}
           >
-            no course covers
+            not just reading
           </span>
         </motion.h1>
 
@@ -254,8 +268,8 @@ function HeroSection() {
           transition={{ delay: 0.2 }}
           className="text-xl text-content-secondary mb-8 max-w-2xl mx-auto"
         >
-          Niche skills, messy real-world problems, career pivots — describe what you need to learn and
-          get a structured curriculum that turns knowledge into actual skill.
+          Learn a skill, build a project, create with AI, or pick up a language —
+          hands-on sessions that turn knowledge into something you can actually do.
         </motion.p>
 
         {/* CTA */}
@@ -361,10 +375,10 @@ function ChatSimulation() {
 
 function CurriculumSimulation() {
   const items = [
-    { icon: '🎯', label: 'Day 1: What is a system?', type: 'Concept cards + quiz' },
-    { icon: '🔗', label: 'Day 2: Feedback loops', type: 'Video + exercise' },
-    { icon: '⚖️', label: 'Day 3: Trade-off mapping', type: 'Build your first map' },
-    { icon: '🧪', label: 'Day 4: Apply to a real case', type: 'Mini-project' },
+    { icon: '📚', label: 'Learn: Systems thinking basics', type: 'Concept cards + quiz' },
+    { icon: '🛠️', label: 'Build: Budget tracker app', type: 'Hands-on project step' },
+    { icon: '🤖', label: 'Create: Email summarizer AI', type: 'Code with Claude API' },
+    { icon: '🗣️', label: 'Speak: Japanese greetings', type: 'Practice conversation' },
   ];
 
   return (
@@ -424,10 +438,10 @@ function CurriculumSimulation() {
 // Features section — AI vs FlexForge comparison
 function FeaturesSection() {
   const comparison = [
-    { ai: 'Gives you a wall of text', ff: 'Breaks it into daily bite-sized sessions' },
+    { ai: 'Gives you a wall of text', ff: 'Breaks it into daily hands-on sessions' },
     { ai: 'Answers what you ask', ff: 'Teaches what you don\'t know to ask' },
-    { ai: 'No structure or progression', ff: 'Day-by-day curriculum that builds on itself' },
-    { ai: 'You read and forget', ff: 'Quizzes, exercises, and projects that make it stick' },
+    { ai: 'No structure or progression', ff: 'Courses, projects, AI apps, or language practice' },
+    { ai: 'You read and forget', ff: 'You build, practice, and actually remember' },
     { ai: 'Starts from scratch every time', ff: 'Remembers your progress and adapts' },
   ];
 
@@ -526,7 +540,7 @@ function FeaturesSection() {
 
 // Step illustrations
 function DescribeIllustration() {
-  const texts = ['Learn systems thinking for PMs', 'Debug production issues faster', 'Teach my kid to read'];
+  const texts = ['Master systems thinking', 'Build a habit tracker app', 'Create an AI writing tool', 'Learn Spanish for travel'];
   const [idx, setIdx] = useState(0);
 
   useEffect(() => {
@@ -687,8 +701,8 @@ function HowItWorksSection() {
   const steps = [
     {
       number: '01',
-      title: 'Describe your goal',
-      description: 'Tell us what you want to learn. We figure out the right direction, depth, and style.',
+      title: 'Pick your mode',
+      description: 'Master a skill, build a project, create an AI app, or learn a language — choose what fits your goal.',
       illustration: DescribeIllustration,
       accent: 'from-brand-500 to-brand-600',
     },
@@ -702,7 +716,7 @@ function HowItWorksSection() {
     {
       number: '03',
       title: 'Build as you go',
-      description: 'Daily micro-steps add up to a real project. You don\'t just learn — you make something.',
+      description: 'Write real code, practice conversations, or ship a project — you learn by doing, not just reading.',
       illustration: BuildIllustration,
       accent: 'from-purple-500 to-pink-500',
     },
@@ -886,10 +900,10 @@ function CTASection() {
           className="bg-gradient-to-br from-brand-500 to-brand-600 rounded-3xl p-12 text-white"
         >
           <h2 className="text-3xl font-bold mb-4">
-            Stop searching. Start learning.
+            Stop watching. Start building.
           </h2>
           <p className="text-xl text-white/80 mb-8">
-            Describe what you need to learn. We'll handle the rest.
+            Pick a mode, describe your goal, and start learning by doing — free.
           </p>
           <Button
             size="xl"

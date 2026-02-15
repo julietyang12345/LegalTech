@@ -349,7 +349,7 @@ function SignupWallStep() {
         </h2>
         <p className="text-content-secondary mb-6">
           A full day includes videos, more quiz challenges, coding exercises, and
-          a project step. Sign up to get your own personalized 7-day curriculum
+          hands-on practice. Sign up to get your own personalized learning path
           — free.
         </p>
 
@@ -359,10 +359,10 @@ function SignupWallStep() {
           </p>
           <ul className="space-y-2">
             {[
-              'AI builds your personalized 7-day curriculum',
-              'Daily sessions with videos, quizzes & exercises',
-              'Build a real project as you learn',
-              'On-demand AI tutor that knows your progress',
+              'Choose your mode: courses, projects, AI building, or language',
+              'Daily hands-on sessions with quizzes & real practice',
+              'Build working projects as you learn',
+              'AI tutor that knows your progress',
             ].map((item, i) => (
               <li
                 key={i}
