@@ -179,6 +179,7 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
             onChange={(e) => setGoal(e.target.value)}
             placeholder="I want to..."
             className="w-full px-4 py-4 text-lg border border-border rounded-xl
+                       bg-surface text-content
                        focus:ring-2 focus:ring-brand-500 focus:border-brand-500
                        placeholder:text-content-tertiary resize-none"
             rows={3}

@@ -227,8 +227,8 @@ export function RegisterPage() {
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Your name"
                     required
-                    className="w-full pl-10 pr-4 py-2.5 border border-border rounded-lg 
-                             focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
+                    className="w-full pl-10 pr-4 py-2.5 bg-surface text-content border border-border rounded-lg
+                             placeholder:text-content-tertiary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                              transition-colors"
                   />
                 </div>
@@ -246,8 +246,8 @@ export function RegisterPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
                     required
-                    className="w-full pl-10 pr-4 py-2.5 border border-border rounded-lg 
-                             focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
+                    className="w-full pl-10 pr-4 py-2.5 bg-surface text-content border border-border rounded-lg
+                             placeholder:text-content-tertiary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                              transition-colors"
                   />
                 </div>
@@ -266,8 +266,8 @@ export function RegisterPage() {
                     placeholder="Create a password"
                     required
                     minLength={8}
-                    className="w-full pl-10 pr-4 py-2.5 border border-border rounded-lg 
-                             focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
+                    className="w-full pl-10 pr-4 py-2.5 bg-surface text-content border border-border rounded-lg
+                             placeholder:text-content-tertiary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                              transition-colors"
                   />
                 </div>

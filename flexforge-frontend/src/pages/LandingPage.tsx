@@ -1000,8 +1000,8 @@ function ContactSection() {
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Your name"
                   required
-                  className="w-full px-4 py-2.5 border border-border rounded-lg
-                           focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
+                  className="w-full px-4 py-2.5 bg-surface text-content border border-border rounded-lg
+                           placeholder:text-content-tertiary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                            transition-colors"
                 />
               </div>
@@ -1015,8 +1015,8 @@ function ContactSection() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
                   required
-                  className="w-full px-4 py-2.5 border border-border rounded-lg
-                           focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
+                  className="w-full px-4 py-2.5 bg-surface text-content border border-border rounded-lg
+                           placeholder:text-content-tertiary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                            transition-colors"
                 />
               </div>
@@ -1032,8 +1032,8 @@ function ContactSection() {
                 placeholder="What's on your mind?"
                 required
                 rows={5}
-                className="w-full px-4 py-2.5 border border-border rounded-lg
-                         focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
+                className="w-full px-4 py-2.5 bg-surface text-content border border-border rounded-lg
+                         placeholder:text-content-tertiary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                          transition-colors resize-none"
               />
             </div>

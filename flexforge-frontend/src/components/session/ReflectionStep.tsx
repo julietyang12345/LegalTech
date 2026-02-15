@@ -505,8 +505,8 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
               value={foggyDetails}
               onChange={(e) => setFoggyDetails(e.target.value)}
               placeholder="Any specific part? (optional)"
-              className="w-full px-3 py-2 border border-border rounded-lg text-sm
-                        focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+              className="w-full px-3 py-2 bg-surface text-content border border-border rounded-lg text-sm
+                        placeholder:text-content-tertiary focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
             />
           </AnimatedReveal>
         </div>
@@ -710,8 +710,8 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
               value={warmupCustom}
               onChange={(e) => setWarmupCustom(e.target.value)}
               placeholder="Customize your plan (optional)"
-              className="w-full px-3 py-2 border border-border rounded-lg text-sm
-                        focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+              className="w-full px-3 py-2 bg-surface text-content border border-border rounded-lg text-sm
+                        placeholder:text-content-tertiary focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
             />
           </AnimatedReveal>
         </div>

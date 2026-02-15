@@ -187,8 +187,8 @@ export function ResetPasswordPage() {
                         placeholder="••••••••"
                         required
                         autoFocus
-                        className="w-full pl-10 pr-12 py-2.5 border border-border rounded-lg
-                                 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
+                        className="w-full pl-10 pr-12 py-2.5 bg-surface text-content border border-border rounded-lg
+                                 placeholder:text-content-tertiary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                                  transition-colors"
                       />
                       <button
@@ -213,8 +213,8 @@ export function ResetPasswordPage() {
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         placeholder="••••••••"
                         required
-                        className="w-full pl-10 pr-4 py-2.5 border border-border rounded-lg
-                                 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
+                        className="w-full pl-10 pr-4 py-2.5 bg-surface text-content border border-border rounded-lg
+                                 placeholder:text-content-tertiary focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                                  transition-colors"
                       />
                     </div>

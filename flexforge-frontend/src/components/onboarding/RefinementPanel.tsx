@@ -93,8 +93,8 @@ export function RefinementPanel({
             value={userFeedback}
             onChange={(e) => setUserFeedback(e.target.value)}
             placeholder="What specifically are you looking for? e.g., 'I want to use Python, not no-code' or 'Focus on the automation part'"
-            className="w-full p-3 rounded-lg border border-border text-base resize-none
-                     focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+            className="w-full p-3 rounded-lg border border-border bg-surface text-content text-base resize-none
+                     placeholder:text-content-tertiary focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
             rows={3}
             autoFocus
           />

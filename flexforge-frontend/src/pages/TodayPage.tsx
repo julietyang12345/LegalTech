@@ -557,10 +557,10 @@ export function TodayPage() {
         transition={{ delay: 0.2 }}
       >
         <Card className="bg-surface border-2 border-brand-100">
-          <div className="p-8 text-center">
+          <div className="p-8 text-center relative">
             {trainingMode && (
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-surface-tertiary text-content-secondary
-                            rounded-full text-xs font-medium mb-3">
+              <div className="absolute top-4 right-4 inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface-tertiary text-content-secondary
+                            rounded-full text-xs font-medium">
                 {trainingConfig.name}
               </div>
             )}
