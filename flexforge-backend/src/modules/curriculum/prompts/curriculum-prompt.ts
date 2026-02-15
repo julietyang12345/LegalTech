@@ -13,8 +13,7 @@ import { getTrainingConfig } from '../training-configs';
 // Output type for content generation (matches OutputType in learner-prefs.interface.ts)
 type OutputType =
   | 'learn_and_apply'
-  | 'ship_project'
-  | 'get_hired';
+  | 'ship_project';
 
 interface LearnerPrefsForPrompt {
   selectedDirection?: string; // The direction they picked (more specific than skillName)
@@ -307,19 +306,6 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
 - End-to-end focus, real-world patterns
 - Include deployment, testing, best practices
 - Tasks: Project milestones, production considerations`,
-      get_hired: `OUTPUT GOAL: GET HIRED - JOB & INTERVIEW READY
-- Use real-world professional examples, NOT toy "Hello World" projects
-- Emphasize production code quality: error handling, logging, type safety, edge cases
-- Include code review perspective: "what would a senior engineer flag here?"
-- Teach patterns used in real teams: PR workflow, naming conventions, documentation
-- Portfolio-worthy examples: problems that demonstrate competence to hiring managers
-- Mention WHY each pattern matters in production (scalability, maintainability, debugging)
-- Include interview-style questions: "explain WHY you'd choose X over Y"
-- Teach problem-solving approach, not just syntax (break down → plan → implement → verify)
-- Cover common interview topics: trade-offs, time/space complexity, design decisions
-- Include "talking points" — how to explain concepts clearly to an interviewer
-- Emphasize edge cases and error handling (interviewers test these)
-- Tasks: Production-quality features, interview-style problems, "explain your approach"`,
     };
     parts.push(outputGuidance[prefs.outputType] || '');
   }

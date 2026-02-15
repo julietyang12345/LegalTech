@@ -56,12 +56,10 @@ export interface LearningDirection {
  *
  * - learn_and_apply: Learn deeply AND apply practically. Understand the "why" + real-world usage. Default for curriculum mode.
  * - ship_project: Ship something real. End-to-end, deployment, best practices.
- * - get_hired: Job & interview ready. Production code quality, portfolio-worthy, interview prep, real-world patterns.
  */
 export type OutputType =
   | 'learn_and_apply'
-  | 'ship_project'
-  | 'get_hired';
+  | 'ship_project';
 
 /**
  * Refinement context from Step 3b of onboarding.
@@ -143,6 +141,7 @@ export const DEFAULT_LEARNER_PREFS: Partial<LearnerPrefs> = {
 export interface GenerateDirectionsDto {
   goal: string; // User's free-text goal
   refinement?: RefinementContext; // Optional refinement context
+  goalType?: string; // Mode selected by user: curriculum, project, ai_builder, language, interview
 }
 
 /**

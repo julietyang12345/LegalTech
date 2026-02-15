@@ -1850,12 +1850,10 @@ export interface LearningDirection {
  *
  * - learn_and_apply: Learn deeply AND apply practically. Default for curriculum/language modes.
  * - ship_project: Ship something real. End-to-end, deployment, best practices.
- * - get_hired: Job & interview ready. Production code quality, portfolio-worthy, interview prep, real-world patterns.
  */
 export type OutputType =
   | 'learn_and_apply'
-  | 'ship_project'
-  | 'get_hired';
+  | 'ship_project';
 
 // Refinement context (from Step 3b if user selects "Not quite")
 export interface RefinementContext {

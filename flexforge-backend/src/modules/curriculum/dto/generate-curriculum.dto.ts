@@ -49,8 +49,7 @@ export class GenerateCurriculumDto {
   @IsString()
   outputType?:
     | 'learn_and_apply'
-    | 'ship_project'
-    | 'get_hired';
+    | 'ship_project';
 
   // Feeling-based inputs (from onboarding)
   @IsOptional()

@@ -43,7 +43,7 @@ export default function OnboardingPage() {
   const [step, setStep] = useState<OnboardingStep>('goal_input');
 
   // Data collected through the flow
-  const [goalType, setGoalType] = useState<GoalType>(GoalType.CURRICULUM);
+  const [goalType, setGoalType] = useState<GoalType | null>(null);
   const [goal, setGoal] = useState('');
   const [directions, setDirections] = useState<LearningDirection[]>([]);
   const [interpretedGoal, setInterpretedGoal] = useState('');
@@ -64,7 +64,7 @@ export default function OnboardingPage() {
     analyticsService.onboardingGoalSubmitted(goalText);
 
     try {
-      const response = await onboardingService.generateDirections(goalText);
+      const response = await onboardingService.generateDirections(goalText, undefined, goalType ?? GoalType.CURRICULUM);
       setDirections(response.directions);
       setInterpretedGoal(response.interpretedGoal);
       setStep('directions');
@@ -73,7 +73,7 @@ export default function OnboardingPage() {
       setError(err.response?.data?.message || 'Failed to generate directions. Please try again.');
       setStep('goal_input');
     }
-  }, []);
+  }, [goalType]);
 
   // Step 2: Select direction → go to depth step (language is inline on card)
   const handleDirectionSelect = useCallback((direction: LearningDirection, language?: string) => {
@@ -100,7 +100,7 @@ export default function OnboardingPage() {
     setStep('generating');
 
     try {
-      const response = await onboardingService.generateDirections(goal, refinement);
+      const response = await onboardingService.generateDirections(goal, refinement, goalType ?? GoalType.CURRICULUM);
       setDirections(response.directions);
       setInterpretedGoal(response.interpretedGoal);
       setStep('directions');
@@ -109,7 +109,7 @@ export default function OnboardingPage() {
       setError(err.response?.data?.message || 'Failed to regenerate directions. Please try again.');
       setStep('refinement');
     }
-  }, [goal]);
+  }, [goal, goalType]);
 
   // Step 5: Select feelings → complete onboarding
   const handleFeelingSelect = useCallback(async (
@@ -155,7 +155,7 @@ export default function OnboardingPage() {
         // Advanced mode: code writing exercises
         codeWritingEnabled,
         // Training mode goal type
-        goalType,
+        goalType: goalType ?? GoalType.CURRICULUM,
         // Analytics: time spent in onboarding
         durationSeconds,
       };
@@ -236,13 +236,29 @@ export default function OnboardingPage() {
             {step === 'generating' && (
               <StepWrapper key="generating">
                 <LoadingState
-                  title="Finding your learning path..."
-                  subtitle="Flexi is analyzing your goal"
-                  steps={[
-                    'Understanding your goal',
-                    'Identifying key concepts',
-                    'Creating learning directions',
-                  ]}
+                  title={
+                    goalType === GoalType.PROJECT || goalType === GoalType.AI_BUILDER
+                      ? 'Finding project ideas...'
+                      : 'Finding your learning path...'
+                  }
+                  subtitle={
+                    goalType === GoalType.PROJECT || goalType === GoalType.AI_BUILDER
+                      ? 'Flexi is designing projects for you'
+                      : 'Flexi is analyzing your goal'
+                  }
+                  steps={
+                    goalType === GoalType.PROJECT || goalType === GoalType.AI_BUILDER
+                      ? [
+                          'Understanding your goal',
+                          'Designing project ideas',
+                          'Matching skills to projects',
+                        ]
+                      : [
+                          'Understanding your goal',
+                          'Identifying key concepts',
+                          'Creating learning directions',
+                        ]
+                  }
                 />
               </StepWrapper>
             )}
@@ -254,6 +270,7 @@ export default function OnboardingPage() {
                   interpretedGoal={interpretedGoal}
                   onSelect={handleDirectionSelect}
                   onRefine={() => setStep('refinement')}
+                  goalType={goalType ?? undefined}
                 />
               </StepWrapper>
             )}
@@ -273,7 +290,7 @@ export default function OnboardingPage() {
               <StepWrapper key="depth">
                 <FeelingStep
                   selectedDirection={selectedDirection.title}
-                  goalType={goalType}
+                  goalType={goalType ?? undefined}
                   onSelect={handleFeelingSelect}
                 />
               </StepWrapper>

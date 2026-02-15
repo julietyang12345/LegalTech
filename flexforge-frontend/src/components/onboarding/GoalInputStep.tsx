@@ -20,7 +20,7 @@ interface GoalInputStepProps {
   onSubmit: (goal: string) => void;
   isLoading?: boolean;
   initialValue?: string;
-  goalType: GoalType;
+  goalType: GoalType | null;
   onGoalTypeChange: (goalType: GoalType) => void;
 }
 
@@ -61,9 +61,16 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
   }, []);
 
   const hasPreviousSessions = sessions.length > 0;
-  const selectedConfig = getTrainingConfig(goalType);
+  const selectedConfig = goalType ? getTrainingConfig(goalType) : null;
 
-  const modePrompts = {
+  const defaultPrompts = {
+    heading: 'What do you want to learn?',
+    subtitle: 'Pick a mode above, then describe your goal.',
+    placeholder: 'First, choose your end goal above...',
+    button: 'Continue',
+  };
+
+  const modePrompts: Partial<Record<GoalType, typeof defaultPrompts>> = {
     [GoalType.CURRICULUM]: {
       heading: 'What do you want to learn or master?',
       subtitle: 'A topic, skill, or concept — whether you\'re starting fresh or leveling up.',
@@ -71,15 +78,15 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
       button: 'Find my learning path',
     },
     [GoalType.PROJECT]: {
-      heading: 'What project do you want to practice or build?',
-      subtitle: 'Describe the project or problem. We\'ll break it into guided build steps you can practice.',
-      placeholder: 'e.g. A budgeting app, a portfolio website, an automation script...',
-      button: 'Plan my project',
+      heading: 'What do you want to build, learn, or become?',
+      subtitle: 'A specific project, a skill you want to sharpen, or a role you\'re growing into — we\'ll create the right path.',
+      placeholder: 'e.g. Build a budgeting app, get better at backend dev, become a full-stack developer...',
+      button: 'Plan my path',
     },
     [GoalType.AI_BUILDER]: {
-      heading: 'What do you want to practice building with AI?',
-      subtitle: 'Describe what you want to create. We\'ll guide you through building it step by step.',
-      placeholder: 'e.g. A chatbot for my website, an AI that summarizes articles...',
+      heading: 'What do you want to build, learn, or explore with AI?',
+      subtitle: 'A specific AI project, a skill like prompt engineering, or a career in AI — we\'ll guide you there.',
+      placeholder: 'e.g. Build a chatbot, learn prompt engineering, become an AI engineer...',
       button: 'Start building',
     },
     [GoalType.LANGUAGE]: {
@@ -90,7 +97,7 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
     },
   };
 
-  const prompts = modePrompts[goalType as keyof typeof modePrompts] || modePrompts[GoalType.CURRICULUM];
+  const prompts = (goalType && modePrompts[goalType]) || defaultPrompts;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,7 +146,7 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
                 : 'border-border hover:border-brand-300'
             )}
           >
-            {(() => {
+            {selectedConfig ? (() => {
               const Icon = MODE_ICONS[selectedConfig.goalType] || BookOpen;
               return (
                 <>
@@ -150,13 +157,17 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
                     <div className="text-sm font-semibold text-content">{selectedConfig.name}</div>
                     <div className="text-xs text-content-tertiary truncate">{selectedConfig.subtitle}</div>
                   </div>
-                  <ChevronDown className={clsx(
-                    'w-4 h-4 text-content-tertiary transition-transform flex-shrink-0',
-                    dropdownOpen && 'rotate-180'
-                  )} />
                 </>
               );
-            })()}
+            })() : (
+              <div className="flex-1 min-w-0">
+                <div className="text-sm text-content-tertiary">Choose your end goal</div>
+              </div>
+            )}
+            <ChevronDown className={clsx(
+              'w-4 h-4 text-content-tertiary transition-transform flex-shrink-0',
+              dropdownOpen && 'rotate-180'
+            )} />
           </button>
 
           {dropdownOpen && (
@@ -220,7 +231,7 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
           size="lg"
           className="w-full"
           isLoading={isLoading}
-          disabled={!goal.trim() || isLoading}
+          disabled={!goal.trim() || !goalType || isLoading}
           rightIcon={<ArrowRight className="w-5 h-5" />}
         >
           {isLoading ? "Finding directions..." : prompts.button}

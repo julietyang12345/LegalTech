@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button } from '../common/Button';
 import { DirectionCard } from './DirectionCard';
 import { ArrowRight, RefreshCw } from 'lucide-react';
+import { GoalType } from '@/types';
 import type { LearningDirection } from '@/types';
 
 interface DirectionsStepProps {
@@ -10,6 +11,7 @@ interface DirectionsStepProps {
   onSelect: (direction: LearningDirection, language?: string) => void;
   onRefine: () => void;
   isLoading?: boolean;
+  goalType?: GoalType;
 }
 
 export function DirectionsStep({
@@ -18,7 +20,9 @@ export function DirectionsStep({
   onSelect,
   onRefine,
   isLoading,
+  goalType,
 }: DirectionsStepProps) {
+  const isProjectBased = goalType === GoalType.PROJECT || goalType === GoalType.AI_BUILDER;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedLanguage, setSelectedLanguage] = useState<string | undefined>();
 
@@ -53,10 +57,12 @@ export function DirectionsStep({
       {/* Question */}
       <div className="text-center mb-6">
         <h2 className="text-xl font-bold text-content mb-2">
-          Is this what you had in mind?
+          {isProjectBased ? 'Pick a project to build' : 'Is this what you had in mind?'}
         </h2>
         <p className="text-content-secondary">
-          Pick the direction that best matches your learning goal
+          {isProjectBased
+            ? 'Each project targets different skills. Pick one to start with.'
+            : 'Pick the direction that best matches your learning goal'}
         </p>
       </div>
 
@@ -85,7 +91,7 @@ export function DirectionsStep({
           onClick={handleContinue}
           rightIcon={<ArrowRight className="w-5 h-5" />}
         >
-          Yes, this is it
+          {isProjectBased ? "Let's build this" : 'Yes, this is it'}
         </Button>
 
         <Button

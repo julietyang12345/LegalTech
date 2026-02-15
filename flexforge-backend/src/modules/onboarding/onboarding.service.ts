@@ -30,11 +30,12 @@ export class OnboardingService {
   async generateDirections(
     goal: string,
     refinement?: RefinementContext,
+    goalType?: string,
   ): Promise<DirectionsResponse> {
-    this.logger.log(`Generating directions for goal: "${goal}"`);
+    this.logger.log(`Generating directions for goal: "${goal}" (mode: ${goalType || 'auto'})`);
 
-    const systemPrompt = this.buildDirectionSystemPrompt();
-    const userPrompt = this.buildDirectionUserPrompt(goal, refinement);
+    const systemPrompt = this.buildDirectionSystemPrompt(goalType);
+    const userPrompt = this.buildDirectionUserPrompt(goal, refinement, goalType);
 
     // Use cross-referencing when user provides feedback AND we have previous directions
     // Otherwise, generate fresh directions with Claude
@@ -307,7 +308,137 @@ Examples:
   // PRIVATE METHODS
   // ============================================
 
-  private buildDirectionSystemPrompt(): string {
+  private buildDirectionSystemPrompt(goalType?: string): string {
+    const isProjectMode = goalType === 'project';
+    const isAIBuilderMode = goalType === 'ai_builder';
+    const isProjectBased = isProjectMode || isAIBuilderMode;
+
+    // Mode-specific instructions
+    if (isProjectMode) {
+      return this.buildProjectModeSystemPrompt();
+    }
+    if (isAIBuilderMode) {
+      return this.buildAIBuilderModeSystemPrompt();
+    }
+
+    // Default: CURRICULUM / LANGUAGE / INTERVIEW modes (original behavior)
+    return this.buildLearningModeSystemPrompt();
+  }
+
+  private buildProjectModeSystemPrompt(): string {
+    return `Generate 4-6 concrete PROJECT IDEAS the user can build to practice the skill they described.
+
+Each direction is a DIFFERENT PROJECT — not different approaches to the same project, not learning subtopics.
+Each project targets different aspects of the skill at varying difficulty levels.
+
+PROJECT DIRECTION REQUIREMENTS:
+1. CONCRETE: Each title is a buildable project (e.g., "Build a Weather Dashboard", "Build a Real-time Chat App")
+2. SKILL-TARGETED: Each project exercises different sub-skills of what the user wants to practice
+3. PROGRESSIVE DIFFICULTY: Mix easy (30-60 min), medium (60-120 min), and ambitious (120+ min) projects
+4. PRACTICAL: Projects should be portfolio-worthy, useful, or fun — not toy examples
+5. PRESERVE CONTEXT: Keep the user's specific technology/topic in project titles
+   Example: User says "practice React" → projects should use React specifically
+
+DIRECTION FORMAT:
+- title: Project name (e.g., "Build a Task Manager App") — max 8 words
+- outcome: What you'll build AND what skills it covers. MUST reference the project itself.
+  GOOD: "You'll build a fully functional task manager with CRUD operations, practicing state management, forms, and component composition"
+  BAD: "You'll practice state management, CRUD operations, and component composition" (missing what they're building)
+- keywords: Specific skills exercised (e.g., ["useState", "forms", "API calls", "responsive layout"])
+- estimatedMinutes: Realistic build time (30, 60, 90, 120, or 180)
+- skillType: CODE, AI_AGENT, DESIGN, KNOWLEDGE, or PHYSICAL
+
+SKILL TYPES: CODE, AI_AGENT, DESIGN, KNOWLEDGE, PHYSICAL
+
+TOOL-SPECIFIC RULES:
+- Majority must be FREE (isFree: true)
+- At most 1-2 paid/freemium (isFree: false) — add paymentNote
+
+LANGUAGE CONFIG (for CODE/AI_AGENT skillTypes only):
+- Include languageConfig with recommended language and reason
+- Only add alternatives that are GENUINELY EQUIVALENT
+- Don't offer languages that would fundamentally change the project
+
+Return JSON:
+{
+  "interpretedGoal": "Summary of what user wants to practice",
+  "directions": [{
+    "title": "Build a [Project Name]",
+    "outcome": "You'll build a [what the project produces] while practicing [skill1], [skill2], and [skill3]",
+    "keywords": ["skill1", "skill2", "skill3"],
+    "skillType": "CODE",
+    "isToolSpecific": false,
+    "isFree": true,
+    "paymentNote": null,
+    "estimatedMinutes": 60,
+    "languageConfig": {
+      "recommended": "TypeScript",
+      "recommendedReason": "Best tooling + instant preview in sandbox",
+      "alternatives": [
+        {"language": "Python", "reason": "Good for data-focused projects", "tradeoffs": "Slower feedback loop"}
+      ]
+    }
+  }]
+}
+
+Note: languageConfig is ONLY for CODE/AI_AGENT skillTypes. Omit for KNOWLEDGE/PHYSICAL/DESIGN.`;
+  }
+
+  private buildAIBuilderModeSystemPrompt(): string {
+    return `Generate 4-6 concrete AI-POWERED APP/TOOL IDEAS the user can build.
+
+Each direction is a DIFFERENT AI PROJECT — a practical tool or app that integrates AI capabilities.
+Projects should range from simple (API call + UI) to complex (multi-step agents, RAG pipelines).
+
+AI PROJECT DIRECTION REQUIREMENTS:
+1. CONCRETE: Each title is a buildable AI product (e.g., "AI Email Summarizer", "Smart Recipe Generator")
+2. AI-FOCUSED: Every project must meaningfully use AI (LLMs, APIs, embeddings, agents, etc.)
+3. PROGRESSIVE COMPLEXITY: Mix simple API wrappers, prompt-driven tools, and multi-step AI systems
+4. SHIPPABLE: Each project should produce something demo-worthy and actually useful
+5. PRESERVE CONTEXT: Keep the user's specific AI interest/technology in project titles
+
+DIRECTION FORMAT:
+- title: AI project name (e.g., "Build an AI Code Reviewer") — max 8 words
+- outcome: What you'll build AND what AI skills it covers. MUST reference the project itself.
+  GOOD: "You'll build an AI-powered code reviewer that analyzes PRs, practicing prompt engineering, API integration, and structured output parsing"
+  BAD: "You'll practice prompt engineering, API integration, and structured output parsing" (missing what they're building)
+- keywords: Specific AI skills exercised (e.g., ["prompt engineering", "OpenAI API", "streaming", "error handling"])
+- estimatedMinutes: Realistic build time (60, 90, 120, or 180)
+- skillType: AI_AGENT or CODE
+
+TOOL-SPECIFIC RULES:
+- Majority must be FREE (isFree: true) — use free-tier AI APIs
+- At most 1-2 paid/freemium (isFree: false) — add paymentNote
+
+LANGUAGE CONFIG:
+- Include languageConfig with recommended language and reason
+- Only add alternatives that are GENUINELY EQUIVALENT
+- Don't offer languages that would fundamentally change the project
+
+Return JSON:
+{
+  "interpretedGoal": "Summary of what user wants to build with AI",
+  "directions": [{
+    "title": "Build an AI [Project Name]",
+    "outcome": "You'll build [what the AI project produces] while practicing [AI skill1], [AI skill2], and [AI skill3]",
+    "keywords": ["prompt engineering", "API integration", "skill3"],
+    "skillType": "AI_AGENT",
+    "isToolSpecific": false,
+    "isFree": true,
+    "paymentNote": null,
+    "estimatedMinutes": 90,
+    "languageConfig": {
+      "recommended": "TypeScript",
+      "recommendedReason": "Best tooling + instant preview in sandbox",
+      "alternatives": [
+        {"language": "Python", "reason": "Rich AI/ML ecosystem", "tradeoffs": "No browser preview"}
+      ]
+    }
+  }]
+}`;
+  }
+
+  private buildLearningModeSystemPrompt(): string {
     return `Generate 4-6 learning directions based on the user's goal.
 
 GOAL TYPE DETECTION:
@@ -379,6 +510,7 @@ Note: languageConfig is ONLY for CODE/AI_AGENT skillTypes. Omit for KNOWLEDGE/PH
   private buildDirectionUserPrompt(
     goal: string,
     refinement?: RefinementContext,
+    goalType?: string,
   ): string {
     let prompt = `USER'S GOAL: "${goal}"`;
 
@@ -411,13 +543,33 @@ REFINEMENT CONTEXT (user clarified their intent):`;
       }
     }
 
-    prompt += `
+    // Mode-specific instructions for the user prompt
+    const isProjectMode = goalType === 'project';
+    const isAIBuilderMode = goalType === 'ai_builder';
+
+    if (isProjectMode) {
+      prompt += `
+
+MODE: PROJECT LAB
+Generate 4-6 concrete project ideas the user can build to practice this skill.
+Each project should target different sub-skills and vary in difficulty.
+The user's selected project will become their boss project for the entire learning session.`;
+    } else if (isAIBuilderMode) {
+      prompt += `
+
+MODE: AI BUILDER
+Generate 4-6 concrete AI-powered app/tool ideas the user can build.
+Each project should use AI differently and vary in complexity.
+The user's selected project will become their boss project for the entire learning session.`;
+    } else {
+      prompt += `
 
 First determine if this is a PROJECT goal or LEARNING goal.
 - For PROJECT goals: generate 4-6 directions that each achieve the COMPLETE project using different approaches
 - For LEARNING goals: generate 4-6 directions that each cover a bounded subtopic (30-90 min)
 
 Include at least one tool-specific option if relevant.`;
+    }
 
     return prompt;
   }

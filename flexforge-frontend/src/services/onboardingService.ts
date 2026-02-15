@@ -12,11 +12,12 @@ export const onboardingService = {
    */
   async generateDirections(
     goal: string,
-    refinement?: RefinementContext
+    refinement?: RefinementContext,
+    goalType?: string
   ): Promise<DirectionsResponse> {
     const { data } = await api.post<DirectionsResponse>(
       '/onboarding/generate-directions',
-      { goal, refinement }
+      { goal, refinement, goalType }
     );
     return data;
   },

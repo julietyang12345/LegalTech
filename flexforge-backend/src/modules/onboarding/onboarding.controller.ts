@@ -57,7 +57,7 @@ export class OnboardingController {
       });
     }
 
-    const result = await this.onboardingService.generateDirections(dto.goal, dto.refinement);
+    const result = await this.onboardingService.generateDirections(dto.goal, dto.refinement, dto.goalType);
 
     // Track directions shown
     await this.analyticsService.onboardingDirectionsShown(
