@@ -8,8 +8,6 @@ import {
   RefinementPanel,
   FeelingStep,
 } from '@/components/onboarding';
-import { LanguageStep } from '@/components/onboarding/LanguageStep';
-import { ModeSelectStep } from '@/components/onboarding/ModeSelectStep';
 import { onboardingService } from '@/services/onboardingService';
 import { analyticsService } from '@/services/analyticsService';
 import { useAuthStore } from '@/stores/authStore';
@@ -23,13 +21,11 @@ import type {
 
 // Onboarding state machine
 type OnboardingStep =
-  | 'mode_select'    // Step 0: Select training mode
-  | 'goal_input'     // Step 1: Free-text goal
+  | 'goal_input'     // Step 1: Free-text goal + mode chips
   | 'generating'     // Loading: AI generating directions
-  | 'directions'     // Step 2-3: Show directions + confirmation
-  | 'refinement'     // Step 3b: Refinement panel (if "Not quite")
-  | 'language'       // Step 4b: Language selection (if CODE/AI_AGENT)
-  | 'depth'          // Step 5: Depth test
+  | 'directions'     // Step 2: Show directions + confirmation
+  | 'refinement'     // Step 2b: Refinement panel (if "Not quite")
+  | 'depth'          // Step 3: Familiarity + session length
   | 'completing';    // Final: Saving preferences
 
 export default function OnboardingPage() {
@@ -43,8 +39,8 @@ export default function OnboardingPage() {
   // Track onboarding start time for duration calculation
   const onboardingStartTime = useRef<number>(Date.now());
 
-  // State machine - start with mode selection
-  const [step, setStep] = useState<OnboardingStep>('mode_select');
+  // State machine - start with goal input (mode chips are inline)
+  const [step, setStep] = useState<OnboardingStep>('goal_input');
 
   // Data collected through the flow
   const [goalType, setGoalType] = useState<GoalType>(GoalType.CURRICULUM);
@@ -57,12 +53,6 @@ export default function OnboardingPage() {
 
   // Error handling
   const [error, setError] = useState<string | null>(null);
-
-  // Step 0: Select training mode → advance to goal input
-  const handleModeSelect = useCallback((selectedGoalType: GoalType) => {
-    setGoalType(selectedGoalType);
-    setStep('goal_input');
-  }, []);
 
   // Step 1: Submit goal → generate directions
   const handleGoalSubmit = useCallback(async (goalText: string) => {
@@ -85,8 +75,8 @@ export default function OnboardingPage() {
     }
   }, []);
 
-  // Step 2-3: Select direction → go to language step (if CODE/AI_AGENT) or depth step
-  const handleDirectionSelect = useCallback((direction: LearningDirection) => {
+  // Step 2: Select direction → go to depth step (language is inline on card)
+  const handleDirectionSelect = useCallback((direction: LearningDirection, language?: string) => {
     setSelectedDirection(direction);
 
     // Track direction selection
@@ -95,22 +85,15 @@ export default function OnboardingPage() {
       direction.skillType || 'unknown'
     );
 
-    // If direction has language config, show language selection step
+    // Set language from inline selection (defaults to recommended)
     if (direction.languageConfig) {
-      setSelectedLanguage(direction.languageConfig.recommended); // Default to recommended
-      setStep('language');
-    } else {
-      setStep('depth');
+      setSelectedLanguage(language || direction.languageConfig.recommended);
     }
-  }, []);
 
-  // Step 4b: Select language → go to depth step
-  const handleLanguageSelect = useCallback((language: string) => {
-    setSelectedLanguage(language);
     setStep('depth');
   }, []);
 
-  // Step 3b: Refinement → regenerate directions
+  // Step 2b: Refinement → regenerate directions
   const handleRefinementSubmit = useCallback(async (refinement: RefinementContext) => {
     setRefinementContext(refinement);
     setError(null);
@@ -194,18 +177,14 @@ export default function OnboardingPage() {
   // Progress indicator
   const getProgress = () => {
     switch (step) {
-      case 'mode_select':
-        return 5;
       case 'goal_input':
-        return 20;
+        return 15;
       case 'generating':
         return 35;
       case 'directions':
-        return 50;
+        return 55;
       case 'refinement':
-        return 50;
-      case 'language':
-        return 65;
+        return 55;
       case 'depth':
         return 85;
       case 'completing':
@@ -243,15 +222,14 @@ export default function OnboardingPage() {
 
           {/* Step content */}
           <AnimatePresence mode="wait">
-            {step === 'mode_select' && (
-              <StepWrapper key="mode_select">
-                <ModeSelectStep onSelect={handleModeSelect} />
-              </StepWrapper>
-            )}
-
             {step === 'goal_input' && (
               <StepWrapper key="goal">
-                <GoalInputStep onSubmit={handleGoalSubmit} initialValue={prefilledSkill} />
+                <GoalInputStep
+                  onSubmit={handleGoalSubmit}
+                  initialValue={prefilledSkill}
+                  goalType={goalType}
+                  onGoalTypeChange={setGoalType}
+                />
               </StepWrapper>
             )}
 
@@ -291,20 +269,11 @@ export default function OnboardingPage() {
               </StepWrapper>
             )}
 
-            {step === 'language' && selectedDirection?.languageConfig && (
-              <StepWrapper key="language">
-                <LanguageStep
-                  selectedDirection={selectedDirection.title}
-                  languageConfig={selectedDirection.languageConfig}
-                  onSelect={handleLanguageSelect}
-                />
-              </StepWrapper>
-            )}
-
             {step === 'depth' && selectedDirection && (
               <StepWrapper key="depth">
                 <FeelingStep
                   selectedDirection={selectedDirection.title}
+                  goalType={goalType}
                   onSelect={handleFeelingSelect}
                 />
               </StepWrapper>

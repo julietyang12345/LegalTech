@@ -7,7 +7,7 @@ import type { LearningDirection } from '@/types';
 interface DirectionsStepProps {
   directions: LearningDirection[];
   interpretedGoal: string;
-  onSelect: (direction: LearningDirection) => void;
+  onSelect: (direction: LearningDirection, language?: string) => void;
   onRefine: () => void;
   isLoading?: boolean;
 }
@@ -20,12 +20,23 @@ export function DirectionsStep({
   isLoading,
 }: DirectionsStepProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState<string | undefined>();
 
   const selectedDirection = directions.find((d) => d.id === selectedId);
 
+  const handleCardClick = (directionId: string) => {
+    setSelectedId(directionId);
+    const dir = directions.find((d) => d.id === directionId);
+    if (dir?.languageConfig) {
+      setSelectedLanguage(selectedLanguage && selectedId === directionId ? selectedLanguage : dir.languageConfig.recommended);
+    } else {
+      setSelectedLanguage(undefined);
+    }
+  };
+
   const handleContinue = () => {
     if (selectedDirection) {
-      onSelect(selectedDirection);
+      onSelect(selectedDirection, selectedLanguage);
     }
   };
 
@@ -56,7 +67,11 @@ export function DirectionsStep({
             key={direction.id}
             direction={direction}
             isSelected={selectedId === direction.id}
-            onClick={() => setSelectedId(direction.id)}
+            onClick={() => handleCardClick(direction.id)}
+            {...(selectedId === direction.id && direction.languageConfig ? {
+              onLanguageChange: setSelectedLanguage,
+              selectedLanguage,
+            } : {})}
           />
         ))}
       </div>

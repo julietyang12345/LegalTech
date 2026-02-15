@@ -12,12 +12,9 @@ import { getTrainingConfig } from '../training-configs';
 // Internal interface - only used within this file
 // Output type for content generation (matches OutputType in learner-prefs.interface.ts)
 type OutputType =
-  | 'apply_skill'
+  | 'learn_and_apply'
   | 'ship_project'
-  | 'understand_concept'
-  | 'get_hired'
-  | 'teach_others'
-  | 'compete';
+  | 'get_hired';
 
 interface LearnerPrefsForPrompt {
   selectedDirection?: string; // The direction they picked (more specific than skillName)
@@ -299,18 +296,17 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
   // Output type affects content style and task format
   if (prefs.outputType) {
     const outputGuidance: Record<OutputType, string> = {
-      apply_skill: `OUTPUT GOAL: USE IT PROFICIENTLY
-- Practical examples, real-world application
-- Focus on "how to use" over deep theory
-- Tasks: "Build this", "Apply this", practical scenarios`,
+      learn_and_apply: `OUTPUT GOAL: LEARN DEEPLY & APPLY PRACTICALLY
+- Explain the "why" behind concepts — mental models, underlying principles
+- Then show practical, real-world application — "how to use it" with concrete examples
+- Balance theory and practice: understand first, then build with it
+- Use analogies and intuitive explanations to make concepts stick
+- Address common misconceptions — help the learner explain it to others
+- Tasks: Conceptual questions + practical scenarios, "explain why, then apply"`,
       ship_project: `OUTPUT GOAL: SHIP SOMETHING REAL
 - End-to-end focus, real-world patterns
 - Include deployment, testing, best practices
 - Tasks: Project milestones, production considerations`,
-      understand_concept: `OUTPUT GOAL: DEEP UNDERSTANDING
-- Explain "why" not just "how"
-- Mental models, underlying principles
-- Tasks: "Explain why", conceptual questions`,
       get_hired: `OUTPUT GOAL: GET HIRED - JOB & INTERVIEW READY
 - Use real-world professional examples, NOT toy "Hello World" projects
 - Emphasize production code quality: error handling, logging, type safety, edge cases
@@ -324,14 +320,6 @@ function getLearnerContextGuidance(prefs?: LearnerPrefsForPrompt): string {
 - Include "talking points" — how to explain concepts clearly to an interviewer
 - Emphasize edge cases and error handling (interviewers test these)
 - Tasks: Production-quality features, interview-style problems, "explain your approach"`,
-      teach_others: `OUTPUT GOAL: TEACH OTHERS
-- Analogies, intuitive explanations
-- Address common misconceptions
-- Tasks: "Explain to a beginner", teaching scenarios`,
-      compete: `OUTPUT GOAL: COMPETE WITH OTHERS
-- Advanced techniques, optimization
-- Competitive strategies, edge over others
-- Tasks: Challenging scenarios, performance focus`,
     };
     parts.push(outputGuidance[prefs.outputType] || '');
   }

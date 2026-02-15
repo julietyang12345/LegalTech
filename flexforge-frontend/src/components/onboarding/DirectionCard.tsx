@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { clsx } from 'clsx';
 import { Clock, Target, Wrench, DollarSign, Code2 } from 'lucide-react';
 import type { LearningDirection } from '@/types';
@@ -6,9 +7,14 @@ interface DirectionCardProps {
   direction: LearningDirection;
   isSelected?: boolean;
   onClick: () => void;
+  onLanguageChange?: (language: string) => void;
+  selectedLanguage?: string;
 }
 
-export function DirectionCard({ direction, isSelected, onClick }: DirectionCardProps) {
+export function DirectionCard({ direction, isSelected, onClick, onLanguageChange, selectedLanguage }: DirectionCardProps) {
+  const [showAlternatives, setShowAlternatives] = useState(false);
+  const displayLanguage = selectedLanguage || direction.languageConfig?.recommended;
+
   return (
     <button
       onClick={onClick}
@@ -70,10 +76,47 @@ export function DirectionCard({ direction, isSelected, onClick }: DirectionCardP
           {/* Language badge (for CODE/AI_AGENT directions) */}
           {direction.languageConfig && (
             <div className="mb-3">
-              <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-slate-100 text-slate-700">
-                <Code2 className="w-3 h-3" />
-                {direction.languageConfig.recommended}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-slate-100 text-slate-700">
+                  <Code2 className="w-3 h-3" />
+                  {displayLanguage}
+                </span>
+                {isSelected && onLanguageChange && direction.languageConfig.alternatives && direction.languageConfig.alternatives.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowAlternatives(!showAlternatives);
+                    }}
+                    className="text-xs text-brand-600 hover:text-brand-700 font-medium"
+                  >
+                    {showAlternatives ? 'Hide' : 'Change'}
+                  </button>
+                )}
+              </div>
+              {showAlternatives && isSelected && direction.languageConfig.alternatives && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {[direction.languageConfig.recommended, ...direction.languageConfig.alternatives.map(a => a.language)].map((lang) => (
+                    <button
+                      key={lang}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onLanguageChange?.(lang);
+                        setShowAlternatives(false);
+                      }}
+                      className={clsx(
+                        'text-xs px-2 py-1 rounded-md border transition-all',
+                        displayLanguage === lang
+                          ? 'bg-brand-50 border-brand-300 text-brand-700'
+                          : 'bg-surface border-border text-content-secondary hover:border-brand-300'
+                      )}
+                    >
+                      {lang}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

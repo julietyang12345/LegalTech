@@ -54,20 +54,14 @@ export interface LearningDirection {
  * Output types - what the user wants to achieve from learning.
  * Universal across all skill types (code, knowledge, physical).
  *
- * - apply_skill: Use the skill proficiently. Practical application, make it work.
+ * - learn_and_apply: Learn deeply AND apply practically. Understand the "why" + real-world usage. Default for curriculum mode.
  * - ship_project: Ship something real. End-to-end, deployment, best practices.
- * - understand_concept: Deep understanding. Theory, mental models, "why" explanations.
  * - get_hired: Job & interview ready. Production code quality, portfolio-worthy, interview prep, real-world patterns.
- * - teach_others: Teach others. Analogies, clear explanations, common misconceptions.
- * - compete: Compete with others. Advanced techniques, competitive strategies.
  */
 export type OutputType =
-  | 'apply_skill'
+  | 'learn_and_apply'
   | 'ship_project'
-  | 'understand_concept'
-  | 'get_hired'
-  | 'teach_others'
-  | 'compete';
+  | 'get_hired';
 
 /**
  * Refinement context from Step 3b of onboarding.
@@ -174,7 +168,7 @@ export interface CompleteOnboardingDto {
   selectedLanguage?: string; // User's chosen language (or recommended default)
 
   // Optional refinement data
-  outputType?: OutputType; // What user wants to achieve (working_code, pass_exam, teach_others, etc.)
+  outputType?: OutputType; // What user wants to achieve
   usageContext?: 'work' | 'personal' | 'interview' | 'school';
 
   // Feeling-based inputs (easier than explicit skill level/time questions)

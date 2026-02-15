@@ -105,5 +105,11 @@ export function isTrainingMode(goalType?: GoalType): boolean {
  * Get all training configs for display (e.g., in onboarding).
  */
 export function getAllModeConfigs(): TrainingConfig[] {
-  return [CURRICULUM_CONFIG, ...Object.values(TRAINING_CONFIGS)];
+  return [
+    CURRICULUM_CONFIG,
+    TRAINING_CONFIGS[GoalType.PROJECT],
+    TRAINING_CONFIGS[GoalType.AI_BUILDER],
+    TRAINING_CONFIGS[GoalType.INTERVIEW],
+    TRAINING_CONFIGS[GoalType.LANGUAGE],
+  ];
 }
