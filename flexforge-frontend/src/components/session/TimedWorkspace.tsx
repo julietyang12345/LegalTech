@@ -115,9 +115,9 @@ export function TimedWorkspace({ day, session, onComplete }: TimedWorkspaceProps
     >
       {/* Timer Ring */}
       {hasStarted && (
-        <div className="flex justify-center mb-6">
-          <div className="relative w-24 h-24">
-            <svg className="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
+        <div className="flex justify-center mb-4 sm:mb-6">
+          <div className="relative w-20 h-20 sm:w-24 sm:h-24">
+            <svg className="w-20 h-20 sm:w-24 sm:h-24 -rotate-90" viewBox="0 0 100 100">
               <circle
                 cx="50" cy="50" r="45"
                 stroke="currentColor"
@@ -162,7 +162,7 @@ export function TimedWorkspace({ day, session, onComplete }: TimedWorkspaceProps
             variant="primary"
             onClick={handleStart}
             leftIcon={<Play className="w-5 h-5" />}
-            className="px-8 py-3 text-lg"
+            className="px-6 sm:px-8 py-3 text-lg"
           >
             Start Timer & Begin
           </Button>
@@ -192,14 +192,14 @@ export function TimedWorkspace({ day, session, onComplete }: TimedWorkspaceProps
                   ? 'Write your solution here...'
                   : 'Type your response here...'
                 }
-                className="w-full min-h-[300px] p-4 bg-surface text-content font-mono text-sm resize-y border-none outline-none"
+                className="w-full min-h-[200px] sm:min-h-[300px] p-3 sm:p-4 bg-surface text-content font-mono text-sm resize-y border-none outline-none"
                 autoFocus
               />
             </div>
           </Card>
 
           {/* Controls */}
-          <div className="flex justify-between items-center mt-4">
+          <div className="flex justify-between items-center gap-3 mt-4">
             <Button
               variant="ghost"
               onClick={handleTogglePause}

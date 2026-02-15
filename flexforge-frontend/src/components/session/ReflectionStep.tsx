@@ -359,7 +359,7 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
               <div className="space-y-4">
                 {/* Dimension scores (rubric only) */}
                 {scoringResult.dimensions && scoringResult.dimensions.length > 0 && (
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {scoringResult.dimensions.map((dim, i) => (
                       <div key={i} className="bg-surface-secondary rounded-lg p-3">
                         <div className="flex items-center justify-between mb-1">

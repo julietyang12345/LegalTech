@@ -62,8 +62,8 @@ const TRAINING_CONFIGS: Record<string, TrainingConfig> = {
 // Default curriculum config (used for standard learning sessions)
 const CURRICULUM_CONFIG: TrainingConfig = {
   goalType: GoalType.CURRICULUM,
-  name: 'Learn Something New',
-  subtitle: 'Structured multi-day learning with video, practice & projects.',
+  name: 'Learn & Master',
+  subtitle: 'Learn or level up any topic with structured lessons & practice.',
   stepFlow: ['prePrompt', 'video', 'task1', 'bossMilestone', 'openTask', 'reflection'],
   stepLabels: {
     prePrompt: 'Pre-Prompt',

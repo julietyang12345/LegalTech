@@ -2442,7 +2442,7 @@ export function RoleplaySectionExercise({ section, targetLanguage, onComplete, s
       {/* Scenario context */}
       <div className="bg-gradient-to-br from-purple-50 to-white border border-purple-100 rounded-xl p-4 mb-4">
         <h3 className="font-semibold text-content mb-2">Roleplay: {situation}</h3>
-        <div className="flex gap-4 text-sm text-content-secondary">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-content-secondary">
           <span>You: <strong>{yourRole}</strong></span>
           <span>Partner: <strong>{counterpartRole}</strong></span>
         </div>
@@ -2500,13 +2500,13 @@ export function RoleplaySectionExercise({ section, targetLanguage, onComplete, s
             onChange={(e) => setUserResponse(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSubmitTurn()}
             placeholder="Type your response..."
-            className="flex-1 px-4 py-3 rounded-xl border border-border bg-surface text-content focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+            className="flex-1 min-w-0 px-3 sm:px-4 py-3 rounded-xl border border-border bg-surface text-content focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
             autoFocus
           />
           <button
             onClick={handleSubmitTurn}
             disabled={!userResponse.trim()}
-            className="px-4 py-3 rounded-xl bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 transition-all"
+            className="flex-shrink-0 px-3 sm:px-4 py-3 rounded-xl bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 transition-all"
           >
             <ArrowRight className="w-5 h-5" />
           </button>
@@ -2601,7 +2601,7 @@ export function RewriteSectionExercise({ section, onComplete, savedProgress, onP
             value={rewrite}
             onChange={(e) => setRewrite(e.target.value)}
             placeholder="Write your improved version here..."
-            className="w-full min-h-[120px] p-4 rounded-xl border border-border bg-surface text-content resize-y focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none mb-4"
+            className="w-full min-h-[120px] p-3 sm:p-4 rounded-xl border border-border bg-surface text-content resize-y focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none mb-4"
             autoFocus
           />
           <button

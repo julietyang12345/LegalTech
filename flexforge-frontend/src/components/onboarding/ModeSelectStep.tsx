@@ -44,8 +44,8 @@ export function ModeSelectStep({ onSelect }: ModeSelectStepProps) {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold text-content mb-2">
+      <div className="text-center mb-6 sm:mb-8">
+        <h2 className="text-xl sm:text-2xl font-bold text-content mb-2">
           How do you want to learn?
         </h2>
         <p className="text-content-secondary">
@@ -73,12 +73,12 @@ export function ModeSelectStep({ onSelect }: ModeSelectStepProps) {
                   : `bg-surface ${borderColor} hover:shadow-sm`
                 }`}
             >
-              <div className="flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center flex-shrink-0`}>
-                  <Icon className="w-6 h-6 text-white" />
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center flex-shrink-0`}>
+                  <Icon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-content text-lg">{config.name}</h3>
+                  <h3 className="font-semibold text-content text-base sm:text-lg">{config.name}</h3>
                   <p className="text-sm text-content-secondary line-clamp-1">{config.subtitle}</p>
                 </div>
                 {isSelected && (
