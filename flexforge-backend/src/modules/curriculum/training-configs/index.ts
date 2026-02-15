@@ -1,6 +1,5 @@
 import { GoalType } from '../../../database/entities/session.entity';
 import { TrainingConfig } from './types';
-import { interviewConfig } from './interview.config';
 import { projectConfig } from './project.config';
 import { aiBuilderConfig } from './ai-builder.config';
 import { languageConfig } from './language.config';
@@ -8,7 +7,6 @@ import { languageConfig } from './language.config';
 export type { TrainingConfig, TrainingSessionStep } from './types';
 
 const TRAINING_CONFIGS: Record<string, TrainingConfig> = {
-  [GoalType.INTERVIEW]: interviewConfig,
   [GoalType.PROJECT]: projectConfig,
   [GoalType.AI_BUILDER]: aiBuilderConfig,
   [GoalType.LANGUAGE]: languageConfig,

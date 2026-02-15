@@ -147,13 +147,11 @@ export function PrePromptStep({ day, session }: PrePromptStepProps) {
   const isTraining = session.goalType && session.goalType !== GoalType.CURRICULUM;
 
   const titleMap: Record<string, string> = {
-    [GoalType.INTERVIEW]: `${stepLabel} 🎯`,
     [GoalType.PROJECT]: `${stepLabel} 🔧`,
     [GoalType.AI_BUILDER]: `${stepLabel} 🤖`,
     [GoalType.LANGUAGE]: `${stepLabel} 🗣️`,
   };
   const subtitleMap: Record<string, string> = {
-    [GoalType.INTERVIEW]: 'Review the concept, warm up, then tackle the scenario',
     [GoalType.PROJECT]: 'Understand the skill, warm up, then solve a real problem',
     [GoalType.AI_BUILDER]: 'Learn the concept, warm up, then scope your build',
     [GoalType.LANGUAGE]: 'Learn the grammar/vocabulary, then practice',

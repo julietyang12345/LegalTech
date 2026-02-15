@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, Briefcase, Cpu, MessageSquare, GraduationCap } from 'lucide-react';
+import { BookOpen, Briefcase, Cpu, MessageSquare } from 'lucide-react';
 import { GoalType } from '@/types';
 import { getAllModeConfigs } from '@/config/training-configs';
 
@@ -12,7 +12,6 @@ const MODE_ICONS: Record<string, React.ElementType> = {
   [GoalType.CURRICULUM]: BookOpen,
   [GoalType.PROJECT]: Briefcase,
   [GoalType.AI_BUILDER]: Cpu,
-  [GoalType.INTERVIEW]: GraduationCap,
   [GoalType.LANGUAGE]: MessageSquare,
 };
 
@@ -20,7 +19,6 @@ const MODE_COLORS: Record<string, string> = {
   [GoalType.CURRICULUM]: 'from-brand-500 to-brand-600',
   [GoalType.PROJECT]: 'from-amber-500 to-orange-600',
   [GoalType.AI_BUILDER]: 'from-purple-500 to-purple-600',
-  [GoalType.INTERVIEW]: 'from-green-500 to-emerald-600',
   [GoalType.LANGUAGE]: 'from-blue-500 to-blue-600',
 };
 
@@ -28,7 +26,6 @@ const MODE_BORDER_COLORS: Record<string, string> = {
   [GoalType.CURRICULUM]: 'border-brand-200 hover:border-brand-400',
   [GoalType.PROJECT]: 'border-amber-200 hover:border-amber-400',
   [GoalType.AI_BUILDER]: 'border-purple-200 hover:border-purple-400',
-  [GoalType.INTERVIEW]: 'border-green-200 hover:border-green-400',
   [GoalType.LANGUAGE]: 'border-blue-200 hover:border-blue-400',
 };
 

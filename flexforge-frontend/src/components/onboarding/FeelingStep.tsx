@@ -18,8 +18,6 @@ interface FeelingStepProps {
 /** Auto-derived outputType, learningStyle, and codeWritingEnabled per goal type */
 function getDefaultsForMode(goalType: GoalType): { outputType: OutputType; learningStyle: LearningStyle; codeWritingEnabled: boolean } {
   switch (goalType) {
-    case GoalType.INTERVIEW:
-      return { outputType: 'get_hired', learningStyle: 'practice', codeWritingEnabled: false };
     case GoalType.PROJECT:
     case GoalType.AI_BUILDER:
       return { outputType: 'ship_project', learningStyle: 'projects', codeWritingEnabled: false };
@@ -35,8 +33,7 @@ type Familiarity = 'new' | 'know_basics' | 'skilled';
 type SessionLength = 'short' | 'medium' | 'long';
 export type OutputType =
   | 'learn_and_apply'
-  | 'ship_project'
-  | 'get_hired';
+  | 'ship_project';
 export type LearningStyle = 'projects' | 'practice';
 
 interface Option<T> {
@@ -71,7 +68,6 @@ export function FeelingStep({ selectedDirection, goalType, onSelect, isLoading }
     switch (output) {
       case 'learn_and_apply': return 'medium';
       case 'ship_project': return 'medium';
-      case 'get_hired': return 'medium';
     }
   };
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { clsx } from 'clsx';
 import { Button } from "../common/Button";
-import { Sparkles, ArrowRight, BookOpen, Loader2, Briefcase, Cpu, GraduationCap, MessageSquare, ChevronDown, Check } from "lucide-react";
+import { Sparkles, ArrowRight, BookOpen, Loader2, Briefcase, Cpu, MessageSquare, ChevronDown, Check } from "lucide-react";
 import { onboardingService } from "@/services/onboardingService";
 import { useAuthStore } from "@/stores/authStore";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -13,7 +13,6 @@ const MODE_ICONS: Record<string, React.ElementType> = {
   [GoalType.CURRICULUM]: BookOpen,
   [GoalType.PROJECT]: Briefcase,
   [GoalType.AI_BUILDER]: Cpu,
-  [GoalType.INTERVIEW]: GraduationCap,
   [GoalType.LANGUAGE]: MessageSquare,
 };
 
@@ -64,6 +63,35 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
   const hasPreviousSessions = sessions.length > 0;
   const selectedConfig = getTrainingConfig(goalType);
 
+  const modePrompts = {
+    [GoalType.CURRICULUM]: {
+      heading: 'What do you want to learn or master?',
+      subtitle: 'A topic, skill, or concept — whether you\'re starting fresh or leveling up.',
+      placeholder: 'e.g. I want to learn React, or I want to master data structures...',
+      button: 'Find my learning path',
+    },
+    [GoalType.PROJECT]: {
+      heading: 'What project do you want to practice or build?',
+      subtitle: 'Describe the project or problem. We\'ll break it into guided build steps you can practice.',
+      placeholder: 'e.g. A budgeting app, a portfolio website, an automation script...',
+      button: 'Plan my project',
+    },
+    [GoalType.AI_BUILDER]: {
+      heading: 'What do you want to practice building with AI?',
+      subtitle: 'Describe what you want to create. We\'ll guide you through building it step by step.',
+      placeholder: 'e.g. A chatbot for my website, an AI that summarizes articles...',
+      button: 'Start building',
+    },
+    [GoalType.LANGUAGE]: {
+      heading: 'What language do you want to learn?',
+      subtitle: 'Pick a language and your goal — travel, work, fluency, or just for fun.',
+      placeholder: 'e.g. Japanese for travel, Spanish for work conversations...',
+      button: 'Start learning',
+    },
+  };
+
+  const prompts = modePrompts[goalType as keyof typeof modePrompts] || modePrompts[GoalType.CURRICULUM];
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (goal.trim()) {
@@ -91,10 +119,10 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
         </div>
 
         <h1 className="text-2xl font-bold text-content mb-2">
-          What do you want to learn or build?
+          {prompts.heading}
         </h1>
         <p className="text-content-tertiary text-base">
-          Don't know what to ask yet? Just type any questions or confusion you have — we'll go from there.
+          {prompts.subtitle}
         </p>
       </div>
 
@@ -177,7 +205,7 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
           <textarea
             value={goal}
             onChange={(e) => setGoal(e.target.value)}
-            placeholder="I want to..."
+            placeholder={prompts.placeholder}
             className="w-full px-4 py-4 text-lg border border-border rounded-xl
                        bg-surface text-content
                        focus:ring-2 focus:ring-brand-500 focus:border-brand-500
@@ -195,7 +223,7 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
           disabled={!goal.trim() || isLoading}
           rightIcon={<ArrowRight className="w-5 h-5" />}
         >
-          {isLoading ? "Finding directions..." : "Find my learning path"}
+          {isLoading ? "Finding directions..." : prompts.button}
         </Button>
       </form>
 

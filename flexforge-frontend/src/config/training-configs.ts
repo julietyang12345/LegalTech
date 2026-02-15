@@ -1,28 +1,15 @@
 import { GoalType, type SessionStep, type TrainingConfig } from '@/types';
 
 const TRAINING_CONFIGS: Record<string, TrainingConfig> = {
-  [GoalType.INTERVIEW]: {
-    goalType: GoalType.INTERVIEW,
-    name: 'Interview Prep',
-    subtitle: 'Short, sharp simulations that build real interview confidence.',
-    stepFlow: ['prePrompt', 'task1', 'reflection'],
-    stepLabels: {
-      prePrompt: 'Scenario Brief',
-      task1: 'Timed Attempt',
-      reflection: 'Feedback & Fix',
-    },
-    hasTimedAttempt: true,
-    scoringType: 'rubric',
-    defaultTimerMinutes: 25,
-  },
   [GoalType.PROJECT]: {
     goalType: GoalType.PROJECT,
     name: 'Project Lab',
     subtitle: 'Turn real work problems into a learning engine.',
-    stepFlow: ['prePrompt', 'task1', 'reflection'],
+    stepFlow: ['prePrompt', 'task1', 'bossMilestone', 'reflection'],
     stepLabels: {
       prePrompt: "Today's Focus",
-      task1: 'Build',
+      task1: 'Warm-up',
+      bossMilestone: 'Build',
       reflection: 'Apply & Reflect',
     },
     hasTimedAttempt: false,
@@ -33,10 +20,11 @@ const TRAINING_CONFIGS: Record<string, TrainingConfig> = {
     goalType: GoalType.AI_BUILDER,
     name: 'AI Builder',
     subtitle: 'Build one small thing that actually works, using AI.',
-    stepFlow: ['prePrompt', 'task1', 'reflection'],
+    stepFlow: ['prePrompt', 'task1', 'bossMilestone', 'reflection'],
     stepLabels: {
       prePrompt: 'Project Scope',
-      task1: 'Build with AI',
+      task1: 'Warm-up',
+      bossMilestone: 'Build with AI',
       reflection: 'Ship & Reflect',
     },
     hasTimedAttempt: false,
@@ -109,7 +97,6 @@ export function getAllModeConfigs(): TrainingConfig[] {
     CURRICULUM_CONFIG,
     TRAINING_CONFIGS[GoalType.PROJECT],
     TRAINING_CONFIGS[GoalType.AI_BUILDER],
-    TRAINING_CONFIGS[GoalType.INTERVIEW],
     TRAINING_CONFIGS[GoalType.LANGUAGE],
   ];
 }

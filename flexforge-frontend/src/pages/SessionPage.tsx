@@ -227,10 +227,6 @@ type TaskFormat = 'quiz' | 'fillBlank' | 'mixed' | 'sections';
 // Legacy quiz/fillBlank formats are auto-converted by SectionTaskStep
 // Language learning uses 'mixed' format (treated same as 'sections')
 function TaskRouter({ day, session, onComplete, onBookmarkQuestion, onShareQuestion }: { day: CurriculumDay; session: any; onComplete: () => void; onBookmarkQuestion?: (q: { question: string; options?: string[]; correctAnswer?: string }) => void; onShareQuestion?: (q: { question: string; options?: string[]; correctAnswer?: string }) => void }) {
-  // For interview mode, use TimedWorkspace instead of regular task flow
-  if (session?.goalType === GoalType.INTERVIEW) {
-    return <TimedWorkspace day={day} session={session} onComplete={onComplete} />;
-  }
 
   const task = day.task1;
   const originalFormat = ((task as any)?.format || 'quiz') as TaskFormat;

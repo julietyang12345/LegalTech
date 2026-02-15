@@ -5,10 +5,11 @@ export const interviewConfig: TrainingConfig = {
   goalType: GoalType.INTERVIEW,
   name: 'Interview Prep',
   subtitle: 'Short, sharp simulations that build real interview confidence.',
-  stepFlow: ['prePrompt', 'task1', 'reflection'],
+  stepFlow: ['prePrompt', 'task1', 'bossMilestone', 'reflection'],
   stepLabels: {
     prePrompt: 'Scenario Brief',
-    task1: 'Timed Attempt',
+    task1: 'Warm-up',
+    bossMilestone: 'Timed Attempt',
     reflection: 'Feedback & Fix',
   },
   scenarioTypes: [
@@ -38,25 +39,30 @@ export const interviewConfig: TrainingConfig = {
   defaultTimerMinutes: 25,
   promptOverrides: {
     skeleton: `INTERVIEW PREP MODE:
-- Each day is a STANDALONE interview scenario (no multi-day continuity needed)
+- Each day is a STANDALONE interview scenario for the user's target role
 - Day title = scenario type + skill area (e.g., "Coding: Hash Maps & Frequency Counting")
 - Skills = specific subskills tested (e.g., ["hash maps", "time complexity", "edge cases"])
 - Progression: Day 1 = easier warm-up scenario, later days increase difficulty
 - Mix scenario types across days: coding (60%), system design (20%), behavioral (20%)
-- Each day's teaser should describe the interview scenario briefly`,
+- Each day's teaser should describe the interview scenario briefly
+- hasBossProject: true — EVERY day must have a boss project milestone for the interview challenge`,
 
     dayCore: `INTERVIEW SCENARIO FORMAT:
-Generate a realistic interview scenario with:
+The user is preparing for interviews. Generate practice scenarios for their target role.
 
 prePrompt:
-- Concept explanation: Teach the relevant concept/pattern (same depth as curriculum prePrompt)
-- 2-3 inline warm-up questions (quick-tap, not graded) to prime the candidate
-- Then the scenario: problem statement, constraints, expected input/output
+- Concept explanation: Teach the relevant concept/pattern needed for today's challenge
+- The scenario: problem statement, constraints, expected input/output
 - Time limit and what the interviewer is looking for
 - Rubric criteria (what dimensions will be scored)
 
 task1 (sections format):
-- The interview problem itself as interactive exercises
+- Generate exactly 3 warm-up quiz questions to prime the candidate on the concept
+- Keep it short — a quick knowledge check before the timed challenge
+- Questions should directly relate to the interview scenario ahead
+
+bossMilestone:
+- The interview challenge itself
 - For coding: provide starter code template, test cases
 - For system design: provide requirements, scale expectations
 - For behavioral: provide the STAR prompt and situation context

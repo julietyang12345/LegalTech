@@ -971,34 +971,38 @@ IMPORTANT - Each section MUST include:
 Introduce 2-4 NEW related concepts not covered in task1.
 Use DIFFERENT scenarios than task1 (new contexts, different domains).`;
 
-  switch (skillType) {
-    case SkillType.CODE:
-      // quiz = majority, AI picks up to 2 others (1 item each)
-      if (codeWritingEnabled) {
-        return `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
+  // Shared builder for CODE and AI_AGENT (identical structure, different topic labels)
+  const buildCodeLikeIntensive = (
+    quizDesc: string,
+    fillBlankDesc: string,
+    codeSnippetExample: string,
+  ): string => {
+    const base = `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
 
 AVAILABLE TYPES:
-1. quiz (REQUIRED, 4-6 questions) - Questions on NEW coding concepts, patterns, and best practices not covered in task1
+1. quiz (REQUIRED, 4-6 questions) - ${quizDesc}
 2. aiCodeReview (1 item) - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations
    Each item: code (AI-generated with line numbers), context, issues array
-   Each issue: {type, location (include code snippet like "line 3: if (x === y)"), severity, options (4 MCQ choices), correctIndex, explanation}
+   Each issue: {type, location (include code snippet like "${codeSnippetExample}"), severity, options (4 MCQ choices), correctIndex, explanation}
    Issue types: bug, security, assumption, scalability, hallucination, edge-case
    TWO-STEP FLOW: User first selects the problematic line, then chooses WHY from options
-3. fillBlank (1 item) - Complete code with NEW syntax/methods related to today's topic
+3. fillBlank (1 item) - ${fillBlankDesc}`;
+    if (codeWritingEnabled) {
+      return `${base}
 4. codeCompletion (1 item) - Complete partial code introducing NEW patterns/methods
 ${newKnowledgeNote}`;
-      }
-      return `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
-
-AVAILABLE TYPES:
-1. quiz (REQUIRED, 4-6 questions) - Questions on NEW coding concepts, patterns, and best practices not covered in task1
-2. aiCodeReview (1 item) - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations
-   Each item: code (AI-generated with line numbers), context, issues array
-   Each issue: {type, location (include code snippet like "line 3: if (x === y)"), severity, options (4 MCQ choices), correctIndex, explanation}
-   Issue types: bug, security, assumption, scalability, hallucination, edge-case
-   TWO-STEP FLOW: User first selects the problematic line, then chooses WHY from options
-3. fillBlank (1 item) - Complete code with NEW syntax/methods related to today's topic
+    }
+    return `${base}
 ${newKnowledgeNote}`;
+  };
+
+  switch (skillType) {
+    case SkillType.CODE:
+      return buildCodeLikeIntensive(
+        'Questions on NEW coding concepts, patterns, and best practices not covered in task1',
+        'Complete code with NEW syntax/methods related to today\'s topic',
+        'line 3: if (x === y)',
+      );
 
     case SkillType.PHYSICAL:
       return `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
@@ -1046,32 +1050,11 @@ AVAILABLE TYPES:
 ${newKnowledgeNote}`;
 
     case SkillType.AI_AGENT:
-      // quiz = majority, AI picks up to 2 others (1 item each)
-      if (codeWritingEnabled) {
-        return `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
-
-AVAILABLE TYPES:
-1. quiz (REQUIRED, 4-6 questions) - Questions on NEW AI/agent concepts, patterns, and best practices not covered in task1
-2. aiCodeReview (1 item) - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations
-   Each item: code (AI-generated with line numbers), context, issues array
-   Each issue: {type, location (include code snippet like "line 3: response = api.call()"), severity, options (4 MCQ choices), correctIndex, explanation}
-   Issue types: bug, security, assumption, scalability, hallucination, edge-case
-   TWO-STEP FLOW: User first selects the problematic line, then chooses WHY from options
-3. fillBlank (1 item) - Statements introducing NEW AI concepts/terminology
-4. codeCompletion (1 item) - Complete AI/API code with NEW parameters/methods
-${newKnowledgeNote}`;
-      }
-      return `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
-
-AVAILABLE TYPES:
-1. quiz (REQUIRED, 4-6 questions) - Questions on NEW AI/agent concepts, patterns, and best practices not covered in task1
-2. aiCodeReview (1 item) - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations
-   Each item: code (AI-generated with line numbers), context, issues array
-   Each issue: {type, location (include code snippet like "line 3: response = api.call()"), severity, options (4 MCQ choices), correctIndex, explanation}
-   Issue types: bug, security, assumption, scalability, hallucination, edge-case
-   TWO-STEP FLOW: User first selects the problematic line, then chooses WHY from options
-3. fillBlank (1 item) - Statements introducing NEW AI concepts/terminology
-${newKnowledgeNote}`;
+      return buildCodeLikeIntensive(
+        'Questions on NEW AI/agent concepts, patterns, and best practices not covered in task1',
+        'Statements introducing NEW AI concepts/terminology',
+        'line 3: response = api.call()',
+      );
 
     default:
       return `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
@@ -1939,7 +1922,7 @@ ${skillGuidance}${languageInstructions}
 ${dayTrainingOverride ? `\n${dayTrainingOverride}\n` : ''}
 ${levelGuidance.complexityGuidance}
 
-TASK1: Generate ${levelGuidance.quizQuestionCount} questions total. 70-85% in quiz section, 15-30% in secondary section.
+TASK1: Generate ${dayTrainingConfig ? '3' : levelGuidance.quizQuestionCount} questions total. ${dayTrainingConfig ? `${params.goalType === GoalType.AI_BUILDER ? 'Each question presents a real-world use case or practical scenario tied to today\'s AI concept. NO caseStudy. Skip realWorldContext. Keep explanation brief (50-80 words).' : params.goalType === GoalType.PROJECT ? 'Mix of theory and application questions directly tied to today\'s build task. NO caseStudy. Skip realWorldContext. Keep explanation brief (50-80 words).' : `Same structure as curriculum questions (conceptTitle, explanation, realWorldContext, caseStudy).`} 100% quiz section.` : '70-85% in quiz section, 15-30% in secondary section.'}
 ${personalizationInstructions}${continuityInstructions}`;
 
   // User prompt - CORE content: prePrompt + video + task1 (the main learning activity)
@@ -1983,11 +1966,13 @@ Generate CORE content as JSON with this structure:
 
 REQUIREMENTS:
 ${videoRequirement}
-- task1: REQUIRED - ${levelGuidance.quizQuestionCount} questions total (70-85% quiz, 15-30% secondary section)
-  - EVERY question must have "conceptTitle" and "explanation" (130-200 words, teaching content)
-  - EVERY question must have "realWorldContext" (1 sentence)
-  - explanation: Split into 2-3 paragraphs with \\n\\n (key insight → details/examples)
-  - 4-5 questions should include "caseStudy" for trade-off/decision concepts
+- task1: REQUIRED - ${dayTrainingConfig
+    ? `3 quiz questions (conceptTitle, ${params.goalType === GoalType.PROJECT || params.goalType === GoalType.AI_BUILDER ? 'brief explanation 50-80 words, NO realWorldContext, NO caseStudy' : 'explanation, realWorldContext, caseStudy'})`
+    : `${levelGuidance.quizQuestionCount} questions total (70-85% quiz, 15-30% secondary section)`}
+  - EVERY question must have "conceptTitle" and "explanation" (${dayTrainingConfig && (params.goalType === GoalType.PROJECT || params.goalType === GoalType.AI_BUILDER) ? '50-80 words, brief' : '130-200 words, teaching content'})
+  - ${dayTrainingConfig && (params.goalType === GoalType.PROJECT || params.goalType === GoalType.AI_BUILDER) ? 'Skip "realWorldContext" and "caseStudy" — keep questions focused on theory + application for today\'s build task' : 'EVERY question must have "realWorldContext" (1 sentence)'}
+  - explanation: ${dayTrainingConfig && (params.goalType === GoalType.PROJECT || params.goalType === GoalType.AI_BUILDER) ? 'Keep it concise — 1 paragraph with the key insight' : 'Split into 2-3 paragraphs with \\\\n\\\\n (key insight → details/examples)'}
+  - ${params.goalType === GoalType.AI_BUILDER ? 'All 3 questions should present real-world use cases or practical scenarios (e.g., "A team wants to X. Which approach?"). The use case IS the question.' : params.goalType === GoalType.PROJECT ? 'Q1: theory question (test concept understanding). Q2-Q3: application questions (apply concept to today\'s build task)' : dayTrainingConfig ? 'Include caseStudy on each question' : '4-5 questions should include "caseStudy" for trade-off/decision concepts'}
   - Question 1 should be an INTRO/RECAP connecting to previous content
   - matching section: generate 3-4 pairs with "pairs" array (NOT "questions" or "items")
 
