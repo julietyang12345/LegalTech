@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import {
   DayStatus,
+  GoalType,
   type Session,
   type CreateSessionDto,
   type SessionStatus,
@@ -15,6 +16,7 @@ import {
 } from '@/types';
 import { sessionService } from '@/services/sessionService';
 import { progressService } from '@/services/progressService';
+import { getStepFlow } from '@/config/training-configs';
 
 interface SessionState {
   // Current session
@@ -113,18 +115,10 @@ interface SessionState {
   clearError: () => void;
 }
 
-// Step order for session flow
-const STEP_ORDER: SessionStep[] = [
-  'prePrompt',
-  'video',
-  'task1',
-  'bossMilestone',
-  'openTask',
-  'reflection',
-];
-
-// Helper to get step order
-const getStepOrder = (): SessionStep[] => STEP_ORDER;
+// Helper to get step order based on goalType (source of truth: training-configs.ts)
+const getStepOrder = (goalType?: GoalType): SessionStep[] => {
+  return getStepFlow(goalType);
+};
 
 // Helper to update day statuses in curriculum days array
 const updateDayStatuses = (
@@ -433,9 +427,9 @@ export const useSessionStore = create<SessionState>()(
   },
 
   completeStep: (step) => {
-    const { completedSteps, currentDay } = get();
+    const { completedSteps, currentDay, activeSession } = get();
 
-    const stepOrder = getStepOrder();
+    const stepOrder = getStepOrder(activeSession?.goalType as GoalType | undefined);
     const currentIndex = stepOrder.indexOf(step);
 
     // Find next step (skip steps that don't apply)
@@ -1377,8 +1371,8 @@ export const useSessionStore = create<SessionState>()(
   },
 
   getStepProgress: () => {
-    const { completedSteps, currentDay, isDeferredLoaded } = get();
-    const stepOrder = getStepOrder();
+    const { completedSteps, currentDay, isDeferredLoaded, activeSession } = get();
+    const stepOrder = getStepOrder(activeSession?.goalType as GoalType | undefined);
     let total = stepOrder.length;
 
     // bossMilestone is always shown (handles both boss projects and intensive practice)

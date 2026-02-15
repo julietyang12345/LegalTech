@@ -3,6 +3,7 @@
 // ============================================
 
 import { SkillType } from '../services/skill-detector.service';
+import { GoalType } from '../../../database/entities/session.entity';
 
 /**
  * Language alternative for a direction (genuinely equivalent, not a downgrade)
@@ -119,6 +120,9 @@ export interface LearnerPrefs {
   // KEY for solving the "Zapier problem" - affects TOOL_SPECIFIC video penalty
   platformTolerance?: 'any' | 'preferGeneric' | 'genericOnly';
 
+  // Training mode goal type (selected during onboarding)
+  goalType?: GoalType;
+
   // Metadata
   completedOnboarding: boolean;
   onboardingCompletedAt?: string; // ISO date string
@@ -182,6 +186,9 @@ export interface CompleteOnboardingDto {
 
   // Advanced mode: enables code writing exercises in intensive practice
   codeWritingEnabled?: boolean;
+
+  // Training mode goal type
+  goalType?: GoalType;
 
   // Analytics: time spent in onboarding flow (tracked client-side)
   durationSeconds?: number;

@@ -1,4 +1,4 @@
-import { SkillLevel } from '../../../database/entities/session.entity';
+import { SkillLevel, GoalType } from '../../../database/entities/session.entity';
 import { SkillType, SkillComplexity } from '../services/skill-detector.service';
 import { ContentGenerationContext } from './content-generation-context';
 import {
@@ -6,6 +6,7 @@ import {
   buildContinuityInstructions,
   buildFullContextInstructions,
 } from './shared-instructions';
+import { getTrainingConfig } from '../training-configs';
 
 // Learner preferences from onboarding (optional - may not exist for users who skipped onboarding)
 // Internal interface - only used within this file
@@ -52,6 +53,8 @@ interface CurriculumPromptParams {
     task1: string[];
     intensive: string[];
   } | null;
+  // Training mode (non-curriculum goal types)
+  goalType?: GoalType;
 }
 
 // ============================================
@@ -74,7 +77,7 @@ type UniversalSectionType =
   | 'fillBlank'
   | 'openEnded';
 type SequenceSectionType = 'reorder'; // Only for skills where ordering matters (language, physical, some knowledge)
-type LanguageSectionType = 'toneSelect' | 'translation' | 'typing';
+type LanguageSectionType = 'toneSelect' | 'translation' | 'typing' | 'roleplay' | 'rewrite';
 type CodeSectionType =
   | 'codeCompletion'
   | 'debugging'
@@ -133,7 +136,7 @@ export const SECTION_REGISTRY: Record<
 // Language learning extends KNOWLEDGE with language-specific sections
 export const LANGUAGE_SECTION_REGISTRY = {
   task1: ['quiz', 'matching', 'toneSelect'] as SectionType[], // quiz=70-85%, AI picks 1 secondary; toneSelect only for tonal languages
-  intensive: ['fillBlank', 'translation', 'reorder', 'typing'] as SectionType[],
+  intensive: ['fillBlank', 'translation', 'reorder', 'typing', 'roleplay', 'rewrite'] as SectionType[],
 };
 
 /**
@@ -731,6 +734,9 @@ export interface DayDetailParams {
     task1: SectionType[];
     intensive: SectionType[];
   } | null;
+
+  // Training mode (non-curriculum goal types)
+  goalType?: GoalType;
 }
 
 // Language-specific features for prompts
@@ -1765,11 +1771,16 @@ export function buildCacheableCurriculumPrompt(
     params.safetyLevel,
   );
   const skeletonLevelGuidance = getSkeletonLevelGuidance(params.skillLevel);
+  // Training mode override (non-curriculum goal types)
+  const trainingConfig = params.goalType ? getTrainingConfig(params.goalType) : undefined;
+  const trainingOverride = trainingConfig?.promptOverrides.skeleton || '';
+
   const dynamicPart = `Generate ${params.durationDays}-day curriculum skeleton for "${params.skillName}".
 Type: ${params.skillType} | Level: ${params.skillLevel} | ${time.totalMinutes}min/day (${time.mode})
 ${params.suggestedLanguage ? `Language: ${params.suggestedLanguage}` : ''}
+${params.goalType && params.goalType !== 'curriculum' ? `Goal Type: ${params.goalType}` : ''}
 
-${structureInstructions}
+${trainingOverride || structureInstructions}
 ${learnerContext}
 ${skillGuidance}
 
@@ -1925,13 +1936,19 @@ ${langHasTones ? '- TONAL LANGUAGE: Include tone numbers/markers. Add toneSelect
   );
   const levelGuidance = getSkillLevelGuidance(params.skillLevel);
   const skillsStr = getSkillsString(params.skeleton, params.dayObjectives);
+
+  // Training mode override for day content
+  const dayTrainingConfig = params.goalType ? getTrainingConfig(params.goalType) : undefined;
+  const dayTrainingOverride = dayTrainingConfig?.promptOverrides.dayCore || '';
+
   const dynamicPart = `SKILL: "${params.skillName}"
 Day ${params.dayNumber}: ${params.dayTitle}
 ${skillsStr ? `Topics: ${skillsStr}` : ''}
 ${params.previousDayTitle ? `Previous day: ${params.previousDayTitle}` : 'This is Day 1 — introduce the topic foundation'}
 Type: ${params.skillType} | Level: ${params.skillLevel} | Sections: ${sectionTypes}
+${params.goalType && params.goalType !== 'curriculum' ? `Goal Type: ${params.goalType}` : ''}
 ${skillGuidance}${languageInstructions}
-
+${dayTrainingOverride ? `\n${dayTrainingOverride}\n` : ''}
 ${levelGuidance.complexityGuidance}
 
 TASK1: Generate ${levelGuidance.quizQuestionCount} questions total. 70-85% in quiz section, 15-30% in secondary section.

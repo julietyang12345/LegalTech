@@ -7,10 +7,11 @@ import { QuickBoostModal } from './QuickBoostModal';
 import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { sessionService } from '@/services/sessionService';
-import { QuotaTier } from '@/types';
+import { GoalType, QuotaTier } from '@/types';
 import { clsx } from 'clsx';
-import type { CurriculumDay, Session, ConceptBoost } from '@/types';
+import type { CurriculumDay, Session, ConceptBoost, ScoringResult } from '@/types';
 import { extractConceptsFromTask1 } from '@/utils/extractConceptsFromTask1';
+import { getTrainingConfig, isTrainingMode } from '@/config/training-configs';
 
 interface ReflectionStepProps {
   day: CurriculumDay;
@@ -255,18 +256,197 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
     confusedConcepts.length > 0 &&
     (confidence === null || confidence < 4);
 
+  // Training mode config
+  const trainingConfig = getTrainingConfig(session.goalType);
+  const isTraining = isTrainingMode(session.goalType);
+  const scoringType = trainingConfig.scoringType;
+
+  // Training mode labels
+  const clickedLabel = session.goalType === GoalType.LANGUAGE
+    ? 'What phrase felt most natural? 🗣️'
+    : session.goalType === GoalType.PROJECT || session.goalType === GoalType.AI_BUILDER
+    ? 'What did you build/apply? 🔧'
+    : 'What clicked today? 💡';
+
+  const foggyLabel = session.goalType === GoalType.LANGUAGE
+    ? 'What would you say differently? 🤔'
+    : session.goalType === GoalType.PROJECT || session.goalType === GoalType.AI_BUILDER
+    ? 'What blocked you? 🧱'
+    : "What's still confusing? 🌫️";
+
+  const reflectionTitle = isTraining
+    ? trainingConfig.stepLabels?.reflection || 'Reflect'
+    : 'Quick Reflection';
+
+  // Scoring state for interview/project/AI Builder modes
+  const [scoringResult, setScoringResult] = useState<ScoringResult | null>(null);
+  const [isScoringLoading, setIsScoringLoading] = useState(false);
+
+  // Fetch scoring results for modes that support it
+  useEffect(() => {
+    if (scoringType === 'none' || !session.goalType) return;
+
+    // Check if attempt data exists (from TimedWorkspace or task completion)
+    const attemptProgress = getTaskProgress(day.day, 'timedAttempt');
+    const attempt = attemptProgress?.answers?.attempt as string | undefined;
+    const timeSpent = Number(attemptProgress?.answers?.timeSpent) || 0;
+
+    if (!attempt || scoringResult) return;
+
+    // Start scoring via POST with SSE streaming
+    setIsScoringLoading(true);
+    fetch(`/api/v1/sessions/${session.id}/days/${day.day}/score`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ attempt, timeSpent: timeSpent || 0 }),
+    }).then(async (response) => {
+      const reader = response.body?.getReader();
+      if (!reader) return;
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.dimensions || data.weaknesses || data.feedback) {
+                setScoringResult(data);
+                setIsScoringLoading(false);
+              }
+            } catch {}
+          }
+        }
+      }
+      setIsScoringLoading(false);
+    }).catch(() => setIsScoringLoading(false));
+  }, [scoringType, session.goalType, session.id, day.day]);
+
   return (
     <StepLayout
       icon={BookOpen}
       iconGradient="from-indigo-400 to-indigo-500"
-      title="Quick Reflection"
+      title={reflectionTitle}
       subtitle="Help future you by locking in what matters"
     >
+      {/* Scoring/Feedback section for training modes */}
+      {scoringType !== 'none' && (
+        <Card className={clsx('border-2', scoringType === 'rubric' ? 'border-brand-200' : 'border-amber-200')}>
+          <div className="p-6">
+            <h3 className="font-semibold text-content mb-4">
+              {scoringType === 'rubric' ? 'Performance Feedback 📊' : 'Build Feedback 🔍'}
+            </h3>
+            {isScoringLoading ? (
+              <div className="flex items-center gap-3 text-content-secondary">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                >
+                  <Sparkles className={clsx('w-5 h-5', scoringType === 'rubric' ? 'text-brand-500' : 'text-amber-500')} />
+                </motion.div>
+                <span>{scoringType === 'rubric' ? 'Analyzing your attempt...' : 'Reviewing your work...'}</span>
+              </div>
+            ) : scoringResult ? (
+              <div className="space-y-4">
+                {/* Dimension scores (rubric only) */}
+                {scoringResult.dimensions && scoringResult.dimensions.length > 0 && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {scoringResult.dimensions.map((dim, i) => (
+                      <div key={i} className="bg-surface-secondary rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium text-content">{dim.name}</span>
+                          <span className={clsx('text-lg font-bold', {
+                            'text-green-600': dim.score >= 4,
+                            'text-amber-600': dim.score === 3,
+                            'text-red-500': dim.score <= 2,
+                          })}>{dim.score}/5</span>
+                        </div>
+                        <p className="text-xs text-content-tertiary">{dim.feedback}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Strengths */}
+                {scoringResult.strengths && scoringResult.strengths.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-medium text-green-600 mb-2">
+                      {scoringType === 'rubric' ? 'Strengths' : 'What went well'}
+                    </h4>
+                    <ul className="space-y-1">
+                      {scoringResult.strengths.map((s, i) => (
+                        <li key={i} className="text-sm text-content-secondary flex items-start gap-2">
+                          <span className="text-green-500 mt-0.5">✓</span> {s}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Gaps (rubric) / Weaknesses (feedback) */}
+                {((scoringResult.gaps && scoringResult.gaps.length > 0) ||
+                  (scoringResult.weaknesses && scoringResult.weaknesses.length > 0)) && (
+                  <div>
+                    <h4 className={clsx('text-sm font-medium mb-2', scoringType === 'rubric' ? 'text-red-500' : 'text-amber-600')}>
+                      {scoringType === 'rubric' ? 'Areas to improve' : 'What to improve'}
+                    </h4>
+                    <ul className="space-y-1">
+                      {(scoringResult.gaps || scoringResult.weaknesses || []).map((item, i) => (
+                        <li key={i} className="text-sm text-content-secondary flex items-start gap-2">
+                          <span className={clsx('mt-0.5', scoringType === 'rubric' ? 'text-red-400' : 'text-amber-500')}>→</span> {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Micro-fixes (rubric) / Suggestions (feedback) */}
+                {((scoringResult.microFixes && scoringResult.microFixes.length > 0) ||
+                  (scoringResult.suggestions && scoringResult.suggestions.length > 0)) && (
+                  <div className={clsx('rounded-lg p-3 border', scoringType === 'rubric' ? 'bg-brand-50 border-brand-100' : 'bg-blue-50 border-blue-100')}>
+                    <h4 className={clsx('text-sm font-medium mb-2', scoringType === 'rubric' ? 'text-brand-700' : 'text-blue-700')}>
+                      {scoringType === 'rubric' ? 'Quick Fixes' : 'Suggestions'}
+                    </h4>
+                    <ul className="space-y-1">
+                      {(scoringResult.microFixes || scoringResult.suggestions || []).map((item, i) => (
+                        <li key={i} className={clsx('text-sm', scoringType === 'rubric' ? 'text-brand-600' : 'text-blue-600')}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Overall feedback */}
+                {scoringResult.feedback && (
+                  <p className="text-sm text-content-secondary italic border-t border-border pt-3">
+                    {scoringResult.feedback}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-content-tertiary">
+                {scoringType === 'rubric'
+                  ? 'Complete the timed attempt to receive scoring feedback.'
+                  : 'Feedback will appear here after you complete the task.'}
+              </p>
+            )}
+          </div>
+        </Card>
+      )}
+
       {/* What clicked - Quick pick */}
       <Card>
         <div className="p-6">
           <h3 className="font-medium text-content mb-4">
-            What clicked today? 💡
+            {clickedLabel}
           </h3>
           <QuickPick
             options={clickedOptions}
@@ -280,7 +460,7 @@ export function ReflectionStep({ day, session, onComplete }: ReflectionStepProps
       <Card>
         <div className="p-6">
           <h3 className="font-medium text-content mb-4">
-            What's still confusing? 🌫️
+            {foggyLabel}
           </h3>
           <QuickPick
             options={foggyOptions}

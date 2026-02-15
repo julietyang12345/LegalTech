@@ -12,6 +12,8 @@ import {
   ReorderSectionExercise,
   TypingSectionExercise,
   OpenEndedSectionExercise,
+  RoleplaySectionExercise,
+  RewriteSectionExercise,
   type BookmarkQuestionData,
 } from './LanguageExercises';
 import {
@@ -388,6 +390,22 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
       case 'openEnded':
         return (
           <OpenEndedSectionExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+
+      // Language training sections (roleplay + rewrite)
+      case 'roleplay':
+        return (
+          <RoleplaySectionExercise
+            section={section}
+            onComplete={handleSectionComplete}
+          />
+        );
+      case 'rewrite':
+        return (
+          <RewriteSectionExercise
             section={section}
             onComplete={handleSectionComplete}
           />

@@ -50,6 +50,14 @@ export enum SkillComplexity {
   ADVANCED = 'ADVANCED',
 }
 
+export enum GoalType {
+  CURRICULUM = 'curriculum',
+  INTERVIEW = 'interview',
+  PROJECT = 'project',
+  AI_BUILDER = 'ai_builder',
+  LANGUAGE = 'language',
+}
+
 // ============================================
 // User Types
 // ============================================
@@ -151,6 +159,7 @@ export interface Session {
   durationDays: number;
   hoursPerDay: number;
   skillLevel: SkillLevel;
+  goalType?: GoalType;
   curriculum: Curriculum;
   status: SessionStatus;
   mode: SessionMode;
@@ -846,6 +855,31 @@ export interface TypingSection {
   newKnowledge?: NewKnowledgeItem[];
 }
 
+// Roleplay section (language training)
+export interface RoleplaySection {
+  type: 'roleplay';
+  title: string;
+  situation: string;
+  yourRole: string;
+  counterpartRole: string;
+  targetPhrases: string[];
+  sampleResponse: string;
+  evaluationCriteria?: string[];
+  turns?: string[];
+  questions?: string[];
+}
+
+// Rewrite section (language training)
+export interface RewriteSection {
+  type: 'rewrite';
+  title: string;
+  context: string;
+  weakVersion: string;
+  targetImprovements: string[];
+  sampleStrongVersion: string;
+  evaluationCriteria?: string[];
+}
+
 // ============================================
 // Code-Specific Sections (NEW)
 // ============================================
@@ -1017,6 +1051,8 @@ export type TaskSection =
   | ToneSelectSection
   | TranslationSection
   | TypingSection
+  | RoleplaySection
+  | RewriteSection
   // Code-specific sections
   | CodeCompletionSection
   | DebuggingSection
@@ -1746,6 +1782,37 @@ export interface LifeHappensConfig {
 }
 
 // ============================================
+// Training Mode Types
+// ============================================
+
+export interface ScoringDimension {
+  name: string;
+  score: number;
+  feedback: string;
+}
+
+export interface ScoringResult {
+  dimensions?: ScoringDimension[];
+  gaps?: string[];
+  strengths?: string[];
+  weaknesses?: string[];
+  suggestions?: string[];
+  feedback: string;
+  microFixes?: string[];
+}
+
+export interface TrainingConfig {
+  goalType: GoalType;
+  name: string;
+  subtitle: string;
+  stepFlow: SessionStep[];
+  stepLabels: Record<string, string>;
+  hasTimedAttempt: boolean;
+  scoringType: 'rubric' | 'feedback' | 'none';
+  defaultTimerMinutes: number;
+}
+
+// ============================================
 // Learner Preferences & Onboarding Types
 // ============================================
 
@@ -1862,6 +1929,8 @@ export interface CompleteOnboardingDto {
   learningStyle?: 'projects' | 'practice'; // 'projects' = boss project, 'practice' = exercises only
   // Advanced mode: enables code writing exercises (codeCompletion) in intensive practice
   codeWritingEnabled?: boolean;
+  // Training mode goal type
+  goalType?: GoalType;
   // Analytics: time spent in onboarding flow (tracked client-side)
   durationSeconds?: number;
 }

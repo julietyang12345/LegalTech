@@ -165,6 +165,8 @@ export class OnboardingService {
       learningStyle: dto.learningStyle,
       // Advanced mode: code writing exercises
       codeWritingEnabled: dto.codeWritingEnabled,
+      // Training mode goal type
+      goalType: dto.goalType,
       completedOnboarding: true,
       onboardingCompletedAt: new Date().toISOString(),
       version: 1,

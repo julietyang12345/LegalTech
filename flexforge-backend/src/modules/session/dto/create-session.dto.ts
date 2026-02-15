@@ -8,7 +8,7 @@ import {
   Min,
   Max,
 } from 'class-validator';
-import { SkillLevel } from '../../../database/entities/session.entity';
+import { SkillLevel, GoalType } from '../../../database/entities/session.entity';
 
 export class CreateSessionDto {
   @IsString()
@@ -30,4 +30,8 @@ export class CreateSessionDto {
   @IsOptional()
   @IsObject()
   previewCurriculum?: any; // Preview curriculum to reuse (avoids regeneration)
+
+  @IsOptional()
+  @IsEnum(GoalType)
+  goalType?: GoalType;
 }

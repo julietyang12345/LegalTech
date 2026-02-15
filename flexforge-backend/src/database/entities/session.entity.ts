@@ -31,6 +31,14 @@ export enum SessionMode {
   PAUSED = 'PAUSED',
 }
 
+export enum GoalType {
+  CURRICULUM = 'curriculum',
+  INTERVIEW = 'interview',
+  PROJECT = 'project',
+  AI_BUILDER = 'ai_builder',
+  LANGUAGE = 'language',
+}
+
 @Entity('sessions')
 export class Session {
   @PrimaryGeneratedColumn('uuid')
@@ -109,6 +117,13 @@ export class Session {
   // User-defined areas to reduce content for
   @Column({ type: 'jsonb', nullable: true, default: [] })
   lessOfAreas: string[];
+
+  @Column({
+    type: 'enum',
+    enum: GoalType,
+    default: GoalType.CURRICULUM,
+  })
+  goalType: GoalType;
 
   @Column({ default: 0 })
   extensionsDays: number;

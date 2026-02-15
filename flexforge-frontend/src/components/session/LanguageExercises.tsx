@@ -2384,3 +2384,261 @@ export function OpenEndedSectionExercise({ section, onComplete, savedProgress, o
     </div>
   );
 }
+
+// ============================================
+// Roleplay Section Exercise
+// ============================================
+
+interface RoleplaySectionProps {
+  section: any;
+  targetLanguage?: TargetLanguage;
+  onComplete: (score: number, total: number) => void;
+  savedProgress?: SectionSavedProgress;
+  onProgressChange?: (progress: SectionSavedProgress) => void;
+}
+
+export function RoleplaySectionExercise({ section, targetLanguage, onComplete, savedProgress, onProgressChange }: RoleplaySectionProps) {
+  const [currentTurn, setCurrentTurn] = useState(0);
+  const [userResponse, setUserResponse] = useState('');
+  const [responses, setResponses] = useState<string[]>([]);
+  const [isCompleted, setIsCompleted] = useState(false);
+  const { speak } = useBrowserTTS(targetLanguage || 'english');
+
+  const situation = section.situation || section.title || 'Roleplay scenario';
+  const yourRole = section.yourRole || 'Participant';
+  const counterpartRole = section.counterpartRole || 'Partner';
+  const targetPhrases = section.targetPhrases || [];
+  const sampleResponse = section.sampleResponse || '';
+  const turns = section.turns || section.questions || [];
+
+  const handleSpeak = (text: string) => {
+    speak(text);
+  };
+
+  const handleSubmitTurn = () => {
+    if (!userResponse.trim()) return;
+
+    const newResponses = [...responses, userResponse];
+    setResponses(newResponses);
+    setUserResponse('');
+
+    if (currentTurn >= turns.length - 1 || turns.length === 0) {
+      setIsCompleted(true);
+      // Score based on target phrase usage
+      const phrasesUsed = targetPhrases.filter((phrase: string) =>
+        newResponses.some(r => r.toLowerCase().includes(phrase.toLowerCase()))
+      ).length;
+      const score = targetPhrases.length > 0
+        ? Math.round((phrasesUsed / targetPhrases.length) * 100)
+        : 100;
+      onComplete(score, 100);
+    } else {
+      setCurrentTurn(prev => prev + 1);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      {/* Scenario context */}
+      <div className="bg-gradient-to-br from-purple-50 to-white border border-purple-100 rounded-xl p-4 mb-4">
+        <h3 className="font-semibold text-content mb-2">Roleplay: {situation}</h3>
+        <div className="flex gap-4 text-sm text-content-secondary">
+          <span>You: <strong>{yourRole}</strong></span>
+          <span>Partner: <strong>{counterpartRole}</strong></span>
+        </div>
+        {targetPhrases.length > 0 && (
+          <div className="mt-3 text-sm">
+            <span className="text-content-tertiary">Try to use: </span>
+            {targetPhrases.map((phrase: string, i: number) => (
+              <span key={i} className="inline-block bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-xs mr-1 mb-1">
+                {phrase}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Conversation */}
+      <div className="space-y-3 mb-4">
+        {turns.slice(0, currentTurn + 1).map((turn: any, i: number) => (
+          <div key={i}>
+            {/* Counterpart message */}
+            {turn.prompt && (
+              <div className="flex items-start gap-2 mb-2">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-xs font-medium text-purple-600">
+                  {counterpartRole[0]}
+                </div>
+                <div className="bg-surface-secondary rounded-xl rounded-tl-none px-4 py-2 max-w-[80%]">
+                  <p className="text-content text-sm">{turn.prompt}</p>
+                  <button
+                    onClick={() => handleSpeak(turn.audioText || turn.prompt)}
+                    className="mt-1 text-purple-500 hover:text-purple-600"
+                  >
+                    <Volume2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+            {/* User response (if already submitted) */}
+            {responses[i] && (
+              <div className="flex items-start gap-2 justify-end">
+                <div className="bg-brand-50 rounded-xl rounded-tr-none px-4 py-2 max-w-[80%]">
+                  <p className="text-content text-sm">{responses[i]}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Input area */}
+      {!isCompleted ? (
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={userResponse}
+            onChange={(e) => setUserResponse(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmitTurn()}
+            placeholder="Type your response..."
+            className="flex-1 px-4 py-3 rounded-xl border border-border bg-surface text-content focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+            autoFocus
+          />
+          <button
+            onClick={handleSubmitTurn}
+            disabled={!userResponse.trim()}
+            className="px-4 py-3 rounded-xl bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 transition-all"
+          >
+            <ArrowRight className="w-5 h-5" />
+          </button>
+        </div>
+      ) : (
+        <div className="bg-green-50 border border-green-100 rounded-xl p-4 text-center">
+          <Check className="w-8 h-8 text-green-500 mx-auto mb-2" />
+          <p className="text-content font-medium">Roleplay complete!</p>
+          {sampleResponse && (
+            <div className="mt-3 text-sm text-content-secondary">
+              <p className="font-medium text-content-tertiary mb-1">Example strong response:</p>
+              <p className="italic">{sampleResponse}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================
+// Rewrite Section Exercise
+// ============================================
+
+interface RewriteSectionProps {
+  section: any;
+  onComplete: (score: number, total: number) => void;
+  savedProgress?: SectionSavedProgress;
+  onProgressChange?: (progress: SectionSavedProgress) => void;
+}
+
+export function RewriteSectionExercise({ section, onComplete, savedProgress, onProgressChange }: RewriteSectionProps) {
+  const [rewrite, setRewrite] = useState('');
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [showSample, setShowSample] = useState(false);
+
+  const context = section.context || section.title || 'Improve this text';
+  const weakVersion = section.weakVersion || section.text || '';
+  const targetImprovements = section.targetImprovements || [];
+  const sampleStrongVersion = section.sampleStrongVersion || '';
+  const evaluationCriteria = section.evaluationCriteria || [];
+
+  const handleSubmit = () => {
+    if (!rewrite.trim()) return;
+    setIsSubmitted(true);
+
+    // Score based on improvements detected
+    const improvementsFound = targetImprovements.filter((improvement: string) => {
+      const keywords = improvement.toLowerCase().split(/\s+/);
+      return keywords.some((kw: string) => rewrite.toLowerCase().includes(kw));
+    }).length;
+
+    const score = targetImprovements.length > 0
+      ? Math.round((improvementsFound / targetImprovements.length) * 100)
+      : 80;
+
+    onComplete(score, 100);
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      {/* Context */}
+      <div className="bg-gradient-to-br from-amber-50 to-white border border-amber-100 rounded-xl p-4 mb-4">
+        <h3 className="font-semibold text-content mb-2">Rewrite Challenge</h3>
+        <p className="text-sm text-content-secondary">{context}</p>
+      </div>
+
+      {/* Weak version */}
+      <div className="bg-red-50 border border-red-100 rounded-xl p-4 mb-4">
+        <p className="text-xs font-medium text-red-500 uppercase tracking-wide mb-2">Original (needs improvement)</p>
+        <p className="text-content italic">{weakVersion}</p>
+      </div>
+
+      {/* Target improvements as hints */}
+      {targetImprovements.length > 0 && (
+        <div className="mb-4">
+          <p className="text-sm font-medium text-content-secondary mb-2">Focus on improving:</p>
+          <div className="flex flex-wrap gap-1.5">
+            {targetImprovements.map((improvement: string, i: number) => (
+              <span key={i} className="inline-block bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full text-xs">
+                {improvement}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Rewrite input */}
+      {!isSubmitted ? (
+        <>
+          <textarea
+            value={rewrite}
+            onChange={(e) => setRewrite(e.target.value)}
+            placeholder="Write your improved version here..."
+            className="w-full min-h-[120px] p-4 rounded-xl border border-border bg-surface text-content resize-y focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none mb-4"
+            autoFocus
+          />
+          <button
+            onClick={handleSubmit}
+            disabled={!rewrite.trim()}
+            className="w-full px-6 py-3 rounded-xl font-medium bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 transition-all"
+          >
+            Submit Rewrite
+          </button>
+        </>
+      ) : (
+        <div className="space-y-4">
+          {/* User's rewrite */}
+          <div className="bg-green-50 border border-green-100 rounded-xl p-4">
+            <p className="text-xs font-medium text-green-500 uppercase tracking-wide mb-2">Your version</p>
+            <p className="text-content">{rewrite}</p>
+          </div>
+
+          {/* Sample strong version */}
+          {sampleStrongVersion && (
+            <div>
+              <button
+                onClick={() => setShowSample(!showSample)}
+                className="text-sm font-medium text-brand-600 hover:text-brand-700 mb-2"
+              >
+                {showSample ? 'Hide' : 'Show'} example strong version
+              </button>
+              {showSample && (
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                  <p className="text-xs font-medium text-blue-500 uppercase tracking-wide mb-2">Example strong version</p>
+                  <p className="text-content">{sampleStrongVersion}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

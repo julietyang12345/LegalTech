@@ -5,7 +5,8 @@ import { Card, Button } from '@/components/common';
 import { StepLayout } from './StepLayout';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
-import type { CurriculumDay, Session } from '@/types';
+import { GoalType, type CurriculumDay, type Session } from '@/types';
+import { getTrainingConfig } from '@/config/training-configs';
 
 interface PrePromptStepProps {
   day: CurriculumDay;
@@ -140,12 +141,33 @@ export function PrePromptStep({ day, session }: PrePromptStepProps) {
     }
   };
 
+  // Adapt labels based on goalType
+  const trainingConfig = getTrainingConfig(session.goalType);
+  const stepLabel = trainingConfig.stepLabels?.prePrompt || 'Get Ready';
+  const isTraining = session.goalType && session.goalType !== GoalType.CURRICULUM;
+
+  const titleMap: Record<string, string> = {
+    [GoalType.INTERVIEW]: `${stepLabel} 🎯`,
+    [GoalType.PROJECT]: `${stepLabel} 🔧`,
+    [GoalType.AI_BUILDER]: `${stepLabel} 🤖`,
+    [GoalType.LANGUAGE]: `${stepLabel} 🗣️`,
+  };
+  const subtitleMap: Record<string, string> = {
+    [GoalType.INTERVIEW]: 'Review the concept, warm up, then tackle the scenario',
+    [GoalType.PROJECT]: 'Understand the skill, warm up, then solve a real problem',
+    [GoalType.AI_BUILDER]: 'Learn the concept, warm up, then scope your build',
+    [GoalType.LANGUAGE]: 'Learn the grammar/vocabulary, then practice',
+  };
+
+  const displayTitle = session.goalType ? titleMap[session.goalType] || 'Get Ready 🧠' : 'Get Ready 🧠';
+  const displaySubtitle = session.goalType ? subtitleMap[session.goalType] || 'Take 30 seconds to prime your brain' : 'Take 30 seconds to prime your brain';
+
   return (
     <StepLayout
       icon={Lightbulb}
       iconGradient="from-brand-400 to-brand-500"
-      title="Get Ready 🧠"
-      subtitle="Take 30 seconds to prime your brain"
+      title={displayTitle}
+      subtitle={displaySubtitle}
     >
       {/* Pre-prompt content */}
       <Card className="bg-gradient-to-br from-brand-50 to-white border border-brand-100">
@@ -157,7 +179,9 @@ export function PrePromptStep({ day, session }: PrePromptStepProps) {
           {/* Skills/topics for today */}
           {skills.length > 0 && (
             <div className="space-y-3">
-              <h3 className="font-medium text-content-secondary">Today you'll cover:</h3>
+              <h3 className="font-medium text-content-secondary">
+                {isTraining ? "Today's focus:" : "Today you'll cover:"}
+              </h3>
               {skills.map((skill: string, index: number) => (
                 <motion.div
                   key={index}

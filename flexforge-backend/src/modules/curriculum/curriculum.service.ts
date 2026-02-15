@@ -701,6 +701,7 @@ Return JSON only:
         prerequisiteSkills: skillDetection.prerequisiteSkills,
         learnerPrefs,
         customSections: skillDetection.customSections,
+        goalType: dto.goalType,
       });
 
     // Step 4: Generate curriculum OVERVIEW with AI (Phase 1) - with prompt caching
@@ -799,6 +800,8 @@ Return JSON only:
       isLanguageLearning: skillDetection.isLanguageLearning,
       targetLanguage: skillDetection.targetLanguage,
       proficiencyLevel: skillDetection.proficiencyLevel,
+      // Training mode goal type
+      goalType: dto.goalType,
     };
 
     // All days are skeletons - full content generated on-demand when user starts each day
@@ -1033,6 +1036,8 @@ Return JSON only:
       improvementAreas,
       // User-specified areas to reduce content for
       lessOfAreas,
+      // Training mode goal type
+      goalType: curriculum.metadata.goalType,
     };
 
     const { staticPart, dynamicPart, userPrompt } =

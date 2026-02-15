@@ -8,7 +8,7 @@ import {
   Min,
   Max,
 } from 'class-validator';
-import { SkillLevel } from '../../../database/entities/session.entity';
+import { SkillLevel, GoalType } from '../../../database/entities/session.entity';
 
 export class GenerateCurriculumDto {
   @IsString()
@@ -77,4 +77,9 @@ export class GenerateCurriculumDto {
   // Default: false (AI code review only)
   @IsOptional()
   codeWritingEnabled?: boolean;
+
+  // Training mode goal type (defaults to CURRICULUM for standard learning)
+  @IsOptional()
+  @IsEnum(GoalType)
+  goalType?: GoalType;
 }

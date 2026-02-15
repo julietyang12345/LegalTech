@@ -13,7 +13,8 @@ import { Button, GeneratingScreen, FakePaywallModal } from '@/components/common'
 import { AiTutorPanel } from '@/components/session/AiTutorPanel';
 import { StepCelebration, getCelebrationLabel } from '@/components/session/StepCelebration';
 import { DayCompletionScreen } from '@/components/session/DayCompletionScreen';
-import type { CurriculumDay } from '@/types';
+import { GoalType, type CurriculumDay } from '@/types';
+import { getTrainingConfig, isTrainingMode } from '@/config/training-configs';
 
 // Import step components
 import { PrePromptStep } from '@/components/session/PrePromptStep';
@@ -23,6 +24,7 @@ import { SectionTaskStep } from '@/components/session/SectionTaskStep';
 import { BossMilestoneStep } from '@/components/session/BossMilestoneStep';
 import { OpenTaskStep } from '@/components/session/OpenTaskStep';
 import { ReflectionStep } from '@/components/session/ReflectionStep';
+import { TimedWorkspace } from '@/components/session/TimedWorkspace';
 
 import type { SessionStep as SessionStepType } from '@/types';
 import type { CourseBookmark } from './VaultPage';
@@ -225,6 +227,11 @@ type TaskFormat = 'quiz' | 'fillBlank' | 'mixed' | 'sections';
 // Legacy quiz/fillBlank formats are auto-converted by SectionTaskStep
 // Language learning uses 'mixed' format (treated same as 'sections')
 function TaskRouter({ day, session, onComplete, onBookmarkQuestion, onShareQuestion }: { day: CurriculumDay; session: any; onComplete: () => void; onBookmarkQuestion?: (q: { question: string; options?: string[]; correctAnswer?: string }) => void; onShareQuestion?: (q: { question: string; options?: string[]; correctAnswer?: string }) => void }) {
+  // For interview mode, use TimedWorkspace instead of regular task flow
+  if (session?.goalType === GoalType.INTERVIEW) {
+    return <TimedWorkspace day={day} session={session} onComplete={onComplete} />;
+  }
+
   const task = day.task1;
   const originalFormat = ((task as any)?.format || 'quiz') as TaskFormat;
   const [selectedFormat, setSelectedFormat] = useState<TaskFormat>(originalFormat);
@@ -407,16 +414,6 @@ const STEP_COMPONENTS: Record<string, React.ComponentType<any>> = {
   reflection: ReflectionStep,
 };
 
-// Step order for the session flow
-const STEP_ORDER: SessionStepType[] = [
-  'prePrompt',
-  'video',
-  'task1',
-  'bossMilestone',
-  'openTask',
-  'reflection',
-];
-
 // Step engagement tracking - what user has actually done
 interface StepEngagement {
   task1: boolean;            // Completed quiz/fill-blank
@@ -509,6 +506,11 @@ export function SessionPage() {
     }
   }, [activeSession, isCoreLoaded, isDeferredLoaded, isDeferredLoading, isRegenerating, loadDayDeferredContent]);
 
+  // Get step order based on session's goalType
+  const goalType = activeSession?.goalType;
+  const trainingConfig = getTrainingConfig(goalType);
+  const STEP_ORDER = trainingConfig.stepFlow as SessionStepType[];
+
   // Get available steps (filter out skipped ones)
   const availableSteps = STEP_ORDER.filter(step => {
     // Skip video step if no actual video OR if video was skipped
@@ -525,7 +527,6 @@ export function SessionPage() {
     // The BossMilestoneStep component handles both project-based and practice-based curricula
     // Don't filter based on content existence - content loads async via deferred
     if (step === 'bossMilestone') {
-      // Only skip if explicitly marked as no practice day (rare edge case)
       return true;
     }
     // Always show openTask step (renders as Real-World Challenge)

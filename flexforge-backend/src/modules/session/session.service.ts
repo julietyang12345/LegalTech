@@ -6,7 +6,6 @@ import {
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
-import { CACHE_CONFIG } from '../curriculum/services/curriculum-cache.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as crypto from 'crypto';
@@ -14,7 +13,9 @@ import {
   Session,
   SessionStatus,
   SessionMode,
+  GoalType,
 } from '../../database/entities/session.entity';
+import { getTrainingConfig } from '../curriculum/training-configs';
 import { QuotaTier } from '../../database/entities/user.entity';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { UpdateSessionDto } from './dto/update-session.dto';
@@ -333,6 +334,8 @@ export class SessionService {
             learningStyle: learnerPrefs?.learningStyle,
             // Advanced mode: code writing exercises
             codeWritingEnabled: learnerPrefs?.codeWritingEnabled,
+            // Training mode goal type
+            goalType: createSessionDto.goalType || learnerPrefs?.goalType,
           },
           tierString,
         );
@@ -370,6 +373,11 @@ export class SessionService {
       { status: SessionStatus.PAUSED },
     );
 
+    // Determine goalType from DTO or learner prefs
+    const effectiveGoalType = createSessionDto.goalType
+      || user.preferences?.learner?.goalType
+      || GoalType.CURRICULUM;
+
     // Create session
     const session = this.sessionsRepository.create({
       userId,
@@ -377,6 +385,7 @@ export class SessionService {
       durationDays: createSessionDto.durationDays,
       hoursPerDay: createSessionDto.hoursPerDay,
       skillLevel: createSessionDto.skillLevel,
+      goalType: effectiveGoalType,
       curriculum,
       variantId,
       fromCache,
@@ -2184,5 +2193,109 @@ ${jsonInstruction}`;
     }
 
     return true;
+  }
+
+  /**
+   * Score an attempt for training modes (interview rubric, project/AI feedback).
+   * Returns an async generator for SSE streaming.
+   */
+  async *scoreAttempt(
+    sessionId: string,
+    userId: string,
+    dayNumber: number,
+    attempt: string,
+    timeSpent: number,
+  ): AsyncGenerator<{ event: string; data: any }> {
+    const session = await this.findOne(sessionId, userId);
+    const trainingConfig = getTrainingConfig(session.goalType);
+
+    if (!trainingConfig || trainingConfig.scoringType === 'none') {
+      yield { event: 'error', data: { error: 'Scoring not available for this session type' } };
+      return;
+    }
+
+    const dayOverview = this.getDayOverview(session, dayNumber);
+    const task1 = dayOverview.coreContent?.task1 || dayOverview.task1;
+
+    yield { event: 'scoring_start', data: { scoringType: trainingConfig.scoringType } };
+
+    const scoringPrompt = trainingConfig.scoringType === 'rubric'
+      ? `You are an expert interviewer. Score this interview attempt on a rubric.
+
+SCENARIO: ${dayOverview.title}
+SKILL: ${session.skillName}
+RUBRIC DIMENSIONS: ${trainingConfig.rubricDimensions.join(', ')}
+TIME SPENT: ${timeSpent} seconds
+TIME LIMIT: ${trainingConfig.defaultTimerMinutes} minutes
+
+TASK CONTEXT:
+${JSON.stringify(task1?.sections?.[0] || task1 || {}).substring(0, 2000)}
+
+CANDIDATE'S ATTEMPT:
+${attempt}
+
+Score each dimension 1-5 and provide actionable feedback. Return JSON:
+{
+  "dimensions": [{"name": "dimension_name", "score": 3, "feedback": "specific feedback"}],
+  "gaps": ["gap1", "gap2"],
+  "strengths": ["strength1", "strength2"],
+  "feedback": "Overall assessment paragraph",
+  "microFixes": ["Fix 1: specific actionable improvement", "Fix 2: another specific fix"]
+}`
+      : `You are a mentor reviewing a project/build attempt. Provide constructive feedback.
+
+PROJECT: ${dayOverview.title}
+SKILL: ${session.skillName}
+TIME SPENT: ${timeSpent} seconds
+
+TASK CONTEXT:
+${JSON.stringify(task1?.sections?.[0] || task1 || {}).substring(0, 2000)}
+
+USER'S WORK:
+${attempt}
+
+Identify weaknesses and strengths. Return JSON:
+{
+  "weaknesses": ["weakness1", "weakness2"],
+  "strengths": ["strength1", "strength2"],
+  "suggestions": ["suggestion1", "suggestion2"],
+  "feedback": "Overall assessment paragraph"
+}`;
+
+    try {
+      const response = await this.aiService.routeRequest(
+        AITask.LIGHTWEIGHT_EXTRACTION,
+        scoringPrompt,
+      );
+
+      let result: any;
+      try {
+        const cleaned = response.content
+          .replace(/```json\n?/g, '')
+          .replace(/```\n?/g, '')
+          .trim();
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        result = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(cleaned);
+      } catch {
+        result = { feedback: response.content, dimensions: [], gaps: [], strengths: [] };
+      }
+
+      yield { event: 'scoring_result', data: result };
+
+      // Save scoring result to day's progress
+      const dayIndex = session.curriculum.days.findIndex(
+        (d: any) => d.day === dayNumber,
+      );
+      if (dayIndex >= 0) {
+        session.curriculum.days[dayIndex].scoringResult = result;
+        session.curriculum.days[dayIndex].scoringTimestamp = new Date().toISOString();
+        await this.sessionsRepository.save(session);
+      }
+    } catch (error) {
+      this.logger.error(`Scoring failed: ${error.message}`);
+      yield { event: 'error', data: { error: 'Scoring failed. Please try again.' } };
+    }
+
+    yield { event: 'complete', data: {} };
   }
 }

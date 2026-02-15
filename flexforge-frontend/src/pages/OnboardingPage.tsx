@@ -9,9 +9,11 @@ import {
   FeelingStep,
 } from '@/components/onboarding';
 import { LanguageStep } from '@/components/onboarding/LanguageStep';
+import { ModeSelectStep } from '@/components/onboarding/ModeSelectStep';
 import { onboardingService } from '@/services/onboardingService';
 import { analyticsService } from '@/services/analyticsService';
 import { useAuthStore } from '@/stores/authStore';
+import { GoalType } from '@/types';
 import type {
   LearningDirection,
   RefinementContext,
@@ -21,6 +23,7 @@ import type {
 
 // Onboarding state machine
 type OnboardingStep =
+  | 'mode_select'    // Step 0: Select training mode
   | 'goal_input'     // Step 1: Free-text goal
   | 'generating'     // Loading: AI generating directions
   | 'directions'     // Step 2-3: Show directions + confirmation
@@ -40,10 +43,11 @@ export default function OnboardingPage() {
   // Track onboarding start time for duration calculation
   const onboardingStartTime = useRef<number>(Date.now());
 
-  // State machine
-  const [step, setStep] = useState<OnboardingStep>('goal_input');
+  // State machine - start with mode selection
+  const [step, setStep] = useState<OnboardingStep>('mode_select');
 
   // Data collected through the flow
+  const [goalType, setGoalType] = useState<GoalType>(GoalType.CURRICULUM);
   const [goal, setGoal] = useState('');
   const [directions, setDirections] = useState<LearningDirection[]>([]);
   const [interpretedGoal, setInterpretedGoal] = useState('');
@@ -53,6 +57,12 @@ export default function OnboardingPage() {
 
   // Error handling
   const [error, setError] = useState<string | null>(null);
+
+  // Step 0: Select training mode → advance to goal input
+  const handleModeSelect = useCallback((selectedGoalType: GoalType) => {
+    setGoalType(selectedGoalType);
+    setStep('goal_input');
+  }, []);
 
   // Step 1: Submit goal → generate directions
   const handleGoalSubmit = useCallback(async (goalText: string) => {
@@ -161,6 +171,8 @@ export default function OnboardingPage() {
         learningStyle,
         // Advanced mode: code writing exercises
         codeWritingEnabled,
+        // Training mode goal type
+        goalType,
         // Analytics: time spent in onboarding
         durationSeconds,
       };
@@ -177,11 +189,13 @@ export default function OnboardingPage() {
       setError(err.response?.data?.message || 'Failed to save preferences. Please try again.');
       setStep('depth');
     }
-  }, [goal, selectedDirection, selectedLanguage, refinementContext, navigate, refreshUser]);
+  }, [goal, goalType, selectedDirection, selectedLanguage, refinementContext, navigate, refreshUser]);
 
   // Progress indicator
   const getProgress = () => {
     switch (step) {
+      case 'mode_select':
+        return 5;
       case 'goal_input':
         return 20;
       case 'generating':
@@ -229,6 +243,12 @@ export default function OnboardingPage() {
 
           {/* Step content */}
           <AnimatePresence mode="wait">
+            {step === 'mode_select' && (
+              <StepWrapper key="mode_select">
+                <ModeSelectStep onSelect={handleModeSelect} />
+              </StepWrapper>
+            )}
+
             {step === 'goal_input' && (
               <StepWrapper key="goal">
                 <GoalInputStep onSubmit={handleGoalSubmit} initialValue={prefilledSkill} />

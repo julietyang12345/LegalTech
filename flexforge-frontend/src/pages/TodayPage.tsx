@@ -8,7 +8,8 @@ import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
 import { Button, Card, StreakBadge, ProgressBar, GeneratingScreen } from '@/components/common';
 import { sessionService } from '@/services/sessionService';
-import { DayStatus, CurriculumDay } from '@/types';
+import { DayStatus, CurriculumDay, GoalType } from '@/types';
+import { getTrainingConfig, isTrainingMode } from '@/config/training-configs';
 
 // Loading steps for day content generation (~10 seconds total)
 const DAY_LOADING_STEPS = [
@@ -489,10 +490,16 @@ export function TodayPage() {
     d => d.day === activeSession.currentDay - 1
   );
 
-  // Find next boss project
-  const nextBoss = activeSession.curriculum.bossProjects?.find(
-    b => b.day > activeSession.currentDay
-  );
+  // Training mode config
+  const trainingMode = isTrainingMode(activeSession.goalType);
+  const trainingConfig = getTrainingConfig(activeSession.goalType);
+
+  // Find next boss project (curriculum mode only)
+  const nextBoss = !trainingMode
+    ? activeSession.curriculum.bossProjects?.find(
+        b => b.day > activeSession.currentDay
+      )
+    : null;
   const daysUntilBoss = nextBoss ? nextBoss.day - activeSession.currentDay : 0;
 
   // Check if today is complete (placeholder - would come from progress)
@@ -528,8 +535,8 @@ export function TodayPage() {
         )}
       </motion.div>
 
-      {/* Knowledge Recall (skip on day 1) */}
-      {previousDayData && activeSession.currentDay > 1 && (
+      {/* Knowledge Recall (curriculum mode only, skip on day 1) */}
+      {!trainingMode && previousDayData && activeSession.currentDay > 1 && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -551,10 +558,16 @@ export function TodayPage() {
       >
         <Card className="bg-surface border-2 border-brand-100">
           <div className="p-8 text-center">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-50 text-brand-600 
+            {trainingMode && (
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-surface-tertiary text-content-secondary
+                            rounded-full text-xs font-medium mb-3">
+                {trainingConfig.name}
+              </div>
+            )}
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-50 text-brand-600
                           rounded-full text-sm font-medium mb-4">
               <Calendar className="w-4 h-4" />
-              Day {activeSession.currentDay} of {activeSession.durationDays}
+              {trainingMode ? `Session ${activeSession.currentDay} of ${activeSession.durationDays}` : `Day ${activeSession.currentDay} of ${activeSession.durationDays}`}
             </div>
             
             <h2 className="text-xl font-bold text-content mb-2">
@@ -588,7 +601,7 @@ export function TodayPage() {
               leftIcon={isDayLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
               className="w-full sm:w-auto"
             >
-              {isDayLoading ? 'Generating Content...' : 'Start Learning'}
+              {isDayLoading ? 'Generating Content...' : trainingMode ? 'Start Session' : 'Start Learning'}
             </Button>
 
             {!canStart && activeSession.currentDay > 1 && (
@@ -645,21 +658,23 @@ export function TodayPage() {
         <Card padding="sm">
           <div className="p-4">
             <div className="flex justify-between items-center mb-2">
-              <span className="text-sm font-medium text-content-secondary">Sprint Progress</span>
-              <button
-                onClick={() => setShowCurriculum(true)}
-                className="text-sm text-content-secondary hover:text-content flex items-center gap-1"
-              >
-                <Calendar className="w-3.5 h-3.5" />
-                View Full Curriculum
-              </button>
+              <span className="text-sm font-medium text-content-secondary">{trainingMode ? 'Session Progress' : 'Sprint Progress'}</span>
+              {!trainingMode && (
+                <button
+                  onClick={() => setShowCurriculum(true)}
+                  className="text-sm text-content-secondary hover:text-content flex items-center gap-1"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  View Full Curriculum
+                </button>
+              )}
             </div>
             <ProgressBar
               value={activeSession.currentDay}
               max={activeSession.durationDays}
             />
             <p className="text-xs text-content-tertiary mt-2">
-              Day {activeSession.currentDay} of {activeSession.durationDays} • {activeSession.durationDays ? Math.round((activeSession.currentDay / activeSession.durationDays) * 100) : 0}% complete
+              {trainingMode ? 'Session' : 'Day'} {activeSession.currentDay} of {activeSession.durationDays} • {activeSession.durationDays ? Math.round((activeSession.currentDay / activeSession.durationDays) * 100) : 0}% complete
             </p>
           </div>
         </Card>

@@ -47,6 +47,7 @@ export class SessionController {
         curriculum: result.session.curriculum,
         status: result.session.status,
         startedAt: result.session.startedAt,
+        goalType: result.session.goalType,
       },
       warnings: result.warnings,
       skillDetection: result.skillDetection,
@@ -445,6 +446,44 @@ export class SessionController {
       boost: result.boost,
       tokensUsed: result.tokensUsed,
     };
+  }
+
+  /**
+   * POST /api/v1/sessions/:id/days/:dayNumber/score
+   * Score an attempt for training modes (interview rubric, project/AI feedback)
+   * Returns SSE stream with scoring results
+   */
+  @Post(':id/days/:dayNumber/score')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async scoreAttempt(
+    @Res() res: Response,
+    @Request() req,
+    @Param('id') id: string,
+    @Param('dayNumber') dayNumber: string,
+    @Body() body: { attempt: string; timeSpent: number },
+  ) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    (res as any).socket?.setNoDelay?.(true);
+
+    try {
+      for await (const chunk of this.sessionService.scoreAttempt(
+        id,
+        req.user.id,
+        parseInt(dayNumber, 10),
+        body.attempt,
+        body.timeSpent,
+      )) {
+        res.write(`event: ${chunk.event}\ndata: ${JSON.stringify(chunk.data)}\n\n`);
+      }
+    } catch (error) {
+      res.write(`event: error\ndata: ${JSON.stringify({ error: error.message || 'Scoring failed' })}\n\n`);
+    }
+    res.end();
   }
 
   /**
