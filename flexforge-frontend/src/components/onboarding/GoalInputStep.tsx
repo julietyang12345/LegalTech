@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { clsx } from 'clsx';
 import { Button } from "../common/Button";
-import { Sparkles, ArrowRight, BookOpen, Loader2, Briefcase, Cpu, MessageSquare, ChevronDown, Check } from "lucide-react";
+import { Sparkles, ArrowRight, BookOpen, Loader2, Briefcase, Cpu, MessageSquare, ChevronDown, Check, Brain } from "lucide-react";
 import { onboardingService } from "@/services/onboardingService";
 import { useAuthStore } from "@/stores/authStore";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -18,13 +18,14 @@ const MODE_ICONS: Record<string, React.ElementType> = {
 
 interface GoalInputStepProps {
   onSubmit: (goal: string) => void;
+  onAssess?: (goal: string) => void;
   isLoading?: boolean;
   initialValue?: string;
   goalType: GoalType | null;
   onGoalTypeChange: (goalType: GoalType) => void;
 }
 
-export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onGoalTypeChange }: GoalInputStepProps) {
+export function GoalInputStep({ onSubmit, onAssess, isLoading, initialValue, goalType, onGoalTypeChange }: GoalInputStepProps) {
   const [goal, setGoal] = useState(initialValue || "");
   const [isSkipping, setIsSkipping] = useState(false);
   const [isCheckingSessions, setIsCheckingSessions] = useState(true);
@@ -64,23 +65,23 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
   const selectedConfig = goalType ? getTrainingConfig(goalType) : null;
 
   const defaultPrompts = {
-    heading: 'What do you want to learn?',
-    subtitle: 'Pick a mode above, then describe your goal.',
+    heading: 'What are you trying to learn or get unstuck on?',
+    subtitle: 'Pick a mode above, then describe what\'s blocking you.',
     placeholder: 'First, choose your end goal above...',
     button: 'Continue',
   };
 
   const modePrompts: Partial<Record<GoalType, typeof defaultPrompts>> = {
     [GoalType.CURRICULUM]: {
-      heading: 'What do you want to learn or master?',
-      subtitle: 'A topic, skill, or concept — whether you\'re starting fresh or leveling up.',
-      placeholder: 'e.g. I want to learn React, or I want to master data structures...',
-      button: 'Find my learning path',
+      heading: 'What are you trying to get unstuck on or learn?',
+      subtitle: 'Describe the situation you\'re in and what "better" looks like. We\'ll map it into a plan.',
+      placeholder: 'e.g. I keep starting tutorials but can\'t apply them to real work, I\'m stuck debugging async issues and don\'t know the right mental model...',
+      button: 'Find my path',
     },
     [GoalType.PROJECT]: {
-      heading: 'What do you want to build or get better at?',
-      subtitle: 'A project idea, a skill to sharpen, or a real work problem you\'re stuck on — we\'ll design the right project for you.',
-      placeholder: 'e.g. Build a budgeting app, get better at async code, I keep getting race conditions at work...',
+      heading: 'What are you trying to build, and what\'s stopping you?',
+      subtitle: 'Share the project + the part you\'re stuck on. We\'ll turn it into a step-by-step path.',
+      placeholder: 'e.g. I want to build X but I\'m blocked on auth, I can\'t get my DB schema right, deployment keeps failing...',
       button: 'Find my project',
     },
     [GoalType.AI_BUILDER]: {
@@ -90,9 +91,9 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
       button: 'Start building',
     },
     [GoalType.LANGUAGE]: {
-      heading: 'What language do you want to learn?',
-      subtitle: 'Pick a language and your goal — travel, work, fluency, or just for fun.',
-      placeholder: 'e.g. Japanese for travel, Spanish for work conversations...',
+      heading: 'What keeps you from using the language confidently?',
+      subtitle: 'Tell us the scenario (travel, meetings, daily life) and what you struggle with (listening, speaking, vocab).',
+      placeholder: 'e.g. I freeze up in work meetings in Spanish, I can\'t understand native speakers when they talk fast...',
       button: 'Start learning',
     },
   };
@@ -226,31 +227,55 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
           />
         </div>
 
-        <Button
-          type="submit"
-          size="lg"
-          className="w-full"
-          isLoading={isLoading}
-          disabled={!goal.trim() || !goalType || isLoading}
-          rightIcon={<ArrowRight className="w-5 h-5" />}
-        >
-          {isLoading ? "Finding directions..." : prompts.button}
-        </Button>
-      </form>
+        {/* Two equally visible action buttons */}
+        {onAssess && goalType ? (
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              disabled={!goal.trim()}
+              onClick={() => onAssess(goal.trim())}
+              className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-brand-500 bg-brand-50
+                         text-sm font-semibold text-brand-600 hover:bg-brand-100 transition-all
+                         disabled:opacity-40 disabled:pointer-events-none"
+            >
+              <Brain className="w-4 h-4" />
+              Assess my level
+            </button>
+            <button
+              type="submit"
+              disabled={!goal.trim() || !goalType || isLoading}
+              className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-border bg-surface
+                         text-sm font-semibold text-content hover:border-brand-300 hover:bg-surface-secondary transition-all
+                         disabled:opacity-40 disabled:pointer-events-none"
+            >
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <ArrowRight className="w-4 h-4" />
+              )}
+              {isLoading ? 'Loading...' : 'I know what to learn'}
+            </button>
+          </div>
+        ) : (
+          <Button
+            type="submit"
+            size="lg"
+            className="w-full"
+            isLoading={isLoading}
+            disabled={!goal.trim() || !goalType || isLoading}
+            rightIcon={<ArrowRight className="w-5 h-5" />}
+          >
+            {isLoading ? "Finding directions..." : prompts.button}
+          </Button>
+        )}
 
-      {/* Previous Sessions link - show if user has previous sessions or still checking */}
-      <div className="mt-8 text-center">
-        {isCheckingSessions ? (
-          <span className="inline-flex items-center gap-2 text-sm text-content-tertiary">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Checking for previous courses...
-          </span>
-        ) : hasPreviousSessions ? (
+        {/* Continue previous session */}
+        {!isCheckingSessions && hasPreviousSessions && (
           <button
             type="button"
             onClick={handleContinuePrevious}
             disabled={isSkipping}
-            className="inline-flex items-center gap-2 text-sm text-content-tertiary hover:text-content-secondary transition-colors disabled:opacity-50"
+            className="w-full inline-flex items-center justify-center gap-2 text-sm text-content-tertiary hover:text-content-secondary transition-colors disabled:opacity-50 py-1"
           >
             {isSkipping ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -259,8 +284,8 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
             )}
             {isSkipping ? 'Loading...' : 'Continue a previous session'}
           </button>
-        ) : null}
-      </div>
+        )}
+      </form>
     </div>
   );
 }

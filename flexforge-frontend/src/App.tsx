@@ -92,6 +92,14 @@ function App() {
             }
           />
           <Route
+            path="/assessment/results"
+            element={
+              <ProtectedRoute>
+                <GapResultsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/confirm"
             element={
               <ProtectedRoute>

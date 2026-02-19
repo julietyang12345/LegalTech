@@ -20,6 +20,7 @@ import {
   getScoreColor,
   getScoreLabel,
   goalTypeMap,
+  getLatestAssessment,
   type LearningMode,
 } from '@/utils/assessmentUtils';
 
@@ -34,13 +35,17 @@ export function GapResultsPage() {
   const location = useLocation();
 
   const state = location.state as { gapProfile?: GapProfile; skillName?: string } | null;
-  const gapProfile = state?.gapProfile;
-  const skillName = state?.skillName;
+
+  // Try location.state first (in-flow), fall back to localStorage (standalone)
+  const stored = !state?.gapProfile ? getLatestAssessment() : null;
+  const gapProfile = state?.gapProfile || stored?.gapProfile;
+  const skillName = state?.skillName || stored?.skillName;
+  const isStandalone = !state?.gapProfile && !!stored;
 
   const [selectedMode, setSelectedMode] = useState<LearningMode>('practice');
   const [useAiBuilder, setUseAiBuilder] = useState(false);
 
-  // Redirect if no gap data
+  // Redirect if no gap data at all
   if (!gapProfile || !skillName) {
     navigate('/assess', { replace: true });
     return null;
@@ -359,6 +364,25 @@ export function GapResultsPage() {
           <p className="text-xs text-content-tertiary text-center mt-2">
             Short, focused lessons — then we'll re-test to check your progress
           </p>
+
+          {/* Standalone mode: extra nav options */}
+          {isStandalone && (
+            <div className="flex items-center justify-center gap-4 mt-4 pt-3 border-t border-border-primary">
+              <button
+                onClick={() => navigate('/assess')}
+                className="text-sm text-content-tertiary hover:text-content-secondary transition-colors"
+              >
+                Retake assessment
+              </button>
+              <span className="text-content-tertiary">·</span>
+              <button
+                onClick={() => navigate('/today')}
+                className="text-sm text-content-tertiary hover:text-content-secondary transition-colors"
+              >
+                Back to dashboard
+              </button>
+            </div>
+          )}
         </motion.div>
       </div>
     </div>

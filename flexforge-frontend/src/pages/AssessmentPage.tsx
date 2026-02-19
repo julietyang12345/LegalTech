@@ -6,26 +6,28 @@ import {
   Send,
   Loader2,
   Clock,
-  ChevronDown,
-  ChevronUp,
   Sparkles,
   ArrowRight,
 } from 'lucide-react';
 import { Button } from '@/components/common';
 import { sessionService } from '@/services/sessionService';
 import { useAuthStore } from '@/stores/authStore';
+import { useSessionStore } from '@/stores/sessionStore';
+import { saveLatestAssessment } from '@/utils/assessmentUtils';
 import type { AssessmentScenario } from '@/types';
 
-type AssessmentStep = 'loading' | 'scenario' | 'analyzing' | 'skip_input';
+type AssessmentStep = 'loading' | 'skill_input' | 'scenario' | 'analyzing';
 
 export function AssessmentPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuthStore();
+  const { activeSession } = useSessionStore();
 
   const prefs = user?.preferences?.learner;
-  const skillName = prefs?.selectedDirection || '';
-  const goalType = prefs?.goalType;
+  // Use prefs first, fall back to active session skill
+  const defaultSkillName = prefs?.selectedDirection || activeSession?.skillName || '';
+  const goalType = prefs?.goalType || activeSession?.goalType;
 
   // Re-test: previousGaps passed via location state
   const state = location.state as {
@@ -35,43 +37,41 @@ export function AssessmentPage() {
   const previousGaps = state?.previousGaps;
   const assessmentRound = state?.assessmentRound || 1;
 
-  const [step, setStep] = useState<AssessmentStep>('loading');
+  const [skillName, setSkillName] = useState(defaultSkillName);
+  const [step, setStep] = useState<AssessmentStep>(defaultSkillName ? 'loading' : 'skill_input');
   const [scenario, setScenario] = useState<AssessmentScenario | null>(null);
   const [userResponse, setUserResponse] = useState('');
-  const [showSkipInput, setShowSkipInput] = useState(false);
-  const [skipGoal, setSkipGoal] = useState('');
   const [error, setError] = useState<string | null>(null);
   const hasStarted = useRef(false);
 
-  // Generate assessment scenario on mount
+  // Load scenario (called on mount or after skill input)
+  const loadScenario = async (skill: string) => {
+    setStep('loading');
+    try {
+      const result = await sessionService.generateAssessment({
+        skillName: skill,
+        goalType,
+        skillLevel: prefs?.familiarity,
+        previousGaps,
+      });
+      setScenario(result);
+      setStep('scenario');
+    } catch (err: any) {
+      console.error('Failed to generate assessment:', err);
+      setError('Failed to generate assessment.');
+      setStep('skill_input');
+    }
+  };
+
+  // Generate assessment scenario on mount (if skill is known)
   useEffect(() => {
     if (hasStarted.current) return;
     hasStarted.current = true;
 
-    if (!skillName) {
-      navigate('/onboarding');
-      return;
-    }
+    if (!defaultSkillName) return; // Will show skill_input step
 
-    const loadScenario = async () => {
-      try {
-        const result = await sessionService.generateAssessment({
-          skillName,
-          goalType,
-          skillLevel: prefs?.familiarity,
-          previousGaps,
-        });
-        setScenario(result);
-        setStep('scenario');
-      } catch (err: any) {
-        console.error('Failed to generate assessment:', err);
-        setError('Failed to generate assessment. Redirecting...');
-        setTimeout(() => navigate('/confirm'), 2000);
-      }
-    };
-
-    loadScenario();
-  }, [skillName, goalType, prefs?.familiarity, previousGaps, navigate]);
+    loadScenario(defaultSkillName);
+  }, [defaultSkillName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Submit response for gap analysis
   const handleSubmit = async () => {
@@ -87,6 +87,9 @@ export function AssessmentPage() {
         assessmentRound,
       });
 
+      // Persist for later retrieval (dashboard, /assessment/results)
+      saveLatestAssessment(result.gapProfile, skillName);
+
       navigate('/gap-results', {
         state: { gapProfile: result.gapProfile, skillName },
         replace: true,
@@ -98,26 +101,81 @@ export function AssessmentPage() {
     }
   };
 
-  // Skip assessment → go directly to curriculum generation
-  const handleSkip = () => {
-    navigate('/confirm', { replace: true });
+  // Skill input submit
+  const handleSkillSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!skillName.trim()) return;
+    loadScenario(skillName.trim());
   };
 
-  // Skip with custom goal text
-  const handleSkipWithGoal = () => {
-    if (!skipGoal.trim()) {
-      handleSkip();
-      return;
-    }
-    // Store in sessionStorage for ConfirmationPage to pick up
-    sessionStorage.setItem('customGoalOverride', skipGoal.trim());
-    navigate('/confirm', { replace: true });
+  // Skip assessment → go directly to curriculum generation or dashboard
+  const handleSkip = () => {
+    navigate(prefs?.selectedDirection ? '/confirm' : '/today', { replace: true });
   };
 
   return (
     <div className="min-h-screen bg-surface-primary flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-2xl">
         <AnimatePresence mode="wait">
+          {/* Skill input state — when user arrives without a skill */}
+          {step === 'skill_input' && (
+            <motion.div
+              key="skill_input"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-6"
+            >
+              <div className="text-center space-y-2">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-brand-400 to-purple-600 flex items-center justify-center">
+                  <Brain className="w-7 h-7 text-white" />
+                </div>
+                <h1 className="text-2xl font-bold text-content-primary">
+                  What skill do you want to assess?
+                </h1>
+                <p className="text-content-secondary text-sm">
+                  We'll generate a scenario to find your gaps
+                </p>
+              </div>
+
+              <form onSubmit={handleSkillSubmit} className="space-y-4">
+                <input
+                  type="text"
+                  value={skillName}
+                  onChange={(e) => setSkillName(e.target.value)}
+                  placeholder="e.g. React, system design, leadership, Spanish..."
+                  className="w-full px-4 py-3 rounded-xl bg-surface-secondary border border-border-primary text-content-primary placeholder-content-tertiary focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 text-[15px]"
+                  autoFocus
+                />
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="lg"
+                  disabled={!skillName.trim()}
+                  rightIcon={<ArrowRight className="w-4 h-4" />}
+                  className="w-full"
+                >
+                  Start assessment
+                </Button>
+              </form>
+
+              {error && (
+                <p className="text-red-500 text-sm text-center">{error}</p>
+              )}
+
+              {/* Skip option */}
+              <div className="text-center pt-4 border-t border-border-primary mt-2">
+                <button
+                  onClick={handleSkip}
+                  className="text-sm text-content-tertiary hover:text-content-secondary transition-colors inline-flex items-center gap-1.5"
+                >
+                  Skip assessment — go straight to learning
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </motion.div>
+          )}
+
           {/* Loading state */}
           {step === 'loading' && (
             <motion.div
@@ -223,46 +281,14 @@ export function AssessmentPage() {
                 <p className="text-red-500 text-sm text-center">{error}</p>
               )}
 
-              {/* Skip option — subtle */}
-              <div className="text-center pt-2">
-                <button
-                  onClick={() => setShowSkipInput(!showSkipInput)}
-                  className="text-xs text-content-tertiary hover:text-content-secondary transition-colors inline-flex items-center gap-1"
-                >
-                  I already know what I want to learn
-                  {showSkipInput ? (
-                    <ChevronUp className="w-3 h-3" />
-                  ) : (
-                    <ChevronDown className="w-3 h-3" />
-                  )}
-                </button>
-
-                <AnimatePresence>
-                  {showSkipInput && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="mt-3 space-y-3 overflow-hidden"
-                    >
-                      <input
-                        type="text"
-                        value={skipGoal}
-                        onChange={(e) => setSkipGoal(e.target.value)}
-                        placeholder="What do you want to learn? (optional)"
-                        className="w-full px-4 py-2.5 rounded-xl bg-surface-secondary border border-border-primary text-content-primary placeholder-content-tertiary text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
-                      />
-                      <button
-                        onClick={handleSkipWithGoal}
-                        className="text-sm text-brand-500 hover:text-brand-600 font-medium inline-flex items-center gap-1 transition-colors"
-                      >
-                        Skip to curriculum
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
+              {/* Skip option */}
+              <button
+                onClick={handleSkip}
+                className="w-full text-sm text-content-tertiary hover:text-content-secondary transition-colors inline-flex items-center justify-center gap-1.5 py-2"
+              >
+                Skip — go straight to learning
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
             </motion.div>
           )}
 

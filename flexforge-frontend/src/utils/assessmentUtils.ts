@@ -1,4 +1,5 @@
 import { GoalType } from '@/types';
+import type { GapProfile } from '@/types';
 
 // ============================================
 // Score display helpers (shared across assessment UIs)
@@ -54,3 +55,38 @@ export const goalTypeMap: Record<LearningMode, GoalType> = {
   project: GoalType.PROJECT,
   ai_builder: GoalType.AI_BUILDER,
 };
+
+// ============================================
+// Persistent assessment storage (localStorage)
+// ============================================
+
+const LATEST_ASSESSMENT_KEY = 'flexforge_latest_assessment';
+
+interface StoredAssessment {
+  gapProfile: GapProfile;
+  skillName: string;
+  timestamp: number;
+}
+
+export function saveLatestAssessment(gapProfile: GapProfile, skillName: string): void {
+  try {
+    const data: StoredAssessment = { gapProfile, skillName, timestamp: Date.now() };
+    localStorage.setItem(LATEST_ASSESSMENT_KEY, JSON.stringify(data));
+  } catch {
+    // localStorage full or unavailable — silently fail
+  }
+}
+
+export function getLatestAssessment(): StoredAssessment | null {
+  try {
+    const raw = localStorage.getItem(LATEST_ASSESSMENT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as StoredAssessment;
+  } catch {
+    return null;
+  }
+}
+
+export function clearLatestAssessment(): void {
+  localStorage.removeItem(LATEST_ASSESSMENT_KEY);
+}

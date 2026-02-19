@@ -1,14 +1,32 @@
 import { useState, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles } from 'lucide-react';
+import {
+  Sparkles,
+  Brain,
+  Send,
+  Clock,
+  Target,
+  Zap,
+  Hammer,
+  Bot,
+  AlertTriangle,
+  CheckCircle,
+  Shield,
+  TrendingUp,
+  Lightbulb,
+  ArrowRight,
+  ArrowLeft,
+} from 'lucide-react';
 import {
   GoalInputStep,
   DirectionsStep,
   RefinementPanel,
   FeelingStep,
 } from '@/components/onboarding';
+import { Button } from '@/components/common';
 import { onboardingService } from '@/services/onboardingService';
+import { sessionService } from '@/services/sessionService';
 import { analyticsService } from '@/services/analyticsService';
 import { useAuthStore } from '@/stores/authStore';
 import { GoalType } from '@/types';
@@ -17,16 +35,36 @@ import type {
   RefinementContext,
   LearnerPrefs,
   CompleteOnboardingDto,
+  AssessmentScenario,
+  GapProfile,
 } from '@/types';
+import {
+  saveLatestAssessment,
+  severityConfig,
+  getScoreColor,
+  getScoreLabel,
+  goalTypeMap,
+  type LearningMode,
+} from '@/utils/assessmentUtils';
 
-// Onboarding state machine
+// Onboarding state machine — dual branch
 type OnboardingStep =
-  | 'goal_input'     // Step 1: Free-text goal + mode chips
-  | 'generating'     // Loading: AI generating directions
-  | 'directions'     // Step 2: Show directions + confirmation
-  | 'refinement'     // Step 2b: Refinement panel (if "Not quite")
-  | 'depth'          // Step 3: Familiarity + session length
-  | 'completing';    // Final: Saving preferences
+  | 'goal_input'          // Both branches start here
+  | 'assessing'           // Branch A: loading scenario
+  | 'assess_scenario'     // Branch A: scenario + response textarea
+  | 'analyzing'           // Branch A: analyzing gaps
+  | 'gap_results'         // Branch A: results + mode selection
+  | 'generating'          // Branch B: loading directions
+  | 'directions'          // Branch B: pick direction
+  | 'refinement'          // Branch B: refine directions
+  | 'depth'               // Branch B: familiarity + session length
+  | 'completing';         // Both: saving prefs → /confirm
+
+const severityIcons = {
+  high: AlertTriangle,
+  medium: Target,
+  low: Shield,
+};
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
@@ -39,28 +77,146 @@ export default function OnboardingPage() {
   // Track onboarding start time for duration calculation
   const onboardingStartTime = useRef<number>(Date.now());
 
-  // State machine - start with goal input (mode chips are inline)
+  // State machine
   const [step, setStep] = useState<OnboardingStep>('goal_input');
+  const [branch, setBranch] = useState<'direct' | 'discovery' | null>(null);
 
-  // Data collected through the flow
+  // Shared state
   const [goalType, setGoalType] = useState<GoalType | null>(null);
   const [goal, setGoal] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  // Branch B (direct) state
   const [directions, setDirections] = useState<LearningDirection[]>([]);
   const [interpretedGoal, setInterpretedGoal] = useState('');
   const [selectedDirection, setSelectedDirection] = useState<LearningDirection | null>(null);
   const [selectedLanguage, setSelectedLanguage] = useState<string | undefined>();
   const [refinementContext, setRefinementContext] = useState<RefinementContext | undefined>();
 
-  // Error handling
-  const [error, setError] = useState<string | null>(null);
+  // Branch A (discovery) state
+  const [assessmentSkillName, setAssessmentSkillName] = useState('');
+  const [assessmentScenario, setAssessmentScenario] = useState<AssessmentScenario | null>(null);
+  const [userResponse, setUserResponse] = useState('');
+  const [gapProfile, setGapProfile] = useState<GapProfile | null>(null);
+  const [selectedMode, setSelectedMode] = useState<LearningMode>('practice');
+  const [useAiBuilder, setUseAiBuilder] = useState(false);
+
+  // ─── Branch A callbacks ───────────────────────────────────────
+
+  // Primary action → enter discovery branch, use goal text as skill name
+  const handleAssess = useCallback(async (goalText: string) => {
+    setGoal(goalText);
+    setAssessmentSkillName(goalText);
+    setBranch('discovery');
+    setError(null);
+    setStep('assessing');
+
+    try {
+      const result = await sessionService.generateAssessment({
+        skillName: goalText,
+        goalType: goalType ?? undefined,
+      });
+      setAssessmentScenario(result);
+      setStep('assess_scenario');
+    } catch (err: any) {
+      console.error('Failed to generate assessment:', err);
+      setError('Failed to generate assessment. Please try again.');
+      setStep('goal_input');
+    }
+  }, [goalType]);
+
+  // Response submit → analyze gaps
+  const handleAssessmentSubmit = useCallback(async () => {
+    if (!userResponse.trim() || !assessmentScenario) return;
+
+    setError(null);
+    setStep('analyzing');
+
+    try {
+      const result = await sessionService.analyzeGaps({
+        skillName: assessmentSkillName,
+        scenario: assessmentScenario.scenario,
+        userResponse: userResponse.trim(),
+        goalType: goalType ?? undefined,
+      });
+
+      setGapProfile(result.gapProfile);
+      saveLatestAssessment(result.gapProfile, assessmentSkillName);
+      setStep('gap_results');
+    } catch (err: any) {
+      console.error('Failed to analyze gaps:', err);
+      setError('Analysis failed. Please try again.');
+      setStep('assess_scenario');
+    }
+  }, [userResponse, assessmentScenario, assessmentSkillName, goalType]);
+
+  // Gap results → complete onboarding with gap-derived prefs
+  const handleGapResultsStart = useCallback(async () => {
+    if (!gapProfile) return;
+
+    setError(null);
+    setStep('completing');
+
+    const mode = useAiBuilder ? 'ai_builder' : selectedMode;
+    const durationSeconds = Math.round((Date.now() - onboardingStartTime.current) / 1000);
+
+    // Map detectedLevel to familiarity
+    const familiarityMap: Record<string, string> = {
+      beginner: 'new',
+      intermediate: 'know_basics',
+      advanced: 'skilled',
+    };
+
+    try {
+      const dto: CompleteOnboardingDto = {
+        originalGoal: `Assessment: ${assessmentSkillName}`,
+        selectedDirection: assessmentSkillName,
+        selectedDirectionOutcome: `Close gaps in ${assessmentSkillName}`,
+        directionKeywords: gapProfile.gaps.map((g) => g.category),
+        contentDepth: 'medium',
+        familiarity: familiarityMap[gapProfile.detectedLevel] || 'know_basics',
+        sessionLength: 'medium',
+        learningStyle: mode === 'practice' ? 'practice' : 'projects',
+        codeWritingEnabled: false,
+        goalType: goalTypeMap[mode] ?? goalType ?? GoalType.CURRICULUM,
+        durationSeconds,
+      };
+
+      await onboardingService.completeOnboarding(dto);
+      await refreshUser();
+
+      // Store gap data for the confirmation page
+      sessionStorage.setItem('gapProfile', JSON.stringify(gapProfile));
+      sessionStorage.setItem('gapGoalType', goalTypeMap[mode]);
+      sessionStorage.setItem('gapMicroLessonMode', 'true');
+
+      navigate('/confirm', { replace: true });
+    } catch (err: any) {
+      console.error('Failed to complete onboarding:', err);
+      setError(err.response?.data?.message || 'Failed to save preferences. Please try again.');
+      setStep('gap_results');
+    }
+  }, [gapProfile, selectedMode, useAiBuilder, assessmentSkillName, goalType, navigate, refreshUser]);
+
+  // Escape hatch: back to goal_input
+  const handleEscapeToGoalInput = useCallback(() => {
+    setBranch(null);
+    setAssessmentScenario(null);
+    setUserResponse('');
+    setGapProfile(null);
+    setError(null);
+    setStep('goal_input');
+  }, []);
+
+  // ─── Branch B callbacks ───────────────────────────────────────
 
   // Step 1: Submit goal → generate directions
   const handleGoalSubmit = useCallback(async (goalText: string) => {
     setGoal(goalText);
+    setBranch('direct');
     setError(null);
     setStep('generating');
 
-    // Track goal submission
     analyticsService.onboardingGoalSubmitted(goalText);
 
     try {
@@ -75,17 +231,15 @@ export default function OnboardingPage() {
     }
   }, [goalType]);
 
-  // Step 2: Select direction → go to depth step (language is inline on card)
+  // Step 2: Select direction → go to depth step
   const handleDirectionSelect = useCallback((direction: LearningDirection, language?: string) => {
     setSelectedDirection(direction);
 
-    // Track direction selection
     analyticsService.onboardingDirectionSelected(
       direction.title,
       direction.skillType || 'unknown'
     );
 
-    // Set language from inline selection (defaults to recommended)
     if (direction.languageConfig) {
       setSelectedLanguage(language || direction.languageConfig.recommended);
     }
@@ -111,7 +265,7 @@ export default function OnboardingPage() {
     }
   }, [goal, goalType]);
 
-  // Step 5: Select feelings → complete onboarding
+  // Step 3: Feelings → complete onboarding (Branch B → /confirm)
   const handleFeelingSelect = useCallback(async (
     depth: LearnerPrefs['contentDepth'],
     familiarity: string,
@@ -123,13 +277,11 @@ export default function OnboardingPage() {
   ) => {
     if (!selectedDirection) return;
 
-    // Track feeling submission
     analyticsService.onboardingFeelingSubmitted(familiarity, sessionLength);
 
     setError(null);
     setStep('completing');
 
-    // Calculate duration in seconds
     const durationSeconds = Math.round((Date.now() - onboardingStartTime.current) / 1000);
 
     try {
@@ -139,35 +291,22 @@ export default function OnboardingPage() {
         selectedDirectionOutcome: selectedDirection.outcome,
         directionKeywords: selectedDirection.keywords,
         contentDepth: depth,
-        // Tool preference (maps to platformTolerance)
         platformTolerance: toolPreference,
-        // Language selection (for CODE/AI_AGENT directions)
         selectedLanguage: selectedLanguage,
-        // Output type - what user wants to achieve
         outputType,
-        // Usage context from refinement panel (if used)
         usageContext: refinementContext?.usageContext,
-        // Feeling-based inputs
         familiarity,
         sessionLength,
-        // Learning style - projects vs practice
         learningStyle,
-        // Advanced mode: code writing exercises
         codeWritingEnabled,
-        // Training mode goal type
         goalType: goalType ?? GoalType.CURRICULUM,
-        // Analytics: time spent in onboarding
         durationSeconds,
       };
 
       await onboardingService.completeOnboarding(dto);
-
-      // Refresh user to get updated preferences
       await refreshUser();
 
-      // Navigate to assessment (or confirm for language/interview modes)
-      const skipAssessment = goalType === GoalType.LANGUAGE || goalType === GoalType.INTERVIEW;
-      navigate(skipAssessment ? '/confirm' : '/assess', { replace: true });
+      navigate('/confirm', { replace: true });
     } catch (err: any) {
       console.error('Failed to complete onboarding:', err);
       setError(err.response?.data?.message || 'Failed to save preferences. Please try again.');
@@ -175,25 +314,49 @@ export default function OnboardingPage() {
     }
   }, [goal, goalType, selectedDirection, selectedLanguage, refinementContext, navigate, refreshUser]);
 
-  // Progress indicator
+  // ─── Progress bar (branch-aware) ─────────────────────────────
+
   const getProgress = () => {
+    if (branch === 'discovery') {
+      switch (step) {
+        case 'goal_input': return 10;
+        case 'assessing': return 30;
+        case 'assess_scenario': return 50;
+        case 'analyzing': return 70;
+        case 'gap_results': return 85;
+        case 'completing': return 100;
+        default: return 0;
+      }
+    }
+    // Branch B (direct) or no branch yet
     switch (step) {
-      case 'goal_input':
-        return 15;
-      case 'generating':
-        return 35;
-      case 'directions':
-        return 55;
-      case 'refinement':
-        return 55;
-      case 'depth':
-        return 85;
-      case 'completing':
-        return 100;
-      default:
-        return 0;
+      case 'goal_input': return 15;
+      case 'generating': return 35;
+      case 'directions': return 55;
+      case 'refinement': return 55;
+      case 'depth': return 85;
+      case 'completing': return 100;
+      default: return 0;
     }
   };
+
+  // ─── Gap results derived data ─────────────────────────────────
+
+  const highGaps = gapProfile?.gaps.filter((g) => g.severity === 'high') || [];
+  const mediumGaps = gapProfile?.gaps.filter((g) => g.severity === 'medium') || [];
+  const lowGaps = gapProfile?.gaps.filter((g) => g.severity === 'low') || [];
+  const sortedGaps = [...highGaps, ...mediumGaps, ...lowGaps];
+  const dimensions = gapProfile?.dimensions || [];
+  const overallScore = gapProfile?.overallScore || 0;
+  const microLessonPoints = gapProfile?.microLessonPoints || [];
+
+  const levelEmoji: Record<string, string> = {
+    beginner: '\u{1F331}',
+    intermediate: '\u{1F33F}',
+    advanced: '\u{1F333}',
+  };
+
+  // ─── Render ───────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-50 dark:from-brand-900/20 to-surface-secondary">
@@ -223,10 +386,12 @@ export default function OnboardingPage() {
 
           {/* Step content */}
           <AnimatePresence mode="wait">
+            {/* ── Both branches: Goal Input ── */}
             {step === 'goal_input' && (
               <StepWrapper key="goal">
                 <GoalInputStep
                   onSubmit={handleGoalSubmit}
+                  onAssess={handleAssess}
                   initialValue={prefilledSkill}
                   goalType={goalType}
                   onGoalTypeChange={setGoalType}
@@ -234,36 +399,430 @@ export default function OnboardingPage() {
               </StepWrapper>
             )}
 
+            {/* ── Branch A: Assessing (loading) ── */}
+            {step === 'assessing' && (
+              <StepWrapper key="assessing">
+                <LoadingState
+                  title="Preparing your assessment"
+                  subtitle={<>Generating a scenario for <span className="font-medium text-content">{assessmentSkillName}</span></>}
+                  steps={[
+                    'Understanding the skill area',
+                    'Designing a realistic scenario',
+                    'Calibrating difficulty',
+                  ]}
+                />
+              </StepWrapper>
+            )}
+
+            {/* ── Branch A: Scenario + Response ── */}
+            {step === 'assess_scenario' && assessmentScenario && (
+              <StepWrapper key="assess_scenario">
+                <div className="max-w-xl mx-auto space-y-6">
+                  <div className="text-center space-y-2">
+                    <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-brand-400 to-purple-600 flex items-center justify-center">
+                      <Brain className="w-7 h-7 text-white" />
+                    </div>
+                    <h1 className="text-2xl font-bold text-content">Quick Assessment</h1>
+                    <p className="text-content-secondary text-sm">
+                      Tell us what you know — we'll find the gaps and fill them
+                    </p>
+                  </div>
+
+                  {/* Scenario card */}
+                  <div className="bg-surface-secondary rounded-2xl p-6 border border-border space-y-4">
+                    <div className="flex items-center gap-2 text-sm text-content-tertiary">
+                      <Sparkles className="w-4 h-4 text-brand-500" />
+                      <span>Scenario</span>
+                    </div>
+                    <p className="text-content leading-relaxed text-[15px]">
+                      {assessmentScenario.scenario}
+                    </p>
+                    <p className="text-content-secondary text-sm italic">
+                      {assessmentScenario.instructions}
+                    </p>
+                    <div className="flex items-center gap-1.5 text-xs text-content-tertiary">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>Suggested time: ~{assessmentScenario.timeEstimateMinutes} minutes</span>
+                    </div>
+                  </div>
+
+                  {/* Response textarea */}
+                  <div className="space-y-3">
+                    <label className="block text-sm font-medium text-content">
+                      Your response
+                    </label>
+                    <textarea
+                      value={userResponse}
+                      onChange={(e) => setUserResponse(e.target.value)}
+                      placeholder="Explain your approach, what you'd consider, and why..."
+                      className="w-full min-h-[200px] px-4 py-3 rounded-xl bg-surface-secondary border border-border text-content placeholder-content-tertiary focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 resize-y text-[15px] leading-relaxed"
+                    />
+                    <p className="text-xs text-content-tertiary">
+                      {userResponse.length > 0
+                        ? `${userResponse.split(/\s+/).filter(Boolean).length} words`
+                        : 'Write as much or as little as you want — what you leave out matters too'}
+                    </p>
+                  </div>
+
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    onClick={handleAssessmentSubmit}
+                    disabled={!userResponse.trim()}
+                    rightIcon={<Send className="w-4 h-4" />}
+                    className="w-full"
+                  >
+                    Analyze my response
+                  </Button>
+                </div>
+              </StepWrapper>
+            )}
+
+            {/* ── Branch A: Analyzing (loading) ── */}
+            {step === 'analyzing' && (
+              <StepWrapper key="analyzing">
+                <LoadingState
+                  title="Analyzing your response"
+                  subtitle="Looking at what you covered — and what you didn't..."
+                  steps={[
+                    'Reading your response',
+                    'Evaluating structural gaps',
+                    'Scoring dimensions',
+                  ]}
+                />
+              </StepWrapper>
+            )}
+
+            {/* ── Branch A: Gap Results ── */}
+            {step === 'gap_results' && gapProfile && (
+              <StepWrapper key="gap_results">
+                <div className="max-w-2xl mx-auto space-y-8">
+                  {/* Header */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-center space-y-3"
+                  >
+                    <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-brand-400 to-purple-600 flex items-center justify-center">
+                      <TrendingUp className="w-7 h-7 text-white" />
+                    </div>
+                    <h1 className="text-2xl font-bold text-content">
+                      Your Assessment Results
+                    </h1>
+                    <p className="text-content-secondary text-sm">
+                      Structural evaluation of your response
+                    </p>
+                  </motion.div>
+
+                  {/* Overall score + detected level */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                    className="bg-surface-secondary rounded-2xl p-5 border border-border flex items-center gap-6"
+                  >
+                    <div className="flex-shrink-0 text-center">
+                      <div className={`w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-xl ${getScoreColor(overallScore)}`}>
+                        {overallScore.toFixed(1)}
+                      </div>
+                      <p className="text-[10px] text-content-tertiary mt-1">out of 5</p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">{levelEmoji[gapProfile.detectedLevel] || '\u{1F331}'}</span>
+                        <p className="text-lg font-semibold text-content capitalize">
+                          {gapProfile.detectedLevel} level
+                        </p>
+                      </div>
+                      <p className="text-sm text-content-secondary mt-0.5">
+                        Based on structural analysis of your response
+                      </p>
+                    </div>
+                  </motion.div>
+
+                  {/* Dimension scores */}
+                  {dimensions.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 15 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.2 }}
+                      className="space-y-3"
+                    >
+                      <h2 className="text-sm font-semibold text-content flex items-center gap-2">
+                        <Target className="w-4 h-4 text-brand-500" />
+                        Dimension Scores
+                      </h2>
+                      <div className="bg-surface-secondary rounded-2xl border border-border divide-y divide-border overflow-hidden">
+                        {dimensions.map((dim, i) => (
+                          <motion.div
+                            key={dim.name}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.25 + i * 0.04 }}
+                            className="px-4 py-3"
+                          >
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-sm font-medium text-content capitalize">
+                                {dim.name.replace(/_/g, ' ')}
+                              </span>
+                              <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+                                dim.score >= 4 ? 'bg-focus-100 text-focus-700 dark:bg-focus-900/30 dark:text-focus-300'
+                                : dim.score >= 3 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                                : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                              }`}>
+                                {dim.score}/5 · {getScoreLabel(dim.score)}
+                              </span>
+                            </div>
+                            <div className="h-1.5 bg-surface-tertiary rounded-full overflow-hidden mb-1.5">
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${(dim.score / 5) * 100}%` }}
+                                transition={{ delay: 0.4 + i * 0.05, duration: 0.5 }}
+                                className={`h-full rounded-full ${getScoreColor(dim.score)}`}
+                              />
+                            </div>
+                            {dim.gap && (
+                              <div className="mt-2 space-y-1">
+                                <p className="text-xs text-content-secondary">
+                                  <span className="font-medium text-content-tertiary">Gap:</span> {dim.gap}
+                                </p>
+                                {dim.example && (
+                                  <p className="text-xs text-content-tertiary italic">
+                                    <span className="font-medium">Example:</span> {dim.example}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </motion.div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Micro-lesson points */}
+                  {microLessonPoints.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 15 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.4 }}
+                      className="space-y-3"
+                    >
+                      <h2 className="text-sm font-semibold text-content flex items-center gap-2">
+                        <Lightbulb className="w-4 h-4 text-amber-500" />
+                        Quick Tips for Your Weakest Areas
+                      </h2>
+                      <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 space-y-3">
+                        {microLessonPoints.map((tip, i) => (
+                          <div key={i} className="flex gap-2.5">
+                            <span className="flex-shrink-0 w-5 h-5 rounded-full bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 text-xs font-bold flex items-center justify-center mt-0.5">
+                              {i + 1}
+                            </span>
+                            <p className="text-sm text-content leading-relaxed">{tip}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Strengths */}
+                  {gapProfile.strengths.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 15 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.5 }}
+                      className="space-y-3"
+                    >
+                      <h2 className="text-sm font-semibold text-content flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-focus-500" />
+                        What you did well
+                      </h2>
+                      <div className="space-y-2">
+                        {gapProfile.strengths.map((strength, i) => (
+                          <div
+                            key={i}
+                            className="bg-focus-50 dark:bg-focus-950/20 border border-focus-200 dark:border-focus-800 rounded-xl px-4 py-3"
+                          >
+                            <p className="text-sm font-medium text-focus-700 dark:text-focus-300 capitalize">
+                              {strength.category.replace(/_/g, ' ')}
+                            </p>
+                            <p className="text-sm text-content-secondary mt-0.5">
+                              {strength.description}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Structural gaps */}
+                  {sortedGaps.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 15 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.6 }}
+                      className="space-y-3"
+                    >
+                      <h2 className="text-sm font-semibold text-content flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-alert-500" />
+                        Structural Gaps ({sortedGaps.length})
+                      </h2>
+                      <div className="space-y-2">
+                        {sortedGaps.map((gap, i) => {
+                          const config = severityConfig[gap.severity];
+                          const Icon = severityIcons[gap.severity];
+                          return (
+                            <div
+                              key={i}
+                              className={`rounded-xl px-4 py-3 border ${config.color}`}
+                            >
+                              <div className="flex items-start gap-3">
+                                <Icon className="w-4 h-4 mt-0.5 flex-shrink-0 opacity-70" />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="text-sm font-medium text-content capitalize">
+                                      {gap.category.replace(/_/g, ' ')}
+                                    </p>
+                                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${config.badge}`}>
+                                      {config.label}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-content-secondary mt-0.5">
+                                    {gap.description}
+                                  </p>
+                                  <p className="text-xs text-content-tertiary mt-1 italic">
+                                    {gap.evidence}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Mode selection */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.7 }}
+                    className="space-y-3"
+                  >
+                    <h2 className="text-sm font-semibold text-content">
+                      How do you want to learn?
+                    </h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <InlineModeCard
+                        icon={Zap}
+                        title="Practice Mode"
+                        description="Short drills targeting each gap"
+                        selected={selectedMode === 'practice' && !useAiBuilder}
+                        onClick={() => {
+                          setSelectedMode('practice');
+                          setUseAiBuilder(false);
+                        }}
+                      />
+                      <InlineModeCard
+                        icon={Hammer}
+                        title="Project Mode"
+                        description="Build a small project covering these gaps"
+                        selected={selectedMode === 'project' && !useAiBuilder}
+                        onClick={() => {
+                          setSelectedMode('project');
+                          setUseAiBuilder(false);
+                        }}
+                      />
+                    </div>
+
+                    {/* AI Builder sub-option */}
+                    {selectedMode === 'project' && (
+                      <motion.label
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        className="flex items-center gap-2.5 pl-4 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={useAiBuilder}
+                          onChange={(e) => setUseAiBuilder(e.target.checked)}
+                          className="w-4 h-4 rounded border-border text-brand-500 focus:ring-brand-500/30"
+                        />
+                        <div className="flex items-center gap-1.5">
+                          <Bot className="w-3.5 h-3.5 text-content-tertiary" />
+                          <span className="text-sm text-content-secondary">
+                            Build it yourself with AI tools
+                          </span>
+                        </div>
+                      </motion.label>
+                    )}
+                  </motion.div>
+
+                  {/* Start button */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.8 }}
+                  >
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      onClick={handleGapResultsStart}
+                      rightIcon={<ArrowRight className="w-4 h-4" />}
+                      className="w-full"
+                    >
+                      Start targeted lessons ({Math.max(3, Math.min(5, highGaps.length + mediumGaps.length))} days)
+                    </Button>
+                    <p className="text-xs text-content-tertiary text-center mt-2">
+                      Short, focused lessons — then we'll re-test to check your progress
+                    </p>
+                  </motion.div>
+
+                  {/* Escape hatch */}
+                  <div className="text-center pt-2 border-t border-border">
+                    <button
+                      onClick={handleEscapeToGoalInput}
+                      className="text-sm text-content-tertiary hover:text-content-secondary transition-colors inline-flex items-center gap-1.5"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      I actually know what I want to learn
+                    </button>
+                  </div>
+                </div>
+              </StepWrapper>
+            )}
+
+            {/* ── Branch B: Generating Directions ── */}
             {step === 'generating' && (
               <StepWrapper key="generating">
                 <LoadingState
                   title={
                     goalType === GoalType.PROJECT || goalType === GoalType.AI_BUILDER
                       ? 'Finding project ideas...'
-                      : 'Finding your learning path...'
+                      : 'Analyzing your situation...'
                   }
                   subtitle={
                     goalType === GoalType.PROJECT || goalType === GoalType.AI_BUILDER
                       ? 'Flexi is designing projects for you'
-                      : 'Flexi is analyzing your goal'
+                      : 'Flexi is mapping out your problem'
                   }
                   steps={
                     goalType === GoalType.PROJECT || goalType === GoalType.AI_BUILDER
                       ? [
-                          'Understanding your goal',
+                          'Understanding your blockers',
                           'Designing project ideas',
                           'Matching skills to projects',
                         ]
                       : [
-                          'Understanding your goal',
-                          'Identifying key concepts',
-                          'Creating learning directions',
+                          'Understanding your situation',
+                          'Identifying the gaps',
+                          'Mapping a fix-it plan',
                         ]
                   }
                 />
               </StepWrapper>
             )}
 
+            {/* ── Branch B: Directions ── */}
             {step === 'directions' && (
               <StepWrapper key="directions">
                 <DirectionsStep
@@ -276,6 +835,7 @@ export default function OnboardingPage() {
               </StepWrapper>
             )}
 
+            {/* ── Branch B: Refinement ── */}
             {step === 'refinement' && (
               <StepWrapper key="refinement">
                 <RefinementPanel
@@ -287,6 +847,7 @@ export default function OnboardingPage() {
               </StepWrapper>
             )}
 
+            {/* ── Branch B: Depth/Familiarity ── */}
             {step === 'depth' && selectedDirection && (
               <StepWrapper key="depth">
                 <FeelingStep
@@ -297,6 +858,7 @@ export default function OnboardingPage() {
               </StepWrapper>
             )}
 
+            {/* ── Both branches: Completing ── */}
             {step === 'completing' && (
               <StepWrapper key="completing">
                 <LoadingState
@@ -317,7 +879,8 @@ export default function OnboardingPage() {
   );
 }
 
-// Animation wrapper for steps
+// ─── Shared components ──────────────────────────────────────────
+
 function StepWrapper({ children }: { children: React.ReactNode }) {
   return (
     <motion.div
@@ -331,7 +894,6 @@ function StepWrapper({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Reusable loading state component with elegant animations
 function LoadingState({
   title,
   subtitle,
@@ -339,7 +901,7 @@ function LoadingState({
   steps,
 }: {
   title: string;
-  subtitle: string;
+  subtitle: React.ReactNode;
   variant?: 'brand' | 'green';
   steps?: string[];
 }) {
@@ -363,16 +925,13 @@ function LoadingState({
 
   return (
     <div className="text-center py-12">
-      {/* Animated ring with icon */}
       <div className="relative inline-flex items-center justify-center mb-8">
-        {/* Spinning ring */}
         <motion.svg
           className="w-24 h-24"
           viewBox="0 0 100 100"
           animate={{ rotate: 360 }}
           transition={{ repeat: Infinity, duration: 3, ease: 'linear' }}
         >
-          {/* Background ring */}
           <circle
             cx="50"
             cy="50"
@@ -381,7 +940,6 @@ function LoadingState({
             strokeWidth="4"
             className={colors.ringBg}
           />
-          {/* Animated arc */}
           <circle
             cx="50"
             cy="50"
@@ -394,7 +952,6 @@ function LoadingState({
           />
         </motion.svg>
 
-        {/* Center icon */}
         <div className={`absolute w-14 h-14 ${colors.bg} rounded-full flex items-center justify-center`}>
           <motion.div
             animate={{ scale: [1, 1.1, 1] }}
@@ -408,12 +965,11 @@ function LoadingState({
       <h2 className="text-xl font-semibold text-content mb-2">{title}</h2>
       <p className="text-content-secondary mb-8">{subtitle}</p>
 
-      {/* Animated steps with checkmarks */}
       {steps && steps.length > 0 && (
         <div className="inline-flex flex-col items-start gap-3 text-left">
-          {steps.map((step, i) => (
+          {steps.map((s, i) => (
             <motion.div
-              key={step}
+              key={s}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 1.5, duration: 0.4 }}
@@ -440,11 +996,42 @@ function LoadingState({
                   />
                 </motion.svg>
               </motion.div>
-              <span className={`text-sm ${colors.text}`}>{step}</span>
+              <span className={`text-sm ${colors.text}`}>{s}</span>
             </motion.div>
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+function InlineModeCard({
+  icon: Icon,
+  title,
+  description,
+  selected,
+  onClick,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`text-left p-4 rounded-xl border-2 transition-all ${
+        selected
+          ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/20'
+          : 'border-border bg-surface-secondary hover:border-border-secondary'
+      }`}
+    >
+      <Icon className={`w-5 h-5 mb-2 ${selected ? 'text-brand-500' : 'text-content-tertiary'}`} />
+      <p className={`text-sm font-medium ${selected ? 'text-brand-600 dark:text-brand-400' : 'text-content'}`}>
+        {title}
+      </p>
+      <p className="text-xs text-content-secondary mt-0.5">{description}</p>
+    </button>
   );
 }

@@ -4,7 +4,7 @@ const TRAINING_CONFIGS: Record<string, TrainingConfig> = {
   [GoalType.PROJECT]: {
     goalType: GoalType.PROJECT,
     name: 'Project Lab',
-    subtitle: 'Turn real work problems into a learning project.',
+    subtitle: 'Build something real to solve a specific problem.',
     stepFlow: ['prePrompt', 'task1', 'bossMilestone', 'reflection'],
     stepLabels: {
       prePrompt: "Today's Focus",
@@ -34,7 +34,7 @@ const TRAINING_CONFIGS: Record<string, TrainingConfig> = {
   [GoalType.LANGUAGE]: {
     goalType: GoalType.LANGUAGE,
     name: 'Speak & Write',
-    subtitle: 'Master any language — from basics to professional fluency.',
+    subtitle: 'Break through what\'s holding back your fluency.',
     stepFlow: ['prePrompt', 'task1', 'reflection'],
     stepLabels: {
       prePrompt: "Today's Lesson",
@@ -51,7 +51,7 @@ const TRAINING_CONFIGS: Record<string, TrainingConfig> = {
 const CURRICULUM_CONFIG: TrainingConfig = {
   goalType: GoalType.CURRICULUM,
   name: 'Learn & Master',
-  subtitle: 'Learn or level up any topic with structured lessons & practice.',
+  subtitle: 'Fix gaps and level up with structured lessons & practice.',
   stepFlow: ['prePrompt', 'video', 'task1', 'bossMilestone', 'openTask', 'reflection'],
   stepLabels: {
     prePrompt: 'Pre-Prompt',

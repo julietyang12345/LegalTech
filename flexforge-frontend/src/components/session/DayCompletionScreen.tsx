@@ -16,6 +16,7 @@ import {
   getScoreColor,
   getScoreLabel,
   goalTypeMap,
+  saveLatestAssessment,
   type LearningMode,
 } from '@/utils/assessmentUtils';
 
@@ -119,6 +120,7 @@ export function DayCompletionScreen({
       });
 
       setNewGapProfile(result.gapProfile);
+      saveLatestAssessment(result.gapProfile, session.skillName);
       setReassessPhase('results');
     } catch (err: any) {
       console.error('Failed to analyze gaps:', err);

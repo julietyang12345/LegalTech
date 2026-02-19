@@ -725,7 +725,7 @@ Return JSON only:
       '🤖 Generating curriculum overview (Phase 1) with prompt caching...',
     );
     const aiResponse = await this.aiService.callAnthropicWithCache(
-      'claude-3-5-haiku-20241022',
+      'claude-haiku-4-5-20251001',
       userPrompt,
       { staticPart, dynamicPart },
     );
@@ -3542,27 +3542,29 @@ Return JSON only:
   } {
     if (goalType === 'project') {
       return {
-        systemFraming: `You are an expert technical assessor. Generate a realistic engineering task that reveals what someone can actually build. The task should require them to design a solution, plan implementation, handle failures, AND reason about maintainability and performance tradeoffs.
+        systemFraming: `You are an expert technical assessor. Generate a focused coding task that reveals what someone can actually build. The task should be small enough to implement in ~5 minutes but complex enough to expose real gaps — error handling, edge cases, correct logic, and code quality.
 
-The key insight: how someone approaches a build task — what they plan for vs. what they overlook — reveals their true engineering maturity. An experienced builder naturally considers architecture, error handling, testing, tech debt, and performance implications. A beginner jumps straight to implementation.
+The key insight: asking someone to WRITE CODE reveals far more than asking them to describe their approach. Can they produce code that would actually run? Do they handle the unhappy path? Do they write readable, correct logic — or does it look right but break on edge cases?
 
-Calibration signal: reward knowing WHEN to optimize vs. when a simple solution is sufficient. Premature optimization is a junior signal; ignoring performance entirely under real constraints is also a junior signal. Maturity is calibration.`,
-        scenarioStyle: `SCENARIO STYLE: Present a realistic engineering task — building a feature, debugging a production issue, designing a system, refactoring legacy code, or inheriting a module with tech debt. The task MUST include real constraints that force maintainability and performance reasoning (e.g., existing codebase with flaky tests, tight deadline vs. clean code, scale requirements, backward compatibility).
-The ideal response would: outline their approach, explain architectural decisions, plan for failure modes, describe testing strategy, reason about tech debt / maintainability tradeoffs, and calibrate performance decisions to the actual constraints.`,
-        scenarioJsonHint: `"scenario": "A realistic engineering task (2-4 sentences) with constraints that force decisions about implementation, maintainability, and performance tradeoffs. NOT a quiz — a build/debug/design task with real-world tension.",
-  "instructions": "Brief instructions telling the person what to address (e.g., 'Describe your approach: what you'd build, how you'd handle errors, what tradeoffs you'd make on tech debt vs. speed, and how you'd verify it works')"`,
+CRITICAL: The scenario MUST ask the user to write actual code (a function, module, handler, etc.) — not just describe an approach. Include specific inputs/outputs or a clear contract so correctness is verifiable.`,
+        scenarioStyle: `SCENARIO STYLE: Present a focused coding task — implement a function, fix a bug, write a handler, build a small module. Give specific requirements: what the code should accept, what it should return, and 1-2 edge cases it must handle. Keep scope small (one function or one small module) but include enough real-world messiness (null inputs, concurrent access, malformed data, error propagation) that a naive implementation would break.
+The ideal response would: write working code that handles the stated requirements AND the edge cases, with clear structure and correct logic.`,
+        scenarioJsonHint: `"scenario": "A focused coding task (2-4 sentences) with specific inputs/outputs and 1-2 tricky edge cases. Ask them to WRITE the actual code, not just describe an approach. Include enough context that correctness is verifiable.",
+  "instructions": "Write the code for this task. Include error handling and edge cases. Explain any key decisions briefly."`,
       };
     }
 
     if (goalType === 'interview') {
       return {
-        systemFraming: `You are an expert interview coach. Generate an interview-style problem that tests both technical depth and communication skills. The problem should require systematic decomposition, clear reasoning about complexity and tradeoffs, and consideration of edge cases.
+        systemFraming: `You are an expert interview coach. Generate a coding interview problem that requires writing actual code. The problem should test algorithm design, correct implementation, edge case handling, and complexity reasoning.
 
-The key insight: strong interview candidates naturally structure their approach — they clarify requirements, explore the problem space, consider multiple solutions, analyze tradeoffs, and communicate their reasoning step by step. Weaker candidates jump to a solution without exploring alternatives.`,
-        scenarioStyle: `SCENARIO STYLE: Present an interview-style problem — a coding challenge, system design question, or technical deep-dive. Frame it like a real interviewer would: give context, constraints, and scale expectations.
-The ideal response would: clarify assumptions, break the problem down, propose an approach with reasoning, analyze complexity/tradeoffs, and handle edge cases.`,
-        scenarioJsonHint: `"scenario": "An interview-style problem (2-4 sentences) that requires systematic problem decomposition, considering approaches, and reasoning about tradeoffs. Frame it like a real interview question.",
-  "instructions": "Brief instructions (e.g., 'Walk through your approach step by step: how you'd break this down, what solutions you'd consider, and how you'd handle edge cases')"`,
+The key insight: in a real coding interview, you must produce working code — not just describe an approach. Can the candidate write a function that actually handles all inputs correctly? Do they consider edge cases in their implementation, not just mention them?
+
+CRITICAL: The scenario MUST ask for actual code with clear input/output contracts. Include example inputs/outputs so correctness is verifiable.`,
+        scenarioStyle: `SCENARIO STYLE: Present a coding interview problem — an algorithm, data structure manipulation, or practical coding task. Give specific function signatures, example inputs/outputs, and constraints (time/space or edge cases). Keep it solvable in 5-10 minutes but non-trivial enough that a naive solution would miss edge cases.
+The ideal response would: write working code with correct logic, handle edge cases, and briefly explain their time/space complexity.`,
+        scenarioJsonHint: `"scenario": "A coding interview problem (2-4 sentences) with a clear function signature, example inputs/outputs, and constraints. Ask them to WRITE the code, not just explain their approach.",
+  "instructions": "Write the code to solve this problem. Handle edge cases and briefly state the time/space complexity."`,
       };
     }
 
@@ -3580,37 +3582,61 @@ The ideal response would: design the prompt/chain, define an eval plan, add guar
       };
     }
 
-    // Default: general/curriculum — anchored in a real work artifact
+    // Default: general/curriculum — coding task if skill sounds technical, artifact otherwise
     return {
-      systemFraming: `You are an expert skills assessor. Generate a scenario that asks the person to produce a concrete work artifact — a plan, proposal, memo, design doc, or recommendation — not just answer a question. The artifact format makes omissions structurally visible: a complete artifact naturally addresses constraints, tradeoffs, risks, and reasoning, while a weak one skips most of these.
+      systemFraming: `You are an expert skills assessor. Determine whether the skill is a CODING/PROGRAMMING skill or a NON-CODING skill.
 
-The key insight: what someone OMITS from a structured artifact reveals more than what they get wrong. An expert's plan naturally covers edge cases, constraints, alternatives, and success criteria. A beginner's plan covers only the happy path.
+For CODING skills (programming languages, frameworks, libraries, databases, DevOps, etc.):
+Generate a focused coding task that asks the person to WRITE actual code — a function, component, query, config, or script. The task should be small enough to complete in ~5 minutes but require correct logic, edge case handling, and working code. Include specific inputs/outputs so correctness is verifiable.
 
-Calibration signal: reward depth-calibration — knowing when to go deep (high-stakes decisions, novel problems) vs. keeping it simple (well-understood problems, low risk). Over-analyzing a trivial decision is as much a gap as under-analyzing a critical one.`,
-      scenarioStyle: `SCENARIO STYLE: Present a realistic situation that requires the person to produce a concrete artifact (plan, proposal, recommendation, design doc, analysis). The scenario should have real constraints that force prioritization and tradeoff reasoning. Anchor the scenario in specific enough context that generic answers are obviously incomplete.
-The ideal response would: produce a structured artifact that identifies constraints, names tradeoffs, considers failure modes, applies domain knowledge practically, explains reasoning clearly, and calibrates depth to the stakes involved.`,
-      scenarioJsonHint: `"scenario": "A realistic 2-4 sentence situation that requires producing a concrete artifact (plan, proposal, recommendation). Include enough context and constraints that a generic answer would be obviously incomplete. NOT a quiz — a real work situation.",
-  "instructions": "Brief instructions telling the person what artifact to produce and what to address (e.g., 'Write a brief plan covering your approach, what constraints you'd work within, what could go wrong, and how you'd measure success')"`,
+For NON-CODING skills (leadership, design, writing, marketing, soft skills, etc.):
+Generate a scenario that asks the person to produce a concrete work artifact — a plan, proposal, memo, or recommendation. The artifact format makes omissions structurally visible.
+
+The key insight: for coding skills, whether someone's code would actually RUN and produce correct output reveals far more than their conceptual description. For non-coding skills, what someone OMITS from a structured artifact reveals more than what they get wrong.`,
+      scenarioStyle: `SCENARIO STYLE:
+For CODING skills: Present a focused coding task — implement a function, write a query, build a component, fix a bug. Give specific requirements with inputs/outputs and 1-2 edge cases. The user must write actual working code.
+For NON-CODING skills: Present a realistic situation requiring a concrete artifact (plan, proposal, recommendation) with real constraints.
+The ideal coding response would: write working code that handles requirements AND edge cases with clear, correct logic.
+The ideal non-coding response would: produce a structured artifact addressing constraints, tradeoffs, and failure modes.`,
+      scenarioJsonHint: `"scenario": "For coding skills: a focused coding task (2-4 sentences) with specific inputs/outputs and edge cases, asking them to WRITE code. For non-coding skills: a realistic situation requiring a concrete artifact. Include enough context that a generic answer is obviously incomplete.",
+  "instructions": "For coding: 'Write the code for this task. Handle edge cases.' For non-coding: 'Write a brief plan covering your approach, constraints, risks, and success criteria.'"`,
     };
   }
 
   private getAnalysisFraming(goalType?: string): string {
     if (goalType === 'project') {
-      return `Your PRIMARY job is to evaluate how this person approaches building. Look for what they planned for vs. what they overlooked — an experienced builder naturally thinks about architecture, error handling, testing, maintainability tradeoffs, and performance calibration. A beginner focuses only on "making it work."
+      return `Your PRIMARY job is to evaluate the CODE this person wrote. Mentally execute it: would it actually run? Would it produce correct output for the stated requirements AND the edge cases?
 
-Calibration note: reward knowing WHEN to optimize (constraints demand it) vs. when a simple solution is sufficient. Premature optimization is a junior signal; ignoring real constraints is also a junior signal.`;
+Key evaluation priorities (in order):
+1. CORRECTNESS: Trace through the code with the given inputs. Does it return the right results? Are there logic errors, off-by-one bugs, incorrect conditions, or wrong return values?
+2. EDGE CASES: Does it handle the specified edge cases, or would it crash/return wrong results on null, empty, boundary, or error inputs?
+3. ERROR HANDLING: Does it fail gracefully or silently break?
+4. STRUCTURE: Is the code readable and well-organized?
+5. COMPLETENESS: Did they implement everything the task asked for?
+
+If the user wrote a description/approach instead of actual code, score code_correctness as 1 and note that they didn't write code as requested.`;
     }
     if (goalType === 'interview') {
-      return `Your PRIMARY job is to evaluate how this person structures their problem-solving. Look for systematic decomposition, clear reasoning about alternatives, edge case awareness, and communication quality — what a strong interview candidate does naturally vs. what a weaker one skips.`;
+      return `Your PRIMARY job is to evaluate the CODE this person wrote as if you were an interviewer. Mentally execute it with the example inputs: does it produce the correct outputs?
+
+Key evaluation priorities (in order):
+1. CORRECTNESS: Trace through the code step by step. Does it work for the provided examples? Does the logic flow correctly?
+2. EDGE CASES: Does it handle edge inputs (empty, single element, duplicates, negatives, large values)?
+3. ALGORITHM: Is the approach efficient enough for the stated constraints? Is there a clearly better approach they missed?
+4. COMPLEXITY: Did they state the correct time/space complexity?
+5. CLARITY: Could an interviewer follow the code easily?
+
+If the user only described an approach without writing code, score code_correctness as 1.`;
     }
     if (goalType === 'ai_builder') {
       return `Your PRIMARY job is to evaluate how this person designs AI systems for production. Look for the FULL pipeline — not just prompt design. An experienced AI builder naturally addresses evaluation (how do I know it works?), guardrails (PII, injection, policy), monitoring (drift, failures), data quality (grounding, freshness), and cost/latency tradeoffs. A beginner focuses only on "call the API."
 
 Calibration note: reward choosing the simplest pipeline that meets requirements. Over-engineering with unnecessary agents/chains is as much a gap as ignoring eval entirely.`;
     }
-    return `Your PRIMARY job is to evaluate the completeness of this person's artifact (plan, proposal, recommendation). What someone OMITS from a structured artifact reveals more than what they get wrong — look for missing structural sections, unaddressed constraints, and absent risk reasoning.
+    return `Your PRIMARY job is to evaluate this person's response. If they wrote CODE, mentally execute it: would it run and produce correct output? Evaluate correctness, edge case handling, and code quality. If they wrote a NON-CODE artifact (plan, proposal, recommendation), evaluate structural completeness — what they omitted reveals more than what they got wrong.
 
-Calibration note: reward depth-calibration — going deep on high-stakes decisions while keeping trivial ones simple. Over-analyzing everything is a gap; so is being shallow across the board.`;
+For code responses: trace through the logic with concrete inputs. Flag logic errors, unhandled edge cases, and code that looks right but would break.
+For non-code responses: look for missing structural sections, unaddressed constraints, and absent risk reasoning.`;
   }
 
   /**
@@ -3709,26 +3735,25 @@ Return JSON:
     label: string;
     description: string;
   }> {
-    // Project Lab — building/engineering rubric
+    // Project Lab — code-focused rubric
     if (goalType === 'project') {
       return [
-        { id: 'solution_design', label: 'Solution Design', description: 'Did they outline a clear approach and architectural decisions?' },
-        { id: 'implementation_planning', label: 'Implementation Planning', description: 'Did they break the work into concrete steps with a logical order?' },
-        { id: 'error_handling', label: 'Error & Edge Cases', description: 'Did they consider what could go wrong and how to handle failures?' },
-        { id: 'testing_strategy', label: 'Testing Strategy', description: 'Did they describe how to verify their solution works correctly?' },
-        { id: 'maintainability', label: 'Maintainability & Tech Debt', description: 'Did they consider long-term maintenance, refactoring tradeoffs, or code quality vs. shipping speed?' },
-        { id: 'performance_calibration', label: 'Performance Calibration', description: 'Did they reason about performance/cost when constraints demand it — without premature optimization when they don\'t?' },
+        { id: 'code_correctness', label: 'Code Correctness', description: 'Would the code actually run and produce correct output for the stated requirements? Are there logic errors, syntax issues, or broken control flow?' },
+        { id: 'edge_case_handling', label: 'Edge Case Handling', description: 'Does the code handle the specified edge cases (null/empty inputs, boundary values, error states)? Or does it only work for the happy path?' },
+        { id: 'error_handling', label: 'Error Handling', description: 'Does the code handle failures gracefully — try/catch, validation, meaningful error messages — or does it silently break or crash?' },
+        { id: 'code_structure', label: 'Code Structure & Readability', description: 'Is the code well-organized, with clear naming, appropriate abstractions, and readable logic? Or is it a tangled mess that technically works?' },
+        { id: 'completeness', label: 'Completeness', description: 'Does the code address ALL parts of the task, or are requirements missing? Did they implement the full contract or only part of it?' },
       ];
     }
 
-    // Interview Prep — problem-solving & communication rubric
+    // Interview Prep — code-focused rubric
     if (goalType === 'interview') {
       return [
-        { id: 'problem_decomposition', label: 'Problem Decomposition', description: 'Did they break the problem into manageable parts systematically?' },
-        { id: 'solution_reasoning', label: 'Solution Reasoning', description: 'Did they explain WHY they chose their approach over alternatives?' },
-        { id: 'edge_case_handling', label: 'Edge Case Handling', description: 'Did they identify and address edge cases and constraints?' },
-        { id: 'complexity_analysis', label: 'Complexity Analysis', description: 'Did they reason about time/space complexity or scalability tradeoffs?' },
-        { id: 'communication_clarity', label: 'Communication Clarity', description: 'Did they structure their answer clearly as they would in an interview?' },
+        { id: 'code_correctness', label: 'Code Correctness', description: 'Would the code actually run and produce correct output for the given examples? Are there logic errors, off-by-one bugs, or broken control flow?' },
+        { id: 'edge_case_handling', label: 'Edge Case Handling', description: 'Does the code handle edge cases (empty input, single element, duplicates, negative numbers, overflow)? Or does it only work for the example inputs?' },
+        { id: 'algorithm_choice', label: 'Algorithm & Data Structure Choice', description: 'Did they choose an appropriate algorithm/data structure for the constraints? Is it efficient enough, or is there a clearly better approach?' },
+        { id: 'complexity_analysis', label: 'Complexity Analysis', description: 'Did they correctly state the time/space complexity of their solution? Is their analysis accurate?' },
+        { id: 'code_clarity', label: 'Code Clarity', description: 'Is the code readable with clear variable names and logical structure? Could an interviewer follow the logic easily?' },
       ];
     }
 
@@ -3744,13 +3769,13 @@ Return JSON:
       ];
     }
 
-    // Default / Curriculum rubric — anchored in artifact quality
+    // Default / Curriculum rubric — code correctness for coding skills, artifact quality for others
     return [
-      { id: 'constraint_awareness', label: 'Constraint Awareness', description: 'Did they identify and work within real limitations and requirements?' },
-      { id: 'tradeoff_reasoning', label: 'Tradeoff Reasoning', description: 'Did they name alternatives, articulate what they gave up, and explain why?' },
-      { id: 'risk_edge_cases', label: 'Risk & Edge Cases', description: 'Did they consider what could go wrong, failure modes, or exceptions?' },
-      { id: 'artifact_completeness', label: 'Artifact Completeness', description: 'Does their plan/proposal cover the key structural elements, or are obvious sections missing?' },
-      { id: 'depth_calibration', label: 'Depth Calibration', description: 'Did they go deep where it matters and keep it simple where appropriate — not over-analyze trivial parts or under-analyze critical ones?' },
+      { id: 'code_correctness', label: 'Correctness', description: 'For code: would it run and produce correct output? Trace through the logic. For non-code: does the artifact address the core requirements accurately?' },
+      { id: 'edge_case_handling', label: 'Edge Cases & Error Handling', description: 'For code: does it handle edge inputs, nulls, errors without crashing? For non-code: did they consider what could go wrong, failure modes, or exceptions?' },
+      { id: 'completeness', label: 'Completeness', description: 'Did they address ALL parts of the task? Are requirements missing or only partially implemented?' },
+      { id: 'structure_quality', label: 'Structure & Clarity', description: 'For code: readable, well-named, logically organized? For non-code: clearly structured with reasoning explained?' },
+      { id: 'depth_calibration', label: 'Depth Calibration', description: 'Did they go deep where it matters and keep it simple where appropriate? Over-engineering trivial parts and under-engineering critical ones are both gaps.' },
     ];
   }
 
