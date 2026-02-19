@@ -336,6 +336,9 @@ export class SessionService {
             codeWritingEnabled: learnerPrefs?.codeWritingEnabled,
             // Training mode goal type
             goalType: createSessionDto.goalType || learnerPrefs?.goalType,
+            // Gap-first learning
+            gapProfile: createSessionDto.gapProfile,
+            microLessonMode: createSessionDto.microLessonMode,
           },
           tierString,
         );
@@ -393,6 +396,11 @@ export class SessionService {
       currentDay: 1,
       mode: SessionMode.NORMAL,
       startedAt: new Date(),
+      // Gap-first learning fields
+      ...(createSessionDto.gapProfile && {
+        gapProfile: createSessionDto.gapProfile,
+        isGapSession: !!createSessionDto.microLessonMode,
+      }),
     });
 
     let savedSession: Session;
@@ -2224,7 +2232,7 @@ ${jsonInstruction}`;
 
 SCENARIO: ${dayOverview.title}
 SKILL: ${session.skillName}
-RUBRIC DIMENSIONS: ${trainingConfig.rubricDimensions.join(', ')}
+RUBRIC DIMENSIONS: problem_decomposition, code_quality, communication, edge_cases, time_management
 TIME SPENT: ${timeSpent} seconds
 TIME LIMIT: ${trainingConfig.defaultTimerMinutes} minutes
 

@@ -15,7 +15,6 @@ export interface TrainingConfig {
   stepFlow: TrainingSessionStep[];
   stepLabels: Record<string, string>;
   scenarioTypes: string[];
-  rubricDimensions: string[];
   subskills: string[];
   hasTimedAttempt: boolean;
   scoringType: 'rubric' | 'feedback' | 'none';

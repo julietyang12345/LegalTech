@@ -19,7 +19,6 @@ export const languageConfig: TrainingConfig = {
     'presentation',
     'small_talk',
   ],
-  rubricDimensions: [],
   subskills: [
     'grammar',
     'vocabulary',

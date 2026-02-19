@@ -19,13 +19,6 @@ export const interviewConfig: TrainingConfig = {
     'technical_deep_dive',
     'pair_programming',
   ],
-  rubricDimensions: [
-    'problem_decomposition',
-    'code_quality',
-    'communication',
-    'edge_cases',
-    'time_management',
-  ],
   subskills: [
     'algorithm_design',
     'data_structures',

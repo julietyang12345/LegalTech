@@ -3,6 +3,8 @@ export { LoginPage } from './LoginPage';
 export { RegisterPage } from './RegisterPage';
 export { default as OnboardingPage } from './OnboardingPage';
 export { ConfirmationPage } from './ConfirmationPage';
+export { AssessmentPage } from './AssessmentPage';
+export { GapResultsPage } from './GapResultsPage';
 export { TodayPage } from './TodayPage';
 export { SessionPage } from './SessionPage';
 export { PlanPage } from './PlanPage';

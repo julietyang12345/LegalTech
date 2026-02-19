@@ -19,7 +19,6 @@ export const aiBuilderConfig: TrainingConfig = {
     'rag_pipeline',
     'automation_chain',
   ],
-  rubricDimensions: [],
   subskills: [
     'prompt_design',
     'api_usage',

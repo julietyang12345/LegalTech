@@ -688,11 +688,25 @@ Return JSON only:
     const effectiveLanguage =
       dto.selectedLanguage || skillDetection.suggestedLanguage;
 
+    // For micro-lesson mode, override duration to 3-5 days based on gap count
+    let effectiveDurationDays = dto.durationDays;
+    let effectiveHoursPerDay = dto.hoursPerDay;
+    if (dto.microLessonMode && dto.gapProfile?.gaps?.length) {
+      const highMediumGaps = dto.gapProfile.gaps.filter(
+        (g) => g.severity === 'high' || g.severity === 'medium',
+      );
+      effectiveDurationDays = Math.max(3, Math.min(5, highMediumGaps.length));
+      effectiveHoursPerDay = Math.min(effectiveHoursPerDay, 0.5); // Shorter sessions for micro-lessons
+      this.logger.log(
+        `📐 Micro-lesson mode: ${effectiveDurationDays} days, ${effectiveHoursPerDay}h/day (${highMediumGaps.length} high/medium gaps)`,
+      );
+    }
+
     const { staticPart, dynamicPart, userPrompt } =
       buildCacheableCurriculumPrompt({
         skillName: dto.skillName,
-        durationDays: dto.durationDays,
-        hoursPerDay: dto.hoursPerDay,
+        durationDays: effectiveDurationDays,
+        hoursPerDay: effectiveHoursPerDay,
         skillLevel: dto.skillLevel,
         skillType: skillDetection.skillType,
         complexity: skillDetection.complexity,
@@ -702,6 +716,8 @@ Return JSON only:
         learnerPrefs,
         customSections: skillDetection.customSections,
         goalType: dto.goalType,
+        gapProfile: dto.gapProfile,
+        microLessonMode: dto.microLessonMode,
       });
 
     // Step 4: Generate curriculum OVERVIEW with AI (Phase 1) - with prompt caching
@@ -802,6 +818,8 @@ Return JSON only:
       proficiencyLevel: skillDetection.proficiencyLevel,
       // Training mode goal type
       goalType: dto.goalType,
+      // Gap session: micro-lesson mode (skip intensive practice + openTask)
+      isGapSession: !!dto.microLessonMode,
     };
 
     // All days are skeletons - full content generated on-demand when user starts each day
@@ -1942,123 +1960,149 @@ Return JSON only:
       improvementAreas,
       lessOfAreas,
       previousDayReflection,
+      // Gap session flag
+      isGapSession: curriculum.metadata.isGapSession,
     };
 
+    // Gap sessions (micro-lesson mode): skip intensive practice for practice-based,
+    // skip openTask for all gap sessions. Only generate reflection via lightweight call.
+    const isGapSession = !!curriculum.metadata.isGapSession;
+
     // Pass context to deferred prompt builder for unified personalization
+    // For gap practice-based sessions, this returns a reflection-only prompt
     const { systemPrompt, userPrompt } = buildDayDetailDeferredPrompt(
       params,
       ctx,
     );
 
     // Build lightweight prompt for Haiku (reflection + openTask)
+    // Gap sessions skip openTask — only generate reflection
     const { systemPrompt: lightSystemPrompt, userPrompt: lightUserPrompt } =
       buildDeferredLightweightPrompt(params, ctx);
 
     // Run BOTH AI calls in parallel: Sonnet (task1/bossMilestone) + Haiku (reflection/openTask)
-    this.logger.log(`🚀 Generating Day ${dayNumber} DEFERRED content (Sonnet + Haiku)`);
+    // Gap practice-based sessions skip the Sonnet call entirely (no intensive practice needed)
+    const skipSonnetCall = isGapSession && !params.isProjectBased;
+
+    this.logger.log(
+      `🚀 Generating Day ${dayNumber} DEFERRED content${isGapSession ? ' (gap session)' : ''} (${skipSonnetCall ? 'Haiku only' : 'Sonnet + Haiku'})`,
+    );
+
+    const sonnetPromise = skipSonnetCall
+      ? Promise.resolve(null)
+      : this.aiService.routeRequest(
+          AITask.CURRICULUM_GENERATION,
+          userPrompt,
+          systemPrompt,
+        );
+
+    const haikuPromise = this.aiService.routeRequest(
+      AITask.LIGHTWEIGHT_CONTENT,
+      lightUserPrompt,
+      lightSystemPrompt,
+    ).catch((error) => {
+      this.logger.warn(
+        `⚠️ Day ${dayNumber} lightweight content failed in DEFERRED: ${error.message}`,
+      );
+      return null;
+    });
 
     const [aiResponse, lightweightResponse] = await Promise.all([
-      this.aiService.routeRequest(
-        AITask.CURRICULUM_GENERATION,
-        userPrompt,
-        systemPrompt,
-      ),
-      this.aiService.routeRequest(
-        AITask.LIGHTWEIGHT_CONTENT,
-        lightUserPrompt,
-        lightSystemPrompt,
-      ).catch((error) => {
-        this.logger.warn(
-          `⚠️ Day ${dayNumber} lightweight content failed in DEFERRED: ${error.message}`,
-        );
-        return null;
-      }),
+      sonnetPromise,
+      haikuPromise,
     ]);
 
     let deferredContent: any;
-    try {
-      let cleanedContent = aiResponse.content
-        .replace(/```json\n?/g, '')
-        .replace(/```\n?/g, '')
-        .trim();
 
-      const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        cleanedContent = jsonMatch[0];
-      }
-
+    // Parse Sonnet response (if we made the call)
+    if (aiResponse) {
       try {
-        deferredContent = JSON.parse(cleanedContent);
-      } catch {
-        const fixedContent = cleanedContent.replace(/,(\s*[}\]])/g, '$1');
-        deferredContent = JSON.parse(fixedContent);
+        let cleanedContent = aiResponse.content
+          .replace(/```json\n?/g, '')
+          .replace(/```\n?/g, '')
+          .trim();
+
+        const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          cleanedContent = jsonMatch[0];
+        }
+
+        try {
+          deferredContent = JSON.parse(cleanedContent);
+        } catch {
+          const fixedContent = cleanedContent.replace(/,(\s*[}\]])/g, '$1');
+          deferredContent = JSON.parse(fixedContent);
+        }
+
+        this.logger.log(`✅ Day ${dayNumber} DEFERRED parsed`);
+      } catch (error) {
+        this.logger.error(
+          `❌ Failed to parse Day ${dayNumber} DEFERRED:`,
+          error.message,
+        );
+        throw new BadRequestException(
+          'Failed to generate deferred day content. Please try again.',
+        );
       }
+    } else {
+      // Gap practice-based session: no Sonnet call, start with empty content
+      deferredContent = {};
+      this.logger.log(`✅ Day ${dayNumber} DEFERRED skipped Sonnet (gap practice session)`);
+    }
 
-      this.logger.log(`✅ Day ${dayNumber} DEFERRED parsed`);
+    // Validate intensive practice structure (practice-based curricula)
+    if (deferredContent.intensivePractice) {
+      const ip = deferredContent.intensivePractice;
 
-      // Validate intensive practice structure (practice-based curricula)
-      if (deferredContent.intensivePractice) {
-        const ip = deferredContent.intensivePractice;
-
-        // Validate mini foundation cards exist (2-4)
-        if (!ip.miniFoundationCards || ip.miniFoundationCards.length < 2) {
-          this.logger.warn(
-            `⚠️ IntensivePractice missing or insufficient mini foundation cards (${ip.miniFoundationCards?.length || 0})`,
-          );
-        }
-
-        // Validate exactly 2 sections
-        if (ip.sections && ip.sections.length !== 2) {
-          this.logger.warn(
-            `⚠️ IntensivePractice has ${ip.sections.length} sections, expected 2`,
-          );
-        }
-      }
-
-      // Validate bossMilestone structure (project-based curricula)
-      if (deferredContent.bossMilestone) {
-        const bm = deferredContent.bossMilestone;
-
-        // Ensure hints are properly formatted
-        if (bm.hints && Array.isArray(bm.hints)) {
-          deferredContent.bossMilestone.hints = bm.hints
-            .filter((h: any) => h.hint && !h.hint.includes('REQUIRED:'))
-            .map((h: any, index: number) => ({
-              level: h.level || index + 1,
-              hint: typeof h === 'string' ? h : h.hint,
-            }));
-        }
-
-        // Ensure solutionAnnotations are strings
-        if (bm.solutionAnnotations && Array.isArray(bm.solutionAnnotations)) {
-          deferredContent.bossMilestone.solutionAnnotations =
-            bm.solutionAnnotations.filter(
-              (a: any) => a && !String(a).includes('REQUIRED:'),
-            );
-        }
-
-        // Check for placeholder content
-        const hasPlaceholders =
-          bm.starterCode?.includes('REQUIRED:') ||
-          bm.solution?.includes('REQUIRED:');
-        if (hasPlaceholders) {
-          this.logger.warn(
-            `⚠️ Day ${dayNumber} bossMilestone has placeholder content`,
-          );
-        }
-
-        this.logger.log(
-          `✅ Day ${dayNumber} bossMilestone: starterCode=${bm.starterCode?.length || 0} chars, solution=${bm.solution?.length || 0} chars`,
+      // Validate mini foundation cards exist (2-4)
+      if (!ip.miniFoundationCards || ip.miniFoundationCards.length < 2) {
+        this.logger.warn(
+          `⚠️ IntensivePractice missing or insufficient mini foundation cards (${ip.miniFoundationCards?.length || 0})`,
         );
       }
 
-    } catch (error) {
-      this.logger.error(
-        `❌ Failed to parse Day ${dayNumber} DEFERRED:`,
-        error.message,
-      );
-      throw new BadRequestException(
-        'Failed to generate deferred day content. Please try again.',
+      // Validate exactly 2 sections
+      if (ip.sections && ip.sections.length !== 2) {
+        this.logger.warn(
+          `⚠️ IntensivePractice has ${ip.sections.length} sections, expected 2`,
+        );
+      }
+    }
+
+    // Validate bossMilestone structure (project-based curricula)
+    if (deferredContent.bossMilestone) {
+      const bm = deferredContent.bossMilestone;
+
+      // Ensure hints are properly formatted
+      if (bm.hints && Array.isArray(bm.hints)) {
+        deferredContent.bossMilestone.hints = bm.hints
+          .filter((h: any) => h.hint && !h.hint.includes('REQUIRED:'))
+          .map((h: any, index: number) => ({
+            level: h.level || index + 1,
+            hint: typeof h === 'string' ? h : h.hint,
+          }));
+      }
+
+      // Ensure solutionAnnotations are strings
+      if (bm.solutionAnnotations && Array.isArray(bm.solutionAnnotations)) {
+        deferredContent.bossMilestone.solutionAnnotations =
+          bm.solutionAnnotations.filter(
+            (a: any) => a && !String(a).includes('REQUIRED:'),
+          );
+      }
+
+      // Check for placeholder content
+      const hasPlaceholders =
+        bm.starterCode?.includes('REQUIRED:') ||
+        bm.solution?.includes('REQUIRED:');
+      if (hasPlaceholders) {
+        this.logger.warn(
+          `⚠️ Day ${dayNumber} bossMilestone has placeholder content`,
+        );
+      }
+
+      this.logger.log(
+        `✅ Day ${dayNumber} bossMilestone: starterCode=${bm.starterCode?.length || 0} chars, solution=${bm.solution?.length || 0} chars`,
       );
     }
 
@@ -2084,9 +2128,11 @@ Return JSON only:
             deferredContent.reflection = lightweightContent.reflection;
             this.logger.log(`✅ Day ${dayNumber} reflection generated with Haiku (in DEFERRED)`);
           }
-          if (lightweightContent.openTask) {
+          if (lightweightContent.openTask && !isGapSession) {
             deferredContent.openTask = lightweightContent.openTask;
             this.logger.log(`✅ Day ${dayNumber} openTask generated with Haiku (in DEFERRED)`);
+          } else if (lightweightContent.openTask && isGapSession) {
+            this.logger.log(`⏭️ Day ${dayNumber} openTask skipped (gap session)`);
           }
         }
       } catch (parseError) {
@@ -2099,11 +2145,13 @@ Return JSON only:
     // Cache the result
     await this.cacheService.setDayContent(cacheKey, deferredContent);
 
-    const totalTokens = aiResponse.tokensUsed + (lightweightResponse?.tokensUsed || 0);
-    const totalCost = (aiResponse.cost || 0) + (lightweightResponse?.cost || 0);
+    const sonnetTokens = aiResponse?.tokensUsed || 0;
+    const haikuTokens = lightweightResponse?.tokensUsed || 0;
+    const totalTokens = sonnetTokens + haikuTokens;
+    const totalCost = (aiResponse?.cost || 0) + (lightweightResponse?.cost || 0);
 
     this.logger.log(
-      `✅ Day ${dayNumber} DEFERRED generated. Tokens: ${totalTokens} (Sonnet: ${aiResponse.tokensUsed}, Haiku: ${lightweightResponse?.tokensUsed || 0})`,
+      `✅ Day ${dayNumber} DEFERRED generated. Tokens: ${totalTokens} (Sonnet: ${sonnetTokens}, Haiku: ${haikuTokens})`,
     );
 
     return {
@@ -2275,12 +2323,66 @@ Return JSON only:
       improvementAreas,
       lessOfAreas,
       previousDayReflection,
+      isGapSession: curriculum.metadata.isGapSession,
     };
+
+    const isGapSession = !!curriculum.metadata.isGapSession;
 
     const { systemPrompt, userPrompt } = buildDayDetailDeferredPrompt(
       params,
       ctx,
     );
+
+    // Gap practice-based sessions: skip Sonnet call, only generate reflection via Haiku
+    const skipSonnetCallStream = isGapSession && !params.isProjectBased;
+
+    if (skipSonnetCallStream) {
+      this.logger.log(`⏭️ Day ${dayNumber} DEFERRED skipping Sonnet (gap practice session - streaming)`);
+
+      // Only run lightweight call for reflection
+      const { systemPrompt: lightSystemPrompt, userPrompt: lightUserPrompt } =
+        buildDeferredLightweightPrompt(params, ctx);
+
+      const lightResponse = await this.aiService.routeRequest(
+        AITask.LIGHTWEIGHT_CONTENT,
+        lightUserPrompt,
+        lightSystemPrompt,
+      ).catch((error) => {
+        this.logger.warn(`⚠️ Day ${dayNumber} lightweight content failed: ${error.message}`);
+        return null;
+      });
+
+      const deferredContent: any = {};
+
+      if (lightResponse) {
+        try {
+          const cleaned = lightResponse.content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+          const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (parsed.reflection) {
+              deferredContent.reflection = parsed.reflection;
+              yield { event: CurriculumService.DEFERRED_STREAM_EVENTS.REFLECTION, data: parsed.reflection };
+            }
+          }
+        } catch (e) {
+          this.logger.warn(`⚠️ Day ${dayNumber} lightweight parse failed: ${e.message}`);
+        }
+      }
+
+      await this.cacheService.setDayContent(cacheKey, deferredContent);
+
+      yield {
+        event: CurriculumService.DEFERRED_STREAM_EVENTS.COMPLETE,
+        data: {
+          deferredContent,
+          tokensUsed: lightResponse?.tokensUsed || 0,
+          cost: lightResponse?.cost || 0,
+          fromCache: false,
+        },
+      };
+      return;
+    }
 
     // Stream from Anthropic
     let fullContent = '';
@@ -3421,6 +3523,414 @@ Return JSON only:
 
     return {
       boost,
+      tokensUsed: response.tokensUsed,
+      cost: response.cost,
+    };
+  }
+
+  // ==========================================================================
+  // GAP-FIRST LEARNING: Assessment & Gap Detection
+  // ==========================================================================
+
+  /**
+   * Get scenario design guidance based on goal type.
+   */
+  private getScenarioGuidanceForGoalType(goalType?: string): {
+    systemFraming: string;
+    scenarioStyle: string;
+    scenarioJsonHint: string;
+  } {
+    if (goalType === 'project') {
+      return {
+        systemFraming: `You are an expert technical assessor. Generate a realistic engineering task that reveals what someone can actually build. The task should require them to design a solution, plan implementation, handle failures, AND reason about maintainability and performance tradeoffs.
+
+The key insight: how someone approaches a build task — what they plan for vs. what they overlook — reveals their true engineering maturity. An experienced builder naturally considers architecture, error handling, testing, tech debt, and performance implications. A beginner jumps straight to implementation.
+
+Calibration signal: reward knowing WHEN to optimize vs. when a simple solution is sufficient. Premature optimization is a junior signal; ignoring performance entirely under real constraints is also a junior signal. Maturity is calibration.`,
+        scenarioStyle: `SCENARIO STYLE: Present a realistic engineering task — building a feature, debugging a production issue, designing a system, refactoring legacy code, or inheriting a module with tech debt. The task MUST include real constraints that force maintainability and performance reasoning (e.g., existing codebase with flaky tests, tight deadline vs. clean code, scale requirements, backward compatibility).
+The ideal response would: outline their approach, explain architectural decisions, plan for failure modes, describe testing strategy, reason about tech debt / maintainability tradeoffs, and calibrate performance decisions to the actual constraints.`,
+        scenarioJsonHint: `"scenario": "A realistic engineering task (2-4 sentences) with constraints that force decisions about implementation, maintainability, and performance tradeoffs. NOT a quiz — a build/debug/design task with real-world tension.",
+  "instructions": "Brief instructions telling the person what to address (e.g., 'Describe your approach: what you'd build, how you'd handle errors, what tradeoffs you'd make on tech debt vs. speed, and how you'd verify it works')"`,
+      };
+    }
+
+    if (goalType === 'interview') {
+      return {
+        systemFraming: `You are an expert interview coach. Generate an interview-style problem that tests both technical depth and communication skills. The problem should require systematic decomposition, clear reasoning about complexity and tradeoffs, and consideration of edge cases.
+
+The key insight: strong interview candidates naturally structure their approach — they clarify requirements, explore the problem space, consider multiple solutions, analyze tradeoffs, and communicate their reasoning step by step. Weaker candidates jump to a solution without exploring alternatives.`,
+        scenarioStyle: `SCENARIO STYLE: Present an interview-style problem — a coding challenge, system design question, or technical deep-dive. Frame it like a real interviewer would: give context, constraints, and scale expectations.
+The ideal response would: clarify assumptions, break the problem down, propose an approach with reasoning, analyze complexity/tradeoffs, and handle edge cases.`,
+        scenarioJsonHint: `"scenario": "An interview-style problem (2-4 sentences) that requires systematic problem decomposition, considering approaches, and reasoning about tradeoffs. Frame it like a real interview question.",
+  "instructions": "Brief instructions (e.g., 'Walk through your approach step by step: how you'd break this down, what solutions you'd consider, and how you'd handle edge cases')"`,
+      };
+    }
+
+    if (goalType === 'ai_builder') {
+      return {
+        systemFraming: `You are an expert AI systems assessor. Generate a task that reveals how well someone can design and ship production AI workflows — not just call an API. The task should require the FULL pipeline: prompt design, evaluation strategy, guardrails, monitoring, data quality, and cost/latency reasoning.
+
+The key insight: a junior AI builder thinks "call the API and parse the output." A senior one thinks about eval (how do I know it works?), guardrails (PII, prompt injection, policy), monitoring (drift, failure rates), data grounding (is the context accurate?), and cost/latency tradeoffs (when to use a cheaper model, when to cache, when to add a fallback).
+
+Calibration signal: reward choosing the simplest pipeline that meets the requirements. Over-engineering with unnecessary agents/chains is a junior signal. So is ignoring eval entirely.`,
+        scenarioStyle: `SCENARIO STYLE: Present a task where the user must design an AI-powered system for a realistic use case with real constraints (accuracy requirements, latency SLAs, sensitive data, cost budget, scale). The scenario MUST force decisions about evaluation, safety/guardrails, and operational concerns — not just prompt design.
+The ideal response would: design the prompt/chain, define an eval plan, add guardrails for safety/policy, plan monitoring for drift/failures, reason about data quality/grounding, and make cost/latency tradeoffs with fallback modes.`,
+        scenarioJsonHint: `"scenario": "A realistic AI-building task (2-4 sentences) with constraints that force decisions about eval, safety, monitoring, and cost — not just 'build a chatbot.' Include data sensitivity, accuracy requirements, or scale.",
+  "instructions": "Brief instructions (e.g., 'Design the system: prompts/chains, how you'd evaluate it works, guardrails for safety, how you'd monitor it in production, and cost/latency tradeoffs')"`,
+      };
+    }
+
+    // Default: general/curriculum — anchored in a real work artifact
+    return {
+      systemFraming: `You are an expert skills assessor. Generate a scenario that asks the person to produce a concrete work artifact — a plan, proposal, memo, design doc, or recommendation — not just answer a question. The artifact format makes omissions structurally visible: a complete artifact naturally addresses constraints, tradeoffs, risks, and reasoning, while a weak one skips most of these.
+
+The key insight: what someone OMITS from a structured artifact reveals more than what they get wrong. An expert's plan naturally covers edge cases, constraints, alternatives, and success criteria. A beginner's plan covers only the happy path.
+
+Calibration signal: reward depth-calibration — knowing when to go deep (high-stakes decisions, novel problems) vs. keeping it simple (well-understood problems, low risk). Over-analyzing a trivial decision is as much a gap as under-analyzing a critical one.`,
+      scenarioStyle: `SCENARIO STYLE: Present a realistic situation that requires the person to produce a concrete artifact (plan, proposal, recommendation, design doc, analysis). The scenario should have real constraints that force prioritization and tradeoff reasoning. Anchor the scenario in specific enough context that generic answers are obviously incomplete.
+The ideal response would: produce a structured artifact that identifies constraints, names tradeoffs, considers failure modes, applies domain knowledge practically, explains reasoning clearly, and calibrates depth to the stakes involved.`,
+      scenarioJsonHint: `"scenario": "A realistic 2-4 sentence situation that requires producing a concrete artifact (plan, proposal, recommendation). Include enough context and constraints that a generic answer would be obviously incomplete. NOT a quiz — a real work situation.",
+  "instructions": "Brief instructions telling the person what artifact to produce and what to address (e.g., 'Write a brief plan covering your approach, what constraints you'd work within, what could go wrong, and how you'd measure success')"`,
+    };
+  }
+
+  private getAnalysisFraming(goalType?: string): string {
+    if (goalType === 'project') {
+      return `Your PRIMARY job is to evaluate how this person approaches building. Look for what they planned for vs. what they overlooked — an experienced builder naturally thinks about architecture, error handling, testing, maintainability tradeoffs, and performance calibration. A beginner focuses only on "making it work."
+
+Calibration note: reward knowing WHEN to optimize (constraints demand it) vs. when a simple solution is sufficient. Premature optimization is a junior signal; ignoring real constraints is also a junior signal.`;
+    }
+    if (goalType === 'interview') {
+      return `Your PRIMARY job is to evaluate how this person structures their problem-solving. Look for systematic decomposition, clear reasoning about alternatives, edge case awareness, and communication quality — what a strong interview candidate does naturally vs. what a weaker one skips.`;
+    }
+    if (goalType === 'ai_builder') {
+      return `Your PRIMARY job is to evaluate how this person designs AI systems for production. Look for the FULL pipeline — not just prompt design. An experienced AI builder naturally addresses evaluation (how do I know it works?), guardrails (PII, injection, policy), monitoring (drift, failures), data quality (grounding, freshness), and cost/latency tradeoffs. A beginner focuses only on "call the API."
+
+Calibration note: reward choosing the simplest pipeline that meets requirements. Over-engineering with unnecessary agents/chains is as much a gap as ignoring eval entirely.`;
+    }
+    return `Your PRIMARY job is to evaluate the completeness of this person's artifact (plan, proposal, recommendation). What someone OMITS from a structured artifact reveals more than what they get wrong — look for missing structural sections, unaddressed constraints, and absent risk reasoning.
+
+Calibration note: reward depth-calibration — going deep on high-stakes decisions while keeping trivial ones simple. Over-analyzing everything is a gap; so is being shallow across the board.`;
+  }
+
+  /**
+   * Generate an assessment scenario for a skill.
+   * If previousGaps provided (re-test), probes those specific gaps.
+   */
+  async generateAssessmentScenario(params: {
+    skillName: string;
+    goalType?: string;
+    skillLevel?: string;
+    previousGaps?: Array<{ category: string; description: string }>;
+  }): Promise<{
+    scenario: string;
+    instructions: string;
+    timeEstimateMinutes: number;
+    tokensUsed: number;
+    cost: number;
+  }> {
+    this.logger.log(
+      `🎯 Generating assessment scenario for: ${params.skillName}`,
+    );
+
+    const previousGapsContext = params.previousGaps?.length
+      ? `\nThis is a RE-TEST. The student previously had these gaps:
+${params.previousGaps.map((g) => `- ${g.category}: ${g.description}`).join('\n')}
+
+CRITICAL RE-TEST REQUIREMENTS:
+1. At least 50% of the scenario MUST directly target the gap areas listed above. Structure the task so that a correct response REQUIRES demonstrating competence in those specific weak areas.
+2. The remaining portion should cover general dimensions to check for overall growth.
+3. Generate a DIFFERENT scenario from the previous round — do NOT reuse the same situation, but DO probe the same gap categories through a new context.`
+      : '';
+
+    // Get the rubric dimensions so the scenario naturally probes them
+    const rubric = this.getAssessmentRubric(params.goalType, params.skillName);
+    const dimensionNames = rubric.map((d) => d.label).join(', ');
+
+    const { systemFraming, scenarioStyle, scenarioJsonHint } =
+      this.getScenarioGuidanceForGoalType(params.goalType);
+
+    const systemPrompt = `${systemFraming}
+
+The response will be evaluated on these dimensions: ${dimensionNames}
+Design the scenario so that addressing ALL these dimensions would require genuine expertise, while a surface-level answer would miss most of them.
+
+${scenarioStyle}
+
+Return valid JSON only.`;
+
+    const userPrompt = `Generate an assessment scenario for: "${params.skillName}"
+${params.skillLevel ? `Self-reported level: ${params.skillLevel}` : ''}
+${params.goalType ? `Goal type: ${params.goalType}` : ''}
+${previousGapsContext}
+
+Return JSON:
+{
+  ${scenarioJsonHint},
+  "timeEstimateMinutes": 5
+}`;
+
+    const response = await this.aiService.routeRequest(
+      AITask.LIGHTWEIGHT_CONTENT,
+      userPrompt,
+      systemPrompt,
+    );
+
+    let result: any;
+    try {
+      let cleanedContent = response.content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
+      const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) cleanedContent = jsonMatch[0];
+      result = JSON.parse(cleanedContent);
+    } catch (error) {
+      this.logger.error('❌ Failed to parse assessment scenario:', error.message);
+      throw new BadRequestException('Failed to generate assessment scenario');
+    }
+
+    this.logger.log(`✅ Assessment scenario generated. Tokens: ${response.tokensUsed}`);
+    return {
+      scenario: result.scenario,
+      instructions: result.instructions,
+      timeEstimateMinutes: result.timeEstimateMinutes || 5,
+      tokensUsed: response.tokensUsed,
+      cost: response.cost,
+    };
+  }
+
+  /**
+   * Get rubric dimensions based on goal type / skill domain.
+   * Each goal type has specific structural dimensions to evaluate.
+   */
+  private getAssessmentRubric(goalType?: string, skillName?: string): Array<{
+    id: string;
+    label: string;
+    description: string;
+  }> {
+    // Project Lab — building/engineering rubric
+    if (goalType === 'project') {
+      return [
+        { id: 'solution_design', label: 'Solution Design', description: 'Did they outline a clear approach and architectural decisions?' },
+        { id: 'implementation_planning', label: 'Implementation Planning', description: 'Did they break the work into concrete steps with a logical order?' },
+        { id: 'error_handling', label: 'Error & Edge Cases', description: 'Did they consider what could go wrong and how to handle failures?' },
+        { id: 'testing_strategy', label: 'Testing Strategy', description: 'Did they describe how to verify their solution works correctly?' },
+        { id: 'maintainability', label: 'Maintainability & Tech Debt', description: 'Did they consider long-term maintenance, refactoring tradeoffs, or code quality vs. shipping speed?' },
+        { id: 'performance_calibration', label: 'Performance Calibration', description: 'Did they reason about performance/cost when constraints demand it — without premature optimization when they don\'t?' },
+      ];
+    }
+
+    // Interview Prep — problem-solving & communication rubric
+    if (goalType === 'interview') {
+      return [
+        { id: 'problem_decomposition', label: 'Problem Decomposition', description: 'Did they break the problem into manageable parts systematically?' },
+        { id: 'solution_reasoning', label: 'Solution Reasoning', description: 'Did they explain WHY they chose their approach over alternatives?' },
+        { id: 'edge_case_handling', label: 'Edge Case Handling', description: 'Did they identify and address edge cases and constraints?' },
+        { id: 'complexity_analysis', label: 'Complexity Analysis', description: 'Did they reason about time/space complexity or scalability tradeoffs?' },
+        { id: 'communication_clarity', label: 'Communication Clarity', description: 'Did they structure their answer clearly as they would in an interview?' },
+      ];
+    }
+
+    // AI Builder rubric
+    if (goalType === 'ai_builder') {
+      return [
+        { id: 'prompt_design', label: 'Prompt & Chain Design', description: 'Did they design clear prompts and break complex tasks into appropriate steps/chains?' },
+        { id: 'evaluation_plan', label: 'Evaluation Plan', description: 'Did they define how to measure whether the system works — test cases, success criteria, or eval metrics?' },
+        { id: 'guardrails_safety', label: 'Guardrails & Safety', description: 'Did they address PII handling, prompt injection, content policy, or other safety/security concerns?' },
+        { id: 'monitoring_drift', label: 'Monitoring & Drift', description: 'Did they plan for production monitoring — failure rates, output drift, quality degradation over time?' },
+        { id: 'data_grounding', label: 'Data Quality & Grounding', description: 'Did they consider data freshness, retrieval quality, hallucination mitigation, or context accuracy?' },
+        { id: 'cost_latency', label: 'Cost & Latency Tradeoffs', description: 'Did they reason about model selection, caching, fallback modes, or when to use cheaper/faster alternatives?' },
+      ];
+    }
+
+    // Default / Curriculum rubric — anchored in artifact quality
+    return [
+      { id: 'constraint_awareness', label: 'Constraint Awareness', description: 'Did they identify and work within real limitations and requirements?' },
+      { id: 'tradeoff_reasoning', label: 'Tradeoff Reasoning', description: 'Did they name alternatives, articulate what they gave up, and explain why?' },
+      { id: 'risk_edge_cases', label: 'Risk & Edge Cases', description: 'Did they consider what could go wrong, failure modes, or exceptions?' },
+      { id: 'artifact_completeness', label: 'Artifact Completeness', description: 'Does their plan/proposal cover the key structural elements, or are obvious sections missing?' },
+      { id: 'depth_calibration', label: 'Depth Calibration', description: 'Did they go deep where it matters and keep it simple where appropriate — not over-analyze trivial parts or under-analyze critical ones?' },
+    ];
+  }
+
+  /**
+   * Analyze a user's open-ended response using rubric-based structural scoring.
+   * Each dimension scored 1-5 with specific gap analysis and examples.
+   * Includes microLessonPoints for the weakest dimensions — no separate API call needed.
+   */
+  async analyzeGaps(params: {
+    skillName: string;
+    scenario: string;
+    userResponse: string;
+    goalType?: string;
+    assessmentRound?: number;
+  }): Promise<{
+    gapProfile: {
+      gaps: Array<{
+        category: string;
+        description: string;
+        severity: 'high' | 'medium' | 'low';
+        evidence: string;
+      }>;
+      strengths: Array<{
+        category: string;
+        description: string;
+      }>;
+      dimensions: Array<{
+        id: string;
+        name: string;
+        score: number;
+        gap?: string;
+        example?: string;
+      }>;
+      overallScore: number;
+      microLessonPoints: string[];
+      detectedLevel: string;
+      assessmentRound: number;
+      scenario: string;
+      userResponse: string;
+    };
+    tokensUsed: number;
+    cost: number;
+  }> {
+    this.logger.log(`🔍 Analyzing gaps for: ${params.skillName} (goalType: ${params.goalType || 'curriculum'})`);
+
+    const rubric = this.getAssessmentRubric(params.goalType, params.skillName);
+    const dimensionInstructions = rubric
+      .map((d) => `${d.id}: ${d.description}`)
+      .join('\n');
+
+    const evaluationFraming = this.getAnalysisFraming(params.goalType);
+
+    const systemPrompt = `You are a structural evaluator. Score this response on specific dimensions.
+
+${evaluationFraming}
+
+Score each dimension 1-5:
+${dimensionInstructions}
+
+For EACH dimension, respond with:
+- score (1-5): 1=absent, 2=superficial mention, 3=addressed but incomplete, 4=solid, 5=exceptional
+- gap: what's specifically missing (if score < 4)
+- example: how they could have addressed this gap in THIS scenario
+
+Also provide:
+- gaps: structural gaps as category/description/severity/evidence (derive severity from dimension scores: 1-2=high, 3=medium, 4-5=low or none)
+- strengths: what they did well
+- microLessonPoints: 2-3 targeted tips for the user's weakest dimensions (specific to THIS scenario, not generic advice)
+- overallScore: weighted average of dimension scores
+- detectedLevel: beginner (avg < 2.5) / intermediate (2.5-3.5) / advanced (> 3.5)
+
+Be encouraging but honest. Do NOT rewrite the user's answer. Only evaluate and point out structural gaps.
+
+Return valid JSON only.`;
+
+    const userPrompt = `Skill: "${params.skillName}"
+${params.goalType ? `Goal type: ${params.goalType}` : ''}
+
+SCENARIO:
+${params.scenario}
+
+USER'S RESPONSE:
+${params.userResponse}
+
+Return JSON:
+{
+  "dimensions": [
+    {
+      "name": "${rubric[0].id}",
+      "score": 3,
+      "gap": "what's specifically missing",
+      "example": "how they could have addressed this in THIS scenario"
+    }
+  ],
+  "gaps": [
+    {
+      "category": "category_name",
+      "description": "Human-readable gap description",
+      "severity": "high|medium|low",
+      "evidence": "What was absent from their response"
+    }
+  ],
+  "strengths": [
+    {
+      "category": "category_name",
+      "description": "What they did well"
+    }
+  ],
+  "microLessonPoints": [
+    "Tip 1: specific actionable improvement for their weakest dimension",
+    "Tip 2: another specific tip"
+  ],
+  "overallScore": 3.2,
+  "detectedLevel": "beginner|intermediate|advanced"
+}`;
+
+    const response = await this.aiService.routeRequest(
+      AITask.CURRICULUM_GENERATION,
+      userPrompt,
+      systemPrompt,
+    );
+
+    let result: any;
+    try {
+      let cleanedContent = response.content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
+      const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) cleanedContent = jsonMatch[0];
+      result = JSON.parse(cleanedContent);
+    } catch (error) {
+      this.logger.error('❌ Failed to parse gap analysis:', error.message);
+      throw new BadRequestException('Failed to analyze gaps');
+    }
+
+    // Ensure dimensions have proper structure and map rubric IDs
+    const dimensions = (result.dimensions || []).map((d: any, i: number) => {
+      const rawScore = Number(d.score);
+      if (isNaN(rawScore) || rawScore < 1 || rawScore > 5) {
+        this.logger.warn(`⚠️ Dimension "${d.name}" returned out-of-range score: ${d.score}`);
+      }
+      const score = Math.max(1, Math.min(5, rawScore || 1));
+      // Match AI-returned dimension to rubric by index or name
+      const rubricMatch = rubric.find((r) => r.id === d.name || r.label === d.name) || rubric[i];
+      return {
+        id: rubricMatch?.id || d.name,
+        name: rubricMatch?.label || d.name,
+        score,
+        gap: score < 4 ? d.gap : undefined,
+        example: score < 4 ? d.example : undefined,
+      };
+    });
+
+    // Calculate overallScore if AI didn't provide it
+    const overallScore = result.overallScore
+      || (dimensions.length > 0
+        ? Number((dimensions.reduce((sum: number, d: any) => sum + d.score, 0) / dimensions.length).toFixed(1))
+        : 1);
+
+    // Derive detectedLevel from overallScore if not provided
+    const detectedLevel = result.detectedLevel
+      || (overallScore > 3.5 ? 'advanced' : overallScore >= 2.5 ? 'intermediate' : 'beginner');
+
+    this.logger.log(
+      `✅ Gap analysis complete. ${dimensions.length} dimensions scored, overall: ${overallScore}/5, level: ${detectedLevel}. ${result.gaps?.length || 0} gaps, ${result.microLessonPoints?.length || 0} micro-lessons`,
+    );
+
+    return {
+      gapProfile: {
+        gaps: result.gaps || [],
+        strengths: result.strengths || [],
+        dimensions,
+        overallScore,
+        microLessonPoints: result.microLessonPoints || [],
+        detectedLevel,
+        assessmentRound: params.assessmentRound || 1,
+        scenario: params.scenario,
+        userResponse: params.userResponse,
+      },
       tokensUsed: response.tokensUsed,
       cost: response.cost,
     };

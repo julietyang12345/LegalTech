@@ -600,6 +600,14 @@ export function SessionPage() {
     return incomplete;
   };
 
+  // Mark current day complete without navigating (used by gap session re-assessment)
+  const markCurrentDayComplete = async () => {
+    if (!activeSession || !currentDay) return;
+    await submitPracticeProject(currentDay.day, 'Day completed via reflection', 4);
+    resetSteps();
+    setStepEngagement({ task1: false, bossMilestone: false, reflection: false });
+  };
+
   // Proceed with day completion (after validation or skip)
   // Note: Visual celebration (confetti + achievement card) is handled by DayCompletionScreen
   // which shows BEFORE this function is called via onContinue callback
@@ -1002,6 +1010,7 @@ export function SessionPage() {
               // Only dismiss after navigation (or on error where we stay on page)
               setShowDayCompletion(false);
             }}
+            onMarkComplete={markCurrentDayComplete}
             isLoading={isAdvancingDay}
           />
         )}

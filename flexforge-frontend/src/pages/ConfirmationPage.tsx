@@ -10,7 +10,8 @@ import {
   Brain,
 } from 'lucide-react';
 import { GeneratingScreen, FakePaywallModal } from '@/components/common';
-import { SkillLevel } from '@/types';
+import { SkillLevel, GoalType } from '@/types';
+import type { CreateSessionDto } from '@/types';
 import api from '@/services/api';
 
 // Map familiarity to skill level
@@ -44,13 +45,26 @@ export function ConfirmationPage() {
   const familiarity = prefs?.familiarity || 'new';
   const sessionLength = prefs?.sessionLength || 'medium';
 
+  // Check for gap data from assessment flow
+  const gapProfileStr = sessionStorage.getItem('gapProfile');
+  const gapProfile = gapProfileStr ? JSON.parse(gapProfileStr) : null;
+  const gapGoalType = sessionStorage.getItem('gapGoalType') || undefined;
+  const isMicroLesson = sessionStorage.getItem('gapMicroLessonMode') === 'true';
+
   // Loading steps for curriculum generation
-  const getGenerationLoadingSteps = (days: number) => [
-    { icon: Search, text: 'Analyzing your skill...', duration: 5000 },
-    { icon: Brain, text: 'Designing learning path...', duration: 8000 },
-    { icon: BookOpen, text: 'Building curriculum...', duration: days > 7 ? 60000 : 40000 },
-    { icon: CheckCircle, text: 'Finalizing your plan...', duration: 5000 },
-  ];
+  const getGenerationLoadingSteps = (days: number) => isMicroLesson
+    ? [
+        { icon: Search, text: 'Analyzing your gaps...', duration: 3000 },
+        { icon: Brain, text: 'Designing targeted lessons...', duration: 6000 },
+        { icon: BookOpen, text: 'Building micro-curriculum...', duration: 25000 },
+        { icon: CheckCircle, text: 'Finalizing your plan...', duration: 3000 },
+      ]
+    : [
+        { icon: Search, text: 'Analyzing your skill...', duration: 5000 },
+        { icon: Brain, text: 'Designing learning path...', duration: 8000 },
+        { icon: BookOpen, text: 'Building curriculum...', duration: days > 7 ? 60000 : 40000 },
+        { icon: CheckCircle, text: 'Finalizing your plan...', duration: 5000 },
+      ];
 
   // Helper to check if error is a quota error
   const isQuotaError = (error: any): boolean => {
@@ -84,15 +98,31 @@ export function ConfirmationPage() {
         setEstimatedDays(days);
 
         // Then create session with AI-determined days
-        await createSession({
+        const sessionDto: CreateSessionDto = {
           skillName,
           durationDays: days,
           hoursPerDay: sessionLengthToHours[sessionLength],
           skillLevel: familiarityToSkillLevel[familiarity],
-        });
+          // Pass gap data if available (from assessment flow)
+          ...(gapProfile && {
+            gapProfile,
+            microLessonMode: isMicroLesson,
+            goalType: gapGoalType as GoalType,
+          }),
+        };
+
+        await createSession(sessionDto);
+
+        // Clean up gap data from sessionStorage
+        sessionStorage.removeItem('gapProfile');
+        sessionStorage.removeItem('gapGoalType');
+        sessionStorage.removeItem('gapMicroLessonMode');
+        sessionStorage.removeItem('customGoalOverride');
 
         addSystemMessage(
-          `Your ${skillName} curriculum is ready! Here's your learning plan.`,
+          isMicroLesson
+            ? `Your targeted ${skillName} lessons are ready! Let's close those gaps.`
+            : `Your ${skillName} curriculum is ready! Here's your learning plan.`,
           'celebratory'
         );
 
@@ -116,9 +146,11 @@ export function ConfirmationPage() {
     <>
       <GeneratingScreen
         steps={getGenerationLoadingSteps(estimatedDays)}
-        title="Creating your curriculum"
-        subtitle={`Building a personalized ${skillName} learning path (~${estimatedDays} days)...`}
-        timeEstimate={estimatedDays > 7 ? "This takes about 70-80 seconds" : "This takes about 50-60 seconds"}
+        title={isMicroLesson ? "Building targeted lessons" : "Creating your curriculum"}
+        subtitle={isMicroLesson
+          ? `Designing gap-focused lessons for ${skillName}...`
+          : `Building a personalized ${skillName} learning path (~${estimatedDays} days)...`}
+        timeEstimate={isMicroLesson ? "This takes about 30-40 seconds" : estimatedDays > 7 ? "This takes about 70-80 seconds" : "This takes about 50-60 seconds"}
       />
 
       {/* Quota Exceeded Modal - Full Feature Comparison */}

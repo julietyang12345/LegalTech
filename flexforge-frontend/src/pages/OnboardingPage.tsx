@@ -165,8 +165,9 @@ export default function OnboardingPage() {
       // Refresh user to get updated preferences
       await refreshUser();
 
-      // Navigate to start page
-      navigate('/confirm', { replace: true });
+      // Navigate to assessment (or confirm for language/interview modes)
+      const skipAssessment = goalType === GoalType.LANGUAGE || goalType === GoalType.INTERVIEW;
+      navigate(skipAssessment ? '/confirm' : '/assess', { replace: true });
     } catch (err: any) {
       console.error('Failed to complete onboarding:', err);
       setError(err.response?.data?.message || 'Failed to save preferences. Please try again.');

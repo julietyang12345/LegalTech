@@ -16,6 +16,8 @@ import {
   RegisterPage,
   OnboardingPage,
   ConfirmationPage,
+  AssessmentPage,
+  GapResultsPage,
   TodayPage,
   SessionPage,
   PlanPage,
@@ -73,6 +75,22 @@ function App() {
           />
 
           {/* Protected routes - require login + onboarding */}
+          <Route
+            path="/assess"
+            element={
+              <ProtectedRoute>
+                <AssessmentPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/gap-results"
+            element={
+              <ProtectedRoute>
+                <GapResultsPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/confirm"
             element={

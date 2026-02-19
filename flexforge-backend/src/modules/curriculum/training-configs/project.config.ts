@@ -19,7 +19,6 @@ export const projectConfig: TrainingConfig = {
     'refactor_legacy',
     'automate_process',
   ],
-  rubricDimensions: [],
   subskills: [
     'problem_identification',
     'solution_design',

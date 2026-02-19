@@ -146,31 +146,22 @@ TODAY'S CODE MUST BE CUMULATIVE - THIS IS MANDATORY:
 - Appending new code at the bottom without integrating with existing code
 - Duplicating logic that already exists
 
-EXAMPLE of correct cumulative building:
-Day 1 code:
+EXAMPLE:
+Day 1: \`def fetch_data(url): return requests.get(url).text\`
+Day 2: Same function enhanced + new helper added:
 \`\`\`python
-def fetch_data(url):
-    response = requests.get(url)
-    return response.text
-\`\`\`
-
-Day 2 solutionCode (enhanced version):
-\`\`\`python
-def fetch_data(url):
-    # Day 2: Enhanced with error handling
+def fetch_data(url):  # Day 2: Enhanced with error handling
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         return response.text
     except requests.RequestException:
         return None
-
-# Day 2: Added helper function
-def validate_response(data):
+def validate_response(data):  # Day 2: New helper
     return data and len(data) > 0
 \`\`\`
 
-Your solutionCode for Day ${ctx.dayNumber} MUST be ONE complete file containing Day ${ctx.dayNumber - 1}'s code with today's enhancements/additions.`);
+Your solutionCode for Day ${ctx.dayNumber} MUST be ONE complete file containing Day ${ctx.dayNumber - 1}'s code with today's additions.`);
     } else {
       console.log(`[ContinuityInstructions] No previous day code available for cumulative building`);
     }

@@ -51,6 +51,22 @@ interface CurriculumPromptParams {
   } | null;
   // Training mode (non-curriculum goal types)
   goalType?: GoalType;
+  // Gap-first learning: assessment results
+  gapProfile?: {
+    gaps: Array<{
+      category: string;
+      description: string;
+      severity: 'high' | 'medium' | 'low';
+      evidence: string;
+    }>;
+    strengths: Array<{
+      category: string;
+      description: string;
+    }>;
+    detectedLevel: string;
+  };
+  // When true, generates short 3-5 day micro-curriculum targeting gaps
+  microLessonMode?: boolean;
 }
 
 // ============================================
@@ -97,41 +113,44 @@ export type SectionType =
 // - Project-based (ANY skill): task1 + bossMilestone → NO intensive (bossMilestone IS the hands-on practice)
 // - Non-project-based (ANY skill): task1 + intensive → NO bossMilestone (intensive IS the hands-on practice)
 //
+// Section distribution: task1 = quiz (70-85%) + AI picks 1 secondary (15-30%)
+// intensive = quiz (majority) + AI picks up to 2 others (1 item each)
+// intensiveAdvanced = opt-in advanced sections (e.g., code writing)
 export const SECTION_REGISTRY: Record<
   SkillType,
   {
-    task1: SectionType[]; // Concept reinforcement sections (always included)
-    intensive: SectionType[]; // Deep practice sections (only when NOT project-based)
-    intensiveAdvanced?: SectionType[]; // Advanced sections (when user enables code writing)
+    task1: SectionType[];
+    intensive: SectionType[];
+    intensiveAdvanced?: SectionType[];
   }
 > = {
   [SkillType.CODE]: {
-    task1: ['quiz', 'outputPrediction', 'fillBlank'], // quiz=70-85%, AI picks 1 secondary type for 15-30%
-    intensive: ['quiz', 'aiCodeReview', 'fillBlank'], // quiz=majority, AI picks up to 2 others (1 each)
-    intensiveAdvanced: ['codeCompletion'], // Advanced: write code from scratch (opt-in)
+    task1: ['quiz', 'outputPrediction', 'fillBlank'],
+    intensive: ['quiz', 'aiCodeReview', 'fillBlank'],
+    intensiveAdvanced: ['codeCompletion'],
   },
   [SkillType.PHYSICAL]: {
-    task1: ['quiz', 'reorder', 'matching'], // quiz=70-85%, AI picks 1 secondary type for 15-30%
-    intensive: ['quiz', 'formCheck', 'reorder'], // quiz=majority, AI picks up to 2 others (1 each)
+    task1: ['quiz', 'reorder', 'matching'],
+    intensive: ['quiz', 'formCheck', 'reorder'],
   },
   [SkillType.KNOWLEDGE]: {
-    task1: ['quiz', 'matching', 'fillBlank', 'openEnded'], // quiz=70-85%, AI picks 1 secondary type for 15-30%
-    intensive: ['quiz', 'fillBlank', 'reorder', 'openEnded'], // quiz=majority, AI picks up to 2 others (1 each)
+    task1: ['quiz', 'matching', 'fillBlank', 'openEnded'],
+    intensive: ['quiz', 'fillBlank', 'reorder', 'openEnded'],
   },
   [SkillType.DESIGN]: {
-    task1: ['quiz', 'designCritique', 'matching'], // quiz=70-85%, AI picks 1 secondary type for 15-30%
-    intensive: ['quiz', 'designCritique', 'matching'], // quiz=majority, AI picks up to 2 others (1 each)
+    task1: ['quiz', 'designCritique', 'matching'],
+    intensive: ['quiz', 'designCritique', 'matching'],
   },
   [SkillType.AI_AGENT]: {
-    task1: ['quiz', 'fillBlank', 'outputPrediction'], // quiz=70-85%, AI picks 1 secondary type for 15-30%
-    intensive: ['quiz', 'aiCodeReview', 'fillBlank'], // quiz=majority, AI picks up to 2 others (1 each)
+    task1: ['quiz', 'fillBlank', 'outputPrediction'],
+    intensive: ['quiz', 'aiCodeReview', 'fillBlank'],
     intensiveAdvanced: ['codeCompletion'],
   },
 };
 
-// Language learning extends KNOWLEDGE with language-specific sections
+// Language learning: toneSelect only included for tonal languages
 export const LANGUAGE_SECTION_REGISTRY = {
-  task1: ['quiz', 'matching', 'toneSelect'] as SectionType[], // quiz=70-85%, AI picks 1 secondary; toneSelect only for tonal languages
+  task1: ['quiz', 'matching', 'toneSelect'] as SectionType[],
   intensive: ['fillBlank', 'translation', 'reorder', 'typing', 'roleplay', 'rewrite'] as SectionType[],
 };
 
@@ -711,6 +730,9 @@ export interface DayDetailParams {
 
   // Training mode (non-curriculum goal types)
   goalType?: GoalType;
+
+  // Gap session: micro-lesson mode (skip intensive practice + openTask)
+  isGapSession?: boolean;
 }
 
 // Language-specific features for prompts
@@ -763,6 +785,16 @@ export function buildDayDetailDeferredPrompt(
   const isProjectBased =
     params.isProjectBased ??
     usesProjectBasedLearning(params.learningStyle);
+
+  // Gap practice sessions: no Sonnet deferred content needed
+  // (no intensive practice — only quiz-based micro-lessons via core task1)
+  // The Sonnet call is skipped entirely in curriculum.service.ts
+  if (params.isGapSession && !isProjectBased) {
+    return {
+      systemPrompt: '',
+      userPrompt: '',
+    };
+  }
 
   // For practice-based skills, generate intensive practice sections
   if (!isProjectBased) {
@@ -826,30 +858,27 @@ ${contextInstructions}${languageCaveats}
 BOSS MILESTONE - SOLUTION + CHALLENGE (${newCodeLines} new lines):
 You provide a complete AI-generated solution. User chooses their path: write it themselves OR make the AI code run.
 
-⚠️ CUMULATIVE CODE REQUIREMENT (MANDATORY FOR DAY 2+) ⚠️
-${dayNumber > 1 ? `
+${dayNumber > 1 && !ctx?.continuity?.previousDayCode ? `⚠️ CUMULATIVE CODE REQUIREMENT (MANDATORY FOR DAY 2+) ⚠️
 THIS IS DAY ${dayNumber} - YOU MUST EXTEND PREVIOUS CODE, NOT CREATE NEW FILES!
 - Your solutionCode output must be the COMPLETE file including Day 1-${dayNumber - 1} code PLUS today's additions
 - DO NOT create a new/different file or endpoint
 - ADD to the existing code, don't replace it
 - Mark new code with: // Day ${dayNumber}: Added ...
-` : ''}
+
 CORRECT APPROACH:
 - Day 1: Create app/api/product/route.ts with basic endpoint
 - Day 2: SAME FILE app/api/product/route.ts with Day 1 code + new features added
 - Day 3: SAME FILE with Day 1 + Day 2 code + new features added
-
-WRONG APPROACH (DO NOT DO THIS):
-- Day 1: app/api/product-info/route.ts
-- Day 2: app/api/price/route.ts  ← WRONG! Different file!
-- Day 3: app/api/scraper/route.ts ← WRONG! Another different file!
-
-User must feel they're building ONE growing codebase, not 5 separate mini-projects.
-
+WRONG APPROACH:
+- Day 1: app/api/product-info/route.ts → Day 2: app/api/price/route.ts → Day 3: app/api/scraper/route.ts (different files!)
+User must feel they're building ONE growing codebase, not separate mini-projects.
+` : dayNumber > 1 ? `CUMULATIVE CODE: Previous day's code is provided in context above. Extend it, don't create new files.
+- Mark new additions: // Day ${dayNumber}: Added ...
+` : ''}
 REQUIRED FIELDS:
 - solutionCode: ${solutionCodeLines} lines COMPLETE WORKING code (GENERATE THIS FIRST)
   - Real, runnable code that ADDS to the existing project
-  - For Day 2+: show what files to add/modify, reference existing code
+  - For Day 2+: include previous code + today's additions in one file
 - starterCode: ${starterCodeLines} lines DERIVED FROM solutionCode above
   - SAME structure: same imports, same class/function names, same file organization
   - Replace implementation bodies with TODO comments describing what to implement
@@ -857,7 +886,6 @@ REQUIRED FIELDS:
   - For Day 2+: Include previous days' completed code + new TODOs for today's additions
 - solutionExplanation: 1-2 sentences on what this code does
 - solutionAnnotations: 3-5 strings explaining key parts
-
 - challengeOptions:
   - writeYourself:
     - description: "Write this code from scratch to prove you understand it"
@@ -873,22 +901,10 @@ REQUIRED FIELDS:
 - validationType: "run"
 - validationInstructions: "Run the code and verify it produces the expected output"
 - setupInstructions:
-  - REQUIRED: Tell user which file(s) to create/modify with FULL PATH from project root
-  - files: List each file with FULL PATH and description (e.g., "app/api/users/route.js", "src/components/Card.jsx")
-  - steps: Clear setup instructions in order:
-    1. Project scaffold if needed (e.g., "npx create-next-app my-app")
-    2. cd into project folder (e.g., "cd my-app")
-    3. Install packages if needed (e.g., "npm install axios")
-    4. File instructions - ALWAYS use FULL PATH from project root:
-       - Use "Open [path]" for existing files, "Create [path]" for new files
-    5. How to test - ALWAYS include:
-       - Run command (e.g., "Run: npm run dev")
-       - Expected result (e.g., "You should see JSON response: {users: [...]}")
-  - IMPORTANT: If route will be tested in browser, ALWAYS export GET handler. Browser visits = GET request.
-  - runCommand: Command AND test method (e.g., "npm run dev → GET http://localhost:<PORT>/api/hello" - use <PORT> placeholder, user will use their configured port)
-- API ROUTES - Prevent 405 Method Not Allowed errors:
-  - If testing via browser URL → MUST have GET handler (browser sends GET)
-  - For POST-only APIs: show curl command in test steps, NOT "open in browser"
+  - files: List each file with FULL PATH and description (e.g., "app/api/users/route.js")
+  - steps: 1) Scaffold if needed, 2) cd into folder, 3) Install packages, 4) File instructions with FULL PATHS ("Open [path]" existing / "Create [path]" new), 5) Test: run command + expected result
+  - IMPORTANT: Browser-tested routes MUST export GET handler. POST-only: use curl in test steps.
+  - runCommand: Command AND test method (e.g., "npm run dev → GET http://localhost:<PORT>/api/hello" - use <PORT> placeholder)
 - DO NOT use placeholder text - generate ACTUAL code
 - AVOID REPETITION in solution code: Extract repeated values into constants, use helper functions for repeated logic
 ${ctx?.continuity?.bossProjectTarget ? `- Boss Project: "${ctx.continuity.bossProjectTarget}" - conceptConnection should reference a task1 concept` : ''}
@@ -1068,33 +1084,23 @@ function getIntensiveSectionTemplate(
         "type": "aiCodeReview",
         "title": "Review AI-Generated Code",
         "instructions": "Review this AI-generated code and identify any issues",
-        "items": [
-          {
-            "id": "acr1",
-            "code": "function login(user, pass) {\\n  const stored = db.getUser(user);\\n  if (stored.password === pass) {\\n    return createToken(user);\\n  }\\n}",
-            "context": "This code should handle user authentication",
-            "promptUsed": "Write a function to authenticate users",
-            "issues": [
-              {
-                "id": "issue1",
-                "type": "security",
-                "location": "line 3: if (stored.password === pass)",
-                "severity": "critical",
-                "options": [
-                  "Password is compared in plain text without hashing",
-                  "The comparison operator should use !== instead",
-                  "The variable name 'pass' is too short",
-                  "Missing null check for stored user"
-                ],
-                "correctIndex": 0,
-                "explanation": "Passwords should never be stored or compared in plain text. Use bcrypt.compare() or similar to compare hashed passwords securely."
-              }
-            ],
-            "correctVersion": "// Corrected code with bcrypt...",
-            "hint": "Think about how passwords should be stored and compared",
-            "language": "javascript"
-          }
-        ],
+        "items": [{
+          "id": "acr1",
+          "code": "function example() {\\n  // AI-generated code with subtle bug\\n}",
+          "context": "What this code should do",
+          "promptUsed": "The prompt that generated this code",
+          "issues": [{
+            "id": "issue1", "type": "security|logic|performance",
+            "location": "line N: problematic code",
+            "severity": "critical|warning",
+            "options": ["Correct answer", "Plausible wrong 1", "Plausible wrong 2", "Plausible wrong 3"],
+            "correctIndex": 0,
+            "explanation": "Why the correct answer is right"
+          }],
+          "correctVersion": "// Fixed code",
+          "hint": "Hint for finding the issue",
+          "language": "javascript"
+        }],
         "passingScore": 0.7
       }`;
 
@@ -1732,6 +1738,25 @@ export function buildCacheableCurriculumPrompt(
   const trainingConfig = params.goalType ? getTrainingConfig(params.goalType) : undefined;
   const trainingOverride = trainingConfig?.promptOverrides.skeleton || '';
 
+  // Gap-first learning: inject assessment context into prompt
+  const gapContext = params.gapProfile?.gaps?.length
+    ? `\nGAP ANALYSIS (from assessment):
+The student has these specific knowledge gaps:
+${params.gapProfile.gaps.map((g) => `- [${g.severity.toUpperCase()}] ${g.category}: ${g.description} (evidence: ${g.evidence})`).join('\n')}
+
+Strengths identified:
+${params.gapProfile.strengths?.map((s) => `- ${s.category}: ${s.description}`).join('\n') || '(none identified)'}
+
+Detected level from assessment: ${params.gapProfile.detectedLevel}
+
+${params.microLessonMode ? `MICRO-LESSON MODE: This is a short, targeted gap-remediation curriculum.
+- Design each day to DIRECTLY address 1-2 of these gaps
+- Reference the specific gap in each day's title/teaser so the student knows why they're learning this
+- Content is streamlined: quiz-based micro-lessons (task1) + video + reflection only
+- NO intensive practice sections, NO open tasks — keep it focused and fast
+- Each day's quiz should deeply probe the gap topic with concept-teaching questions` : `Use these gaps to prioritize and focus the curriculum content. Days should emphasize areas where the student has gaps.`}`
+    : '';
+
   const dynamicPart = `Generate ${params.durationDays}-day curriculum skeleton for "${params.skillName}".
 Type: ${params.skillType} | Level: ${params.skillLevel} | ${time.totalMinutes}min/day (${time.mode})
 ${params.suggestedLanguage ? `Language: ${params.suggestedLanguage}` : ''}
@@ -1740,6 +1765,7 @@ ${params.goalType && params.goalType !== 'curriculum' ? `Goal Type: ${params.goa
 ${trainingOverride || structureInstructions}
 ${learnerContext}
 ${skillGuidance}
+${gapContext}
 
 ${skeletonLevelGuidance}
 
@@ -2029,12 +2055,13 @@ export function buildDeferredLightweightPrompt(
   // Language learning detection
   const isLanguageLearning = params.isLanguageLearning ?? false;
   const lang = params.targetLanguage || 'target language';
-  const langHasTones = ['Chinese', 'Mandarin', 'Cantonese', 'Vietnamese', 'Thai'].some(
-    (l) => lang.toLowerCase().includes(l.toLowerCase()),
-  );
+  const langHasTones = params.targetLanguage ? hasTones(params.targetLanguage) : false;
 
-  // Build open task instructions for practice-based curricula
-  const openTaskInstructions = !isProjectBased
+  // Gap sessions skip openTask (focused micro-lesson flow)
+  const includeOpenTask = !isProjectBased && !params.isGapSession;
+
+  // Build open task instructions for practice-based curricula (skip for gap sessions)
+  const openTaskInstructions = includeOpenTask
     ? `
 OPEN TASK:
 - A specific, actionable task to do outside the app
@@ -2059,7 +2086,7 @@ OPEN TASK:
 `
     : '';
 
-  const systemPrompt = `Generate reflection${!isProjectBased ? ' and open task' : ''} for Day ${dayNumber}: "${params.skillName}"
+  const systemPrompt = `Generate reflection${includeOpenTask ? ' and open task' : ''} for Day ${dayNumber}: "${params.skillName}"
 Skill Type: ${params.skillType} | Level: ${params.skillLevel}
 Topics: ${skillsStr}
 ${conceptsContext}
@@ -2135,8 +2162,7 @@ Output valid JSON only.`;
     ]
   }`;
 
-  // Different templates based on whether it's project-based or practice-based
-  const openTaskSection = !isProjectBased
+  const openTaskSection = includeOpenTask
     ? `,
   "openTask": ${isLanguageLearning ? languageOpenTaskTemplate : genericOpenTaskTemplate}`
     : '';

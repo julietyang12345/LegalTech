@@ -149,6 +149,46 @@ export interface AuthState {
 }
 
 // ============================================
+// Gap-First Learning Types
+// ============================================
+
+export interface GapDimensionScore {
+  id: string; // rubric dimension ID (e.g., 'solution_design', 'error_handling')
+  name: string; // human-readable label
+  score: number; // 1-5
+  gap?: string; // what's specifically missing (if score < 4)
+  example?: string; // how they could have addressed this gap in THIS scenario
+}
+
+export interface GapProfile {
+  gaps: Array<{
+    category: string;
+    description: string;
+    severity: 'high' | 'medium' | 'low';
+    evidence: string;
+  }>;
+  strengths: Array<{
+    category: string;
+    description: string;
+  }>;
+  // Rubric-based dimension scores (1-5)
+  dimensions: GapDimensionScore[];
+  overallScore: number; // weighted average 1-5
+  // Targeted tips for the user's weakest dimensions
+  microLessonPoints: string[];
+  detectedLevel: string;
+  assessmentRound: number;
+  scenario: string;
+  userResponse: string;
+}
+
+export interface AssessmentScenario {
+  scenario: string;
+  instructions: string;
+  timeEstimateMinutes: number;
+}
+
+// ============================================
 // Session Types
 // ============================================
 
@@ -174,6 +214,10 @@ export interface Session {
   improvementAreas?: string[];
   // User-specified areas to reduce content for
   lessOfAreas?: string[];
+  // Gap-first learning
+  gapProfile?: GapProfile;
+  isGapSession?: boolean;
+  parentSessionId?: string;
   progress: Progress[];
   createdAt: string;
   updatedAt: string;
@@ -185,6 +229,9 @@ export interface CreateSessionDto {
   hoursPerDay: number;
   skillLevel: SkillLevel;
   previewCurriculum?: any; // Preview curriculum to reuse (avoids regeneration)
+  goalType?: GoalType;
+  gapProfile?: GapProfile;
+  microLessonMode?: boolean;
 }
 
 export interface UpdateSessionDto {
@@ -1890,6 +1937,9 @@ export interface LearnerPrefs {
   // Feeling-based inputs (replaces explicit skill level questions)
   familiarity?: 'new' | 'know_basics' | 'skilled';  // How familiar with topic
   sessionLength?: 'short' | 'medium' | 'long';      // Daily learning time availability
+
+  // Training mode goal type (from onboarding mode selection)
+  goalType?: GoalType;
 
   // Metadata
   completedOnboarding: boolean;
