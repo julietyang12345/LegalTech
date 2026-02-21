@@ -30,7 +30,7 @@ import {
   normalizeSectionIds,
   normalizeTask1Sections,
 } from './prompts/content-generation-context';
-import { formatTime } from './utils/shared.utils';
+import { formatTime, LRUCache } from './utils/shared.utils';
 
 export interface CurriculumResult {
   curriculum: any; // Overview curriculum (skeleton)
@@ -110,7 +110,12 @@ export class CurriculumService {
   private readonly MIN_VIDEO_CONFIDENCE = 40;
 
   // Cache for AI-generated search queries: key = "skillName:dayNumber:level"
-  private searchQueryCache = new Map<string, string>();
+  // LRU with 7-day TTL — cross-user (service is a singleton)
+  private searchQueryCache = new LRUCache<string>({ maxSize: 1000, ttl: 7 * 24 * 60 * 60 * 1000 });
+
+  // Cache for concept boost results: key = "skillName:concept:level"
+  // Cross-user — same concept boost can serve multiple students
+  private conceptBoostCache = new LRUCache<any>({ maxSize: 500, ttl: 7 * 24 * 60 * 60 * 1000 });
 
   /**
    * Extract search query from day content for video search
@@ -535,7 +540,7 @@ Return JSON only:
 {"queries": ["query1", "query2", "query3"], "best": 0, "reason": "one line why"}`;
 
     const response = await this.aiService.routeRequest(
-      AITask.CURRICULUM_GENERATION,
+      AITask.LIGHTWEIGHT_EXTRACTION,
       prompt,
       'You are a YouTube search optimization expert. Return valid JSON only.',
     );
@@ -2019,8 +2024,7 @@ Return JSON only:
       buildDeferredLightweightPrompt(params, ctx);
 
     // Run BOTH AI calls in parallel: Sonnet (task1/bossMilestone) + Haiku (reflection/openTask)
-    // Gap practice-based sessions skip the Sonnet call entirely (no intensive practice needed)
-    const skipSonnetCall = isGapSession && !params.isProjectBased;
+    const skipSonnetCall = false;
 
     this.logger.log(
       `🚀 Generating Day ${dayNumber} DEFERRED content${isGapSession ? ' (gap session)' : ''} (${skipSonnetCall ? 'Haiku only' : 'Sonnet + Haiku'})`,
@@ -2166,11 +2170,9 @@ Return JSON only:
             deferredContent.reflection = lightweightContent.reflection;
             this.logger.log(`✅ Day ${dayNumber} reflection generated with Haiku (in DEFERRED)`);
           }
-          if (lightweightContent.openTask && !isGapSession) {
+          if (lightweightContent.openTask) {
             deferredContent.openTask = lightweightContent.openTask;
             this.logger.log(`✅ Day ${dayNumber} openTask generated with Haiku (in DEFERRED)`);
-          } else if (lightweightContent.openTask && isGapSession) {
-            this.logger.log(`⏭️ Day ${dayNumber} openTask skipped (gap session)`);
           }
         }
       } catch (parseError) {
@@ -3346,7 +3348,7 @@ Create a coding challenge that tests the same concepts. Output JSON:
     }
 
     const aiResponse = await this.aiService.routeRequest(
-      AITask.CURRICULUM_GENERATION,
+      AITask.LIGHTWEIGHT_CONTENT,
       userPrompt,
       systemPrompt,
     );
@@ -3499,6 +3501,14 @@ Give a direct, helpful answer.`;
   }): Promise<{ boost: any; tokensUsed: number; cost: number }> {
     this.logger.log(`💡 Generating concept boost for: ${params.concept}`);
 
+    // Check cross-user cache (same concept + skill + level = same boost)
+    const boostCacheKey = `${params.skillName}:${params.concept}:${params.skillLevel}`.toLowerCase().replace(/\s+/g, '-').slice(0, 120);
+    const cachedBoost = this.conceptBoostCache.get(boostCacheKey);
+    if (cachedBoost) {
+      this.logger.log(`♻️ Concept boost cache HIT for: ${params.concept}`);
+      return { boost: cachedBoost, tokensUsed: 0, cost: 0 };
+    }
+
     const systemPrompt = `You are a learning assistant helping a student who is confused about a concept.
 Your job is to explain it from a DIFFERENT ANGLE than what they already saw.
 
@@ -3532,7 +3542,7 @@ Return JSON only:
 }`;
 
     const response = await this.aiService.routeRequest(
-      AITask.CURRICULUM_GENERATION,
+      AITask.LIGHTWEIGHT_CONTENT,
       userPrompt,
       systemPrompt,
     );
@@ -3555,8 +3565,11 @@ Return JSON only:
       throw new BadRequestException('Failed to generate concept boost');
     }
 
+    // Cache for cross-user reuse
+    this.conceptBoostCache.set(boostCacheKey, boost);
+
     this.logger.log(
-      `✅ Concept boost generated. Tokens: ${response.tokensUsed}`,
+      `✅ Concept boost generated and cached. Tokens: ${response.tokensUsed}`,
     );
 
     return {
@@ -3931,7 +3944,7 @@ Return JSON:
 }`;
 
     const response = await this.aiService.routeRequest(
-      AITask.CURRICULUM_GENERATION,
+      AITask.LIGHTWEIGHT_CONTENT,
       userPrompt,
       systemPrompt,
     );

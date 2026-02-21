@@ -974,92 +974,28 @@ export class AiService {
     userFeedback: string,
     existingDirections: string, // Required - directions already shown to user
   ): Promise<AIResponse> {
-    this.logger.log('✅ Step 1: Using existing directions (no regeneration)');
+    this.logger.log('🔄 Regenerating directions with user feedback (single Claude call)');
 
-    // Step 2: Send to Gemini to review quality AND incorporate user feedback
-    // Compress directions to just titles/outcomes to save tokens
-    let compressedDirections = existingDirections;
-    try {
-      const parsed = JSON.parse(existingDirections);
-      if (parsed.directions) {
-        compressedDirections = parsed.directions
-          .map(
-            (d: any, i: number) => `${i + 1}. ${d.title}: ${d.outcome || ''}`,
-          )
-          .join('\n');
-      }
-    } catch {
-      /* use full if parse fails */
-    }
-
-    const reviewPrompt = `Review these learning directions. User feedback: "${userFeedback}"
-
-DIRECTIONS:
-${compressedDirections}
-
-Check: searchable terms? scoped (30-90min)? diverse approaches? low-friction options?
-Return JSON: {overallQuality, issues[], suggestions[], missingApproaches[], feedbackAlignment}`;
-
-    let reviewResponse: AIResponse;
-    let reviewData: any = null;
-
-    try {
-      reviewResponse = await this.callOpenAI(
-        'gpt-4o-mini',
-        reviewPrompt,
-        '',
-      );
-
-      this.logger.log('✅ Step 2: OpenAI reviewed directions');
-
-      // Try to parse review response
-      try {
-        const jsonMatch = reviewResponse.content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          reviewData = JSON.parse(jsonMatch[0]);
-        }
-      } catch {
-        this.logger.warn(
-          'Could not parse review as JSON, using raw content',
-        );
-      }
-    } catch (error) {
-      this.logger.error(`OpenAI review failed: ${error.message || error}`);
-      // Don't silently return old directions - continue to Claude without review
-      this.logger.log(
-        'Skipping review, proceeding directly to Claude synthesis',
-      );
-    }
-
-    // Step 3: Claude synthesizes final directions incorporating review feedback
-    // Extract just the actionable feedback from the review (or empty if review failed)
-    let reviewSummary =
-      reviewResponse?.content || 'No automated review available';
-    if (reviewData) {
-      const parts = [];
-      if (reviewData.issues?.length)
-        parts.push(`Issues: ${reviewData.issues.join('; ')}`);
-      if (reviewData.suggestions?.length)
-        parts.push(`Suggestions: ${reviewData.suggestions.join('; ')}`);
-      if (reviewData.missingApproaches?.length)
-        parts.push(`Missing: ${reviewData.missingApproaches.join('; ')}`);
-      if (parts.length) reviewSummary = parts.join('\n');
-    }
-
+    // Single Claude call: review + synthesize in one prompt
     const synthesisPrompt = `Regenerate learning directions based on user feedback.
 
 PREVIOUS DIRECTIONS (user wasn't satisfied):
 ${existingDirections}
 
-REVIEW:
-${reviewSummary}
-
 USER FEEDBACK (this is why they clicked regenerate):
 "${userFeedback}"
 
+SELF-REVIEW CHECKLIST (apply before generating):
+- Are all direction titles searchable on YouTube/Google? (no vague terms)
+- Is each direction scoped to 30-90 minutes daily? (not too broad)
+- Are there diverse approaches? (not all similar angles)
+- Are there low-friction options? (at least 1 requiring no paid tools)
+- Does each direction align with the user's feedback?
+
 REQUIREMENTS:
 - Apply user feedback to ALL directions
-- Include at least 1 completely new approaches (not just reworded originals)
+- Include at least 1 completely new approach (not just reworded originals)
+- Fix any issues found in the self-review
 
 Return improved JSON with same format. Each direction must achieve user's complete goal.`;
 
@@ -1070,13 +1006,9 @@ Return improved JSON with same format. Each direction must achieve user's comple
         systemPrompt,
       );
 
-      this.logger.log('✅ Step 3: Claude synthesized final directions');
+      this.logger.log('✅ Directions regenerated with review + synthesis');
 
-      return {
-        ...finalResponse,
-        tokensUsed: (reviewResponse?.tokensUsed || 0) + finalResponse.tokensUsed,
-        cost: (reviewResponse?.cost || 0) + finalResponse.cost,
-      };
+      return finalResponse;
     } catch (error) {
       this.logger.error(`Claude synthesis failed: ${error.message || error}`);
       throw new Error('Failed to regenerate directions. Please try again.');

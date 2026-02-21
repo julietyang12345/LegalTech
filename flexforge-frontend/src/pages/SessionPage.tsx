@@ -507,6 +507,10 @@ export function SessionPage() {
   const trainingConfig = getTrainingConfig(goalType);
   const STEP_ORDER = trainingConfig.stepFlow as SessionStepType[];
 
+  // Gap sessions (assessment → microlesson path) only have quiz + video + reflection
+  // They skip intensive practice (bossMilestone) and openTask since the backend doesn't generate them
+  const isGapSession = !!activeSession?.isGapSession || !!activeSession?.curriculum?.metadata?.isGapSession;
+
   // Get available steps (filter out skipped ones)
   const availableSteps = STEP_ORDER.filter(step => {
     // Skip video step if no actual video OR if video was skipped
@@ -519,16 +523,13 @@ export function SessionPage() {
       const videoSkipped = currentDay?.video?.skipped === true;
       if (!hasActualVideo || videoSkipped) return false;
     }
-    // Always show bossMilestone step (renders as either boss milestone OR intensive practice)
-    // The BossMilestoneStep component handles both project-based and practice-based curricula
-    // Don't filter based on content existence - content loads async via deferred
-    if (step === 'bossMilestone') {
-      return true;
+    // Gap practice-based sessions: skip bossMilestone (intensive practice) — backend doesn't generate it
+    if (step === 'bossMilestone' && isGapSession) {
+      return false;
     }
-    // Always show openTask step (renders as Real-World Challenge)
-    // The OpenTaskStep component handles empty/loading states
-    if (step === 'openTask') {
-      return true;
+    // Gap sessions: skip openTask — backend doesn't generate it
+    if (step === 'openTask' && isGapSession) {
+      return false;
     }
     return true;
   });
@@ -559,6 +560,11 @@ export function SessionPage() {
   const currentStepIndex = availableSteps.indexOf(currentStep);
   const isFirstStep = currentStepIndex === 0;
   const isLastStep = currentStepIndex === availableSteps.length - 1;
+
+  // Show loader on Continue button when the next step needs deferred content that's still loading
+  const DEFERRED_STEPS = new Set(['bossMilestone', 'openTask', 'reflection']);
+  const nextStep = availableSteps[currentStepIndex + 1];
+  const isNextStepLoading = !!nextStep && DEFERRED_STEPS.has(nextStep) && !isDeferredLoaded;
 
   const handlePrevious = () => {
     if (isFirstStep) return;
@@ -896,7 +902,8 @@ export function SessionPage() {
             <Button
               variant={isLastStep ? 'accent' : 'primary'}
               onClick={handleContinue}
-              disabled={!currentDay}
+              disabled={!currentDay || isNextStepLoading}
+              isLoading={isNextStepLoading}
               rightIcon={<ChevronRight className="w-5 h-5" />}
             >
               {!currentDay ? 'Loading...' : isLastStep ? 'Complete Session 🎉' : 'Continue'}

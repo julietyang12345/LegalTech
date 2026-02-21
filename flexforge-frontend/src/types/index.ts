@@ -257,6 +257,9 @@ export interface CurriculumMetadata {
   suggestedLanguage?: string;
   isProjectBased?: boolean;
 
+  // Gap session (assessment → microlesson path): skips intensive practice + openTask
+  isGapSession?: boolean;
+
   // Language learning specific (when skillType is KNOWLEDGE + language skill)
   isLanguageLearning?: boolean;
   targetLanguage?: TargetLanguage;

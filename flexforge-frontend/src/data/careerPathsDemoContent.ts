@@ -8,97 +8,97 @@ export const CAREER_DEMO_TOPIC = {
 
 export const CAREER_DEMO_PREPROMPT = {
   objectives: [
-    'Compare the career trajectories of Data Engineering vs GenAI specialization',
-    'Identify the 3 skill milestones that separate junior from senior GenAI practitioners',
-    'Map your existing skills to the highest-leverage GenAI sub-specialization for your background',
+    'Evaluate whether a DE→GenAI transition makes strategic sense given your background — or whether a hybrid path is stronger',
+    'Understand the structural forces shaping long-term demand for Data Engineering vs GenAI roles through 2030',
+    'Build a realistic 6-month transition roadmap that accounts for the "too many options" paralysis trap',
   ],
   primeQuestions: [
-    'What does your current skill set have in common with what GenAI teams actually hire for?',
-    'Why are some engineers able to transition into GenAI roles in 6 months while others plateau?',
-    'How would you explain the difference between "using AI tools" and "building AI systems" to a non-technical friend?',
+    'If Data Engineering pipelines increasingly get automated by AI, does that make DE skills less valuable — or more valuable as the foundation GenAI runs on?',
+    'What is the actual risk of committing to GenAI now versus waiting 12 months to see how the market shakes out?',
+    'When you look at the people who successfully transitioned into GenAI, what did they stop doing that most learners refuse to drop?',
   ],
 };
 
 export const CAREER_DEMO_QUIZ: DemoQuizQuestion[] = [
   {
     question:
-      'A company is hiring for a "GenAI Engineer" role. Which skill set best matches what most employers actually mean?',
+      'A Data Engineer with 3 years of experience is considering transitioning to GenAI. Their manager says "GenAI is a hype bubble — stick with data pipelines." What is the most accurate assessment of this advice?',
     options: [
-      'Deep expertise in training large language models from scratch',
-      'Prompt engineering, RAG pipelines, fine-tuning, and integrating LLM APIs into production apps',
-      'Traditional machine learning with scikit-learn and XGBoost',
-      'Frontend development with ChatGPT plugin experience',
-    ],
-    correctIndex: 1,
-    conceptTitle: 'What GenAI Engineering Actually Means',
-    explanation:
-      'Most "GenAI Engineer" roles focus on applied AI — building production systems that leverage existing models, not training new ones from scratch. The core skills are: designing RAG (Retrieval-Augmented Generation) pipelines, fine-tuning open-source models, prompt engineering at scale, and integrating LLM APIs reliably.\n\nTraining LLMs from scratch is typically reserved for research labs at companies like OpenAI or Anthropic. The applied GenAI space is where 90% of job openings exist, and it rewards engineers who can ship reliable AI-powered features.',
-    realWorldContext:
-      'LinkedIn data shows "GenAI Engineer" postings grew 5x in 2024, with the majority requiring RAG and API integration experience over pure ML research.',
-  },
-  {
-    question:
-      'What is the most important difference between a Data Engineering career path and a GenAI career path?',
-    options: [
-      'Data Engineers earn more money',
-      'GenAI roles require a PhD while Data Engineering does not',
-      'Data Engineering focuses on reliable data movement and quality; GenAI focuses on building intelligent features on top of that data',
-      'They are essentially the same role with different titles',
+      'The manager is correct — GenAI hiring will collapse within 2 years and DE is the safer bet',
+      'The manager is wrong — DE is being fully automated and will be obsolete within 5 years',
+      'The advice ignores that DE skills (pipeline orchestration, data quality, infra) are directly transferable to GenAI systems — the transition risk is lower than it appears',
+      'The engineer should ignore career advice entirely and follow their passion regardless of market signals',
     ],
     correctIndex: 2,
-    conceptTitle: 'Two Paths, One Data Foundation',
+    conceptTitle: 'The DE→GenAI Transition Risk Is Overestimated',
     explanation:
-      'Data Engineering is about building the infrastructure — pipelines, warehouses, quality checks — that makes data reliable and accessible. GenAI Engineering builds on top of that foundation to create intelligent features: search, recommendations, content generation, and agents.\n\nNeither role requires a PhD (that is a common myth for GenAI). The key distinction is your daily focus: Data Engineers ask "Is the right data flowing to the right place?" while GenAI Engineers ask "How do I make this model produce useful, reliable outputs?"',
+      'Data Engineering skills are not wasted in a GenAI transition — they are a competitive advantage. Production GenAI systems are fundamentally data systems: RAG pipelines need reliable data ingestion, vector stores need the same orchestration patterns as data warehouses, and fine-tuning requires the same data quality rigor as analytics.\n\nThe real risk calculus: a DE who adds GenAI skills becomes a rare "full-stack AI engineer" who can build end-to-end. A DE who ignores GenAI entirely may find their pipeline-only work increasingly commoditized by tools like dbt, Fivetran, and AI-assisted ETL. The strongest move is not "switch" but "expand."',
     realWorldContext:
-      'Many successful GenAI engineers started in Data Engineering. Understanding how data flows gives you a massive advantage when building RAG systems and fine-tuning pipelines.',
+      'Companies like Airbnb, Stripe, and Databricks are actively hiring for roles that blend DE and GenAI — titles like "ML Platform Engineer" and "AI Infrastructure Engineer" that command 20-40% premiums over pure DE roles.',
   },
   {
     question:
-      'You are a backend developer with 2 years of experience. Which first step gives you the fastest path to a GenAI role?',
+      'Looking at 2025-2030 market projections, which statement most accurately describes the long-term outlook for Data Engineering vs GenAI roles?',
     options: [
-      'Enroll in a 4-year machine learning degree program',
-      'Build a RAG application using an open-source framework (like LangChain or LlamaIndex) with a real dataset',
-      'Memorize the Transformer architecture paper',
-      'Learn Python from scratch before touching any AI tools',
+      'GenAI will completely replace Data Engineering — all DE work will be automated by AI agents',
+      'Both fields will grow, but GenAI roles will increasingly require DE fundamentals while pure "prompt-only" GenAI roles will commoditize',
+      'Data Engineering will remain unchanged — the field is immune to AI disruption',
+      'The market will consolidate into a single "AI Engineer" role that replaces both specializations',
     ],
     correctIndex: 1,
-    conceptTitle: 'The Portfolio-First Approach',
+    conceptTitle: 'The Convergence Thesis',
     explanation:
-      'For backend developers transitioning to GenAI, the highest-leverage move is building a working RAG application. It demonstrates that you can: ingest real data, chunk and embed it, set up vector search, and orchestrate LLM calls — the exact workflow most GenAI teams need.\n\nYou already know APIs, databases, and deployment from your backend experience. A RAG project lets you apply those skills immediately while learning the GenAI-specific layer. Theory (like the Transformer paper) is useful background but does not get you hired alone.',
+      'The most likely scenario is convergence, not replacement. Here is what the data shows:\n\n**DE is not going away** — every GenAI system needs clean, reliable, well-orchestrated data. But the tools are getting more abstract (Spark → dbt → AI-assisted pipelines), which means the bar for "just moving data" keeps rising.\n\n**GenAI "prompt engineering" is commoditizing** — basic prompt skills are becoming table stakes, like knowing SQL. The GenAI roles that will sustain premium compensation require systems thinking: evaluation frameworks, retrieval optimization, model serving infrastructure, and cost management.\n\n**The premium is at the intersection** — engineers who understand both the data layer and the AI layer can architect end-to-end systems that neither pure DE nor pure GenAI specialists can build alone.',
     realWorldContext:
-      'Hiring managers consistently rank "shipped a working AI project" above "completed an AI course" when evaluating GenAI candidates.',
+      'Databricks, Snowflake, and Google are all building "AI-native data platforms" — products that assume the data engineer also understands embeddings, vector search, and model serving. This is the clearest signal of where the market is heading.',
   },
   {
     question:
-      'What separates a junior GenAI practitioner from a senior one?',
+      'An engineer has spent 6 months "learning GenAI" — they have completed 4 online courses, watched 100+ YouTube videos, and can explain transformers, attention mechanisms, and RLHF in detail. But they have zero projects and have not applied to any roles. What is the most likely diagnosis?',
     options: [
-      'Seniors know more Python libraries',
-      'Seniors can design evaluation frameworks, handle edge cases in production, and make cost-performance tradeoffs across model providers',
-      'Seniors only use the most expensive models for better quality',
-      'Seniors focus exclusively on prompt engineering without worrying about infrastructure',
+      'They need one more course to feel ready — perhaps a specialization in agents or fine-tuning',
+      'They are stuck in "analysis paralysis" — consuming information feels like progress but is actually a way to avoid the discomfort of building and shipping imperfect work',
+      'Their approach is correct — you need at least 12 months of theory before building anything',
+      'They should pivot to a different field since 6 months without results proves GenAI is not for them',
     ],
     correctIndex: 1,
-    conceptTitle: 'The Three Seniority Milestones',
+    conceptTitle: 'The Consumption Trap vs. The Building Threshold',
     explanation:
-      'The three milestones that define seniority in GenAI:\n\n1. **Evaluation**: Juniors eyeball outputs. Seniors build systematic evaluation frameworks with metrics, test suites, and regression checks.\n\n2. **Production hardening**: Seniors handle rate limits, fallback models, content filtering, latency budgets, and graceful degradation — the unsexy work that makes AI features reliable.\n\n3. **Cost-performance tradeoffs**: Knowing when to use GPT-4 vs a fine-tuned smaller model vs a cached response. This saves companies thousands monthly and is a high-signal skill.',
+      'This is the most common failure mode in career transitions: mistaking consumption for progress. The pattern is seductive — each new course or video delivers a dopamine hit of "I learned something" without the anxiety of "I built something that might not work."\n\nThe uncomfortable truth: you cross the "employable threshold" in GenAI not when you understand the theory, but when you have shipped something that works. A messy RAG app with real data and a live demo beats a perfect explanation of attention mechanisms in every interview.\n\n**The fix is a forcing function**: set a 2-week deadline to build and deploy one project. Accept that it will be imperfect. The gap between "I know about RAG" and "I have built a RAG system" is where all the real learning happens — the edge cases, the debugging, the "why is my retrieval returning garbage" moments that no course teaches.',
     realWorldContext:
-      'A common interview question for senior GenAI roles: "Your RAG pipeline returns incorrect answers 15% of the time. Walk me through how you would diagnose and fix this."',
+      'Research on skill acquisition shows that deliberate practice (building under constraints) produces 3-5x faster skill development than passive study. The engineers who transition fastest are the ones who start building in week 2, not month 6.',
   },
   {
     question:
-      'You are designing your 6-month learning plan. Which combination of activities best prepares you for a GenAI role?',
+      'You have decided to commit to a GenAI career path. You have 4 hours per week outside work. Which 6-month roadmap has the highest probability of landing you an AI engineering role?',
     options: [
-      'Watch 200 hours of YouTube tutorials on AI fundamentals',
-      'Build 3 progressively complex projects (chatbot → RAG app → agent) while contributing to one open-source AI tool',
-      'Read every research paper published on arXiv about large language models',
-      'Get certified in as many cloud platforms as possible',
+      'Months 1-6: Complete a full ML specialization on Coursera, then start looking for projects',
+      'Months 1-2: Build a RAG app with your domain data. Months 3-4: Add evaluation + fine-tuning. Months 5-6: Deploy an agent and write 2 technical blog posts. Apply throughout.',
+      'Months 1-6: Contribute to LangChain open source full-time, ignoring personal projects',
+      'Months 1-3: Study transformer architecture papers. Months 4-6: Implement a transformer from scratch in PyTorch',
     ],
     correctIndex: 1,
-    conceptTitle: 'The Optimal Learning Stack',
+    conceptTitle: 'The Compound Project Roadmap',
     explanation:
-      'The most effective 6-month plan combines building with visibility:\n\n**Build progressively**: Start with a simple chatbot (API basics), then build a RAG app (data + retrieval), then build an agent (reasoning + tool use). Each project layers new skills on top of the last.\n\n**Contribute to open source**: Even small contributions (docs, bug fixes, examples) to tools like LangChain, LlamaIndex, or vLLM signal that you understand real-world codebases and can collaborate with a team.\n\nTutorials alone do not build muscle memory, and papers alone do not build intuition. Projects + community involvement create both.',
+      'The key insight is compound projects — each one builds on the last, so 4 hours/week produces visible, stackable proof of competence:\n\n**Phase 1 (RAG app)**: Proves you can ingest data, embed it, retrieve relevant chunks, and orchestrate LLM calls. This is the baseline skill every GenAI team needs. Use your domain expertise — a RAG app over legal docs, medical records, or financial reports is more impressive than a generic Wikipedia chatbot.\n\n**Phase 2 (Evaluation + Fine-tuning)**: Shows you understand quality — you can measure whether your system is actually good, not just "seems to work." Adding fine-tuning demonstrates you can customize models for specific use cases.\n\n**Phase 3 (Agent + Writing)**: Agents are the current frontier — building one shows you are at the cutting edge. Blog posts create discoverable proof that recruiters and hiring managers find organically.\n\n**Applying throughout** is critical — you do not wait until you feel "ready." Your first applications will fail, and that feedback is itself a learning signal.',
     realWorldContext:
-      'Engineers who publicly share their project write-ups (blog posts, GitHub READMEs) are 3x more likely to receive inbound recruiter interest for GenAI roles.',
+      'A portfolio of 3 deployed projects with blog write-ups consistently outperforms a resume listing 10 completed courses. Hiring managers spend an average of 6 seconds on a resume but 2-3 minutes exploring a live demo.',
+  },
+  {
+    question:
+      'Two engineers start learning GenAI at the same time. Engineer A picks one framework (LangChain), one model provider (OpenAI), and one project type (RAG), and goes deep for 3 months. Engineer B spends the same 3 months trying LangChain, LlamaIndex, Haystack, CrewAI, AutoGen, and Semantic Kernel — building hello-world examples in each. Who is more employable at month 3, and why?',
+    options: [
+      'Engineer B — they have broader exposure and can list more technologies on their resume',
+      'They are equally employable — breadth and depth are interchangeable at the junior level',
+      'Engineer A — depth in one stack produces production-ready skills and a deployable project, while breadth produces shallow familiarity that fails under interview pressure',
+      'Neither — 3 months is insufficient to become employable in GenAI regardless of approach',
+    ],
+    correctIndex: 2,
+    conceptTitle: 'Depth-First Beats Breadth-First for Career Transitions',
+    explanation:
+      'This question directly addresses the "too many options → no progress" trap. The paradox of choice in GenAI tooling is real — there are dozens of frameworks, model providers, and deployment options, and exploring all of them feels productive but produces no deployable depth.\n\nEngineer A after 3 months: has a working RAG app, has debugged real retrieval problems, understands LangChain\'s internals well enough to customize, and can speak confidently about tradeoffs they have actually encountered.\n\nEngineer B after 3 months: can describe 6 frameworks at a surface level, has no production-ready project, and in an interview will struggle with "walk me through a problem you solved" because every project was abandoned at the hello-world stage.\n\n**The framework does not matter.** What matters is going deep enough to encounter and solve real problems. You can always learn a second framework later — but only after you have the mental model that comes from mastering one.',
+    realWorldContext:
+      'Senior engineers who interview GenAI candidates report that the #1 red flag is "lists many tools, cannot go deep on any." The #1 green flag is "built something real, can explain every decision and tradeoff."',
   },
 ];
 
