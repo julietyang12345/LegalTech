@@ -688,17 +688,14 @@ Return JSON only:
     const effectiveLanguage =
       dto.selectedLanguage || skillDetection.suggestedLanguage;
 
-    // For micro-lesson mode, override duration to 3-5 days based on gap count
+    // For micro-lesson mode, cap duration at 3 days (direction + gap focused)
     let effectiveDurationDays = dto.durationDays;
     let effectiveHoursPerDay = dto.hoursPerDay;
-    if (dto.microLessonMode && dto.gapProfile?.gaps?.length) {
-      const highMediumGaps = dto.gapProfile.gaps.filter(
-        (g) => g.severity === 'high' || g.severity === 'medium',
-      );
-      effectiveDurationDays = Math.max(3, Math.min(5, highMediumGaps.length));
+    if (dto.microLessonMode) {
+      effectiveDurationDays = Math.min(3, effectiveDurationDays);
       effectiveHoursPerDay = Math.min(effectiveHoursPerDay, 0.5); // Shorter sessions for micro-lessons
       this.logger.log(
-        `📐 Micro-lesson mode: ${effectiveDurationDays} days, ${effectiveHoursPerDay}h/day (${highMediumGaps.length} high/medium gaps)`,
+        `📐 Micro-lesson mode: ${effectiveDurationDays} days, ${effectiveHoursPerDay}h/day`,
       );
     }
 
@@ -750,7 +747,14 @@ Return JSON only:
       } catch (parseError) {
         this.logger.warn('First parse failed, attempting to fix JSON...');
         // Fix trailing commas (common AI mistake)
-        const fixedContent = cleanedContent.replace(/,(\s*[}\]])/g, '$1');
+        let fixedContent = cleanedContent.replace(/,(\s*[}\]])/g, '$1');
+
+        // If response was truncated, attempt to close open JSON brackets
+        if (aiResponse.truncated) {
+          this.logger.warn('Response was truncated (max_tokens hit) — attempting to close JSON...');
+          fixedContent = this.repairTruncatedJson(fixedContent);
+        }
+
         curriculum = JSON.parse(fixedContent);
         this.logger.log('✅ JSON fixed and parsed successfully');
       }
@@ -762,6 +766,9 @@ Return JSON only:
         'Raw AI response (first 1000 chars):',
         aiResponse.content.substring(0, 1000),
       );
+      if (aiResponse.truncated) {
+        this.logger.error('Response was truncated — AI hit output token limit. Curriculum may be too long.');
+      }
       throw new BadRequestException(
         'Failed to generate curriculum overview. Please try again.',
       );
@@ -1828,6 +1835,31 @@ Return JSON only:
       ((usage.cacheWriteTokens || 0) / 1_000_000) * cacheWriteCost +
       ((usage.cacheReadTokens || 0) / 1_000_000) * cacheReadCost
     );
+  }
+
+  /**
+   * Attempt to repair truncated JSON by closing open brackets/braces.
+   * Used when AI response hits max_tokens and JSON is cut off mid-output.
+   */
+  private repairTruncatedJson(json: string): string {
+    // Remove trailing incomplete string (cut off mid-value)
+    let repaired = json.replace(/,\s*"[^"]*$/, ''); // trailing incomplete key
+    repaired = repaired.replace(/,\s*$/, ''); // trailing comma
+    repaired = repaired.replace(/:\s*"[^"]*$/, ': ""'); // incomplete string value
+
+    // Count open brackets and close them
+    const opens = { '{': 0, '[': 0 };
+    const closes = { '}': '{', ']': '[' } as const;
+    for (const char of repaired) {
+      if (char in opens) opens[char as '{' | '[']++;
+      if (char in closes) opens[closes[char as '}' | ']'] as '{' | '[']--;
+    }
+
+    // Close any remaining open brackets (innermost first: ] then })
+    for (let i = 0; i < opens['[']; i++) repaired += ']';
+    for (let i = 0; i < opens['{']; i++) repaired += '}';
+
+    return repaired;
   }
 
   /**

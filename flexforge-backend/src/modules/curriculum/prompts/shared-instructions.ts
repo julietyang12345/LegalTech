@@ -141,27 +141,18 @@ TODAY'S CODE MUST BE CUMULATIVE - THIS IS MANDATORY:
 - ENHANCE existing code with new features
 - You CAN add new imports, new helper functions - just integrate them into the same file
 
-❌ WRONG APPROACH:
-- Creating a different file or endpoint
-- Appending new code at the bottom without integrating with existing code
-- Duplicating logic that already exists
-
-EXAMPLE:
-Day 1: \`def fetch_data(url): return requests.get(url).text\`
-Day 2: Same function enhanced + new helper added:
+EXAMPLE: Day 1: \`def fetch(url): return requests.get(url).text\`
+Day 2 (same function enhanced + new helper):
 \`\`\`python
-def fetch_data(url):  # Day 2: Enhanced with error handling
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        return response.text
-    except requests.RequestException:
-        return None
-def validate_response(data):  # Day 2: New helper
+def fetch(url):  # Enhanced
+    resp = requests.get(url, timeout=10)
+    resp.raise_for_status()
+    return resp.text
+def validate(data):  # New helper
     return data and len(data) > 0
 \`\`\`
 
-Your solutionCode for Day ${ctx.dayNumber} MUST be ONE complete file containing Day ${ctx.dayNumber - 1}'s code with today's additions.`);
+Day ${ctx.dayNumber} solutionCode = ONE complete file with Day ${ctx.dayNumber - 1}'s code + today's additions.`);
     } else {
       console.log(`[ContinuityInstructions] No previous day code available for cumulative building`);
     }

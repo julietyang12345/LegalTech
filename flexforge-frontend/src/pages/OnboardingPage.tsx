@@ -7,9 +7,6 @@ import {
   Send,
   Clock,
   Target,
-  Zap,
-  Hammer,
-  Bot,
   AlertTriangle,
   CheckCircle,
   Shield,
@@ -17,24 +14,31 @@ import {
   Lightbulb,
   ArrowRight,
   ArrowLeft,
+  Search,
+  BookOpen,
 } from 'lucide-react';
 import {
   GoalInputStep,
+  DirectionCard,
   DirectionsStep,
   RefinementPanel,
   FeelingStep,
 } from '@/components/onboarding';
-import { Button } from '@/components/common';
+import { Button, GeneratingScreen } from '@/components/common';
 import { onboardingService } from '@/services/onboardingService';
 import { sessionService } from '@/services/sessionService';
 import { analyticsService } from '@/services/analyticsService';
+import api from '@/services/api';
 import { useAuthStore } from '@/stores/authStore';
-import { GoalType } from '@/types';
+import { useSessionStore } from '@/stores/sessionStore';
+import { useCompanionStore } from '@/stores/companionStore';
+import { GoalType, SkillLevel } from '@/types';
 import type {
   LearningDirection,
   RefinementContext,
   LearnerPrefs,
   CompleteOnboardingDto,
+  CreateSessionDto,
   AssessmentScenario,
   GapProfile,
 } from '@/types';
@@ -43,8 +47,6 @@ import {
   severityConfig,
   getScoreColor,
   getScoreLabel,
-  goalTypeMap,
-  type LearningMode,
 } from '@/utils/assessmentUtils';
 
 // Onboarding state machine — dual branch
@@ -66,10 +68,18 @@ const severityIcons = {
   low: Shield,
 };
 
+const familiarityToSkillLevel: Record<string, SkillLevel> = {
+  new: SkillLevel.BEGINNER,
+  know_basics: SkillLevel.INTERMEDIATE,
+  skilled: SkillLevel.ADVANCED,
+};
+
 export default function OnboardingPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { refreshUser } = useAuthStore();
+  const { createSession } = useSessionStore();
+  const { addSystemMessage } = useCompanionStore();
 
   // Get pre-filled skill from URL (from showcase page)
   const prefilledSkill = searchParams.get('skill') || '';
@@ -98,8 +108,9 @@ export default function OnboardingPage() {
   const [assessmentScenario, setAssessmentScenario] = useState<AssessmentScenario | null>(null);
   const [userResponse, setUserResponse] = useState('');
   const [gapProfile, setGapProfile] = useState<GapProfile | null>(null);
-  const [selectedMode, setSelectedMode] = useState<LearningMode>('practice');
-  const [useAiBuilder, setUseAiBuilder] = useState(false);
+  const [directionsLoading, setDirectionsLoading] = useState(false);
+  const [gapSelectedDirectionId, setGapSelectedDirectionId] = useState<string | null>(null);
+  const [gapSelectedLanguage, setGapSelectedLanguage] = useState<string | undefined>();
 
   // ─── Branch A callbacks ───────────────────────────────────────
 
@@ -142,6 +153,17 @@ export default function OnboardingPage() {
 
       setGapProfile(result.gapProfile);
       saveLatestAssessment(result.gapProfile, assessmentSkillName);
+
+      // Fire direction generation in background while user reviews gap results
+      setDirectionsLoading(true);
+      onboardingService.generateDirections(assessmentSkillName, undefined, goalType ?? GoalType.CURRICULUM)
+        .then(response => {
+          setDirections(response.directions);
+          setInterpretedGoal(response.interpretedGoal);
+        })
+        .catch(err => console.error('Failed to generate directions:', err))
+        .finally(() => setDirectionsLoading(false));
+
       setStep('gap_results');
     } catch (err: any) {
       console.error('Failed to analyze gaps:', err);
@@ -150,53 +172,78 @@ export default function OnboardingPage() {
     }
   }, [userResponse, assessmentScenario, assessmentSkillName, goalType]);
 
-  // Gap results → complete onboarding with gap-derived prefs
-  const handleGapResultsStart = useCallback(async () => {
+  // Gap results → user picks a direction → save prefs + generate micro lesson
+  const handleDirectionMicroLesson = useCallback(async (direction: LearningDirection, language?: string) => {
     if (!gapProfile) return;
 
+    setSelectedDirection(direction);
     setError(null);
     setStep('completing');
 
-    const mode = useAiBuilder ? 'ai_builder' : selectedMode;
     const durationSeconds = Math.round((Date.now() - onboardingStartTime.current) / 1000);
 
-    // Map detectedLevel to familiarity
     const familiarityMap: Record<string, string> = {
       beginner: 'new',
       intermediate: 'know_basics',
       advanced: 'skilled',
     };
+    const familiarity = familiarityMap[gapProfile.detectedLevel] || 'know_basics';
+
+    // Project/AI builder goal types → project-style; otherwise → practice (quiz-focused)
+    const isProjectGoal = goalType === GoalType.PROJECT || goalType === GoalType.AI_BUILDER;
+    const learningStyle = isProjectGoal ? 'projects' : 'practice';
 
     try {
+      // 1. Save onboarding preferences
       const dto: CompleteOnboardingDto = {
         originalGoal: `Assessment: ${assessmentSkillName}`,
-        selectedDirection: assessmentSkillName,
-        selectedDirectionOutcome: `Close gaps in ${assessmentSkillName}`,
-        directionKeywords: gapProfile.gaps.map((g) => g.category),
+        selectedDirection: direction.title,
+        selectedDirectionOutcome: direction.outcome,
+        directionKeywords: direction.keywords,
+        selectedLanguage: language || direction.languageConfig?.recommended,
         contentDepth: 'medium',
-        familiarity: familiarityMap[gapProfile.detectedLevel] || 'know_basics',
+        familiarity,
         sessionLength: 'medium',
-        learningStyle: mode === 'practice' ? 'practice' : 'projects',
+        learningStyle,
         codeWritingEnabled: false,
-        goalType: goalTypeMap[mode] ?? goalType ?? GoalType.CURRICULUM,
+        goalType: goalType ?? GoalType.CURRICULUM,
         durationSeconds,
       };
 
       await onboardingService.completeOnboarding(dto);
       await refreshUser();
 
-      // Store gap data for the confirmation page
-      sessionStorage.setItem('gapProfile', JSON.stringify(gapProfile));
-      sessionStorage.setItem('gapGoalType', goalTypeMap[mode]);
-      sessionStorage.setItem('gapMicroLessonMode', 'true');
+      // 2. Estimate days → cap at 3 for micro lessons
+      const { data } = await api.post<{ estimatedDaysNeeded: number }>('/curriculum/estimate-days', {
+        skillName: assessmentSkillName,
+      });
+      const days = Math.min(3, data.estimatedDaysNeeded || 3);
 
-      navigate('/confirm', { replace: true });
+      // 3. Create session with gap data + direction info (generates curriculum)
+      const sessionDto: CreateSessionDto = {
+        skillName: assessmentSkillName,
+        durationDays: days,
+        hoursPerDay: 1,
+        skillLevel: familiarityToSkillLevel[familiarity],
+        gapProfile,
+        microLessonMode: true,
+        goalType: goalType ?? GoalType.CURRICULUM,
+      };
+
+      await createSession(sessionDto);
+
+      addSystemMessage(
+        `Your targeted ${direction.title} lessons are ready! Let's close those gaps.`,
+        'celebratory'
+      );
+
+      navigate('/plan', { replace: true });
     } catch (err: any) {
-      console.error('Failed to complete onboarding:', err);
-      setError(err.response?.data?.message || 'Failed to save preferences. Please try again.');
+      console.error('Failed to generate curriculum:', err);
+      setError(err.response?.data?.message || 'Failed to generate curriculum. Please try again.');
       setStep('gap_results');
     }
-  }, [gapProfile, selectedMode, useAiBuilder, assessmentSkillName, goalType, navigate, refreshUser]);
+  }, [gapProfile, assessmentSkillName, goalType, navigate, refreshUser, createSession, addSystemMessage]);
 
   // Escape hatch: back to goal_input
   const handleEscapeToGoalInput = useCallback(() => {
@@ -391,7 +438,6 @@ export default function OnboardingPage() {
               <StepWrapper key="goal">
                 <GoalInputStep
                   onSubmit={handleGoalSubmit}
-                  onAssess={handleAssess}
                   initialValue={prefilledSkill}
                   goalType={goalType}
                   onGoalTypeChange={setGoalType}
@@ -701,80 +747,75 @@ export default function OnboardingPage() {
                     </motion.div>
                   )}
 
-                  {/* Mode selection */}
+                  {/* Pick your direction */}
                   <motion.div
                     initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.7 }}
-                    className="space-y-3"
+                    className="space-y-4"
                   >
-                    <h2 className="text-sm font-semibold text-content">
-                      How do you want to learn?
+                    <h2 className="text-sm font-semibold text-content flex items-center gap-2">
+                      <ArrowRight className="w-4 h-4 text-brand-500" />
+                      Pick your direction
                     </h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <InlineModeCard
-                        icon={Zap}
-                        title="Practice Mode"
-                        description="Short drills targeting each gap"
-                        selected={selectedMode === 'practice' && !useAiBuilder}
-                        onClick={() => {
-                          setSelectedMode('practice');
-                          setUseAiBuilder(false);
-                        }}
-                      />
-                      <InlineModeCard
-                        icon={Hammer}
-                        title="Project Mode"
-                        description="Build a small project covering these gaps"
-                        selected={selectedMode === 'project' && !useAiBuilder}
-                        onClick={() => {
-                          setSelectedMode('project');
-                          setUseAiBuilder(false);
-                        }}
-                      />
-                    </div>
-
-                    {/* AI Builder sub-option */}
-                    {selectedMode === 'project' && (
-                      <motion.label
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        className="flex items-center gap-2.5 pl-4 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={useAiBuilder}
-                          onChange={(e) => setUseAiBuilder(e.target.checked)}
-                          className="w-4 h-4 rounded border-border text-brand-500 focus:ring-brand-500/30"
-                        />
-                        <div className="flex items-center gap-1.5">
-                          <Bot className="w-3.5 h-3.5 text-content-tertiary" />
-                          <span className="text-sm text-content-secondary">
-                            Build it yourself with AI tools
-                          </span>
-                        </div>
-                      </motion.label>
-                    )}
-                  </motion.div>
-
-                  {/* Start button */}
-                  <motion.div
-                    initial={{ opacity: 0, y: 15 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.8 }}
-                  >
-                    <Button
-                      variant="primary"
-                      size="lg"
-                      onClick={handleGapResultsStart}
-                      rightIcon={<ArrowRight className="w-4 h-4" />}
-                      className="w-full"
-                    >
-                      Start targeted lessons ({Math.max(3, Math.min(5, highGaps.length + mediumGaps.length))} days)
-                    </Button>
-                    <p className="text-xs text-content-tertiary text-center mt-2">
-                      Short, focused lessons — then we'll re-test to check your progress
+                    <p className="text-xs text-content-secondary">
+                      We'll create a dense 1-3 day micro lesson based on your gaps + chosen direction
                     </p>
+
+                    {directionsLoading ? (
+                      <div className="flex items-center justify-center py-8 gap-3">
+                        <motion.div
+                          className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full"
+                          animate={{ rotate: 360 }}
+                          transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
+                        />
+                        <span className="text-sm text-content-secondary">Generating directions...</span>
+                      </div>
+                    ) : directions.length > 0 ? (
+                      <div className="space-y-3">
+                        {directions.map((direction) => (
+                          <DirectionCard
+                            key={direction.id}
+                            direction={direction}
+                            isSelected={gapSelectedDirectionId === direction.id}
+                            onClick={() => {
+                              setGapSelectedDirectionId(direction.id);
+                              if (direction.languageConfig) {
+                                setGapSelectedLanguage(
+                                  gapSelectedLanguage && gapSelectedDirectionId === direction.id
+                                    ? gapSelectedLanguage
+                                    : direction.languageConfig.recommended
+                                );
+                              } else {
+                                setGapSelectedLanguage(undefined);
+                              }
+                            }}
+                            {...(gapSelectedDirectionId === direction.id && direction.languageConfig ? {
+                              onLanguageChange: setGapSelectedLanguage,
+                              selectedLanguage: gapSelectedLanguage,
+                            } : {})}
+                          />
+                        ))}
+
+                        <Button
+                          variant="primary"
+                          size="lg"
+                          className="w-full"
+                          disabled={!gapSelectedDirectionId}
+                          onClick={() => {
+                            const dir = directions.find(d => d.id === gapSelectedDirectionId);
+                            if (dir) handleDirectionMicroLesson(dir, gapSelectedLanguage);
+                          }}
+                          rightIcon={<ArrowRight className="w-4 h-4" />}
+                        >
+                          Start micro lesson
+                        </Button>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-content-tertiary text-center py-4">
+                        No directions available. Try going back and starting over.
+                      </p>
+                    )}
                   </motion.div>
 
                   {/* Escape hatch */}
@@ -859,7 +900,23 @@ export default function OnboardingPage() {
             )}
 
             {/* ── Both branches: Completing ── */}
-            {step === 'completing' && (
+            {step === 'completing' && branch === 'discovery' && (
+              <StepWrapper key="completing-discovery">
+                <GeneratingScreen
+                  inline
+                  title="Building targeted lessons"
+                  subtitle={`Designing micro lesson: ${selectedDirection?.title || assessmentSkillName}...`}
+                  timeEstimate="This takes about 30-40 seconds"
+                  steps={[
+                    { icon: Search, text: 'Analyzing your gaps...', duration: 3000 },
+                    { icon: Brain, text: 'Designing targeted lessons...', duration: 6000 },
+                    { icon: BookOpen, text: 'Building micro-curriculum...', duration: 25000 },
+                    { icon: CheckCircle, text: 'Finalizing your plan...', duration: 3000 },
+                  ]}
+                />
+              </StepWrapper>
+            )}
+            {step === 'completing' && branch !== 'discovery' && (
               <StepWrapper key="completing">
                 <LoadingState
                   title="Setting up your experience..."
@@ -1005,33 +1062,3 @@ function LoadingState({
   );
 }
 
-function InlineModeCard({
-  icon: Icon,
-  title,
-  description,
-  selected,
-  onClick,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  description: string;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`text-left p-4 rounded-xl border-2 transition-all ${
-        selected
-          ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/20'
-          : 'border-border bg-surface-secondary hover:border-border-secondary'
-      }`}
-    >
-      <Icon className={`w-5 h-5 mb-2 ${selected ? 'text-brand-500' : 'text-content-tertiary'}`} />
-      <p className={`text-sm font-medium ${selected ? 'text-brand-600 dark:text-brand-400' : 'text-content'}`}>
-        {title}
-      </p>
-      <p className="text-xs text-content-secondary mt-0.5">{description}</p>
-    </button>
-  );
-}

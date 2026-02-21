@@ -65,7 +65,7 @@ interface CurriculumPromptParams {
     }>;
     detectedLevel: string;
   };
-  // When true, generates short 3-5 day micro-curriculum targeting gaps
+  // When true, generates short 1-3 day micro-curriculum targeting direction + gaps
   microLessonMode?: boolean;
 }
 
@@ -858,55 +858,45 @@ ${contextInstructions}${languageCaveats}
 BOSS MILESTONE - SOLUTION + CHALLENGE (${newCodeLines} new lines):
 You provide a complete AI-generated solution. User chooses their path: write it themselves OR make the AI code run.
 
-${dayNumber > 1 && !ctx?.continuity?.previousDayCode ? `⚠️ CUMULATIVE CODE REQUIREMENT (MANDATORY FOR DAY 2+) ⚠️
-THIS IS DAY ${dayNumber} - YOU MUST EXTEND PREVIOUS CODE, NOT CREATE NEW FILES!
-- Your solutionCode output must be the COMPLETE file including Day 1-${dayNumber - 1} code PLUS today's additions
-- DO NOT create a new/different file or endpoint
-- ADD to the existing code, don't replace it
-- Mark new code with: // Day ${dayNumber}: Added ...
+${dayNumber > 1 && !ctx?.continuity?.previousDayCode ? `TODAY'S CODE MUST BE CUMULATIVE (DAY ${dayNumber}):
+The boss project builds ONE application across all days. Each day EXTENDS the previous day's code.
 
 CORRECT APPROACH:
-- Day 1: Create app/api/product/route.ts with basic endpoint
-- Day 2: SAME FILE app/api/product/route.ts with Day 1 code + new features added
-- Day 3: SAME FILE with Day 1 + Day 2 code + new features added
+- Day 1 creates the initial file (e.g., app/api/product/route.ts)
+- Day 2 OPENS THE SAME FILE, keeps ALL Day 1 code, adds new code
+- Day 3 OPENS THE SAME FILE, keeps ALL Day 1+2 code, adds new code
+- solutionCode = COMPLETE file with Day 1 through Day ${dayNumber - 1} code PLUS today's additions
+- Mark new sections: // Day ${dayNumber}: Added ...
+
 WRONG APPROACH:
-- Day 1: app/api/product-info/route.ts → Day 2: app/api/price/route.ts → Day 3: app/api/scraper/route.ts (different files!)
-User must feel they're building ONE growing codebase, not separate mini-projects.
-` : dayNumber > 1 ? `CUMULATIVE CODE: Previous day's code is provided in context above. Extend it, don't create new files.
-- Mark new additions: // Day ${dayNumber}: Added ...
+- Creating a different file each day (product-details.ts, product-reviews.ts)
+- Starting from scratch without including previous code
+- Duplicating logic that already exists from previous days
 ` : ''}
 REQUIRED FIELDS:
-- solutionCode: ${solutionCodeLines} lines COMPLETE WORKING code (GENERATE THIS FIRST)
-  - Real, runnable code that ADDS to the existing project
-  - For Day 2+: include previous code + today's additions in one file
-- starterCode: ${starterCodeLines} lines DERIVED FROM solutionCode above
-  - SAME structure: same imports, same class/function names, same file organization
-  - Replace implementation bodies with TODO comments describing what to implement
-  - Keep signatures, parameters, return types from solution
-  - For Day 2+: Include previous days' completed code + new TODOs for today's additions
+- solutionCode: ${solutionCodeLines} lines COMPLETE WORKING ${params.suggestedLanguage || 'code'} (GENERATE THIS FIRST, then derive everything else from it).
+  ${dayNumber > 1 ? `Day ${dayNumber}: MUST include all Day 1-${dayNumber - 1} code (provided above or from context) PLUS today's new additions in ONE complete file.` : 'Must be real, runnable code - no placeholders, no "// add your code here".'}
+- starterCode: ${starterCodeLines} lines DERIVED FROM solutionCode.
+  - SAME imports, class names, function signatures, file structure
+  - Replace function BODIES with TODO comments describing what to implement
+  ${dayNumber > 1 ? `- Day ${dayNumber}: Include all previous days' completed code + today's new function stubs as TODOs` : '- Keep the skeleton so user can focus on logic, not boilerplate'}
 - solutionExplanation: 1-2 sentences on what this code does
-- solutionAnnotations: 3-5 strings explaining key parts
+- solutionAnnotations: 3-5 key part explanations
 - challengeOptions:
-  - writeYourself:
-    - description: "Write this code from scratch to prove you understand it"
-    - hints: 3 progressive hints if user gets stuck
-      - For Day 2+: Reference what user already built (e.g., "You have the GET handler from Day 1, now add POST to the same file")
-      - Level 1: Conceptual - what approach, how it connects to existing code
-      - Level 2: Specific - key functions/methods to add, which file to modify
-      - Level 3: Detailed - almost the answer, show exactly where in existing code to add
-  - makeItRun:
-    - description: Day 1: "Copy this starter code, complete it and make it run" | Day 2+: "Update your existing code with today's additions"
-    - setupSteps: Day 1: Create file, add code, run | Day 2+: Open existing file, ADD new code, run
-    - possibleIssues: 2-3 things that might go wrong (missing deps, path issues, etc.)
-- validationType: "run"
-- validationInstructions: "Run the code and verify it produces the expected output"
+  - writeYourself: description + 3 progressive hints
+    - Level 1 (conceptual): General approach${dayNumber > 1 ? ' + how it connects to existing code' : ''}
+    - Level 2 (specific): Key functions/methods/patterns to use
+    - Level 3 (near-answer): Almost the answer${dayNumber > 1 ? ', where exactly to add in existing file' : ''}
+  - makeItRun: description + setupSteps + possibleIssues (2-3)
+    - ${dayNumber === 1 ? 'Day 1: "Copy the solution code and set up the project"' : `Day ${dayNumber}: "Add today's code to your existing file from Day ${dayNumber - 1}"`}
+    - setupSteps: ${dayNumber === 1 ? '["Create the project", "Add the code", "Install deps", "Run and test"]' : `["Open your existing file", "Add today's new code sections", "Run and verify"]`}
+- validationType: "run" + validationInstructions
 - setupInstructions:
-  - files: List each file with FULL PATH and description (e.g., "app/api/users/route.js")
-  - steps: 1) Scaffold if needed, 2) cd into folder, 3) Install packages, 4) File instructions with FULL PATHS ("Open [path]" existing / "Create [path]" new), 5) Test: run command + expected result
-  - IMPORTANT: Browser-tested routes MUST export GET handler. POST-only: use curl in test steps.
-  - runCommand: Command AND test method (e.g., "npm run dev → GET http://localhost:<PORT>/api/hello" - use <PORT> placeholder)
-- DO NOT use placeholder text - generate ACTUAL code
-- AVOID REPETITION in solution code: Extract repeated values into constants, use helper functions for repeated logic
+  - files: Array of {path, description} with FULL PATHS from project root (e.g., "app/api/product/route.ts")
+  - steps: ${dayNumber === 1 ? '["1) Scaffold project", "2) cd into project", "3) Install dependencies", "4) Create files with FULL PATHS", "5) Run and test"]' : `["1) Open existing project from Day ${dayNumber - 1}", "2) Open existing file(s)", "3) Add today's new code", "4) Install any new deps", "5) Run and test"]`}
+  - runCommand: Use <PORT> placeholder (e.g., "npm run dev → http://localhost:<PORT>/...")
+  - Browser-tested routes MUST export GET. POST-only routes: use curl in test steps.
+- Generate ACTUAL code, no placeholders. Keep solution DRY (constants, helpers, avoid repetition).
 ${ctx?.continuity?.bossProjectTarget ? `- Boss Project: "${ctx.continuity.bossProjectTarget}" - conceptConnection should reference a task1 concept` : ''}
 
 Only generate: bossMilestone.
@@ -917,41 +907,41 @@ Output valid JSON.`;
   "day": ${dayNumber},
   "bossMilestone": {
     "day": ${dayNumber},
-    "title": "Day ${dayNumber}: Build Your Piece",
+    "title": "Day ${dayNumber}: [Descriptive title of what's built today]",
     "description": "Today's contribution to the boss project",
-    "microTask": "REQUIRED: What this code accomplishes (${newCodeLines} lines of code)",
-    "dayContribution": "How this connects to the final project",
+    "microTask": "REQUIRED: What this code accomplishes (${newCodeLines} new lines of code)",
+    "dayContribution": "How today's work connects to the final project",
     "conceptConnection": "Which task1 concept this applies",
     "estimatedMinutes": 12,
 
-    "solutionCode": "REQUIRED: ${solutionCodeLines} lines complete working ${params.suggestedLanguage || 'code'}. ${dayNumber > 1 ? `MUST include Day ${dayNumber - 1} code (provided above) PLUS todays additions. One complete file with all previous code + new code.` : 'Must be real, runnable code.'} GENERATE THIS FIRST.",
-    "starterCode": "REQUIRED: ${starterCodeLines} lines DERIVED FROM solutionCode. Same structure/imports/class names/function names. Replace bodies with TODO comments.",
-    "solutionExplanation": "REQUIRED: 1-2 sentences on what this code does",
-    "solutionAnnotations": ["Key line 1 explanation", "Key line 2 explanation", "Key line 3 explanation"],
+    "solutionCode": "REQUIRED: ${solutionCodeLines} lines complete working ${params.suggestedLanguage || 'code'}. ${dayNumber > 1 ? `MUST include ALL Day 1-${dayNumber - 1} code PLUS today's additions in ONE complete file. Mark new sections with // Day ${dayNumber}: Added ...` : 'Must be real, runnable code - no placeholders.'} GENERATE THIS FIRST, then derive starterCode from it.",
+    "starterCode": "REQUIRED: ${starterCodeLines} lines DERIVED FROM solutionCode. Same imports/structure/function signatures. Replace function BODIES with TODO comments.${dayNumber > 1 ? ` Include all previous days' completed code + today's new stubs as TODOs.` : ''}",
+    "solutionExplanation": "REQUIRED: 1-2 sentences on what this code does and why",
+    "solutionAnnotations": ["Key line/section 1 explanation", "Key line/section 2 explanation", "Key line/section 3 explanation"],
 
     "challengeOptions": {
       "writeYourself": {
-        "description": "Write this code from scratch to prove you understand it",
+        "description": "${dayNumber > 1 ? `Extend your Day ${dayNumber - 1} code with today's new functionality` : 'Write this code from scratch'}",
         "hints": [
-          {"level": 1, "hint": "REQUIRED: Conceptual hint - what approach, how it builds on existing code (Day 2+: reference what they built)"},
-          {"level": 2, "hint": "REQUIRED: Specific hint - key functions/methods, which file to modify"},
-          {"level": 3, "hint": "REQUIRED: Detailed hint - almost the answer, exactly where to add in existing code"}
+          {"level": 1, "hint": "Conceptual: general approach${dayNumber > 1 ? ' and how it connects to existing code' : ''}"},
+          {"level": 2, "hint": "Specific: key functions/methods/patterns to implement"},
+          {"level": 3, "hint": "Near-answer: detailed steps${dayNumber > 1 ? ', exactly where to add in existing file' : ' to complete the implementation'}"}
         ]
       },
       "makeItRun": {
-        "description": "Day 1: Copy and run the code | Day 2+: Add today's code to your existing file",
-        "setupSteps": ["REQUIRED: Day 1: Create file | Day 2+: Open your existing file from previous days", "REQUIRED: Day 1: Add solution code | Day 2+: ADD today's new code sections to existing code (keep previous code, add new parts)", "REQUIRED: Run and test (e.g., 'npm run dev')"],
-        "possibleIssues": ["Missing dependency issue", "Path or import issue", "Syntax or version issue"]
+        "description": "${dayNumber === 1 ? 'Copy the solution and set up the project to run it' : `Add today's new code to your existing file from Day ${dayNumber - 1}`}",
+        "setupSteps": ${dayNumber === 1 ? '["Create the project structure", "Add the solution code", "Install dependencies", "Run and verify output"]' : `["Open your existing file from Day ${dayNumber - 1}", "Add today's new code sections (marked with // Day ${dayNumber})", "Install any new dependencies", "Run and verify"]`},
+        "possibleIssues": ["Missing dependency", "Path/import issue", "Syntax or runtime error"]
       }
     },
 
-    "expectedOutput": "What user should see when they run the code",
+    "expectedOutput": "Specific description of what user should see when running",
     "validationType": "run",
-    "validationInstructions": "Run the code and verify the output",
+    "validationInstructions": "Step-by-step: how to verify the code works correctly",
     "setupInstructions": {
-      "files": [{"path": "REQUIRED: FULL PATH e.g. 'app/api/users/route.js' or 'src/components/Card.jsx'", "description": "What this file contains"}],
-      "steps": ["REQUIRED: 1) Scaffold (npx create-...), 2) cd into folder, 3) Install packages if needed, 4) Create/open files with FULL PATHS (e.g., 'Create app/api/users/route.js'), 5) Write and complete the code, 6) Test (e.g., 'Run npm run dev, then open http://localhost:<PORT>/...')"],
-      "runCommand": "e.g. 'npm run dev' then 'Open http://localhost:<PORT>/...' (use <PORT> placeholder)"
+      "files": [{"path": "full/path/from/project/root/file.ext", "description": "What this file contains and does"}],
+      "steps": ${dayNumber === 1 ? '["1) Scaffold project (e.g., npx create-...)", "2) cd into project directory", "3) Install dependencies", "4) Create file(s) at FULL PATHS listed above", "5) Run and test with runCommand below"]' : `["1) Open existing project from Day ${dayNumber - 1}", "2) Open file(s) at paths listed above", "3) Add today's new code (Day ${dayNumber} sections)", "4) Install any new dependencies if needed", "5) Run and test with runCommand below"]`},
+      "runCommand": "e.g., npm run dev → http://localhost:<PORT>/api/endpoint"
     }
   }
 }`;
@@ -1086,19 +1076,12 @@ function getIntensiveSectionTemplate(
         "instructions": "Review this AI-generated code and identify any issues",
         "items": [{
           "id": "acr1",
-          "code": "function example() {\\n  // AI-generated code with subtle bug\\n}",
+          "code": "// AI-generated code with subtle bug",
           "context": "What this code should do",
           "promptUsed": "The prompt that generated this code",
-          "issues": [{
-            "id": "issue1", "type": "security|logic|performance",
-            "location": "line N: problematic code",
-            "severity": "critical|warning",
-            "options": ["Correct answer", "Plausible wrong 1", "Plausible wrong 2", "Plausible wrong 3"],
-            "correctIndex": 0,
-            "explanation": "Why the correct answer is right"
-          }],
+          "issues": [{"id": "issue1", "type": "security|logic|performance", "location": "line N: code", "severity": "critical|warning", "options": ["Correct", "Wrong 1", "Wrong 2", "Wrong 3"], "correctIndex": 0, "explanation": "Why"}],
           "correctVersion": "// Fixed code",
-          "hint": "Hint for finding the issue",
+          "hint": "Hint",
           "language": "javascript"
         }],
         "passingScore": 0.7
@@ -1552,37 +1535,12 @@ CRITICAL - CODE GENERATION REQUIREMENTS:
    - Replace function bodies with TODO comments describing what to implement
    - Keep type signatures, parameters, return types intact
 
-EXAMPLE - If solution is:
-\`\`\`
-class PriceTracker:
-    def __init__(self):
-        self.db = sqlite3.connect('prices.db')
+EXAMPLE:
+Solution: \`class Tracker: def fetch(self, url): soup = BeautifulSoup(requests.get(url).content, 'html.parser'); return soup.select_one('.price').text\`
+StarterCode: \`class Tracker: def fetch(self, url): # TODO: Fetch URL and parse price; pass\`
+starterCode MUST match solution's structure (same classes/functions). Replace bodies with TODOs.
 
-    def fetch_price(self, url):
-        response = requests.get(url, headers=self.headers)
-        soup = BeautifulSoup(response.content, 'html.parser')
-        return soup.select_one('.price').text
-\`\`\`
-
-Then starterCode MUST be:
-\`\`\`
-class PriceTracker:
-    def __init__(self):
-        # TODO: Initialize database connection
-        pass
-
-    def fetch_price(self, url):
-        # TODO: Fetch URL with proper headers
-        # TODO: Parse HTML and extract price
-        pass
-\`\`\`
-
-DO NOT generate starterCode with different structure (e.g., functions when solution uses classes)
-
-CODE QUALITY - Avoid repetition in solution:
-- Extract repeated values into CONSTANTS at the top (e.g., HEADERS, SELECTORS, CONFIG)
-- Use helper functions for repeated logic
-- Keep solution clean and DRY (Don't Repeat Yourself)
+CODE QUALITY: Extract repeated values into constants, use helpers for repeated logic, keep DRY.
 
 Output valid JSON only.`;
 
@@ -1597,7 +1555,7 @@ Generate JSON with:
 - phases: 3 phases (Setup 15min, Core Build 35min, Polish 25min) with objectives[], deliverable
 - solution: COMPLETE working ${params.suggestedLanguage || 'code'} (50-100 lines) - GENERATE THIS FIRST
 - starterCode: DERIVED FROM solution above - same structure/classes/functions, bodies replaced with TODOs (30-50 lines)
-- setupInstructions: {files: [{path: "FULL PATH e.g. app/api/route.js", description: "what it contains"}], steps: ["1) Scaffold, 2) cd into folder, 3) Install packages, 4) File steps with FULL PATHS, 5) Test: run command + URL + expected result"], runCommand: "npm run dev → http://localhost:<PORT>/..." (use <PORT> placeholder for user's port)}
+- setupInstructions: {files: [{path, description}], steps: ["scaffold→cd→install→create files→test"], runCommand: "npm run dev → http://localhost:<PORT>/..."}
 - hints: 4 progressive hints with phase numbers
 - solutionWalkthrough: [{step, description, code}]
 - evaluation: {criteria[{criterion, points, checks[]}], passingScore:70}
@@ -1749,12 +1707,14 @@ ${params.gapProfile.strengths?.map((s) => `- ${s.category}: ${s.description}`).j
 
 Detected level from assessment: ${params.gapProfile.detectedLevel}
 
-${params.microLessonMode ? `MICRO-LESSON MODE: This is a short, targeted gap-remediation curriculum.
-- Design each day to DIRECTLY address 1-2 of these gaps
-- Reference the specific gap in each day's title/teaser so the student knows why they're learning this
-- Content is streamlined: quiz-based micro-lessons (task1) + video + reflection only
-- NO intensive practice sections, NO open tasks — keep it focused and fast
-- Each day's quiz should deeply probe the gap topic with concept-teaching questions` : `Use these gaps to prioritize and focus the curriculum content. Days should emphasize areas where the student has gaps.`}`
+${params.microLessonMode ? `MICRO-LESSON MODE: Dense 1-${params.durationDays} day curriculum focused on "${params.learnerPrefs?.selectedDirection || params.skillName}".
+- Structure content around the user's chosen DIRECTION — this is the primary focus
+- Use identified gaps to prioritize which aspects of the direction to cover first
+- Content: quiz-based task1 + video + reflection only
+- NO intensive practice, NO open tasks
+- Each day's quiz should teach concepts relevant to the direction, addressing gaps where they overlap
+- Day titles should reference the direction, not just the gaps
+- KEEP OUTPUT CONCISE: titles <10 words, subtitles <15 words, teasers <25 words, 3-4 skills per day, bossProjects:[]` : `Use these gaps to prioritize and focus the curriculum content. Days should emphasize areas where the student has gaps.`}`
     : '';
 
   const dynamicPart = `Generate ${params.durationDays}-day curriculum skeleton for "${params.skillName}".

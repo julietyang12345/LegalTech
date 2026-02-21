@@ -319,6 +319,7 @@ export interface AIResponse {
   provider: string;
   model: string;
   cacheHit?: boolean;
+  truncated?: boolean; // true when stop_reason is "max_tokens" (output was cut off)
 }
 
 export interface CacheablePrompt {
@@ -654,6 +655,13 @@ export class AiService {
 
     const content = response.content[0];
     const text = content.type === 'text' ? content.text : '';
+    const truncated = response.stop_reason === 'max_tokens';
+
+    if (truncated) {
+      this.logger.warn(
+        `⚠️ Response truncated (hit max_tokens: ${maxTokens}). Output may be incomplete.`,
+      );
+    }
 
     return {
       content: text,
@@ -664,6 +672,7 @@ export class AiService {
       ),
       provider: 'anthropic',
       model,
+      truncated,
     };
   }
 
@@ -795,10 +804,16 @@ export class AiService {
 
       // Check if cache was used
       const cacheHit = (response as any).usage?.cache_read_input_tokens > 0;
+      const truncated = response.stop_reason === 'max_tokens';
 
       if (cacheHit) {
         this.logger.log(
           `🎯 Cache HIT - saved ${(response as any).usage.cache_read_input_tokens} tokens`,
+        );
+      }
+      if (truncated) {
+        this.logger.warn(
+          `⚠️ Response truncated (hit max_tokens: ${maxTokens}). Output may be incomplete.`,
         );
       }
 
@@ -815,6 +830,7 @@ export class AiService {
         provider: 'anthropic',
         model,
         cacheHit,
+        truncated,
       };
     } finally {
       semaphore.release();
