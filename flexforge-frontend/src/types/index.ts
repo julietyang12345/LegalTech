@@ -232,6 +232,7 @@ export interface CreateSessionDto {
   goalType?: GoalType;
   gapProfile?: GapProfile;
   microLessonMode?: boolean;
+  skillDetection?: any; // Pre-computed from estimate-days (avoids duplicate AI call)
 }
 
 export interface UpdateSessionDto {

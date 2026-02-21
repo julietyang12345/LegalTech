@@ -90,19 +90,21 @@ export function ConfirmationPage() {
       }
 
       try {
-        // First, get estimated days from AI
-        const { data } = await api.post<{ estimatedDaysNeeded: number }>('/curriculum/estimate-days', {
+        // First, get estimated days + skill detection from AI
+        const { data } = await api.post<{ estimatedDaysNeeded: number; skillDetection?: any }>('/curriculum/estimate-days', {
           skillName,
         });
         const days = data.estimatedDaysNeeded || 7;
         setEstimatedDays(days);
 
-        // Then create session with AI-determined days
+        // Then create session with AI-determined days + pre-computed skill detection
         const sessionDto: CreateSessionDto = {
           skillName,
           durationDays: days,
           hoursPerDay: sessionLengthToHours[sessionLength],
           skillLevel: familiarityToSkillLevel[familiarity],
+          // Pass skill detection to avoid duplicate AI call in generateCurriculum
+          skillDetection: data.skillDetection,
           // Pass gap data if available (from assessment flow)
           ...(gapProfile && {
             gapProfile,

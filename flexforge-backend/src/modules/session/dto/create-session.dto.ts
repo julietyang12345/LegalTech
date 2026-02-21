@@ -72,4 +72,9 @@ export class CreateSessionDto {
   @IsOptional()
   @IsBoolean()
   microLessonMode?: boolean;
+
+  // Pre-computed skill detection from estimate-days (avoids duplicate AI call)
+  @IsOptional()
+  @IsObject()
+  skillDetection?: any;
 }

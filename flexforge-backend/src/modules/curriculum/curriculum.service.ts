@@ -625,22 +625,28 @@ Return JSON only:
       `🎯 Generating curriculum: ${dto.skillName} (${dto.durationDays} days, ${userTier} tier)`,
     );
 
-    // Step 0: Content moderation - check for policy violations using OpenAI's free Moderation API
-    const moderationResult = await this.skillDetector.moderateContent(
-      dto.skillName,
-    );
-    if (!moderationResult.isAllowed) {
-      throw new BadRequestException({
-        message: 'This topic violates AI content policy and cannot be used for curriculum generation. Please choose a different learning topic.',
-        error: 'AI_CONTENT_POLICY_VIOLATION',
-        flaggedCategories: moderationResult.flaggedCategories,
-      });
-    }
+    // Step 0+1: Use pre-computed skill detection if available (from estimate-days),
+    // otherwise run moderation + detection (for direct generate calls)
+    let skillDetection;
+    if (dto.skillDetection) {
+      skillDetection = dto.skillDetection;
+      this.logger.log(`♻️ Reusing pre-computed skill detection (skipping duplicate AI call)`);
+    } else {
+      const moderationResult = await this.skillDetector.moderateContent(
+        dto.skillName,
+      );
+      if (!moderationResult.isAllowed) {
+        throw new BadRequestException({
+          message: 'This topic violates AI content policy and cannot be used for curriculum generation. Please choose a different learning topic.',
+          error: 'AI_CONTENT_POLICY_VIOLATION',
+          flaggedCategories: moderationResult.flaggedCategories,
+        });
+      }
 
-    // Step 1: Detect skill type and complexity
-    const skillDetection = await this.skillDetector.detectSkillType(
-      dto.skillName,
-    );
+      skillDetection = await this.skillDetector.detectSkillType(
+        dto.skillName,
+      );
+    }
 
     this.logger.log(
       `✅ Skill detected: ${skillDetection.skillType} (${skillDetection.complexity})`,

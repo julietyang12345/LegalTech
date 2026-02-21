@@ -101,4 +101,8 @@ export class GenerateCurriculumDto {
   // When true, generates a short 3-5 day micro-curriculum targeting specific gaps
   @IsOptional()
   microLessonMode?: boolean;
+
+  // Pre-computed skill detection from estimate-days (avoids duplicate AI call)
+  @IsOptional()
+  skillDetection?: any;
 }

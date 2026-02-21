@@ -106,6 +106,8 @@ export class CurriculumController {
         complexity: result.complexity,
         estimatedDaysNeeded: result.estimatedDaysNeeded,
         reasoning: result.reasoning,
+        // Full detection result for reuse in session creation (avoids duplicate AI call)
+        skillDetection: result,
       };
     } catch (error) {
       // Re-throw BadRequestException as-is (includes our moderation error)

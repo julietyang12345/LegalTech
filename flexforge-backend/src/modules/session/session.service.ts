@@ -339,6 +339,8 @@ export class SessionService {
             // Gap-first learning
             gapProfile: createSessionDto.gapProfile,
             microLessonMode: createSessionDto.microLessonMode,
+            // Pre-computed skill detection (avoids duplicate AI call)
+            skillDetection: createSessionDto.skillDetection,
           },
           tierString,
         );
