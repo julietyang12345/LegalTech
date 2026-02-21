@@ -214,7 +214,7 @@ export default function OnboardingPage() {
       await refreshUser();
 
       // 2. Estimate days → cap at 3 for micro lessons
-      const { data } = await api.post<{ estimatedDaysNeeded: number }>('/curriculum/estimate-days', {
+      const { data } = await api.post<{ estimatedDaysNeeded: number; skillDetection?: any }>('/curriculum/estimate-days', {
         skillName: assessmentSkillName,
       });
       const days = Math.min(3, data.estimatedDaysNeeded || 3);
@@ -228,6 +228,8 @@ export default function OnboardingPage() {
         gapProfile,
         microLessonMode: true,
         goalType: goalType ?? GoalType.CURRICULUM,
+        // Pass skill detection to avoid duplicate AI call in generateCurriculum
+        skillDetection: data.skillDetection,
       };
 
       await createSession(sessionDto);

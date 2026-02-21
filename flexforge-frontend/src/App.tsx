@@ -30,6 +30,7 @@ import {
   TermsPage,
   PrivacyPage,
   DemoSessionPage,
+  CareerPathsDemoPage,
   ExplorePage,
   SettingsPage,
 } from '@/pages';
@@ -62,6 +63,7 @@ function App() {
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/demo" element={<DemoSessionPage />} />
+          <Route path="/demo/career-paths" element={<CareerPathsDemoPage />} />
           <Route path="/explore" element={<ExplorePage />} />
 
           {/* Onboarding - protected but skip onboarding check to avoid redirect loop */}
