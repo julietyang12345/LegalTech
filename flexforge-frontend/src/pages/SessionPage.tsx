@@ -513,6 +513,9 @@ export function SessionPage() {
 
   // Get available steps (filter out skipped ones)
   const availableSteps = STEP_ORDER.filter(step => {
+    // Gap sessions skip bossMilestone (intensive practice) and openTask — backend doesn't generate them
+    if (isGapSession && (step === 'bossMilestone' || step === 'openTask')) return false;
+
     // Skip video step if no actual video OR if video was skipped
     // But show it while core content is still loading (video might not be populated yet)
     if (step === 'video') {
@@ -522,14 +525,6 @@ export function SessionPage() {
       const hasActualVideo = !!(currentDay?.video?.videoId || currentDay?.video?.backupVideo?.videoId);
       const videoSkipped = currentDay?.video?.skipped === true;
       if (!hasActualVideo || videoSkipped) return false;
-    }
-    // Gap practice-based sessions: skip bossMilestone (intensive practice) — backend doesn't generate it
-    if (step === 'bossMilestone' && isGapSession) {
-      return false;
-    }
-    // Gap sessions: skip openTask — backend doesn't generate it
-    if (step === 'openTask' && isGapSession) {
-      return false;
     }
     return true;
   });

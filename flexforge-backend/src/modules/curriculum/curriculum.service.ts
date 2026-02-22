@@ -2024,7 +2024,8 @@ Return JSON only:
       buildDeferredLightweightPrompt(params, ctx);
 
     // Run BOTH AI calls in parallel: Sonnet (task1/bossMilestone) + Haiku (reflection/openTask)
-    const skipSonnetCall = false;
+    // Skip Sonnet when prompt builder returns empty (e.g., gap practice sessions — no intensive practice)
+    const skipSonnetCall = !userPrompt || !systemPrompt;
 
     this.logger.log(
       `🚀 Generating Day ${dayNumber} DEFERRED content${isGapSession ? ' (gap session)' : ''} (${skipSonnetCall ? 'Haiku only' : 'Sonnet + Haiku'})`,
@@ -2373,8 +2374,8 @@ Return JSON only:
       ctx,
     );
 
-    // Gap practice-based sessions: skip Sonnet call, only generate reflection via Haiku
-    const skipSonnetCallStream = isGapSession && !params.isProjectBased;
+    // Always run Sonnet for intensive practice + boss milestone
+    const skipSonnetCallStream = false;
 
     if (skipSonnetCallStream) {
       this.logger.log(`⏭️ Day ${dayNumber} DEFERRED skipping Sonnet (gap practice session - streaming)`);
