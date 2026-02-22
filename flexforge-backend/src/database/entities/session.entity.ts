@@ -128,42 +128,6 @@ export class Session {
   @Column({ default: 0 })
   extensionsDays: number;
 
-  // Gap-first learning: assessment results with rubric-based scoring
-  @Column({ type: 'jsonb', nullable: true })
-  gapProfile: {
-    gaps: Array<{
-      category: string;
-      description: string;
-      severity: 'high' | 'medium' | 'low';
-      evidence: string;
-    }>;
-    strengths: Array<{
-      category: string;
-      description: string;
-    }>;
-    dimensions: Array<{
-      id: string; // rubric dimension ID (e.g., 'solution_design')
-      name: string;
-      score: number; // 1-5
-      gap?: string;
-      example?: string;
-    }>;
-    overallScore: number;
-    microLessonPoints: string[];
-    detectedLevel: string;
-    assessmentRound: number;
-    scenario: string;
-    userResponse: string;
-  };
-
-  // Marks micro-lesson sessions (gap-targeted, 3-5 days)
-  @Column({ default: false })
-  isGapSession: boolean;
-
-  // Links micro-lesson session back to eventual full session
-  @Column({ type: 'uuid', nullable: true })
-  parentSessionId: string;
-
   // Relations
   @OneToMany(() => Progress, (progress) => progress.session)
   progress: Progress[];

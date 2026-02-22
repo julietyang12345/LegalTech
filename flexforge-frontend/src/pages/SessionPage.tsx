@@ -507,15 +507,8 @@ export function SessionPage() {
   const trainingConfig = getTrainingConfig(goalType);
   const STEP_ORDER = trainingConfig.stepFlow as SessionStepType[];
 
-  // Gap sessions (assessment → microlesson path) only have quiz + video + reflection
-  // They skip intensive practice (bossMilestone) and openTask since the backend doesn't generate them
-  const isGapSession = !!activeSession?.isGapSession || !!activeSession?.curriculum?.metadata?.isGapSession;
-
   // Get available steps (filter out skipped ones)
   const availableSteps = STEP_ORDER.filter(step => {
-    // Gap sessions skip bossMilestone (intensive practice) and openTask — backend doesn't generate them
-    if (isGapSession && (step === 'bossMilestone' || step === 'openTask')) return false;
-
     // Skip video step if no actual video OR if video was skipped
     // But show it while core content is still loading (video might not be populated yet)
     if (step === 'video') {
@@ -599,14 +592,6 @@ export function SessionPage() {
     }
 
     return incomplete;
-  };
-
-  // Mark current day complete without navigating (used by gap session re-assessment)
-  const markCurrentDayComplete = async () => {
-    if (!activeSession || !currentDay) return;
-    await submitPracticeProject(currentDay.day, 'Day completed via reflection', 4);
-    resetSteps();
-    setStepEngagement({ task1: false, bossMilestone: false, reflection: false });
   };
 
   // Proceed with day completion (after validation or skip)
@@ -1012,7 +997,7 @@ export function SessionPage() {
               // Only dismiss after navigation (or on error where we stay on page)
               setShowDayCompletion(false);
             }}
-            onMarkComplete={markCurrentDayComplete}
+
             isLoading={isAdvancingDay}
           />
         )}

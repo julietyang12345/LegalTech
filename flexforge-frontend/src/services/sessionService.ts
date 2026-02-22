@@ -480,40 +480,4 @@ export const sessionService = {
     return data;
   },
 
-  // ==========================================================================
-  // GAP-FIRST LEARNING: Assessment & Gap Detection
-  // ==========================================================================
-
-  /**
-   * Generate an open-ended assessment scenario for gap detection
-   */
-  async generateAssessment(params: {
-    skillName: string;
-    goalType?: string;
-    skillLevel?: string;
-    previousGaps?: Array<{ category: string; description: string }>;
-  }): Promise<{
-    scenario: string;
-    instructions: string;
-    timeEstimateMinutes: number;
-  }> {
-    const { data } = await api.post('/curriculum/generate-assessment', params);
-    return data;
-  },
-
-  /**
-   * Analyze user's response to detect knowledge gaps
-   */
-  async analyzeGaps(params: {
-    skillName: string;
-    scenario: string;
-    userResponse: string;
-    goalType?: string;
-    assessmentRound?: number;
-  }): Promise<{
-    gapProfile: import('@/types').GapProfile;
-  }> {
-    const { data } = await api.post('/curriculum/analyze-gaps', params);
-    return data;
-  },
 };

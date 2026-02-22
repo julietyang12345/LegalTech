@@ -149,46 +149,6 @@ export interface AuthState {
 }
 
 // ============================================
-// Gap-First Learning Types
-// ============================================
-
-export interface GapDimensionScore {
-  id: string; // rubric dimension ID (e.g., 'solution_design', 'error_handling')
-  name: string; // human-readable label
-  score: number; // 1-5
-  gap?: string; // what's specifically missing (if score < 4)
-  example?: string; // how they could have addressed this gap in THIS scenario
-}
-
-export interface GapProfile {
-  gaps: Array<{
-    category: string;
-    description: string;
-    severity: 'high' | 'medium' | 'low';
-    evidence: string;
-  }>;
-  strengths: Array<{
-    category: string;
-    description: string;
-  }>;
-  // Rubric-based dimension scores (1-5)
-  dimensions: GapDimensionScore[];
-  overallScore: number; // weighted average 1-5
-  // Targeted tips for the user's weakest dimensions
-  microLessonPoints: string[];
-  detectedLevel: string;
-  assessmentRound: number;
-  scenario: string;
-  userResponse: string;
-}
-
-export interface AssessmentScenario {
-  scenario: string;
-  instructions: string;
-  timeEstimateMinutes: number;
-}
-
-// ============================================
 // Session Types
 // ============================================
 
@@ -214,10 +174,6 @@ export interface Session {
   improvementAreas?: string[];
   // User-specified areas to reduce content for
   lessOfAreas?: string[];
-  // Gap-first learning
-  gapProfile?: GapProfile;
-  isGapSession?: boolean;
-  parentSessionId?: string;
   progress: Progress[];
   createdAt: string;
   updatedAt: string;
@@ -230,8 +186,6 @@ export interface CreateSessionDto {
   skillLevel: SkillLevel;
   previewCurriculum?: any; // Preview curriculum to reuse (avoids regeneration)
   goalType?: GoalType;
-  gapProfile?: GapProfile;
-  microLessonMode?: boolean;
   skillDetection?: any; // Pre-computed from estimate-days (avoids duplicate AI call)
 }
 
@@ -256,9 +210,6 @@ export interface CurriculumMetadata {
   complexity: SkillComplexity;
   suggestedLanguage?: string;
   isProjectBased?: boolean;
-
-  // Gap session (assessment → microlesson path): skips intensive practice + openTask
-  isGapSession?: boolean;
 
   // Language learning specific (when skillType is KNOWLEDGE + language skill)
   isLanguageLearning?: boolean;

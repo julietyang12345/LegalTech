@@ -51,22 +51,6 @@ interface CurriculumPromptParams {
   } | null;
   // Training mode (non-curriculum goal types)
   goalType?: GoalType;
-  // Gap-first learning: assessment results
-  gapProfile?: {
-    gaps: Array<{
-      category: string;
-      description: string;
-      severity: 'high' | 'medium' | 'low';
-      evidence: string;
-    }>;
-    strengths: Array<{
-      category: string;
-      description: string;
-    }>;
-    detectedLevel: string;
-  };
-  // When true, generates short 1-3 day micro-curriculum targeting direction + gaps
-  microLessonMode?: boolean;
 }
 
 // ============================================
@@ -730,9 +714,6 @@ export interface DayDetailParams {
 
   // Training mode (non-curriculum goal types)
   goalType?: GoalType;
-
-  // Gap session: micro-lesson mode (skip intensive practice + openTask)
-  isGapSession?: boolean;
 }
 
 // Language-specific features for prompts
@@ -785,16 +766,6 @@ export function buildDayDetailDeferredPrompt(
   const isProjectBased =
     params.isProjectBased ??
     usesProjectBasedLearning(params.learningStyle);
-
-  // Gap practice sessions: no Sonnet deferred content needed
-  // (no intensive practice — only quiz-based micro-lessons via core task1)
-  // The Sonnet call is skipped entirely in curriculum.service.ts
-  if (params.isGapSession && !isProjectBased) {
-    return {
-      systemPrompt: '',
-      userPrompt: '',
-    };
-  }
 
   // For practice-based skills, generate intensive practice sections
   if (!isProjectBased) {
@@ -1696,27 +1667,6 @@ export function buildCacheableCurriculumPrompt(
   const trainingConfig = params.goalType ? getTrainingConfig(params.goalType) : undefined;
   const trainingOverride = trainingConfig?.promptOverrides.skeleton || '';
 
-  // Gap-first learning: inject assessment context into prompt
-  const gapContext = params.gapProfile?.gaps?.length
-    ? `\nGAP ANALYSIS (from assessment):
-The student has these specific knowledge gaps:
-${params.gapProfile.gaps.map((g) => `- [${g.severity.toUpperCase()}] ${g.category}: ${g.description} (evidence: ${g.evidence})`).join('\n')}
-
-Strengths identified:
-${params.gapProfile.strengths?.map((s) => `- ${s.category}: ${s.description}`).join('\n') || '(none identified)'}
-
-Detected level from assessment: ${params.gapProfile.detectedLevel}
-
-${params.microLessonMode ? `MICRO-LESSON MODE: Dense 1-${params.durationDays} day curriculum focused on "${params.learnerPrefs?.selectedDirection || params.skillName}".
-- Structure content around the user's chosen DIRECTION — this is the primary focus
-- Use identified gaps to prioritize which aspects of the direction to cover first
-- Content: quiz-based task1 + video + reflection only
-- NO intensive practice, NO open tasks
-- Each day's quiz should teach concepts relevant to the direction, addressing gaps where they overlap
-- Day titles should reference the direction, not just the gaps
-- KEEP OUTPUT CONCISE: titles <10 words, subtitles <15 words, teasers <25 words, 3-4 skills per day, bossProjects:[]` : `Use these gaps to prioritize and focus the curriculum content. Days should emphasize areas where the student has gaps.`}`
-    : '';
-
   const dynamicPart = `Generate ${params.durationDays}-day curriculum skeleton for "${params.skillName}".
 Type: ${params.skillType} | Level: ${params.skillLevel} | ${time.totalMinutes}min/day (${time.mode})
 ${params.suggestedLanguage ? `Language: ${params.suggestedLanguage}` : ''}
@@ -1725,7 +1675,6 @@ ${params.goalType && params.goalType !== 'curriculum' ? `Goal Type: ${params.goa
 ${trainingOverride || structureInstructions}
 ${learnerContext}
 ${skillGuidance}
-${gapContext}
 
 ${skeletonLevelGuidance}
 
@@ -2017,8 +1966,7 @@ export function buildDeferredLightweightPrompt(
   const lang = params.targetLanguage || 'target language';
   const langHasTones = params.targetLanguage ? hasTones(params.targetLanguage) : false;
 
-  // Gap sessions skip openTask (focused micro-lesson flow)
-  const includeOpenTask = !isProjectBased && !params.isGapSession;
+  const includeOpenTask = !isProjectBased;
 
   // Build open task instructions for practice-based curricula (skip for gap sessions)
   const openTaskInstructions = includeOpenTask

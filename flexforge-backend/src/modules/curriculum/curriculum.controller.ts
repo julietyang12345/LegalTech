@@ -15,7 +15,7 @@ import { SkillDetectorService } from './services/skill-detector.service';
 import { UserService } from '../user/user.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { GenerateCurriculumDto } from './dto/generate-curriculum.dto';
-import { GenerateAssessmentDto, AnalyzeGapsDto } from './dto/assessment.dto';
+
 import {
   GenerateCurriculumWithCacheDto,
   RegenerateCurriculumDto,
@@ -174,69 +174,6 @@ export class CurriculumController {
     } catch (error) {
       throw new BadRequestException(
         error.message || 'Failed to get AI tutor response',
-      );
-    }
-  }
-
-  // ==========================================================================
-  // GAP-FIRST LEARNING: Assessment Endpoints
-  // ==========================================================================
-
-  /**
-   * POST /api/v1/curriculum/generate-assessment
-   * Generate an open-ended assessment scenario for gap detection
-   */
-  @Post('generate-assessment')
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
-  async generateAssessment(
-    @Body() body: GenerateAssessmentDto,
-    @CurrentUser() user: User,
-  ) {
-    try {
-      const result =
-        await this.curriculumService.generateAssessmentScenario(body);
-
-      return {
-        message: 'Assessment scenario generated',
-        scenario: result.scenario,
-        instructions: result.instructions,
-        timeEstimateMinutes: result.timeEstimateMinutes,
-        metadata: {
-          tokensUsed: result.tokensUsed,
-          cost: result.cost,
-        },
-      };
-    } catch (error) {
-      throw new BadRequestException(
-        error.message || 'Failed to generate assessment scenario',
-      );
-    }
-  }
-
-  /**
-   * POST /api/v1/curriculum/analyze-gaps
-   * Analyze user's response to detect knowledge gaps
-   */
-  @Post('analyze-gaps')
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
-  async analyzeGaps(
-    @Body() body: AnalyzeGapsDto,
-    @CurrentUser() user: User,
-  ) {
-    try {
-      const result = await this.curriculumService.analyzeGaps(body);
-
-      return {
-        message: 'Gap analysis complete',
-        gapProfile: result.gapProfile,
-        metadata: {
-          tokensUsed: result.tokensUsed,
-          cost: result.cost,
-        },
-      };
-    } catch (error) {
-      throw new BadRequestException(
-        error.message || 'Failed to analyze gaps',
       );
     }
   }

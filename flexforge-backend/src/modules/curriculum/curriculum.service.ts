@@ -699,16 +699,8 @@ Return JSON only:
     const effectiveLanguage =
       dto.selectedLanguage || skillDetection.suggestedLanguage;
 
-    // For micro-lesson mode, cap duration at 3 days (direction + gap focused)
-    let effectiveDurationDays = dto.durationDays;
-    let effectiveHoursPerDay = dto.hoursPerDay;
-    if (dto.microLessonMode) {
-      effectiveDurationDays = Math.min(3, effectiveDurationDays);
-      effectiveHoursPerDay = Math.min(effectiveHoursPerDay, 0.5); // Shorter sessions for micro-lessons
-      this.logger.log(
-        `📐 Micro-lesson mode: ${effectiveDurationDays} days, ${effectiveHoursPerDay}h/day`,
-      );
-    }
+    const effectiveDurationDays = dto.durationDays;
+    const effectiveHoursPerDay = dto.hoursPerDay;
 
     const { staticPart, dynamicPart, userPrompt } =
       buildCacheableCurriculumPrompt({
@@ -724,8 +716,6 @@ Return JSON only:
         learnerPrefs,
         customSections: skillDetection.customSections,
         goalType: dto.goalType,
-        gapProfile: dto.gapProfile,
-        microLessonMode: dto.microLessonMode,
       });
 
     // Step 4: Generate curriculum OVERVIEW with AI (Phase 1) - with prompt caching
@@ -836,8 +826,6 @@ Return JSON only:
       proficiencyLevel: skillDetection.proficiencyLevel,
       // Training mode goal type
       goalType: dto.goalType,
-      // Gap session: micro-lesson mode (skip intensive practice + openTask)
-      isGapSession: !!dto.microLessonMode,
     };
 
     // All days are skeletons - full content generated on-demand when user starts each day
@@ -2003,16 +1991,9 @@ Return JSON only:
       improvementAreas,
       lessOfAreas,
       previousDayReflection,
-      // Gap session flag
-      isGapSession: curriculum.metadata.isGapSession,
     };
 
-    // Gap sessions (micro-lesson mode): skip intensive practice for practice-based,
-    // skip openTask for all gap sessions. Only generate reflection via lightweight call.
-    const isGapSession = !!curriculum.metadata.isGapSession;
-
     // Pass context to deferred prompt builder for unified personalization
-    // For gap practice-based sessions, this returns a reflection-only prompt
     const { systemPrompt, userPrompt } = buildDayDetailDeferredPrompt(
       params,
       ctx,
@@ -2024,11 +2005,10 @@ Return JSON only:
       buildDeferredLightweightPrompt(params, ctx);
 
     // Run BOTH AI calls in parallel: Sonnet (task1/bossMilestone) + Haiku (reflection/openTask)
-    // Skip Sonnet when prompt builder returns empty (e.g., gap practice sessions — no intensive practice)
     const skipSonnetCall = !userPrompt || !systemPrompt;
 
     this.logger.log(
-      `🚀 Generating Day ${dayNumber} DEFERRED content${isGapSession ? ' (gap session)' : ''} (${skipSonnetCall ? 'Haiku only' : 'Sonnet + Haiku'})`,
+      `🚀 Generating Day ${dayNumber} DEFERRED content (${skipSonnetCall ? 'Haiku only' : 'Sonnet + Haiku'})`,
     );
 
     const sonnetPromise = skipSonnetCall
@@ -2364,66 +2344,12 @@ Return JSON only:
       improvementAreas,
       lessOfAreas,
       previousDayReflection,
-      isGapSession: curriculum.metadata.isGapSession,
     };
-
-    const isGapSession = !!curriculum.metadata.isGapSession;
 
     const { systemPrompt, userPrompt } = buildDayDetailDeferredPrompt(
       params,
       ctx,
     );
-
-    // Always run Sonnet for intensive practice + boss milestone
-    const skipSonnetCallStream = false;
-
-    if (skipSonnetCallStream) {
-      this.logger.log(`⏭️ Day ${dayNumber} DEFERRED skipping Sonnet (gap practice session - streaming)`);
-
-      // Only run lightweight call for reflection
-      const { systemPrompt: lightSystemPrompt, userPrompt: lightUserPrompt } =
-        buildDeferredLightweightPrompt(params, ctx);
-
-      const lightResponse = await this.aiService.routeRequest(
-        AITask.LIGHTWEIGHT_CONTENT,
-        lightUserPrompt,
-        lightSystemPrompt,
-      ).catch((error) => {
-        this.logger.warn(`⚠️ Day ${dayNumber} lightweight content failed: ${error.message}`);
-        return null;
-      });
-
-      const deferredContent: any = {};
-
-      if (lightResponse) {
-        try {
-          const cleaned = lightResponse.content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-          const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
-            if (parsed.reflection) {
-              deferredContent.reflection = parsed.reflection;
-              yield { event: CurriculumService.DEFERRED_STREAM_EVENTS.REFLECTION, data: parsed.reflection };
-            }
-          }
-        } catch (e) {
-          this.logger.warn(`⚠️ Day ${dayNumber} lightweight parse failed: ${e.message}`);
-        }
-      }
-
-      await this.cacheService.setDayContent(cacheKey, deferredContent);
-
-      yield {
-        event: CurriculumService.DEFERRED_STREAM_EVENTS.COMPLETE,
-        data: {
-          deferredContent,
-          tokensUsed: lightResponse?.tokensUsed || 0,
-          cost: lightResponse?.cost || 0,
-          fromCache: false,
-        },
-      };
-      return;
-    }
 
     // Stream from Anthropic
     let fullContent = '';
@@ -3580,436 +3506,4 @@ Return JSON only:
     };
   }
 
-  // ==========================================================================
-  // GAP-FIRST LEARNING: Assessment & Gap Detection
-  // ==========================================================================
-
-  /**
-   * Get scenario design guidance based on goal type.
-   */
-  private getScenarioGuidanceForGoalType(goalType?: string): {
-    systemFraming: string;
-    scenarioStyle: string;
-    scenarioJsonHint: string;
-  } {
-    if (goalType === 'project') {
-      return {
-        systemFraming: `You are an expert technical assessor. Generate a focused coding task that reveals what someone can actually build. The task should be small enough to implement in ~5 minutes but complex enough to expose real gaps — error handling, edge cases, correct logic, and code quality.
-
-The key insight: asking someone to WRITE CODE reveals far more than asking them to describe their approach. Can they produce code that would actually run? Do they handle the unhappy path? Do they write readable, correct logic — or does it look right but break on edge cases?
-
-CRITICAL: The scenario MUST ask the user to write actual code (a function, module, handler, etc.) — not just describe an approach. Include specific inputs/outputs or a clear contract so correctness is verifiable.`,
-        scenarioStyle: `SCENARIO STYLE: Present a focused coding task — implement a function, fix a bug, write a handler, build a small module. Give specific requirements: what the code should accept, what it should return, and 1-2 edge cases it must handle. Keep scope small (one function or one small module) but include enough real-world messiness (null inputs, concurrent access, malformed data, error propagation) that a naive implementation would break.
-The ideal response would: write working code that handles the stated requirements AND the edge cases, with clear structure and correct logic.`,
-        scenarioJsonHint: `"scenario": "A focused coding task (2-4 sentences) with specific inputs/outputs and 1-2 tricky edge cases. Ask them to WRITE the actual code, not just describe an approach. Include enough context that correctness is verifiable.",
-  "instructions": "Write the code for this task. Include error handling and edge cases. Explain any key decisions briefly."`,
-      };
-    }
-
-    if (goalType === 'interview') {
-      return {
-        systemFraming: `You are an expert interview coach. Generate a coding interview problem that requires writing actual code. The problem should test algorithm design, correct implementation, edge case handling, and complexity reasoning.
-
-The key insight: in a real coding interview, you must produce working code — not just describe an approach. Can the candidate write a function that actually handles all inputs correctly? Do they consider edge cases in their implementation, not just mention them?
-
-CRITICAL: The scenario MUST ask for actual code with clear input/output contracts. Include example inputs/outputs so correctness is verifiable.`,
-        scenarioStyle: `SCENARIO STYLE: Present a coding interview problem — an algorithm, data structure manipulation, or practical coding task. Give specific function signatures, example inputs/outputs, and constraints (time/space or edge cases). Keep it solvable in 5-10 minutes but non-trivial enough that a naive solution would miss edge cases.
-The ideal response would: write working code with correct logic, handle edge cases, and briefly explain their time/space complexity.`,
-        scenarioJsonHint: `"scenario": "A coding interview problem (2-4 sentences) with a clear function signature, example inputs/outputs, and constraints. Ask them to WRITE the code, not just explain their approach.",
-  "instructions": "Write the code to solve this problem. Handle edge cases and briefly state the time/space complexity."`,
-      };
-    }
-
-    if (goalType === 'ai_builder') {
-      return {
-        systemFraming: `You are an expert AI systems assessor. Generate a task that reveals how well someone can design and ship production AI workflows — not just call an API. The task should require the FULL pipeline: prompt design, evaluation strategy, guardrails, monitoring, data quality, and cost/latency reasoning.
-
-The key insight: a junior AI builder thinks "call the API and parse the output." A senior one thinks about eval (how do I know it works?), guardrails (PII, prompt injection, policy), monitoring (drift, failure rates), data grounding (is the context accurate?), and cost/latency tradeoffs (when to use a cheaper model, when to cache, when to add a fallback).
-
-Calibration signal: reward choosing the simplest pipeline that meets the requirements. Over-engineering with unnecessary agents/chains is a junior signal. So is ignoring eval entirely.`,
-        scenarioStyle: `SCENARIO STYLE: Present a task where the user must design an AI-powered system for a realistic use case with real constraints (accuracy requirements, latency SLAs, sensitive data, cost budget, scale). The scenario MUST force decisions about evaluation, safety/guardrails, and operational concerns — not just prompt design.
-The ideal response would: design the prompt/chain, define an eval plan, add guardrails for safety/policy, plan monitoring for drift/failures, reason about data quality/grounding, and make cost/latency tradeoffs with fallback modes.`,
-        scenarioJsonHint: `"scenario": "A realistic AI-building task (2-4 sentences) with constraints that force decisions about eval, safety, monitoring, and cost — not just 'build a chatbot.' Include data sensitivity, accuracy requirements, or scale.",
-  "instructions": "Brief instructions (e.g., 'Design the system: prompts/chains, how you'd evaluate it works, guardrails for safety, how you'd monitor it in production, and cost/latency tradeoffs')"`,
-      };
-    }
-
-    // Default: general/curriculum — coding task if skill sounds technical, artifact otherwise
-    return {
-      systemFraming: `You are an expert skills assessor. Determine whether the skill is a CODING/PROGRAMMING skill or a NON-CODING skill.
-
-For CODING skills (programming languages, frameworks, libraries, databases, DevOps, etc.):
-Generate a focused coding task that asks the person to WRITE actual code — a function, component, query, config, or script. The task should be small enough to complete in ~5 minutes but require correct logic, edge case handling, and working code. Include specific inputs/outputs so correctness is verifiable.
-
-For NON-CODING skills (leadership, design, writing, marketing, soft skills, etc.):
-Generate a scenario that asks the person to produce a concrete work artifact — a plan, proposal, memo, or recommendation. The artifact format makes omissions structurally visible.
-
-The key insight: for coding skills, whether someone's code would actually RUN and produce correct output reveals far more than their conceptual description. For non-coding skills, what someone OMITS from a structured artifact reveals more than what they get wrong.`,
-      scenarioStyle: `SCENARIO STYLE:
-For CODING skills: Present a focused coding task — implement a function, write a query, build a component, fix a bug. Give specific requirements with inputs/outputs and 1-2 edge cases. The user must write actual working code.
-For NON-CODING skills: Present a realistic situation requiring a concrete artifact (plan, proposal, recommendation) with real constraints.
-The ideal coding response would: write working code that handles requirements AND edge cases with clear, correct logic.
-The ideal non-coding response would: produce a structured artifact addressing constraints, tradeoffs, and failure modes.`,
-      scenarioJsonHint: `"scenario": "For coding skills: a focused coding task (2-4 sentences) with specific inputs/outputs and edge cases, asking them to WRITE code. For non-coding skills: a realistic situation requiring a concrete artifact. Include enough context that a generic answer is obviously incomplete.",
-  "instructions": "For coding: 'Write the code for this task. Handle edge cases.' For non-coding: 'Write a brief plan covering your approach, constraints, risks, and success criteria.'"`,
-    };
-  }
-
-  private getAnalysisFraming(goalType?: string): string {
-    if (goalType === 'project') {
-      return `Your PRIMARY job is to evaluate the CODE this person wrote. Mentally execute it: would it actually run? Would it produce correct output for the stated requirements AND the edge cases?
-
-Key evaluation priorities (in order):
-1. CORRECTNESS: Trace through the code with the given inputs. Does it return the right results? Are there logic errors, off-by-one bugs, incorrect conditions, or wrong return values?
-2. EDGE CASES: Does it handle the specified edge cases, or would it crash/return wrong results on null, empty, boundary, or error inputs?
-3. ERROR HANDLING: Does it fail gracefully or silently break?
-4. STRUCTURE: Is the code readable and well-organized?
-5. COMPLETENESS: Did they implement everything the task asked for?
-
-If the user wrote a description/approach instead of actual code, score code_correctness as 1 and note that they didn't write code as requested.`;
-    }
-    if (goalType === 'interview') {
-      return `Your PRIMARY job is to evaluate the CODE this person wrote as if you were an interviewer. Mentally execute it with the example inputs: does it produce the correct outputs?
-
-Key evaluation priorities (in order):
-1. CORRECTNESS: Trace through the code step by step. Does it work for the provided examples? Does the logic flow correctly?
-2. EDGE CASES: Does it handle edge inputs (empty, single element, duplicates, negatives, large values)?
-3. ALGORITHM: Is the approach efficient enough for the stated constraints? Is there a clearly better approach they missed?
-4. COMPLEXITY: Did they state the correct time/space complexity?
-5. CLARITY: Could an interviewer follow the code easily?
-
-If the user only described an approach without writing code, score code_correctness as 1.`;
-    }
-    if (goalType === 'ai_builder') {
-      return `Your PRIMARY job is to evaluate how this person designs AI systems for production. Look for the FULL pipeline — not just prompt design. An experienced AI builder naturally addresses evaluation (how do I know it works?), guardrails (PII, injection, policy), monitoring (drift, failures), data quality (grounding, freshness), and cost/latency tradeoffs. A beginner focuses only on "call the API."
-
-Calibration note: reward choosing the simplest pipeline that meets requirements. Over-engineering with unnecessary agents/chains is as much a gap as ignoring eval entirely.`;
-    }
-    return `Your PRIMARY job is to evaluate this person's response. If they wrote CODE, mentally execute it: would it run and produce correct output? Evaluate correctness, edge case handling, and code quality. If they wrote a NON-CODE artifact (plan, proposal, recommendation), evaluate structural completeness — what they omitted reveals more than what they got wrong.
-
-For code responses: trace through the logic with concrete inputs. Flag logic errors, unhandled edge cases, and code that looks right but would break.
-For non-code responses: look for missing structural sections, unaddressed constraints, and absent risk reasoning.`;
-  }
-
-  /**
-   * Generate an assessment scenario for a skill.
-   * If previousGaps provided (re-test), probes those specific gaps.
-   */
-  async generateAssessmentScenario(params: {
-    skillName: string;
-    goalType?: string;
-    skillLevel?: string;
-    previousGaps?: Array<{ category: string; description: string }>;
-  }): Promise<{
-    scenario: string;
-    instructions: string;
-    timeEstimateMinutes: number;
-    tokensUsed: number;
-    cost: number;
-  }> {
-    this.logger.log(
-      `🎯 Generating assessment scenario for: ${params.skillName}`,
-    );
-
-    const previousGapsContext = params.previousGaps?.length
-      ? `\nThis is a RE-TEST. The student previously had these gaps:
-${params.previousGaps.map((g) => `- ${g.category}: ${g.description}`).join('\n')}
-
-CRITICAL RE-TEST REQUIREMENTS:
-1. At least 50% of the scenario MUST directly target the gap areas listed above. Structure the task so that a correct response REQUIRES demonstrating competence in those specific weak areas.
-2. The remaining portion should cover general dimensions to check for overall growth.
-3. Generate a DIFFERENT scenario from the previous round — do NOT reuse the same situation, but DO probe the same gap categories through a new context.`
-      : '';
-
-    // Get the rubric dimensions so the scenario naturally probes them
-    const rubric = this.getAssessmentRubric(params.goalType, params.skillName);
-    const dimensionNames = rubric.map((d) => d.label).join(', ');
-
-    const { systemFraming, scenarioStyle, scenarioJsonHint } =
-      this.getScenarioGuidanceForGoalType(params.goalType);
-
-    const systemPrompt = `${systemFraming}
-
-The response will be evaluated on these dimensions: ${dimensionNames}
-Design the scenario so that addressing ALL these dimensions would require genuine expertise, while a surface-level answer would miss most of them.
-
-${scenarioStyle}
-
-Return valid JSON only.`;
-
-    const userPrompt = `Generate an assessment scenario for: "${params.skillName}"
-${params.skillLevel ? `Self-reported level: ${params.skillLevel}` : ''}
-${params.goalType ? `Goal type: ${params.goalType}` : ''}
-${previousGapsContext}
-
-Return JSON:
-{
-  ${scenarioJsonHint},
-  "timeEstimateMinutes": 5
-}`;
-
-    const response = await this.aiService.routeRequest(
-      AITask.LIGHTWEIGHT_CONTENT,
-      userPrompt,
-      systemPrompt,
-    );
-
-    let result: any;
-    try {
-      let cleanedContent = response.content
-        .replace(/```json\n?/g, '')
-        .replace(/```\n?/g, '')
-        .trim();
-      const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) cleanedContent = jsonMatch[0];
-      result = JSON.parse(cleanedContent);
-    } catch (error) {
-      this.logger.error('❌ Failed to parse assessment scenario:', error.message);
-      throw new BadRequestException('Failed to generate assessment scenario');
-    }
-
-    this.logger.log(`✅ Assessment scenario generated. Tokens: ${response.tokensUsed}`);
-    return {
-      scenario: result.scenario,
-      instructions: result.instructions,
-      timeEstimateMinutes: result.timeEstimateMinutes || 5,
-      tokensUsed: response.tokensUsed,
-      cost: response.cost,
-    };
-  }
-
-  /**
-   * Get rubric dimensions based on goal type / skill domain.
-   * Each goal type has specific structural dimensions to evaluate.
-   */
-  private getAssessmentRubric(goalType?: string, skillName?: string): Array<{
-    id: string;
-    label: string;
-    description: string;
-  }> {
-    // Project Lab — code-focused rubric
-    if (goalType === 'project') {
-      return [
-        { id: 'code_correctness', label: 'Code Correctness', description: 'Would the code actually run and produce correct output for the stated requirements? Are there logic errors, syntax issues, or broken control flow?' },
-        { id: 'edge_case_handling', label: 'Edge Case Handling', description: 'Does the code handle the specified edge cases (null/empty inputs, boundary values, error states)? Or does it only work for the happy path?' },
-        { id: 'error_handling', label: 'Error Handling', description: 'Does the code handle failures gracefully — try/catch, validation, meaningful error messages — or does it silently break or crash?' },
-        { id: 'code_structure', label: 'Code Structure & Readability', description: 'Is the code well-organized, with clear naming, appropriate abstractions, and readable logic? Or is it a tangled mess that technically works?' },
-        { id: 'completeness', label: 'Completeness', description: 'Does the code address ALL parts of the task, or are requirements missing? Did they implement the full contract or only part of it?' },
-      ];
-    }
-
-    // Interview Prep — code-focused rubric
-    if (goalType === 'interview') {
-      return [
-        { id: 'code_correctness', label: 'Code Correctness', description: 'Would the code actually run and produce correct output for the given examples? Are there logic errors, off-by-one bugs, or broken control flow?' },
-        { id: 'edge_case_handling', label: 'Edge Case Handling', description: 'Does the code handle edge cases (empty input, single element, duplicates, negative numbers, overflow)? Or does it only work for the example inputs?' },
-        { id: 'algorithm_choice', label: 'Algorithm & Data Structure Choice', description: 'Did they choose an appropriate algorithm/data structure for the constraints? Is it efficient enough, or is there a clearly better approach?' },
-        { id: 'complexity_analysis', label: 'Complexity Analysis', description: 'Did they correctly state the time/space complexity of their solution? Is their analysis accurate?' },
-        { id: 'code_clarity', label: 'Code Clarity', description: 'Is the code readable with clear variable names and logical structure? Could an interviewer follow the logic easily?' },
-      ];
-    }
-
-    // AI Builder rubric
-    if (goalType === 'ai_builder') {
-      return [
-        { id: 'prompt_design', label: 'Prompt & Chain Design', description: 'Did they design clear prompts and break complex tasks into appropriate steps/chains?' },
-        { id: 'evaluation_plan', label: 'Evaluation Plan', description: 'Did they define how to measure whether the system works — test cases, success criteria, or eval metrics?' },
-        { id: 'guardrails_safety', label: 'Guardrails & Safety', description: 'Did they address PII handling, prompt injection, content policy, or other safety/security concerns?' },
-        { id: 'monitoring_drift', label: 'Monitoring & Drift', description: 'Did they plan for production monitoring — failure rates, output drift, quality degradation over time?' },
-        { id: 'data_grounding', label: 'Data Quality & Grounding', description: 'Did they consider data freshness, retrieval quality, hallucination mitigation, or context accuracy?' },
-        { id: 'cost_latency', label: 'Cost & Latency Tradeoffs', description: 'Did they reason about model selection, caching, fallback modes, or when to use cheaper/faster alternatives?' },
-      ];
-    }
-
-    // Default / Curriculum rubric — code correctness for coding skills, artifact quality for others
-    return [
-      { id: 'code_correctness', label: 'Correctness', description: 'For code: would it run and produce correct output? Trace through the logic. For non-code: does the artifact address the core requirements accurately?' },
-      { id: 'edge_case_handling', label: 'Edge Cases & Error Handling', description: 'For code: does it handle edge inputs, nulls, errors without crashing? For non-code: did they consider what could go wrong, failure modes, or exceptions?' },
-      { id: 'completeness', label: 'Completeness', description: 'Did they address ALL parts of the task? Are requirements missing or only partially implemented?' },
-      { id: 'structure_quality', label: 'Structure & Clarity', description: 'For code: readable, well-named, logically organized? For non-code: clearly structured with reasoning explained?' },
-      { id: 'depth_calibration', label: 'Depth Calibration', description: 'Did they go deep where it matters and keep it simple where appropriate? Over-engineering trivial parts and under-engineering critical ones are both gaps.' },
-    ];
-  }
-
-  /**
-   * Analyze a user's open-ended response using rubric-based structural scoring.
-   * Each dimension scored 1-5 with specific gap analysis and examples.
-   * Includes microLessonPoints for the weakest dimensions — no separate API call needed.
-   */
-  async analyzeGaps(params: {
-    skillName: string;
-    scenario: string;
-    userResponse: string;
-    goalType?: string;
-    assessmentRound?: number;
-  }): Promise<{
-    gapProfile: {
-      gaps: Array<{
-        category: string;
-        description: string;
-        severity: 'high' | 'medium' | 'low';
-        evidence: string;
-      }>;
-      strengths: Array<{
-        category: string;
-        description: string;
-      }>;
-      dimensions: Array<{
-        id: string;
-        name: string;
-        score: number;
-        gap?: string;
-        example?: string;
-      }>;
-      overallScore: number;
-      microLessonPoints: string[];
-      detectedLevel: string;
-      assessmentRound: number;
-      scenario: string;
-      userResponse: string;
-    };
-    tokensUsed: number;
-    cost: number;
-  }> {
-    this.logger.log(`🔍 Analyzing gaps for: ${params.skillName} (goalType: ${params.goalType || 'curriculum'})`);
-
-    const rubric = this.getAssessmentRubric(params.goalType, params.skillName);
-    const dimensionInstructions = rubric
-      .map((d) => `${d.id}: ${d.description}`)
-      .join('\n');
-
-    const evaluationFraming = this.getAnalysisFraming(params.goalType);
-
-    const systemPrompt = `You are a structural evaluator. Score this response on specific dimensions.
-
-${evaluationFraming}
-
-Score each dimension 1-5:
-${dimensionInstructions}
-
-For EACH dimension, respond with:
-- score (1-5): 1=absent, 2=superficial mention, 3=addressed but incomplete, 4=solid, 5=exceptional
-- gap: what's specifically missing (if score < 4)
-- example: how they could have addressed this gap in THIS scenario
-
-Also provide:
-- gaps: structural gaps as category/description/severity/evidence (derive severity from dimension scores: 1-2=high, 3=medium, 4-5=low or none)
-- strengths: what they did well
-- microLessonPoints: 2-3 targeted tips for the user's weakest dimensions (specific to THIS scenario, not generic advice)
-- overallScore: weighted average of dimension scores
-- detectedLevel: beginner (avg < 2.5) / intermediate (2.5-3.5) / advanced (> 3.5)
-
-Be encouraging but honest. Do NOT rewrite the user's answer. Only evaluate and point out structural gaps.
-
-Return valid JSON only.`;
-
-    const userPrompt = `Skill: "${params.skillName}"
-${params.goalType ? `Goal type: ${params.goalType}` : ''}
-
-SCENARIO:
-${params.scenario}
-
-USER'S RESPONSE:
-${params.userResponse}
-
-Return JSON:
-{
-  "dimensions": [
-    {
-      "name": "${rubric[0].id}",
-      "score": 3,
-      "gap": "what's specifically missing",
-      "example": "how they could have addressed this in THIS scenario"
-    }
-  ],
-  "gaps": [
-    {
-      "category": "category_name",
-      "description": "Human-readable gap description",
-      "severity": "high|medium|low",
-      "evidence": "What was absent from their response"
-    }
-  ],
-  "strengths": [
-    {
-      "category": "category_name",
-      "description": "What they did well"
-    }
-  ],
-  "microLessonPoints": [
-    "Tip 1: specific actionable improvement for their weakest dimension",
-    "Tip 2: another specific tip"
-  ],
-  "overallScore": 3.2,
-  "detectedLevel": "beginner|intermediate|advanced"
-}`;
-
-    const response = await this.aiService.routeRequest(
-      AITask.LIGHTWEIGHT_CONTENT,
-      userPrompt,
-      systemPrompt,
-    );
-
-    let result: any;
-    try {
-      let cleanedContent = response.content
-        .replace(/```json\n?/g, '')
-        .replace(/```\n?/g, '')
-        .trim();
-      const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) cleanedContent = jsonMatch[0];
-      result = JSON.parse(cleanedContent);
-    } catch (error) {
-      this.logger.error('❌ Failed to parse gap analysis:', error.message);
-      throw new BadRequestException('Failed to analyze gaps');
-    }
-
-    // Ensure dimensions have proper structure and map rubric IDs
-    const dimensions = (result.dimensions || []).map((d: any, i: number) => {
-      const rawScore = Number(d.score);
-      if (isNaN(rawScore) || rawScore < 1 || rawScore > 5) {
-        this.logger.warn(`⚠️ Dimension "${d.name}" returned out-of-range score: ${d.score}`);
-      }
-      const score = Math.max(1, Math.min(5, rawScore || 1));
-      // Match AI-returned dimension to rubric by index or name
-      const rubricMatch = rubric.find((r) => r.id === d.name || r.label === d.name) || rubric[i];
-      return {
-        id: rubricMatch?.id || d.name,
-        name: rubricMatch?.label || d.name,
-        score,
-        gap: score < 4 ? d.gap : undefined,
-        example: score < 4 ? d.example : undefined,
-      };
-    });
-
-    // Calculate overallScore if AI didn't provide it
-    const overallScore = result.overallScore
-      || (dimensions.length > 0
-        ? Number((dimensions.reduce((sum: number, d: any) => sum + d.score, 0) / dimensions.length).toFixed(1))
-        : 1);
-
-    // Derive detectedLevel from overallScore if not provided
-    const detectedLevel = result.detectedLevel
-      || (overallScore > 3.5 ? 'advanced' : overallScore >= 2.5 ? 'intermediate' : 'beginner');
-
-    this.logger.log(
-      `✅ Gap analysis complete. ${dimensions.length} dimensions scored, overall: ${overallScore}/5, level: ${detectedLevel}. ${result.gaps?.length || 0} gaps, ${result.microLessonPoints?.length || 0} micro-lessons`,
-    );
-
-    return {
-      gapProfile: {
-        gaps: result.gaps || [],
-        strengths: result.strengths || [],
-        dimensions,
-        overallScore,
-        microLessonPoints: result.microLessonPoints || [],
-        detectedLevel,
-        assessmentRound: params.assessmentRound || 1,
-        scenario: params.scenario,
-        userResponse: params.userResponse,
-      },
-      tokensUsed: response.tokensUsed,
-      cost: response.cost,
-    };
-  }
 }

@@ -79,29 +79,6 @@ export class GenerateCurriculumDto {
   @IsEnum(GoalType)
   goalType?: GoalType;
 
-  // Gap-first learning: assessment results to inject into curriculum generation
-  @IsOptional()
-  gapProfile?: {
-    gaps: Array<{
-      category: string;
-      description: string;
-      severity: 'high' | 'medium' | 'low';
-      evidence: string;
-    }>;
-    strengths: Array<{
-      category: string;
-      description: string;
-    }>;
-    detectedLevel: string;
-    assessmentRound: number;
-    scenario: string;
-    userResponse: string;
-  };
-
-  // When true, generates a short 3-5 day micro-curriculum targeting specific gaps
-  @IsOptional()
-  microLessonMode?: boolean;
-
   // Pre-computed skill detection from estimate-days (avoids duplicate AI call)
   @IsOptional()
   skillDetection?: any;

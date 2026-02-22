@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { clsx } from 'clsx';
 import { Button } from "../common/Button";
-import { Sparkles, ArrowRight, BookOpen, Loader2, Briefcase, Cpu, MessageSquare, ChevronDown, Check, Brain } from "lucide-react";
+import { Sparkles, ArrowRight, BookOpen, Loader2, Briefcase, Cpu, MessageSquare, ChevronDown, Check } from "lucide-react";
 import { onboardingService } from "@/services/onboardingService";
 import { useAuthStore } from "@/stores/authStore";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -18,14 +18,13 @@ const MODE_ICONS: Record<string, React.ElementType> = {
 
 interface GoalInputStepProps {
   onSubmit: (goal: string) => void;
-  onAssess?: (goal: string) => void;
   isLoading?: boolean;
   initialValue?: string;
   goalType: GoalType | null;
   onGoalTypeChange: (goalType: GoalType) => void;
 }
 
-export function GoalInputStep({ onSubmit, onAssess, isLoading, initialValue, goalType, onGoalTypeChange }: GoalInputStepProps) {
+export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onGoalTypeChange }: GoalInputStepProps) {
   const [goal, setGoal] = useState(initialValue || "");
   const [isSkipping, setIsSkipping] = useState(false);
   const [isCheckingSessions, setIsCheckingSessions] = useState(true);
@@ -227,47 +226,16 @@ export function GoalInputStep({ onSubmit, onAssess, isLoading, initialValue, goa
           />
         </div>
 
-        {/* Two equally visible action buttons */}
-        {onAssess && goalType ? (
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              disabled={!goal.trim()}
-              onClick={() => onAssess(goal.trim())}
-              className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-brand-500 bg-brand-50
-                         text-sm font-semibold text-brand-600 hover:bg-brand-100 transition-all
-                         disabled:opacity-40 disabled:pointer-events-none"
-            >
-              <Brain className="w-4 h-4" />
-              Assess my level
-            </button>
-            <button
-              type="submit"
-              disabled={!goal.trim() || !goalType || isLoading}
-              className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-border bg-surface
-                         text-sm font-semibold text-content hover:border-brand-300 hover:bg-surface-secondary transition-all
-                         disabled:opacity-40 disabled:pointer-events-none"
-            >
-              {isLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <ArrowRight className="w-4 h-4" />
-              )}
-              {isLoading ? 'Loading...' : 'I know what to learn'}
-            </button>
-          </div>
-        ) : (
-          <Button
-            type="submit"
-            size="lg"
-            className="w-full"
-            isLoading={isLoading}
-            disabled={!goal.trim() || !goalType || isLoading}
-            rightIcon={<ArrowRight className="w-5 h-5" />}
-          >
-            {isLoading ? "Finding directions..." : prompts.button}
-          </Button>
-        )}
+        <Button
+          type="submit"
+          size="lg"
+          className="w-full"
+          isLoading={isLoading}
+          disabled={!goal.trim() || !goalType || isLoading}
+          rightIcon={<ArrowRight className="w-5 h-5" />}
+        >
+          {isLoading ? "Finding directions..." : prompts.button}
+        </Button>
 
         {/* Continue previous session */}
         {!isCheckingSessions && hasPreviousSessions && (

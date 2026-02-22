@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Calendar, Trophy, ChevronRight, Sparkles, Loader2, RefreshCw, Target, BookOpen, CheckCircle, X, Clock, Check, Lock, SkipForward, Brain, TrendingUp } from 'lucide-react';
+import { Play, Calendar, Trophy, ChevronRight, Sparkles, Loader2, RefreshCw, Target, BookOpen, CheckCircle, X, Clock, Check, Lock, SkipForward } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
@@ -10,7 +10,6 @@ import { Button, Card, StreakBadge, ProgressBar, GeneratingScreen } from '@/comp
 import { sessionService } from '@/services/sessionService';
 import { DayStatus, CurriculumDay, GoalType } from '@/types';
 import { getTrainingConfig, isTrainingMode } from '@/config/training-configs';
-import { getLatestAssessment } from '@/utils/assessmentUtils';
 
 // Loading steps for day content generation (~10 seconds total)
 const DAY_LOADING_STEPS = [
@@ -279,48 +278,6 @@ function SessionCompleteState({ nextDayTopic }: { nextDayTopic: string }) {
   );
 }
 
-// Assessment entry point card
-function AssessmentCard() {
-  const navigate = useNavigate();
-  const latestAssessment = getLatestAssessment();
-  const hasResults = !!latestAssessment;
-  const score = latestAssessment?.gapProfile?.overallScore;
-  const gapCount = latestAssessment?.gapProfile?.gaps?.length || 0;
-
-  return (
-    <Card variant="hover" className="bg-gradient-to-br from-purple-50 to-brand-50 dark:from-purple-950/20 dark:to-brand-950/20 border border-purple-100 dark:border-purple-800">
-      <div className="p-6">
-        <div className="flex items-center gap-2 mb-3">
-          <Brain className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-          <h3 className="font-semibold text-content">Find your next focus</h3>
-        </div>
-        <p className="text-sm text-content-secondary mb-4">
-          {hasResults
-            ? `Last assessment: ${score?.toFixed(1)}/5 with ${gapCount} gap${gapCount !== 1 ? 's' : ''} found`
-            : 'Take a 3\u20135 minute check to identify your highest-leverage gaps.'}
-        </p>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => navigate('/assess')}
-            className="px-3.5 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors"
-          >
-            {hasResults ? 'Retake' : 'Start assessment'}
-          </button>
-          {hasResults && (
-            <button
-              onClick={() => navigate('/assessment/results')}
-              className="px-3.5 py-2 text-sm font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-lg transition-colors flex items-center gap-1.5"
-            >
-              <TrendingUp className="w-3.5 h-3.5" />
-              View last results
-            </button>
-          )}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
 // No active session - prompt to create one
 function NoSessionState() {
   const navigate = useNavigate();
@@ -346,14 +303,6 @@ function NoSessionState() {
           rightIcon={<ChevronRight className="w-5 h-5" />}
         >
           Start a New Course
-        </Button>
-        <Button
-          size="xl"
-          variant="secondary"
-          onClick={() => navigate('/assess')}
-          leftIcon={<Brain className="w-5 h-5" />}
-        >
-          Find My Gaps
         </Button>
       </div>
 
@@ -731,15 +680,6 @@ export function TodayPage() {
             </p>
           </div>
         </Card>
-      </motion.div>
-
-      {/* Assessment card */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-      >
-        <AssessmentCard />
       </motion.div>
 
       {/* Curriculum Modal */}
