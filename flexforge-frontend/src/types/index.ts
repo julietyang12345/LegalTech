@@ -390,7 +390,7 @@ export interface CurriculumDay {
 
   // Task section: Quiz, Fill-in-the-Blank, Mixed, or Sections for concept reinforcement
   // (Coding practice moved to bossMilestone micro-steps)
-  task1?: QuizTask | FillBlankTask | MixedTask | SectionsTask;
+  task1?: QuizTask | MixedTask | SectionsTask;
   taskFormat?: TaskFormat;
 
   reflection?: {
@@ -723,7 +723,7 @@ export interface Task {
 
 // Task formats for concept reinforcement (code tasks moved to bossMilestone)
 // 'sections' is the new unified format that works for ALL skill types
-export type TaskFormat = 'quiz' | 'fillBlank' | 'mixed' | 'sections';
+export type TaskFormat = 'quiz' | 'mixed' | 'sections';
 
 // ============================================
 // Language Learning Exercise Types
@@ -735,18 +735,6 @@ export interface NewKnowledgeItem {
   meaning: string;        // Explanation or translation
   pronunciation?: string; // Optional pronunciation guide
   example?: string;       // Optional example usage
-}
-
-// Matching exercise - match words to definitions
-export interface MatchingPair {
-  term: string;        // Word in target language
-  definition: string;  // English meaning
-}
-
-export interface MatchingSection {
-  type: 'matching';
-  title: string;
-  pairs: MatchingPair[];  // 4-6 pairs to match
 }
 
 // Tone selection exercise - for tonal languages
@@ -776,30 +764,6 @@ export interface QuizSection {
   newKnowledge?: NewKnowledgeItem[];
 }
 
-// Fill in the blank for language learning (sentence completion)
-export interface LanguageFillBlankItem {
-  id: string;
-  sentence: string;         // Sentence with ___BLANK___
-  romanization?: string;    // Pronunciation of full sentence
-  translation: string;      // English translation with blank
-  blank: {
-    correctAnswers: string[];
-    hint?: string;
-  };
-  // Concept-teaching fields (task1 is core learning)
-  conceptTitle?: string;
-  explanation?: string;
-  realWorldContext?: string;
-}
-
-export interface LanguageFillBlankSection {
-  type: 'fillBlank';
-  title: string;
-  instructions: string;
-  items: LanguageFillBlankItem[];
-  newKnowledge?: NewKnowledgeItem[];
-}
-
 // Translation exercise
 export interface TranslationItem {
   id: string;
@@ -816,27 +780,6 @@ export interface TranslationSection {
   instructions: string;
   items: TranslationItem[];
   newKnowledge?: NewKnowledgeItem[];  // New vocabulary shown before exercises
-}
-
-// Sentence reordering exercise
-export interface ReorderItem {
-  id: string;
-  scrambled: string[];      // Words in scrambled order
-  correctOrder: string[];   // Correct word order
-  translation: string;      // English meaning
-  hint?: string;
-  // Concept-teaching fields (task1 is core learning)
-  conceptTitle?: string;
-  explanation?: string;
-  realWorldContext?: string;
-}
-
-export interface ReorderSection {
-  type: 'reorder';
-  title: string;
-  instructions: string;
-  items: ReorderItem[];
-  newKnowledge?: NewKnowledgeItem[];
 }
 
 // Typing exercise
@@ -947,41 +890,9 @@ export interface DebuggingSection {
   items: DebuggingItem[];
 }
 
-export interface OutputPredictionQuestion {
-  id: string;
-  code: string;
-  question?: string;
-  options: string[];
-  correctIndex: number;
-  explanation: string;
-  language?: string;
-  // Concept-teaching fields
-  conceptTitle?: string;
-  realWorldContext?: string;
-}
-
-export interface OutputPredictionSection {
-  type: 'outputPrediction';
-  title: string;
-  questions: OutputPredictionQuestion[];
-}
-
 // ============================================
 // Physical-Specific Sections (NEW)
 // ============================================
-
-export interface FormCheckItem {
-  id: string;
-  checkpoint: string;
-  description: string;
-  commonMistake?: string;
-}
-
-export interface FormCheckSection {
-  type: 'formCheck';
-  title: string;
-  items: FormCheckItem[];
-}
 
 export interface SafetyCheckItem {
   id: string;
@@ -994,32 +905,6 @@ export interface SafetyCheckSection {
   type: 'safetyCheck';
   title: string;
   items: SafetyCheckItem[];
-}
-
-// SequenceOrder reuses ReorderSection with different semantics
-
-// ============================================
-// Design-Specific Sections (NEW)
-// ============================================
-
-export interface DesignCritiqueItem {
-  id: string;
-  description: string;
-  question: string;
-  options: string[];
-  correctIndex: number;
-  principle: string;
-  explanation: string;
-  imageUrl?: string;
-  // Concept-teaching fields
-  conceptTitle?: string;
-  realWorldContext?: string;
-}
-
-export interface DesignCritiqueSection {
-  type: 'designCritique';
-  title: string;
-  items: DesignCritiqueItem[];
 }
 
 // Open-ended question for soft skills/leadership (scenario-based reflection)
@@ -1041,13 +926,10 @@ export interface OpenEndedSection {
 // Unified Task Section Type
 // ============================================
 
-// Union type for all task sections - universal + language + code + physical + design
+// Union type for all task sections - universal + language + code + physical
 export type TaskSection =
   // Universal sections (all skill types)
   | QuizSection
-  | MatchingSection
-  | ReorderSection
-  | LanguageFillBlankSection
   | OpenEndedSection
   // Language-specific sections
   | ToneSelectSection
@@ -1059,12 +941,8 @@ export type TaskSection =
   | CodeCompletionSection
   | DebuggingSection
   | AICodeReviewSection
-  | OutputPredictionSection
   // Physical-specific sections
-  | FormCheckSection
-  | SafetyCheckSection
-  // Design-specific sections
-  | DesignCritiqueSection;
+  | SafetyCheckSection;
 
 // Sections task format (unified format for ALL skill types)
 export interface SectionsTask {
@@ -1323,29 +1201,8 @@ export interface QuizTask {
   passingScore: number;       // e.g., 0.7 = 70%
 }
 
-export interface FillBlankItem {
-  id: string;
-  codeTemplate: string;       // Code with ___BLANK___ markers
-  blanks: {
-    id: string;
-    correctAnswers: string[]; // Multiple accepted answers
-    hint?: string;
-  }[];
-  explanation: string;
-}
-
-export interface FillBlankTask {
-  id: string;
-  title: string;
-  description: string;
-  estimatedMinutes: number;
-  format: 'fillBlank';
-  items: FillBlankItem[];     // 5-8 items
-  passingScore: number;
-}
-
 // Union type for all task formats
-export type TaskContent = Task | QuizTask | FillBlankTask | MixedTask | SectionsTask;
+export type TaskContent = Task | QuizTask | MixedTask | SectionsTask;
 
 
 // AI-generated setup instructions for StackBlitz/code sandbox
@@ -1473,7 +1330,7 @@ export interface Progress {
   sessionId: string;
   taskId: string;
   dayNumber: number;
-  taskType: 'task1' | 'practice' | 'boss' | 'bossMicroStep' | 'reflection' | 'quiz' | 'fillBlank';
+  taskType: 'task1' | 'practice' | 'boss' | 'bossMicroStep' | 'reflection' | 'quiz';
   completed: boolean;
   completedAt?: string;
   confidenceScore?: number;
@@ -1614,7 +1471,7 @@ export interface DayCoreContent {
     primeQuestions: string[];
   };
   video: VideoMatch;            // Conditional based on skill type
-  task1?: QuizTask | FillBlankTask | SectionsTask;  // Core learning activity (Duolingo-style)
+  task1?: QuizTask | SectionsTask;  // Core learning activity (Duolingo-style)
   foundationCards?: FoundationCard[];   // Legacy: kept for backward compat with cached data
   languageFoundationCards?: LanguageFoundationCard[]; // Legacy: kept for backward compat
   bossMilestone?: BossMilestone;    // Daily micro-step for boss project coding
@@ -1658,7 +1515,7 @@ export interface OpenTask {
 }
 
 export interface DayDeferredContent {
-  task1?: QuizTask | FillBlankTask | SectionsTask;  // Legacy: old cached data may have task1 here
+  task1?: QuizTask | SectionsTask;  // Legacy: old cached data may have task1 here
   task2?: Task;
   intensivePractice?: IntensivePractice;  // For practice-based learning
   openTask?: OpenTask;                     // Real-world practice challenge (practice-based)

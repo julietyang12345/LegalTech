@@ -52,8 +52,8 @@ export interface SkillDetectionResult {
 
   // Hybrid skill sections (when skill spans multiple categories)
   customSections?: {
-    task1: string[]; // e.g., ['quiz', 'outputPrediction', 'designCritique']
-    intensive: string[]; // e.g., ['codeCompletion', 'designCritique', 'quiz']
+    task1: string[]; // e.g., ['quiz', 'openEnded']
+    intensive: string[]; // e.g., ['codeCompletion', 'quiz']
   } | null;
 }
 
@@ -212,9 +212,9 @@ HYBRID SKILLS: Some skills span multiple categories.
 - Pick the PRIMARY category as skillType
 - Set customSections to mix exercise types from both categories
 - Example: "Data Visualization" = CODE primary + DESIGN elements
-  → customSections: {task1: ["quiz", "outputPrediction", "designCritique"], intensive: ["codeCompletion", "designCritique", "quiz"]}
+  → customSections: {task1: ["quiz", "openEnded"], intensive: ["codeCompletion", "quiz"]}
 
-Section types: Universal (quiz, matching, fillBlank) | CODE/AI_AGENT (outputPrediction, codeCompletion, debugging) | PHYSICAL (reorder, formCheck, safetyCheck) | DESIGN (designCritique)
+Section types: Universal (quiz, openEnded) | CODE/AI_AGENT (codeCompletion, debugging, aiCodeReview) | PHYSICAL (safetyCheck)
 
 COMPLEXITY:
 - BEGINNER: No prerequisites needed, foundational concepts

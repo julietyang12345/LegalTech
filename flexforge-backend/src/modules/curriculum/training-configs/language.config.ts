@@ -37,9 +37,9 @@ export const languageConfig: TrainingConfig = {
 - Day title = topic + context (e.g., "Polite Requests in Business Settings")
 - Skills = specific language subskills (e.g., ["modal verbs", "formal register", "email phrases"])
 - Progression: fundamentals → situational usage → professional fluency
-- Mix exercise types: quiz, matching, fillBlank, translation, reorder, typing, roleplay, rewrite
+- Mix exercise types: quiz, translation, typing, roleplay, rewrite
 - Professional context users: weight toward workplace roleplay, rewrite, translation
-- General/beginner users: balanced mix weighted toward quiz, matching, fillBlank, typing`,
+- General/beginner users: balanced mix weighted toward quiz, typing, translation`,
 
     dayCore: `LANGUAGE EXERCISE FORMAT:
 Generate language learning content with:
@@ -51,7 +51,7 @@ prePrompt:
 - Context for how today's language is used in real life
 
 task1 (sections format):
-- Use LANGUAGE_SECTION_REGISTRY section types: quiz, matching, toneSelect, fillBlank, translation, reorder, typing
+- Use LANGUAGE_SECTION_REGISTRY section types: quiz, toneSelect, translation, typing
 - ALSO include roleplay sections: realistic dialogue scenarios appropriate to level
   - Beginner: ordering food, asking directions, introducing yourself
   - Professional: weekly standup, client email, disagreement resolution

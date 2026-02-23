@@ -94,11 +94,6 @@ interface SessionState {
   // Streaming cleanup
   cleanupStream: () => void;
 
-  // Alternative task format actions
-  getAlternativeTaskFormat: (dayNumber: number, format: 'code' | 'quiz' | 'fillBlank') => Promise<any>;
-  alternativeTaskLoading: boolean;
-  alternativeTaskCache: Record<string, any>; // key: "day-format", value: task
-
   // Task progress actions (stepKey differentiates between quiz, conceptCheck, etc.)
   saveTaskProgress: (dayNumber: number, stepKey: string, progress: { answers: Record<string, number | null>; currentIndex: number; showResults: boolean }) => void;
   getTaskProgress: (dayNumber: number, stepKey: string) => { answers: Record<string, number | null>; currentIndex: number; showResults: boolean } | null;
@@ -173,8 +168,6 @@ export const useSessionStore = create<SessionState>()(
   taskProgress: {},
 
   // Alternative task format state
-  alternativeTaskLoading: false,
-  alternativeTaskCache: {},
 
   createSession: async (dto: CreateSessionDto) => {
     // Cleanup any active stream before creating new session
@@ -212,8 +205,6 @@ export const useSessionStore = create<SessionState>()(
         regenCount: 0,
         // Reset task progress for new session
         taskProgress: {},
-        alternativeTaskLoading: false,
-        alternativeTaskCache: {},
       }));
       return response.session;
     } catch (error: any) {
@@ -1157,14 +1148,6 @@ export const useSessionStore = create<SessionState>()(
         }
       });
 
-      // Remove all alternativeTaskCache entries for this day
-      const newAlternativeTaskCache = { ...state.alternativeTaskCache };
-      Object.keys(newAlternativeTaskCache).forEach((key) => {
-        if (key.startsWith(`${dayNumber}-`)) {
-          delete newAlternativeTaskCache[key];
-        }
-      });
-
       // Clear generated content fields so components show loading state
       // Keep prePrompt — it's from skeleton data (static) and prevents a UI flash
       const clearedCurrentDay = state.currentDay ? {
@@ -1186,7 +1169,6 @@ export const useSessionStore = create<SessionState>()(
 
       return {
         taskProgress: newTaskProgress,
-        alternativeTaskCache: newAlternativeTaskCache,
         // Reset step progress
         currentStep: 'prePrompt',
         completedSteps: [],
@@ -1226,55 +1208,6 @@ export const useSessionStore = create<SessionState>()(
 
   dismissRegenLimitModal: () => {
     set({ showRegenLimitModal: false });
-  },
-
-  // ═══════════════════════════════════════════════════
-  // ALTERNATIVE TASK FORMAT ACTIONS
-  // ═══════════════════════════════════════════════════
-
-  getAlternativeTaskFormat: async (dayNumber: number, format: 'code' | 'quiz' | 'fillBlank') => {
-    const { activeSession, alternativeTaskCache, currentDay } = get();
-    if (!activeSession) throw new Error('No active session');
-
-    // Check local cache first
-    const cacheKey = `${dayNumber}-${format}`;
-    if (alternativeTaskCache[cacheKey]) {
-      return alternativeTaskCache[cacheKey];
-    }
-
-    // Check if original task is already in this format
-    const originalTask = currentDay?.task1;
-    const originalFormat = (originalTask as any)?.format || 'code';
-    if (originalFormat === format && originalTask) {
-      return originalTask;
-    }
-
-    set({ alternativeTaskLoading: true });
-
-    try {
-      const response = await sessionService.getAlternativeTaskFormat(
-        activeSession.id,
-        dayNumber,
-        format,
-      );
-
-      // Cache the result locally
-      set((state) => ({
-        alternativeTaskLoading: false,
-        alternativeTaskCache: {
-          ...state.alternativeTaskCache,
-          [cacheKey]: response.task,
-        },
-      }));
-
-      return response.task;
-    } catch (error: any) {
-      set({
-        alternativeTaskLoading: false,
-        error: error.response?.data?.message || 'Failed to load alternative format',
-      });
-      throw error;
-    }
   },
 
   // ═══════════════════════════════════════════════════

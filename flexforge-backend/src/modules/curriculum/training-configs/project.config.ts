@@ -54,7 +54,7 @@ task1 (warm-up quiz):
 - Q1: Theory question testing understanding of today's concept
 - Q2-Q4: Application questions tied to today's build task at the user's current level
 - LAST QUESTION (stretch): One question ABOVE the user's current skill level — a harder scenario that pushes them to think deeper. For beginners: intermediate-level question. For intermediate: advanced-level question. For advanced: expert/edge-case question.
-- NO secondary sections (outputPrediction, fillBlank, etc.)
+- NO secondary sections (openEnded, etc.)
 
 bossMilestone:
 - Guide the user to produce a WORKING product step by step

@@ -67,29 +67,20 @@ interface CurriculumPromptParams {
 // ============================================
 
 // Section types available for each skill category (internal types)
-type UniversalSectionType =
-  | 'quiz'
-  | 'matching'
-  | 'fillBlank'
-  | 'openEnded';
-type SequenceSectionType = 'reorder'; // Only for skills where ordering matters (language, physical, some knowledge)
+type UniversalSectionType = 'quiz' | 'openEnded';
 type LanguageSectionType = 'toneSelect' | 'translation' | 'typing' | 'roleplay' | 'rewrite';
 type CodeSectionType =
   | 'codeCompletion'
   | 'debugging'
-  | 'aiCodeReview' // Review AI-generated code for bugs, security issues, assumptions
-  | 'outputPrediction';
-type PhysicalSectionType = 'formCheck' | 'safetyCheck';
-type DesignSectionType = 'designCritique';
+  | 'aiCodeReview';
+type PhysicalSectionType = 'safetyCheck';
 
 // Exported union type for use in other modules
 export type SectionType =
   | UniversalSectionType
-  | SequenceSectionType
   | LanguageSectionType
   | CodeSectionType
-  | PhysicalSectionType
-  | DesignSectionType;
+  | PhysicalSectionType;
 
 // Section registry: maps skill types to appropriate section combinations
 //
@@ -109,33 +100,33 @@ export const SECTION_REGISTRY: Record<
   }
 > = {
   [SkillType.CODE]: {
-    task1: ['quiz', 'outputPrediction', 'fillBlank'],
-    intensive: ['quiz', 'aiCodeReview', 'fillBlank'],
+    task1: ['quiz'],
+    intensive: ['quiz', 'aiCodeReview'],
     intensiveAdvanced: ['codeCompletion'],
   },
   [SkillType.PHYSICAL]: {
-    task1: ['quiz', 'reorder', 'matching'],
-    intensive: ['quiz', 'formCheck', 'reorder'],
+    task1: ['quiz'],
+    intensive: ['quiz', 'safetyCheck'],
   },
   [SkillType.KNOWLEDGE]: {
-    task1: ['quiz', 'matching', 'fillBlank', 'openEnded'],
-    intensive: ['quiz', 'fillBlank', 'reorder', 'openEnded'],
+    task1: ['quiz', 'openEnded'],
+    intensive: ['quiz', 'openEnded'],
   },
   [SkillType.DESIGN]: {
-    task1: ['quiz', 'designCritique', 'matching'],
-    intensive: ['quiz', 'designCritique', 'matching'],
+    task1: ['quiz'],
+    intensive: ['quiz'],
   },
   [SkillType.AI_AGENT]: {
-    task1: ['quiz', 'fillBlank', 'outputPrediction'],
-    intensive: ['quiz', 'aiCodeReview', 'fillBlank'],
+    task1: ['quiz'],
+    intensive: ['quiz', 'aiCodeReview'],
     intensiveAdvanced: ['codeCompletion'],
   },
 };
 
 // Language learning: toneSelect only included for tonal languages
 export const LANGUAGE_SECTION_REGISTRY = {
-  task1: ['quiz', 'matching', 'toneSelect'] as SectionType[],
-  intensive: ['fillBlank', 'translation', 'reorder', 'typing', 'roleplay', 'rewrite'] as SectionType[],
+  task1: ['quiz', 'toneSelect'] as SectionType[],
+  intensive: ['translation', 'typing', 'roleplay', 'rewrite'] as SectionType[],
 };
 
 /**
@@ -619,16 +610,6 @@ function buildLanguageTask1Template(lang: string, langHasTones: boolean): string
             {"id": "q1", "question": "What does this mean?", "audioText": "word/phrase in ${lang}", "options": ["meaning1", "meaning2", "meaning3", "meaning4"], "correctIndex": 0, "conceptTitle": "Concept Name", "explanation": "Key insight about this word/grammar.\\n\\nUsage details and examples.\\n\\nWhen to use in conversation.", "realWorldContext": "Common situation where you'd use this"},
             {"id": "q2", "question": "Select the correct translation", "options": ["A", "B", "C", "D"], "correctIndex": 0, "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.\\n\\nContext.", "realWorldContext": "Why this matters"}
           ]
-        },
-        {
-          "type": "matching",
-          "level": 2,
-          "title": "Match the Vocabulary",
-          "pairs": [
-            {"term": "word in ${lang}", "definition": "English meaning"},
-            {"term": "word in ${lang}", "definition": "English meaning"}
-          ],
-          "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "When to use this"
         }${langHasTones ? `,
         {
           "type": "toneSelect",
@@ -937,7 +918,6 @@ Use DIFFERENT scenarios than task1 (new contexts, different domains).`;
   // Shared builder for CODE and AI_AGENT (identical structure, different topic labels)
   const buildCodeLikeIntensive = (
     quizDesc: string,
-    fillBlankDesc: string,
     codeSnippetExample: string,
   ): string => {
     const base = `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
@@ -948,11 +928,10 @@ AVAILABLE TYPES:
    Each item: code (AI-generated with line numbers), context, issues array
    Each issue: {type, location (include code snippet like "${codeSnippetExample}"), severity, options (4 MCQ choices), correctIndex, explanation}
    Issue types: bug, security, assumption, scalability, hallucination, edge-case
-   TWO-STEP FLOW: User first selects the problematic line, then chooses WHY from options
-3. fillBlank (1 item) - ${fillBlankDesc}`;
+   TWO-STEP FLOW: User first selects the problematic line, then chooses WHY from options`;
     if (codeWritingEnabled) {
       return `${base}
-4. codeCompletion (1 item) - Complete partial code introducing NEW patterns/methods
+3. codeCompletion (1 item) - Complete partial code introducing NEW patterns/methods
 ${newKnowledgeNote}`;
     }
     return `${base}
@@ -963,7 +942,6 @@ ${newKnowledgeNote}`;
     case SkillType.CODE:
       return buildCodeLikeIntensive(
         'Questions on NEW coding concepts, patterns, and best practices not covered in task1',
-        'Complete code with NEW syntax/methods related to today\'s topic',
         'line 3: if (x === y)',
       );
 
@@ -983,11 +961,8 @@ AVAILABLE TYPES:
    - Environmental factors (weather, conditions)
    - Maintenance and care
    Choose question types that make sense for THIS skill - not all types apply to every project!
-2. formCheck (1 item) - Mixed checklist with BOTH technique checkpoints AND safety items (5-7 checklist items total)
-   - Include form/technique checkpoints (posture, grip, alignment, stance, etc.)
-   - Include safety checkpoints (protective gear, environment check, weight limits, etc.)
-   - Mix them together so users verify EVERYTHING before proceeding
-3. reorder (1 item) - Order steps for a NEW movement/task sequence
+2. safetyCheck (1 item) - True/false safety verification questions
+   Each item: {id, question, correctAnswer (boolean), explanation}
 ${newKnowledgeNote}`;
 
     case SkillType.KNOWLEDGE:
@@ -998,9 +973,7 @@ AVAILABLE TYPES:
 1. quiz (REQUIRED, 4-6 questions) - Questions requiring synthesis of NEW information not covered in task1
    For FACTUAL topics: questions testing recall and application of new facts
    For SOFT SKILLS/LEADERSHIP: complex scenarios with NEW variables
-2. fillBlank (1 item) - Statements introducing RELATED facts/concepts (factual) or NEW frameworks/models (soft skills)
-3. reorder (1 item) - Sequences from DIFFERENT contexts than task1
-4. openEnded (1 item) - Challenging scenario in a NEW domain
+2. openEnded (1 item) - Challenging scenario in a NEW domain
 ${newKnowledgeNote}`;
 
     case SkillType.DESIGN:
@@ -1008,14 +981,11 @@ ${newKnowledgeNote}`;
 
 AVAILABLE TYPES:
 1. quiz (REQUIRED, 4-6 questions) - Questions on ADVANCED design principles not covered in task1
-2. designCritique (1 item) - Evaluate designs using NEW principles/heuristics (3-4 critique points)
-3. matching (1 item) - Match NEW design concepts and terminology (4-5 pairs)
 ${newKnowledgeNote}`;
 
     case SkillType.AI_AGENT:
       return buildCodeLikeIntensive(
         'Questions on NEW AI/agent concepts, patterns, and best practices not covered in task1',
-        'Statements introducing NEW AI concepts/terminology',
         'line 3: response = api.call()',
       );
 
@@ -1024,8 +994,6 @@ ${newKnowledgeNote}`;
 
 AVAILABLE TYPES:
 1. quiz (REQUIRED, 4-6 questions) - Questions requiring NEW knowledge synthesis not covered in task1
-2. fillBlank (1 item) - Statements with NEW related terms
-3. matching (1 item) - Match NEW concepts to definitions
 ${newKnowledgeNote}`;
   }
 }
@@ -1073,54 +1041,30 @@ function getIntensiveSectionTemplate(
         ]
       }`;
 
-  const fillBlankTemplate = `{
-        "type": "fillBlank",
-        "title": "Complete the Statement",
-        "instructions": "Fill in the correct term",
-        "items": [
-          {
-            "id": "fb1",
-            "sentence": "Code with ___BLANK___ to complete",
-            "translation": "",
-            "blank": {"correctAnswers": ["answer"], "hint": "Hint"}
-          }
-        ]
-      }`;
-
   switch (skillType) {
     case SkillType.CODE:
     case SkillType.AI_AGENT:
-      // Default: aiCodeReview + fillBlank
-      // Advanced: + codeCompletion
       if (codeWritingEnabled) {
         return `[
       ${aiCodeReviewTemplate},
-      ${fillBlankTemplate},
       ${codeCompletionTemplate}
     ]`;
       }
       return `[
-      ${aiCodeReviewTemplate},
-      ${fillBlankTemplate}
+      ${aiCodeReviewTemplate}
     ]`;
 
     case SkillType.PHYSICAL:
       return `[
       {
-        "type": "formCheck",
-        "title": "Pre-Work Checklist",
+        "type": "safetyCheck",
+        "title": "Safety Verification",
         "items": [
           {
-            "id": "fc1",
-            "checkpoint": "Technique checkpoint (e.g., Grip position, Stance alignment)",
-            "description": "What to verify before proceeding",
-            "commonMistake": "Common error to avoid"
-          },
-          {
-            "id": "fc2",
-            "checkpoint": "Safety checkpoint (e.g., Protective gear on, Area clear)",
-            "description": "Safety item to verify",
-            "commonMistake": "What can go wrong if skipped"
+            "id": "sc1",
+            "question": "Safety question about proper technique/preparation?",
+            "correctAnswer": true,
+            "explanation": "Why this is important for safety"
           }
         ]
       },
@@ -1128,47 +1072,16 @@ function getIntensiveSectionTemplate(
         "type": "quiz",
         "title": "Practical Knowledge Check",
         "questions": [
-          // Mix different question types based on what's relevant to THIS specific skill:
           {"id": "q1", "question": "Estimation/calculation question...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."},
           {"id": "q2", "question": "Troubleshooting scenario...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."},
           {"id": "q3", "question": "Tool/material selection...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."},
           {"id": "q4", "question": "Best practice or technique...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."}
-          // Also consider: safety scenarios, code/permits, quality checks, cost/budget, environmental factors, maintenance, etc.
-        ]
-      },
-      {
-        "type": "reorder",
-        "title": "Order the Steps",
-        "instructions": "Put these steps in correct order",
-        "items": [
-          {
-            "id": "ro1",
-            "scrambled": ["step2", "step1", "step3"],
-            "correctOrder": ["step1", "step2", "step3"],
-            "translation": "Complete task sequence",
-            "hint": "Think about dependencies"
-          }
         ]
       }
     ]`;
 
     case SkillType.DESIGN:
       return `[
-      {
-        "type": "designCritique",
-        "title": "Design Critique",
-        "items": [
-          {
-            "id": "dc1",
-            "description": "Design scenario",
-            "question": "What would improve this design?",
-            "options": ["Option A", "Option B", "Option C", "Option D"],
-            "correctIndex": 0,
-            "principle": "Design Principle",
-            "explanation": "Why this is the best choice"
-          }
-        ]
-      },
       {
         "type": "quiz",
         "title": "Design Principles",
@@ -1181,48 +1094,12 @@ function getIntensiveSectionTemplate(
             "explanation": "Explanation"
           }
         ]
-      },
-      {
-        "type": "matching",
-        "title": "Match Design Concepts",
-        "pairs": [
-          {"id": "m1", "term": "Concept", "definition": "Definition"}
-        ]
       }
     ]`;
 
     case SkillType.KNOWLEDGE:
     default:
-      // AI chooses: factual → fillBlank+reorder+quiz, soft skills → fillBlank+quiz+openEnded
       return `[
-      {
-        "type": "fillBlank",
-        "title": "Fill in the Blanks",
-        "instructions": "Complete with the correct term",
-        "items": [
-          {
-            "id": "fb1",
-            "sentence": "Statement with ___BLANK___ to complete",
-            "translation": "",
-            "blank": {"correctAnswers": ["answer"], "hint": "Hint"}
-          }
-        ]
-      },
-      /* FOR FACTUAL TOPICS use reorder: */
-      {
-        "type": "reorder",
-        "title": "Order the Steps",
-        "instructions": "Put these in the correct order",
-        "items": [
-          {
-            "id": "ro1",
-            "scrambled": ["step2", "step1", "step3"],
-            "correctOrder": ["step1", "step2", "step3"],
-            "translation": "Complete sequence",
-            "hint": "Think about the logical order"
-          }
-        ]
-      },
       {
         "type": "quiz",
         "title": "Concept Check",
@@ -1235,8 +1112,7 @@ function getIntensiveSectionTemplate(
             "explanation": "Explanation"
           }
         ]
-      }
-      /* FOR SOFT SKILLS/LEADERSHIP use openEnded instead of reorder: */
+      },
       {
         "type": "openEnded",
         "title": "Apply Your Learning",
@@ -1292,24 +1168,18 @@ function buildPracticeBasedDeferredPrompt(
   const langFeatures = extractLangFeatures(params);
 
   // Calculated item counts for language learning sections
-  const fillBlankItems = `${Math.round(5 * levelGuidance.contentMultiplier)}-${Math.round(6 * levelGuidance.contentMultiplier)}`;
   const translationItems = `${Math.round(4 * levelGuidance.contentMultiplier)}-${Math.round(5 * levelGuidance.contentMultiplier)}`;
-  const reorderItems = `${Math.round(3 * levelGuidance.contentMultiplier)}-${Math.round(4 * levelGuidance.contentMultiplier)}`;
   const typingItems = `${Math.round(3 * levelGuidance.contentMultiplier)}-${Math.round(4 * levelGuidance.contentMultiplier)}`;
 
   // Language learning section instructions with specific item counts
-  // MUST match frontend interfaces: TranslationItem, LanguageFillBlankItem, ReorderItem, TypingItem
+  // MUST match frontend interfaces: TranslationItem, TypingItem
   const languageSectionInstructions = params.isLanguageLearning
     ? `LANGUAGE INTENSIVE SECTIONS (pick EXACTLY 2):
-1. fillBlank (${fillBlankItems} items) - Complete sentences with correct words/forms
-   Format: {id, sentence: "...___BLANK___...", romanization?: "pronunciation", translation: "English meaning", blank: {correctAnswers: [], hint?}}
-2. translation (${translationItems} items) - Translate between languages (both directions)
+1. translation (${translationItems} items) - Translate between languages (both directions)
    Format: {id, direction: "toTarget"|"toEnglish", prompt: "text to translate", romanization?: "for toEnglish", acceptedAnswers: [], hint?}
-3. reorder (${reorderItems} items) - Arrange scrambled words into correct sentence
-   Format: {id, scrambled: [], correctOrder: [], translation: "English meaning", hint?}
-4. typing (${typingItems} items) - Type what you see or hear
+2. typing (${typingItems} items) - Type what you see or hear
    Format: {id, prompt: "instruction", displayText?: "text to show", audioText?: "for TTS", acceptedAnswers: [], romanization?}${langFeatures.hasTones ? `
-5. toneSelect (3-4 items) - Hear word/phrase, select correct tone
+3. toneSelect (3-4 items) - Hear word/phrase, select correct tone
    Format: {id, audioText, prompt, options[], correctIndex, explanation}` : ''}
 
 IMPORTANT: Use "audioText" for TTS pronunciation in typing items.${langFeatures.hasTones ? ' Include tone markers.' : ''}${langFeatures.hasGender ? ' Include gender where applicable.' : ''}`
@@ -1322,23 +1192,9 @@ IMPORTANT: Use "audioText" for TTS pronunciation in typing items.${langFeatures.
       : getIntensiveSectionInstructions(skillType, codeWritingEnabled);
 
   // Language-specific section template with detailed examples
-  // MUST match frontend interfaces: TranslationItem, LanguageFillBlankItem, ReorderItem, TypingItem
+  // MUST match frontend interfaces: TranslationItem, TypingItem
   const lang = langFeatures.lang;
   const languageSectionTemplate = `[
-      {
-        "type": "fillBlank",
-        "title": "Complete the Sentence",
-        "instructions": "Fill in the correct word or form",
-        "items": [
-          {
-            "id": "fb1",
-            "sentence": "Sentence in ${lang} with ___BLANK___ to complete",
-            "romanization": "pronunciation of full sentence",
-            "translation": "English translation of the sentence",
-            "blank": {"correctAnswers": ["correct answer", "alternate spelling"], "hint": "Hint about grammar/form"}
-          }
-        ]
-      },
       {
         "type": "translation",
         "title": "Translation Practice",
@@ -1358,20 +1214,6 @@ IMPORTANT: Use "audioText" for TTS pronunciation in typing items.${langFeatures.
             "romanization": "pronunciation guide",
             "acceptedAnswers": ["primary English translation", "alternate translation"],
             "hint": "Context hint"
-          }
-        ]
-      },
-      {
-        "type": "reorder",
-        "title": "Word Order Practice",
-        "instructions": "Arrange the words in the correct order",
-        "items": [
-          {
-            "id": "ro1",
-            "scrambled": ["word3", "word1", "word2"],
-            "correctOrder": ["word1", "word2", "word3"],
-            "translation": "English meaning of the sentence",
-            "hint": "Think about ${lang} sentence structure"
           }
         ]
       },
@@ -1426,7 +1268,7 @@ INTENSIVE PRACTICE:
 - miniFoundationCards: ${miniCardCount} cards, NEW concepts not covered in task1
   Format: {id, concept, explanation: "100-150 words"} - NO microQuestion
 - sections: EXACTLY 2, higher difficulty than task1
-  For soft skills/decision-making → openEnded; for factual/code → quiz, fillBlank, etc.
+  For soft skills/decision-making → openEnded; for factual/code → quiz, etc.
   Use BOTH today's + mini card concepts. Different scenarios than task1.
 ${sectionInstructions}
 Items per section: ${itemsPerSection}
@@ -1594,7 +1436,7 @@ REQUIRED FIELDS per question:
 
 SECTION RATIO: 70-85% quiz questions, 15-30% ONE secondary section type
 - Quiz section is ALWAYS the main section with most questions
-- Pick 1 secondary section type from the available types listed in "Sections:" (e.g., matching, outputPrediction, fillBlank, etc.)
+- Pick 1 secondary section type from the available types listed in "Sections:" (e.g., openEnded, etc.)
 - Choose the secondary type that best fits today's topic content
 
 QUESTION LEVELS:
@@ -1621,7 +1463,7 @@ INTENSIVE PRACTICE (deferred content) - NEW CONCEPTS ALLOWED:
 - More varied scenarios and domains
 - Cross-domain transfer exercises
 - Higher difficulty, more distractors
-- Types: codeCompletion, debugging, fillBlank, openEnded, etc.
+- Types: codeCompletion, debugging, openEnded, etc.
 
 Output valid JSON only.`;
 
@@ -1897,7 +1739,6 @@ ${videoRequirement}
   - explanation: ${dayTrainingConfig && (params.goalType === GoalType.PROJECT || params.goalType === GoalType.AI_BUILDER) ? 'Keep it concise — 1 paragraph with the key insight' : 'Split into 2-3 paragraphs with \\\\n\\\\n (key insight → details/examples)'}
   - ${params.goalType === GoalType.AI_BUILDER ? `Q1-Q3: practical scenarios at ${params.skillLevel} level. Q4 (STRETCH): one question ABOVE ${params.skillLevel} — harder scenario, edge case, or production-scale challenge that pushes the user.` : params.goalType === GoalType.PROJECT ? `Q1: theory question (test concept understanding). Q2-Q3: application questions at ${params.skillLevel} level. Q4 (STRETCH): one question ABOVE ${params.skillLevel} — harder scenario requiring deeper understanding.` : dayTrainingConfig ? 'Include caseStudy on each question' : '4-5 questions should include "caseStudy" for trade-off/decision concepts'}
   - Question 1 should be an INTRO/RECAP connecting to previous content
-  - matching section: generate 3-4 pairs with "pairs" array (NOT "questions" or "items")
 
 Output valid JSON only.`;
 
@@ -1916,11 +1757,6 @@ function getTask1SectionTemplate(skillType: SkillType): string {
   // Secondary section templates (15-30%) — AI picks ONE based on topic fit
   // All types shown so AI knows each schema. Pick the one listed in "Sections:".
   const secondaryTemplates: Record<string, string> = {
-    matching: `{"type": "matching", "title": "Match the Concepts", "pairs": [{"term": "Concept A", "definition": "What A means"}, {"term": "Concept B", "definition": "What B means"}, {"term": "Concept C", "definition": "What C means"}]}`,
-    outputPrediction: `{"type": "outputPrediction", "title": "Predict the Output", "questions": [{"id": "op1", "question": "What does this code output?", "code": "code here", "options": ["A", "B", "C", "D"], "correctIndex": 0, "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "Why this matters"}]}`,
-    fillBlank: `{"type": "fillBlank", "title": "Complete the Statement", "items": [{"id": "fb1", "sentence": "Statement with ___BLANK___", "translation": "", "blank": {"correctAnswers": ["answer"], "hint": "Hint"}, "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "Why this matters"}]}`,
-    reorder: `{"type": "reorder", "title": "Order the Steps", "items": [{"id": "ro1", "scrambled": ["step2", "step1", "step3"], "correctOrder": ["step1", "step2", "step3"], "translation": "Complete sequence", "hint": "Think about dependencies", "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "Why this matters"}]}`,
-    designCritique: `{"type": "designCritique", "title": "Apply Design Thinking", "items": [{"id": "dc1", "description": "Design scenario", "question": "What would improve this?", "options": ["A", "B", "C", "D"], "correctIndex": 0, "principle": "Design Principle", "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "Why this matters"}]}`,
     openEnded: `{"type": "openEnded", "title": "Think It Through", "questions": [{"id": "oe1", "question": "Scenario question", "responseType": "openEnded", "openEndedConfig": {"category": "analysis", "scenario": "Context", "constraints": ["Constraint 1"], "evaluationDimensions": [{"name": "Relevance", "weight": 1}]}, "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "Why this matters"}]}`,
   };
 
@@ -1929,8 +1765,8 @@ function getTask1SectionTemplate(skillType: SkillType): string {
   const secondaryTypes = registry.task1.filter(t => t !== 'quiz');
 
   // Show the first secondary type's template as the example
-  const defaultSecondary = secondaryTypes[0] || 'matching';
-  const secondaryExample = secondaryTemplates[defaultSecondary] || secondaryTemplates.matching;
+  const defaultSecondary = secondaryTypes[0] || 'openEnded';
+  const secondaryExample = secondaryTemplates[defaultSecondary] || secondaryTemplates.openEnded;
 
   return `[
         {"type": "quiz", "title": "Core Concepts", "questions": [${quizTemplate}]},
@@ -2009,7 +1845,7 @@ Output valid JSON only.`;
   // Language-specific reflection questions
   const languageReflectionQuestions = `[
       {"id": "confidence", "question": "Rate your confidence with today's ${lang} content (1-5)", "type": "scale"},
-      {"id": "hardest", "question": "Hardest exercise type?", "type": "choice", "options": ["Fill in blank", "Translation", "Reordering", "Typing"${langHasTones ? ', "Tone recognition"' : ''}]},
+      {"id": "hardest", "question": "Hardest exercise type?", "type": "choice", "options": ["Translation", "Typing"${langHasTones ? ', "Tone recognition"' : ''}]},
       {"id": "clicked", "question": "What clicked for you today?", "type": "text"},
       {"id": "review", "question": "What needs more review?", "type": "text"}
     ]`;

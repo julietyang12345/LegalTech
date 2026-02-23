@@ -8,27 +8,19 @@ import { StepLayout } from './StepLayout';
 import { useCommunityShareStore } from '@/stores/communityShareStore';
 import {
   QuizSectionExercise,
-  MatchingSectionExercise,
   ToneSelectSectionExercise,
-  FillBlankSectionExercise,
   TranslationSectionExercise,
-  ReorderSectionExercise,
   TypingSectionExercise,
   OpenEndedSectionExercise,
 } from './LanguageExercises';
 import {
   CodeCompletionExercise,
   DebuggingExercise,
-  OutputPredictionExercise,
   AICodeReviewExercise,
 } from './CodeExercises';
 import {
-  FormCheckExercise,
   SafetyCheckExercise,
 } from './PhysicalExercises';
-import {
-  DesignCritiqueExercise,
-} from './DesignExercises';
 import { useCompanionStore } from '@/stores/companionStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import type { CurriculumDay, Session, TaskSection, TargetLanguage } from '@/types';
@@ -376,15 +368,6 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
             onProgressChange={handleSectionProgressChange}
           />
         );
-      case 'matching':
-        return (
-          <MatchingSectionExercise
-            section={section}
-            onComplete={handleSectionComplete}
-            savedProgress={savedProgress}
-            onProgressChange={handleSectionProgressChange}
-          />
-        );
       case 'toneSelect':
         return (
           <ToneSelectSectionExercise
@@ -395,27 +378,9 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
             onProgressChange={handleSectionProgressChange}
           />
         );
-      case 'fillBlank':
-        return (
-          <FillBlankSectionExercise
-            section={section}
-            onComplete={handleSectionComplete}
-            savedProgress={savedProgress}
-            onProgressChange={handleSectionProgressChange}
-          />
-        );
       case 'translation':
         return (
           <TranslationSectionExercise
-            section={section}
-            onComplete={handleSectionComplete}
-            savedProgress={savedProgress}
-            onProgressChange={handleSectionProgressChange}
-          />
-        );
-      case 'reorder':
-        return (
-          <ReorderSectionExercise
             section={section}
             onComplete={handleSectionComplete}
             savedProgress={savedProgress}
@@ -460,15 +425,6 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
             onProgressChange={handleSectionProgressChange}
           />
         );
-      case 'outputPrediction':
-        return (
-          <OutputPredictionExercise
-            section={section}
-            onComplete={handleSectionComplete}
-            savedProgress={savedProgress}
-            onProgressChange={handleSectionProgressChange}
-          />
-        );
       case 'aiCodeReview':
         return (
           <AICodeReviewExercise
@@ -479,28 +435,9 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
           />
         );
       // Physical-specific sections
-      case 'formCheck':
-        return (
-          <FormCheckExercise
-            section={section}
-            onComplete={handleSectionComplete}
-            savedProgress={savedProgress}
-            onProgressChange={handleSectionProgressChange}
-          />
-        );
       case 'safetyCheck':
         return (
           <SafetyCheckExercise
-            section={section}
-            onComplete={handleSectionComplete}
-            savedProgress={savedProgress}
-            onProgressChange={handleSectionProgressChange}
-          />
-        );
-      // Design-specific sections
-      case 'designCritique':
-        return (
-          <DesignCritiqueExercise
             section={section}
             onComplete={handleSectionComplete}
             savedProgress={savedProgress}
@@ -814,11 +751,8 @@ function IntensivePracticeStep({ day, session, onComplete }: IntensivePracticeSt
               const isActive = index === currentSectionIndex;
               const isCompleted = result?.completed;
               // Shorter labels for mobile
-              const sectionLabel = section.type === 'fillBlank' ? 'Fill' :
-                                   section.type === 'aiCodeReview' ? 'Review' :
-                                   section.type === 'outputPrediction' ? 'Output' :
+              const sectionLabel = section.type === 'aiCodeReview' ? 'Review' :
                                    section.type === 'codeCompletion' ? 'Code' :
-                                   section.type === 'matching' ? 'Match' :
                                    section.type.charAt(0).toUpperCase() + section.type.slice(1);
 
               return (

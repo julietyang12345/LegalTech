@@ -5,11 +5,8 @@ import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import {
   QuizSectionExercise,
-  MatchingSectionExercise,
   ToneSelectSectionExercise,
-  FillBlankSectionExercise,
   TranslationSectionExercise,
-  ReorderSectionExercise,
   TypingSectionExercise,
   OpenEndedSectionExercise,
   RoleplaySectionExercise,
@@ -19,26 +16,19 @@ import {
 import {
   CodeCompletionExercise,
   DebuggingExercise,
-  OutputPredictionExercise,
 } from './CodeExercises';
 import {
-  FormCheckExercise,
   SafetyCheckExercise,
 } from './PhysicalExercises';
-import {
-  DesignCritiqueExercise,
-} from './DesignExercises';
 import type {
   TaskSection,
   CurriculumDay,
   Session,
   TargetLanguage,
   QuizTask,
-  FillBlankTask,
   MixedTask,
   SectionsTask,
   QuizSection,
-  LanguageFillBlankSection,
 } from '@/types';
 
 interface SectionTaskStepProps {
@@ -72,30 +62,9 @@ function convertQuizToSections(task: QuizTask): TaskSection[] {
 }
 
 /**
- * Converts a legacy FillBlankTask to sections format
- */
-function convertFillBlankToSections(task: FillBlankTask): TaskSection[] {
-  const fillBlankSection: LanguageFillBlankSection = {
-    type: 'fillBlank',
-    title: task.title || 'Fill in the Blanks',
-    instructions: task.description || 'Complete the blanks with the correct answers',
-    items: task.items.map(item => ({
-      id: item.id,
-      sentence: item.codeTemplate,
-      translation: item.explanation || '',
-      blank: {
-        correctAnswers: item.blanks[0]?.correctAnswers || [],
-        hint: item.blanks[0]?.hint,
-      },
-    })),
-  };
-  return [fillBlankSection];
-}
-
-/**
  * Gets sections from a task, converting legacy formats if needed
  */
-function getTaskSections(task: QuizTask | FillBlankTask | MixedTask | SectionsTask): TaskSection[] {
+function getTaskSections(task: QuizTask | MixedTask | SectionsTask): TaskSection[] {
   const format = (task as any).format;
 
   if (format === 'sections' || format === 'mixed') {
@@ -106,10 +75,6 @@ function getTaskSections(task: QuizTask | FillBlankTask | MixedTask | SectionsTa
     return convertQuizToSections(task as QuizTask);
   }
 
-  if (format === 'fillBlank') {
-    return convertFillBlankToSections(task as FillBlankTask);
-  }
-
   // Fallback: check if sections array exists
   if ('sections' in task && Array.isArray((task as any).sections)) {
     return (task as any).sections;
@@ -118,11 +83,6 @@ function getTaskSections(task: QuizTask | FillBlankTask | MixedTask | SectionsTa
   // Fallback: check if questions array exists (legacy quiz)
   if ('questions' in task && Array.isArray((task as any).questions)) {
     return convertQuizToSections(task as QuizTask);
-  }
-
-  // Fallback: check if items array exists (legacy fillBlank)
-  if ('items' in task && Array.isArray((task as any).items)) {
-    return convertFillBlankToSections(task as FillBlankTask);
   }
 
   return [];
@@ -168,7 +128,7 @@ function StarRating({ percentage }: { percentage: number }) {
 }
 
 export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, onShareQuestion }: SectionTaskStepProps) {
-  const task = day.task1 as QuizTask | FillBlankTask | MixedTask | SectionsTask | undefined;
+  const task = day.task1 as QuizTask | MixedTask | SectionsTask | undefined;
   const sections = task ? getTaskSections(task) : [];
   const targetLanguage = session.curriculum?.metadata?.targetLanguage as TargetLanguage | undefined;
   const _skillType = session.curriculum?.skillType;
@@ -291,28 +251,6 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
             onShareQuestion={onShareQuestion}
           />
         );
-      case 'matching':
-        return (
-          <MatchingSectionExercise
-            section={section}
-            onComplete={handleSectionComplete}
-          />
-        );
-      case 'reorder':
-        return (
-          <ReorderSectionExercise
-            section={section}
-            onComplete={handleSectionComplete}
-          />
-        );
-      case 'fillBlank':
-        return (
-          <FillBlankSectionExercise
-            section={section}
-            onComplete={handleSectionComplete}
-          />
-        );
-
       // Language-specific sections
       case 'toneSelect':
         return (
@@ -353,34 +291,10 @@ export function SectionTaskStep({ day, session, onComplete, onBookmarkQuestion, 
             onComplete={handleSectionComplete}
           />
         );
-      case 'outputPrediction':
-        return (
-          <OutputPredictionExercise
-            section={section}
-            onComplete={handleSectionComplete}
-          />
-        );
-
       // Physical-specific sections
-      case 'formCheck':
-        return (
-          <FormCheckExercise
-            section={section}
-            onComplete={handleSectionComplete}
-          />
-        );
       case 'safetyCheck':
         return (
           <SafetyCheckExercise
-            section={section}
-            onComplete={handleSectionComplete}
-          />
-        );
-
-      // Design-specific sections
-      case 'designCritique':
-        return (
-          <DesignCritiqueExercise
             section={section}
             onComplete={handleSectionComplete}
           />

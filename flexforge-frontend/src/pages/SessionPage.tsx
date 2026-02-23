@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Shuffle, HelpCircle, FileText, Sparkles, Target, BookOpen, Trophy, GraduationCap, Bookmark } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Sparkles, Target, BookOpen, Trophy, GraduationCap, Bookmark } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
@@ -19,7 +19,6 @@ import { getTrainingConfig, isTrainingMode } from '@/config/training-configs';
 // Import step components
 import { PrePromptStep } from '@/components/session/PrePromptStep';
 import { VideoStep } from '@/components/session/VideoStep';
-import { QuizTaskStep, FillBlankTaskStep } from '@/components/session/AlternativeTaskSteps';
 import { SectionTaskStep } from '@/components/session/SectionTaskStep';
 import { BossMilestoneStep } from '@/components/session/BossMilestoneStep';
 import { OpenTaskStep } from '@/components/session/OpenTaskStep';
@@ -219,28 +218,13 @@ function IncompleteWorkModal({
   );
 }
 
-// Task format types for switching (quiz and fillBlank only - code moved to bossMilestone)
-type TaskFormat = 'quiz' | 'fillBlank' | 'mixed' | 'sections';
-
 // Task Router: Renders the appropriate task component based on task format
-// Unified section-based system: ALL skill types can use sections format
-// Legacy quiz/fillBlank formats are auto-converted by SectionTaskStep
-// Language learning uses 'mixed' format (treated same as 'sections')
+// Unified section-based system: ALL skill types use sections format
+// Legacy quiz formats are auto-converted by SectionTaskStep
 function TaskRouter({ day, session, onComplete, onBookmarkQuestion, onShareQuestion }: { day: CurriculumDay; session: any; onComplete: () => void; onBookmarkQuestion?: (q: { question: string; options?: string[]; correctAnswer?: string }) => void; onShareQuestion?: (q: { question: string; options?: string[]; correctAnswer?: string }) => void }) {
-
   const task = day.task1;
-  const originalFormat = ((task as any)?.format || 'quiz') as TaskFormat;
-  const [selectedFormat, setSelectedFormat] = useState<TaskFormat>(originalFormat);
-  const [alternativeTask, setAlternativeTask] = useState<any>(null);
-  const [isLoadingFormat, setIsLoadingFormat] = useState(false);
-  const [loadingFormatType, setLoadingFormatType] = useState<TaskFormat | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  const { getAlternativeTaskFormat } = useSessionStore();
 
   // Show quiz-shaped skeleton when task1 is not yet available (streaming in progress)
-  // This replaces the big ExerciseLoadingScreen with a per-question skeleton
-  // so the transition to real questions is seamless
   if (!task) {
     return (
       <div className="max-w-2xl mx-auto">
@@ -264,141 +248,8 @@ function TaskRouter({ day, session, onComplete, onBookmarkQuestion, onShareQuest
     );
   }
 
-  // For section-based formats (sections, mixed), use unified SectionTaskStep
-  // This handles ALL skill types with appropriate section rendering
-  if (originalFormat === 'sections' || originalFormat === 'mixed') {
-    return <SectionTaskStep day={day} session={session} onComplete={onComplete} onBookmarkQuestion={onBookmarkQuestion} onShareQuestion={onShareQuestion} />;
-  }
-
-  // For legacy formats (quiz, fillBlank), allow format switching
-  // SectionTaskStep can also handle these via auto-conversion
-  const handleFormatSwitch = async (format: TaskFormat) => {
-    // If switching back to original format, just use the original task
-    if (format === originalFormat) {
-      setSelectedFormat(format);
-      setAlternativeTask(null);
-      setLoadError(null);
-      return;
-    }
-
-    // Sections format uses the unified component with auto-conversion
-    if (format === 'sections' || format === 'mixed') {
-      setSelectedFormat(format);
-      return;
-    }
-
-    // Fetch alternative format
-    setIsLoadingFormat(true);
-    setLoadingFormatType(format);
-    setLoadError(null);
-    try {
-      const altTask = await getAlternativeTaskFormat(day.day, format);
-      setAlternativeTask(altTask);
-      setSelectedFormat(format);
-    } catch (error: any) {
-      setLoadError(error.message || 'Failed to load alternative format');
-    } finally {
-      setIsLoadingFormat(false);
-      setLoadingFormatType(null);
-    }
-  };
-
-  // Create a modified day object with the alternative task if loaded
-  const modifiedDay = alternativeTask && selectedFormat !== originalFormat
-    ? { ...day, task1: alternativeTask }
-    : day;
-
-  // Render the appropriate component based on selected format
-  const renderTaskComponent = () => {
-    if (isLoadingFormat) {
-      return (
-        <div className="max-w-2xl mx-auto">
-          <div className="bg-surface rounded-xl shadow-lg p-6">
-            <div className="space-y-4 animate-pulse">
-              <div className="h-5 bg-surface-tertiary rounded w-3/4" />
-              <div className="space-y-2">
-                <div className="h-12 bg-surface-tertiary rounded-lg" />
-                <div className="h-12 bg-surface-tertiary rounded-lg" />
-                <div className="h-12 bg-surface-tertiary rounded-lg" />
-                <div className="h-12 bg-surface-tertiary rounded-lg" />
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    if (loadError) {
-      return (
-        <div className="text-center py-8">
-          <p className="text-red-500 mb-4">{loadError}</p>
-          <button
-            onClick={() => handleFormatSwitch(originalFormat)}
-            className="text-brand-500 hover:text-brand-600"
-          >
-            Back to original task
-          </button>
-        </div>
-      );
-    }
-
-    switch (selectedFormat) {
-      case 'quiz':
-        return <QuizTaskStep day={modifiedDay} session={session} onComplete={onComplete} onBookmarkQuestion={onBookmarkQuestion} onShareQuestion={onShareQuestion} />;
-      case 'fillBlank':
-        return <FillBlankTaskStep day={modifiedDay} session={session} onComplete={onComplete} />;
-      case 'sections':
-      case 'mixed':
-        // Use unified SectionTaskStep which auto-converts legacy formats
-        return <SectionTaskStep day={modifiedDay} session={session} onComplete={onComplete} onBookmarkQuestion={onBookmarkQuestion} onShareQuestion={onShareQuestion} />;
-      default:
-        return <QuizTaskStep day={modifiedDay} session={session} onComplete={onComplete} onBookmarkQuestion={onBookmarkQuestion} onShareQuestion={onShareQuestion} />;
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* Alternative formats banner (quiz and fillBlank only) */}
-      <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-100 rounded-xl p-4">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2 text-sm text-content-secondary">
-            <Shuffle className="w-4 h-4" />
-            <span>Try a different style:</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => handleFormatSwitch('quiz')}
-              disabled={isLoadingFormat}
-              className={clsx(
-                'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors',
-                selectedFormat === 'quiz'
-                  ? 'bg-surface text-purple-700 shadow-sm font-medium'
-                  : 'text-purple-600 hover:text-purple-700 hover:bg-purple-100'
-              )}
-            >
-              <HelpCircle className="w-4 h-4" />
-              Quiz
-            </button>
-            <button
-              onClick={() => handleFormatSwitch('fillBlank')}
-              disabled={isLoadingFormat}
-              className={clsx(
-                'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors',
-                selectedFormat === 'fillBlank'
-                  ? 'bg-surface text-blue-700 shadow-sm font-medium'
-                  : 'text-blue-600 hover:text-blue-700 hover:bg-blue-100'
-              )}
-            >
-              <FileText className="w-4 h-4" />
-              Fill Blanks
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {renderTaskComponent()}
-    </div>
-  );
+  // SectionTaskStep handles all formats (sections, mixed, quiz) with auto-conversion
+  return <SectionTaskStep day={day} session={session} onComplete={onComplete} onBookmarkQuestion={onBookmarkQuestion} onShareQuestion={onShareQuestion} />;
 }
 
 const STEP_COMPONENTS: Record<string, React.ComponentType<any>> = {

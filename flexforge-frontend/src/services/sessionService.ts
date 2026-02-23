@@ -224,27 +224,6 @@ export const sessionService = {
   },
 
   /**
-   * Get task in alternative format (on-demand generation)
-   * Converts between code, quiz, and fillBlank formats
-   */
-  async getAlternativeTaskFormat(
-    sessionId: string,
-    dayNumber: number,
-    format: 'code' | 'quiz' | 'fillBlank'
-  ): Promise<{
-    message: string;
-    task: any;
-    tokensUsed: number;
-    fromCache: boolean;
-  }> {
-    const { data } = await api.post(
-      `/sessions/${sessionId}/days/${dayNumber}/task-format`,
-      { format }
-    );
-    return data;
-  },
-
-  /**
    * Save reflection data including confused concepts
    */
   async saveReflection(

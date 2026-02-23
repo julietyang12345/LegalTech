@@ -54,7 +54,7 @@ task1 (warm-up quiz):
 - Q1-Q3: Practical scenario or real-world use case of today's AI concept at the user's current level
   e.g., "A startup wants to summarize customer emails. Which approach would you use?"
 - LAST QUESTION (stretch): One question ABOVE the user's current skill level — a harder AI architecture, scaling, or edge-case scenario. For beginners: intermediate-level question. For intermediate: advanced-level question. For advanced: expert/production-scale question.
-- NO caseStudy, NO secondary sections (outputPrediction, fillBlank, etc.)
+- NO caseStudy, NO secondary sections (openEnded, etc.)
 
 bossMilestone:
 - Guide the user to produce a WORKING AI product step by step
