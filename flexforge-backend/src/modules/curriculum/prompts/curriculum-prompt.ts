@@ -88,29 +88,26 @@ export type SectionType =
 // - Project-based (ANY skill): task1 + bossMilestone → NO intensive (bossMilestone IS the hands-on practice)
 // - Non-project-based (ANY skill): task1 + intensive → NO bossMilestone (intensive IS the hands-on practice)
 //
-// Section distribution: task1 = quiz (70-85%) + AI picks 1 secondary (15-30%)
-// intensive = quiz (majority) + AI picks up to 2 others (1 item each)
-// intensiveAdvanced = opt-in advanced sections (e.g., code writing)
+// All skill types use quiz-only sections for task1 and intensive.
+// Language learning uses its own registry with language-specific intensive types.
 export const SECTION_REGISTRY: Record<
   SkillType,
   {
     task1: SectionType[];
     intensive: SectionType[];
-    intensiveAdvanced?: SectionType[];
   }
 > = {
   [SkillType.CODE]: {
     task1: ['quiz'],
-    intensive: ['quiz', 'aiCodeReview'],
-    intensiveAdvanced: ['codeCompletion'],
+    intensive: ['quiz'],
   },
   [SkillType.PHYSICAL]: {
     task1: ['quiz'],
-    intensive: ['quiz', 'safetyCheck'],
+    intensive: ['quiz'],
   },
   [SkillType.KNOWLEDGE]: {
-    task1: ['quiz', 'openEnded'],
-    intensive: ['quiz', 'openEnded'],
+    task1: ['quiz'],
+    intensive: ['quiz'],
   },
   [SkillType.DESIGN]: {
     task1: ['quiz'],
@@ -118,14 +115,13 @@ export const SECTION_REGISTRY: Record<
   },
   [SkillType.AI_AGENT]: {
     task1: ['quiz'],
-    intensive: ['quiz', 'aiCodeReview'],
-    intensiveAdvanced: ['codeCompletion'],
+    intensive: ['quiz'],
   },
 };
 
-// Language learning: toneSelect only included for tonal languages
+// Language learning: quiz-only task1, language-specific intensive types
 export const LANGUAGE_SECTION_REGISTRY = {
-  task1: ['quiz', 'toneSelect'] as SectionType[],
+  task1: ['quiz'] as SectionType[],
   intensive: ['translation', 'typing', 'roleplay', 'rewrite'] as SectionType[],
 };
 
@@ -133,8 +129,8 @@ export const LANGUAGE_SECTION_REGISTRY = {
  * Get appropriate sections for a skill type
  *
  * Logic:
- * - Project-based (ANY skill): task1 (full sections) + bossMilestone + NO intensive
- * - Non-project-based (ANY skill): task1 (full sections) + intensive (no bossMilestone)
+ * - Project-based (ANY skill): task1 + bossMilestone + NO intensive
+ * - Non-project-based (ANY skill): task1 + intensive (no bossMilestone)
  * - Language learning: Uses LANGUAGE_SECTION_REGISTRY (always has intensive, no bossMilestone)
  * - Custom sections: If AI specified customSections for hybrid skills, use those
  */
@@ -142,17 +138,13 @@ export function getSectionsForSkillType(
   skillType: SkillType,
   options: {
     isLanguageLearning?: boolean;
-    hasTones?: boolean;
     isProjectBased?: boolean;
-    codeWritingEnabled?: boolean; // Advanced mode: include codeCompletion exercises
     customSections?: { task1: SectionType[]; intensive: SectionType[] } | null;
   } = {},
 ): { task1: SectionType[]; intensive: SectionType[]; skipIntensive: boolean } {
   const {
     isLanguageLearning = false,
-    hasTones = false,
     isProjectBased = false,
-    codeWritingEnabled = false,
     customSections,
   } = options;
 
@@ -168,9 +160,7 @@ export function getSectionsForSkillType(
   // Language learning has its own registry (never project-based)
   if (isLanguageLearning) {
     return {
-      task1: hasTones
-        ? LANGUAGE_SECTION_REGISTRY.task1
-        : LANGUAGE_SECTION_REGISTRY.task1.filter((s) => s !== 'toneSelect'),
+      task1: LANGUAGE_SECTION_REGISTRY.task1,
       intensive: LANGUAGE_SECTION_REGISTRY.intensive,
       skipIntensive: false,
     };
@@ -179,16 +169,10 @@ export function getSectionsForSkillType(
   const registry =
     SECTION_REGISTRY[skillType] || SECTION_REGISTRY[SkillType.KNOWLEDGE];
 
-  // Combine intensive + intensiveAdvanced when codeWritingEnabled
-  let intensiveSections = registry.intensive;
-  if (codeWritingEnabled && registry.intensiveAdvanced) {
-    intensiveSections = [...registry.intensive, ...registry.intensiveAdvanced];
-  }
-
   return {
     task1: registry.task1,
-    intensive: intensiveSections,
-    skipIntensive: isProjectBased, // Project-based: bossMilestone handles hands-on, skip intensive
+    intensive: registry.intensive,
+    skipIntensive: isProjectBased,
   };
 }
 
@@ -600,7 +584,7 @@ function extractLangFeatures(params: {
 /**
  * Build language task1 template - shared between project-based and practice-based prompts
  */
-function buildLanguageTask1Template(lang: string, langHasTones: boolean): string {
+function buildLanguageTask1Template(lang: string): string {
   return `[
         {
           "type": "quiz",
@@ -610,14 +594,7 @@ function buildLanguageTask1Template(lang: string, langHasTones: boolean): string
             {"id": "q1", "question": "What does this mean?", "audioText": "word/phrase in ${lang}", "options": ["meaning1", "meaning2", "meaning3", "meaning4"], "correctIndex": 0, "conceptTitle": "Concept Name", "explanation": "Key insight about this word/grammar.\\n\\nUsage details and examples.\\n\\nWhen to use in conversation.", "realWorldContext": "Common situation where you'd use this"},
             {"id": "q2", "question": "Select the correct translation", "options": ["A", "B", "C", "D"], "correctIndex": 0, "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.\\n\\nContext.", "realWorldContext": "Why this matters"}
           ]
-        }${langHasTones ? `,
-        {
-          "type": "toneSelect",
-          "title": "Tone Recognition",
-          "questions": [
-            {"id": "t1", "audioText": "word in ${lang}", "prompt": "Select the correct tone", "options": ["Tone 1", "Tone 2", "Tone 3", "Tone 4"], "correctIndex": 0, "conceptTitle": "Tone Pattern", "explanation": "Key insight about this tone.\\n\\nHow to produce it.\\n\\nCommon words with this tone.", "realWorldContext": "Why tone matters here"}
-          ]
-        }` : ''}
+        }
       ]`;
 }
 
@@ -903,11 +880,10 @@ Output valid JSON.`;
 
 /**
  * Get intensive section instructions per skill type
- * Based on SECTION_REGISTRY.intensive + intensiveAdvanced (when codeWritingEnabled)
+ * All non-language skill types use quiz-only intensive sections.
  */
 function getIntensiveSectionInstructions(
   skillType: SkillType,
-  codeWritingEnabled = false,
 ): string {
   const newKnowledgeNote = `
 IMPORTANT - Each section MUST include:
@@ -915,219 +891,59 @@ IMPORTANT - Each section MUST include:
 Introduce 2-4 NEW related concepts not covered in task1.
 Use DIFFERENT scenarios than task1 (new contexts, different domains).`;
 
-  // Shared builder for CODE and AI_AGENT (identical structure, different topic labels)
-  const buildCodeLikeIntensive = (
-    quizDesc: string,
-    codeSnippetExample: string,
-  ): string => {
-    const base = `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
-
-AVAILABLE TYPES:
-1. quiz (REQUIRED, 4-6 questions) - ${quizDesc}
-2. aiCodeReview (1 item) - Review AI-generated code, identify bugs/security issues/assumptions/hallucinations
-   Each item: code (AI-generated with line numbers), context, issues array
-   Each issue: {type, location (include code snippet like "${codeSnippetExample}"), severity, options (4 MCQ choices), correctIndex, explanation}
-   Issue types: bug, security, assumption, scalability, hallucination, edge-case
-   TWO-STEP FLOW: User first selects the problematic line, then chooses WHY from options`;
-    if (codeWritingEnabled) {
-      return `${base}
-3. codeCompletion (1 item) - Complete partial code introducing NEW patterns/methods
-${newKnowledgeNote}`;
-    }
-    return `${base}
-${newKnowledgeNote}`;
-  };
-
   switch (skillType) {
     case SkillType.CODE:
-      return buildCodeLikeIntensive(
-        'Questions on NEW coding concepts, patterns, and best practices not covered in task1',
-        'line 3: if (x === y)',
-      );
+    case SkillType.AI_AGENT:
+      return `Generate EXACTLY 1 quiz section with 4-6 questions on NEW coding/AI concepts, patterns, and best practices not covered in task1.
+${newKnowledgeNote}`;
 
     case SkillType.PHYSICAL:
-      return `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
-
-AVAILABLE TYPES:
-1. quiz (REQUIRED, 4-6 questions) - Varied practical questions. Include a MIX of different question types appropriate for this specific skill. Examples:
-   - Estimation/calculation (materials, measurements, quantities, time)
-   - Troubleshooting scenarios (diagnose problems, identify causes)
-   - Tool/material selection (choosing the right equipment)
-   - Best practices and techniques
-   - Safety and risk assessment
-   - Code/permit/regulation knowledge (for construction)
-   - Quality inspection criteria
-   - Cost/budget considerations
-   - Environmental factors (weather, conditions)
-   - Maintenance and care
-   Choose question types that make sense for THIS skill - not all types apply to every project!
-2. safetyCheck (1 item) - True/false safety verification questions
-   Each item: {id, question, correctAnswer (boolean), explanation}
+      return `Generate EXACTLY 1 quiz section with 4-6 varied practical questions. Include a MIX of question types appropriate for this skill:
+   - Estimation/calculation, troubleshooting scenarios, tool/material selection
+   - Best practices, safety assessment, quality inspection criteria
+   Choose question types that make sense for THIS skill.
 ${newKnowledgeNote}`;
 
     case SkillType.KNOWLEDGE:
-      return `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
-AI chooses the best secondary types based on topic:
-
-AVAILABLE TYPES:
-1. quiz (REQUIRED, 4-6 questions) - Questions requiring synthesis of NEW information not covered in task1
-   For FACTUAL topics: questions testing recall and application of new facts
-   For SOFT SKILLS/LEADERSHIP: complex scenarios with NEW variables
-2. openEnded (1 item) - Challenging scenario in a NEW domain
+      return `Generate EXACTLY 1 quiz section with 4-6 questions requiring synthesis of NEW information not covered in task1.
+   For FACTUAL topics: questions testing recall and application of new facts.
+   For SOFT SKILLS/LEADERSHIP: complex scenarios with NEW variables.
 ${newKnowledgeNote}`;
 
     case SkillType.DESIGN:
-      return `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
-
-AVAILABLE TYPES:
-1. quiz (REQUIRED, 4-6 questions) - Questions on ADVANCED design principles not covered in task1
+      return `Generate EXACTLY 1 quiz section with 4-6 questions on ADVANCED design principles not covered in task1.
 ${newKnowledgeNote}`;
 
-    case SkillType.AI_AGENT:
-      return buildCodeLikeIntensive(
-        'Questions on NEW AI/agent concepts, patterns, and best practices not covered in task1',
-        'line 3: response = api.call()',
-      );
-
     default:
-      return `SECTION TYPE RULES: Include quiz (majority) + pick up to 2 other types (1 item each).
-
-AVAILABLE TYPES:
-1. quiz (REQUIRED, 4-6 questions) - Questions requiring NEW knowledge synthesis not covered in task1
+      return `Generate EXACTLY 1 quiz section with 4-6 questions requiring NEW knowledge synthesis not covered in task1.
 ${newKnowledgeNote}`;
   }
 }
 
 /**
  * Get intensive section JSON template per skill type
- * Based on SECTION_REGISTRY.intensive + intensiveAdvanced (when codeWritingEnabled)
+ * All non-language skill types use quiz-only intensive sections.
  */
 function getIntensiveSectionTemplate(
   skillType: SkillType,
   _dayNumber: number,
-  codeWritingEnabled = false,
 ): string {
-  // AI Code Review template (used for CODE and AI_AGENT)
-  // Two-step flow: 1) User selects which line has issue, 2) User chooses why it's problematic
-  const aiCodeReviewTemplate = `{
-        "type": "aiCodeReview",
-        "title": "Review AI-Generated Code",
-        "instructions": "Review this AI-generated code and identify any issues",
-        "items": [{
-          "id": "acr1",
-          "code": "// AI-generated code with subtle bug",
-          "context": "What this code should do",
-          "promptUsed": "The prompt that generated this code",
-          "issues": [{"id": "issue1", "type": "security|logic|performance", "location": "line N: code", "severity": "critical|warning", "options": ["Correct", "Wrong 1", "Wrong 2", "Wrong 3"], "correctIndex": 0, "explanation": "Why"}],
-          "correctVersion": "// Fixed code",
-          "hint": "Hint",
-          "language": "javascript"
-        }],
-        "passingScore": 0.7
-      }`;
+  const title = skillType === SkillType.PHYSICAL
+    ? 'Practical Knowledge Check'
+    : skillType === SkillType.DESIGN
+      ? 'Design Principles'
+      : 'Concept Check';
 
-  const codeCompletionTemplate = `{
-        "type": "codeCompletion",
-        "title": "Complete the Code",
-        "items": [
-          {
-            "id": "cc1",
-            "description": "Task description",
-            "starterCode": "// Partial code...",
-            "solution": "// Complete solution...",
-            "hints": ["Hint 1", "Hint 2"],
-            "language": "javascript"
-          }
-        ]
-      }`;
-
-  switch (skillType) {
-    case SkillType.CODE:
-    case SkillType.AI_AGENT:
-      if (codeWritingEnabled) {
-        return `[
-      ${aiCodeReviewTemplate},
-      ${codeCompletionTemplate}
-    ]`;
-      }
-      return `[
-      ${aiCodeReviewTemplate}
-    ]`;
-
-    case SkillType.PHYSICAL:
-      return `[
-      {
-        "type": "safetyCheck",
-        "title": "Safety Verification",
-        "items": [
-          {
-            "id": "sc1",
-            "question": "Safety question about proper technique/preparation?",
-            "correctAnswer": true,
-            "explanation": "Why this is important for safety"
-          }
-        ]
-      },
+  return `[
       {
         "type": "quiz",
-        "title": "Practical Knowledge Check",
+        "title": "${title}",
         "questions": [
-          {"id": "q1", "question": "Estimation/calculation question...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."},
-          {"id": "q2", "question": "Troubleshooting scenario...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."},
-          {"id": "q3", "question": "Tool/material selection...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."},
-          {"id": "q4", "question": "Best practice or technique...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."}
+          {"id": "q1", "question": "Question about today's topic?", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "Explanation"},
+          {"id": "q2", "question": "Another question...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "Explanation"}
         ]
       }
     ]`;
-
-    case SkillType.DESIGN:
-      return `[
-      {
-        "type": "quiz",
-        "title": "Design Principles",
-        "questions": [
-          {
-            "id": "q1",
-            "question": "Question about design?",
-            "options": ["A", "B", "C", "D"],
-            "correctIndex": 0,
-            "explanation": "Explanation"
-          }
-        ]
-      }
-    ]`;
-
-    case SkillType.KNOWLEDGE:
-    default:
-      return `[
-      {
-        "type": "quiz",
-        "title": "Concept Check",
-        "questions": [
-          {
-            "id": "q1",
-            "question": "Question about today's topic?",
-            "options": ["A", "B", "C", "D"],
-            "correctIndex": 0,
-            "explanation": "Explanation"
-          }
-        ]
-      },
-      {
-        "type": "openEnded",
-        "title": "Apply Your Learning",
-        "questions": [
-          {
-            "id": "oe1",
-            "question": "Scenario-based question...",
-            "prompt": "Describe how you would handle...",
-            "sampleAnswer": "A strong response would include...",
-            "evaluationCriteria": ["Shows understanding", "Applies to real situation", "Demonstrates critical thinking"]
-          }
-        ]
-      }
-    ]`;
-  }
 }
 
 /**
@@ -1160,9 +976,8 @@ function buildPracticeBasedDeferredPrompt(
         : '2-3';
 
   // For custom sections, just list the names (AI knows formats from static instructions)
-  // For standard skill types, use the existing functions
+  // For standard skill types, use quiz-only
   // For language learning, use language-specific sections
-  const codeWritingEnabled = params.codeWritingEnabled ?? false;
 
   // Get language features using shared helper (avoid duplication)
   const langFeatures = extractLangFeatures(params);
@@ -1189,7 +1004,7 @@ IMPORTANT: Use "audioText" for TTS pronunciation in typing items.${langFeatures.
     ? `INCLUDE THESE SECTION TYPES: ${params.customSections.intensive.join(', ')}\n(${itemsPerSection} items per section, use formats from section registry)`
     : params.isLanguageLearning
       ? languageSectionInstructions
-      : getIntensiveSectionInstructions(skillType, codeWritingEnabled);
+      : getIntensiveSectionInstructions(skillType);
 
   // Language-specific section template with detailed examples
   // MUST match frontend interfaces: TranslationItem, TypingItem
@@ -1238,7 +1053,7 @@ IMPORTANT: Use "audioText" for TTS pronunciation in typing items.${langFeatures.
     ? `[/* Generate sections: ${params.customSections.intensive.join(', ')} */]`
     : params.isLanguageLearning
       ? languageSectionTemplate
-      : getIntensiveSectionTemplate(skillType, dayNumber, codeWritingEnabled);
+      : getIntensiveSectionTemplate(skillType, dayNumber);
 
   // Build unified context instructions if context is provided
   const contextInstructions = ctx ? buildFullContextInstructions(ctx) : '';
@@ -1267,8 +1082,7 @@ ${contextInstructions}${languageCaveats}
 INTENSIVE PRACTICE:
 - miniFoundationCards: ${miniCardCount} cards, NEW concepts not covered in task1
   Format: {id, concept, explanation: "100-150 words"} - NO microQuestion
-- sections: EXACTLY 2, higher difficulty than task1
-  For soft skills/decision-making → openEnded; for factual/code → quiz, etc.
+- sections: ${params.isLanguageLearning ? 'EXACTLY 2 language practice sections' : 'EXACTLY 1 quiz section'}, higher difficulty than task1
   Use BOTH today's + mini card concepts. Different scenarios than task1.
 ${sectionInstructions}
 Items per section: ${itemsPerSection}
@@ -1434,10 +1248,7 @@ REQUIRED FIELDS per question:
 - "explanation": 130-200 words of teaching content (structured as above)
 - "realWorldContext": 1 sentence — when/where this concept matters in practice
 
-SECTION RATIO: 70-85% quiz questions, 15-30% ONE secondary section type
-- Quiz section is ALWAYS the main section with most questions
-- Pick 1 secondary section type from the available types listed in "Sections:" (e.g., openEnded, etc.)
-- Choose the secondary type that best fits today's topic content
+TASK1 FORMAT: Generate exactly 1 quiz section containing all questions. No secondary sections.
 
 QUESTION LEVELS:
 - Level 1 "Differentiation" (1-2 Qs): compare/contrast, "X or Y?" — confirm basics
@@ -1463,7 +1274,7 @@ INTENSIVE PRACTICE (deferred content) - NEW CONCEPTS ALLOWED:
 - More varied scenarios and domains
 - Cross-domain transfer exercises
 - Higher difficulty, more distractors
-- Types: codeCompletion, debugging, openEnded, etc.
+- Format: 1 quiz section with varied questions
 
 Output valid JSON only.`;
 
@@ -1594,9 +1405,7 @@ export function buildCacheableDayDetailCorePrompt(params: DayDetailParams): {
     : false;
   const sections = getSectionsForSkillType(params.skillType, {
     isLanguageLearning: params.isLanguageLearning,
-    hasTones: langHasTones,
     isProjectBased,
-    codeWritingEnabled: params.codeWritingEnabled,
     customSections: params.customSections,
   });
   // Training modes use quiz-only for task1 warm-up (3-4 questions)
@@ -1620,7 +1429,7 @@ Features: ${langFeatures}
 - Include "audioText" field in quiz questions for listening practice (TTS will speak it)
 - Include commonMistakes in explanations where relevant
 - Task1 explanations should teach vocabulary/grammar concepts (word meanings, conjugation rules, usage patterns)
-${langHasTones ? '- TONAL LANGUAGE: Include tone numbers/markers. Add toneSelect section in task1.' : ''}${langHasGender ? '\n- GENDERED LANGUAGE: Include grammatical gender (masculine/feminine/neuter) where applicable.' : ''}`
+${langHasTones ? '- TONAL LANGUAGE: Include tone numbers/markers in quiz explanations.' : ''}${langHasGender ? '\n- GENDERED LANGUAGE: Include grammatical gender (masculine/feminine/neuter) where applicable.' : ''}`
     : '';
 
   // Build personalization instructions using shared builder
@@ -1687,7 +1496,7 @@ ${skillGuidance}${languageInstructions}
 ${dayTrainingOverride ? `\n${dayTrainingOverride}\n` : ''}
 ${levelGuidance.complexityGuidance}
 
-TASK1: Generate ${dayTrainingConfig ? '4' : levelGuidance.quizQuestionCount} questions total. ${dayTrainingConfig ? `Generate exactly 1 quiz section with 4 questions. NO secondary sections. ${params.goalType === GoalType.AI_BUILDER ? `Q1-Q3: practical scenarios tied to today's AI concept at the user's ${params.skillLevel} level. LAST QUESTION: one stretch question ABOVE ${params.skillLevel} level (harder scenario, edge case, or production-scale challenge). NO caseStudy. Skip realWorldContext. Keep explanation brief (50-80 words).` : params.goalType === GoalType.PROJECT ? `Q1-Q3: mix of theory and application at the user's ${params.skillLevel} level. LAST QUESTION: one stretch question ABOVE ${params.skillLevel} level (harder scenario requiring deeper understanding). NO caseStudy. Skip realWorldContext. Keep explanation brief (50-80 words).` : `Same structure as curriculum questions (conceptTitle, explanation, realWorldContext, caseStudy).`}` : '70-85% in quiz section, 15-30% in secondary section.'}
+TASK1: Generate ${dayTrainingConfig ? '4' : levelGuidance.quizQuestionCount} questions in exactly 1 quiz section. ${dayTrainingConfig ? `NO secondary sections. ${params.goalType === GoalType.AI_BUILDER ? `Q1-Q3: practical scenarios tied to today's AI concept at the user's ${params.skillLevel} level. LAST QUESTION: one stretch question ABOVE ${params.skillLevel} level (harder scenario, edge case, or production-scale challenge). NO caseStudy. Skip realWorldContext. Keep explanation brief (50-80 words).` : params.goalType === GoalType.PROJECT ? `Q1-Q3: mix of theory and application at the user's ${params.skillLevel} level. LAST QUESTION: one stretch question ABOVE ${params.skillLevel} level (harder scenario requiring deeper understanding). NO caseStudy. Skip realWorldContext. Keep explanation brief (50-80 words).` : `Same structure as curriculum questions (conceptTitle, explanation, realWorldContext, caseStudy).`}` : 'All questions in 1 quiz section. No secondary sections.'}
 ${personalizationInstructions}${continuityInstructions}`;
 
   // User prompt - CORE content: prePrompt + video + task1 (the main learning activity)
@@ -1706,10 +1515,7 @@ ${personalizationInstructions}${continuityInstructions}`;
 
   // Get task1 template based on skill type
   const task1Template = params.isLanguageLearning
-    ? buildLanguageTask1Template(
-        params.targetLanguage || 'target language',
-        langHasTones,
-      )
+    ? buildLanguageTask1Template(params.targetLanguage || 'target language')
     : getTask1SectionTemplate(params.skillType);
 
   const userPrompt = `Day ${params.dayNumber}: "${params.dayTitle}" for skill "${params.skillName}"
@@ -1733,7 +1539,7 @@ REQUIREMENTS:
 ${videoRequirement}
 - task1: REQUIRED - ${dayTrainingConfig
     ? `4 quiz questions (conceptTitle, ${params.goalType === GoalType.PROJECT || params.goalType === GoalType.AI_BUILDER ? 'brief explanation 50-80 words, NO realWorldContext, NO caseStudy' : 'explanation, realWorldContext, caseStudy'})`
-    : `${levelGuidance.quizQuestionCount} questions total (70-85% quiz, 15-30% secondary section)`}
+    : `${levelGuidance.quizQuestionCount} questions in 1 quiz section`}
   - EVERY question must have "conceptTitle" and "explanation" (${dayTrainingConfig && (params.goalType === GoalType.PROJECT || params.goalType === GoalType.AI_BUILDER) ? '50-80 words, brief' : '130-200 words, teaching content'})
   - ${dayTrainingConfig && (params.goalType === GoalType.PROJECT || params.goalType === GoalType.AI_BUILDER) ? 'Skip "realWorldContext" and "caseStudy" — keep questions focused on theory + application for today\'s build task' : 'EVERY question must have "realWorldContext" (1 sentence)'}
   - explanation: ${dayTrainingConfig && (params.goalType === GoalType.PROJECT || params.goalType === GoalType.AI_BUILDER) ? 'Keep it concise — 1 paragraph with the key insight' : 'Split into 2-3 paragraphs with \\\\n\\\\n (key insight → details/examples)'}
@@ -1747,30 +1553,13 @@ Output valid JSON only.`;
 
 /**
  * Generate Task1 section template based on skill type
- * Task1 is now the CORE learning activity (replaces foundation cards)
- * Each question teaches a concept through its rich explanation
+ * Task1 is quiz-only — each question teaches a concept through its rich explanation
  */
-function getTask1SectionTemplate(skillType: SkillType): string {
-  // Quiz section template (70-85% of questions) — always included as main section
+function getTask1SectionTemplate(_skillType: SkillType): string {
   const quizTemplate = `{"id": "q1", "question": "Compare/contrast question", "options": ["A", "B", "C", "D"], "correctIndex": 0, "conceptTitle": "Concept Name", "explanation": "Key insight paragraph.\\n\\nSupporting details and examples.", "realWorldContext": "Why this matters in practice"}, {"id": "q2", "question": "fallback question text", "options": ["Approach A", "Approach B", "Approach C", "Approach D"], "correctIndex": 1, "conceptTitle": "Decision Concept", "explanation": "Why this approach is best.\\n\\nDetails and trade-offs.", "realWorldContext": "When you face this decision", "caseStudy": {"scenario": "Real-world situation (2-3 sentences)", "question": "What would you do?", "options": [{"label": "Approach A", "consequence": "This fails because..."}, {"label": "Approach B", "consequence": "This works well because..."}, {"label": "Approach C", "consequence": "This works but..."}, {"label": "Approach D", "consequence": "This is overkill because..."}], "bestChoice": 1, "explanation": "Why Approach B is optimal here (1-2 sentences)"}}`;
 
-  // Secondary section templates (15-30%) — AI picks ONE based on topic fit
-  // All types shown so AI knows each schema. Pick the one listed in "Sections:".
-  const secondaryTemplates: Record<string, string> = {
-    openEnded: `{"type": "openEnded", "title": "Think It Through", "questions": [{"id": "oe1", "question": "Scenario question", "responseType": "openEnded", "openEndedConfig": {"category": "analysis", "scenario": "Context", "constraints": ["Constraint 1"], "evaluationDimensions": [{"name": "Relevance", "weight": 1}]}, "conceptTitle": "Concept Name", "explanation": "Key insight.\\n\\nDetails.", "realWorldContext": "Why this matters"}]}`,
-  };
-
-  // Get the available secondary types for this skill (exclude 'quiz')
-  const registry = SECTION_REGISTRY[skillType] || SECTION_REGISTRY[SkillType.KNOWLEDGE];
-  const secondaryTypes = registry.task1.filter(t => t !== 'quiz');
-
-  // Show the first secondary type's template as the example
-  const defaultSecondary = secondaryTypes[0] || 'openEnded';
-  const secondaryExample = secondaryTemplates[defaultSecondary] || secondaryTemplates.openEnded;
-
   return `[
-        {"type": "quiz", "title": "Core Concepts", "questions": [${quizTemplate}]},
-        ${secondaryExample}
+        {"type": "quiz", "title": "Core Concepts", "questions": [${quizTemplate}]}
       ]`;
 }
 
