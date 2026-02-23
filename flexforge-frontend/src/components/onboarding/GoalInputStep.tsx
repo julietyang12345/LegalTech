@@ -22,9 +22,10 @@ interface GoalInputStepProps {
   initialValue?: string;
   goalType: GoalType | null;
   onGoalTypeChange: (goalType: GoalType) => void;
+  onBackToPractice?: () => void;
 }
 
-export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onGoalTypeChange }: GoalInputStepProps) {
+export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onGoalTypeChange, onBackToPractice }: GoalInputStepProps) {
   const [goal, setGoal] = useState(initialValue || "");
   const [isSkipping, setIsSkipping] = useState(false);
   const [isCheckingSessions, setIsCheckingSessions] = useState(true);
@@ -254,15 +255,17 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
           </button>
         )}
 
-        {/* Just practice link */}
-        <button
-          type="button"
-          onClick={() => navigate('/reps?fresh=true')}
-          className="w-full inline-flex items-center justify-center gap-2 text-sm text-content-tertiary hover:text-content-secondary transition-colors py-1"
-        >
-          <Dumbbell className="w-4 h-4" />
-          Just let me practice
-        </button>
+        {/* Back to practice assessment */}
+        {onBackToPractice && (
+          <button
+            type="button"
+            onClick={onBackToPractice}
+            className="w-full inline-flex items-center justify-center gap-2 text-sm text-content-tertiary hover:text-content-secondary transition-colors py-1"
+          >
+            <Dumbbell className="w-4 h-4" />
+            Back to practice assessment
+          </button>
+        )}
       </form>
     </div>
   );

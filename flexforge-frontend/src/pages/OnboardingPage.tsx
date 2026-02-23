@@ -1,13 +1,15 @@
 import { useState, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, GraduationCap } from 'lucide-react';
 import {
   GoalInputStep,
   DirectionsStep,
   RefinementPanel,
   FeelingStep,
 } from '@/components/onboarding';
+import { RepsIntake } from '@/components/reps';
+import { repsService } from '@/services/repsService';
 import { onboardingService } from '@/services/onboardingService';
 import { analyticsService } from '@/services/analyticsService';
 import { useAuthStore } from '@/stores/authStore';
@@ -21,7 +23,8 @@ import type {
 
 // Onboarding state machine
 type OnboardingStep =
-  | 'goal_input'
+  | 'practice_intake'     // Default: 3-question practice intake
+  | 'goal_input'          // Course creation flow
   | 'generating'          // Loading directions
   | 'directions'          // Pick direction
   | 'refinement'          // Refine directions
@@ -39,8 +42,9 @@ export default function OnboardingPage() {
   // Track onboarding start time for duration calculation
   const onboardingStartTime = useRef<number>(Date.now());
 
-  // State machine
-  const [step, setStep] = useState<OnboardingStep>('goal_input');
+  // State machine — default to practice intake unless coming from a specific skill link
+  const [step, setStep] = useState<OnboardingStep>(prefilledSkill ? 'goal_input' : 'practice_intake');
+  const [isSavingIntake, setIsSavingIntake] = useState(false);
 
   // Shared state
   const [goalType, setGoalType] = useState<GoalType | null>(null);
@@ -55,6 +59,18 @@ export default function OnboardingPage() {
   const [refinementContext, setRefinementContext] = useState<RefinementContext | undefined>();
 
   // ─── Callbacks ─────────────────────────────────────────────────
+
+  // Practice intake → save answers → navigate to /reps for scenario generation
+  const handlePracticeIntakeComplete = useCallback(async (data: { background: string; target: string; struggle: string }) => {
+    setIsSavingIntake(true);
+    try {
+      await repsService.saveIntake(data);
+      navigate('/reps');
+    } catch (err) {
+      console.error('Failed to save intake:', err);
+      setIsSavingIntake(false);
+    }
+  }, [navigate]);
 
   // Step 1: Submit goal → generate directions
   const handleGoalSubmit = useCallback(async (goalText: string) => {
@@ -163,6 +179,7 @@ export default function OnboardingPage() {
 
   const getProgress = () => {
     switch (step) {
+      case 'practice_intake': return 10;
       case 'goal_input': return 15;
       case 'generating': return 35;
       case 'directions': return 55;
@@ -203,6 +220,28 @@ export default function OnboardingPage() {
 
           {/* Step content */}
           <AnimatePresence mode="wait">
+            {/* ── Practice Intake (default) ── */}
+            {step === 'practice_intake' && (
+              <StepWrapper key="practice_intake">
+                <RepsIntake
+                  onComplete={handlePracticeIntakeComplete}
+                  isLoading={isSavingIntake}
+                />
+                <div className="max-w-xl mx-auto mt-8 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setStep('goal_input')}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-border
+                               bg-surface text-sm font-medium text-content-secondary
+                               hover:border-brand-300 hover:text-content transition-colors"
+                  >
+                    <GraduationCap className="w-4 h-4" />
+                    I know what I want to study
+                  </button>
+                </div>
+              </StepWrapper>
+            )}
+
             {/* ── Goal Input ── */}
             {step === 'goal_input' && (
               <StepWrapper key="goal">
@@ -211,6 +250,7 @@ export default function OnboardingPage() {
                   initialValue={prefilledSkill}
                   goalType={goalType}
                   onGoalTypeChange={setGoalType}
+                  onBackToPractice={prefilledSkill ? undefined : () => setStep('practice_intake')}
                 />
               </StepWrapper>
             )}

@@ -1,10 +1,24 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Loader2, Dumbbell } from 'lucide-react';
+import { ArrowLeft, Dumbbell, Target, Sparkles, BookOpen, CheckCircle, Search, Brain } from 'lucide-react';
 import { useRepsStore } from '@/stores/repsStore';
 import { RepsIntake, ScenarioSelect, RepPractice, RepFeedback } from '@/components/reps';
-import { Button } from '@/components/common';
+import { Button, GeneratingScreen } from '@/components/common';
+
+const SCENARIO_LOADING_STEPS = [
+  { icon: Brain, text: 'Analyzing your skill profile...', duration: 2000 },
+  { icon: Search, text: 'Finding relevant challenges...', duration: 2500 },
+  { icon: Target, text: 'Calibrating difficulty...', duration: 2000 },
+  { icon: Sparkles, text: 'Crafting your scenarios...', duration: 2500 },
+];
+
+const FEEDBACK_LOADING_STEPS = [
+  { icon: BookOpen, text: 'Reviewing your work...', duration: 2500 },
+  { icon: Search, text: 'Evaluating skill dimensions...', duration: 3000 },
+  { icon: Target, text: 'Identifying growth areas...', duration: 2500 },
+  { icon: CheckCircle, text: 'Building your feedback...', duration: 2000 },
+];
 
 export function RepsPage() {
   const navigate = useNavigate();
@@ -141,21 +155,13 @@ export function RepsPage() {
 
         {/* Loading */}
         {(phase === 'loading' || isGenerating) && (
-          <div className="flex-1 flex items-center justify-center py-24">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="text-center"
-            >
-              <Loader2 className="w-8 h-8 animate-spin text-brand-500 mx-auto mb-4" />
-              <p className="text-content-secondary font-medium">
-                Generating practice scenarios...
-              </p>
-              <p className="text-sm text-content-tertiary mt-1">
-                Tailored to your background and goals
-              </p>
-            </motion.div>
-          </div>
+          <GeneratingScreen
+            steps={SCENARIO_LOADING_STEPS}
+            title="Generating Practice Scenarios"
+            subtitle="Tailored to your background and goals"
+            timeEstimate=""
+            inline
+          />
         )}
 
         {/* Scenario selection */}
@@ -181,21 +187,13 @@ export function RepsPage() {
 
         {/* Completing (generating feedback) */}
         {phase === 'completing' && (
-          <div className="flex-1 flex items-center justify-center py-24">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="text-center"
-            >
-              <Loader2 className="w-8 h-8 animate-spin text-brand-500 mx-auto mb-4" />
-              <p className="text-content-secondary font-medium">
-                Analyzing your work...
-              </p>
-              <p className="text-sm text-content-tertiary mt-1">
-                Generating detailed feedback
-              </p>
-            </motion.div>
-          </div>
+          <GeneratingScreen
+            steps={FEEDBACK_LOADING_STEPS}
+            title="Analyzing Your Work"
+            subtitle="Generating detailed feedback"
+            timeEstimate=""
+            inline
+          />
         )}
 
         {/* Feedback */}
