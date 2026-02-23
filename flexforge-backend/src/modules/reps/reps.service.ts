@@ -36,9 +36,8 @@ export class RepsService {
     if (!user) throw new NotFoundException('User not found');
 
     const hasRepsContext = !!(user.preferences as any)?.repsContext;
-    const hasLearnerOnboarding = !!user.preferences?.learner;
 
-    return { needsIntake: !hasRepsContext && !hasLearnerOnboarding };
+    return { needsIntake: !hasRepsContext };
   }
 
   /**
