@@ -113,7 +113,8 @@ export function ConfirmationPage() {
     };
 
     startGeneration();
-  }, [skillName, familiarity, sessionLength, navigate, createSession, addSystemMessage, estimatedDays]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skillName, familiarity, sessionLength, navigate, createSession, addSystemMessage]);
 
   return (
     <>

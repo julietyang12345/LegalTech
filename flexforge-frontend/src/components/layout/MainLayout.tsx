@@ -16,6 +16,7 @@ import {
   Check,
   X,
   Brain,
+  Dumbbell,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { communityService, getDisplayName, Notification as ApiNotification } from '@/services/communityService';
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { path: '/showcase', label: 'Showcase', icon: Trophy },
   { path: '/vault', label: 'Vault', icon: BookOpen },
   { path: '/community', label: 'Community', icon: Users },
+  { path: '/reps', label: 'Reps', icon: Dumbbell },
 ];
 
 // Local notification type for display

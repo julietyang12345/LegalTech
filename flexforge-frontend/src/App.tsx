@@ -31,6 +31,7 @@ import {
   CareerPathsDemoPage,
   ExplorePage,
   SettingsPage,
+  RepsPage,
 } from '@/pages';
 
 // React Query client
@@ -106,6 +107,16 @@ function App() {
             element={
               <ProtectedRoute>
                 <SessionPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Reps - full screen practice */}
+          <Route
+            path="/reps"
+            element={
+              <ProtectedRoute skipOnboardingCheck>
+                <RepsPage />
               </ProtectedRoute>
             }
           />

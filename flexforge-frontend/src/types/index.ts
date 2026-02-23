@@ -1931,3 +1931,86 @@ export interface CompleteOnboardingDto {
   // Analytics: time spent in onboarding flow (tracked client-side)
   durationSeconds?: number;
 }
+
+// ============================================
+// Rep Types (Practice Scenarios)
+// ============================================
+
+export interface RepScenarioTask {
+  id: string;
+  title: string;
+  description: string;
+  estimatedMinutes: number;
+}
+
+export interface RepScenario {
+  title: string;
+  briefing: string;
+  tasks: RepScenarioTask[];
+  estimatedMinutes: number;
+  difficulty: 'beginner' | 'intermediate' | 'advanced';
+  skillTags: string[];
+}
+
+export interface RepHintRevealed {
+  taskIndex: number;
+  level: number;
+  hint: string;
+  encouragement: string;
+}
+
+export interface RepCoachMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
+
+export interface RepSkillEvaluation {
+  dimension: string;
+  score: number;
+  evidence: string;
+  gap: string;
+}
+
+export interface RepFeedback {
+  execution: {
+    completionAnalysis: string;
+    timeEfficiency: string;
+    hintDependency: string;
+  };
+  skillEvaluation: RepSkillEvaluation[];
+  improvementPlan: {
+    immediateActions: string[];
+    conceptsToStudy: string[];
+    suggestedNextRep: string;
+    resourceHints: string[];
+    methodToImprove: Array<{ dimension: string; method: string }>;
+  };
+  growthSignal: {
+    comparedToStart: string;
+    confidenceCalibration: string;
+    encouragement: string;
+  };
+  suggestedTopics: string[];
+}
+
+export interface Rep {
+  id: string;
+  userId: string;
+  skillName: string;
+  topic: string;
+  scenario: RepScenario;
+  scenarioOptions: RepScenario[] | null;
+  scratchPadContent: string | null;
+  coachConversation: RepCoachMessage[];
+  hintsUsed: number;
+  hintsRevealed: RepHintRevealed[];
+  completed: boolean;
+  timeSpentSeconds: number;
+  confidenceScore: number | null;
+  feedback: RepFeedback | null;
+  sourceSessionId: string | null;
+  sourceConcept: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

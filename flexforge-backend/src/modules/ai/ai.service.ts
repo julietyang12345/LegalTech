@@ -310,6 +310,11 @@ export enum AITask {
   // Fast text (Groq Llama 3.1)
   EMAIL_SUMMARY = 'EMAIL_SUMMARY',
   NOTIFICATION_GENERATION = 'NOTIFICATION_GENERATION',
+
+  // Reps (practice scenarios)
+  REP_SCENARIO_GENERATION = 'REP_SCENARIO_GENERATION',
+  REP_HINT = 'REP_HINT',
+  REP_FEEDBACK = 'REP_FEEDBACK',
 }
 
 export interface AIResponse {
@@ -608,6 +613,20 @@ export class AiService {
       ],
       [AITask.NOTIFICATION_GENERATION]: [
         { provider: 'groq', model: 'llama-3.1-70b-versatile' },
+      ],
+
+      // Reps
+      [AITask.REP_SCENARIO_GENERATION]: [
+        { provider: 'anthropic', model: 'claude-sonnet-4-20250514' },
+        { provider: 'openai', model: 'gpt-4o' },
+      ],
+      [AITask.REP_HINT]: [
+        { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+        { provider: 'openai', model: 'gpt-4o-mini' },
+      ],
+      [AITask.REP_FEEDBACK]: [
+        { provider: 'anthropic', model: 'claude-sonnet-4-20250514' },
+        { provider: 'openai', model: 'gpt-4o' },
       ],
     };
 

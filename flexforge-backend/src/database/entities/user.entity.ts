@@ -154,6 +154,13 @@ export class User {
     };
     // Security - password change timestamp for session invalidation
     passwordChangedAt?: string;
+    // Reps intake context
+    repsContext?: {
+      background: string;
+      target: string;
+      struggle: string;
+      updatedAt: string;
+    };
   };
 
   // Relations

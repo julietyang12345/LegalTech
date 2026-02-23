@@ -25,6 +25,7 @@ import { Waitlist } from './database/entities/waitlist.entity';
 import { CommunityPost, CommunityComment } from './database/entities/community-post.entity';
 import { Notification } from './database/entities/notification.entity';
 import { ContactSubmission } from './database/entities/contact.entity';
+import { Rep } from './database/entities/rep.entity';
 
 // Modules
 import { AuthModule } from './modules/auth/auth.module';
@@ -41,6 +42,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { WaitlistModule } from './modules/waitlist/waitlist.module';
 import { CommunityModule } from './modules/community/community.module';
 import { ContactModule } from './modules/contact/contact.module';
+import { RepsModule } from './modules/reps/reps.module';
 
 @Module({
   imports: [
@@ -79,6 +81,7 @@ import { ContactModule } from './modules/contact/contact.module';
           CommunityComment,
           Notification,
           ContactSubmission,
+          Rep,
         ],
         synchronize: configService.get('nodeEnv') === 'development',
         logging: configService.get('nodeEnv') === 'development',
@@ -116,6 +119,7 @@ import { ContactModule } from './modules/contact/contact.module';
     WaitlistModule,
     CommunityModule,
     ContactModule,
+    RepsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { clsx } from 'clsx';
 import { Button } from "../common/Button";
-import { Sparkles, ArrowRight, BookOpen, Loader2, Briefcase, Cpu, MessageSquare, ChevronDown, Check } from "lucide-react";
+import { Sparkles, ArrowRight, BookOpen, Loader2, Briefcase, Cpu, MessageSquare, ChevronDown, Check, Dumbbell } from "lucide-react";
 import { onboardingService } from "@/services/onboardingService";
 import { useAuthStore } from "@/stores/authStore";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -253,6 +253,16 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
             {isSkipping ? 'Loading...' : 'Continue a previous session'}
           </button>
         )}
+
+        {/* Just practice link */}
+        <button
+          type="button"
+          onClick={() => navigate('/reps')}
+          className="w-full inline-flex items-center justify-center gap-2 text-sm text-content-tertiary hover:text-content-secondary transition-colors py-1"
+        >
+          <Dumbbell className="w-4 h-4" />
+          Just let me practice
+        </button>
       </form>
     </div>
   );
