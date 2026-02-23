@@ -52,6 +52,7 @@ interface RepsState {
   sendCoachMessage: (message: string) => Promise<void>;
   completeRep: (confidenceScore?: number) => Promise<void>;
   fetchHistory: () => Promise<void>;
+  viewRepFeedback: (rep: Rep) => void;
   resetFlow: () => void;
   setPhase: (phase: RepsPhase) => void;
   clearError: () => void;
@@ -240,6 +241,13 @@ export const useRepsStore = create<RepsState>()(
         } catch (error: any) {
           console.error('Failed to fetch rep history:', error);
         }
+      },
+
+      viewRepFeedback: (rep) => {
+        set({
+          activeRep: rep,
+          phase: 'feedback',
+        });
       },
 
       resetFlow: () => {

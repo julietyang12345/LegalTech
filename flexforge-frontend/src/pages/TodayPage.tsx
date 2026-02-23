@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Calendar, Trophy, ChevronRight, Sparkles, Loader2, RefreshCw, Target, BookOpen, CheckCircle, X, Clock, Check, Lock, SkipForward } from 'lucide-react';
+import { Play, Calendar, Trophy, ChevronRight, Sparkles, Loader2, RefreshCw, Target, BookOpen, CheckCircle, X, Clock, Check, Lock, SkipForward, Dumbbell, GraduationCap } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useCompanionStore } from '@/stores/companionStore';
+import { useRepsStore } from '@/stores/repsStore';
 import { Button, Card, StreakBadge, ProgressBar, GeneratingScreen } from '@/components/common';
 import { sessionService } from '@/services/sessionService';
-import { DayStatus, CurriculumDay, GoalType } from '@/types';
+import { DayStatus, CurriculumDay, type Session } from '@/types';
 import { getTrainingConfig, isTrainingMode } from '@/config/training-configs';
 
 // Loading steps for day content generation (~10 seconds total)
@@ -278,42 +279,119 @@ function SessionCompleteState({ nextDayTopic }: { nextDayTopic: string }) {
   );
 }
 
-// No active session - prompt to create one
-function NoSessionState() {
-  const navigate = useNavigate();
+// Compact practice rep banner
+function ActiveRepBanner({ onResume }: { onResume: () => void }) {
+  const { activeRep } = useRepsStore();
+  if (!activeRep) return null;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
+    <motion.button
+      initial={{ opacity: 0, y: -5 }}
       animate={{ opacity: 1, y: 0 }}
-      className="text-center py-16"
+      onClick={onResume}
+      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-surface border border-border
+                 hover:bg-surface-tertiary transition-colors text-left"
     >
-      <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-brand-400 to-brand-500
-                      flex items-center justify-center">
-        <Sparkles className="w-10 h-10 text-white" />
+      <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 dark:bg-amber-900/30">
+        <Dumbbell className="w-4 h-4 text-amber-600" />
       </div>
-      <h2 className="text-2xl font-bold text-content mb-3">Ready to learn something new?</h2>
-      <p className="text-content-secondary mb-8 max-w-md mx-auto">
-        Start your learning journey with an AI-generated curriculum tailored just for you.
-      </p>
-      <div className="flex flex-col sm:flex-row gap-3 justify-center">
-        <Button
-          size="xl"
-          onClick={() => navigate('/onboarding')}
-          rightIcon={<ChevronRight className="w-5 h-5" />}
-        >
-          Start a New Course
-        </Button>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-content truncate">{activeRep.scenario.title}</p>
+        <p className="text-xs text-content-tertiary">Practice in progress</p>
       </div>
+      <span className="text-xs font-medium text-amber-600 flex-shrink-0">Resume →</span>
+    </motion.button>
+  );
+}
 
-      {/* Link to existing courses */}
-      <button
-        onClick={() => navigate('/vault')}
-        className="mt-6 text-sm text-content-tertiary hover:text-content-secondary flex items-center gap-1.5 mx-auto transition-colors"
-      >
-        <BookOpen className="w-4 h-4" />
-        Previous Sessions
-      </button>
+// Compact active course banner
+function ActiveCourseBanner({ session, onClick }: { session: Session; onClick: () => void }) {
+  const progress = Math.round((session.currentDay / session.durationDays) * 100);
+
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: -5 }}
+      animate={{ opacity: 1, y: 0 }}
+      onClick={onClick}
+      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-surface border border-border
+                 hover:bg-surface-tertiary transition-colors text-left"
+    >
+      <div className="w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center flex-shrink-0 dark:bg-brand-900/30">
+        <GraduationCap className="w-4 h-4 text-brand-600" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-content truncate">{session.skillName}</p>
+        <p className="text-xs text-content-tertiary">Day {session.currentDay}/{session.durationDays} · {progress}%</p>
+      </div>
+      <ChevronRight className="w-4 h-4 text-content-tertiary flex-shrink-0" />
+    </motion.button>
+  );
+}
+
+// Practice card shown when no active course
+function PracticeCard({ onResume, onStartNew }: { onResume: () => void; onStartNew: () => void }) {
+  const { activeRep } = useRepsStore();
+
+  if (!activeRep || activeRep.completed) {
+    // No active practice - show start practice CTA
+    return (
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+        <Card className="bg-surface border-2 border-amber-100">
+          <div className="p-8 text-center">
+            <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-amber-100 flex items-center justify-center dark:bg-amber-900/30">
+              <Dumbbell className="w-7 h-7 text-amber-600" />
+            </div>
+            <h2 className="text-xl font-bold text-content mb-2">Practice your skills</h2>
+            <p className="text-content-secondary mb-6 max-w-sm mx-auto">
+              Jump into a hands-on scenario and test what you've learned.
+            </p>
+            <Button
+              size="xl"
+              onClick={onStartNew}
+              leftIcon={<Dumbbell className="w-5 h-5" />}
+              className="w-full sm:w-auto"
+            >
+              Start Practice
+            </Button>
+          </div>
+        </Card>
+      </motion.div>
+    );
+  }
+
+  // Active practice - show resume card
+  const { scenario } = activeRep;
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+      <Card className="bg-surface border-2 border-amber-100">
+        <div className="p-8 text-center">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-50 text-amber-700
+                        rounded-full text-sm font-medium mb-4 dark:bg-amber-900/20 dark:text-amber-400">
+            <Dumbbell className="w-4 h-4" />
+            Practice in progress
+          </div>
+
+          <h2 className="text-xl font-bold text-content mb-2">{scenario.title}</h2>
+
+          <div className="flex items-center justify-center gap-4 text-sm text-content-tertiary mb-6">
+            <span className="flex items-center gap-1">
+              <Clock className="w-4 h-4" />
+              ~{scenario.estimatedMinutes}m
+            </span>
+            <span className="capitalize">{scenario.difficulty}</span>
+          </div>
+
+          <Button
+            size="xl"
+            onClick={onResume}
+            leftIcon={<Play className="w-5 h-5" />}
+            className="w-full sm:w-auto"
+          >
+            Resume Practice
+          </Button>
+        </div>
+      </Card>
     </motion.div>
   );
 }
@@ -332,9 +410,15 @@ export function TodayPage() {
     canStartDay,
   } = useSessionStore();
   const { addSystemMessage } = useCompanionStore();
+  const { activeRep, phase: repPhase } = useRepsStore();
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [showCurriculum, setShowCurriculum] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+
+  // Check if there's an active (uncompleted) rep in practice/scenarios phase
+  const hasActiveRep = activeRep && !activeRep.completed && (repPhase === 'practice' || repPhase === 'scenarios');
+
+  const handleResumeRep = () => navigate('/reps');
 
   useEffect(() => {
     fetchActiveSession();
@@ -462,11 +546,50 @@ export function TodayPage() {
     );
   }
 
-  // No session state
+  // No session state - show practice as main card
   if (!activeSession) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-12">
-        <NoSessionState />
+      <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
+        {/* Welcome header */}
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-center">
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <span className="text-3xl">😊</span>
+            <h1 className="text-2xl font-bold text-content">
+              Good {new Date().getHours() < 12 ? 'morning' : 'afternoon'}, {user?.name || 'friend'}!
+            </h1>
+          </div>
+          {user && user.currentStreak > 0 && (
+            <StreakBadge count={user.currentStreak} animated />
+          )}
+        </motion.div>
+
+        {/* Practice card */}
+        <PracticeCard onResume={handleResumeRep} onStartNew={() => navigate('/reps?fresh=true')} />
+
+        {/* Bottom actions */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="flex flex-col sm:flex-row gap-3"
+        >
+          <Button
+            variant="secondary"
+            onClick={() => navigate('/onboarding')}
+            leftIcon={<Sparkles className="w-4 h-4" />}
+            className="flex-1"
+          >
+            Start New Course
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => navigate('/vault')}
+            leftIcon={<BookOpen className="w-4 h-4" />}
+            className="flex-1"
+          >
+            View My Courses
+          </Button>
+        </motion.div>
       </div>
     );
   }
@@ -536,6 +659,16 @@ export function TodayPage() {
           <StreakBadge count={user.currentStreak} animated />
         )}
       </motion.div>
+
+      {/* Active practice rep */}
+      {hasActiveRep && (
+        <ActiveRepBanner onResume={handleResumeRep} />
+      )}
+
+      {/* Active course */}
+      {activeSession && (
+        <ActiveCourseBanner session={activeSession} onClick={() => setShowCurriculum(true)} />
+      )}
 
       {/* Knowledge Recall (curriculum mode only, skip on day 1) */}
       {!trainingMode && previousDayData && activeSession.currentDay > 1 && (

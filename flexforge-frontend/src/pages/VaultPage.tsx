@@ -5,6 +5,7 @@ import {
   Search,
   Bookmark,
   GraduationCap,
+  Dumbbell,
   Trash2,
   Play,
   Calendar,
@@ -16,16 +17,19 @@ import {
   X,
   BookOpen,
   Loader2,
+  Eye,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSessionStore } from '@/stores/sessionStore';
+import { useRepsStore } from '@/stores/repsStore';
 import { Button, Card, Input } from '@/components/common';
 import { StepContentPreview, type PreviewStep } from '@/components/session';
 import { sessionService } from '@/services/sessionService';
-import { SessionStatus, type Session, type CurriculumDay, type TargetLanguage } from '@/types';
+import { repsService } from '@/services/repsService';
+import { SessionStatus, type Session, type CurriculumDay, type TargetLanguage, type Rep } from '@/types';
 
 // Tab types
-type VaultTab = 'courses' | 'bookmarks';
+type VaultTab = 'courses' | 'practice' | 'bookmarks';
 
 // Bookmark interface
 export interface CourseBookmark {
@@ -350,6 +354,108 @@ function BookmarkCard({
   );
 }
 
+// Rep card component for practice tab
+function RepCard({
+  rep,
+  onViewFeedback,
+  onResume,
+}: {
+  rep: Rep;
+  onViewFeedback: () => void;
+  onResume: () => void;
+}) {
+  const createdDate = new Date(rep.createdAt).toLocaleDateString();
+  const avgScore = rep.feedback?.skillEvaluation?.length
+    ? rep.feedback.skillEvaluation.reduce((sum, e) => sum + e.score, 0) / rep.feedback.skillEvaluation.length
+    : 0;
+
+  return (
+    <Card variant="hover" className="p-4">
+      <div className="flex items-start gap-4">
+        {/* Icon */}
+        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-100 to-orange-100 flex items-center justify-center flex-shrink-0">
+          <Dumbbell className="w-6 h-6 text-amber-600" />
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0 overflow-hidden">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <h3 className="font-semibold text-content truncate">{rep.scenario.title}</h3>
+              <div className="flex items-center gap-2 sm:gap-3 mt-1 text-xs sm:text-sm text-content-tertiary flex-wrap">
+                <span className="flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5" />
+                  {createdDate}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5" />
+                  ~{rep.scenario.estimatedMinutes}m
+                </span>
+              </div>
+            </div>
+            <span className={clsx(
+              'inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full flex-shrink-0',
+              rep.completed
+                ? 'bg-green-100 text-green-700'
+                : 'bg-amber-100 text-amber-700'
+            )}>
+              {rep.completed ? (
+                <><CheckCircle2 className="w-3 h-3" /> Completed</>
+              ) : (
+                <><Play className="w-3 h-3" /> In Progress</>
+              )}
+            </span>
+          </div>
+
+          {/* Skill tags */}
+          {rep.scenario.skillTags?.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {rep.scenario.skillTags.slice(0, 4).map(tag => (
+                <span key={tag} className="px-2 py-0.5 text-xs bg-surface-tertiary text-content-secondary rounded-full">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Score bar for completed reps */}
+          {rep.completed && avgScore > 0 && (
+            <div className="mt-3">
+              <div className="flex justify-between text-xs text-content-tertiary mb-1">
+                <span>Avg Score</span>
+                <span>{avgScore.toFixed(1)}/5</span>
+              </div>
+              <div className="h-1.5 bg-surface-tertiary rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full bg-gradient-to-r from-amber-400 to-orange-500"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${(avgScore / 5) * 100}%` }}
+                  transition={{ duration: 0.5 }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="mt-3">
+            {rep.completed ? (
+              <Button size="sm" onClick={onViewFeedback} className="flex items-center gap-1.5">
+                <Eye className="w-3.5 h-3.5" />
+                View Feedback
+              </Button>
+            ) : (
+              <Button size="sm" onClick={onResume} className="flex items-center gap-1.5">
+                <Play className="w-3.5 h-3.5" />
+                Resume
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 // Map bookmark section to preview step
 function sectionToPreviewStep(section: CourseBookmark['section']): PreviewStep {
   const map: Record<CourseBookmark['section'], PreviewStep> = {
@@ -646,6 +752,7 @@ function saveBookmarks(bookmarks: CourseBookmark[]) {
 export function VaultPage() {
   const navigate = useNavigate();
   const { activeSession, setActiveSession, updateSession } = useSessionStore();
+  const { viewRepFeedback } = useRepsStore();
   const [activeTab, setActiveTab] = useState<VaultTab>('courses');
   const [searchQuery, setSearchQuery] = useState('');
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -654,8 +761,10 @@ export function VaultPage() {
   const [bookmarks, setBookmarks] = useState<CourseBookmark[]>([]);
   const [selectedBookmark, setSelectedBookmark] = useState<CourseBookmark | null>(null);
   const [sessionToResume, setSessionToResume] = useState<Session | null>(null);
+  const [reps, setReps] = useState<Rep[]>([]);
+  const [isLoadingReps, setIsLoadingReps] = useState(false);
 
-  // Fetch sessions and bookmarks on mount
+  // Fetch sessions, bookmarks, and reps on mount
   useEffect(() => {
     const fetchSessions = async () => {
       try {
@@ -669,7 +778,20 @@ export function VaultPage() {
       }
     };
 
+    const fetchReps = async () => {
+      try {
+        setIsLoadingReps(true);
+        const { reps } = await repsService.getHistory();
+        setReps(reps);
+      } catch {
+        // Silently fail - practice tab will show empty state
+      } finally {
+        setIsLoadingReps(false);
+      }
+    };
+
     fetchSessions();
+    fetchReps();
     setBookmarks(loadBookmarks());
   }, []);
 
@@ -677,6 +799,27 @@ export function VaultPage() {
   const filteredSessions = sessions.filter(session =>
     session.skillName.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Filter reps by search query
+  const filteredReps = reps.filter(rep => {
+    const q = searchQuery.toLowerCase();
+    return (
+      rep.scenario.title.toLowerCase().includes(q) ||
+      rep.skillName.toLowerCase().includes(q) ||
+      rep.scenario.skillTags?.some(tag => tag.toLowerCase().includes(q))
+    );
+  });
+
+  // Handle viewing feedback for a completed rep
+  const handleViewRepFeedback = (rep: Rep) => {
+    viewRepFeedback(rep);
+    navigate('/reps');
+  };
+
+  // Handle resuming an in-progress rep
+  const handleResumeRep = () => {
+    navigate('/reps');
+  };
 
   // Show confirmation dialog before resuming
   const handleResumeClick = (session: Session) => {
@@ -808,6 +951,14 @@ export function VaultPage() {
           onClick={() => setActiveTab('courses')}
         />
         <TabButton
+          tab="practice"
+          activeTab={activeTab}
+          icon={Dumbbell}
+          label="Practice"
+          count={reps.length}
+          onClick={() => setActiveTab('practice')}
+        />
+        <TabButton
           tab="bookmarks"
           activeTab={activeTab}
           icon={Bookmark}
@@ -889,6 +1040,65 @@ export function VaultPage() {
                 >
                   <GraduationCap className="w-4 h-4" />
                   Start New Course
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Practice Tab */}
+        {activeTab === 'practice' && (
+          <>
+            {isLoadingReps ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map(i => (
+                  <Card key={i} className="p-4 animate-pulse">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-surface-tertiary" />
+                      <div className="flex-1">
+                        <div className="h-5 bg-surface-tertiary rounded w-1/3 mb-2" />
+                        <div className="h-4 bg-surface-tertiary rounded w-1/4 mb-3" />
+                        <div className="h-1.5 bg-surface-tertiary rounded-full" />
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            ) : filteredReps.length > 0 ? (
+              <div className="space-y-4">
+                {filteredReps.map(rep => (
+                  <RepCard
+                    key={rep.id}
+                    rep={rep}
+                    onViewFeedback={() => handleViewRepFeedback(rep)}
+                    onResume={handleResumeRep}
+                  />
+                ))}
+              </div>
+            ) : searchQuery ? (
+              <EmptyState
+                icon={Search}
+                title="No practice sessions found"
+                description={`No practice sessions match "${searchQuery}". Try a different search term.`}
+              />
+            ) : (
+              <EmptyState
+                icon={Dumbbell}
+                title="No practice sessions yet"
+                description="Start a practice session to test your skills with real-world scenarios."
+              />
+            )}
+
+            {/* Start New Practice CTA */}
+            {!isLoadingReps && (
+              <div className="text-center pt-4">
+                <Button
+                  variant="secondary"
+                  onClick={() => navigate('/reps?fresh=true')}
+                  className="inline-flex items-center gap-2"
+                >
+                  <Dumbbell className="w-4 h-4" />
+                  Start New Practice
                 </Button>
               </div>
             )}

@@ -46,12 +46,53 @@ RULES:
 - Each task needs a unique id (use format: "task-1", "task-2", etc.)
 - skillTags should be specific technologies/concepts practiced (3-5 tags per scenario)
 
+CRITICAL — SELF-CONTAINED SCENARIOS:
+- The user has NOTHING except a blank editor/terminal. No datasets, no repos, no files, no APIs.
+- NEVER reference external files, datasets, repos, or resources the user doesn't have
+- If a task involves debugging, include the broken code INLINE in the task description
+- If a task involves reviewing/analyzing something, include the artifact INLINE or make the first task to build it
+- Every task must be completable with just a text editor, terminal, and internet access
+
+CRITICAL — MAKE EVERY TASK ACTUALLY DOABLE:
+Before finalizing each task, ask: "Can a person sitting at a blank laptop actually START and FINISH this in the estimated time?" If not, restructure.
+
+The general fix: when a task is unrealistic as-is, turn it into BUILDING THE TOOL/SYSTEM that makes it doable. The learning is in designing and building — not in manual labor.
+
+Common traps and how to fix them:
+
+1. VOLUME TRAP — "create/write/annotate N items manually"
+   BAD: "Write 200 annotated NER samples" / "Create 50 test cases" / "Build a dataset of 100 entries"
+   FIX: Task 1 = define the schema/contract with 5-10 examples. Task 2 = build a generator (templates + vocab + randomization) that produces them programmatically. Task 3 = validate a small sample.
+
+2. ACCESS TRAP — task assumes proprietary data, internal systems, or paid services
+   BAD: "Analyze your company's internal reports" / "Connect to the production database" / "Use the team's Kubernetes cluster"
+   FIX: Task 1 = define the interface/contract (what shape is the data, what does the API return). Task 2 = build realistic mocks/stubs. Task 3 = build the actual logic against those mocks.
+
+3. SCALE TRAP — task requires infrastructure or deployment the user can't do locally
+   BAD: "Deploy to AWS and load-test with 10k users" / "Set up a distributed training cluster"
+   FIX: Build it locally first. Docker compose or local scripts. Simulate scale with synthetic load. The config/architecture decisions are the real learning.
+
+4. DEPENDENCY TRAP — task requires team members, approvals, or external collaboration
+   BAD: "Get code review from a senior engineer" / "Present to stakeholders"
+   FIX: Build the artifact (PR description, design doc, presentation), then self-review against a provided rubric or checklist.
+
+5. TIME TRAP — task scope exceeds what's doable in the estimated minutes
+   BAD: "Build a full authentication system" in 15 minutes
+   FIX: Scope to the hardest decision or most interesting slice. "Design the auth flow and implement the token refresh logic" is doable. "Build all of auth" is not.
+
+6. EXPERTISE TRAP — task requires deep domain knowledge the user is still learning
+   BAD: "Write a production-grade Terraform module for a multi-region setup" for someone learning IaC
+   FIX: Provide the constraints and a partial example. The task is to extend, adapt, or debug — not to architect from zero with knowledge they don't have yet.
+
 WHAT MAKES A BAD SCENARIO (avoid these):
 - Generic textbook exercises ("implement a linked list", "build a todo app")
 - Tasks that require no thinking ("install X, then run Y")
 - Scenarios that don't connect to their stated goal
 - Tasks so vague they cause blank-screen paralysis
 - Artificial difficulty (obscure edge cases nobody hits in practice)
+- Tasks that reference resources the user doesn't have ("load the dataset", "check the repo", "query the API")
+- Asking the user to hand-produce large volumes of anything — the learning is in building the system, not manual labor
+- Assuming access to paid services, internal tools, or proprietary data
 
 WHAT MAKES A GOOD SCENARIO:
 - Feels like something that would actually land in your inbox at work
@@ -59,6 +100,8 @@ WHAT MAKES A GOOD SCENARIO:
 - Has clear success criteria (they know when they're done)
 - Tasks are specific enough to start immediately but open enough to require real thinking
 - Builds muscle memory for the actual day-to-day of their target role
+- FULLY SELF-CONTAINED — the user can start with nothing and complete everything
+- When something is needed (data, infra, dependencies), the user BUILDS THE TOOLING for it rather than doing it by hand or needing external access
 
 OUTPUT FORMAT (strict JSON, no markdown, no backticks):
 {

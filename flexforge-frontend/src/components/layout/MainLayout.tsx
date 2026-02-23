@@ -15,7 +15,6 @@ import {
   Eye,
   Check,
   X,
-  Brain,
   Dumbbell,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
@@ -23,7 +22,6 @@ import { communityService, getDisplayName, Notification as ApiNotification } fro
 
 const NAV_ITEMS = [
   { path: '/today', label: 'Today', icon: Home },
-  { path: '/assess', label: 'Assess', icon: Brain },
   { path: '/showcase', label: 'Showcase', icon: Trophy },
   { path: '/vault', label: 'Vault', icon: BookOpen },
   { path: '/community', label: 'Community', icon: Users },

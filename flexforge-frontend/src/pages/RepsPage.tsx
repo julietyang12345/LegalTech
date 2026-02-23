@@ -33,6 +33,14 @@ export function RepsPage() {
   useEffect(() => {
     const topic = searchParams.get('topic');
     const skill = searchParams.get('skill');
+    const fresh = searchParams.get('fresh') === 'true';
+
+    // If fresh=true, always reset and show intake form
+    if (fresh) {
+      resetFlow();
+      useRepsStore.setState({ needsIntake: true, phase: 'intake' });
+      return;
+    }
 
     // If resuming an active rep, go straight to practice
     if (activeRep && !activeRep.completed && phase === 'practice') {

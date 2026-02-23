@@ -257,7 +257,7 @@ export function GoalInputStep({ onSubmit, isLoading, initialValue, goalType, onG
         {/* Just practice link */}
         <button
           type="button"
-          onClick={() => navigate('/reps')}
+          onClick={() => navigate('/reps?fresh=true')}
           className="w-full inline-flex items-center justify-center gap-2 text-sm text-content-tertiary hover:text-content-secondary transition-colors py-1"
         >
           <Dumbbell className="w-4 h-4" />
