@@ -1,545 +1,220 @@
 import { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  ArrowRight,
-  ArrowLeft,
-  CheckCircle,
-  Target,
-  HelpCircle,
-  Sparkles,
-  Rocket,
-  BookOpen,
-  Lightbulb,
-  Zap,
-  Flame,
-  Lock,
-} from 'lucide-react';
+import { ArrowLeft, ArrowRight, Briefcase, Sparkles } from 'lucide-react';
 import { clsx } from 'clsx';
-import { Button, MultipleChoiceQuestion } from '@/components/common';
-import {
-  CAREER_DEMO_TOPIC,
-  CAREER_DEMO_PREPROMPT,
-  CAREER_DEMO_QUIZ,
-  CAREER_DEMO_DAY2,
-} from '@/data/careerPathsDemoContent';
+import { Button } from '@/components/common';
+import { ROLE_SIMULATIONS, ROLE_SIMULATIONS_MAP } from '@/data/careerPathsRoles';
+import type { RoleId } from '@/data/careerPathsRoles';
+import { RoleCard } from '@/components/careerDemo/RoleCard';
+import { CompanyBrief } from '@/components/careerDemo/CompanyBrief';
+import { DeliverableTask } from '@/components/careerDemo/DeliverableTask';
+import { SimulationDebrief } from '@/components/careerDemo/SimulationDebrief';
 
-const STEP_LABELS = ['Overview', 'Objectives', 'Quiz', 'Day 2'];
+const STEP_LABELS = ['Brief', 'Task', 'Debrief'];
 
-// --- Step renderers ---
+// ---------------------------------------------------------------------------
+// Hub — role selection grid (no ?role= param)
+// ---------------------------------------------------------------------------
 
-function OverviewStep({ onContinue }: { onContinue: () => void }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="max-w-2xl mx-auto"
-    >
-      <div className="text-center mb-8">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-50 text-brand-700 rounded-full text-sm font-medium mb-4">
-          <BookOpen className="w-4 h-4" />
-          2-Day Curriculum
-        </div>
-        <h2 className="text-2xl font-bold text-content mb-2">
-          {CAREER_DEMO_TOPIC.skill}
-        </h2>
-        <p className="text-content-tertiary">
-          Design two parallel career paths: one focused on Data Engineering, one focused on GenAI.
-        </p>
-      </div>
-
-      {/* Day cards */}
-      <div className="space-y-4 mb-8">
-        {/* Day 1 - Active */}
-        <button
-          onClick={onContinue}
-          className="w-full text-left bg-surface rounded-xl shadow-card p-5 border-2 border-brand-500 hover:shadow-lg transition-shadow"
-        >
-          <div className="flex items-start gap-4">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white font-bold text-sm">
-              1
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs font-medium text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full">
-                  Day 1
-                </span>
-                <span className="text-xs text-focus-600 font-medium">Ready</span>
-              </div>
-              <h3 className="font-semibold text-content mb-1">
-                {CAREER_DEMO_TOPIC.title}
-              </h3>
-              <p className="text-sm text-content-tertiary">
-                Objectives, priming questions, and an interactive quiz
-              </p>
-            </div>
-            <ArrowRight className="w-5 h-5 text-brand-500 flex-shrink-0 mt-2" />
-          </div>
-        </button>
-
-        {/* Day 2 - Locked */}
-        <div className="w-full text-left bg-surface rounded-xl shadow-card p-5 border border-border/50 opacity-60">
-          <div className="flex items-start gap-4">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-surface-tertiary flex items-center justify-center text-content-tertiary font-bold text-sm">
-              2
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs font-medium text-content-tertiary bg-surface-tertiary px-2 py-0.5 rounded-full">
-                  Day 2
-                </span>
-                <span className="text-xs text-content-tertiary flex items-center gap-1">
-                  <Lock className="w-3 h-3" /> Locked
-                </span>
-              </div>
-              <h3 className="font-semibold text-content-secondary mb-1">
-                {CAREER_DEMO_DAY2.title}
-              </h3>
-              <p className="text-sm text-content-tertiary">
-                Complete Day 1 to unlock
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="text-center">
-        <Button
-          size="lg"
-          onClick={onContinue}
-          rightIcon={<ArrowRight className="w-5 h-5" />}
-        >
-          Start Day 1
-        </Button>
-      </div>
-    </motion.div>
-  );
-}
-
-function PrePromptStep({ onContinue }: { onContinue: () => void }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="max-w-2xl mx-auto"
-    >
-      <div className="text-center mb-8">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-50 text-brand-700 rounded-full text-sm font-medium mb-4">
-          <Target className="w-4 h-4" />
-          {CAREER_DEMO_TOPIC.day}
-        </div>
-        <h2 className="text-2xl font-bold text-content mb-2">
-          {CAREER_DEMO_TOPIC.title}
-        </h2>
-        <p className="text-content-tertiary">{CAREER_DEMO_TOPIC.skill}</p>
-      </div>
-
-      <div className="bg-surface rounded-xl shadow-card p-6 mb-6">
-        <h3 className="font-semibold text-content mb-4 flex items-center gap-2">
-          <CheckCircle className="w-5 h-5 text-focus-500" />
-          What you'll learn
-        </h3>
-        <ul className="space-y-3">
-          {CAREER_DEMO_PREPROMPT.objectives.map((obj, i) => (
-            <li key={i} className="flex items-start gap-3 text-content-secondary">
-              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-focus-100 text-focus-700 flex items-center justify-center text-xs font-medium">
-                {i + 1}
-              </span>
-              {obj}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="bg-surface rounded-xl shadow-card p-6 mb-8">
-        <h3 className="font-semibold text-content mb-4 flex items-center gap-2">
-          <HelpCircle className="w-5 h-5 text-brand-500" />
-          Think about this before we start
-        </h3>
-        <ul className="space-y-3">
-          {CAREER_DEMO_PREPROMPT.primeQuestions.map((q, i) => (
-            <li
-              key={i}
-              className="flex items-start gap-3 text-content-secondary italic"
-            >
-              <span className="flex-shrink-0 text-brand-400 mt-0.5">?</span>
-              {q}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="text-center">
-        <Button
-          size="lg"
-          onClick={onContinue}
-          rightIcon={<ArrowRight className="w-5 h-5" />}
-        >
-          Start Learning
-        </Button>
-      </div>
-    </motion.div>
-  );
-}
-
-function QuizStep({ onContinue }: { onContinue: () => void }) {
-  const [answers, setAnswers] = useState<Record<number, number | null>>({});
-  const [streak, setStreak] = useState(0);
-  const [maxStreak, setMaxStreak] = useState(0);
-  const [xp, setXp] = useState(0);
-
-  const answeredCount = Object.values(answers).filter(v => v !== null && v !== undefined).length;
-  const allAnswered = CAREER_DEMO_QUIZ.every(
-    (_, i) => answers[i] !== undefined && answers[i] !== null
-  );
-  const correctCount = CAREER_DEMO_QUIZ.filter(
-    (q, i) => answers[i] === q.correctIndex
-  ).length;
-  const progress = (answeredCount / CAREER_DEMO_QUIZ.length) * 100;
-
-  const handleSelect = useCallback(
-    (questionIndex: number, optionIndex: number) => {
-      if (answers[questionIndex] !== undefined && answers[questionIndex] !== null) return;
-      setAnswers((prev) => ({ ...prev, [questionIndex]: optionIndex }));
-
-      const isCorrect = optionIndex === CAREER_DEMO_QUIZ[questionIndex].correctIndex;
-      if (isCorrect) {
-        setStreak((s) => {
-          const newStreak = s + 1;
-          setMaxStreak((m) => Math.max(m, newStreak));
-          if (newStreak === 3 || newStreak === 5) {
-            setXp((x) => x + 15);
-          } else {
-            setXp((x) => x + 10);
-          }
-          return newStreak;
-        });
-      } else {
-        setStreak(0);
-      }
-    },
-    [answers]
-  );
-
-  const starCount = correctCount >= CAREER_DEMO_QUIZ.length * 0.9 ? 3 : correctCount >= CAREER_DEMO_QUIZ.length * 0.7 ? 2 : 1;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="max-w-2xl mx-auto"
-    >
-      {/* Header: progress bar + XP + streak */}
-      <div className="mb-6 space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-content">
-            Learn by Doing
-          </h2>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5 text-sm font-medium text-amber-600">
-              <Zap className="w-4 h-4" />
-              <span>{xp} XP</span>
-            </div>
-            {streak > 0 && (
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                className="flex items-center gap-1.5 text-sm font-medium text-orange-500"
-              >
-                <Flame className="w-4 h-4" />
-                <span>{streak}</span>
-              </motion.div>
-            )}
-          </div>
-        </div>
-        <p className="text-content-tertiary text-sm">
-          Answer questions and learn from the explanations — no pressure!
-        </p>
-        <div className="w-full h-2.5 bg-surface-tertiary rounded-full overflow-hidden">
-          <motion.div
-            className="h-full bg-gradient-to-r from-green-400 to-green-500 rounded-full"
-            initial={{ width: 0 }}
-            animate={{ width: `${progress}%` }}
-            transition={{ duration: 0.4, ease: 'easeOut' }}
-          />
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        {CAREER_DEMO_QUIZ.map((q, i) => {
-          const hasAnswered = answers[i] !== undefined && answers[i] !== null;
-          const isCorrect = hasAnswered && answers[i] === q.correctIndex;
-
-          return (
-            <div key={i}>
-              <MultipleChoiceQuestion
-                questionNumber={i + 1}
-                question={q.question}
-                options={q.options}
-                correctIndex={q.correctIndex}
-                selectedIndex={answers[i] ?? null}
-                onSelect={(opt) => handleSelect(i, opt)}
-                showResult={hasAnswered}
-              />
-
-              {hasAnswered && q.explanation && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  transition={{ duration: 0.3, ease: 'easeOut' }}
-                  className="mt-2 rounded-xl border border-blue-200 overflow-hidden"
-                >
-                  <div className={clsx(
-                    'px-4 py-2.5 border-b flex items-center gap-2',
-                    isCorrect
-                      ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200'
-                      : 'bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200'
-                  )}>
-                    <span className={clsx('text-sm font-semibold', isCorrect ? 'text-green-700' : 'text-amber-700')}>
-                      {isCorrect ? '✓ Correct!' : '✗ Not quite —'}
-                    </span>
-                    {q.conceptTitle && (
-                      <>
-                        <Lightbulb className="w-3.5 h-3.5 text-blue-500 ml-1" />
-                        <span className="text-sm font-medium text-blue-800">{q.conceptTitle}</span>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="px-4 py-3 bg-surface space-y-2">
-                    {q.explanation.split('\n\n').map((paragraph, pIdx) => (
-                      <p
-                        key={pIdx}
-                        className={clsx(
-                          'text-sm leading-relaxed',
-                          pIdx === 0 ? 'font-medium text-content' : 'text-content-secondary'
-                        )}
-                      >
-                        {paragraph.split(/(`[^`]+`)/).map((part, partIdx) =>
-                          part.startsWith('`') && part.endsWith('`') ? (
-                            <code
-                              key={partIdx}
-                              className="px-1.5 py-0.5 bg-surface-tertiary text-indigo-700 rounded text-xs font-mono"
-                            >
-                              {part.slice(1, -1)}
-                            </code>
-                          ) : (
-                            <span key={partIdx}>{part}</span>
-                          )
-                        )}
-                      </p>
-                    ))}
-                  </div>
-
-                  {q.realWorldContext && (
-                    <div className="px-4 py-2.5 bg-amber-50 border-t border-amber-200 flex items-start gap-2">
-                      <Target className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                      <p className="text-sm text-amber-800">{q.realWorldContext}</p>
-                    </div>
-                  )}
-                </motion.div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {allAnswered && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mt-8"
-        >
-          <div className="bg-surface rounded-2xl shadow-card p-6 text-center mb-4">
-            <div className="flex justify-center gap-1 mb-3">
-              {[1, 2, 3].map((s) => (
-                <motion.div
-                  key={s}
-                  initial={{ scale: 0, rotate: -30 }}
-                  animate={{ scale: s <= starCount ? 1 : 0.6, rotate: 0, opacity: s <= starCount ? 1 : 0.3 }}
-                  transition={{ delay: s * 0.15, type: 'spring', stiffness: 300 }}
-                >
-                  <svg
-                    className={clsx('w-10 h-10', s <= starCount ? 'text-yellow-400' : 'text-content-tertiary')}
-                    fill="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                  </svg>
-                </motion.div>
-              ))}
-            </div>
-
-            <p className="text-2xl font-bold text-content mb-1">
-              {correctCount}/{CAREER_DEMO_QUIZ.length} correct
-            </p>
-
-            <div className="flex items-center justify-center gap-4 mb-3">
-              <span className="text-sm font-medium text-amber-600 flex items-center gap-1">
-                <Zap className="w-4 h-4" /> {xp} XP earned
-              </span>
-              {maxStreak > 1 && (
-                <span className="text-sm font-medium text-orange-500 flex items-center gap-1">
-                  <Flame className="w-4 h-4" /> {maxStreak} best streak
-                </span>
-              )}
-            </div>
-
-            <p className="text-sm text-content-tertiary">
-              {correctCount === CAREER_DEMO_QUIZ.length
-                ? 'Perfect score! You nailed it.'
-                : correctCount >= CAREER_DEMO_QUIZ.length / 2
-                  ? 'Great job — you\'ve got the core ideas down!'
-                  : 'Good effort! Review the explanations above to strengthen your understanding.'}
-            </p>
-          </div>
-          <div className="text-center">
-            <Button
-              size="lg"
-              onClick={onContinue}
-              rightIcon={<ArrowRight className="w-5 h-5" />}
-            >
-              See What's Next
-            </Button>
-          </div>
-        </motion.div>
-      )}
-    </motion.div>
-  );
-}
-
-function Day2TeaserStep() {
+function Hub({
+  completedRoles,
+  onStartRole,
+}: {
+  completedRoles: Set<RoleId>;
+  onStartRole: (id: RoleId) => void;
+}) {
   const navigate = useNavigate();
+  const completedCount = completedRoles.size;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="max-w-2xl mx-auto"
-    >
-      {/* Day 1 Complete badge */}
-      <div className="text-center mb-6">
+    <div className="max-w-4xl mx-auto">
+      {/* Hero */}
+      <div className="text-center mb-10">
         <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ type: 'spring', stiffness: 300, delay: 0.1 }}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-focus-50 text-focus-700 rounded-full text-sm font-semibold"
+          className="w-16 h-16 mx-auto mb-5 rounded-full bg-gradient-to-br from-brand-400 to-purple-500 flex items-center justify-center shadow-lg shadow-brand-500/20"
         >
-          <CheckCircle className="w-4 h-4" />
-          Day 1 Complete
+          <Briefcase className="w-8 h-8 text-white" />
         </motion.div>
-      </div>
-
-      {/* Day 2 preview - locked/blurred */}
-      <div className="relative bg-surface rounded-xl shadow-card overflow-hidden mb-8">
-        <div className="p-6">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-xs font-medium text-content-tertiary bg-surface-tertiary px-2 py-0.5 rounded-full">
-              Day 2
-            </span>
-            <span className="text-xs text-content-tertiary flex items-center gap-1">
-              <Lock className="w-3 h-3" /> Coming up next
-            </span>
-          </div>
-          <h3 className="text-xl font-bold text-content mb-3">
-            {CAREER_DEMO_DAY2.title}
-          </h3>
-          <p className="text-content-secondary text-sm mb-4">
-            {CAREER_DEMO_DAY2.teaser}
-          </p>
-
-          {/* Blurred preview of what Day 2 would contain */}
-          <div className="space-y-3 select-none" aria-hidden="true">
-            {['Objective 1: Structure your portfolio for maximum impact', 'Objective 2: The README template that gets interviews', 'Objective 3: Live demo strategies that convert'].map((item, i) => (
-              <div
-                key={i}
-                className="flex items-start gap-3 text-content-tertiary blur-[3px]"
-              >
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-surface-tertiary flex items-center justify-center text-xs font-medium">
-                  {i + 1}
-                </span>
-                <span className="text-sm">{item}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Lock overlay */}
-        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-surface via-surface/80 to-transparent" />
-      </div>
-
-      {/* Signup CTA */}
-      <div className="bg-surface rounded-2xl shadow-card p-8 text-center">
-        <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/30">
-          <Rocket className="w-8 h-8 text-white" />
-        </div>
-
-        <h2 className="text-2xl font-bold text-content mb-3">
-          Continue your career path journey
-        </h2>
-        <p className="text-content-secondary mb-6">
-          Sign up to unlock Day 2, get a personalized learning plan for your GenAI
-          career transition, and access hands-on projects — free.
+        <h1 className="text-3xl font-bold text-content mb-3">
+          Do the job before you get the job
+        </h1>
+        <p className="text-content-secondary max-w-lg mx-auto">
+          Try a real task from each role. 5 minutes. No signup. Walk away with a
+          deliverable you'd actually create on the job.
         </p>
+      </div>
 
-        <div className="text-left mb-6 bg-surface-secondary rounded-lg p-4">
-          <p className="text-sm font-medium text-content-secondary mb-3">
-            Your full experience includes:
+      {/* Completed banner */}
+      {completedCount > 0 && completedCount < ROLE_SIMULATIONS.length && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 p-4 rounded-xl bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 text-center"
+        >
+          <p className="text-sm text-brand-700 dark:text-brand-300">
+            You've explored <span className="font-semibold">{completedCount}</span> role
+            {completedCount > 1 ? 's' : ''}. Get a personalized curriculum for any of them.
           </p>
-          <ul className="space-y-2">
-            {[
-              'Full multi-day curricula with progressive skill building',
-              'Hands-on projects: build a RAG app, fine-tune a model, deploy an agent',
-              'Personalized career path based on your background',
-              'AI tutor that adapts to your learning pace',
-            ].map((item, i) => (
-              <li
-                key={i}
-                className="flex items-center gap-2 text-sm text-content-secondary"
-              >
-                <CheckCircle className="w-4 h-4 text-focus-500 flex-shrink-0" />
-                {item}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="space-y-3">
-          <Button
-            size="lg"
-            className="w-full"
+          <button
             onClick={() => navigate('/register')}
-            rightIcon={<ArrowRight className="w-5 h-5" />}
+            className="mt-2 text-sm font-medium text-brand-600 dark:text-brand-400 underline underline-offset-2 hover:text-brand-700"
           >
-            Sign Up Free
-          </Button>
-          <Button
-            variant="secondary"
-            className="w-full"
-            onClick={() => navigate('/explore')}
-            leftIcon={<BookOpen className="w-4 h-4" />}
-          >
-            Explore More Skills
-          </Button>
-        </div>
+            Sign up free
+          </button>
+        </motion.div>
+      )}
 
-        <p className="mt-4 text-xs text-content-tertiary">
-          No credit card required. Free plan includes 1 full curriculum.
-        </p>
+      {completedCount >= 2 && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 p-4 rounded-xl bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 text-center"
+        >
+          <p className="text-sm text-purple-700 dark:text-purple-300">
+            You're seriously exploring career options. Let us build a plan that maps YOUR background to YOUR target role.
+          </p>
+          <Button
+            size="sm"
+            className="mt-2"
+            onClick={() => navigate('/register')}
+            rightIcon={<ArrowRight className="w-4 h-4" />}
+          >
+            Get Your Personalized Plan
+          </Button>
+        </motion.div>
+      )}
+
+      {/* Role grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {ROLE_SIMULATIONS.map((role, i) => (
+          <RoleCard
+            key={role.id}
+            role={role}
+            isCompleted={completedRoles.has(role.id)}
+            onStart={() => onStartRole(role.id)}
+            index={i}
+          />
+        ))}
       </div>
-    </motion.div>
+    </div>
   );
 }
 
-// --- Main page ---
+// ---------------------------------------------------------------------------
+// Simulation — 3-step flow (Brief → Task → Debrief)
+// ---------------------------------------------------------------------------
+
+function Simulation({
+  roleId,
+  onComplete,
+  onBack,
+}: {
+  roleId: RoleId;
+  onComplete: () => void;
+  onBack: () => void;
+}) {
+  const navigate = useNavigate();
+  const role = ROLE_SIMULATIONS_MAP[roleId];
+  const [step, setStep] = useState(0); // 0=Brief, 1=Task, 2=Debrief
+
+  const handleTaskComplete = useCallback(() => {
+    setStep(2);
+    onComplete();
+  }, [onComplete]);
+
+  const handleTryAnother = useCallback(() => {
+    onBack();
+  }, [onBack]);
+
+  return (
+    <>
+      {/* Progress bar for simulation steps */}
+      <div className="max-w-2xl mx-auto px-4 pb-4">
+        <div className="flex items-center gap-2">
+          {STEP_LABELS.map((label, i) => (
+            <div key={label} className="flex-1 flex flex-col items-center gap-1">
+              <div
+                className={clsx(
+                  'w-full h-1.5 rounded-full transition-colors',
+                  i < step
+                    ? 'bg-green-500'
+                    : i === step
+                      ? 'bg-brand-500'
+                      : 'bg-surface-tertiary',
+                )}
+              />
+              <span
+                className={clsx(
+                  'text-xs hidden sm:block',
+                  i <= step ? 'text-content-secondary font-medium' : 'text-content-tertiary',
+                )}
+              >
+                {label}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <AnimatePresence mode="wait">
+        {step === 0 && (
+          <CompanyBrief
+            key="brief"
+            role={role}
+            onStartTask={() => setStep(1)}
+          />
+        )}
+        {step === 1 && (
+          <DeliverableTask
+            key="task"
+            role={role}
+            onComplete={handleTaskComplete}
+          />
+        )}
+        {step === 2 && (
+          <SimulationDebrief
+            key="debrief"
+            role={role}
+            onTryAnother={handleTryAnother}
+          />
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main page — orchestrator
+// ---------------------------------------------------------------------------
 
 export function CareerPathsDemoPage() {
-  const [step, setStep] = useState(0);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [completedRoles, setCompletedRoles] = useState<Set<RoleId>>(new Set());
+
+  const roleParam = searchParams.get('role') as RoleId | null;
+  const activeRole = roleParam && ROLE_SIMULATIONS_MAP[roleParam] ? roleParam : null;
+
+  const handleStartRole = useCallback(
+    (id: RoleId) => {
+      setSearchParams({ role: id });
+    },
+    [setSearchParams],
+  );
+
+  const handleCompleteRole = useCallback(() => {
+    if (activeRole) {
+      setCompletedRoles((prev) => new Set(prev).add(activeRole));
+    }
+  }, [activeRole]);
+
+  const handleBackToHub = useCallback(() => {
+    setSearchParams({});
+  }, [setSearchParams]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-surface-secondary to-surface flex flex-col">
@@ -547,47 +222,28 @@ export function CareerPathsDemoPage() {
       <header className="sticky top-0 z-40 bg-surface/80 backdrop-blur-lg border-b border-border/50">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
           <button
-            onClick={() => navigate('/')}
+            onClick={() => (activeRole ? handleBackToHub() : navigate('/'))}
             className="flex items-center gap-2 text-content-secondary hover:text-content transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             <span className="text-2xl">🔥</span>
-            <span className="font-display font-bold text-lg text-content">
-              FlexForge
-            </span>
+            <span className="font-display font-bold text-lg text-content">FlexForge</span>
           </button>
 
           <div className="flex items-center gap-2 text-sm text-content-tertiary">
-            <Sparkles className="w-4 h-4 text-brand-500" />
-            <span className="hidden sm:inline">Career Paths Demo</span>
-          </div>
-        </div>
-
-        {/* Progress bar */}
-        <div className="max-w-4xl mx-auto px-4 pb-3">
-          <div className="flex items-center gap-2">
-            {STEP_LABELS.map((label, i) => (
-              <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                <div
-                  className={clsx(
-                    'w-full h-1.5 rounded-full transition-colors',
-                    i < step
-                      ? 'bg-focus-500'
-                      : i === step
-                        ? 'bg-brand-500'
-                        : 'bg-surface-tertiary'
-                  )}
-                />
-                <span
-                  className={clsx(
-                    'text-xs hidden sm:block',
-                    i <= step ? 'text-content-secondary font-medium' : 'text-content-tertiary'
-                  )}
-                >
-                  {label}
+            {activeRole ? (
+              <>
+                <Sparkles className="w-4 h-4 text-brand-500" />
+                <span className="hidden sm:inline">
+                  {ROLE_SIMULATIONS_MAP[activeRole].role} Simulation
                 </span>
-              </div>
-            ))}
+              </>
+            ) : (
+              <>
+                <Briefcase className="w-4 h-4 text-brand-500" />
+                <span className="hidden sm:inline">Career Role Simulations</span>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -595,16 +251,20 @@ export function CareerPathsDemoPage() {
       {/* Content */}
       <main className="flex-1 px-4 py-8">
         <AnimatePresence mode="wait">
-          {step === 0 && (
-            <OverviewStep key="overview" onContinue={() => setStep(1)} />
+          {activeRole ? (
+            <Simulation
+              key={activeRole}
+              roleId={activeRole}
+              onComplete={handleCompleteRole}
+              onBack={handleBackToHub}
+            />
+          ) : (
+            <Hub
+              key="hub"
+              completedRoles={completedRoles}
+              onStartRole={handleStartRole}
+            />
           )}
-          {step === 1 && (
-            <PrePromptStep key="preprompt" onContinue={() => setStep(2)} />
-          )}
-          {step === 2 && (
-            <QuizStep key="quiz" onContinue={() => setStep(3)} />
-          )}
-          {step === 3 && <Day2TeaserStep key="teaser" />}
         </AnimatePresence>
       </main>
     </div>
