@@ -131,6 +131,7 @@ export class Rep {
       encouragement: string;
     };
     suggestedTopics: string[];
+    exampleAnswer?: string;
   };
 
   @Column({ nullable: true })

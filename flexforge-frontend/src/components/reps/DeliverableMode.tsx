@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, Mail, HelpCircle, Loader2, ChevronDown, Clock } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -27,7 +27,13 @@ export function DeliverableMode({
   const [showHints, setShowHints] = useState(true);
 
   const ChannelIcon = brief.channel === 'slack' ? MessageSquare : Mail;
-  const channelLabel = brief.channel === 'slack' ? 'Slack message' : 'Email';
+
+  const timestamp = useMemo(() => {
+    const now = new Date();
+    return `today at ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+  }, []);
+
+  const avatarInitial = brief.managerName.charAt(0).toUpperCase();
 
   // All hints for deliverable are indexed to 0
   const deliverableHints = hintsRevealed.filter(h => h.taskIndex === 0);
@@ -38,10 +44,31 @@ export function DeliverableMode({
     <div className="space-y-6">
       {/* Manager brief card */}
       <div className="rounded-xl shadow-card overflow-hidden border border-border bg-surface">
-        <div className="px-5 py-3 border-b border-border bg-surface-secondary flex items-center gap-2">
-          <ChannelIcon className="w-4 h-4 text-content-tertiary" />
-          <span className="text-sm font-medium text-content">{channelLabel} from {brief.managerName}</span>
-          <span className="text-xs text-content-tertiary">· {brief.managerRole}</span>
+        <div className="px-5 py-3 border-b border-border bg-surface-secondary">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center text-white text-sm font-semibold">
+                  {avatarInitial}
+                </div>
+                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-500 border-2 border-surface-secondary" />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-medium text-content">{brief.managerName}</span>
+                  <span className="text-xs text-content-tertiary">· {brief.managerRole}</span>
+                </div>
+                <div className="flex items-center gap-1 text-xs text-content-tertiary">
+                  <ChannelIcon className="w-3 h-3" />
+                  {brief.channel === 'slack'
+                    ? <span># general</span>
+                    : <span>Subject: Re: {brief.deliverable}</span>
+                  }
+                </div>
+              </div>
+            </div>
+            <span className="text-xs text-content-tertiary">{timestamp}</span>
+          </div>
         </div>
         <div className="p-5">
           <p className="text-sm text-content-secondary whitespace-pre-wrap leading-relaxed">

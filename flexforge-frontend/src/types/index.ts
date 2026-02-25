@@ -1860,6 +1860,7 @@ export interface RepFeedback {
     encouragement: string;
   };
   suggestedTopics: string[];
+  exampleAnswer?: string;
 }
 
 export interface Rep {

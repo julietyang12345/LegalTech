@@ -211,6 +211,17 @@ export function RepFeedback({ rep, onDoAnother }: RepFeedbackProps) {
           </div>
         </CollapsibleSection>
 
+        {/* Example Answer (deliverable reps only) */}
+        {rep.scenario.template && feedback.exampleAnswer && (
+          <CollapsibleSection title="Here's what a strong answer looks like" icon={Lightbulb} defaultOpen>
+            <div className="pt-3">
+              <pre className="p-4 text-sm text-content-secondary whitespace-pre-wrap leading-relaxed font-mono rounded-lg bg-surface-tertiary border border-border overflow-x-auto">
+                {feedback.exampleAnswer}
+              </pre>
+            </div>
+          </CollapsibleSection>
+        )}
+
         {/* 2. Skill Breakdown */}
         <CollapsibleSection title="Skill Breakdown" icon={TrendingUp} defaultOpen>
           <div className="space-y-3 pt-3">

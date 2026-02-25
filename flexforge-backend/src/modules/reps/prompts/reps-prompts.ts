@@ -304,6 +304,13 @@ Layer 4 — Growth Signal:
 - confidenceCalibration: was their self-assessed confidence accurate vs observed performance?
 - encouragement: genuine, specific encouragement tied to something they actually did well
 
+Layer 5 — Example Answer (deliverable scenarios only):
+- exampleAnswer: A fully filled version of the original template showing what a strong, complete answer looks like. Fill every [fill in] placeholder with specific, realistic content that directly addresses the manager's request. Match the tone and depth to the scenario type:
+  - Technical scenarios (architecture docs, postmortems, runbooks, design docs): include realistic system names, service names, specific metrics/numbers, code snippets or pseudo-code where appropriate, concrete technical tradeoffs, and real-sounding infrastructure details.
+  - Business/PM scenarios (stakeholder docs, project plans, strategy briefs): include realistic stakeholder names, business metrics, timelines, risk assessments, and actionable recommendations.
+  - General scenarios: match the professional register of the deliverable type.
+  The example should read like something a competent professional actually wrote — not a generic template fill.
+
 OUTPUT FORMAT (strict JSON, no markdown):
 {
   "execution": {
@@ -326,7 +333,8 @@ OUTPUT FORMAT (strict JSON, no markdown):
     "confidenceCalibration": "...",
     "encouragement": "..."
   },
-  "suggestedTopics": ["topic1", "topic2"]
+  "suggestedTopics": ["topic1", "topic2"],
+  "exampleAnswer": "The full template with all placeholders filled with strong example content (deliverable scenarios only, omit for non-deliverable)"
 }`;
 
   const totalTasks = scenario.tasks.length;

@@ -145,7 +145,7 @@ export function DeliverableTask({ role, onComplete }: DeliverableTaskProps) {
           className="inline-flex items-center gap-2 px-4 py-2.5 text-sm text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 rounded-lg transition-colors"
         >
           <Lock className="w-4 h-4" />
-          Want AI feedback on your work? Sign up free
+          Want feedback on your work? Login to start
         </button>
       </div>
     </motion.div>

@@ -7,18 +7,18 @@ import { RepsIntake, ScenarioSelect, RepPractice, RepFeedback } from '@/componen
 import { Button, GeneratingScreen } from '@/components/common';
 
 const SCENARIO_LOADING_STEPS = [
-  { icon: Brain, text: 'Analyzing your skill profile...', duration: 3000 },
-  { icon: Search, text: 'Finding relevant challenges...', duration: 4000 },
-  { icon: Target, text: 'Calibrating difficulty...', duration: 4000 },
-  { icon: Sparkles, text: 'Building deliverables & templates...', duration: 5000 },
-  { icon: Dumbbell, text: 'Crafting your scenarios...', duration: 5000 },
+  { icon: Brain, text: 'Analyzing your skill profile...', duration: 5000 },
+  { icon: Search, text: 'Finding relevant challenges...', duration: 6000 },
+  { icon: Target, text: 'Calibrating difficulty...', duration: 6000 },
+  { icon: Sparkles, text: 'Building deliverables & templates...', duration: 8000 },
+  { icon: Dumbbell, text: 'Crafting your scenarios...', duration: 8000 },
 ];
 
 const FEEDBACK_LOADING_STEPS = [
-  { icon: BookOpen, text: 'Reviewing your work...', duration: 2500 },
-  { icon: Search, text: 'Evaluating skill dimensions...', duration: 3000 },
-  { icon: Target, text: 'Identifying growth areas...', duration: 2500 },
-  { icon: CheckCircle, text: 'Building your feedback...', duration: 2000 },
+  { icon: BookOpen, text: 'Reviewing your work...', duration: 4000 },
+  { icon: Search, text: 'Evaluating skill dimensions...', duration: 5000 },
+  { icon: Target, text: 'Identifying growth areas...', duration: 4000 },
+  { icon: CheckCircle, text: 'Building your feedback...', duration: 4000 },
 ];
 
 export function RepsPage() {
