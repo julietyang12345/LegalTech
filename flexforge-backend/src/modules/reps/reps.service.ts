@@ -143,15 +143,21 @@ export class RepsService {
     if (!rep) throw new NotFoundException('Rep not found');
     if (rep.completed) throw new BadRequestException('Rep already completed');
 
+    // In deliverable mode, all hints are indexed to task 0 (max 3 for whole deliverable)
+    const isDeliverable = !!rep.scenario.template;
+    const effectiveTaskIndex = isDeliverable ? 0 : taskIndex;
+
     // Find existing hints for this task
-    const taskHints = rep.hintsRevealed.filter(h => h.taskIndex === taskIndex);
+    const taskHints = rep.hintsRevealed.filter(h => h.taskIndex === effectiveTaskIndex);
     const nextLevel = taskHints.length + 1;
 
     if (nextLevel > 3) {
-      throw new BadRequestException('All hints already revealed for this task');
+      throw new BadRequestException(
+        isDeliverable ? 'All hints already revealed for this deliverable' : 'All hints already revealed for this task',
+      );
     }
 
-    const task = rep.scenario.tasks[taskIndex];
+    const task = rep.scenario.tasks[effectiveTaskIndex];
     if (!task) throw new BadRequestException('Invalid task index');
 
     const user = await this.userService.findById(userId);
@@ -193,7 +199,7 @@ export class RepsService {
 
     // Save hint to rep
     const newHint = {
-      taskIndex,
+      taskIndex: effectiveTaskIndex,
       level: nextLevel,
       hint: hintData.hint,
       encouragement: hintData.encouragement || '',
@@ -223,7 +229,24 @@ export class RepsService {
     // Build system context with scenario info
     const user = await this.userService.findById(userId);
     const repsContext = (user?.preferences as any)?.repsContext;
-    const systemPrompt = `You are a supportive but direct coach helping someone practice a real work scenario. Answer their question to help them make progress, but don't do the work for them. Be concise — 2-4 sentences max.
+    const isDeliverable = !!rep.scenario.template;
+
+    const systemPrompt = isDeliverable
+      ? `You are a supportive but direct coach helping someone fill in a work deliverable. Answer their question to help them make progress, but don't write their content for them. Be concise — 2-4 sentences max.
+
+THE PERSON: Background: ${repsContext?.background || 'Not specified'} | Target: ${repsContext?.target || 'Not specified'}
+SCENARIO: ${rep.scenario.title}
+MANAGER'S REQUEST: ${rep.scenario.brief?.message || rep.scenario.briefing}
+DELIVERABLE: ${rep.scenario.brief?.deliverable || 'Complete the template'}
+FOCUS AREAS: ${rep.scenario.tasks.map((t) => t.title).join(' | ')}
+
+RULES:
+- Guide, don't write their deliverable for them. Help them think through what goes in each section.
+- Reference the manager's message and deadline context to keep them focused.
+- If they're stuck on a section, ask what the stakeholder would need to see there.
+- Keep it conversational, like a senior colleague reviewing their draft.
+- Be concise. 2-4 sentences max per reply.`
+      : `You are a supportive but direct coach helping someone practice a real work scenario. Answer their question to help them make progress, but don't do the work for them. Be concise — 2-4 sentences max.
 
 THE PERSON: Background: ${repsContext?.background || 'Not specified'} | Target: ${repsContext?.target || 'Not specified'}
 SCENARIO: ${rep.scenario.title} — ${rep.scenario.briefing}

@@ -31,6 +31,15 @@ export class Rep {
   scenario: {
     title: string;
     briefing: string;
+    brief?: {
+      managerName: string;
+      managerRole: string;
+      channel: 'slack' | 'email';
+      message: string;
+      deadline: string;
+      deliverable: string;
+    };
+    template?: string;
     tasks: Array<{
       id: string;
       title: string;
@@ -46,6 +55,15 @@ export class Rep {
   scenarioOptions: Array<{
     title: string;
     briefing: string;
+    brief?: {
+      managerName: string;
+      managerRole: string;
+      channel: 'slack' | 'email';
+      message: string;
+      deadline: string;
+      deliverable: string;
+    };
+    template?: string;
     tasks: Array<{
       id: string;
       title: string;

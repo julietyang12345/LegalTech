@@ -15,9 +15,20 @@ interface ScenarioTask {
   estimatedMinutes: number;
 }
 
+interface ScenarioBrief {
+  managerName: string;
+  managerRole: string;
+  channel: 'slack' | 'email';
+  message: string;
+  deadline: string;
+  deliverable: string;
+}
+
 interface Scenario {
   title: string;
   briefing: string;
+  brief?: ScenarioBrief;
+  template?: string;
   tasks: ScenarioTask[];
   estimatedMinutes: number;
   difficulty: string;
@@ -103,17 +114,45 @@ WHAT MAKES A GOOD SCENARIO:
 - FULLY SELF-CONTAINED — the user can start with nothing and complete everything
 - When something is needed (data, infra, dependencies), the user BUILDS THE TOOLING for it rather than doing it by hand or needing external access
 
+DELIVERABLE-FIRST FORMAT:
+Every scenario MUST include a "brief" and "template" in addition to tasks.
+
+The "brief" is a realistic message from a manager/coworker:
+- managerName: realistic first-last name
+- managerRole: title + relationship (e.g. "Senior PM, your direct manager")
+- channel: "slack" or "email"
+- message: 3-6 sentences reading like a real message. Specific situation, what's needed, enough context to start. Include numbers, names, dates, constraints.
+- deadline: realistic time constraint (e.g. "before the 3pm review")
+- deliverable: what the user produces (e.g. "A stakeholder alignment doc")
+
+The "template" is a structured document with [fill in] placeholders:
+- Clear section headers in ALL CAPS
+- [fill in] or [description] placeholders
+- 15-25 lines. Enough structure to guide, not so much it's a form.
+- 3-5 sections building logically (situation → analysis → recommendation)
+
+The "tasks" array serves as FOCUS AREAS — guidance text alongside the template, not checkboxes. Each task title describes one aspect of the deliverable.
+
 OUTPUT FORMAT (strict JSON, no markdown, no backticks):
 {
   "scenarios": [
     {
       "title": "Short punchy title",
       "briefing": "2-3 sentence real work scenario. Set the scene — who you are, what happened, what needs to be done. Should read like a Slack message from a coworker, not a homework assignment.",
+      "brief": {
+        "managerName": "Sarah Chen",
+        "managerRole": "Senior PM, your direct manager",
+        "channel": "slack",
+        "message": "3-6 sentence realistic message with specific details, numbers, names, constraints.",
+        "deadline": "before the 3pm review",
+        "deliverable": "A stakeholder alignment doc"
+      },
+      "template": "SECTION HEADER\\n[fill in description]\\n\\nSECTION HEADER\\n[fill in description]\\n...",
       "tasks": [
         {
           "id": "task-1",
-          "title": "Task title",
-          "description": "Specific actionable task — concrete enough to start without googling 'how to start'",
+          "title": "Focus area title",
+          "description": "Guidance for this aspect of the deliverable",
           "estimatedMinutes": 10
         }
       ],
@@ -171,7 +210,31 @@ OUTPUT FORMAT (strict JSON, no markdown, no backticks):
   "encouragement": "One short sentence of genuine encouragement, not patronizing"
 }`;
 
-  const dynamicPart = `THE PERSON:
+  const isDeliverable = !!scenario.template;
+
+  let dynamicPart: string;
+  if (isDeliverable) {
+    const focusAreas = scenario.tasks.map((t, i) => `${i + 1}. ${t.title}: ${t.description}`).join('\n');
+    dynamicPart = `THE PERSON:
+- Background: ${userContext.background || 'Not specified'}
+- Learning toward: ${userContext.target || 'Not specified'}
+- Their struggle pattern: ${userContext.struggle || 'Not specified'}
+${userContext.skillLevel ? `- Skill level: ${userContext.skillLevel}` : ''}
+
+THE SCENARIO: ${scenario.title}
+MANAGER MESSAGE: ${scenario.brief?.message || scenario.briefing}
+DELIVERABLE: ${scenario.brief?.deliverable || 'Complete the template'}
+
+TEMPLATE THEY'RE FILLING IN:
+${scenario.template}
+
+FOCUS AREAS:
+${focusAreas}
+
+HINT LEVEL: ${hintLevel}/3
+Provide a level ${hintLevel} hint to help them fill in the template effectively. Reference specific sections or focus areas they should think about.`;
+  } else {
+    dynamicPart = `THE PERSON:
 - Background: ${userContext.background || 'Not specified'}
 - Learning toward: ${userContext.target || 'Not specified'}
 - Their struggle pattern: ${userContext.struggle || 'Not specified'}
@@ -182,6 +245,7 @@ THE SPECIFIC TASK THEY'RE STUCK ON: ${task.title} — ${task.description}
 
 HINT LEVEL: ${hintLevel}/3
 Provide a level ${hintLevel} hint for this task.`;
+  }
 
   return { staticPart, dynamicPart };
 }
@@ -203,6 +267,7 @@ export function buildRepFeedbackPrompt(
 Your feedback must be multi-layered, honest but encouraging, and actionable.
 
 ANALYSIS APPROACH — adapt based on scenario type:
+- For deliverable scenarios: Evaluate EACH SECTION of the filled template against what a strong answer would include. Compare the user's filled content to the original placeholders. Check: specificity, relevance to the manager's request, logical flow between sections, actionability.
 - For code scenarios: Mentally execute their code. Would it run? Does it produce correct output? Check: correctness, edge cases, error handling, structure, completeness.
 - For project scenarios: Evaluate code they wrote for the task. Trace logic with concrete inputs. Flag errors that look right but would break.
 - For AI builder scenarios: Evaluate the full pipeline — not just prompt design. Look for eval strategy, guardrails, monitoring, data quality, cost/latency tradeoffs. Reward simplest pipeline that meets requirements.
@@ -267,8 +332,38 @@ OUTPUT FORMAT (strict JSON, no markdown):
   const totalTasks = scenario.tasks.length;
   const completedCount = tasksCompleted.length;
   const timeMinutes = Math.round(timeSpent / 60);
+  const isDeliverable = !!scenario.template;
 
-  const dynamicPart = `SCENARIO: ${scenario.title}
+  let dynamicPart: string;
+
+  if (isDeliverable) {
+    const focusAreas = scenario.tasks.map((t, i) => `${i + 1}. ${t.title}: ${t.description}`).join('\n');
+    dynamicPart = `SCENARIO: ${scenario.title}
+DIFFICULTY: ${scenario.difficulty}
+MANAGER MESSAGE: ${scenario.brief?.message || scenario.briefing}
+DELIVERABLE REQUESTED: ${scenario.brief?.deliverable || 'Complete the template'}
+DEADLINE CONTEXT: ${scenario.brief?.deadline || 'Not specified'}
+
+ORIGINAL TEMPLATE (with placeholders):
+${scenario.template}
+
+FOCUS AREAS:
+${focusAreas}
+
+USER'S FILLED TEMPLATE:
+${scratchPad || '(empty — user did not fill in the template)'}
+
+TIME SPENT: ${timeMinutes} minutes (estimated: ${scenario.estimatedMinutes} min)
+HINTS USED: ${hintsUsed}/3
+${confidenceScore ? `SELF-ASSESSED CONFIDENCE: ${confidenceScore}/5` : ''}
+
+${userContext.background ? `USER BACKGROUND: ${userContext.background}` : ''}
+${userContext.target ? `USER GOAL: ${userContext.target}` : ''}
+${userContext.struggle ? `USER STRUGGLE: ${userContext.struggle}` : ''}
+
+Evaluate each section of the filled template. Compare against what a strong answer would include for each placeholder. Provide detailed multi-layer feedback.`;
+  } else {
+    dynamicPart = `SCENARIO: ${scenario.title}
 DIFFICULTY: ${scenario.difficulty}
 BRIEFING: ${scenario.briefing}
 
@@ -288,6 +383,7 @@ ${userContext.target ? `USER GOAL: ${userContext.target}` : ''}
 ${userContext.struggle ? `USER STRUGGLE: ${userContext.struggle}` : ''}
 
 Provide detailed multi-layer feedback for this practice session.`;
+  }
 
   return { staticPart, dynamicPart };
 }

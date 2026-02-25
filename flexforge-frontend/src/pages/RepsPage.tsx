@@ -7,10 +7,11 @@ import { RepsIntake, ScenarioSelect, RepPractice, RepFeedback } from '@/componen
 import { Button, GeneratingScreen } from '@/components/common';
 
 const SCENARIO_LOADING_STEPS = [
-  { icon: Brain, text: 'Analyzing your skill profile...', duration: 2000 },
-  { icon: Search, text: 'Finding relevant challenges...', duration: 2500 },
-  { icon: Target, text: 'Calibrating difficulty...', duration: 2000 },
-  { icon: Sparkles, text: 'Crafting your scenarios...', duration: 2500 },
+  { icon: Brain, text: 'Analyzing your skill profile...', duration: 3000 },
+  { icon: Search, text: 'Finding relevant challenges...', duration: 4000 },
+  { icon: Target, text: 'Calibrating difficulty...', duration: 4000 },
+  { icon: Sparkles, text: 'Building deliverables & templates...', duration: 5000 },
+  { icon: Dumbbell, text: 'Crafting your scenarios...', duration: 5000 },
 ];
 
 const FEEDBACK_LOADING_STEPS = [
@@ -49,10 +50,18 @@ export function RepsPage() {
     const skill = searchParams.get('skill');
     const fresh = searchParams.get('fresh') === 'true';
 
-    // If fresh=true, always reset and show intake form
+    // If fresh=true, reset old rep state and generate new scenarios
     if (fresh) {
       resetFlow();
-      useRepsStore.setState({ needsIntake: true, phase: 'intake' });
+      checkIntake().then(() => {
+        const state = useRepsStore.getState();
+        if (!state.needsIntake) {
+          generateScenarios({
+            skillName: skill || undefined,
+            topic: topic || undefined,
+          });
+        }
+      });
       return;
     }
 

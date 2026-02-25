@@ -1800,9 +1800,20 @@ export interface RepScenarioTask {
   estimatedMinutes: number;
 }
 
+export interface RepBrief {
+  managerName: string;
+  managerRole: string;
+  channel: 'slack' | 'email';
+  message: string;
+  deadline: string;
+  deliverable: string;
+}
+
 export interface RepScenario {
   title: string;
   briefing: string;
+  brief?: RepBrief;
+  template?: string;
   tasks: RepScenarioTask[];
   estimatedMinutes: number;
   difficulty: 'beginner' | 'intermediate' | 'advanced';

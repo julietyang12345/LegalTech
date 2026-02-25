@@ -56,6 +56,12 @@ export function ScenarioSelect({ scenarios, onSelect, onRegenerate, isRegenerati
               {scenario.briefing}
             </p>
 
+            {scenario.brief?.deliverable && (
+              <p className="text-xs font-medium text-brand-600 dark:text-brand-400 mb-3">
+                Deliverable: {scenario.brief.deliverable}
+              </p>
+            )}
+
             <div className="flex items-center gap-4 text-xs text-content-tertiary">
               <span className="flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5" />
@@ -63,7 +69,7 @@ export function ScenarioSelect({ scenarios, onSelect, onRegenerate, isRegenerati
               </span>
               <span className="flex items-center gap-1">
                 <Zap className="w-3.5 h-3.5" />
-                {scenario.tasks.length} tasks
+                {scenario.template ? '1 deliverable' : `${scenario.tasks.length} tasks`}
               </span>
               {scenario.skillTags.length > 0 && (
                 <span className="flex items-center gap-1">

@@ -104,7 +104,7 @@ export const useRepsStore = create<RepsState>()(
       },
 
       generateScenarios: async (dto = {}) => {
-        set({ isGenerating: true, error: null, phase: 'loading' });
+        set({ isGenerating: true, error: null, phase: 'loading', activeRep: null, ...initialPracticeState });
         try {
           const { scenarios } = await repsService.generateScenarios(dto);
           set({ scenarios, isGenerating: false, phase: 'scenarios' });
@@ -125,6 +125,7 @@ export const useRepsStore = create<RepsState>()(
             activeRep: rep,
             phase: 'practice',
             ...initialPracticeState,
+            scratchPadContent: scenario.template || '',
           });
         } catch (error: any) {
           set({ error: error?.response?.data?.message || error.message });

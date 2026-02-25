@@ -65,7 +65,7 @@ export default function OnboardingPage() {
     setIsSavingIntake(true);
     try {
       await repsService.saveIntake(data);
-      navigate('/reps');
+      navigate('/reps?fresh=true');
     } catch (err) {
       console.error('Failed to save intake:', err);
       setIsSavingIntake(false);
