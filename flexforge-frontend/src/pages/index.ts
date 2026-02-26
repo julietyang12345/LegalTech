@@ -19,3 +19,4 @@ export { CareerPathsDemoPage } from './CareerPathsDemoPage';
 export { ExplorePage } from './ExplorePage';
 export { SettingsPage } from './SettingsPage';
 export { RepsPage } from './RepsPage';
+export { AbilityPage } from './AbilityPage';

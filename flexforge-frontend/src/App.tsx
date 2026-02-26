@@ -32,6 +32,7 @@ import {
   ExplorePage,
   SettingsPage,
   RepsPage,
+  AbilityPage,
 } from '@/pages';
 
 // React Query client
@@ -117,6 +118,16 @@ function App() {
             element={
               <ProtectedRoute skipOnboardingCheck>
                 <RepsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Ability dashboard - full screen */}
+          <Route
+            path="/ability"
+            element={
+              <ProtectedRoute skipOnboardingCheck>
+                <AbilityPage />
               </ProtectedRoute>
             }
           />

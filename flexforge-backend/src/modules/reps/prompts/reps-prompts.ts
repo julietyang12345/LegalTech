@@ -1,4 +1,5 @@
 import { CacheablePrompt } from '../../ai/ai.service';
+import { DimensionDef } from '../../ability/dimension-registry';
 
 interface UserContext {
   background?: string;
@@ -6,6 +7,18 @@ interface UserContext {
   struggle?: string;
   skillLevel?: string;
   previousReps?: number;
+}
+
+interface SkillProfileContext {
+  summary: string | null; // Pre-formatted dimension averages
+  recentFeedback: Array<{
+    scenarioTitle: string;
+    userFeedback: {
+      difficulty: string;
+      relevance: string;
+      note?: string;
+    };
+  }>;
 }
 
 interface ScenarioTask {
@@ -42,6 +55,7 @@ export function buildScenarioGenerationPrompt(
   userContext: UserContext,
   skillName?: string,
   topic?: string,
+  profileContext?: SkillProfileContext,
 ): CacheablePrompt {
   const staticPart = `You are a career coach that creates hands-on practice scenarios. Based on this person's situation, generate exactly 3 practice scenarios that would build the most relevant skills for them RIGHT NOW.
 
@@ -183,6 +197,30 @@ OUTPUT FORMAT (strict JSON, no markdown, no backticks):
     dynamicParts.push(`- Previous reps completed: ${userContext.previousReps} — vary the scenario type and angle. Don't repeat similar scenarios.`);
   }
 
+  // Inject skill profile if available (adaptation context)
+  if (profileContext?.summary) {
+    dynamicParts.push('');
+    dynamicParts.push('SKILL PROFILE (from previous reps):');
+    dynamicParts.push(profileContext.summary);
+  }
+
+  if (profileContext?.recentFeedback && profileContext.recentFeedback.length > 0) {
+    dynamicParts.push('');
+    dynamicParts.push('USER FEEDBACK FROM RECENT REPS:');
+    for (const fb of profileContext.recentFeedback) {
+      const parts = [`Rep "${fb.scenarioTitle}": difficulty=${fb.userFeedback.difficulty}, relevance=${fb.userFeedback.relevance}`];
+      if (fb.userFeedback.note) parts.push(`note="${fb.userFeedback.note}"`);
+      dynamicParts.push(`- ${parts.join(', ')}`);
+    }
+    dynamicParts.push('');
+    dynamicParts.push(`ADAPTATION RULES:
+- If user said "too_easy" -> increase complexity. Add more constraints, edge cases, time pressure.
+- If user said "too_hard" -> simplify. Focus on core concept, provide more structure in the template.
+- If user said "not_relevant" -> shift topic within the current skill area. Read their note for specific direction.
+- If user provided a note -> treat it as a direct request. Incorporate their preference into the next scenario.
+Generate scenarios that address BOTH the weak skill dimensions AND the user's explicit feedback.`);
+  }
+
   const dynamicPart = `${dynamicParts.join('\n')}\n\nGenerate 3 practice scenarios tailored to this person. Each should leverage their existing background while stretching them toward their target.`;
 
   return { staticPart, dynamicPart };
@@ -251,7 +289,8 @@ Provide a level ${hintLevel} hint for this task.`;
 }
 
 /**
- * Build prompt for multi-layer feedback after completing a rep
+ * Build prompt for multi-layer feedback after completing a rep.
+ * Uses fixed dimensions from the dimension registry for consistent scoring.
  */
 export function buildRepFeedbackPrompt(
   scenario: Scenario,
@@ -261,7 +300,42 @@ export function buildRepFeedbackPrompt(
   hintsUsed: number,
   confidenceScore: number | null,
   userContext: UserContext,
+  dimensions?: DimensionDef[],
 ): CacheablePrompt {
+  // Build dimension scoring instructions
+  const dimensionBlock = dimensions && dimensions.length > 0
+    ? `Layer 2 — Skill Evaluation:
+Score EXACTLY these ${dimensions.length} dimensions (no more, no less):
+${dimensions.map(d => `- ${d.id} (${d.label}): ${d.description}`).join('\n')}
+
+For each dimension, provide:
+- dimension: the exact dimension id from above (e.g. "${dimensions[0].id}")
+- score: 1-5 (1=missing, 2=weak, 3=developing, 4=solid, 5=excellent)
+- evidence: quote or reference from their work showing this
+- gap: what's missing or could be improved`
+    : `Layer 2 — Skill Evaluation (score each 1-5):
+Choose 3-5 dimensions most relevant to the scenario type. For each:
+- dimension: name of the skill dimension
+- score: 1-5 (1=missing, 2=weak, 3=developing, 4=solid, 5=excellent)
+- evidence: quote or reference from their work showing this
+- gap: what's missing or could be improved
+
+Dimension suggestions by type:
+Code: correctness, edgeCaseHandling, errorHandling, codeStructure, completeness
+AI builder: pipelineDesign, evaluationStrategy, guardrails, operationalThinking, costLatencyTradeoffs
+General: conceptualUnderstanding, problemSolvingApproach, practicalApplication, structuralCompleteness, constraintAwareness`;
+
+  // Build micro-lesson instructions
+  const microLessonBlock = dimensions && dimensions.length > 0
+    ? `
+Layer 6 — Micro-Lessons (targeted learning for weakest areas):
+Generate exactly 2 microLessons targeting the 2 lowest-scoring dimensions. Each lesson should reference the user's actual work from this rep.
+- dimensionId: the exact dimension id this lesson targets
+- title: short punchy title (e.g. "Why Edge Cases Matter")
+- content: 2-3 paragraph micro-lesson teaching the concept they were weakest on. Use their specific scenario as the example. Show what they did vs. what they should have done.
+- exercise: one small exercise they can try right now to practice this specific dimension`
+    : '';
+
   const staticPart = `You are an expert code reviewer and learning coach providing detailed feedback on a practice exercise.
 
 Your feedback must be multi-layered, honest but encouraging, and actionable.
@@ -280,17 +354,7 @@ Layer 1 — Execution Assessment:
 - timeEfficiency: Was their time usage reasonable for the difficulty?
 - hintDependency: Did they over-rely on hints or push through independently?
 
-Layer 2 — Skill Evaluation (score each 1-5):
-Choose 3-5 dimensions most relevant to the scenario type. For each:
-- dimension: name of the skill dimension
-- score: 1-5 (1=missing, 2=weak, 3=developing, 4=solid, 5=excellent)
-- evidence: quote or reference from their work showing this
-- gap: what's missing or could be improved
-
-Dimension suggestions by type:
-Code: correctness, edgeCaseHandling, errorHandling, codeStructure, completeness
-AI builder: pipelineDesign, evaluationStrategy, guardrails, operationalThinking, costLatencyTradeoffs
-General: conceptualUnderstanding, problemSolvingApproach, practicalApplication, structuralCompleteness, constraintAwareness
+${dimensionBlock}
 
 Layer 3 — Improvement Plan:
 - immediateActions: 1-3 specific things to try RIGHT NOW
@@ -310,6 +374,7 @@ Layer 5 — Example Answer (deliverable scenarios only):
   - Business/PM scenarios (stakeholder docs, project plans, strategy briefs): include realistic stakeholder names, business metrics, timelines, risk assessments, and actionable recommendations.
   - General scenarios: match the professional register of the deliverable type.
   The example should read like something a competent professional actually wrote — not a generic template fill.
+${microLessonBlock}
 
 OUTPUT FORMAT (strict JSON, no markdown):
 {
@@ -334,7 +399,11 @@ OUTPUT FORMAT (strict JSON, no markdown):
     "encouragement": "..."
   },
   "suggestedTopics": ["topic1", "topic2"],
-  "exampleAnswer": "The full template with all placeholders filled with strong example content (deliverable scenarios only, omit for non-deliverable)"
+  "exampleAnswer": "The full template with all placeholders filled with strong example content (deliverable scenarios only, omit for non-deliverable)"${dimensions && dimensions.length > 0 ? `,
+  "microLessons": [
+    { "dimensionId": "...", "title": "...", "content": "...", "exercise": "..." },
+    { "dimensionId": "...", "title": "...", "content": "...", "exercise": "..." }
+  ]` : ''}
 }`;
 
   const totalTasks = scenario.tasks.length;

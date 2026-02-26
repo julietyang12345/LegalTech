@@ -1840,6 +1840,20 @@ export interface RepSkillEvaluation {
   gap: string;
 }
 
+export interface RepMicroLesson {
+  dimensionId: string;
+  title: string;
+  content: string;
+  exercise: string;
+}
+
+export interface RepUserFeedback {
+  difficulty: 'too_easy' | 'just_right' | 'too_hard';
+  relevance: 'relevant' | 'not_relevant';
+  note?: string;
+  submittedAt: string;
+}
+
 export interface RepFeedback {
   execution: {
     completionAnalysis: string;
@@ -1861,6 +1875,7 @@ export interface RepFeedback {
   };
   suggestedTopics: string[];
   exampleAnswer?: string;
+  microLessons?: RepMicroLesson[];
 }
 
 export interface Rep {
@@ -1868,6 +1883,7 @@ export interface Rep {
   userId: string;
   skillName: string;
   topic: string;
+  skillType: string | null;
   scenario: RepScenario;
   scenarioOptions: RepScenario[] | null;
   scratchPadContent: string | null;
@@ -1878,6 +1894,7 @@ export interface Rep {
   timeSpentSeconds: number;
   confidenceScore: number | null;
   feedback: RepFeedback | null;
+  userFeedback: RepUserFeedback | null;
   sourceSessionId: string | null;
   sourceConcept: string | null;
   createdAt: string;

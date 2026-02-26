@@ -69,6 +69,20 @@ export class RepsController {
     return this.repsService.completeRep(req.user.id, id, dto);
   }
 
+  @Post(':id/feedback')
+  async submitUserFeedback(
+    @Request() req,
+    @Param('id') id: string,
+    @Body()
+    body: {
+      difficulty: 'too_easy' | 'just_right' | 'too_hard';
+      relevance: 'relevant' | 'not_relevant';
+      note?: string;
+    },
+  ) {
+    return this.repsService.submitUserFeedback(req.user.id, id, body);
+  }
+
   @Get()
   async getHistory(@Request() req) {
     return this.repsService.getHistory(req.user.id);

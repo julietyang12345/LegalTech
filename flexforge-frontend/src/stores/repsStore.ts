@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Rep, RepScenario, RepCoachMessage } from '@/types';
+import type { Rep, RepScenario, RepCoachMessage, RepUserFeedback } from '@/types';
 import { repsService } from '@/services/repsService';
 
 type RepsPhase = 'intake' | 'loading' | 'scenarios' | 'practice' | 'completing' | 'feedback';
@@ -51,6 +51,7 @@ interface RepsState {
   requestHint: (taskIndex: number) => Promise<void>;
   sendCoachMessage: (message: string) => Promise<void>;
   completeRep: (confidenceScore?: number) => Promise<void>;
+  submitUserFeedback: (feedback: { difficulty: RepUserFeedback['difficulty']; relevance: RepUserFeedback['relevance']; note?: string }) => Promise<void>;
   fetchHistory: () => Promise<void>;
   viewRepFeedback: (rep: Rep) => void;
   resetFlow: () => void;
@@ -232,6 +233,25 @@ export const useRepsStore = create<RepsState>()(
             phase: 'practice',
             error: error?.response?.data?.message || error.message,
           });
+        }
+      },
+
+      submitUserFeedback: async (feedback) => {
+        const { activeRep } = get();
+        if (!activeRep) return;
+
+        try {
+          await repsService.submitUserFeedback(activeRep.id, feedback);
+          set((state) => ({
+            activeRep: state.activeRep
+              ? {
+                  ...state.activeRep,
+                  userFeedback: { ...feedback, submittedAt: new Date().toISOString() },
+                }
+              : null,
+          }));
+        } catch (error: any) {
+          set({ error: error?.response?.data?.message || error.message });
         }
       },
 

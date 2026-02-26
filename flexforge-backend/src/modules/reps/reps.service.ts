@@ -1,10 +1,13 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Not, IsNull } from 'typeorm';
 import { Rep } from '../../database/entities/rep.entity';
 import { User } from '../../database/entities/user.entity';
 import { AiService, AITask } from '../ai/ai.service';
 import { UserService } from '../user/user.service';
+import { SkillDetectorService, SkillType } from '../curriculum/services/skill-detector.service';
+import { AbilityService } from '../ability/ability.service';
+import { getDimensions } from '../ability/dimension-registry';
 import { GenerateScenariosDto } from './dto/generate-scenarios.dto';
 import { SaveIntakeDto } from './dto/save-intake.dto';
 import { StartRepDto } from './dto/start-rep.dto';
@@ -26,6 +29,8 @@ export class RepsService {
     private usersRepository: Repository<User>,
     private aiService: AiService,
     private userService: UserService,
+    private skillDetectorService: SkillDetectorService,
+    private abilityService: AbilityService,
   ) {}
 
   /**
@@ -78,10 +83,41 @@ export class RepsService {
       previousReps: await this.repsRepository.count({ where: { userId } }),
     };
 
+    // Fetch skill profile + recent user feedback for adaptive scenario generation
+    const skillType = dto.skillName
+      ? (await this.skillDetectorService.detectSkillType(dto.skillName).catch(() => null))?.skillType
+      : null;
+
+    let profileContext: { summary: string | null; recentFeedback: any[] } | undefined;
+    if (skillType) {
+      const [summary, recentReps] = await Promise.all([
+        this.abilityService.getProfileSummary(userId, skillType),
+        this.repsRepository.find({
+          where: { userId, userFeedback: Not(IsNull()) },
+          order: { createdAt: 'DESC' },
+          take: 3,
+          select: ['scenario', 'userFeedback'],
+        }),
+      ]);
+
+      if (summary || recentReps.length > 0) {
+        profileContext = {
+          summary,
+          recentFeedback: recentReps
+            .filter((r) => r.userFeedback)
+            .map((r) => ({
+              scenarioTitle: r.scenario?.title || 'Unknown',
+              userFeedback: r.userFeedback,
+            })),
+        };
+      }
+    }
+
     const { staticPart, dynamicPart } = buildScenarioGenerationPrompt(
       userContext,
       dto.skillName,
       dto.topic,
+      profileContext,
     );
 
     const response = await this.aiService.routeRequest(
@@ -119,12 +155,23 @@ export class RepsService {
    * Start a new rep with a chosen scenario
    */
   async startRep(userId: string, dto: StartRepDto, allScenarios?: any[]) {
+    // Detect skill type from the scenario's skill tags or title
+    const skillHint = dto.scenario.skillTags?.[0] || dto.scenario.title || 'general';
+    let skillType: string = SkillType.KNOWLEDGE;
+    try {
+      const detection = await this.skillDetectorService.detectSkillType(skillHint);
+      skillType = detection.skillType;
+    } catch (error) {
+      this.logger.warn(`Failed to detect skill type for "${skillHint}", defaulting to KNOWLEDGE`);
+    }
+
     const rep = this.repsRepository.create({
       userId,
       skillName: dto.scenario.skillTags?.[0] || 'general',
       topic: dto.scenario.title,
       scenario: dto.scenario,
       scenarioOptions: allScenarios || null,
+      skillType,
       coachConversation: [],
       hintsRevealed: [],
     });
@@ -315,6 +362,11 @@ RULES:
       (Date.now() - new Date(rep.createdAt).getTime()) / 1000,
     );
 
+    // Load fixed dimensions for this rep's skill type
+    const dimensions = rep.skillType
+      ? getDimensions(rep.skillType as SkillType)
+      : undefined;
+
     const { staticPart, dynamicPart } = buildRepFeedbackPrompt(
       rep.scenario,
       dto.scratchPadContent || rep.scratchPadContent,
@@ -323,6 +375,7 @@ RULES:
       rep.hintsUsed,
       dto.confidenceScore || null,
       userContext,
+      dimensions,
     );
 
     const response = await this.aiService.routeRequest(
@@ -353,11 +406,58 @@ RULES:
     rep.feedback = feedback;
     await this.repsRepository.save(rep);
 
+    // Record skill scores for ability tracking (fire-and-forget)
+    if (rep.skillType && feedback.skillEvaluation?.length > 0) {
+      this.abilityService
+        .recordScores(
+          userId,
+          rep.skillType,
+          feedback.skillEvaluation.map((e: any) => ({
+            dimensionId: e.dimension,
+            score: e.score,
+          })),
+          'rep',
+          rep.id,
+          rep.skillName,
+        )
+        .catch((err) =>
+          this.logger.error(`Failed to record skill scores: ${err.message}`),
+        );
+    }
+
     return {
       feedback,
       rep,
       tokensUsed: response.tokensUsed,
     };
+  }
+
+  /**
+   * Submit user feedback on a completed rep (difficulty, relevance, note)
+   */
+  async submitUserFeedback(
+    userId: string,
+    repId: string,
+    feedback: {
+      difficulty: 'too_easy' | 'just_right' | 'too_hard';
+      relevance: 'relevant' | 'not_relevant';
+      note?: string;
+    },
+  ) {
+    const rep = await this.repsRepository.findOne({
+      where: { id: repId, userId },
+    });
+    if (!rep) throw new NotFoundException('Rep not found');
+    if (!rep.completed)
+      throw new BadRequestException('Rep must be completed before submitting feedback');
+
+    rep.userFeedback = {
+      ...feedback,
+      submittedAt: new Date().toISOString(),
+    };
+    await this.repsRepository.save(rep);
+
+    return { saved: true };
   }
 
   /**

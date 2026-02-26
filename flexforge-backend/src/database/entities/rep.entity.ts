@@ -27,6 +27,9 @@ export class Rep {
   @Column({ nullable: true })
   topic: string;
 
+  @Column({ nullable: true })
+  skillType: string;
+
   @Column({ type: 'jsonb' })
   scenario: {
     title: string;
@@ -132,6 +135,20 @@ export class Rep {
     };
     suggestedTopics: string[];
     exampleAnswer?: string;
+    microLessons?: Array<{
+      dimensionId: string;
+      title: string;
+      content: string;
+      exercise: string;
+    }>;
+  };
+
+  @Column({ type: 'jsonb', nullable: true })
+  userFeedback: {
+    difficulty: 'too_easy' | 'just_right' | 'too_hard';
+    relevance: 'relevant' | 'not_relevant';
+    note?: string;
+    submittedAt: string;
   };
 
   @Column({ nullable: true })

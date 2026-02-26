@@ -1,5 +1,5 @@
 import api from './api';
-import type { Rep, RepScenario } from '@/types';
+import type { Rep, RepScenario, RepUserFeedback } from '@/types';
 
 export const repsService = {
   async checkIntake(): Promise<{ needsIntake: boolean }> {
@@ -51,6 +51,14 @@ export const repsService = {
     tasksCompleted?: string[];
   }): Promise<{ feedback: Rep['feedback']; rep: Rep; tokensUsed: number }> {
     const { data } = await api.post(`/reps/${repId}/complete`, dto);
+    return data;
+  },
+
+  async submitUserFeedback(
+    repId: string,
+    feedback: { difficulty: RepUserFeedback['difficulty']; relevance: RepUserFeedback['relevance']; note?: string },
+  ): Promise<{ saved: boolean }> {
+    const { data } = await api.post<{ saved: boolean }>(`/reps/${repId}/feedback`, feedback);
     return data;
   },
 

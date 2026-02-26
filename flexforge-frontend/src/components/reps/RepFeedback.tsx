@@ -14,10 +14,13 @@ import {
   TrendingUp,
   Target,
   Lightbulb,
+  MessageSquare,
+  Dumbbell,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Button } from '@/components/common';
-import type { Rep, RepFeedback as RepFeedbackType, RepSkillEvaluation } from '@/types';
+import { useRepsStore } from '@/stores/repsStore';
+import type { Rep, RepFeedback as RepFeedbackType, RepSkillEvaluation, RepUserFeedback } from '@/types';
 
 interface RepFeedbackProps {
   rep: Rep;
@@ -137,6 +140,116 @@ function SkillDimensionCard({ evaluation }: { evaluation: RepSkillEvaluation }) 
   );
 }
 
+function UserFeedbackSection({ rep }: { rep: Rep }) {
+  const submitUserFeedback = useRepsStore((s) => s.submitUserFeedback);
+  const [difficulty, setDifficulty] = useState<RepUserFeedback['difficulty'] | null>(
+    rep.userFeedback?.difficulty ?? null,
+  );
+  const [relevance, setRelevance] = useState<RepUserFeedback['relevance'] | null>(
+    rep.userFeedback?.relevance ?? null,
+  );
+  const [note, setNote] = useState(rep.userFeedback?.note ?? '');
+  const [submitted, setSubmitted] = useState(!!rep.userFeedback);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!difficulty || !relevance) return;
+    setIsSubmitting(true);
+    await submitUserFeedback({ difficulty, relevance, note: note.trim() || undefined });
+    setSubmitted(true);
+    setIsSubmitting(false);
+  };
+
+  if (submitted) {
+    return (
+      <div className="rounded-xl border border-border bg-surface p-4">
+        <div className="flex items-center gap-2 text-sm text-content-secondary">
+          <CheckCircle className="w-4 h-4 text-green-500" />
+          <span>Feedback submitted — your next rep will adapt based on this.</span>
+        </div>
+      </div>
+    );
+  }
+
+  const difficultyOptions: { value: RepUserFeedback['difficulty']; label: string }[] = [
+    { value: 'too_easy', label: 'Too easy' },
+    { value: 'just_right', label: 'Just right' },
+    { value: 'too_hard', label: 'Too hard' },
+  ];
+
+  const relevanceOptions: { value: RepUserFeedback['relevance']; label: string }[] = [
+    { value: 'relevant', label: 'Relevant to my goal' },
+    { value: 'not_relevant', label: 'Not relevant' },
+  ];
+
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4 space-y-4">
+      <div className="flex items-center gap-2">
+        <MessageSquare className="w-5 h-5 text-brand-500" />
+        <span className="font-medium text-content">How was this rep?</span>
+      </div>
+
+      {/* Difficulty */}
+      <div className="flex flex-wrap gap-2">
+        {difficultyOptions.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => setDifficulty(opt.value)}
+            className={clsx(
+              'px-3 py-1.5 text-sm rounded-lg border transition-colors',
+              difficulty === opt.value
+                ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-400'
+                : 'border-border text-content-secondary hover:bg-surface-tertiary',
+            )}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Relevance */}
+      <div className="flex flex-wrap gap-2">
+        {relevanceOptions.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => setRelevance(opt.value)}
+            className={clsx(
+              'px-3 py-1.5 text-sm rounded-lg border transition-colors',
+              relevance === opt.value
+                ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-400'
+                : 'border-border text-content-secondary hover:bg-surface-tertiary',
+            )}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Free-text note */}
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Optional: what do you want more or less of?"
+        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface-tertiary text-content placeholder:text-content-tertiary resize-none focus:outline-none focus:ring-1 focus:ring-brand-500"
+        rows={2}
+      />
+
+      <button
+        onClick={handleSubmit}
+        disabled={!difficulty || !relevance || isSubmitting}
+        className={clsx(
+          'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+          difficulty && relevance
+            ? 'bg-brand-500 text-white hover:bg-brand-600'
+            : 'bg-surface-tertiary text-content-tertiary cursor-not-allowed',
+        )}
+      >
+        {isSubmitting ? 'Submitting...' : 'Submit feedback'}
+      </button>
+    </div>
+  );
+}
+
 export function RepFeedback({ rep, onDoAnother }: RepFeedbackProps) {
   const navigate = useNavigate();
   const feedback = rep.feedback;
@@ -231,7 +344,56 @@ export function RepFeedback({ rep, onDoAnother }: RepFeedbackProps) {
           </div>
         </CollapsibleSection>
 
-        {/* 3. What To Do Next */}
+        {/* 3. Quick Lessons (micro-lessons for weakest dimensions) */}
+        {feedback.microLessons && feedback.microLessons.length > 0 && (
+          <CollapsibleSection title="Quick Lessons" icon={BookOpen} defaultOpen>
+            <div className="space-y-4 pt-3">
+              {feedback.microLessons.map((lesson, i) => {
+                const matchingEval = feedback.skillEvaluation.find(
+                  (e) => e.dimension === lesson.dimensionId,
+                );
+                return (
+                  <div key={i} className="space-y-2">
+                    {/* Dimension badge + title */}
+                    <div className="flex items-center gap-2">
+                      {matchingEval && (
+                        <span
+                          className={clsx(
+                            'text-xs font-semibold px-2 py-0.5 rounded-full',
+                            matchingEval.score >= 3
+                              ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20'
+                              : 'text-red-600 bg-red-50 dark:bg-red-900/20',
+                          )}
+                        >
+                          {lesson.dimensionId.replace(/([A-Z])/g, ' $1').trim()} — {matchingEval.score}/5
+                        </span>
+                      )}
+                    </div>
+                    <h4 className="text-sm font-medium text-content">{lesson.title}</h4>
+
+                    {/* Lesson content */}
+                    <div className="text-sm text-content-secondary leading-relaxed whitespace-pre-line">
+                      {lesson.content}
+                    </div>
+
+                    {/* Exercise prompt */}
+                    <div className="p-3 rounded-lg bg-brand-50 dark:bg-brand-900/10 border border-brand-100 dark:border-brand-800">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Dumbbell className="w-3.5 h-3.5 text-brand-600" />
+                        <span className="text-xs font-medium text-brand-700 dark:text-brand-400 uppercase">
+                          Try this
+                        </span>
+                      </div>
+                      <p className="text-sm text-content">{lesson.exercise}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CollapsibleSection>
+        )}
+
+        {/* 4. What To Do Next */}
         <CollapsibleSection title="What To Do Next" icon={Lightbulb}>
           <div className="space-y-4 pt-3">
             {/* Immediate actions */}
@@ -309,7 +471,7 @@ export function RepFeedback({ rep, onDoAnother }: RepFeedbackProps) {
           </div>
         </CollapsibleSection>
 
-        {/* 4. Growth Signal */}
+        {/* 5. Growth Signal */}
         <CollapsibleSection title="Growth Signal" icon={TrendingUp}>
           <div className="space-y-3 pt-3">
             {feedback.growthSignal.comparedToStart && (
@@ -333,6 +495,9 @@ export function RepFeedback({ rep, onDoAnother }: RepFeedbackProps) {
             )}
           </div>
         </CollapsibleSection>
+
+        {/* 6. User Feedback (how was this rep?) */}
+        <UserFeedbackSection rep={rep} />
       </div>
 
       {/* Action buttons */}
@@ -345,6 +510,15 @@ export function RepFeedback({ rep, onDoAnother }: RepFeedbackProps) {
         >
           Do another rep
         </Button>
+
+        <button
+          onClick={() => navigate('/ability')}
+          className="w-full inline-flex items-center justify-center gap-2 text-sm text-content-tertiary hover:text-content-secondary transition-colors py-2"
+        >
+          <TrendingUp className="w-4 h-4" />
+          See your full ability profile
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
 
         {feedback.suggestedTopics.length > 0 && (
           <button
