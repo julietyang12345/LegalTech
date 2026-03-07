@@ -262,9 +262,7 @@ export function RepFeedback({ rep, onDoAnother }: RepFeedbackProps) {
     );
   }
 
-  const completedCount = rep.scenario.tasks.filter((_, i) =>
-    rep.hintsRevealed.some(h => h.taskIndex === i) || true
-  ).length;
+  const isQuiz = rep.mode === 'quiz';
   const timeMinutes = Math.round(rep.timeSpentSeconds / 60);
 
   return (
@@ -279,11 +277,23 @@ export function RepFeedback({ rep, onDoAnother }: RepFeedbackProps) {
           <CheckCircle className="w-8 h-8 text-brand-600" />
         </div>
         <h1 className="text-2xl font-bold text-content mb-2">
-          Rep Complete!
+          {isQuiz ? 'Quiz Complete!' : 'Rep Complete!'}
         </h1>
         <p className="text-content-tertiary">
           {rep.scenario.title}
         </p>
+
+        {/* Quiz score banner */}
+        {isQuiz && rep.quizData?.rawScore !== undefined && rep.quizData?.total && (
+          <div className="mt-4 inline-flex items-center gap-3 px-6 py-3 rounded-2xl bg-gradient-to-r from-brand-50 to-violet-50 dark:from-brand-900/10 dark:to-violet-900/10 border border-brand-100 dark:border-brand-800">
+            <span className="text-3xl font-bold text-brand-600">
+              {rep.quizData.rawScore}/{rep.quizData.total}
+            </span>
+            <span className="text-sm text-content-secondary">
+              ({Math.round((rep.quizData.rawScore / rep.quizData.total) * 100)}% correct)
+            </span>
+          </div>
+        )}
 
         {/* Quick stats */}
         <div className="flex items-center justify-center gap-6 mt-4">
@@ -291,10 +301,12 @@ export function RepFeedback({ rep, onDoAnother }: RepFeedbackProps) {
             <Clock className="w-4 h-4" />
             {timeMinutes} min
           </div>
-          <div className="flex items-center gap-1.5 text-sm text-content-secondary">
-            <HelpCircle className="w-4 h-4" />
-            {rep.hintsUsed} hints
-          </div>
+          {!isQuiz && (
+            <div className="flex items-center gap-1.5 text-sm text-content-secondary">
+              <HelpCircle className="w-4 h-4" />
+              {rep.hintsUsed} hints
+            </div>
+          )}
           {rep.confidenceScore && (
             <div className="flex items-center gap-1.5 text-sm text-content-secondary">
               <Star className="w-4 h-4" />
@@ -307,25 +319,29 @@ export function RepFeedback({ rep, onDoAnother }: RepFeedbackProps) {
       {/* Feedback sections */}
       <div className="space-y-4">
         {/* 1. Execution Summary */}
-        <CollapsibleSection title="Execution Summary" icon={Target} defaultOpen>
+        <CollapsibleSection title={isQuiz ? 'Quiz Performance' : 'Execution Summary'} icon={Target} defaultOpen>
           <div className="space-y-3 pt-3">
             <div>
-              <h4 className="text-xs font-medium text-content-secondary uppercase mb-1">Completion</h4>
+              <h4 className="text-xs font-medium text-content-secondary uppercase mb-1">
+                {isQuiz ? 'Score Breakdown' : 'Completion'}
+              </h4>
               <p className="text-sm text-content">{feedback.execution.completionAnalysis}</p>
             </div>
             <div>
               <h4 className="text-xs font-medium text-content-secondary uppercase mb-1">Time Efficiency</h4>
               <p className="text-sm text-content">{feedback.execution.timeEfficiency}</p>
             </div>
-            <div>
-              <h4 className="text-xs font-medium text-content-secondary uppercase mb-1">Hint Dependency</h4>
-              <p className="text-sm text-content">{feedback.execution.hintDependency}</p>
-            </div>
+            {!isQuiz && (
+              <div>
+                <h4 className="text-xs font-medium text-content-secondary uppercase mb-1">Hint Dependency</h4>
+                <p className="text-sm text-content">{feedback.execution.hintDependency}</p>
+              </div>
+            )}
           </div>
         </CollapsibleSection>
 
-        {/* Example Answer (deliverable reps only) */}
-        {rep.scenario.template && feedback.exampleAnswer && (
+        {/* Example Answer (deliverable reps only, not quiz) */}
+        {!isQuiz && rep.scenario.template && feedback.exampleAnswer && (
           <CollapsibleSection title="Here's what a strong answer looks like" icon={Lightbulb} defaultOpen>
             <div className="pt-3">
               <pre className="p-4 text-sm text-content-secondary whitespace-pre-wrap leading-relaxed font-mono rounded-lg bg-surface-tertiary border border-border overflow-x-auto">
@@ -508,7 +524,7 @@ export function RepFeedback({ rep, onDoAnother }: RepFeedbackProps) {
           className="w-full"
           rightIcon={<RefreshCw className="w-4 h-4" />}
         >
-          Do another rep
+          {isQuiz ? 'Do another quiz' : 'Do another rep'}
         </Button>
 
         <button

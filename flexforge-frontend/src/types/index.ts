@@ -1878,14 +1878,40 @@ export interface RepFeedback {
   microLessons?: RepMicroLesson[];
 }
 
+export interface RepQuizQuestion {
+  id: string;
+  level: 'foundational' | 'applied';
+  conceptTitle: string;
+  question: string;
+  caseStudy?: string;
+  options: Array<{
+    text: string;
+    correct: boolean;
+    explanation: string;
+  }>;
+}
+
+export interface RepQuizData {
+  questions: RepQuizQuestion[];
+  answers?: Array<{
+    questionId: string;
+    selectedIndex: number;
+    correct: boolean;
+  }>;
+  rawScore?: number;
+  total?: number;
+}
+
 export interface Rep {
   id: string;
   userId: string;
   skillName: string;
   topic: string;
   skillType: string | null;
+  mode: 'scenario' | 'quiz';
   scenario: RepScenario;
   scenarioOptions: RepScenario[] | null;
+  quizData: RepQuizData | null;
   scratchPadContent: string | null;
   coachConversation: RepCoachMessage[];
   hintsUsed: number;

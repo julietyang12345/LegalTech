@@ -14,6 +14,7 @@ import { GenerateScenariosDto } from './dto/generate-scenarios.dto';
 import { SaveIntakeDto } from './dto/save-intake.dto';
 import { StartRepDto } from './dto/start-rep.dto';
 import { CompleteRepDto } from './dto/complete-rep.dto';
+import { CompleteQuizDto } from './dto/complete-quiz.dto';
 
 @Controller('reps')
 @UseGuards(JwtAuthGuard, ThrottlerGuard)
@@ -34,6 +35,22 @@ export class RepsController {
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   async generateScenarios(@Request() req, @Body() dto: GenerateScenariosDto) {
     return this.repsService.generateScenarios(req.user.id, dto);
+  }
+
+  @Post('quiz/generate')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async generateQuizRound(@Request() req, @Body() dto: GenerateScenariosDto) {
+    return this.repsService.generateQuizRound(req.user.id, dto);
+  }
+
+  @Post(':id/quiz/complete')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async completeQuizRound(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() dto: CompleteQuizDto,
+  ) {
+    return this.repsService.completeQuizRound(req.user.id, id, dto);
   }
 
   @Post()

@@ -12,10 +12,13 @@ import { GenerateScenariosDto } from './dto/generate-scenarios.dto';
 import { SaveIntakeDto } from './dto/save-intake.dto';
 import { StartRepDto } from './dto/start-rep.dto';
 import { CompleteRepDto } from './dto/complete-rep.dto';
+import { CompleteQuizDto } from './dto/complete-quiz.dto';
 import {
   buildScenarioGenerationPrompt,
   buildProgressiveHintPrompt,
   buildRepFeedbackPrompt,
+  buildQuizGenerationPrompt,
+  buildQuizFeedbackPrompt,
 } from './prompts/reps-prompts';
 
 @Injectable()
@@ -422,6 +425,230 @@ RULES:
         )
         .catch((err) =>
           this.logger.error(`Failed to record skill scores: ${err.message}`),
+        );
+    }
+
+    return {
+      feedback,
+      rep,
+      tokensUsed: response.tokensUsed,
+    };
+  }
+
+  /**
+   * Generate a quiz round with 8 MCQ questions
+   */
+  async generateQuizRound(userId: string, dto: GenerateScenariosDto) {
+    const user = await this.userService.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+
+    const repsContext = (user.preferences as any)?.repsContext;
+    const learner = user.preferences?.learner;
+
+    const userContext = {
+      background: repsContext?.background || learner?.originalGoal || '',
+      target: repsContext?.target || '',
+      struggle: repsContext?.struggle || '',
+      skillLevel: learner?.familiarity || '',
+      previousReps: await this.repsRepository.count({ where: { userId } }),
+    };
+
+    // Fetch skill profile + recent user feedback for adaptive quiz generation
+    const skillType = dto.skillName
+      ? (await this.skillDetectorService.detectSkillType(dto.skillName).catch(() => null))?.skillType
+      : null;
+
+    let profileContext: { summary: string | null; recentFeedback: any[] } | undefined;
+    if (skillType) {
+      const [summary, recentReps] = await Promise.all([
+        this.abilityService.getProfileSummary(userId, skillType),
+        this.repsRepository.find({
+          where: { userId, userFeedback: Not(IsNull()) },
+          order: { createdAt: 'DESC' },
+          take: 3,
+          select: ['scenario', 'userFeedback'],
+        }),
+      ]);
+
+      if (summary || recentReps.length > 0) {
+        profileContext = {
+          summary,
+          recentFeedback: recentReps
+            .filter((r) => r.userFeedback)
+            .map((r) => ({
+              scenarioTitle: r.scenario?.title || 'Unknown',
+              userFeedback: r.userFeedback,
+            })),
+        };
+      }
+    }
+
+    const { staticPart, dynamicPart } = buildQuizGenerationPrompt(
+      userContext,
+      dto.skillName,
+      dto.topic,
+      profileContext,
+    );
+
+    const response = await this.aiService.routeRequest(
+      AITask.REP_QUIZ_GENERATION,
+      dynamicPart,
+      staticPart,
+    );
+
+    await this.userService.incrementUsage(userId, response.tokensUsed, 0, 0, response.cost);
+
+    // Parse questions from response
+    let questions;
+    try {
+      const parsed = JSON.parse(response.content);
+      questions = parsed.questions || parsed;
+    } catch {
+      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        questions = parsed.questions || parsed;
+      } else {
+        throw new BadRequestException('Failed to parse AI response for quiz');
+      }
+    }
+
+    // Detect skill type for the rep
+    const skillHint = dto.skillName || dto.topic || 'general';
+    let detectedSkillType: string = 'KNOWLEDGE';
+    try {
+      const detection = await this.skillDetectorService.detectSkillType(skillHint);
+      detectedSkillType = detection.skillType;
+    } catch {
+      this.logger.warn(`Failed to detect skill type for quiz "${skillHint}", defaulting to KNOWLEDGE`);
+    }
+
+    // Create rep with quiz mode
+    const rep = this.repsRepository.create({
+      userId,
+      skillName: dto.skillName || dto.topic || 'general',
+      topic: dto.topic || dto.skillName || 'Quiz',
+      mode: 'quiz',
+      scenario: {
+        title: `Quiz: ${dto.skillName || dto.topic || 'Knowledge Check'}`,
+        briefing: 'Answer 8 multiple-choice questions to test your understanding.',
+        tasks: [],
+        estimatedMinutes: 10,
+        difficulty: 'intermediate' as const,
+        skillTags: dto.skillName ? [dto.skillName] : [],
+      },
+      quizData: { questions },
+      skillType: detectedSkillType,
+      coachConversation: [],
+      hintsRevealed: [],
+    });
+
+    const saved = await this.repsRepository.save(rep);
+
+    return {
+      rep: saved,
+      tokensUsed: response.tokensUsed,
+    };
+  }
+
+  /**
+   * Complete a quiz round: score answers and generate AI feedback
+   */
+  async completeQuizRound(userId: string, repId: string, dto: CompleteQuizDto) {
+    const rep = await this.repsRepository.findOne({
+      where: { id: repId, userId },
+    });
+    if (!rep) throw new NotFoundException('Rep not found');
+    if (rep.completed) throw new BadRequestException('Quiz already completed');
+    if (rep.mode !== 'quiz') throw new BadRequestException('This rep is not a quiz');
+    if (!rep.quizData?.questions) throw new BadRequestException('No quiz data found');
+
+    const user = await this.userService.findById(userId);
+    const repsContext = (user.preferences as any)?.repsContext;
+
+    const userContext = {
+      background: repsContext?.background || '',
+      target: repsContext?.target || '',
+      struggle: repsContext?.struggle || '',
+      skillLevel: user.preferences?.learner?.familiarity || '',
+    };
+
+    // Score answers
+    const scoredAnswers = dto.answers.map((a) => {
+      const question = rep.quizData.questions.find((q) => q.id === a.questionId);
+      const correct = question ? question.options[a.selectedIndex]?.correct === true : false;
+      return { questionId: a.questionId, selectedIndex: a.selectedIndex, correct };
+    });
+
+    const rawScore = scoredAnswers.filter((a) => a.correct).length;
+    const total = rep.quizData.questions.length;
+
+    // Load fixed dimensions
+    const dimensions = rep.skillType
+      ? getDimensions(rep.skillType as SkillType)
+      : undefined;
+
+    const timeSpent = Math.round(
+      (Date.now() - new Date(rep.createdAt).getTime()) / 1000,
+    );
+
+    const { staticPart, dynamicPart } = buildQuizFeedbackPrompt(
+      rep.quizData.questions,
+      scoredAnswers,
+      userContext,
+      dimensions,
+      timeSpent,
+    );
+
+    const response = await this.aiService.routeRequest(
+      AITask.REP_QUIZ_FEEDBACK,
+      dynamicPart,
+      staticPart,
+    );
+
+    await this.userService.incrementUsage(userId, response.tokensUsed, 0, 0, response.cost);
+
+    let feedback;
+    try {
+      feedback = JSON.parse(response.content);
+    } catch {
+      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        feedback = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new BadRequestException('Failed to parse quiz feedback response');
+      }
+    }
+
+    // Update rep
+    rep.completed = true;
+    rep.timeSpentSeconds = timeSpent;
+    rep.confidenceScore = dto.confidenceScore || null;
+    rep.quizData = {
+      ...rep.quizData,
+      answers: scoredAnswers,
+      rawScore,
+      total,
+    };
+    rep.feedback = feedback;
+    await this.repsRepository.save(rep);
+
+    // Record skill scores (fire-and-forget)
+    if (rep.skillType && feedback.skillEvaluation?.length > 0) {
+      this.abilityService
+        .recordScores(
+          userId,
+          rep.skillType,
+          feedback.skillEvaluation.map((e: any) => ({
+            dimensionId: e.dimension,
+            score: e.score,
+          })),
+          'rep',
+          rep.id,
+          rep.skillName,
+        )
+        .catch((err) =>
+          this.logger.error(`Failed to record quiz skill scores: ${err.message}`),
         );
     }
 

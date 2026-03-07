@@ -3,8 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Dumbbell, Target, Sparkles, BookOpen, CheckCircle, Search, Brain } from 'lucide-react';
 import { useRepsStore } from '@/stores/repsStore';
-import { RepsIntake, ScenarioSelect, RepPractice, RepFeedback } from '@/components/reps';
+import { RepsIntake, ScenarioSelect, RepPractice, RepFeedback, QuizPractice } from '@/components/reps';
 import { Button, GeneratingScreen } from '@/components/common';
+import { clsx } from 'clsx';
 
 const SCENARIO_LOADING_STEPS = [
   { icon: Brain, text: 'Analyzing your skill profile...', duration: 5000 },
@@ -21,12 +22,25 @@ const FEEDBACK_LOADING_STEPS = [
   { icon: CheckCircle, text: 'Building your feedback...', duration: 4000 },
 ];
 
+const QUIZ_LOADING_STEPS = [
+  { icon: Brain, text: 'Analyzing your knowledge gaps...', duration: 4000 },
+  { icon: Target, text: 'Selecting question topics...', duration: 5000 },
+  { icon: Sparkles, text: 'Crafting questions...', duration: 6000 },
+];
+
+const QUIZ_FEEDBACK_LOADING_STEPS = [
+  { icon: BookOpen, text: 'Checking your answers...', duration: 3000 },
+  { icon: Search, text: 'Evaluating skill dimensions...', duration: 5000 },
+  { icon: Target, text: 'Building feedback...', duration: 4000 },
+];
+
 export function RepsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const {
     phase,
     needsIntake,
+    repMode,
     scenarios,
     activeRep,
     isGenerating,
@@ -34,7 +48,9 @@ export function RepsPage() {
     error,
     checkIntake,
     saveIntake,
+    setRepMode,
     generateScenarios,
+    generateQuizRound,
     selectScenario,
     completeRep,
     resetFlow,
@@ -49,6 +65,11 @@ export function RepsPage() {
     const topic = searchParams.get('topic');
     const skill = searchParams.get('skill');
     const fresh = searchParams.get('fresh') === 'true';
+    const mode = searchParams.get('mode');
+
+    if (mode === 'quiz') {
+      setRepMode('quiz');
+    }
 
     // If fresh=true, reset old rep state and generate new scenarios
     if (fresh) {
@@ -56,17 +77,24 @@ export function RepsPage() {
       checkIntake().then(() => {
         const state = useRepsStore.getState();
         if (!state.needsIntake) {
-          generateScenarios({
-            skillName: skill || undefined,
-            topic: topic || undefined,
-          });
+          if (mode === 'quiz' || state.repMode === 'quiz') {
+            generateQuizRound({
+              skillName: skill || undefined,
+              topic: topic || undefined,
+            });
+          } else {
+            generateScenarios({
+              skillName: skill || undefined,
+              topic: topic || undefined,
+            });
+          }
         }
       });
       return;
     }
 
-    // If resuming an active rep, go straight to practice
-    if (activeRep && !activeRep.completed && phase === 'practice') {
+    // If resuming an active rep, go straight to practice/quiz
+    if (activeRep && !activeRep.completed && (phase === 'practice' || phase === 'quiz')) {
       return;
     }
 
@@ -79,10 +107,17 @@ export function RepsPage() {
     checkIntake().then(() => {
       const state = useRepsStore.getState();
       if (!state.needsIntake) {
-        generateScenarios({
-          skillName: skill || undefined,
-          topic: topic || undefined,
-        });
+        if (state.repMode === 'quiz') {
+          generateQuizRound({
+            skillName: skill || undefined,
+            topic: topic || undefined,
+          });
+        } else {
+          generateScenarios({
+            skillName: skill || undefined,
+            topic: topic || undefined,
+          });
+        }
       }
     });
 
@@ -95,9 +130,43 @@ export function RepsPage() {
     await saveIntake(data);
     const topic = searchParams.get('topic');
     const skill = searchParams.get('skill');
-    generateScenarios({
-      skillName: skill || undefined,
-      topic: topic || undefined,
+
+    if (repMode === 'quiz') {
+      generateQuizRound({
+        skillName: skill || undefined,
+        topic: topic || undefined,
+      });
+    } else {
+      generateScenarios({
+        skillName: skill || undefined,
+        topic: topic || undefined,
+      });
+    }
+  };
+
+  const handleModeSwitch = (mode: 'scenario' | 'quiz') => {
+    if (mode === repMode) return;
+    setRepMode(mode);
+    resetFlow();
+
+    const topic = searchParams.get('topic');
+    const skill = searchParams.get('skill');
+
+    checkIntake().then(() => {
+      const state = useRepsStore.getState();
+      if (!state.needsIntake) {
+        if (mode === 'quiz') {
+          generateQuizRound({
+            skillName: skill || undefined,
+            topic: topic || undefined,
+          });
+        } else {
+          generateScenarios({
+            skillName: skill || undefined,
+            topic: topic || undefined,
+          });
+        }
+      }
     });
   };
 
@@ -112,17 +181,28 @@ export function RepsPage() {
 
   const handleDoAnother = () => {
     resetFlow();
-    generateScenarios();
+    if (repMode === 'quiz') {
+      generateQuizRound();
+    } else {
+      generateScenarios();
+    }
   };
 
   const handleSwitchToStudy = (skill: string) => {
     navigate(`/onboarding?skill=${encodeURIComponent(skill)}`);
   };
 
+  // Determine if we should show the mode toggle
+  const showModeToggle = ['loading', 'scenarios', 'quiz-loading'].includes(phase) ||
+    (phase === 'intake' && needsIntake);
+
+  // Determine if we should show the header
+  const showHeader = phase !== 'practice' && phase !== 'quiz';
+
   return (
     <div className="min-h-screen bg-surface-secondary flex flex-col">
-      {/* Top bar (only show when not in practice) */}
-      {phase !== 'practice' && (
+      {/* Top bar (only show when not in practice/quiz) */}
+      {showHeader && (
         <header className="sticky top-0 z-20 bg-surface/80 backdrop-blur-lg border-b border-border">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 flex items-center justify-between h-14">
             <button
@@ -138,6 +218,36 @@ export function RepsPage() {
             </div>
             <div className="w-16" /> {/* Spacer for centering */}
           </div>
+
+          {/* Mode toggle */}
+          {showModeToggle && (
+            <div className="max-w-4xl mx-auto px-4 sm:px-6 pb-3">
+              <div className="inline-flex items-center bg-surface-tertiary rounded-xl p-1">
+                <button
+                  onClick={() => handleModeSwitch('scenario')}
+                  className={clsx(
+                    'px-4 py-1.5 text-sm font-medium rounded-lg transition-all',
+                    repMode === 'scenario'
+                      ? 'bg-surface text-content shadow-sm'
+                      : 'text-content-tertiary hover:text-content-secondary',
+                  )}
+                >
+                  Scenario
+                </button>
+                <button
+                  onClick={() => handleModeSwitch('quiz')}
+                  className={clsx(
+                    'px-4 py-1.5 text-sm font-medium rounded-lg transition-all',
+                    repMode === 'quiz'
+                      ? 'bg-surface text-content shadow-sm'
+                      : 'text-content-tertiary hover:text-content-secondary',
+                  )}
+                >
+                  Quiz
+                </button>
+              </div>
+            </div>
+          )}
         </header>
       )}
 
@@ -162,12 +272,23 @@ export function RepsPage() {
           </div>
         )}
 
-        {/* Loading */}
-        {(phase === 'loading' || isGenerating) && (
+        {/* Scenario Loading */}
+        {(phase === 'loading' || (isGenerating && repMode === 'scenario')) && (
           <GeneratingScreen
             steps={SCENARIO_LOADING_STEPS}
             title="Generating Practice Scenarios"
             subtitle="Tailored to your background and goals"
+            timeEstimate=""
+            inline
+          />
+        )}
+
+        {/* Quiz Loading */}
+        {(phase === 'quiz-loading' || (isGenerating && repMode === 'quiz')) && (
+          <GeneratingScreen
+            steps={QUIZ_LOADING_STEPS}
+            title="Generating Quiz"
+            subtitle="Testing your knowledge with targeted questions"
             timeEstimate=""
             inline
           />
@@ -185,7 +306,7 @@ export function RepsPage() {
           </div>
         )}
 
-        {/* Practice */}
+        {/* Scenario Practice */}
         {phase === 'practice' && activeRep && (
           <RepPractice
             scenario={activeRep.scenario}
@@ -194,7 +315,12 @@ export function RepsPage() {
           />
         )}
 
-        {/* Completing (generating feedback) */}
+        {/* Quiz Practice */}
+        {phase === 'quiz' && activeRep?.quizData && (
+          <QuizPractice />
+        )}
+
+        {/* Completing (generating feedback - scenario) */}
         {phase === 'completing' && (
           <GeneratingScreen
             steps={FEEDBACK_LOADING_STEPS}
@@ -205,7 +331,18 @@ export function RepsPage() {
           />
         )}
 
-        {/* Feedback */}
+        {/* Completing (generating feedback - quiz) */}
+        {phase === 'quiz-completing' && (
+          <GeneratingScreen
+            steps={QUIZ_FEEDBACK_LOADING_STEPS}
+            title="Scoring Your Quiz"
+            subtitle="Analyzing your answers and building feedback"
+            timeEstimate=""
+            inline
+          />
+        )}
+
+        {/* Feedback (shared for both modes) */}
         {phase === 'feedback' && activeRep?.completed && (
           <RepFeedback
             rep={activeRep}
@@ -214,7 +351,7 @@ export function RepsPage() {
         )}
       </main>
 
-      {/* Confidence modal */}
+      {/* Confidence modal (scenario mode only) */}
       {showConfirmComplete && (
         <>
           <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setShowConfirmComplete(false)} />

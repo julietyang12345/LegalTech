@@ -3,12 +3,16 @@ import { persist } from 'zustand/middleware';
 import type { Rep, RepScenario, RepCoachMessage, RepUserFeedback } from '@/types';
 import { repsService } from '@/services/repsService';
 
-type RepsPhase = 'intake' | 'loading' | 'scenarios' | 'practice' | 'completing' | 'feedback';
+type RepsPhase = 'intake' | 'loading' | 'scenarios' | 'practice' | 'completing' | 'feedback'
+  | 'quiz-loading' | 'quiz' | 'quiz-completing';
 
 interface RepsState {
   // Flow state
   phase: RepsPhase;
   needsIntake: boolean | null;
+
+  // Mode
+  repMode: 'scenario' | 'quiz';
 
   // Scenarios
   scenarios: RepScenario[];
@@ -22,6 +26,10 @@ interface RepsState {
   scratchPadContent: string;
   timerSeconds: number;
   timerRunning: boolean;
+
+  // Quiz state (persisted)
+  quizAnswers: Record<string, number>;
+  quizCurrentIndex: number;
 
   // Coach
   coachMessages: RepCoachMessage[];
@@ -42,6 +50,7 @@ interface RepsState {
   // Actions
   checkIntake: () => Promise<void>;
   saveIntake: (dto: { background: string; target: string; struggle: string }) => Promise<void>;
+  setRepMode: (mode: 'scenario' | 'quiz') => void;
   generateScenarios: (dto?: { skillName?: string; topic?: string; sourceSessionId?: string; sourceConcept?: string }) => Promise<void>;
   selectScenario: (scenario: RepScenario) => Promise<void>;
   toggleTask: (taskId: string) => void;
@@ -51,6 +60,11 @@ interface RepsState {
   requestHint: (taskIndex: number) => Promise<void>;
   sendCoachMessage: (message: string) => Promise<void>;
   completeRep: (confidenceScore?: number) => Promise<void>;
+  generateQuizRound: (dto?: { skillName?: string; topic?: string }) => Promise<void>;
+  answerQuizQuestion: (questionId: string, selectedIndex: number) => void;
+  nextQuizQuestion: () => void;
+  prevQuizQuestion: () => void;
+  completeQuizRound: (confidenceScore?: number) => Promise<void>;
   submitUserFeedback: (feedback: { difficulty: RepUserFeedback['difficulty']; relevance: RepUserFeedback['relevance']; note?: string }) => Promise<void>;
   fetchHistory: () => Promise<void>;
   viewRepFeedback: (rep: Rep) => void;
@@ -67,16 +81,23 @@ const initialPracticeState = {
   coachMessages: [] as RepCoachMessage[],
 };
 
+const initialQuizState = {
+  quizAnswers: {} as Record<string, number>,
+  quizCurrentIndex: 0,
+};
+
 export const useRepsStore = create<RepsState>()(
   persist(
     (set, get) => ({
       // Initial state
       phase: 'loading' as RepsPhase,
       needsIntake: null,
+      repMode: 'scenario' as const,
       scenarios: [],
       isGenerating: false,
       activeRep: null,
       ...initialPracticeState,
+      ...initialQuizState,
       isCoachLoading: false,
       isHintLoading: false,
       isCompleting: false,
@@ -104,8 +125,10 @@ export const useRepsStore = create<RepsState>()(
         }
       },
 
+      setRepMode: (mode) => set({ repMode: mode }),
+
       generateScenarios: async (dto = {}) => {
-        set({ isGenerating: true, error: null, phase: 'loading', activeRep: null, ...initialPracticeState });
+        set({ isGenerating: true, error: null, phase: 'loading', activeRep: null, ...initialPracticeState, ...initialQuizState });
         try {
           const { scenarios } = await repsService.generateScenarios(dto);
           set({ scenarios, isGenerating: false, phase: 'scenarios' });
@@ -236,6 +259,70 @@ export const useRepsStore = create<RepsState>()(
         }
       },
 
+      generateQuizRound: async (dto = {}) => {
+        set({ isGenerating: true, error: null, phase: 'quiz-loading', activeRep: null, ...initialPracticeState, ...initialQuizState });
+        try {
+          const { rep } = await repsService.generateQuizRound(dto);
+          set({ activeRep: rep, isGenerating: false, phase: 'quiz' });
+        } catch (error: any) {
+          set({
+            isGenerating: false,
+            error: error?.response?.data?.message || error.message,
+            phase: 'loading',
+          });
+        }
+      },
+
+      answerQuizQuestion: (questionId, selectedIndex) => {
+        set(state => ({
+          quizAnswers: { ...state.quizAnswers, [questionId]: selectedIndex },
+        }));
+      },
+
+      nextQuizQuestion: () => {
+        const { quizCurrentIndex, activeRep } = get();
+        const total = activeRep?.quizData?.questions?.length || 8;
+        if (quizCurrentIndex < total - 1) {
+          set({ quizCurrentIndex: quizCurrentIndex + 1 });
+        }
+      },
+
+      prevQuizQuestion: () => {
+        const { quizCurrentIndex } = get();
+        if (quizCurrentIndex > 0) {
+          set({ quizCurrentIndex: quizCurrentIndex - 1 });
+        }
+      },
+
+      completeQuizRound: async (confidenceScore) => {
+        const { activeRep, quizAnswers } = get();
+        if (!activeRep?.quizData?.questions) return;
+
+        const answers = activeRep.quizData.questions.map(q => ({
+          questionId: q.id,
+          selectedIndex: quizAnswers[q.id] ?? -1,
+        })).filter(a => a.selectedIndex >= 0);
+
+        set({ isCompleting: true, phase: 'quiz-completing' });
+        try {
+          const { feedback, rep } = await repsService.completeQuizRound(activeRep.id, {
+            answers,
+            confidenceScore,
+          });
+          set({
+            activeRep: rep,
+            isCompleting: false,
+            phase: 'feedback',
+          });
+        } catch (error: any) {
+          set({
+            isCompleting: false,
+            phase: 'quiz',
+            error: error?.response?.data?.message || error.message,
+          });
+        }
+      },
+
       submitUserFeedback: async (feedback) => {
         const { activeRep } = get();
         if (!activeRep) return;
@@ -277,6 +364,7 @@ export const useRepsStore = create<RepsState>()(
           scenarios: [],
           activeRep: null,
           ...initialPracticeState,
+          ...initialQuizState,
           isCoachLoading: false,
           isHintLoading: false,
           isCompleting: false,
@@ -298,6 +386,9 @@ export const useRepsStore = create<RepsState>()(
         activeRep: state.activeRep,
         phase: state.phase,
         coachMessages: state.coachMessages,
+        repMode: state.repMode,
+        quizAnswers: state.quizAnswers,
+        quizCurrentIndex: state.quizCurrentIndex,
       }),
     },
   ),

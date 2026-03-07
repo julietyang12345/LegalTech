@@ -227,6 +227,256 @@ Generate scenarios that address BOTH the weak skill dimensions AND the user's ex
 }
 
 /**
+ * Build prompt for generating 8 multiple-choice quiz questions
+ */
+export function buildQuizGenerationPrompt(
+  userContext: UserContext,
+  skillName?: string,
+  topic?: string,
+  profileContext?: SkillProfileContext,
+): CacheablePrompt {
+  const staticPart = `You are a career coach that creates knowledge-check quizzes. Based on this person's situation, generate exactly 8 multiple-choice questions to test their understanding of the given skill/topic.
+
+RULES:
+- Generate exactly 8 questions total
+- Questions 1-4 are "foundational" — test concepts, definitions, "what does X do?", core principles
+- Questions 5-8 are "applied" — scenario-based: "given this situation, what would you do?", real-world application
+- Each question has exactly 4 options, exactly 1 correct answer
+- Each option must include an explanation (shown after answering, explaining why it's right or wrong)
+- Questions must be self-contained, unambiguous, and not trick questions
+- Applied questions (5-8) must include a "caseStudy" field with realistic context (2-4 sentences setting the scene)
+- Options should be plausible — no obviously wrong "joke" answers
+- The correct answer should not always be in the same position — randomize it
+- Difficulty should match the person's stated skill level and background
+- Each question needs a unique id: "q-1" through "q-8"
+- Each question needs a "conceptTitle" describing the concept being tested (e.g., "React State Management")
+
+WHAT MAKES A BAD QUIZ QUESTION (avoid):
+- Questions with ambiguous or debatable correct answers
+- Questions that test trivia nobody uses in practice
+- Questions where multiple options are arguably correct
+- "All of the above" / "None of the above" options
+- Questions that require memorizing exact syntax or version numbers
+
+WHAT MAKES A GOOD QUIZ QUESTION:
+- Tests understanding that directly applies to real work
+- The wrong answers represent common misconceptions
+- Explanations teach something even if the user got it right
+- Applied questions feel like real situations they'd face at work
+- Questions build on each other thematically (foundational concepts → applying those concepts)
+
+OUTPUT FORMAT (strict JSON, no markdown, no backticks):
+{
+  "questions": [
+    {
+      "id": "q-1",
+      "level": "foundational",
+      "conceptTitle": "Short concept name",
+      "question": "The question text?",
+      "options": [
+        { "text": "Option A", "correct": false, "explanation": "Why this is wrong" },
+        { "text": "Option B", "correct": true, "explanation": "Why this is correct" },
+        { "text": "Option C", "correct": false, "explanation": "Why this is wrong" },
+        { "text": "Option D", "correct": false, "explanation": "Why this is wrong" }
+      ]
+    },
+    {
+      "id": "q-5",
+      "level": "applied",
+      "conceptTitle": "Applying X in practice",
+      "question": "Given the situation above, what would you do?",
+      "caseStudy": "You're working at a startup and your team lead asks you to...",
+      "options": [...]
+    }
+  ]
+}`;
+
+  const dynamicParts: string[] = [];
+
+  dynamicParts.push('THEIR SITUATION:');
+  dynamicParts.push(`- Current background: ${userContext.background || 'Not specified'}`);
+  dynamicParts.push(`- Want to move toward: ${userContext.target || 'General skill improvement'}`);
+  dynamicParts.push(`- Biggest struggle: ${userContext.struggle || 'Not specified'}`);
+
+  if (userContext.skillLevel) {
+    dynamicParts.push(`- Familiarity level: ${userContext.skillLevel}`);
+  }
+  if (skillName) {
+    dynamicParts.push(`- Skill to quiz on: ${skillName}`);
+  }
+  if (topic) {
+    dynamicParts.push(`- Specific topic requested: ${topic}`);
+  }
+  if (userContext.previousReps !== undefined && userContext.previousReps > 0) {
+    dynamicParts.push(`- Previous reps completed: ${userContext.previousReps} — vary the question topics. Don't repeat similar questions.`);
+  }
+
+  if (profileContext?.summary) {
+    dynamicParts.push('');
+    dynamicParts.push('SKILL PROFILE (from previous reps):');
+    dynamicParts.push(profileContext.summary);
+  }
+
+  if (profileContext?.recentFeedback && profileContext.recentFeedback.length > 0) {
+    dynamicParts.push('');
+    dynamicParts.push('USER FEEDBACK FROM RECENT REPS:');
+    for (const fb of profileContext.recentFeedback) {
+      const parts = [`Rep "${fb.scenarioTitle}": difficulty=${fb.userFeedback.difficulty}, relevance=${fb.userFeedback.relevance}`];
+      if (fb.userFeedback.note) parts.push(`note="${fb.userFeedback.note}"`);
+      dynamicParts.push(`- ${parts.join(', ')}`);
+    }
+    dynamicParts.push('');
+    dynamicParts.push(`ADAPTATION RULES:
+- If user said "too_easy" -> increase question difficulty. Test deeper concepts and more nuanced applied scenarios.
+- If user said "too_hard" -> simplify. Focus on core concepts, less ambiguous scenarios.
+- If user said "not_relevant" -> shift topic focus. Read their note for specific direction.
+- If user provided a note -> treat it as a direct request. Adjust question topics and difficulty accordingly.
+- Focus questions on the user's weakest skill dimensions from their profile.`);
+  }
+
+  const dynamicPart = `${dynamicParts.join('\n')}\n\nGenerate 8 quiz questions (4 foundational + 4 applied) tailored to this person's skill level and goals.`;
+
+  return { staticPart, dynamicPart };
+}
+
+/**
+ * Build prompt for scoring quiz answers and generating feedback
+ */
+export function buildQuizFeedbackPrompt(
+  questions: Array<{
+    id: string;
+    level: string;
+    conceptTitle: string;
+    question: string;
+    caseStudy?: string;
+    options: Array<{ text: string; correct: boolean; explanation: string }>;
+  }>,
+  answers: Array<{ questionId: string; selectedIndex: number; correct: boolean }>,
+  userContext: UserContext,
+  dimensions?: DimensionDef[],
+  timeSpent?: number,
+): CacheablePrompt {
+  const dimensionBlock = dimensions && dimensions.length > 0
+    ? `Layer 2 — Skill Evaluation:
+Score EXACTLY these ${dimensions.length} dimensions (no more, no less):
+${dimensions.map(d => `- ${d.id} (${d.label}): ${d.description}`).join('\n')}
+
+For each dimension, provide:
+- dimension: the exact dimension id from above (e.g. "${dimensions[0].id}")
+- score: 1-5 (1=missing, 2=weak, 3=developing, 4=solid, 5=excellent)
+- evidence: reference specific questions they got right or wrong that demonstrate this
+- gap: what's missing or could be improved`
+    : `Layer 2 — Skill Evaluation (score each 1-5):
+Choose 3-5 dimensions most relevant to the quiz topic. For each:
+- dimension: name of the skill dimension
+- score: 1-5 (1=missing, 2=weak, 3=developing, 4=solid, 5=excellent)
+- evidence: reference specific questions they got right or wrong
+- gap: what's missing or could be improved`;
+
+  const microLessonBlock = dimensions && dimensions.length > 0
+    ? `
+Layer 5 — Micro-Lessons (targeted learning for weakest areas):
+Generate exactly 2 microLessons targeting the 2 lowest-scoring dimensions. Each lesson should reference specific questions the user got wrong.
+- dimensionId: the exact dimension id this lesson targets
+- title: short punchy title (e.g. "Why Edge Cases Matter")
+- content: 2-3 paragraph micro-lesson teaching the concept they were weakest on. Reference the specific quiz questions they got wrong as examples.
+- exercise: one small exercise they can try right now to practice this specific dimension`
+    : '';
+
+  const staticPart = `You are an expert learning coach analyzing quiz results and providing detailed feedback.
+
+Given the 8 quiz questions and the user's answers, evaluate their knowledge and provide multi-layered feedback.
+
+FEEDBACK STRUCTURE:
+
+Layer 1 — Quiz Performance:
+- completionAnalysis: Score breakdown — how many correct overall, foundational vs applied performance
+- timeEfficiency: Was their pace reasonable?
+- patternAnalysis: What patterns emerge from their right/wrong answers? Which concepts are strong vs weak?
+
+${dimensionBlock}
+
+Layer 3 — Improvement Plan:
+- immediateActions: 1-3 specific things to try RIGHT NOW based on what they got wrong
+- conceptsToStudy: topics they should learn to fill gaps revealed by wrong answers
+- suggestedNextRep: what their next practice should focus on
+- resourceHints: what to search for / what type of material would help (not links)
+- methodToImprove: for each weak dimension, a concrete practice technique
+
+Layer 4 — Growth Signal:
+- comparedToStart: how this quiz shows progress relative to their stated background
+- confidenceCalibration: was their self-assessed confidence accurate vs observed performance?
+- encouragement: genuine, specific encouragement tied to something they actually got right
+${microLessonBlock}
+
+OUTPUT FORMAT (strict JSON, no markdown):
+{
+  "execution": {
+    "completionAnalysis": "...",
+    "timeEfficiency": "...",
+    "hintDependency": "..."
+  },
+  "skillEvaluation": [
+    { "dimension": "...", "score": 1-5, "evidence": "...", "gap": "..." }
+  ],
+  "improvementPlan": {
+    "immediateActions": ["..."],
+    "conceptsToStudy": ["..."],
+    "suggestedNextRep": "...",
+    "resourceHints": ["..."],
+    "methodToImprove": [{ "dimension": "...", "method": "..." }]
+  },
+  "growthSignal": {
+    "comparedToStart": "...",
+    "confidenceCalibration": "...",
+    "encouragement": "..."
+  },
+  "suggestedTopics": ["topic1", "topic2"]${dimensions && dimensions.length > 0 ? `,
+  "microLessons": [
+    { "dimensionId": "...", "title": "...", "content": "...", "exercise": "..." },
+    { "dimensionId": "...", "title": "...", "content": "...", "exercise": "..." }
+  ]` : ''}
+}`;
+
+  // Build the dynamic part with questions + answers
+  const rawScore = answers.filter(a => a.correct).length;
+  const total = answers.length;
+  const foundationalCorrect = answers.filter(a => {
+    const q = questions.find(q => q.id === a.questionId);
+    return q?.level === 'foundational' && a.correct;
+  }).length;
+  const appliedCorrect = answers.filter(a => {
+    const q = questions.find(q => q.id === a.questionId);
+    return q?.level === 'applied' && a.correct;
+  }).length;
+
+  const timeMinutes = timeSpent ? Math.round(timeSpent / 60) : 0;
+
+  const questionDetails = questions.map(q => {
+    const answer = answers.find(a => a.questionId === q.id);
+    const selectedOption = answer ? q.options[answer.selectedIndex] : null;
+    const correctOption = q.options.find(o => o.correct);
+    return `Q${q.id.replace('q-', '')} [${q.level}] "${q.conceptTitle}": ${q.question}
+${q.caseStudy ? `Case Study: ${q.caseStudy}\n` : ''}User selected: "${selectedOption?.text || 'No answer'}" — ${answer?.correct ? 'CORRECT' : 'WRONG'}
+Correct answer: "${correctOption?.text}"`;
+  }).join('\n\n');
+
+  const dynamicPart = `QUIZ RESULTS: ${rawScore}/${total} correct (Foundational: ${foundationalCorrect}/4, Applied: ${appliedCorrect}/4)
+${timeMinutes > 0 ? `TIME SPENT: ${timeMinutes} minutes` : ''}
+
+QUESTIONS AND ANSWERS:
+${questionDetails}
+
+${userContext.background ? `USER BACKGROUND: ${userContext.background}` : ''}
+${userContext.target ? `USER GOAL: ${userContext.target}` : ''}
+${userContext.struggle ? `USER STRUGGLE: ${userContext.struggle}` : ''}
+
+Provide detailed multi-layer feedback based on their quiz performance. The "hintDependency" field in execution should say "N/A — quiz mode (no hints available)" since this is a quiz, not a scenario.`;
+
+  return { staticPart, dynamicPart };
+}
+
+/**
  * Build prompt for progressive hints (3 levels: nudge → hint → walkthrough)
  */
 export function buildProgressiveHintPrompt(

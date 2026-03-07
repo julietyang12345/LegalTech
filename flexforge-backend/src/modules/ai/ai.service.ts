@@ -315,6 +315,10 @@ export enum AITask {
   REP_SCENARIO_GENERATION = 'REP_SCENARIO_GENERATION',
   REP_HINT = 'REP_HINT',
   REP_FEEDBACK = 'REP_FEEDBACK',
+
+  // Reps (quiz mode)
+  REP_QUIZ_GENERATION = 'REP_QUIZ_GENERATION',
+  REP_QUIZ_FEEDBACK = 'REP_QUIZ_FEEDBACK',
 }
 
 export interface AIResponse {
@@ -625,6 +629,16 @@ export class AiService {
         { provider: 'openai', model: 'gpt-4o-mini' },
       ],
       [AITask.REP_FEEDBACK]: [
+        { provider: 'anthropic', model: 'claude-sonnet-4-20250514' },
+        { provider: 'openai', model: 'gpt-4o' },
+      ],
+
+      // Reps (quiz mode)
+      [AITask.REP_QUIZ_GENERATION]: [
+        { provider: 'anthropic', model: 'claude-sonnet-4-20250514' },
+        { provider: 'openai', model: 'gpt-4o' },
+      ],
+      [AITask.REP_QUIZ_FEEDBACK]: [
         { provider: 'anthropic', model: 'claude-sonnet-4-20250514' },
         { provider: 'openai', model: 'gpt-4o' },
       ],

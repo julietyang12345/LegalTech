@@ -6,3 +6,4 @@ export { RepTimer } from './RepTimer';
 export { ScratchPad } from './ScratchPad';
 export { RepCoachChat } from './RepCoachChat';
 export { RepFeedback } from './RepFeedback';
+export { QuizPractice } from './QuizPractice';

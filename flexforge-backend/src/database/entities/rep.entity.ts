@@ -154,6 +154,32 @@ export class Rep {
   @Column({ nullable: true })
   sourceSessionId: string;
 
+  @Column({ default: 'scenario' })
+  mode: 'scenario' | 'quiz';
+
+  @Column({ type: 'jsonb', nullable: true })
+  quizData: {
+    questions: Array<{
+      id: string;
+      level: 'foundational' | 'applied';
+      conceptTitle: string;
+      question: string;
+      caseStudy?: string;
+      options: Array<{
+        text: string;
+        correct: boolean;
+        explanation: string;
+      }>;
+    }>;
+    answers?: Array<{
+      questionId: string;
+      selectedIndex: number;
+      correct: boolean;
+    }>;
+    rawScore?: number;
+    total?: number;
+  };
+
   @Column({ nullable: true })
   sourceConcept: string;
 
