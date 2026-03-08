@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client, LoginTicket } from 'google-auth-library';
+import axios from 'axios';
 import { UserService } from '../user/user.service';
 
 @Injectable()
@@ -108,6 +109,76 @@ export class AuthService {
           email: email.toLowerCase(),
           name: name || email.split('@')[0],
           googleId,
+        });
+      }
+    }
+
+    const payload = { email: user.email, sub: user.id, role: user.role };
+    const token = this.jwtService.sign(payload);
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name || user.fullName,
+        role: user.role,
+        quotaTier: user.quotaTier,
+      },
+      access_token: token,
+      isNewUser: !user.preferences?.learner?.completedOnboarding,
+    };
+  }
+
+  async microsoftLogin(accessToken: string) {
+    let microsoftUser: {
+      id: string;
+      mail?: string | null;
+      userPrincipalName?: string | null;
+      displayName?: string | null;
+    };
+
+    try {
+      const response = await axios.get<{
+        id: string;
+        mail?: string | null;
+        userPrincipalName?: string | null;
+        displayName?: string | null;
+      }>('https://graph.microsoft.com/v1.0/me', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      microsoftUser = response.data;
+    } catch (error) {
+      this.logger.error('Microsoft token verification failed:', error);
+      throw new UnauthorizedException('Invalid Microsoft credential');
+    }
+
+    const microsoftId = microsoftUser.id;
+    const email = (microsoftUser.mail || microsoftUser.userPrincipalName || '')
+      .trim()
+      .toLowerCase();
+    const name = (microsoftUser.displayName || email.split('@')[0] || '').trim();
+
+    if (!microsoftId || !email) {
+      throw new UnauthorizedException('Invalid Microsoft credential');
+    }
+
+    let user = await this.userService.findByMicrosoftId(microsoftId);
+
+    if (!user) {
+      user = await this.userService.findByEmail(email);
+
+      if (user) {
+        await this.userService.linkMicrosoftAccount(user.id, microsoftId);
+        if (!user.emailVerified) {
+          await this.userService.setEmailVerified(user.id, true);
+        }
+      } else {
+        user = await this.userService.createFromMicrosoft({
+          email,
+          name,
+          microsoftId,
         });
       }
     }

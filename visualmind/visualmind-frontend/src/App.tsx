@@ -379,6 +379,9 @@ export const App = () => {
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [isFeatureRequestOpen, setIsFeatureRequestOpen] = useState(false);
+  const [featureRequestMessage, setFeatureRequestMessage] = useState('');
+  const [sendingFeatureRequest, setSendingFeatureRequest] = useState(false);
   const [editingRecentMapId, setEditingRecentMapId] = useState<string | null>(null);
   const [editingRecentMapTitle, setEditingRecentMapTitle] = useState('');
   const [renamingRecentMapId, setRenamingRecentMapId] = useState<string | null>(null);
@@ -669,22 +672,23 @@ export const App = () => {
   //   }
   // };
 
-  const onGenerateFlashcards = async () => {
-    setAssetBusy('flashcards');
-    try {
-      const projectId = ensureStudyToolReadyProject();
-      if (!projectId) return;
-      const response = await api.generateFlashcards(projectId, { cardCount: 10 });
-      setFlashcardDeck(response.flashcards);
-      showStudyToolsPanel('flashcards');
-      setStatus(`Generated ${response.flashcards.cards.length} flashcards`);
-    } catch (error) {
-      const message = extractErrorMessage(error);
-      setStatus(`Flashcards failed: ${message}`);
-    } finally {
-      setAssetBusy(null);
-    }
-  };
+  // Flashcards are temporarily disabled.
+  // const onGenerateFlashcards = async () => {
+  //   setAssetBusy('flashcards');
+  //   try {
+  //     const projectId = ensureStudyToolReadyProject();
+  //     if (!projectId) return;
+  //     const response = await api.generateFlashcards(projectId, { cardCount: 10 });
+  //     setFlashcardDeck(response.flashcards);
+  //     showStudyToolsPanel('flashcards');
+  //     setStatus(`Generated ${response.flashcards.cards.length} flashcards`);
+  //   } catch (error) {
+  //     const message = extractErrorMessage(error);
+  //     setStatus(`Flashcards failed: ${message}`);
+  //   } finally {
+  //     setAssetBusy(null);
+  //   }
+  // };
 
   const onGenerate = async () => {
     if (!selectedProjectId) {
@@ -1122,6 +1126,36 @@ export const App = () => {
     }
   };
 
+  const openFeatureRequestModal = () => {
+    if (!isAuthenticated) {
+      setStatus('Please log in to send a feature request.');
+      onLogin();
+      return;
+    }
+    setIsFeatureRequestOpen(true);
+  };
+
+  const submitFeatureRequest = async () => {
+    const message = featureRequestMessage.trim();
+    if (message.length < 10) {
+      setStatus('Please enter at least 10 characters.');
+      return;
+    }
+
+    setSendingFeatureRequest(true);
+    try {
+      await api.createFeatureRequest(message);
+      setStatus('Feature request sent. Thank you.');
+      setFeatureRequestMessage('');
+      setIsFeatureRequestOpen(false);
+    } catch (error) {
+      const requestMessage = extractErrorMessage(error);
+      setStatus(`Feature request failed: ${requestMessage}`);
+    } finally {
+      setSendingFeatureRequest(false);
+    }
+  };
+
   const startRecentMapRename = (project: VmProject) => {
     setEditingRecentMapId(project.id);
     setEditingRecentMapTitle(recentMapTitle(project));
@@ -1325,49 +1359,7 @@ export const App = () => {
                 <p className="auth-helper">Add your sources now, then log in to generate and save your map.</p>
               ) : null}
             </div>
-            <div className="mindmao-tools">
-              <div className="mindmao-tools-header">
-                <div>
-                  <p className="mindmao-kicker">Mind Map Outputs</p>
-                  <h3>Tools from your map</h3>
-                </div>
-                <span className={`mindmao-badge ${tree ? 'ready' : 'locked'}`}>{tree ? 'Unlocked' : 'Locked'}</span>
-              </div>
-              {/* Mind Map Slides temporarily disabled */}
-              <div className={`tool-card ${tree ? 'ready' : 'locked'}`}>
-                <div className="tool-card-copy">
-                  <div className="tool-card-title-row">
-                    <h4>Mind Map Flashcards</h4>
-                    <span className="tool-pill">Review</span>
-                  </div>
-                  <p>Convert the map into fast study prompts and answer cards based on the main branches.</p>
-                  <small>
-                    {tree
-                      ? 'Available because this project already has a generated mind map.'
-                      : 'Generate a mind map first to unlock flashcards.'}
-                  </small>
-                </div>
-                <div
-                  className={`tool-card-action ${
-                    busy || assetBusy !== null || !isAuthenticated || !selectedProjectId || !tree ? 'disabled' : ''
-                  }`}
-                  role="button"
-                  tabIndex={busy || assetBusy !== null || !isAuthenticated || !selectedProjectId || !tree ? -1 : 0}
-                  onClick={() => {
-                    if (busy || assetBusy !== null || !isAuthenticated || !selectedProjectId || !tree) return;
-                    void onGenerateFlashcards();
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key !== 'Enter' && event.key !== ' ') return;
-                    event.preventDefault();
-                    if (busy || assetBusy !== null || !isAuthenticated || !selectedProjectId || !tree) return;
-                    void onGenerateFlashcards();
-                  }}
-                >
-                  {assetBusy === 'flashcards' ? 'Generating...' : 'Generate Flashcards'}
-                </div>
-              </div>
-            </div>
+            {/* Mind Map Outputs section temporarily disabled */}
           </div>
         </section>
 
@@ -1598,49 +1590,19 @@ export const App = () => {
           <div ref={studyToolsRef} className={`card assets-card ${studyToolsSpotlight ? 'spotlight' : ''}`}>
             <div className="assets-header">
               <div className="assets-header-copy">
-              <h3>Mind Map Tools</h3>
-                <p>Generate slides or flashcards from your current map.</p>
+                <h3>Mind Map Tools</h3>
+                <p>Email us about what feature you want to have here.</p>
               </div>
-              <span className={`asset-status-badge ${tree ? 'ready' : 'locked'}`}>
-                {tree ? 'Ready' : 'Locked'}
-              </span>
+              <span className="asset-status-badge paused">Paused</span>
             </div>
-            <div className="asset-tabs" role="tablist" aria-label="Tools tabs">
-              {/* Slides tab temporarily disabled */}
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeAssetMode === 'flashcards'}
-                aria-controls="study-tab-flashcards"
-                className={`asset-tab ${activeAssetMode === 'flashcards' ? 'active' : ''}`}
-                onClick={() => setActiveAssetMode('flashcards')}
-              >
-                Flashcards
+            <div className="asset-empty-state">
+              <div className="asset-empty-icon">🧩</div>
+              <h4>Tell us what feature you want</h4>
+              <p>Share your request for this area and we will save it to the backend database.</p>
+              <button className="btn btn-primary" type="button" onClick={openFeatureRequestModal}>
+                Email Us Your Feature Request
               </button>
             </div>
-            {flashcardDeck ? (
-              <div className="asset-list" id="study-tab-flashcards" role="tabpanel">
-                <p className="asset-title">{flashcardDeck.title}</p>
-                {flashcardDeck.cards.map((card, index) => (
-                  <div className="flashcard" key={`${card.front}-${index}`}>
-                    <div className="flashcard-front">Q{index + 1}: {card.front}</div>
-                    <div className="flashcard-back">{card.back}</div>
-                    {card.hint ? <p className="flashcard-hint">Hint: {card.hint}</p> : null}
-                    {card.difficulty ? <p className="flashcard-meta">Difficulty: {card.difficulty}</p> : null}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="asset-empty-state" id="study-tab-flashcards" role="tabpanel">
-                <div className="asset-empty-icon">🗂️</div>
-                <h4>No flashcards generated yet</h4>
-                <p>
-                  {tree
-                    ? 'Use Generate Flashcards from the left panel to create review cards from this mind map.'
-                    : 'Create a mind map first, then generate flashcards.'}
-                </p>
-              </div>
-            )}
           </div>
         </section>
       </main>
@@ -1672,6 +1634,45 @@ export const App = () => {
               >
                 Confirm
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isFeatureRequestOpen ? (
+        <div className="move-modal-backdrop">
+          <div className="move-modal source-editor-modal">
+            <h3>Email Feature Request</h3>
+            <div className="add-source-panel">
+              <p className="hint">Describe the feature you want in this section.</p>
+              <textarea
+                placeholder="Type your feature request here..."
+                value={featureRequestMessage}
+                onChange={(event) => setFeatureRequestMessage(event.target.value)}
+                rows={8}
+              />
+              <p className="hint">{featureRequestMessage.trim().length}/2000 characters</p>
+              <div className="actions">
+                <button
+                  className="btn btn-primary"
+                  type="button"
+                  onClick={submitFeatureRequest}
+                  disabled={sendingFeatureRequest || featureRequestMessage.trim().length < 10}
+                >
+                  {sendingFeatureRequest ? 'Sending...' : 'Send Request'}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={() => {
+                    setIsFeatureRequestOpen(false);
+                    setFeatureRequestMessage('');
+                  }}
+                  disabled={sendingFeatureRequest}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>

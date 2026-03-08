@@ -15,6 +15,7 @@ import { IsEmail, IsString, MinLength, Matches } from 'class-validator';
 import { EdgeSignatureGuard } from './guards/edge-signature.guard';
 import { ResetPasswordDto, CheckEmailExistsDto } from './dto/password-reset.dto';
 import { GoogleAuthDto } from './dto/google-auth.dto';
+import { MicrosoftAuthDto } from './dto/microsoft-auth.dto';
 
 // Extend Express Request to include edge-related properties
 interface EdgeRequest extends Request {
@@ -112,6 +113,22 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.authService.googleLogin(dto.credential);
+    this.setAuthCookie(res, result.access_token);
+
+    return {
+      message: 'Login successful',
+      user: result.user,
+      isNewUser: result.isNewUser,
+    };
+  }
+
+  @Post('microsoft')
+  @HttpCode(HttpStatus.OK)
+  async microsoftLogin(
+    @Body() dto: MicrosoftAuthDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.microsoftLogin(dto.accessToken);
     this.setAuthCookie(res, result.access_token);
 
     return {

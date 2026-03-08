@@ -55,6 +55,11 @@ export const authService = {
     return data;
   },
 
+  async microsoftLogin(accessToken: string): Promise<AuthResponse> {
+    const { data } = await api.post<AuthResponse>('/auth/microsoft', { accessToken });
+    return data;
+  },
+
   async register(dto: RegisterDto): Promise<AuthResponse> {
     const { data } = await api.post<AuthResponse>('/auth/register', dto);
     return data;

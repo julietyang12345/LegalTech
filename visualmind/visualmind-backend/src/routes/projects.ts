@@ -11,6 +11,7 @@ import {
   listProjectSources,
   listProjects,
   saveGeneration,
+  createFeatureRequest,
   updatePrimarySourceTitle,
   updateProjectTitle,
   updateProjectSource,
@@ -54,6 +55,10 @@ const slidesSchema = z.object({
 const flashcardsSchema = z.object({
   inputText: z.string().min(1).max(PRO_MAX_TEXT_CHARS).optional(),
   cardCount: z.number().int().min(6).max(24).optional(),
+});
+
+const featureRequestSchema = z.object({
+  message: z.string().trim().min(10).max(2000),
 });
 
 const treeNodeSchema: z.ZodType<TreeNode> = z.lazy(() =>
@@ -313,6 +318,25 @@ projectsRouter.patch(
 
     await updatePrimarySourceTitle(project.id, req.user!.id, parsed.data.title);
     res.json({ project });
+  }),
+);
+
+projectsRouter.post(
+  '/feature-requests',
+  asyncHandler(async (req, res) => {
+    const parsed = featureRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Invalid payload', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const request = await createFeatureRequest({
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      message: parsed.data.message,
+    });
+
+    res.status(201).json({ request });
   }),
 );
 

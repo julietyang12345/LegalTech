@@ -5,12 +5,14 @@ import { Mail, Lock, AlertCircle, ArrowLeft, RefreshCw, CheckCircle2 } from 'luc
 import { GoogleLogin } from '@react-oauth/google';
 import { useAuthStore } from '@/stores/authStore';
 import { authService } from '@/services/authService';
+import { getMicrosoftAccessToken } from '@/services/microsoftAuth';
 import { Button, Card, TurnstileWidget } from '@/components/common';
 
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, googleLogin, isLoading, error, clearError } = useAuthStore();
+  const { login, googleLogin, microsoftLogin, isLoading, error, clearError } =
+    useAuthStore();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -18,6 +20,7 @@ export function LoginPage() {
   const [resendSuccess, setResendSuccess] = useState(false);
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [turnstileToken, setTurnstileToken] = useState('');
+  const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
 
   const rawFrom = (location.state as any)?.from?.pathname || '/today';
   // Prevent open redirect — only allow relative paths starting with /
@@ -69,6 +72,24 @@ export function LoginPage() {
       setResendSuccess(true);
     } finally {
       setIsResending(false);
+    }
+  };
+
+  const handleMicrosoftLogin = async () => {
+    clearError();
+    setIsMicrosoftLoading(true);
+    try {
+      const accessToken = await getMicrosoftAccessToken();
+      const result = await microsoftLogin(accessToken);
+      if (result.isNewUser) {
+        navigate('/onboarding', { replace: true });
+      } else {
+        navigate(from, { replace: true });
+      }
+    } catch (_err) {
+      // Error is handled by store
+    } finally {
+      setIsMicrosoftLoading(false);
     }
   };
 
@@ -147,6 +168,16 @@ export function LoginPage() {
                 text="signin_with"
               />
             </div>
+
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full mt-3"
+              isLoading={isMicrosoftLoading}
+              onClick={handleMicrosoftLogin}
+            >
+              Continue with Microsoft
+            </Button>
 
             <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">

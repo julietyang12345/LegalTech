@@ -120,6 +120,20 @@ export class UserService {
   }
 
   /**
+   * Find user by Microsoft ID
+   */
+  async findByMicrosoftId(microsoftId: string): Promise<User | null> {
+    const user = await this.usersRepository.findOne({
+      where: { microsoftId },
+    });
+
+    if (user && this.isAdminEmail(user.email)) {
+      user.role = UserRole.ADMIN;
+    }
+    return user;
+  }
+
+  /**
    * Create user from Google OAuth (no password, email pre-verified)
    */
   async createFromGoogle(data: {
@@ -149,10 +163,49 @@ export class UserService {
   }
 
   /**
+   * Create user from Microsoft OAuth (no password, email pre-verified)
+   */
+  async createFromMicrosoft(data: {
+    email: string;
+    name: string;
+    microsoftId: string;
+  }): Promise<User> {
+    const isAdmin = this.isAdminEmail(data.email);
+
+    const user = this.usersRepository.create({
+      email: data.email.toLowerCase(),
+      microsoftId: data.microsoftId,
+      fullName: data.name,
+      emailVerified: true,
+      role: isAdmin ? UserRole.ADMIN : UserRole.MEMBER,
+      quotaTier: QuotaTier.FREE,
+      tokensUsedThisMonth: 0,
+      curriculaGeneratedThisMonth: 0,
+      codeReviewsThisMonth: 0,
+      quotaResetDate: new Date(),
+      hasStepByStepAccess: true,
+      hasCodeReviewAccess: false,
+      hasCareerPathAccess: false,
+    });
+
+    return this.usersRepository.save(user);
+  }
+
+  /**
    * Link Google account to existing user
    */
   async linkGoogleAccount(userId: string, googleId: string): Promise<void> {
     await this.usersRepository.update(userId, { googleId });
+  }
+
+  /**
+   * Link Microsoft account to existing user
+   */
+  async linkMicrosoftAccount(
+    userId: string,
+    microsoftId: string,
+  ): Promise<void> {
+    await this.usersRepository.update(userId, { microsoftId });
   }
 
   /**

@@ -60,4 +60,19 @@ export const initDb = async (): Promise<void> => {
     CREATE INDEX IF NOT EXISTS vm_project_sources_project_id_idx
     ON vm_project_sources(project_id, created_at ASC);
   `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS vm_feature_requests (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL,
+      user_email TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await db.query(`
+    CREATE INDEX IF NOT EXISTS vm_feature_requests_user_id_idx
+    ON vm_feature_requests(user_id, created_at DESC);
+  `);
 };

@@ -223,3 +223,19 @@ export const saveGeneration = async (params: {
 
   return version;
 };
+
+export const createFeatureRequest = async (params: {
+  userId: string;
+  userEmail: string;
+  message: string;
+}): Promise<{ id: string; created_at: string }> => {
+  const result = await db.query<{ id: string; created_at: string }>(
+    `
+      INSERT INTO vm_feature_requests (user_id, user_email, message)
+      VALUES ($1, $2, $3)
+      RETURNING id, created_at
+    `,
+    [params.userId, params.userEmail, params.message],
+  );
+  return result.rows[0];
+};

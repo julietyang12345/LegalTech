@@ -23,6 +23,7 @@ interface AuthState {
   // Actions
   login: (email: string, password: string, turnstileToken?: string) => Promise<void>;
   googleLogin: (credential: string) => Promise<{ isNewUser: boolean }>;
+  microsoftLogin: (accessToken: string) => Promise<{ isNewUser: boolean }>;
   register: (email: string, password: string, name?: string, turnstileToken?: string) => Promise<{ requiresVerification: boolean }>;
   logout: () => Promise<void>;
   fetchProfile: () => Promise<void>;
@@ -90,6 +91,28 @@ export const useAuthStore = create<AuthState>()(
         } catch (error: any) {
           set({
             error: error.response?.data?.message || 'Google login failed',
+            isLoading: false,
+          });
+          throw error;
+        }
+      },
+
+      microsoftLogin: async (accessToken: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const response = await authService.microsoftLogin(accessToken);
+          set({
+            user: response.user,
+            isAuthenticated: true,
+            isLoading: false,
+            requiresVerification: false,
+            pendingVerificationEmail: null,
+          });
+          syncThemeFromUser(response.user);
+          return { isNewUser: response.isNewUser ?? false };
+        } catch (error: any) {
+          set({
+            error: error.response?.data?.message || 'Microsoft login failed',
             isLoading: false,
           });
           throw error;

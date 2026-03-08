@@ -36,6 +36,9 @@ export class User {
   @Column({ nullable: true, unique: true })
   googleId: string;
 
+  @Column({ nullable: true, unique: true })
+  microsoftId: string;
+
   @Column({ nullable: true })
   name: string;
 

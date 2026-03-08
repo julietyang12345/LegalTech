@@ -157,6 +157,11 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ title }),
     }),
+  createFeatureRequest: (message: string) =>
+    request<{ request: { id: string; created_at: string } }>('/api/v1/vm/projects/feature-requests', {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    }),
   listSources: (projectId: string) =>
     request<{ sources: ProjectSource[] }>(`/api/v1/vm/projects/${projectId}/sources`),
   addSource: (projectId: string, payload: { kind: 'text' | 'pdf' | 'url'; title?: string; contentText: string }) =>

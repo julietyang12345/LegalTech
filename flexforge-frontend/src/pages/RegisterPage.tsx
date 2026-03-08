@@ -5,11 +5,22 @@ import { Mail, Lock, User, AlertCircle, ArrowLeft, CheckCircle, CheckCircle2, Re
 import { GoogleLogin } from '@react-oauth/google';
 import { useAuthStore } from '@/stores/authStore';
 import { authService } from '@/services/authService';
+import { getMicrosoftAccessToken } from '@/services/microsoftAuth';
 import { Button, Card, TurnstileWidget } from '@/components/common';
 
 export function RegisterPage() {
   const navigate = useNavigate();
-  const { register, googleLogin, isLoading, error, clearError, requiresVerification, pendingVerificationEmail, clearVerificationState } = useAuthStore();
+  const {
+    register,
+    googleLogin,
+    microsoftLogin,
+    isLoading,
+    error,
+    clearError,
+    requiresVerification,
+    pendingVerificationEmail,
+    clearVerificationState,
+  } = useAuthStore();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -18,6 +29,7 @@ export function RegisterPage() {
   const [isResending, setIsResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState('');
+  const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,6 +81,24 @@ export function RegisterPage() {
       }
     } catch (_err) {
       // Error is handled by store
+    }
+  };
+
+  const handleMicrosoftSuccess = async () => {
+    clearError();
+    setIsMicrosoftLoading(true);
+    try {
+      const accessToken = await getMicrosoftAccessToken();
+      const result = await microsoftLogin(accessToken);
+      if (result.isNewUser) {
+        navigate('/onboarding', { replace: true });
+      } else {
+        navigate('/today', { replace: true });
+      }
+    } catch (_err) {
+      // Error is handled by store
+    } finally {
+      setIsMicrosoftLoading(false);
     }
   };
 
@@ -204,6 +234,16 @@ export function RegisterPage() {
                 text="signup_with"
               />
             </div>
+
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full mt-3"
+              isLoading={isMicrosoftLoading}
+              onClick={handleMicrosoftSuccess}
+            >
+              Continue with Microsoft
+            </Button>
 
             <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">
