@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth.js';
-import { createProject, getProjectById, listProjects, saveGeneration } from '../services/project.service.js';
+import { createProject, deleteProjectById, getProjectById, listProjects, saveGeneration } from '../services/project.service.js';
 import { generateMindMapJson } from '../services/model.service.js';
 import { normalizeGeneratedTree } from '../services/tree.service.js';
 import { toFreemindXml } from '../utils/mm-export.js';
@@ -56,6 +56,15 @@ projectsRouter.post('/', asyncHandler(async (req, res) => {
 projectsRouter.get('/', asyncHandler(async (req, res) => {
   const projects = await listProjects(req.user!.id);
   res.json({ projects, count: projects.length });
+}));
+
+projectsRouter.delete('/:id', asyncHandler(async (req, res) => {
+  const deleted = await deleteProjectById(req.params.id, req.user!.id);
+  if (!deleted) {
+    res.status(404).json({ message: 'Project not found' });
+    return;
+  }
+  res.json({ message: 'Project deleted' });
 }));
 
 projectsRouter.get('/:id/tree', asyncHandler(async (req, res) => {

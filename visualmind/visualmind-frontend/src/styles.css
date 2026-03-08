@@ -235,6 +235,11 @@ textarea {
   background: #eaf2ff;
 }
 
+.project-item.is-failed {
+  border-color: #f2c9c9;
+  background: #fff5f5;
+}
+
 .map-card {
   min-height: calc(100vh - 170px);
 }
@@ -259,106 +264,103 @@ textarea {
     linear-gradient(to right, #f4f8ff 1px, transparent 1px) 0 0 / 24px 24px,
     linear-gradient(to bottom, #f4f8ff 1px, transparent 1px) 0 0 / 24px 24px,
     #ffffff;
-  padding: 16px;
+  padding: 0;
   min-height: 68vh;
-  overflow: auto;
+  height: 68vh;
+  overflow: hidden;
   animation: fadeIn .45s ease both;
-  cursor: grab;
-  user-select: none;
-}
-
-.map-canvas.is-panning {
-  cursor: grabbing;
-}
-
-.map-scene {
-  transform-origin: 0 0;
-  transition: transform .22s cubic-bezier(.2,.7,.2,1);
-  min-width: max-content;
-  min-height: max-content;
-}
-
-.mind-columns {
-  display: flex;
-  align-items: flex-start;
-  gap: 22px;
-  padding: 12px;
-  min-width: max-content;
-}
-
-.mind-column {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 220px;
   position: relative;
 }
 
-.mind-column:not(:first-child) {
-  padding-left: 24px;
+.map-canvas .react-flow {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  z-index: 20;
 }
 
-.mind-column:not(:first-child)::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 18px;
-  width: 18px;
-  border-top: 2px solid #9cbde9;
+.map-canvas .react-flow__controls {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #cfdcf0;
+  box-shadow: 0 6px 18px #17305f14;
 }
 
-.mind-column-node {
+.map-canvas .react-flow__controls button {
+  background: #f0f6ff;
+  border-bottom: 1px solid #d8e5f8;
+  color: #274974;
+}
+
+.map-canvas .react-flow__controls button:hover {
+  background: #e3efff;
+}
+
+.map-canvas .react-flow__minimap {
+  border: 1px solid #cfdcf0;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 6px 18px #17305f14;
+  background: #f6faff;
+}
+
+.map-canvas .react-flow__edge-path {
+  stroke: #7fa8df;
+  stroke-width: 2px;
+}
+
+.mindmap-node {
   min-width: 220px;
-  max-width: 320px;
-  text-align: left;
-  border-radius: 14px;
-  border: 1px solid #bad0eb;
-  background: #dbe8f8;
+  max-width: 340px;
+  border: 1px solid #8fb6ea;
+  border-radius: 18px;
+  background: #d7e5f7;
   color: #1a2535;
-  padding: 14px 15px;
+  padding: 14px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  cursor: pointer;
+  gap: 12px;
   box-shadow: 0 6px 16px #294f8f12;
-  transition: transform .16s ease, box-shadow .16s ease, background-color .16s ease, border-color .16s ease;
-  animation: nodePop .35s cubic-bezier(.2,.7,.2,1) both;
+  font-weight: 700;
 }
 
-.mind-column-node:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 22px #294f8f1f;
-}
-
-.mind-column-node.is-root {
-  background: #ced5ff;
-  border-color: #afb9ff;
-  min-width: 300px;
-}
-
-.mind-column-node.is-selected {
-  border-color: #73a1de;
-  background: #cde0f8;
-}
-
-.mind-column-label {
+.mindmap-node-label {
   font-size: 15px;
   line-height: 1.3;
-  font-weight: 600;
 }
 
-.mind-column-arrow {
-  width: 28px;
-  height: 28px;
+.mindmap-node-toggle {
+  width: 36px;
+  height: 36px;
+  border: none;
   border-radius: 999px;
-  background: #b3d2c9;
+  background: #b7d8cc;
   color: #18345f;
-  font-size: 17px;
+  font-size: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
   flex: 0 0 auto;
+  transition: transform .15s ease, background-color .15s ease;
+}
+
+.mindmap-node-toggle:hover {
+  transform: scale(1.05);
+  background: #abd0c3;
+}
+
+.mindmap-handle {
+  width: 8px !important;
+  height: 8px !important;
+  background: #7fa8df !important;
+  border: none !important;
+}
+
+.map-canvas .react-flow__node.selected .mindmap-node {
+  border-color: #73a1de;
+  box-shadow: 0 8px 20px #294f8f24;
 }
 
 .empty {

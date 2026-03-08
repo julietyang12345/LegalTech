@@ -49,6 +49,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  deleteProject: (projectId: string) =>
+    request<{ message: string }>(`/api/v1/vm/projects/${projectId}`, {
+      method: 'DELETE',
+    }),
   generate: (projectId: string, inputText?: string) =>
     request<{ tree: TreeNode; version: number }>(`/api/v1/vm/projects/${projectId}/generate`, {
       method: 'POST',

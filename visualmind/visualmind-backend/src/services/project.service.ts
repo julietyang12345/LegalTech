@@ -44,6 +44,17 @@ export const getProjectById = async (projectId: string, userId: string): Promise
   return result.rows[0] ?? null;
 };
 
+export const deleteProjectById = async (projectId: string, userId: string): Promise<boolean> => {
+  const result = await db.query(
+    `
+      DELETE FROM vm_projects
+      WHERE id = $1 AND user_id = $2
+    `,
+    [projectId, userId],
+  );
+  return (result.rowCount ?? 0) > 0;
+};
+
 export const saveGeneration = async (params: {
   projectId: string;
   promptUsed: string;

@@ -18,7 +18,7 @@ export const config = {
   databaseUrl: required(process.env.DATABASE_URL, 'DATABASE_URL'),
   modelApiBaseUrl: process.env.MODEL_API_BASE_URL || 'http://127.0.0.1:11434',
   modelName: process.env.MODEL_NAME || 'qwen2.5:7b',
-  modelTimeoutMs: Number(process.env.MODEL_TIMEOUT_MS || 120000),
+  modelTimeoutMs: Number(process.env.MODEL_TIMEOUT_MS || 300000),
 };
 
 export const isProd = config.nodeEnv === 'production';

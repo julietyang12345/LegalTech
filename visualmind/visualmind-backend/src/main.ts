@@ -22,8 +22,13 @@ app.use('/api/v1', healthRouter);
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/vm/projects', projectsRouter);
 
-app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const message = err instanceof Error ? err.message : 'Internal Server Error';
+  const stack = err instanceof Error ? err.stack : undefined;
+  console.error(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} -> ${message}`);
+  if (stack) {
+    console.error(stack);
+  }
   res.status(500).json({ message });
 });
 

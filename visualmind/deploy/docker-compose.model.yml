@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   visualmind-model:
     image: ollama/ollama:latest
