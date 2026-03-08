@@ -1,0 +1,16 @@
+version: "3.9"
+
+services:
+  visualmind-model:
+    image: ollama/ollama:latest
+    container_name: visualmind-model
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: 24h
+    restart: unless-stopped
+
+volumes:
+  ollama_models:
