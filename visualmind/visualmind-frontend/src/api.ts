@@ -1,6 +1,7 @@
 export interface VmProject {
   id: string;
   title: string;
+  primary_source_title?: string | null;
   raw_text: string;
   current_tree_json: TreeNode | null;
   created_at: string;
@@ -102,6 +103,43 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return resp.json() as Promise<T>;
 };
 
+const parseFilename = (headerValue: string | null, fallback: string): string => {
+  if (!headerValue) return fallback;
+  const utf8Match = headerValue.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+  const basicMatch = headerValue.match(/filename="?([^";]+)"?/i);
+  return basicMatch?.[1] || fallback;
+};
+
+const downloadWithAuth = async (path: string, fallbackFilename: string): Promise<void> => {
+  const response = await fetch(path, {
+    method: 'GET',
+    credentials: 'include',
+    headers: authHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+
+  const blob = await response.blob();
+  const filename = parseFilename(response.headers.get('content-disposition'), fallbackFilename);
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+};
+
 export const api = {
   me: () => request<MeResponse>('/api/v1/auth/me'),
   listProjects: () => request<{ projects: VmProject[] }>('/api/v1/vm/projects'),
@@ -113,6 +151,11 @@ export const api = {
   deleteProject: (projectId: string) =>
     request<{ message: string }>(`/api/v1/vm/projects/${projectId}`, {
       method: 'DELETE',
+    }),
+  updateProjectTitle: (projectId: string, title: string) =>
+    request<{ project: VmProject }>(`/api/v1/vm/projects/${projectId}/title`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
     }),
   listSources: (projectId: string) =>
     request<{ sources: ProjectSource[] }>(`/api/v1/vm/projects/${projectId}/sources`),
@@ -172,5 +215,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ url }),
     }),
-  exportMm: (projectId: string) => `/api/v1/vm/projects/${projectId}/export/mm`,
+  downloadMm: async (projectId: string) =>
+    downloadWithAuth(`/api/v1/vm/projects/${projectId}/export/mm`, `mindmap-${projectId}.mm`),
+  downloadMarkdown: async (projectId: string) =>
+    downloadWithAuth(`/api/v1/vm/projects/${projectId}/export/md`, `mindmap-${projectId}.md`),
+  downloadNotionMarkdown: async (projectId: string) =>
+    downloadWithAuth(`/api/v1/vm/projects/${projectId}/export/notion-markdown`, `mindmap-${projectId}-notion.md`),
 };

@@ -11,12 +11,14 @@ import {
   listProjectSources,
   listProjects,
   saveGeneration,
+  updatePrimarySourceTitle,
+  updateProjectTitle,
   updateProjectSource,
 } from '../services/project.service.js';
 import { generateFlashcards, generateMindMapJson, generateSlides } from '../services/model.service.js';
 import { getLimitsForPlan, PRO_MAX_TEXT_CHARS } from '../services/plan.service.js';
 import { normalizeGeneratedTree } from '../services/tree.service.js';
-import { toFreemindXml } from '../utils/mm-export.js';
+import { toFreemindXml, toNotionMarkdown } from '../utils/mm-export.js';
 import type { TreeNode } from '../types.js';
 
 const createProjectSchema = z.object({
@@ -34,6 +36,10 @@ const addSourceSchema = z.object({
 const updateSourceSchema = z.object({
   title: z.string().trim().min(1).max(120).optional(),
   contentText: z.string().min(1).max(PRO_MAX_TEXT_CHARS),
+});
+
+const updateProjectTitleSchema = z.object({
+  title: z.string().trim().min(1).max(120),
 });
 
 const generateSchema = z.object({
@@ -290,6 +296,26 @@ projectsRouter.get(
   }),
 );
 
+projectsRouter.patch(
+  '/:id/title',
+  asyncHandler(async (req, res) => {
+    const parsed = updateProjectTitleSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Invalid payload', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const project = await updateProjectTitle(req.params.id, req.user!.id, parsed.data.title);
+    if (!project) {
+      res.status(404).json({ message: 'Project not found' });
+      return;
+    }
+
+    await updatePrimarySourceTitle(project.id, req.user!.id, parsed.data.title);
+    res.json({ project });
+  }),
+);
+
 projectsRouter.delete(
   '/:id',
   asyncHandler(async (req, res) => {
@@ -344,14 +370,26 @@ projectsRouter.post(
 projectsRouter.post(
   '/:id/generate',
   asyncHandler(async (req, res) => {
+    console.log('[VisualMind] /generate:start', {
+      projectId: req.params.id,
+      userId: req.user?.id,
+      hasInputText: Boolean(req.body?.inputText),
+      inputChars: typeof req.body?.inputText === 'string' ? req.body.inputText.length : 0,
+    });
+
     const parsed = generateSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
+      console.warn('[VisualMind] /generate:invalid-payload', { projectId: req.params.id });
       res.status(400).json({ message: 'Invalid payload', errors: parsed.error.flatten() });
       return;
     }
 
     const project = await getProjectById(req.params.id, req.user!.id);
     if (!project) {
+      console.warn('[VisualMind] /generate:project-not-found', {
+        projectId: req.params.id,
+        userId: req.user?.id,
+      });
       res.status(404).json({ message: 'Project not found' });
       return;
     }
@@ -360,6 +398,11 @@ projectsRouter.post(
     const extraInput = parsed.data.inputText?.trim() ?? '';
 
     if (extraInput.length > limits.maxTextChars) {
+      console.warn('[VisualMind] /generate:input-limit', {
+        projectId: project.id,
+        inputChars: extraInput.length,
+        limit: limits.maxTextChars,
+      });
       res.status(403).json({
         message: `Your plan supports up to ${limits.maxTextChars} characters per source session.`,
       });
@@ -367,7 +410,12 @@ projectsRouter.post(
     }
 
     const inputText = await buildGenerationInput(project.id, req.user!.id, extraInput || project.raw_text);
+    console.log('[VisualMind] /generate:input-ready', {
+      projectId: project.id,
+      combinedChars: inputText.length,
+    });
     if (!inputText.trim()) {
+      console.warn('[VisualMind] /generate:no-input', { projectId: project.id });
       res.status(400).json({ message: 'No source content found. Add at least one source before generating.' });
       return;
     }
@@ -378,6 +426,10 @@ projectsRouter.post(
       rawModelOutput = await generateMindMapJson(inputText);
       tree = normalizeGeneratedTree(rawModelOutput);
     } catch (error) {
+      console.error('[VisualMind] /generate:model-or-parse-failed', {
+        projectId: project.id,
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
       const message = error instanceof Error ? error.message : 'Mind map generation failed';
       res.status(502).json({ message });
       return;
@@ -385,6 +437,11 @@ projectsRouter.post(
 
     const promptUsed = `Generate a concise mind map tree from input text. Input length=${inputText.length}`;
     const version = await saveGeneration({ projectId: project.id, promptUsed, rawModelOutput, tree });
+    console.log('[VisualMind] /generate:success', {
+      projectId: project.id,
+      version,
+      root: tree.text,
+    });
 
     res.json({ projectId: project.id, version, tree });
   }),
@@ -469,5 +526,47 @@ projectsRouter.get(
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(xml);
+  }),
+);
+
+projectsRouter.get(
+  '/:id/export/md',
+  asyncHandler(async (req, res) => {
+    const project = await getProjectById(req.params.id, req.user!.id);
+    if (!project) {
+      res.status(404).json({ message: 'Project not found' });
+      return;
+    }
+    if (!project.current_tree_json) {
+      res.status(400).json({ message: 'No generated tree found for this project' });
+      return;
+    }
+
+    const markdown = toNotionMarkdown(project.current_tree_json, project.title);
+    const filename = `${project.title.replaceAll(/[^a-zA-Z0-9-_]+/g, '_') || 'mindmap'}.md`;
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(markdown);
+  }),
+);
+
+projectsRouter.get(
+  '/:id/export/notion-markdown',
+  asyncHandler(async (req, res) => {
+    const project = await getProjectById(req.params.id, req.user!.id);
+    if (!project) {
+      res.status(404).json({ message: 'Project not found' });
+      return;
+    }
+    if (!project.current_tree_json) {
+      res.status(400).json({ message: 'No generated tree found for this project' });
+      return;
+    }
+
+    const markdown = toNotionMarkdown(project.current_tree_json, project.title);
+    const filename = `${project.title.replaceAll(/[^a-zA-Z0-9-_]+/g, '_') || 'mindmap'}.md`;
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(markdown);
   }),
 );

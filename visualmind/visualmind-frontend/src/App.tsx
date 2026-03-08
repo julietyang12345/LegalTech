@@ -1,4 +1,4 @@
-import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
   Controls,
@@ -36,6 +36,12 @@ type MindNodeData = {
   hasChildren: boolean;
   expanded: boolean;
   onToggle: (nodeId: string) => void;
+  onStartEdit: (nodeId: string, currentLabel: string) => void;
+  isEditing: boolean;
+  editValue: string;
+  onEditValueChange: (value: string) => void;
+  onEditCommit: (nodeId: string) => void;
+  onEditCancel: () => void;
 };
 
 type MindNode = Node<MindNodeData, 'mindmap'>;
@@ -71,7 +77,38 @@ const defaultLimits: UsageLimits = {
 const MindMapNode = ({ id, data }: NodeProps<MindNode>) => (
   <div className="mindmap-node">
     <Handle type="target" position={Position.Left} className="mindmap-handle" />
-    <div className="mindmap-node-label">{data.label}</div>
+    {data.isEditing ? (
+      <input
+        className="mindmap-node-input nodrag"
+        value={data.editValue}
+        autoFocus
+        onClick={(event) => event.stopPropagation()}
+        onChange={(event) => data.onEditValueChange(event.target.value)}
+        onBlur={() => data.onEditCommit(id)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            data.onEditCommit(id);
+            return;
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            data.onEditCancel();
+          }
+        }}
+      />
+    ) : (
+      <button
+        className="mindmap-node-label nodrag"
+        type="button"
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+          data.onStartEdit(id, data.label);
+        }}
+      >
+        {data.label}
+      </button>
+    )}
     {data.hasChildren ? (
       <button
         className="mindmap-node-toggle nodrag"
@@ -137,6 +174,16 @@ const containsNode = (root: TreeNode, possibleDescendantId: string): boolean => 
   return root.children.some((child) => containsNode(child, possibleDescendantId));
 };
 
+const updateNodeTextById = (node: TreeNode, targetId: string, nextText: string): TreeNode => {
+  if (node.id === targetId) {
+    return { ...node, text: nextText };
+  }
+  return {
+    ...node,
+    children: node.children.map((child) => updateNodeTextById(child, targetId, nextText)),
+  };
+};
+
 const removeNodeById = (node: TreeNode, targetId: string): { tree: TreeNode; removed: TreeNode | null } => {
   const keptChildren: TreeNode[] = [];
   let removed: TreeNode | null = null;
@@ -190,6 +237,12 @@ const layoutVisibleTree = (
   expandedById: Record<string, boolean>,
   positionById: Record<string, NodePosition>,
   onToggle: (nodeId: string) => void,
+  editingNodeId: string | null,
+  nodeEditText: string,
+  onStartEdit: (nodeId: string, currentLabel: string) => void,
+  onEditValueChange: (value: string) => void,
+  onEditCommit: (nodeId: string) => void,
+  onEditCancel: () => void,
   nodes: MindNode[],
   edges: Edge[],
   cursor: { y: number },
@@ -210,6 +263,12 @@ const layoutVisibleTree = (
         expandedById,
         positionById,
         onToggle,
+        editingNodeId,
+        nodeEditText,
+        onStartEdit,
+        onEditValueChange,
+        onEditCommit,
+        onEditCancel,
         nodes,
         edges,
         cursor,
@@ -239,6 +298,12 @@ const layoutVisibleTree = (
       hasChildren: canExpand,
       expanded: isExpanded,
       onToggle,
+      onStartEdit,
+      isEditing: editingNodeId === node.id,
+      editValue: nodeEditText,
+      onEditValueChange,
+      onEditCommit,
+      onEditCancel,
     },
     draggable: true,
   });
@@ -251,12 +316,33 @@ const createFlowGraph = (
   expandedById: Record<string, boolean>,
   positionById: Record<string, NodePosition>,
   onToggle: (nodeId: string) => void,
+  editingNodeId: string | null,
+  nodeEditText: string,
+  onStartEdit: (nodeId: string, currentLabel: string) => void,
+  onEditValueChange: (value: string) => void,
+  onEditCommit: (nodeId: string) => void,
+  onEditCancel: () => void,
   dropTargetId?: string | null,
 ): { nodes: MindNode[]; edges: Edge[] } => {
   const nodes: MindNode[] = [];
   const edges: Edge[] = [];
 
-  layoutVisibleTree(root, 0, expandedById, positionById, onToggle, nodes, edges, { y: 40 });
+  layoutVisibleTree(
+    root,
+    0,
+    expandedById,
+    positionById,
+    onToggle,
+    editingNodeId,
+    nodeEditText,
+    onStartEdit,
+    onEditValueChange,
+    onEditCommit,
+    onEditCancel,
+    nodes,
+    edges,
+    { y: 40 },
+  );
   if (dropTargetId) {
     for (const node of nodes) {
       if (node.id === dropTargetId) {
@@ -270,6 +356,7 @@ const createFlowGraph = (
 
 export const App = () => {
   const [userEmail, setUserEmail] = useState<string>('');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userPlan, setUserPlan] = useState<UserPlan>('free');
   const [limits, setLimits] = useState<UsageLimits>(defaultLimits);
   const [projects, setProjects] = useState<VmProject[]>([]);
@@ -292,22 +379,47 @@ export const App = () => {
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [editingRecentMapId, setEditingRecentMapId] = useState<string | null>(null);
+  const [editingRecentMapTitle, setEditingRecentMapTitle] = useState('');
+  const [renamingRecentMapId, setRenamingRecentMapId] = useState<string | null>(null);
   const [editingSource, setEditingSource] = useState<EditingSource>(null);
   const [assetBusy, setAssetBusy] = useState<AssetMode | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
-  const [activeAssetMode, setActiveAssetMode] = useState<AssetMode>('slides');
+  const [isMapLoading, setIsMapLoading] = useState(false);
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [nodeEditText, setNodeEditText] = useState('');
+  const [hasSourceChanges, setHasSourceChanges] = useState(false);
+  const [studyToolsSpotlight, setStudyToolsSpotlight] = useState(false);
+  const [activeAssetMode, setActiveAssetMode] = useState<AssetMode>('flashcards');
   const [slideDeck, setSlideDeck] = useState<SlideDeck | null>(null);
   const [flashcardDeck, setFlashcardDeck] = useState<FlashcardDeck | null>(null);
+  const studyToolsRef = useRef<HTMLDivElement | null>(null);
   const rawTextLength = rawText.length;
   const isOverTextLimit = rawTextLength > limits.maxTextChars;
   const remainingChars = Math.max(0, limits.maxTextChars - rawTextLength);
   const unsavedEditorText = isAddTextOpen ? rawText.trim() : '';
   const pendingSourceCount = draftSessions.length + (unsavedEditorText ? 1 : 0);
+  const setExpandedForTree = (nextTree: TreeNode | null) => {
+    setExpandedById(nextTree ? { [nextTree.id]: true } : {});
+  };
+
+  const showStudyToolsPanel = (mode: AssetMode) => {
+    setActiveAssetMode(mode);
+    setStudyToolsSpotlight(true);
+    studyToolsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    window.setTimeout(() => setStudyToolsSpotlight(false), 1200);
+  };
 
   const visibleProjects = useMemo(
     () => projects.filter((project) => !hideFailedProjects || Boolean(project.current_tree_json)),
     [projects, hideFailedProjects],
   );
+
+  const recentMapTitle = (project: VmProject): string => {
+    const sourceTitle = project.primary_source_title?.trim();
+    if (sourceTitle) return sourceTitle;
+    return project.title;
+  };
 
   const toggleNode = useCallback((nodeId: string) => {
     setExpandedById((prev) => ({
@@ -362,8 +474,37 @@ export const App = () => {
 
   const graph = useMemo(() => {
     if (!tree) return { nodes: [], edges: [] };
-    return createFlowGraph(tree, expandedById, nodePositions, toggleNode, dropTargetId);
-  }, [tree, expandedById, nodePositions, toggleNode, dropTargetId]);
+    return createFlowGraph(
+      tree,
+      expandedById,
+      nodePositions,
+      toggleNode,
+      editingNodeId,
+      nodeEditText,
+      (nodeId, currentLabel) => {
+        setEditingNodeId(nodeId);
+        setNodeEditText(currentLabel);
+      },
+      setNodeEditText,
+      (nodeId) => {
+        const nextText = nodeEditText.trim();
+        if (!tree || !nextText) {
+          setEditingNodeId(null);
+          setNodeEditText('');
+          return;
+        }
+        const updatedTree = updateNodeTextById(tree, nodeId, nextText);
+        setTree(updatedTree);
+        setEditingNodeId(null);
+        setNodeEditText('');
+      },
+      () => {
+        setEditingNodeId(null);
+        setNodeEditText('');
+      },
+      dropTargetId,
+    );
+  }, [tree, expandedById, nodePositions, toggleNode, dropTargetId, editingNodeId, nodeEditText]);
 
   useEffect(() => {
     setNodes(graph.nodes);
@@ -374,6 +515,7 @@ export const App = () => {
     if (!selectedProjectId) {
       setNodePositions({});
       setPersistedSources([]);
+      setHasSourceChanges(false);
       return;
     }
     setNodePositions(loadStoredPositions(selectedProjectId));
@@ -390,16 +532,18 @@ export const App = () => {
     setProjects(data.projects);
     if (!selectedProjectId && data.projects[0]) {
       const preferred = data.projects.find(hasTree) ?? data.projects[0];
+      const preferredTree = normalizeTree(preferred.current_tree_json);
       setSelectedProjectId(preferred.id);
-      setTree(normalizeTree(preferred.current_tree_json));
-      setExpandedById({});
+      setTree(preferredTree);
+      setExpandedForTree(preferredTree);
       const sources = await loadSources(preferred.id);
       const firstSource = sources[0];
       setProjectTitle(preferred.title);
       setRawText(firstSource?.content_text ?? preferred.raw_text ?? '');
       setSourceTitle(firstSource?.title ?? '');
-      setIsAddTextOpen(true);
-      setEditingSource(firstSource ? { scope: 'persisted', id: firstSource.id } : null);
+      setIsAddTextOpen(false);
+      setEditingSource(null);
+      setHasSourceChanges(false);
     }
   };
 
@@ -407,16 +551,23 @@ export const App = () => {
     (async () => {
       try {
         const profile = await api.me();
+        setIsAuthenticated(true);
         setUserEmail(profile.user.email);
         setUserPlan(profile.user.plan ?? 'free');
         setLimits(profile.user.limits ?? defaultLimits);
         setStatus('Ready');
         await loadProjects();
       } catch {
-        setStatus('Not authenticated. Please log in from your existing auth app first.');
+        setIsAuthenticated(false);
+        setStatus('Please log in to generate mind maps.');
       }
     })();
   }, []);
+
+  const onLogin = () => {
+    const next = encodeURIComponent(window.location.href);
+    window.location.href = `/login?next=${next}`;
+  };
 
   const onCreateProject = async () => {
     const sourceSessions = [
@@ -428,8 +579,15 @@ export const App = () => {
       return;
     }
     setBusy(true);
+    setIsMapLoading(true);
+    setTree(null);
     let createdProjectId: string | null = null;
     try {
+      console.info('[VisualMind] create:start', {
+        draftCount: draftSessions.length,
+        hasUnsavedEditorText: Boolean(unsavedEditorText),
+        sourceCount: sourceSessions.length,
+      });
       setStatus('Creating project and generating mind map...');
       const finalTitle = projectTitle.trim() || inferTitle(sourceSessions[0] || '');
       const data = await api.createProject({
@@ -439,19 +597,27 @@ export const App = () => {
       });
       createdProjectId = data.project.id;
       setSelectedProjectId(data.project.id);
+      console.info('[VisualMind] create:project-created', { projectId: data.project.id });
       await loadSources(data.project.id);
       const generated = await api.generate(data.project.id);
+      console.info('[VisualMind] create:generate-success', {
+        projectId: data.project.id,
+        version: generated.version,
+        root: generated.tree?.text,
+      });
       setTree(generated.tree);
-      setExpandedById({});
+      setExpandedForTree(generated.tree);
       setNodePositions({});
       setDraftSessions([]);
       setRawText('');
       setSourceTitle('');
       setIsAddTextOpen(false);
       setEditingSource(null);
+      setHasSourceChanges(false);
       setStatus(`Created "${finalTitle}" and generated map`);
       await loadProjects();
     } catch (error) {
+      console.error('[VisualMind] create:failed', error);
       if (createdProjectId) {
         try {
           await api.deleteProject(createdProjectId);
@@ -467,62 +633,50 @@ export const App = () => {
       setStatus(`Create failed: ${message}`);
       await loadProjects();
     } finally {
+      setIsMapLoading(false);
       setBusy(false);
     }
   };
 
-  const ensureAssetProject = async (): Promise<string | null> => {
-    if (selectedProjectId) return selectedProjectId;
-    const sourceSessions = [
-      ...draftSessions.map((s) => s.contentText).filter(Boolean),
-      ...(unsavedEditorText ? [unsavedEditorText] : []),
-    ];
-    if (sourceSessions.length === 0) {
-      setStatus('Add at least one source before generating slides or flashcards.');
+  const ensureStudyToolReadyProject = (): string | null => {
+    if (!isAuthenticated) {
+      setStatus('Please log in to use study tools.');
+      onLogin();
       return null;
     }
-
-    const finalTitle = projectTitle.trim() || inferTitle(sourceSessions[0]);
-    const data = await api.createProject({
-      title: finalTitle,
-      rawText: sourceSessions[0],
-      sourceSessions: sourceSessions.slice(1),
-    });
-    setSelectedProjectId(data.project.id);
-    setDraftSessions([]);
-    setRawText('');
-    setSourceTitle('');
-    setIsAddTextOpen(false);
-    setEditingSource(null);
-    await loadProjects();
-    return data.project.id;
-  };
-
-  const onGenerateSlides = async () => {
-    setAssetBusy('slides');
-    try {
-      const projectId = await ensureAssetProject();
-      if (!projectId) return;
-      const response = await api.generateSlides(projectId, { slideCount: 6 });
-      setSlideDeck(response.slides);
-      setActiveAssetMode('slides');
-      setStatus(`Generated ${response.slides.slides.length} AI slides`);
-    } catch (error) {
-      const message = extractErrorMessage(error);
-      setStatus(`Slides failed: ${message}`);
-    } finally {
-      setAssetBusy(null);
+    if (!selectedProjectId || !tree) {
+      setStatus('Create or generate a mind map first, then use AI Slides or Flashcards.');
+      return null;
     }
+    return selectedProjectId;
   };
+
+  // Slides are temporarily disabled.
+  // const onGenerateSlides = async () => {
+  //   setAssetBusy('slides');
+  //   try {
+  //     const projectId = ensureStudyToolReadyProject();
+  //     if (!projectId) return;
+  //     const response = await api.generateSlides(projectId, { slideCount: 6 });
+  //     setSlideDeck(response.slides);
+  //     showStudyToolsPanel('slides');
+  //     setStatus(`Generated ${response.slides.slides.length} AI slides`);
+  //   } catch (error) {
+  //     const message = extractErrorMessage(error);
+  //     setStatus(`Slides failed: ${message}`);
+  //   } finally {
+  //     setAssetBusy(null);
+  //   }
+  // };
 
   const onGenerateFlashcards = async () => {
     setAssetBusy('flashcards');
     try {
-      const projectId = await ensureAssetProject();
+      const projectId = ensureStudyToolReadyProject();
       if (!projectId) return;
       const response = await api.generateFlashcards(projectId, { cardCount: 10 });
       setFlashcardDeck(response.flashcards);
-      setActiveAssetMode('flashcards');
+      showStudyToolsPanel('flashcards');
       setStatus(`Generated ${response.flashcards.cards.length} flashcards`);
     } catch (error) {
       const message = extractErrorMessage(error);
@@ -538,24 +692,51 @@ export const App = () => {
       return;
     }
     setBusy(true);
+    setIsMapLoading(true);
+    setTree(null);
     try {
+      console.info('[VisualMind] generate:start', {
+        projectId: selectedProjectId,
+        hasUnsavedEditorText: Boolean(unsavedEditorText),
+        editorChars: unsavedEditorText.length,
+      });
       setStatus('Generating mind map...');
       const data = await api.generate(selectedProjectId, unsavedEditorText || undefined);
+      console.info('[VisualMind] generate:success', {
+        projectId: selectedProjectId,
+        version: data.version,
+        root: data.tree?.text,
+      });
       setTree(data.tree);
-      setExpandedById({});
+      setExpandedForTree(data.tree);
       setNodePositions({});
       persistPositions(selectedProjectId, {});
+      setHasSourceChanges(false);
       setStatus(`Generated version ${data.version}`);
       await loadProjects();
     } catch (error) {
+      console.error('[VisualMind] generate:failed', error);
       const message = extractErrorMessage(error);
       setStatus(`Generate failed: ${message}`);
     } finally {
+      setIsMapLoading(false);
       setBusy(false);
     }
   };
 
   const onPrimaryMapAction = () => {
+    console.info('[VisualMind] primary-action:clicked', {
+      selectedProjectId,
+      draftCount: draftSessions.length,
+      hasUnsavedEditorText: Boolean(unsavedEditorText),
+      busy,
+      isMapLoading,
+    });
+    if (!isAuthenticated) {
+      setStatus('Please log in to generate your mind map.');
+      onLogin();
+      return;
+    }
     if (selectedProjectId) {
       void onGenerate();
       return;
@@ -609,23 +790,40 @@ export const App = () => {
     setBusy(true);
     try {
       if (editingSource?.scope === 'persisted') {
+        const existingSource = persistedSources.find((source) => source.id === editingSource.id);
+        const nextTitle = sourceTitle.trim() || inferTitle(text);
+        const nextContent = text;
+        const titleChanged = (existingSource?.title ?? '').trim() !== nextTitle;
+        const contentChanged = (existingSource?.content_text ?? '').trim() !== nextContent;
+        if (!titleChanged && !contentChanged) {
+          setStatus('No changes to save');
+          setIsAddTextOpen(false);
+          setEditingSource(null);
+          return;
+        }
         await api.updateSource(selectedProjectId, editingSource.id, {
-          title: sourceTitle.trim() || inferTitle(text),
-          contentText: text,
+          title: nextTitle,
+          contentText: nextContent,
         });
+        setHasSourceChanges(true);
       } else {
         await api.addSource(selectedProjectId, {
           kind: 'text',
           title: sourceTitle.trim() || inferTitle(text),
           contentText: text,
         });
+        setHasSourceChanges(true);
       }
       setRawText('');
       setSourceTitle('');
       setEditingSource(null);
       setIsAddTextOpen(false);
       await loadSources(selectedProjectId);
-      setStatus(editingSource?.scope === 'persisted' ? 'Saved source edit' : 'Added source');
+      setStatus(
+        editingSource?.scope === 'persisted'
+          ? 'Saved source edit. Click Update your mind map to apply changes.'
+          : 'Added source. Click Update your mind map to apply changes.',
+      );
     } catch (error) {
       const message = extractErrorMessage(error);
       setStatus(`Add session failed: ${message}`);
@@ -690,25 +888,194 @@ export const App = () => {
     }
   };
 
-  const onSaveTree = async () => {
-    if (!selectedProjectId || !tree) return;
-    setBusy(true);
+  const onExportMm = async () => {
+    if (!isAuthenticated) {
+      setStatus('Please log in to export your mind map.');
+      onLogin();
+      return;
+    }
+    if (!selectedProjectId) return;
     try {
-      await api.saveTree(selectedProjectId, tree);
-      setStatus('Tree saved');
-      await loadProjects();
+      await api.downloadMm(selectedProjectId);
+      setStatus('Exported .mm file');
     } catch (error) {
       const message = extractErrorMessage(error);
-      setStatus(`Save failed: ${message}`);
-    } finally {
-      setBusy(false);
+      setStatus(`Export .mm failed: ${message}`);
     }
   };
 
-  const onSaveLayout = () => {
+  const onExportMarkdown = async () => {
+    if (!isAuthenticated) {
+      setStatus('Please log in to export your mind map.');
+      onLogin();
+      return;
+    }
     if (!selectedProjectId) return;
-    persistPositions(selectedProjectId, nodePositions);
-    setStatus('Layout saved locally in this browser');
+    try {
+      await api.downloadMarkdown(selectedProjectId);
+      setStatus('Exported .md file');
+    } catch (error) {
+      const message = extractErrorMessage(error);
+      setStatus(`Export .md failed: ${message}`);
+    }
+  };
+
+  const onExportNotionMarkdown = async () => {
+    if (!isAuthenticated) {
+      setStatus('Please log in to export your mind map.');
+      onLogin();
+      return;
+    }
+    if (!selectedProjectId) return;
+    try {
+      await api.downloadNotionMarkdown(selectedProjectId);
+      setStatus('Exported Notion .md file');
+    } catch (error) {
+      const message = extractErrorMessage(error);
+      setStatus(`Export Notion .md failed: ${message}`);
+    }
+  };
+
+  const onExportImage = (format: 'png' | 'jpg') => {
+    if (!isAuthenticated) {
+      setStatus('Please log in to export your mind map.');
+      onLogin();
+      return;
+    }
+    if (!nodes.length) return;
+
+    const defaultNodeWidth = 220;
+    const defaultNodeHeight = 80;
+    const padding = 48;
+
+    const bounds = nodes.reduce(
+      (acc, node) => {
+        const width = node.width ?? defaultNodeWidth;
+        const height = node.height ?? defaultNodeHeight;
+        return {
+          minX: Math.min(acc.minX, node.position.x),
+          minY: Math.min(acc.minY, node.position.y),
+          maxX: Math.max(acc.maxX, node.position.x + width),
+          maxY: Math.max(acc.maxY, node.position.y + height),
+        };
+      },
+      {
+        minX: Number.POSITIVE_INFINITY,
+        minY: Number.POSITIVE_INFINITY,
+        maxX: Number.NEGATIVE_INFINITY,
+        maxY: Number.NEGATIVE_INFINITY,
+      },
+    );
+
+    const contentWidth = Math.max(1, bounds.maxX - bounds.minX);
+    const contentHeight = Math.max(1, bounds.maxY - bounds.minY);
+    const canvasWidth = Math.ceil(contentWidth + padding * 2);
+    const canvasHeight = Math.ceil(contentHeight + padding * 2);
+    const scale = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(canvasWidth * scale);
+    canvas.height = Math.ceil(canvasHeight * scale);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      setStatus('Export image failed: canvas not supported');
+      return;
+    }
+
+    ctx.scale(scale, scale);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    const offsetX = padding - bounds.minX;
+    const offsetY = padding - bounds.minY;
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+
+    ctx.strokeStyle = '#7fa8df';
+    ctx.lineWidth = 2;
+    for (const edge of edges) {
+      const source = nodeById.get(edge.source);
+      const target = nodeById.get(edge.target);
+      if (!source || !target) continue;
+      const sourceWidth = source.width ?? defaultNodeWidth;
+      const sourceHeight = source.height ?? defaultNodeHeight;
+      const targetHeight = target.height ?? defaultNodeHeight;
+      const sx = source.position.x + sourceWidth + offsetX;
+      const sy = source.position.y + sourceHeight / 2 + offsetY;
+      const tx = target.position.x + offsetX;
+      const ty = target.position.y + targetHeight / 2 + offsetY;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+    }
+
+    for (const node of nodes) {
+      const width = node.width ?? defaultNodeWidth;
+      const height = node.height ?? defaultNodeHeight;
+      const x = node.position.x + offsetX;
+      const y = node.position.y + offsetY;
+      const radius = 14;
+
+      ctx.fillStyle = '#d8edf9';
+      ctx.strokeStyle = '#86aee3';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+      ctx.lineTo(x + radius, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      const label = node.data?.label ?? '';
+      const words = label.split(/\s+/).filter(Boolean);
+      const lines: string[] = [];
+      let current = '';
+      for (const word of words) {
+        const next = current ? `${current} ${word}` : word;
+        if (next.length > 26 && current) {
+          lines.push(current);
+          current = word;
+        } else {
+          current = next;
+        }
+      }
+      if (current) lines.push(current);
+
+      const maxLines = 3;
+      const finalLines = lines.slice(0, maxLines);
+      if (lines.length > maxLines) {
+        finalLines[maxLines - 1] = `${finalLines[maxLines - 1]}...`;
+      }
+
+      ctx.fillStyle = '#1a2535';
+      ctx.font = '700 14px Manrope, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const lineHeight = 18;
+      const startY = y + height / 2 - ((finalLines.length - 1) * lineHeight) / 2;
+      for (const [lineIndex, line] of finalLines.entries()) {
+        ctx.fillText(line, x + 14, startY + lineIndex * lineHeight, width - 28);
+      }
+    }
+
+    const mimeType = format === 'jpg' ? 'image/jpeg' : 'image/png';
+    const dataUrl = canvas.toDataURL(mimeType, format === 'jpg' ? 0.92 : undefined);
+    const link = document.createElement('a');
+    const baseName = (projectTitle.trim() || 'mindmap').replace(/[^a-zA-Z0-9-_]+/g, '_');
+    link.href = dataUrl;
+    link.download = `${baseName}.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    setStatus(`Exported ${format.toUpperCase()} image`);
   };
 
   const onNodesChange = useCallback((changes: NodeChange<MindNode>[]) => {
@@ -742,6 +1109,7 @@ export const App = () => {
         setTree(null);
         setPersistedSources([]);
         setNodePositions({});
+        setHasSourceChanges(false);
       }
       setStatus(`Deleted "${projectTitle}"`);
       await loadProjects();
@@ -751,6 +1119,36 @@ export const App = () => {
     } finally {
       setDeletingProjectId(null);
       setPendingDelete(null);
+    }
+  };
+
+  const startRecentMapRename = (project: VmProject) => {
+    setEditingRecentMapId(project.id);
+    setEditingRecentMapTitle(recentMapTitle(project));
+  };
+
+  const saveRecentMapRename = async (projectId: string) => {
+    const nextTitle = editingRecentMapTitle.trim();
+    if (!nextTitle) {
+      setStatus('Title cannot be empty');
+      return;
+    }
+
+    setRenamingRecentMapId(projectId);
+    try {
+      await api.updateProjectTitle(projectId, nextTitle);
+      if (selectedProjectId === projectId) {
+        setProjectTitle(nextTitle);
+      }
+      setStatus(`Updated map title to "${nextTitle}"`);
+      setEditingRecentMapId(null);
+      setEditingRecentMapTitle('');
+      await loadProjects();
+    } catch (error) {
+      const message = extractErrorMessage(error);
+      setStatus(`Rename failed: ${message}`);
+    } finally {
+      setRenamingRecentMapId(null);
     }
   };
 
@@ -768,6 +1166,7 @@ export const App = () => {
     try {
       await api.deleteSource(selectedProjectId, source.id);
       await loadSources(selectedProjectId);
+      setHasSourceChanges(true);
 
       if (editingSource?.scope === 'persisted' && editingSource.id === source.id) {
         setEditingSource(null);
@@ -792,6 +1191,11 @@ export const App = () => {
         </div>
         <div className="vm-topbar-right">
           <span className="status-chip">{status}</span>
+          {!isAuthenticated ? (
+            <button className="btn btn-ghost" type="button" onClick={onLogin}>
+              Log in
+            </button>
+          ) : null}
           {userEmail ? <span className="status-chip user">{userEmail}</span> : null}
         </div>
       </header>
@@ -801,17 +1205,7 @@ export const App = () => {
           <div className="card composer-card">
             <div className="composer-intro">
               <h2>Sources</h2>
-              <p>
-                Add content chunks, PDFs, or webpages to combine into one mind map. Plan:{' '}
-                <strong>{userPlan.toUpperCase()}</strong>
-              </p>
-            </div>
-            <div className="composer-top-fields">
-              <input
-                placeholder="Mind map title (optional)"
-                value={projectTitle}
-                onChange={(e) => setProjectTitle(e.target.value)}
-              />
+              <p>Collect the content you want Mind Map to turn into one structured map.</p>
             </div>
             <div className="composer-source-entry">
               <button
@@ -824,7 +1218,7 @@ export const App = () => {
                   setIsAddTextOpen(true);
                 }}
               >
-                {rawText.trim() ? 'Edit pasted text' : '+ Add pasted text'}
+                Add source text
               </button>
             </div>
             <div className="actions source-tools">
@@ -835,7 +1229,7 @@ export const App = () => {
                 }}
                 disabled={busy}
               >
-                Import .md
+                Import Markdown
               </button>
               <button
                 className="btn btn-ghost"
@@ -844,7 +1238,7 @@ export const App = () => {
                 }}
                 disabled={busy}
               >
-                PDF Import
+                Import PDF
               </button>
               <button
                 className="btn btn-ghost"
@@ -854,7 +1248,7 @@ export const App = () => {
                 }}
                 disabled={busy}
               >
-                Web Import
+                Import Webpage
               </button>
             </div>
             <input
@@ -886,7 +1280,7 @@ export const App = () => {
                       </div>
                       <div className="actions">
                         <button className="btn btn-ghost" type="button" onClick={() => openPersistedSource(source)}>
-                          View
+                          Edit
                         </button>
                         <button className="btn btn-ghost" type="button" onClick={() => void removePersistedSource(source)}>
                           Remove
@@ -913,31 +1307,66 @@ export const App = () => {
                 </>
               )}
             </div>
-            <div className="actions primary-actions">
+            <div className="primary-actions">
               <button
-                className="btn btn-primary"
+                className={`btn btn-map-action btn-map-primary ${busy ? 'is-generating' : ''}`}
                 onClick={onPrimaryMapAction}
-                disabled={busy || (!selectedProjectId && pendingSourceCount === 0)}
+                disabled={busy || (isAuthenticated && !selectedProjectId && pendingSourceCount === 0)}
               >
-                {busy ? 'Generating...' : selectedProjectId ? 'Generate Mind Map' : 'Create Mind Map'}
+                {!isAuthenticated
+                  ? 'Log in to Create Mind Map'
+                  : selectedProjectId
+                    ? hasSourceChanges
+                      ? 'Update your mind map'
+                      : 'Generate Mind Map'
+                    : 'Create Mind Map'}
               </button>
+              {!isAuthenticated ? (
+                <p className="auth-helper">Add your sources now, then log in to generate and save your map.</p>
+              ) : null}
             </div>
-            <div className="secondary-tools">
-              <span>Study tools:</span>
-              <button
-                className="btn btn-ghost"
-                onClick={onGenerateSlides}
-                disabled={busy || assetBusy !== null || (!selectedProjectId && pendingSourceCount === 0)}
-              >
-                {assetBusy === 'slides' ? 'Generating Slides...' : 'AI Slides'}
-              </button>
-              <button
-                className="btn btn-ghost"
-                onClick={onGenerateFlashcards}
-                disabled={busy || assetBusy !== null || (!selectedProjectId && pendingSourceCount === 0)}
-              >
-                {assetBusy === 'flashcards' ? 'Generating Flashcards...' : 'Flashcards'}
-              </button>
+            <div className="mindmao-tools">
+              <div className="mindmao-tools-header">
+                <div>
+                  <p className="mindmao-kicker">Mind Map Outputs</p>
+                  <h3>Tools from your map</h3>
+                </div>
+                <span className={`mindmao-badge ${tree ? 'ready' : 'locked'}`}>{tree ? 'Unlocked' : 'Locked'}</span>
+              </div>
+              {/* Mind Map Slides temporarily disabled */}
+              <div className={`tool-card ${tree ? 'ready' : 'locked'}`}>
+                <div className="tool-card-copy">
+                  <div className="tool-card-title-row">
+                    <h4>Mind Map Flashcards</h4>
+                    <span className="tool-pill">Review</span>
+                  </div>
+                  <p>Convert the map into fast study prompts and answer cards based on the main branches.</p>
+                  <small>
+                    {tree
+                      ? 'Available because this project already has a generated mind map.'
+                      : 'Generate a mind map first to unlock flashcards.'}
+                  </small>
+                </div>
+                <div
+                  className={`tool-card-action ${
+                    busy || assetBusy !== null || !isAuthenticated || !selectedProjectId || !tree ? 'disabled' : ''
+                  }`}
+                  role="button"
+                  tabIndex={busy || assetBusy !== null || !isAuthenticated || !selectedProjectId || !tree ? -1 : 0}
+                  onClick={() => {
+                    if (busy || assetBusy !== null || !isAuthenticated || !selectedProjectId || !tree) return;
+                    void onGenerateFlashcards();
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    if (busy || assetBusy !== null || !isAuthenticated || !selectedProjectId || !tree) return;
+                    void onGenerateFlashcards();
+                  }}
+                >
+                  {assetBusy === 'flashcards' ? 'Generating...' : 'Generate Flashcards'}
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -945,35 +1374,56 @@ export const App = () => {
         <section className="vm-pane vm-pane-main">
           <div className="card map-card">
             <div className="map-header">
-              <h2>Mind Map</h2>
-              <div className="actions">
+              <div className="map-header-copy">
+                <h2>Your Mind Map</h2>
+              </div>
+              <div className="actions map-export-actions">
                 <button
-                  className="btn btn-ghost"
-                  onClick={() => flowInstance?.setViewport({ x: 160, y: 180, zoom: 1 }, { duration: 220 })}
-                  disabled={!tree}
-                >
-                  Reset View
-                </button>
-                <button className="btn btn-ghost" onClick={onSaveLayout} disabled={!selectedProjectId || !tree}>
-                  Save Layout
-                </button>
-                <button className="btn btn-ghost" onClick={onSaveTree} disabled={busy || !selectedProjectId || !tree}>
-                  Save Tree
-                </button>
-                <a
+                  type="button"
                   className={`btn btn-export ${selectedProjectId ? '' : 'disabled'}`}
-                  href={selectedProjectId ? api.exportMm(selectedProjectId) : '#'}
-                  onClick={(e) => {
-                    if (!selectedProjectId) e.preventDefault();
-                  }}
+                  onClick={() => void onExportMm()}
                 >
                   Export .mm
-                </a>
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-export ${selectedProjectId ? '' : 'disabled'}`}
+                  onClick={() => void onExportMarkdown()}
+                >
+                  Export .md
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-export ${selectedProjectId ? '' : 'disabled'}`}
+                  onClick={() => void onExportNotionMarkdown()}
+                >
+                  Notion .md
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-export ${tree ? '' : 'disabled'}`}
+                  onClick={() => onExportImage('png')}
+                >
+                  Export PNG
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-export ${tree ? '' : 'disabled'}`}
+                  onClick={() => onExportImage('jpg')}
+                >
+                  Export JPG
+                </button>
               </div>
             </div>
-            <p className="hint">Drag nodes freely. Click &gt; / &lt; on a node to collapse or expand that branch.</p>
+            <p className="map-interaction-hint">Drag nodes to move. Double-click node text to edit. Use &gt; / &lt; to collapse or expand branches.</p>
             <div className="map-canvas">
-              {tree ? (
+              {isMapLoading ? (
+                <div className="map-loader">
+                  <div className="map-loader-spinner" />
+                  <h3>Building your mind map</h3>
+                  <p>Combining sources and generating a fresh structure...</p>
+                </div>
+              ) : tree ? (
                 <ReactFlow
                   nodes={nodes}
                   edges={edges}
@@ -1055,37 +1505,88 @@ export const App = () => {
                   <button
                     className="project-item-main"
                     onClick={async () => {
-                      setSelectedProjectId(project.id);
-                      setTree(normalizeTree(project.current_tree_json));
-                      setExpandedById({});
-                      setProjectTitle(project.title);
-                      setDraftSessions([]);
-                      const sources = await loadSources(project.id);
-                      const firstSource = sources[0];
-                      setRawText(firstSource?.content_text ?? project.raw_text ?? '');
-                      setSourceTitle(firstSource?.title ?? '');
-                      setIsAddTextOpen(true);
-                      setEditingSource(firstSource ? { scope: 'persisted', id: firstSource.id } : null);
-                      setStatus(
-                        project.current_tree_json
-                          ? `Loaded "${project.title}"`
-                          : `Loaded failed project "${project.title}". Click Regenerate to retry.`,
-                      );
+                      setIsMapLoading(true);
+                      try {
+                        const nextTree = normalizeTree(project.current_tree_json);
+                        setSelectedProjectId(project.id);
+                        setTree(nextTree);
+                        setExpandedForTree(nextTree);
+                        setProjectTitle(recentMapTitle(project));
+                        setDraftSessions([]);
+                        setHasSourceChanges(false);
+                        const sources = await loadSources(project.id);
+                        const firstSource = sources[0];
+                        setRawText(firstSource?.content_text ?? project.raw_text ?? '');
+                        setSourceTitle(firstSource?.title ?? '');
+                        setIsAddTextOpen(false);
+                        setEditingSource(null);
+                        setStatus(
+                          project.current_tree_json
+                            ? `Loaded "${recentMapTitle(project)}"`
+                            : `Loaded failed project "${recentMapTitle(project)}". Click Generate Mind Map to retry.`,
+                        );
+                      } catch (error) {
+                        const message = extractErrorMessage(error);
+                        setStatus(`Load project failed: ${message}`);
+                      } finally {
+                        setIsMapLoading(false);
+                      }
                     }}
                   >
-                    <span>{project.title}</span>
+                    <span>{recentMapTitle(project)}</span>
                     {!project.current_tree_json ? <span style={{ marginLeft: 8, color: '#9b2c2c', fontWeight: 700 }}>Failed</span> : null}
                   </button>
+                  {editingRecentMapId === project.id ? (
+                    <div className="project-item-rename">
+                      <input
+                        value={editingRecentMapTitle}
+                        onChange={(event) => setEditingRecentMapTitle(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            void saveRecentMapRename(project.id);
+                          }
+                          if (event.key === 'Escape') {
+                            setEditingRecentMapId(null);
+                            setEditingRecentMapTitle('');
+                          }
+                        }}
+                      />
+                      <button
+                        className="project-item-edit"
+                        type="button"
+                        onClick={() => void saveRecentMapRename(project.id)}
+                        disabled={renamingRecentMapId === project.id}
+                      >
+                        {renamingRecentMapId === project.id ? '...' : 'Save'}
+                      </button>
+                      <button
+                        className="project-item-edit"
+                        type="button"
+                        onClick={() => {
+                          setEditingRecentMapId(null);
+                          setEditingRecentMapTitle('');
+                        }}
+                        disabled={renamingRecentMapId === project.id}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button className="project-item-edit" type="button" onClick={() => startRecentMapRename(project)}>
+                      Edit
+                    </button>
+                  )}
                   <button
                     className="project-item-delete"
                     onClick={() =>
                       setPendingDelete({
                         projectId: project.id,
-                        projectTitle: project.title,
+                        projectTitle: recentMapTitle(project),
                       })
                     }
                     disabled={deletingProjectId === project.id}
-                    aria-label={`Delete ${project.title}`}
+                    aria-label={`Delete ${recentMapTitle(project)}`}
                   >
                     {deletingProjectId === project.id ? '...' : 'Delete'}
                   </button>
@@ -1094,62 +1595,31 @@ export const App = () => {
             </div>
           </div>
 
-          <div className="card assets-card">
+          <div ref={studyToolsRef} className={`card assets-card ${studyToolsSpotlight ? 'spotlight' : ''}`}>
             <div className="assets-header">
-              <h3>AI Study Tools</h3>
-              <div className="actions">
-                <button
-                  className={`btn ${activeAssetMode === 'slides' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setActiveAssetMode('slides')}
-                >
-                  Slides
-                </button>
-                <button
-                  className={`btn ${activeAssetMode === 'flashcards' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setActiveAssetMode('flashcards')}
-                >
-                  Flashcards
-                </button>
+              <div className="assets-header-copy">
+              <h3>Mind Map Tools</h3>
+                <p>Generate slides or flashcards from your current map.</p>
               </div>
+              <span className={`asset-status-badge ${tree ? 'ready' : 'locked'}`}>
+                {tree ? 'Ready' : 'Locked'}
+              </span>
             </div>
-            {activeAssetMode === 'slides' ? (
-              slideDeck ? (
-                <div className="slide-preview-list">
-                  <p className="asset-title">{slideDeck.title}</p>
-                  {slideDeck.slides.map((slide, index) => (
-                    <div className="slide-preview" key={`${slide.title}-${index}`}>
-                      <div className="slide-preview-header">
-                        <span className="slide-kicker">Slide {index + 1}</span>
-                        <h4>{slide.title}</h4>
-                        {slide.subtitle ? <p className="slide-subtitle">{slide.subtitle}</p> : null}
-                      </div>
-                      <div className={`slide-body layout-${slide.layout}`}>
-                        {slide.bullets?.length ? (
-                          <ul>
-                            {slide.bullets.map((bullet, bulletIndex) => (
-                              <li key={`${index}-${bulletIndex}`}>{bullet}</li>
-                            ))}
-                          </ul>
-                        ) : null}
-                        {slide.visualIdea ? (
-                          <div className="slide-visual-idea">
-                            <strong>Visual:</strong> {slide.visualIdea}
-                          </div>
-                        ) : null}
-                      </div>
-                      {slide.speakerNotes ? (
-                        <div className="slide-notes">
-                          <strong>Notes:</strong> {slide.speakerNotes}
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="empty">Generate AI Slides to create a real slide deck here.</p>
-              )
-            ) : flashcardDeck ? (
-              <div className="asset-list">
+            <div className="asset-tabs" role="tablist" aria-label="Tools tabs">
+              {/* Slides tab temporarily disabled */}
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeAssetMode === 'flashcards'}
+                aria-controls="study-tab-flashcards"
+                className={`asset-tab ${activeAssetMode === 'flashcards' ? 'active' : ''}`}
+                onClick={() => setActiveAssetMode('flashcards')}
+              >
+                Flashcards
+              </button>
+            </div>
+            {flashcardDeck ? (
+              <div className="asset-list" id="study-tab-flashcards" role="tabpanel">
                 <p className="asset-title">{flashcardDeck.title}</p>
                 {flashcardDeck.cards.map((card, index) => (
                   <div className="flashcard" key={`${card.front}-${index}`}>
@@ -1161,7 +1631,15 @@ export const App = () => {
                 ))}
               </div>
             ) : (
-              <p className="empty">Generate Flashcards to review key questions and answers.</p>
+              <div className="asset-empty-state" id="study-tab-flashcards" role="tabpanel">
+                <div className="asset-empty-icon">🗂️</div>
+                <h4>No flashcards generated yet</h4>
+                <p>
+                  {tree
+                    ? 'Use Generate Flashcards from the left panel to create review cards from this mind map.'
+                    : 'Create a mind map first, then generate flashcards.'}
+                </p>
+              </div>
             )}
           </div>
         </section>

@@ -85,13 +85,61 @@ export const listProjectSources = async (projectId: string, userId: string): Pro
 export const listProjects = async (userId: string): Promise<ProjectRecord[]> => {
   const result = await db.query<ProjectRecord>(
     `
-      SELECT * FROM vm_projects
-      WHERE user_id = $1
-      ORDER BY created_at DESC
+      SELECT
+        p.*,
+        (
+          SELECT s.title
+          FROM vm_project_sources s
+          WHERE s.project_id = p.id AND s.user_id = p.user_id
+          ORDER BY s.created_at ASC
+          LIMIT 1
+        ) AS primary_source_title
+      FROM vm_projects p
+      WHERE p.user_id = $1
+      ORDER BY p.created_at DESC
     `,
     [userId],
   );
   return result.rows;
+};
+
+export const updateProjectTitle = async (
+  projectId: string,
+  userId: string,
+  title: string,
+): Promise<ProjectRecord | null> => {
+  const result = await db.query<ProjectRecord>(
+    `
+      UPDATE vm_projects
+      SET title = $3, updated_at = NOW()
+      WHERE id = $1 AND user_id = $2
+      RETURNING *
+    `,
+    [projectId, userId, title],
+  );
+  return result.rows[0] ?? null;
+};
+
+export const updatePrimarySourceTitle = async (
+  projectId: string,
+  userId: string,
+  title: string,
+): Promise<boolean> => {
+  const result = await db.query(
+    `
+      UPDATE vm_project_sources s
+      SET title = $3
+      WHERE s.id = (
+        SELECT id
+        FROM vm_project_sources
+        WHERE project_id = $1 AND user_id = $2
+        ORDER BY created_at ASC
+        LIMIT 1
+      )
+    `,
+    [projectId, userId, title],
+  );
+  return (result.rowCount ?? 0) > 0;
 };
 
 export const getProjectById = async (projectId: string, userId: string): Promise<ProjectRecord | null> => {

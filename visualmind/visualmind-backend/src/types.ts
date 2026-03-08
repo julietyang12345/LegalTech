@@ -24,6 +24,7 @@ export interface ProjectRecord {
   id: string;
   user_id: string;
   title: string;
+  primary_source_title?: string | null;
   raw_text: string;
   current_tree_json: TreeNode | null;
   created_at: string;

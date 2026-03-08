@@ -7,6 +7,7 @@ import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
 import { projectsRouter } from './routes/projects.js';
 import { importsRouter } from './routes/imports.js';
+import { warmupModel } from './services/model.service.js';
 
 const app = express();
 
@@ -36,6 +37,7 @@ app.use((err: unknown, req: express.Request, res: express.Response, _next: expre
 
 const bootstrap = async (): Promise<void> => {
   await initDb();
+  void warmupModel();
   app.listen(config.port, () => {
     console.log(`visualmind-backend listening on :${config.port}`);
   });
