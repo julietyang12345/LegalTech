@@ -30,6 +30,12 @@ type MindNodeData = {
 };
 
 type MindNode = Node<MindNodeData, 'mindmap'>;
+type PendingMove = {
+  sourceId: string;
+  sourceText: string;
+  targetId: string;
+  targetText: string;
+};
 
 const MindMapNode = ({ id, data }: NodeProps<MindNode>) => (
   <div className="mindmap-node">
@@ -212,11 +218,19 @@ const createFlowGraph = (
   expandedById: Record<string, boolean>,
   positionById: Record<string, NodePosition>,
   onToggle: (nodeId: string) => void,
+  dropTargetId?: string | null,
 ): { nodes: MindNode[]; edges: Edge[] } => {
   const nodes: MindNode[] = [];
   const edges: Edge[] = [];
 
   layoutVisibleTree(root, 0, expandedById, positionById, onToggle, nodes, edges, { y: 40 });
+  if (dropTargetId) {
+    for (const node of nodes) {
+      if (node.id === dropTargetId) {
+        node.className = 'drop-target';
+      }
+    }
+  }
 
   return { nodes, edges };
 };
@@ -237,6 +251,8 @@ export const App = () => {
   const [nodes, setNodes] = useState<MindNode[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<MindNode, Edge> | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
   const nodeTypes = useMemo<NodeTypes>(() => ({ mindmap: MindMapNode }), []);
 
   const selected = useMemo(
@@ -256,10 +272,54 @@ export const App = () => {
     }));
   }, []);
 
+  const pickNearestValidTarget = useCallback(
+    (dragNode: MindNode): MindNode | null => {
+      if (!tree || !flowInstance) return null;
+
+      const sourceNode = findNode(tree, dragNode.id);
+      if (!sourceNode) return null;
+
+      const intersections = flowInstance
+        .getIntersectingNodes(dragNode)
+        .filter((candidate) => candidate.id !== dragNode.id) as MindNode[];
+
+      const candidates = intersections.filter((candidate) => {
+        if (!candidate.data?.hasChildren && candidate.id !== 'root') return false;
+        if (containsNode(sourceNode, candidate.id)) return false;
+        return true;
+      });
+
+      if (candidates.length === 0) return null;
+
+      const dragWidth = dragNode.width ?? 220;
+      const dragHeight = dragNode.height ?? 80;
+      const dragCenterX = dragNode.position.x + dragWidth / 2;
+      const dragCenterY = dragNode.position.y + dragHeight / 2;
+
+      let best: MindNode | null = null;
+      let bestDistance = Number.POSITIVE_INFINITY;
+
+      for (const candidate of candidates) {
+        const width = candidate.width ?? 220;
+        const height = candidate.height ?? 80;
+        const centerX = candidate.position.x + width / 2;
+        const centerY = candidate.position.y + height / 2;
+        const distance = Math.hypot(centerX - dragCenterX, centerY - dragCenterY);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = candidate;
+        }
+      }
+
+      return best;
+    },
+    [tree, flowInstance],
+  );
+
   const graph = useMemo(() => {
     if (!tree) return { nodes: [], edges: [] };
-    return createFlowGraph(tree, expandedById, nodePositions, toggleNode);
-  }, [tree, expandedById, nodePositions, toggleNode]);
+    return createFlowGraph(tree, expandedById, nodePositions, toggleNode, dropTargetId);
+  }, [tree, expandedById, nodePositions, toggleNode, dropTargetId]);
 
   useEffect(() => {
     setNodes(graph.nodes);
@@ -389,6 +449,20 @@ export const App = () => {
   const onNodesChange = useCallback((changes: NodeChange<MindNode>[]) => {
     setNodes((current) => applyNodeChanges(changes, current));
   }, []);
+
+  const applyTreeMove = (sourceId: string, targetId: string) => {
+    if (!tree) return;
+    const sourceNode = findNode(tree, sourceId);
+    const targetNode = findNode(tree, targetId);
+    if (!sourceNode || !targetNode) return;
+    if (containsNode(sourceNode, targetId)) return;
+
+    const removed = removeNodeById(tree, sourceId);
+    if (!removed.removed) return;
+    const movedTree = insertNodeAsChild(removed.tree, targetId, removed.removed);
+    setTree(movedTree);
+    setStatus(`Moved "${sourceNode.text}" under "${targetNode.text}"`);
+  };
 
   return (
     <div className="vm-shell">
@@ -531,6 +605,10 @@ export const App = () => {
                     setFlowInstance(instance);
                     instance.setViewport({ x: 160, y: 180, zoom: 1 });
                   }}
+                  onNodeDrag={(_event, node) => {
+                    const target = pickNearestValidTarget(node as MindNode);
+                    setDropTargetId(target?.id ?? null);
+                  }}
                   onNodeDragStop={(_event, node) => {
                     const next = {
                       ...nodePositions,
@@ -541,23 +619,24 @@ export const App = () => {
                       persistPositions(selectedProjectId, next);
                     }
 
-                    if (!tree || !flowInstance || node.id === 'root') return;
-
-                    const target = flowInstance
-                      .getIntersectingNodes(node)
-                      .find((candidate) => candidate.id !== node.id);
+                    if (!tree || !flowInstance || node.id === 'root') {
+                      setDropTargetId(null);
+                      return;
+                    }
+                    const target = pickNearestValidTarget(node as MindNode);
+                    setDropTargetId(null);
                     if (!target) return;
 
                     const sourceNode = findNode(tree, node.id);
                     const targetNode = findNode(tree, target.id);
                     if (!sourceNode || !targetNode) return;
                     if (containsNode(sourceNode, target.id)) return;
-
-                    const removed = removeNodeById(tree, node.id);
-                    if (!removed.removed) return;
-                    const movedTree = insertNodeAsChild(removed.tree, target.id, removed.removed);
-                    setTree(movedTree);
-                    setStatus(`Moved "${sourceNode.text}" under "${targetNode.text}"`);
+                    setPendingMove({
+                      sourceId: sourceNode.id,
+                      sourceText: sourceNode.text,
+                      targetId: targetNode.id,
+                      targetText: targetNode.text,
+                    });
                   }}
                   defaultViewport={{ x: 160, y: 180, zoom: 1 }}
                   minZoom={0.1}
@@ -575,6 +654,38 @@ export const App = () => {
           </div>
         </section>
       </main>
+
+      {pendingMove ? (
+        <div className="move-modal-backdrop">
+          <div className="move-modal">
+            <h3>Confirm Move</h3>
+            <p>
+              Move <strong>{pendingMove.sourceText}</strong> under{' '}
+              <strong>{pendingMove.targetText}</strong>?
+            </p>
+            <div className="actions">
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setPendingMove(null);
+                  setStatus('Move cancelled');
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  applyTreeMove(pendingMove.sourceId, pendingMove.targetId);
+                  setPendingMove(null);
+                }}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

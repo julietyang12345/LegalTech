@@ -363,6 +363,40 @@ textarea {
   box-shadow: 0 8px 20px #294f8f24;
 }
 
+.map-canvas .react-flow__node.drop-target .mindmap-node {
+  border-color: #2f9e44;
+  background: #e7f8ec;
+  box-shadow: 0 0 0 3px #2f9e4422, 0 8px 20px #1f7f3220;
+}
+
+.move-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: #0d1b2a66;
+  backdrop-filter: blur(2px);
+  display: grid;
+  place-items: center;
+  z-index: 2000;
+}
+
+.move-modal {
+  width: min(520px, calc(100vw - 32px));
+  background: #fff;
+  border: 1px solid #d3deee;
+  border-radius: 16px;
+  box-shadow: 0 20px 44px #0d2a551f;
+  padding: 18px;
+}
+
+.move-modal h3 {
+  margin: 0 0 8px;
+}
+
+.move-modal p {
+  margin: 0 0 14px;
+  color: var(--muted);
+}
+
 .empty {
   margin: 0;
   color: var(--muted);
