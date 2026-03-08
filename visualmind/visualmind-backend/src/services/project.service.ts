@@ -1,5 +1,5 @@
 import { db } from '../db.js';
-import type { ProjectRecord, TreeNode } from '../types.js';
+import type { ProjectRecord, ProjectSourceRecord, TreeNode } from '../types.js';
 import { config } from '../config.js';
 
 interface CreateProjectInput {
@@ -18,6 +18,68 @@ export const createProject = async (input: CreateProjectInput): Promise<ProjectR
     [input.userId, input.title, input.rawText],
   );
   return result.rows[0];
+};
+
+export const addProjectSource = async (params: {
+  projectId: string;
+  userId: string;
+  kind: 'text' | 'pdf' | 'url';
+  title: string;
+  contentText: string;
+}): Promise<ProjectSourceRecord> => {
+  const result = await db.query<ProjectSourceRecord>(
+    `
+      INSERT INTO vm_project_sources (project_id, user_id, kind, title, content_text)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+    `,
+    [params.projectId, params.userId, params.kind, params.title, params.contentText],
+  );
+  return result.rows[0];
+};
+
+export const updateProjectSource = async (params: {
+  projectId: string;
+  sourceId: string;
+  userId: string;
+  title: string;
+  contentText: string;
+}): Promise<ProjectSourceRecord | null> => {
+  const result = await db.query<ProjectSourceRecord>(
+    `
+      UPDATE vm_project_sources
+      SET title = $4, content_text = $5
+      WHERE project_id = $1 AND id = $2 AND user_id = $3
+      RETURNING *
+    `,
+    [params.projectId, params.sourceId, params.userId, params.title, params.contentText],
+  );
+  return result.rows[0] ?? null;
+};
+
+export const countProjectSources = async (projectId: string, userId: string): Promise<number> => {
+  const result = await db.query<{ count: string }>(
+    `
+      SELECT COUNT(*)::text AS count
+      FROM vm_project_sources
+      WHERE project_id = $1 AND user_id = $2
+    `,
+    [projectId, userId],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+};
+
+export const listProjectSources = async (projectId: string, userId: string): Promise<ProjectSourceRecord[]> => {
+  const result = await db.query<ProjectSourceRecord>(
+    `
+      SELECT *
+      FROM vm_project_sources
+      WHERE project_id = $1 AND user_id = $2
+      ORDER BY created_at ASC
+    `,
+    [projectId, userId],
+  );
+  return result.rows;
 };
 
 export const listProjects = async (userId: string): Promise<ProjectRecord[]> => {
@@ -51,6 +113,21 @@ export const deleteProjectById = async (projectId: string, userId: string): Prom
       WHERE id = $1 AND user_id = $2
     `,
     [projectId, userId],
+  );
+  return (result.rowCount ?? 0) > 0;
+};
+
+export const deleteProjectSourceById = async (
+  projectId: string,
+  sourceId: string,
+  userId: string,
+): Promise<boolean> => {
+  const result = await db.query(
+    `
+      DELETE FROM vm_project_sources
+      WHERE project_id = $1 AND id = $2 AND user_id = $3
+    `,
+    [projectId, sourceId, userId],
   );
   return (result.rowCount ?? 0) > 0;
 };

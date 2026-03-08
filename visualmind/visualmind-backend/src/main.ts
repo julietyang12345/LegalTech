@@ -6,6 +6,7 @@ import { initDb } from './db.js';
 import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
 import { projectsRouter } from './routes/projects.js';
+import { importsRouter } from './routes/imports.js';
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.use(express.json({ limit: '2mb' }));
 app.use('/api/v1', healthRouter);
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/vm/projects', projectsRouter);
+app.use('/api/v1/imports', importsRouter);
 
 app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const message = err instanceof Error ? err.message : 'Internal Server Error';

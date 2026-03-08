@@ -35,6 +35,18 @@ export const initDb = async (): Promise<void> => {
   `);
 
   await db.query(`
+    CREATE TABLE IF NOT EXISTS vm_project_sources (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id UUID NOT NULL REFERENCES vm_projects(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('text', 'pdf', 'url')),
+      title TEXT NOT NULL,
+      content_text TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await db.query(`
     CREATE INDEX IF NOT EXISTS vm_projects_user_id_idx
     ON vm_projects(user_id, created_at DESC);
   `);
@@ -42,5 +54,10 @@ export const initDb = async (): Promise<void> => {
   await db.query(`
     CREATE INDEX IF NOT EXISTS vm_generations_project_id_idx
     ON vm_generations(project_id, created_at DESC);
+  `);
+
+  await db.query(`
+    CREATE INDEX IF NOT EXISTS vm_project_sources_project_id_idx
+    ON vm_project_sources(project_id, created_at ASC);
   `);
 };

@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import type { AuthUser } from '../types.js';
+import { inferPlanFromRole } from '../services/plan.service.js';
 
 interface JwtPayload {
   sub: string;
@@ -40,7 +41,12 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction): vo
 
   try {
     const payload = jwt.verify(token, config.jwtSecret) as JwtPayload;
-    req.user = { id: payload.sub, email: payload.email, role: payload.role };
+    req.user = {
+      id: payload.sub,
+      email: payload.email,
+      role: payload.role,
+      plan: inferPlanFromRole(payload.role),
+    };
     next();
   } catch {
     res.status(401).json({ message: 'Unauthorized: token invalid' });

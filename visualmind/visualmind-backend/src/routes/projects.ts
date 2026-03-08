@@ -1,19 +1,53 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth.js';
-import { createProject, deleteProjectById, getProjectById, listProjects, saveGeneration } from '../services/project.service.js';
-import { generateMindMapJson } from '../services/model.service.js';
+import {
+  addProjectSource,
+  countProjectSources,
+  createProject,
+  deleteProjectById,
+  deleteProjectSourceById,
+  getProjectById,
+  listProjectSources,
+  listProjects,
+  saveGeneration,
+  updateProjectSource,
+} from '../services/project.service.js';
+import { generateFlashcards, generateMindMapJson, generateSlides } from '../services/model.service.js';
+import { getLimitsForPlan, PRO_MAX_TEXT_CHARS } from '../services/plan.service.js';
 import { normalizeGeneratedTree } from '../services/tree.service.js';
 import { toFreemindXml } from '../utils/mm-export.js';
 import type { TreeNode } from '../types.js';
 
 const createProjectSchema = z.object({
   title: z.string().min(1).max(120),
-  rawText: z.string().min(1).max(40000),
+  rawText: z.string().max(PRO_MAX_TEXT_CHARS),
+  sourceSessions: z.array(z.string().min(1).max(PRO_MAX_TEXT_CHARS)).optional(),
+});
+
+const addSourceSchema = z.object({
+  kind: z.enum(['text', 'pdf', 'url']).default('text'),
+  title: z.string().trim().min(1).max(120).optional(),
+  contentText: z.string().min(1).max(PRO_MAX_TEXT_CHARS),
+});
+
+const updateSourceSchema = z.object({
+  title: z.string().trim().min(1).max(120).optional(),
+  contentText: z.string().min(1).max(PRO_MAX_TEXT_CHARS),
 });
 
 const generateSchema = z.object({
-  inputText: z.string().min(1).max(40000).optional(),
+  inputText: z.string().min(1).max(PRO_MAX_TEXT_CHARS).optional(),
+});
+
+const slidesSchema = z.object({
+  inputText: z.string().min(1).max(PRO_MAX_TEXT_CHARS).optional(),
+  slideCount: z.number().int().min(4).max(12).optional(),
+});
+
+const flashcardsSchema = z.object({
+  inputText: z.string().min(1).max(PRO_MAX_TEXT_CHARS).optional(),
+  cardCount: z.number().int().min(6).max(24).optional(),
 });
 
 const treeNodeSchema: z.ZodType<TreeNode> = z.lazy(() =>
@@ -32,115 +66,408 @@ export const projectsRouter = Router();
 
 projectsRouter.use(requireAuth);
 
-const asyncHandler = (
-  fn: (req: any, res: any, next: any) => Promise<void>,
-) => (req: any, res: any, next: any) => {
-  Promise.resolve(fn(req, res, next)).catch(next);
+const asyncHandler =
+  (fn: (req: any, res: any, next: any) => Promise<void>) =>
+  (req: any, res: any, next: any) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+
+const inferSourceTitle = (text: string, fallback: string): string => {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (!clean) return fallback;
+  return clean.slice(0, 120);
 };
 
-projectsRouter.post('/', asyncHandler(async (req, res) => {
-  const parsed = createProjectSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ message: 'Invalid payload', errors: parsed.error.flatten() });
-    return;
-  }
+const buildGenerationInput = async (
+  projectId: string,
+  userId: string,
+  extraInput?: string,
+): Promise<string> => {
+  const sources = await listProjectSources(projectId, userId);
+  const persistedText = sources.map((source) => source.content_text).join('\n\n---\n\n').trim();
+  const trimmedExtra = extraInput?.trim() ?? '';
+  return [persistedText, trimmedExtra].filter(Boolean).join('\n\n---\n\n');
+};
 
-  const project = await createProject({
-    userId: req.user!.id,
-    title: parsed.data.title,
-    rawText: parsed.data.rawText,
-  });
-  res.status(201).json({ project });
-}));
+projectsRouter.post(
+  '/',
+  asyncHandler(async (req, res) => {
+    const parsed = createProjectSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Invalid payload', errors: parsed.error.flatten() });
+      return;
+    }
 
-projectsRouter.get('/', asyncHandler(async (req, res) => {
-  const projects = await listProjects(req.user!.id);
-  res.json({ projects, count: projects.length });
-}));
+    const limits = getLimitsForPlan(req.user!.plan);
+    const rawText = parsed.data.rawText.trim();
+    const draftSessions = [...(parsed.data.sourceSessions ?? []), rawText]
+      .map((session) => session.trim())
+      .filter(Boolean);
 
-projectsRouter.delete('/:id', asyncHandler(async (req, res) => {
-  const deleted = await deleteProjectById(req.params.id, req.user!.id);
-  if (!deleted) {
-    res.status(404).json({ message: 'Project not found' });
-    return;
-  }
-  res.json({ message: 'Project deleted' });
-}));
+    if (draftSessions.length === 0) {
+      res.status(400).json({ message: 'At least one source session is required' });
+      return;
+    }
+    if (draftSessions.length > limits.maxSourceSessions) {
+      res.status(403).json({
+        message: `Your plan supports up to ${limits.maxSourceSessions} source sessions per project. Upgrade to add more.`,
+      });
+      return;
+    }
 
-projectsRouter.get('/:id/tree', asyncHandler(async (req, res) => {
-  const project = await getProjectById(req.params.id, req.user!.id);
-  if (!project) {
-    res.status(404).json({ message: 'Project not found' });
-    return;
-  }
-  res.json({ tree: project.current_tree_json });
-}));
+    const tooLong = draftSessions.find((session) => session.length > limits.maxTextChars);
+    if (tooLong) {
+      res.status(403).json({
+        message: `Your plan supports up to ${limits.maxTextChars} characters per source session.`,
+      });
+      return;
+    }
 
-projectsRouter.post('/:id/tree/patch', asyncHandler(async (req, res) => {
-  const parsed = treePatchSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ message: 'Invalid payload', errors: parsed.error.flatten() });
-    return;
-  }
+    const project = await createProject({
+      userId: req.user!.id,
+      title: parsed.data.title,
+      rawText: rawText || draftSessions[0],
+    });
 
-  const project = await getProjectById(req.params.id, req.user!.id);
-  if (!project) {
-    res.status(404).json({ message: 'Project not found' });
-    return;
-  }
+    await Promise.all(
+      draftSessions.map((session, index) =>
+        addProjectSource({
+          projectId: project.id,
+          userId: req.user!.id,
+          kind: 'text',
+          title: inferSourceTitle(session, `Source Session ${index + 1}`),
+          contentText: session,
+        }),
+      ),
+    );
 
-  const { tree } = parsed.data;
-  await saveGeneration({
-    projectId: project.id,
-    promptUsed: 'manual-tree-patch',
-    rawModelOutput: JSON.stringify(tree),
-    tree,
-  });
+    res.status(201).json({ project });
+  }),
+);
 
-  res.json({ projectId: project.id, tree });
-}));
+projectsRouter.post(
+  '/:id/sources',
+  asyncHandler(async (req, res) => {
+    const parsed = addSourceSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Invalid payload', errors: parsed.error.flatten() });
+      return;
+    }
 
-projectsRouter.post('/:id/generate', asyncHandler(async (req, res) => {
-  const parsed = generateSchema.safeParse(req.body ?? {});
-  if (!parsed.success) {
-    res.status(400).json({ message: 'Invalid payload', errors: parsed.error.flatten() });
-    return;
-  }
+    const project = await getProjectById(req.params.id, req.user!.id);
+    if (!project) {
+      res.status(404).json({ message: 'Project not found' });
+      return;
+    }
 
-  const project = await getProjectById(req.params.id, req.user!.id);
-  if (!project) {
-    res.status(404).json({ message: 'Project not found' });
-    return;
-  }
+    const limits = getLimitsForPlan(req.user!.plan);
+    const contentText = parsed.data.contentText.trim();
+    if (contentText.length > limits.maxTextChars) {
+      res.status(403).json({
+        message: `Your plan supports up to ${limits.maxTextChars} characters per source session.`,
+      });
+      return;
+    }
 
-  const inputText = parsed.data.inputText ?? project.raw_text;
-  const promptUsed = `Generate a concise mind map tree from input text. Input length=${inputText.length}`;
-  const rawModelOutput = await generateMindMapJson(inputText);
-  const tree = normalizeGeneratedTree(rawModelOutput);
-  const version = await saveGeneration({
-    projectId: project.id,
-    promptUsed,
-    rawModelOutput,
-    tree,
-  });
+    const currentCount = await countProjectSources(project.id, req.user!.id);
+    if (currentCount >= limits.maxSourceSessions) {
+      res.status(403).json({
+        message: `Your plan supports up to ${limits.maxSourceSessions} source sessions per project.`,
+      });
+      return;
+    }
 
-  res.json({ projectId: project.id, version, tree });
-}));
+    const source = await addProjectSource({
+      projectId: project.id,
+      userId: req.user!.id,
+      kind: parsed.data.kind,
+      title: parsed.data.title?.trim() || inferSourceTitle(contentText, `Source Session ${currentCount + 1}`),
+      contentText,
+    });
 
-projectsRouter.get('/:id/export/mm', asyncHandler(async (req, res) => {
-  const project = await getProjectById(req.params.id, req.user!.id);
-  if (!project) {
-    res.status(404).json({ message: 'Project not found' });
-    return;
-  }
-  if (!project.current_tree_json) {
-    res.status(400).json({ message: 'No generated tree found for this project' });
-    return;
-  }
+    res.status(201).json({ source });
+  }),
+);
 
-  const xml = toFreemindXml(project.current_tree_json);
-  const filename = `${project.title.replaceAll(/[^a-zA-Z0-9-_]+/g, '_') || 'mindmap'}.mm`;
-  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-  res.send(xml);
-}));
+projectsRouter.get(
+  '/:id/sources',
+  asyncHandler(async (req, res) => {
+    const project = await getProjectById(req.params.id, req.user!.id);
+    if (!project) {
+      res.status(404).json({ message: 'Project not found' });
+      return;
+    }
+
+    const sources = await listProjectSources(project.id, req.user!.id);
+    res.json({ sources, count: sources.length });
+  }),
+);
+
+projectsRouter.patch(
+  '/:id/sources/:sourceId',
+  asyncHandler(async (req, res) => {
+    const parsed = updateSourceSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Invalid payload', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const project = await getProjectById(req.params.id, req.user!.id);
+    if (!project) {
+      res.status(404).json({ message: 'Project not found' });
+      return;
+    }
+
+    const limits = getLimitsForPlan(req.user!.plan);
+    const contentText = parsed.data.contentText.trim();
+    if (contentText.length > limits.maxTextChars) {
+      res.status(403).json({
+        message: `Your plan supports up to ${limits.maxTextChars} characters per source session.`,
+      });
+      return;
+    }
+
+    const source = await updateProjectSource({
+      projectId: project.id,
+      sourceId: req.params.sourceId,
+      userId: req.user!.id,
+      title: parsed.data.title?.trim() || inferSourceTitle(contentText, 'Source Session'),
+      contentText,
+    });
+
+    if (!source) {
+      res.status(404).json({ message: 'Source not found' });
+      return;
+    }
+
+    res.json({ source });
+  }),
+);
+
+projectsRouter.delete(
+  '/:id/sources/:sourceId',
+  asyncHandler(async (req, res) => {
+    const project = await getProjectById(req.params.id, req.user!.id);
+    if (!project) {
+      res.status(404).json({ message: 'Project not found' });
+      return;
+    }
+
+    const deleted = await deleteProjectSourceById(project.id, req.params.sourceId, req.user!.id);
+    if (!deleted) {
+      res.status(404).json({ message: 'Source not found' });
+      return;
+    }
+
+    res.json({ message: 'Source deleted' });
+  }),
+);
+
+projectsRouter.post(
+  '/:id/sources/:sourceId/delete',
+  asyncHandler(async (req, res) => {
+    const project = await getProjectById(req.params.id, req.user!.id);
+    if (!project) {
+      res.status(404).json({ message: 'Project not found' });
+      return;
+    }
+
+    const deleted = await deleteProjectSourceById(project.id, req.params.sourceId, req.user!.id);
+    if (!deleted) {
+      res.status(404).json({ message: 'Source not found' });
+      return;
+    }
+
+    res.json({ message: 'Source deleted' });
+  }),
+);
+
+projectsRouter.get(
+  '/',
+  asyncHandler(async (req, res) => {
+    const projects = await listProjects(req.user!.id);
+    res.json({ projects, count: projects.length });
+  }),
+);
+
+projectsRouter.delete(
+  '/:id',
+  asyncHandler(async (req, res) => {
+    const deleted = await deleteProjectById(req.params.id, req.user!.id);
+    if (!deleted) {
+      res.status(404).json({ message: 'Project not found' });
+      return;
+    }
+    res.json({ message: 'Project deleted' });
+  }),
+);
+
+projectsRouter.get(
+  '/:id/tree',
+  asyncHandler(async (req, res) => {
+    const project = await getProjectById(req.params.id, req.user!.id);
+    if (!project) {
+      res.status(404).json({ message: 'Project not found' });
+      return;
+    }
+    res.json({ tree: project.current_tree_json });
+  }),
+);
+
+projectsRouter.post(
+  '/:id/tree/patch',
+  asyncHandler(async (req, res) => {
+    const parsed = treePatchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Invalid payload', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const project = await getProjectById(req.params.id, req.user!.id);
+    if (!project) {
+      res.status(404).json({ message: 'Project not found' });
+      return;
+    }
+
+    const { tree } = parsed.data;
+    await saveGeneration({
+      projectId: project.id,
+      promptUsed: 'manual-tree-patch',
+      rawModelOutput: JSON.stringify(tree),
+      tree,
+    });
+
+    res.json({ projectId: project.id, tree });
+  }),
+);
+
+projectsRouter.post(
+  '/:id/generate',
+  asyncHandler(async (req, res) => {
+    const parsed = generateSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Invalid payload', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const project = await getProjectById(req.params.id, req.user!.id);
+    if (!project) {
+      res.status(404).json({ message: 'Project not found' });
+      return;
+    }
+
+    const limits = getLimitsForPlan(req.user!.plan);
+    const extraInput = parsed.data.inputText?.trim() ?? '';
+
+    if (extraInput.length > limits.maxTextChars) {
+      res.status(403).json({
+        message: `Your plan supports up to ${limits.maxTextChars} characters per source session.`,
+      });
+      return;
+    }
+
+    const inputText = await buildGenerationInput(project.id, req.user!.id, extraInput || project.raw_text);
+    if (!inputText.trim()) {
+      res.status(400).json({ message: 'No source content found. Add at least one source before generating.' });
+      return;
+    }
+
+    let rawModelOutput: string;
+    let tree: TreeNode;
+    try {
+      rawModelOutput = await generateMindMapJson(inputText);
+      tree = normalizeGeneratedTree(rawModelOutput);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Mind map generation failed';
+      res.status(502).json({ message });
+      return;
+    }
+
+    const promptUsed = `Generate a concise mind map tree from input text. Input length=${inputText.length}`;
+    const version = await saveGeneration({ projectId: project.id, promptUsed, rawModelOutput, tree });
+
+    res.json({ projectId: project.id, version, tree });
+  }),
+);
+
+projectsRouter.post(
+  '/:id/generate/slides',
+  asyncHandler(async (req, res) => {
+    const parsed = slidesSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Invalid payload', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const project = await getProjectById(req.params.id, req.user!.id);
+    if (!project) {
+      res.status(404).json({ message: 'Project not found' });
+      return;
+    }
+
+    const limits = getLimitsForPlan(req.user!.plan);
+    const extraInput = parsed.data.inputText?.trim() ?? '';
+
+    if (extraInput.length > limits.maxTextChars) {
+      res.status(403).json({
+        message: `Your plan supports up to ${limits.maxTextChars} characters per source session.`,
+      });
+      return;
+    }
+
+    const inputText = await buildGenerationInput(project.id, req.user!.id, extraInput || project.raw_text);
+    const slides = await generateSlides(inputText, parsed.data.slideCount);
+    res.json({ projectId: project.id, slides });
+  }),
+);
+
+projectsRouter.post(
+  '/:id/generate/flashcards',
+  asyncHandler(async (req, res) => {
+    const parsed = flashcardsSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Invalid payload', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const project = await getProjectById(req.params.id, req.user!.id);
+    if (!project) {
+      res.status(404).json({ message: 'Project not found' });
+      return;
+    }
+
+    const limits = getLimitsForPlan(req.user!.plan);
+    const extraInput = parsed.data.inputText?.trim() ?? '';
+    if (extraInput.length > limits.maxTextChars) {
+      res.status(403).json({
+        message: `Your plan supports up to ${limits.maxTextChars} characters per source session.`,
+      });
+      return;
+    }
+
+    const inputText = await buildGenerationInput(project.id, req.user!.id, extraInput || project.raw_text);
+    const flashcards = await generateFlashcards(inputText, parsed.data.cardCount);
+    res.json({ projectId: project.id, flashcards });
+  }),
+);
+
+projectsRouter.get(
+  '/:id/export/mm',
+  asyncHandler(async (req, res) => {
+    const project = await getProjectById(req.params.id, req.user!.id);
+    if (!project) {
+      res.status(404).json({ message: 'Project not found' });
+      return;
+    }
+    if (!project.current_tree_json) {
+      res.status(400).json({ message: 'No generated tree found for this project' });
+      return;
+    }
+
+    const xml = toFreemindXml(project.current_tree_json);
+    const filename = `${project.title.replaceAll(/[^a-zA-Z0-9-_]+/g, '_') || 'mindmap'}.mm`;
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(xml);
+  }),
+);
