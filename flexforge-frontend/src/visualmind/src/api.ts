@@ -82,9 +82,19 @@ export interface FlashcardDeck {
 
 const DEV_BEARER_TOKEN_KEY = 'vm_dev_bearer_token';
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || '/api/v1';
+const DEV_BEARER_ENABLED =
+  import.meta.env.DEV &&
+  ['1', 'true', 'yes'].includes(((import.meta.env.VITE_VM_ALLOW_DEV_BEARER as string | undefined) || '').toLowerCase());
 
-export const getDevBearerToken = (): string => localStorage.getItem(DEV_BEARER_TOKEN_KEY) || '';
+export const getDevBearerToken = (): string => {
+  if (!DEV_BEARER_ENABLED) return '';
+  return localStorage.getItem(DEV_BEARER_TOKEN_KEY) || '';
+};
 export const setDevBearerToken = (token: string): void => {
+  if (!DEV_BEARER_ENABLED) {
+    localStorage.removeItem(DEV_BEARER_TOKEN_KEY);
+    return;
+  }
   if (token.trim()) {
     localStorage.setItem(DEV_BEARER_TOKEN_KEY, token.trim());
   } else {
@@ -104,6 +114,7 @@ const authHeaders = (): Headers => {
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const headers = authHeaders();
   headers.set('Content-Type', 'application/json');
+  headers.set('X-Requested-With', 'XMLHttpRequest');
 
   if (init?.headers) {
     new Headers(init.headers).forEach((value, key) => headers.set(key, value));
@@ -135,10 +146,12 @@ const parseFilename = (headerValue: string | null, fallback: string): string => 
 };
 
 const downloadWithAuth = async (path: string, fallbackFilename: string): Promise<void> => {
+  const headers = authHeaders();
+  headers.set('X-Requested-With', 'XMLHttpRequest');
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'GET',
     credentials: 'include',
-    headers: authHeaders(),
+    headers,
   });
 
   if (!response.ok) {
@@ -220,6 +233,7 @@ export const api = {
   importPdf: async (file: File): Promise<{ text: string }> => {
     const headers = authHeaders();
     headers.set('Content-Type', 'application/pdf');
+    headers.set('X-Requested-With', 'XMLHttpRequest');
 
     const response = await fetch(`${API_BASE_URL}/imports/pdf`, {
       method: 'POST',

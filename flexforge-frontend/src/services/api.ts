@@ -18,6 +18,17 @@ api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
+      const requestUrl = error.config?.url || '';
+      const isAuthAttempt =
+        requestUrl.includes('/auth/login') ||
+        requestUrl.includes('/auth/google') ||
+        requestUrl.includes('/auth/microsoft') ||
+        requestUrl.includes('/auth/register');
+
+      if (isAuthAttempt) {
+        return Promise.reject(error);
+      }
+
       // Session expired or invalid
       useAuthStore.getState().logout();
       window.location.href = '/login';

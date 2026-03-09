@@ -151,7 +151,19 @@ export class AuthService {
       microsoftUser = response.data;
     } catch (error) {
       this.logger.error('Microsoft token verification failed:', error);
-      throw new UnauthorizedException('Invalid Microsoft credential');
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
+        if (status === 401) {
+          throw new UnauthorizedException('Microsoft access token expired or invalid. Please try again.');
+        }
+        if (status === 403) {
+          throw new UnauthorizedException('Microsoft permission denied. Ensure User.Read is granted.');
+        }
+        if (status && status >= 500) {
+          throw new UnauthorizedException('Microsoft login is temporarily unavailable. Please try again.');
+        }
+      }
+      throw new UnauthorizedException('Microsoft login failed. Please try again.');
     }
 
     const microsoftId = microsoftUser.id;

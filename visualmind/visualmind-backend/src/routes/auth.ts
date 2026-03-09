@@ -1,12 +1,20 @@
 import { Router } from 'express';
 import { config } from '../config.js';
 import { requireAuth } from '../middleware/auth.js';
+import { byUserOrIpKey, createRateLimit } from '../middleware/rate-limit.js';
 import { getLimitsForPlan } from '../services/plan.service.js';
 import { claimMvpProUpgrade } from '../services/billing.service.js';
 
 export const authRouter = Router();
 
-authRouter.get('/me', requireAuth, (req, res) => {
+const authedRateLimit = createRateLimit({
+  name: 'vm-auth-authed',
+  windowMs: 60_000,
+  max: 90,
+  key: byUserOrIpKey,
+});
+
+authRouter.get('/me', requireAuth, authedRateLimit, (req, res) => {
   const user = req.user!;
   res.json({
     user: {
@@ -19,7 +27,7 @@ authRouter.get('/me', requireAuth, (req, res) => {
   });
 });
 
-authRouter.get('/billing/upgrade-link', requireAuth, (_req, res) => {
+authRouter.get('/billing/upgrade-link', requireAuth, authedRateLimit, (_req, res) => {
   if (!config.stripeUpgradeUrl) {
     res.status(503).json({
       message: 'Upgrade is not configured yet',
@@ -37,7 +45,7 @@ authRouter.get('/billing/upgrade-link', requireAuth, (_req, res) => {
   });
 });
 
-authRouter.post('/billing/claim-mvp-upgrade', requireAuth, async (req, res) => {
+authRouter.post('/billing/claim-mvp-upgrade', requireAuth, authedRateLimit, async (req, res) => {
   const upgrade = await claimMvpProUpgrade(req.user!.id);
   res.json({
     message: 'MVP upgrade applied. Pro is free for one month.',

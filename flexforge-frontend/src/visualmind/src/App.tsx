@@ -25,6 +25,7 @@ import {
   type UserPlan,
   type VmProject,
 } from './api';
+import { useAuthStore } from '@/stores/authStore';
 
 const HORIZONTAL_GAP = 290;
 const VERTICAL_GAP = 110;
@@ -417,6 +418,7 @@ const createFlowGraph = (
 };
 
 export const App = () => {
+  const appIsAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const [userEmail, setUserEmail] = useState<string>('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userPlan, setUserPlan] = useState<UserPlan>('free');
@@ -467,7 +469,9 @@ export const App = () => {
   const [flashcardDeck, setFlashcardDeck] = useState<FlashcardDeck | null>(null);
   const studyToolsRef = useRef<HTMLDivElement | null>(null);
   const buildProgressTimerRef = useRef<number | null>(null);
+  const authRefreshInFlightRef = useRef(false);
   const rawTextLength = rawText.length;
+  const isLoggedIn = isAuthenticated || appIsAuthenticated || Boolean(userEmail);
   const isOverTextLimit = rawTextLength > limits.maxTextChars;
   const remainingChars = Math.max(0, limits.maxTextChars - rawTextLength);
   const unsavedEditorText = isAddTextOpen ? rawText.trim() : '';
@@ -723,8 +727,10 @@ export const App = () => {
     }
   };
 
-  useEffect(() => {
-    (async () => {
+  const refreshAuthState = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (authRefreshInFlightRef.current) return;
+      authRefreshInFlightRef.current = true;
       try {
         const profile = await api.me();
         setIsAuthenticated(true);
@@ -735,10 +741,43 @@ export const App = () => {
         await loadProjects();
       } catch {
         setIsAuthenticated(false);
-        setStatus('Please log in to generate mind maps.');
+        setUserEmail('');
+        setProjects([]);
+        setPersistedSources([]);
+        setSelectedProjectId('');
+        setTree(null);
+        setExpandedForTree(null);
+        if (!options?.silent) {
+          setStatus('Ready');
+        }
+      } finally {
+        authRefreshInFlightRef.current = false;
       }
-    })();
-  }, []);
+    },
+    [selectedProjectId],
+  );
+
+  useEffect(() => {
+    void refreshAuthState();
+  }, [refreshAuthState]);
+
+  useEffect(() => {
+    const onFocus = () => {
+      void refreshAuthState({ silent: true });
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshAuthState({ silent: true });
+      }
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [refreshAuthState]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -769,7 +808,7 @@ export const App = () => {
   };
 
   const onUpgrade = async () => {
-    if (!isAuthenticated) {
+    if (!isLoggedIn) {
       setStatus('Please log in first to upgrade.');
       onLogin();
       return;
@@ -866,7 +905,7 @@ export const App = () => {
   };
 
   const ensureStudyToolReadyProject = (): string | null => {
-    if (!isAuthenticated) {
+    if (!isLoggedIn) {
       setStatus('Please log in to use study tools.');
       onLogin();
       return null;
@@ -963,7 +1002,7 @@ export const App = () => {
     }
   };
 
-  const onPrimaryMapAction = () => {
+  const onPrimaryMapAction = async () => {
     console.info('[VisualMind] primary-action:clicked', {
       selectedProjectId,
       draftCount: draftSessions.length,
@@ -971,11 +1010,21 @@ export const App = () => {
       busy,
       isMapLoading,
     });
-    if (!isAuthenticated) {
-      setStatus('Please log in to generate your mind map.');
-      onLogin();
-      return;
+    let hasAuth = isLoggedIn;
+    if (!hasAuth) {
+      try {
+        const profile = await api.me();
+        setIsAuthenticated(true);
+        setUserEmail(profile.user.email);
+        setUserPlan(profile.user.plan ?? 'free');
+        setLimits(profile.user.limits ?? defaultLimits);
+        hasAuth = true;
+      } catch {
+        onLogin();
+        return;
+      }
     }
+
     if (selectedProjectId) {
       void onGenerate();
       return;
@@ -1132,7 +1181,7 @@ export const App = () => {
   };
 
   const onExportMm = async () => {
-    if (!isAuthenticated) {
+    if (!isLoggedIn) {
       setStatus('Please log in to export your mind map.');
       onLogin();
       return;
@@ -1148,7 +1197,7 @@ export const App = () => {
   };
 
   const onExportMarkdown = async () => {
-    if (!isAuthenticated) {
+    if (!isLoggedIn) {
       setStatus('Please log in to export your mind map.');
       onLogin();
       return;
@@ -1164,7 +1213,7 @@ export const App = () => {
   };
 
   const onExportNotionMarkdown = async () => {
-    if (!isAuthenticated) {
+    if (!isLoggedIn) {
       setStatus('Please log in to export your mind map.');
       onLogin();
       return;
@@ -1180,7 +1229,7 @@ export const App = () => {
   };
 
   const onExportImage = (format: 'png' | 'jpg') => {
-    if (!isAuthenticated) {
+    if (!isLoggedIn) {
       setStatus('Please log in to export your mind map.');
       onLogin();
       return;
@@ -1448,7 +1497,7 @@ export const App = () => {
   };
 
   const openFeatureRequestModal = () => {
-    if (!isAuthenticated) {
+    if (!isLoggedIn) {
       setStatus('Please log in to send a feature request.');
       onLogin();
       return;
@@ -1517,7 +1566,7 @@ export const App = () => {
 
   const removePersistedSource = async (source: ProjectSource) => {
     if (!selectedProjectId) return;
-    if (!isAuthenticated) {
+    if (!isLoggedIn) {
       setStatus('Please log in to remove sources.');
       onLogin();
       return;
@@ -1539,6 +1588,7 @@ export const App = () => {
     } catch (error) {
       if (isAuthError(error)) {
         setIsAuthenticated(false);
+        setUserEmail('');
         setStatus('Session expired. Please log in again to remove sources.');
         onLogin();
         return;
@@ -1556,13 +1606,13 @@ export const App = () => {
           <p>Turn large text into a structured mind map.</p>
         </div>
         <div className="vm-topbar-right">
-          <span className="status-chip">{status}</span>
-          {!isAuthenticated ? (
+          {status !== 'Ready' ? <span className="status-chip">{status}</span> : null}
+          {!isLoggedIn ? (
             <button className="btn btn-ghost" type="button" onClick={onLogin}>
               Log in
             </button>
           ) : null}
-          {userEmail ? <span className="status-chip user">{userEmail}</span> : null}
+          {isLoggedIn ? <span className="status-chip user">{userEmail || 'Signed in'}</span> : null}
         </div>
       </header>
 
@@ -1679,10 +1729,10 @@ export const App = () => {
             <div className="primary-actions">
               <button
                 className={`btn btn-map-action btn-map-primary ${busy ? 'is-generating' : ''}`}
-                onClick={onPrimaryMapAction}
-                disabled={busy || (isAuthenticated && !selectedProjectId && pendingSourceCount === 0)}
+                onClick={() => void onPrimaryMapAction()}
+                disabled={busy || (isLoggedIn && !selectedProjectId && pendingSourceCount === 0)}
               >
-                {!isAuthenticated
+                {!isLoggedIn
                   ? 'Log in to Create Mind Map'
                   : selectedProjectId
                     ? hasSourceChanges

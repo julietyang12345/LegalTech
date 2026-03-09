@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth.js';
+import { byUserOrIpKey, createRateLimit } from '../middleware/rate-limit.js';
 import {
   addProjectSource,
   countProjectSources,
@@ -97,6 +98,13 @@ const buildGenerationInput = async (projectId: string, userId: string): Promise<
   return persistedText;
 };
 
+const generateRateLimit = createRateLimit({
+  name: 'vm-generate',
+  windowMs: 60_000,
+  max: 12,
+  key: byUserOrIpKey,
+});
+
 const enforceInputPolicy = async (
   res: any,
   plan: UserPlan,
@@ -115,12 +123,11 @@ const enforceInputPolicy = async (
       });
       return false;
     }
-    console.error('[VisualMind] input-policy:check-failed', {
+    console.warn('[VisualMind] input-policy:check-failed-allowing-request', {
       context,
       message: error instanceof Error ? error.message : 'Unknown error',
     });
-    res.status(502).json({ message: 'Unable to validate input safety policy. Please try again.' });
-    return false;
+    return true;
   }
 };
 
@@ -461,6 +468,7 @@ projectsRouter.post(
 
 projectsRouter.post(
   '/:id/generate',
+  generateRateLimit,
   asyncHandler(async (req, res) => {
     console.log('[VisualMind] /generate:start', {
       projectId: req.params.id,
@@ -534,6 +542,7 @@ projectsRouter.post(
 
 projectsRouter.post(
   '/:id/generate/slides',
+  generateRateLimit,
   asyncHandler(async (req, res) => {
     const parsed = slidesSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
@@ -563,6 +572,7 @@ projectsRouter.post(
 
 projectsRouter.post(
   '/:id/generate/flashcards',
+  generateRateLimit,
   asyncHandler(async (req, res) => {
     const parsed = flashcardsSchema.safeParse(req.body ?? {});
     if (!parsed.success) {

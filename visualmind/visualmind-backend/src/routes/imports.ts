@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { inflateSync } from 'node:zlib';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth.js';
+import { byUserOrIpKey, createRateLimit } from '../middleware/rate-limit.js';
 import { getLimitsForPlan } from '../services/plan.service.js';
 
 const webImportSchema = z.object({
@@ -84,7 +85,14 @@ export const importsRouter = Router();
 
 importsRouter.use(requireAuth);
 
-importsRouter.post('/web', async (req, res) => {
+const importRateLimit = createRateLimit({
+  name: 'vm-imports',
+  windowMs: 60_000,
+  max: 20,
+  key: byUserOrIpKey,
+});
+
+importsRouter.post('/web', importRateLimit, async (req, res) => {
   const limits = getLimitsForPlan(req.user!.plan);
   if (!limits.canImportWeb) {
     res.status(403).json({ message: 'Web import is a Pro feature' });
@@ -120,7 +128,7 @@ importsRouter.post('/web', async (req, res) => {
   res.json({ text });
 });
 
-importsRouter.post('/pdf', expressRawPdf, (req, res) => {
+importsRouter.post('/pdf', importRateLimit, expressRawPdf, (req, res) => {
   const limits = getLimitsForPlan(req.user!.plan);
   if (!limits.canImportPdf) {
     res.status(403).json({ message: 'PDF import is a Pro feature' });

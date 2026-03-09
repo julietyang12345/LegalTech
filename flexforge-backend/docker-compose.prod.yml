@@ -80,11 +80,11 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  cf-tunnel:
+cf-tunnel:
     container_name: cf-tunnel
     image: cloudflare/cloudflared:latest
     restart: always
-    command: tunnel run
+    command: tunnel --no-autoupdate --protocol http2 run
     environment:
       - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
     volumes:

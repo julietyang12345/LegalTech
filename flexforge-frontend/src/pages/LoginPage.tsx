@@ -11,7 +11,7 @@ import { Button, Card, TurnstileWidget } from '@/components/common';
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, googleLogin, microsoftLogin, isLoading, error, clearError } =
+  const { login, googleLogin, microsoftLogin, isLoading, error, clearError, setError } =
     useAuthStore();
 
   const [email, setEmail] = useState('');
@@ -22,9 +22,29 @@ export function LoginPage() {
   const [turnstileToken, setTurnstileToken] = useState('');
   const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
 
-  const rawFrom = (location.state as any)?.from?.pathname || '/today';
-  // Prevent open redirect — only allow relative paths starting with /
-  const from = typeof rawFrom === 'string' && rawFrom.startsWith('/') && !rawFrom.startsWith('//') ? rawFrom : '/today';
+  const getSafeNextPath = (): string => {
+    const stateFrom = (location.state as any)?.from?.pathname;
+    const params = new URLSearchParams(location.search);
+    const queryNext = params.get('next');
+    const candidate = queryNext || stateFrom || '/today';
+
+    if (typeof candidate !== 'string' || !candidate.trim()) return '/today';
+
+    if (candidate.startsWith('/')) {
+      return candidate.startsWith('//') ? '/today' : candidate;
+    }
+
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.origin !== window.location.origin) return '/today';
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    } catch {
+      return '/today';
+    }
+  };
+
+  const from = getSafeNextPath();
+  const hasExplicitNext = new URLSearchParams(location.search).has('next');
 
   // Check if error is related to email verification
   const isVerificationError = error?.toLowerCase().includes('verify');
@@ -50,7 +70,9 @@ export function LoginPage() {
     clearError();
     try {
       const result = await googleLogin(credentialResponse.credential);
-      if (result.isNewUser) {
+      if (hasExplicitNext) {
+        navigate(from, { replace: true });
+      } else if (result.isNewUser) {
         navigate('/onboarding', { replace: true });
       } else {
         navigate(from, { replace: true });
@@ -81,13 +103,19 @@ export function LoginPage() {
     try {
       const accessToken = await getMicrosoftAccessToken();
       const result = await microsoftLogin(accessToken);
-      if (result.isNewUser) {
+      if (hasExplicitNext) {
+        navigate(from, { replace: true });
+      } else if (result.isNewUser) {
         navigate('/onboarding', { replace: true });
       } else {
         navigate(from, { replace: true });
       }
-    } catch (_err) {
-      // Error is handled by store
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Microsoft login failed';
+      setError(message);
     } finally {
       setIsMicrosoftLoading(false);
     }

@@ -27,6 +27,7 @@ type Bindings = {
   EMAIL_VERIFY_TOKENS: KVNamespace;
   RATE_LIMIT_COUNTERS: KVNamespace;
   BACKEND_URL: string;
+  VISUALMIND_BACKEND_URL?: string;
   FRONTEND_URL: string;
   FROM_EMAIL: string;
   FROM_NAME: string;
@@ -65,6 +66,7 @@ const PUBLIC_ROUTES = [
   '/api/v1/auth/resend-verification',
   '/api/v1/auth/check-email-exists', // Internal endpoint for edge worker
   '/api/v1/auth/google',
+  '/api/v1/auth/microsoft',
 ];
 
 // Allowed API route prefixes (security: only proxy known routes to backend)
@@ -83,6 +85,10 @@ const ALLOWED_ROUTE_PREFIXES = [
   '/api/v1/videos/',
   '/api/v1/docs/',
   '/api/v1/analytics/',
+  // VisualMind routes
+  '/api/v1/vm/',
+  '/api/v1/vm/projects/',
+  '/api/v1/imports/',
   '/api/v1/reps/',
 ];
 
@@ -105,7 +111,6 @@ function createBackendHeaders(
   c: { env: Bindings; req: { header: (name: string) => string | undefined }; var?: Variables }
 ): Headers {
   const headers = new Headers();
-  headers.set('Content-Type', 'application/json');
 
   // Add Cloudflare Access service token headers
   if (c.env.CF_ACCESS_CLIENT_ID && c.env.CF_ACCESS_CLIENT_SECRET) {
@@ -518,6 +523,9 @@ app.delete('/api/v1/cache/video/:videoId', async (c) => {
  * Proxy Google OAuth with rate limiting
  */
 app.post('/api/v1/auth/google', async (c) => {
+  const rawBody = await c.req.text();
+  const contentType = c.req.header('content-type') || 'application/json';
+
   try {
     const clientIp = c.req.header('cf-connecting-ip') || 'unknown';
 
@@ -534,8 +542,11 @@ app.post('/api/v1/auth/google', async (c) => {
     // Proxy to backend
     const backendResponse = await fetch(`${c.env.BACKEND_URL}/api/v1/auth/google`, {
       method: 'POST',
-      headers: createBackendHeaders(c),
-      body: c.req.raw.body,
+      headers: new Headers({
+        ...Object.fromEntries(createBackendHeaders(c).entries()),
+        'Content-Type': contentType,
+      }),
+      body: rawBody,
     });
 
     // Forward response headers including Set-Cookie
@@ -568,8 +579,86 @@ app.post('/api/v1/auth/google', async (c) => {
     const backendUrl = `${c.env.BACKEND_URL}${url.pathname}${url.search}`;
     const res = await fetch(backendUrl, {
       method: 'POST',
-      headers: createBackendHeaders(c),
-      body: c.req.raw.body,
+      headers: new Headers({
+        ...Object.fromEntries(createBackendHeaders(c).entries()),
+        'Content-Type': contentType,
+      }),
+      body: rawBody,
+    });
+    return new Response(res.body, { status: res.status, headers: res.headers });
+  }
+});
+
+// ============================================================================
+// MICROSOFT AUTH ENDPOINT (with rate limiting)
+// ============================================================================
+
+/**
+ * POST /api/v1/auth/microsoft
+ * Proxy Microsoft OAuth with rate limiting
+ */
+app.post('/api/v1/auth/microsoft', async (c) => {
+  const rawBody = await c.req.text();
+  const contentType = c.req.header('content-type') || 'application/json';
+
+  try {
+    const clientIp = c.req.header('cf-connecting-ip') || 'unknown';
+
+    // Rate limit Microsoft auth (prevent abuse)
+    const rateLimit = await checkRateLimit('microsoft-auth', clientIp, c.env.RATE_LIMIT_COUNTERS, 'microsoft-auth', {
+      perEmail: { limit: 20, windowSeconds: 3600 },
+      perIp: { limit: 10, windowSeconds: 3600 },
+      global: { limit: 200, windowSeconds: 60 },
+    });
+    if (!rateLimit.allowed) {
+      return c.json({ message: 'Too many attempts. Please try again later.' }, 429);
+    }
+
+    // Proxy to backend
+    const backendResponse = await fetch(`${c.env.BACKEND_URL}/api/v1/auth/microsoft`, {
+      method: 'POST',
+      headers: new Headers({
+        ...Object.fromEntries(createBackendHeaders(c).entries()),
+        'Content-Type': contentType,
+      }),
+      body: rawBody,
+    });
+
+    // Forward response headers including Set-Cookie
+    const responseHeaders = new Headers();
+    backendResponse.headers.forEach((value, key) => {
+      if (key.toLowerCase() !== 'set-cookie') {
+        responseHeaders.set(key, value);
+      }
+    });
+
+    const anyHeaders = backendResponse.headers as any;
+    const setCookies: string[] | undefined = anyHeaders.getSetCookie?.();
+    if (setCookies && setCookies.length > 0) {
+      for (const sc of setCookies) {
+        responseHeaders.append('Set-Cookie', sc);
+      }
+    } else {
+      const sc = backendResponse.headers.get('set-cookie');
+      if (sc) responseHeaders.append('Set-Cookie', sc);
+    }
+
+    const responseData = await backendResponse.text();
+    return new Response(responseData, {
+      status: backendResponse.status,
+      headers: responseHeaders,
+    });
+  } catch (error) {
+    console.error('Microsoft auth intercept error:', error);
+    const url = new URL(c.req.url);
+    const backendUrl = `${c.env.BACKEND_URL}${url.pathname}${url.search}`;
+    const res = await fetch(backendUrl, {
+      method: 'POST',
+      headers: new Headers({
+        ...Object.fromEntries(createBackendHeaders(c).entries()),
+        'Content-Type': contentType,
+      }),
+      body: rawBody,
     });
     return new Response(res.body, { status: res.status, headers: res.headers });
   }
@@ -1037,13 +1126,25 @@ app.all('*', async (c) => {
     return c.json({ error: 'Not Found' }, 404);
   }
 
-  const backendUrl = `${c.env.BACKEND_URL}${url.pathname}${url.search}`;
+  const vmBackend = c.env.VISUALMIND_BACKEND_URL?.trim();
+  const useVisualMindBackend =
+    Boolean(vmBackend) &&
+    (url.pathname.startsWith('/api/v1/vm/') || url.pathname.startsWith('/api/v1/imports/'));
+  const backendBase = useVisualMindBackend ? vmBackend! : c.env.BACKEND_URL;
+  const backendUrl = `${backendBase}${url.pathname}${url.search}`;
 
   // Build headers with Cloudflare Access auth
   const headers = createBackendHeaders(c);
 
+  // Buffer body once so redirects/retries can safely retransmit it.
+  // Streams are one-time-use and can fail with 307/308 redirect flows.
+  let bufferedBody: ArrayBuffer | undefined;
+  if (c.req.method !== 'GET' && c.req.method !== 'HEAD') {
+    bufferedBody = await c.req.arrayBuffer();
+  }
+
   // Forward additional headers
-  const forwardHeaders = ['accept', 'user-agent', 'referer', 'x-requested-with'];
+  const forwardHeaders = ['accept', 'content-type', 'user-agent', 'referer', 'x-requested-with'];
   for (const header of forwardHeaders) {
     const value = c.req.header(header);
     if (value) {
@@ -1075,7 +1176,7 @@ app.all('*', async (c) => {
     const res = await fetch(backendUrl, {
       method: c.req.method,
       headers,
-      body: c.req.method !== 'GET' && c.req.method !== 'HEAD' ? c.req.raw.body : undefined,
+      body: bufferedBody,
     });
 
     // Forward response headers - manually handle Set-Cookie

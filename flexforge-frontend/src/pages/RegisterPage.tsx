@@ -17,6 +17,7 @@ export function RegisterPage() {
     isLoading,
     error,
     clearError,
+    setError,
     requiresVerification,
     pendingVerificationEmail,
     clearVerificationState,
@@ -95,8 +96,12 @@ export function RegisterPage() {
       } else {
         navigate('/today', { replace: true });
       }
-    } catch (_err) {
-      // Error is handled by store
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Microsoft login failed';
+      setError(message);
     } finally {
       setIsMicrosoftLoading(false);
     }

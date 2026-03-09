@@ -12,7 +12,6 @@ import { ProtectedRoute } from '@/components/auth';
 
 // Pages
 import {
-  LandingPage,
   LoginPage,
   RegisterPage,
   OnboardingPage,
@@ -56,7 +55,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           {/* Public routes - no login required */}
-          <Route path="/" element={<LandingPage />} />
+          <Route path="/" element={<Navigate to="/visualmind" replace />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />

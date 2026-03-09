@@ -5,7 +5,8 @@ import type { User } from '@/types';
 import { authService } from '@/services/authService';
 import { useThemeStore } from '@/stores/themeStore';
 
-function syncThemeFromUser(user: User) {
+function syncThemeFromUser(user?: User | null) {
+  if (!user) return;
   const theme = user.preferences?.theme;
   if (theme === 'light' || theme === 'dark') {
     useThemeStore.getState().setMode(theme);
@@ -29,6 +30,7 @@ interface AuthState {
   fetchProfile: () => Promise<void>;
   refreshUser: () => Promise<void>;
   clearError: () => void;
+  setError: (message: string | null) => void;
   clearVerificationState: () => void;
 
   // Helpers
@@ -57,6 +59,9 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const response = await authService.login({ email, password, turnstileToken });
+          if (!response.user) {
+            throw new Error('Login response missing user');
+          }
           // Token is now stored in HTTP-only cookie by the server
           set({
             user: response.user,
@@ -79,6 +84,9 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const response = await authService.googleLogin(credential);
+          if (!response.user) {
+            throw new Error('Google login response missing user');
+          }
           set({
             user: response.user,
             isAuthenticated: true,
@@ -101,14 +109,16 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const response = await authService.microsoftLogin(accessToken);
+          const resolvedUser = response.user ?? (await authService.getProfile()).user;
+          if (!resolvedUser) throw new Error('Microsoft login response missing user');
           set({
-            user: response.user,
+            user: resolvedUser,
             isAuthenticated: true,
             isLoading: false,
             requiresVerification: false,
             pendingVerificationEmail: null,
           });
-          syncThemeFromUser(response.user);
+          syncThemeFromUser(resolvedUser);
           return { isNewUser: response.isNewUser ?? false };
         } catch (error: any) {
           set({
@@ -133,6 +143,10 @@ export const useAuthStore = create<AuthState>()(
               // Don't set isAuthenticated - user must verify first
             });
             return { requiresVerification: true };
+          }
+
+          if (!response.user) {
+            throw new Error('Registration response missing user');
           }
 
           // Token is now stored in HTTP-only cookie by the server
@@ -188,6 +202,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       clearError: () => set({ error: null }),
+      setError: (message: string | null) => set({ error: message }),
 
       clearVerificationState: () => set({
         requiresVerification: false,
