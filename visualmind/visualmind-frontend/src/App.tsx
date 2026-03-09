@@ -36,6 +36,9 @@ type MindNodeData = {
   hasChildren: boolean;
   expanded: boolean;
   onToggle: (nodeId: string) => void;
+  onOpenContextMenu: (nodeId: string, label: string, canDelete: boolean, x: number, y: number) => void;
+  canDelete: boolean;
+  onRequestDelete: (nodeId: string, label: string) => void;
   onStartEdit: (nodeId: string, currentLabel: string) => void;
   isEditing: boolean;
   editValue: string;
@@ -55,6 +58,18 @@ type PendingDelete = {
   projectId: string;
   projectTitle: string;
 };
+type PendingNodeDelete = {
+  nodeId: string;
+  nodeText: string;
+};
+type NodeContextMenu = {
+  nodeId: string;
+  nodeText: string;
+  canDelete: boolean;
+  x: number;
+  y: number;
+};
+type MapBuildPhase = 'idle' | 'analyzing-chunks' | 'merging-ideas' | 'building-map';
 type AssetMode = 'slides' | 'flashcards';
 type EditingSource =
   | { scope: 'persisted'; id: string }
@@ -73,9 +88,19 @@ const defaultLimits: UsageLimits = {
   canImportWeb: true,
   maxSourceSessions: 3,
 };
+const MINDMAP_CHUNK_SIZE = 3000;
+const MINDMAP_CHUNK_THRESHOLD_CHARS = 9000;
+const TOTAL_PROJECT_TEXT_LIMIT = 10000;
 
 const MindMapNode = ({ id, data }: NodeProps<MindNode>) => (
-  <div className="mindmap-node">
+  <div
+    className="mindmap-node"
+    onContextMenu={(event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      data.onOpenContextMenu(id, data.label, data.canDelete, event.clientX, event.clientY);
+    }}
+  >
     <Handle type="target" position={Position.Left} className="mindmap-handle" />
     {data.isEditing ? (
       <input
@@ -203,6 +228,14 @@ const removeNodeById = (node: TreeNode, targetId: string): { tree: TreeNode; rem
   return { tree: { ...node, children: keptChildren }, removed };
 };
 
+const collectNodeIds = (node: TreeNode): string[] => {
+  const ids = [node.id];
+  for (const child of node.children) {
+    ids.push(...collectNodeIds(child));
+  }
+  return ids;
+};
+
 const insertNodeAsChild = (node: TreeNode, targetId: string, toInsert: TreeNode): TreeNode => {
   if (node.id === targetId) {
     return { ...node, children: [...node.children, toInsert] };
@@ -211,6 +244,13 @@ const insertNodeAsChild = (node: TreeNode, targetId: string, toInsert: TreeNode)
     ...node,
     children: node.children.map((child) => insertNodeAsChild(child, targetId, toInsert)),
   };
+};
+
+const makeNodeId = (): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `node-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
 const positionsStorageKey = (projectId: string): string => `vm_positions_${projectId}`;
@@ -237,6 +277,8 @@ const layoutVisibleTree = (
   expandedById: Record<string, boolean>,
   positionById: Record<string, NodePosition>,
   onToggle: (nodeId: string) => void,
+  onOpenContextMenu: (nodeId: string, label: string, canDelete: boolean, x: number, y: number) => void,
+  onRequestDelete: (nodeId: string, label: string) => void,
   editingNodeId: string | null,
   nodeEditText: string,
   onStartEdit: (nodeId: string, currentLabel: string) => void,
@@ -263,6 +305,8 @@ const layoutVisibleTree = (
         expandedById,
         positionById,
         onToggle,
+        onOpenContextMenu,
+        onRequestDelete,
         editingNodeId,
         nodeEditText,
         onStartEdit,
@@ -298,6 +342,9 @@ const layoutVisibleTree = (
       hasChildren: canExpand,
       expanded: isExpanded,
       onToggle,
+      onOpenContextMenu,
+      canDelete: node.id !== 'root',
+      onRequestDelete,
       onStartEdit,
       isEditing: editingNodeId === node.id,
       editValue: nodeEditText,
@@ -316,6 +363,8 @@ const createFlowGraph = (
   expandedById: Record<string, boolean>,
   positionById: Record<string, NodePosition>,
   onToggle: (nodeId: string) => void,
+  onOpenContextMenu: (nodeId: string, label: string, canDelete: boolean, x: number, y: number) => void,
+  onRequestDelete: (nodeId: string, label: string) => void,
   editingNodeId: string | null,
   nodeEditText: string,
   onStartEdit: (nodeId: string, currentLabel: string) => void,
@@ -333,6 +382,8 @@ const createFlowGraph = (
     expandedById,
     positionById,
     onToggle,
+    onOpenContextMenu,
+    onRequestDelete,
     editingNodeId,
     nodeEditText,
     onStartEdit,
@@ -379,6 +430,8 @@ export const App = () => {
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [pendingNodeDelete, setPendingNodeDelete] = useState<PendingNodeDelete | null>(null);
+  const [nodeContextMenu, setNodeContextMenu] = useState<NodeContextMenu | null>(null);
   const [isFeatureRequestOpen, setIsFeatureRequestOpen] = useState(false);
   const [featureRequestMessage, setFeatureRequestMessage] = useState('');
   const [sendingFeatureRequest, setSendingFeatureRequest] = useState(false);
@@ -389,6 +442,8 @@ export const App = () => {
   const [assetBusy, setAssetBusy] = useState<AssetMode | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [isMapLoading, setIsMapLoading] = useState(false);
+  const [mapBuildPhase, setMapBuildPhase] = useState<MapBuildPhase>('idle');
+  const [mapBuildProgress, setMapBuildProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [nodeEditText, setNodeEditText] = useState('');
   const [hasSourceChanges, setHasSourceChanges] = useState(false);
@@ -397,11 +452,26 @@ export const App = () => {
   const [slideDeck, setSlideDeck] = useState<SlideDeck | null>(null);
   const [flashcardDeck, setFlashcardDeck] = useState<FlashcardDeck | null>(null);
   const studyToolsRef = useRef<HTMLDivElement | null>(null);
+  const buildProgressTimerRef = useRef<number | null>(null);
   const rawTextLength = rawText.length;
   const isOverTextLimit = rawTextLength > limits.maxTextChars;
   const remainingChars = Math.max(0, limits.maxTextChars - rawTextLength);
   const unsavedEditorText = isAddTextOpen ? rawText.trim() : '';
   const pendingSourceCount = draftSessions.length + (unsavedEditorText ? 1 : 0);
+  const persistedSourceChars = persistedSources.reduce((sum, source) => sum + source.content_text.length, 0);
+  const draftSourceChars = draftSessions.reduce((sum, source) => sum + source.contentText.length, 0);
+  const activeSourceChars = selectedProjectId ? persistedSourceChars : draftSourceChars;
+  const editingSourceOriginalChars =
+    editingSource?.scope === 'persisted'
+      ? (persistedSources.find((source) => source.id === editingSource.id)?.content_text.length ?? 0)
+      : editingSource?.scope === 'draft'
+        ? (draftSessions.find((source) => source.id === editingSource.id)?.contentText.length ?? 0)
+        : 0;
+  const projectedCombinedChars = isAddTextOpen
+    ? activeSourceChars - editingSourceOriginalChars + unsavedEditorText.length
+    : activeSourceChars;
+  const isOverCombinedLimit = projectedCombinedChars > TOTAL_PROJECT_TEXT_LIMIT;
+  const remainingCombinedChars = Math.max(0, TOTAL_PROJECT_TEXT_LIMIT - projectedCombinedChars);
   const setExpandedForTree = (nextTree: TreeNode | null) => {
     setExpandedById(nextTree ? { [nextTree.id]: true } : {});
   };
@@ -412,6 +482,57 @@ export const App = () => {
     studyToolsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     window.setTimeout(() => setStudyToolsSpotlight(false), 1200);
   };
+
+  const stopBuildProgress = useCallback(() => {
+    if (buildProgressTimerRef.current !== null) {
+      window.clearInterval(buildProgressTimerRef.current);
+      buildProgressTimerRef.current = null;
+    }
+    setMapBuildPhase('idle');
+    setMapBuildProgress({ current: 0, total: 0 });
+  }, []);
+
+  const startBuildProgress = useCallback(
+    (estimatedChars: number) => {
+      stopBuildProgress();
+      const isLongText = estimatedChars > MINDMAP_CHUNK_THRESHOLD_CHARS;
+      const totalChunks = Math.max(1, Math.ceil(estimatedChars / MINDMAP_CHUNK_SIZE));
+
+      if (!isLongText) {
+        setMapBuildPhase('building-map');
+        setStatus('Building final mind map...');
+        return;
+      }
+
+      setMapBuildPhase('analyzing-chunks');
+      setMapBuildProgress({ current: 1, total: totalChunks });
+      setStatus(`Analyzing part 1 of ${totalChunks}...`);
+
+      buildProgressTimerRef.current = window.setInterval(() => {
+        setMapBuildProgress((prev) => {
+          if (prev.current < prev.total) {
+            const nextCurrent = prev.current + 1;
+            setStatus(`Analyzing part ${nextCurrent} of ${prev.total}...`);
+            return { ...prev, current: nextCurrent };
+          }
+
+          setMapBuildPhase((phase) => {
+            if (phase === 'analyzing-chunks') {
+              setStatus('Merging ideas...');
+              return 'merging-ideas';
+            }
+            if (phase === 'merging-ideas') {
+              setStatus('Building final mind map...');
+              return 'building-map';
+            }
+            return phase;
+          });
+          return prev;
+        });
+      }, 1400);
+    },
+    [stopBuildProgress],
+  );
 
   const visibleProjects = useMemo(
     () => projects.filter((project) => !hideFailedProjects || Boolean(project.current_tree_json)),
@@ -482,6 +603,12 @@ export const App = () => {
       expandedById,
       nodePositions,
       toggleNode,
+      (nodeId, label, canDelete, x, y) => {
+        setNodeContextMenu({ nodeId, nodeText: label, canDelete, x, y });
+      },
+      (nodeId, label) => {
+        setPendingNodeDelete({ nodeId, nodeText: label });
+      },
       editingNodeId,
       nodeEditText,
       (nodeId, currentLabel) => {
@@ -513,6 +640,18 @@ export const App = () => {
     setNodes(graph.nodes);
     setEdges(graph.edges);
   }, [graph]);
+
+  useEffect(() => {
+    const closeMenu = () => setNodeContextMenu(null);
+    window.addEventListener('click', closeMenu);
+    window.addEventListener('scroll', closeMenu, true);
+    return () => {
+      window.removeEventListener('click', closeMenu);
+      window.removeEventListener('scroll', closeMenu, true);
+    };
+  }, []);
+
+  useEffect(() => () => stopBuildProgress(), [stopBuildProgress]);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -581,9 +720,16 @@ export const App = () => {
       setStatus('Add at least one source before generating a mind map.');
       return;
     }
+    const combinedChars = sourceSessions.reduce((sum, session) => sum + session.length, 0);
+    if (combinedChars > TOTAL_PROJECT_TEXT_LIMIT) {
+      setStatus(`Combined source text exceeds ${TOTAL_PROJECT_TEXT_LIMIT} characters. Remove text and try again.`);
+      return;
+    }
     setBusy(true);
     setIsMapLoading(true);
     setTree(null);
+    const estimatedChars = sourceSessions.join('\n\n').length;
+    startBuildProgress(estimatedChars);
     let createdProjectId: string | null = null;
     try {
       console.info('[VisualMind] create:start', {
@@ -636,6 +782,7 @@ export const App = () => {
       setStatus(`Create failed: ${message}`);
       await loadProjects();
     } finally {
+      stopBuildProgress();
       setIsMapLoading(false);
       setBusy(false);
     }
@@ -698,6 +845,11 @@ export const App = () => {
     setBusy(true);
     setIsMapLoading(true);
     setTree(null);
+    const estimatedChars = (
+      unsavedEditorText ||
+      persistedSources.map((source) => source.content_text).join('\n\n')
+    ).length;
+    startBuildProgress(estimatedChars);
     try {
       console.info('[VisualMind] generate:start', {
         projectId: selectedProjectId,
@@ -723,6 +875,7 @@ export const App = () => {
       const message = extractErrorMessage(error);
       setStatus(`Generate failed: ${message}`);
     } finally {
+      stopBuildProgress();
       setIsMapLoading(false);
       setBusy(false);
     }
@@ -753,6 +906,10 @@ export const App = () => {
     if (!text) return;
     if (isOverTextLimit) {
       setStatus(`Text is over your ${limits.maxTextChars}-character plan limit.`);
+      return;
+    }
+    if (isOverCombinedLimit) {
+      setStatus(`Combined source text exceeds ${TOTAL_PROJECT_TEXT_LIMIT} characters.`);
       return;
     }
 
@@ -1100,6 +1257,88 @@ export const App = () => {
     setStatus(`Moved "${sourceNode.text}" under "${targetNode.text}"`);
   };
 
+  const applyNodeAdd = async (parentId: string, parentText: string) => {
+    if (!tree) return;
+
+    const parent = findNode(tree, parentId);
+    if (!parent) {
+      setStatus('Parent node not found.');
+      return;
+    }
+
+    const newNode: TreeNode = {
+      id: makeNodeId(),
+      text: 'New node',
+      children: [],
+    };
+
+    const nextTree = insertNodeAsChild(tree, parentId, newNode);
+    setNodeContextMenu(null);
+    setTree(nextTree);
+    setExpandedById((prev) => ({ ...prev, [parentId]: true }));
+    setEditingNodeId(newNode.id);
+    setNodeEditText(newNode.text);
+
+    if (!selectedProjectId) {
+      setStatus(`Added child node under "${parentText}"`);
+      return;
+    }
+
+    try {
+      await api.saveTree(selectedProjectId, nextTree);
+      await loadProjects();
+      setStatus(`Added child node under "${parentText}"`);
+    } catch (error) {
+      const message = extractErrorMessage(error);
+      setStatus(`Add node failed: ${message}`);
+    }
+  };
+
+  const applyNodeDelete = async (nodeId: string, nodeText: string) => {
+    if (!tree) return;
+    if (nodeId === 'root') {
+      setStatus('Root node cannot be deleted.');
+      return;
+    }
+
+    const removed = removeNodeById(tree, nodeId);
+    if (!removed.removed) {
+      setStatus('Node not found.');
+      return;
+    }
+
+    const removedIds = new Set(collectNodeIds(removed.removed));
+    const nextPositions = Object.fromEntries(
+      Object.entries(nodePositions).filter(([id]) => !removedIds.has(id)),
+    );
+
+    setTree(removed.tree);
+    setNodePositions(nextPositions);
+    if (selectedProjectId) {
+      persistPositions(selectedProjectId, nextPositions);
+    }
+    if (editingNodeId && removedIds.has(editingNodeId)) {
+      setEditingNodeId(null);
+      setNodeEditText('');
+    }
+    setPendingNodeDelete(null);
+    setNodeContextMenu(null);
+
+    if (!selectedProjectId) {
+      setStatus(`Deleted node "${nodeText}"`);
+      return;
+    }
+
+    try {
+      await api.saveTree(selectedProjectId, removed.tree);
+      await loadProjects();
+      setStatus(`Deleted node "${nodeText}"`);
+    } catch (error) {
+      const message = extractErrorMessage(error);
+      setStatus(`Delete node failed: ${message}`);
+    }
+  };
+
   const removeDraftSource = (id: string) => {
     setDraftSessions((prev) => prev.filter((source) => source.id !== id));
   };
@@ -1221,7 +1460,7 @@ export const App = () => {
       <header className="vm-topbar">
         <div>
           <h1>VisualMind</h1>
-          <p>Paste large text. Click once. Get a structured mind map.</p>
+          <p>Turn large text into a structured mind map.</p>
         </div>
         <div className="vm-topbar-right">
           <span className="status-chip">{status}</span>
@@ -1239,7 +1478,7 @@ export const App = () => {
           <div className="card composer-card">
             <div className="composer-intro">
               <h2>Sources</h2>
-              <p>Collect the content you want Mind Map to turn into one structured map.</p>
+              <p>Paste text or import other sources below to build your mind map.</p>
             </div>
             <div className="composer-source-entry">
               <button
@@ -1252,7 +1491,8 @@ export const App = () => {
                   setIsAddTextOpen(true);
                 }}
               >
-                Add source text
+                <span className="source-add-title">+ Add Source</span>
+                <span className="source-add-subtext">Paste text, notes, or research</span>
               </button>
             </div>
             <div className="actions source-tools">
@@ -1263,7 +1503,7 @@ export const App = () => {
                 }}
                 disabled={busy}
               >
-                Import Markdown
+                Markdown
               </button>
               <button
                 className="btn btn-ghost"
@@ -1272,7 +1512,7 @@ export const App = () => {
                 }}
                 disabled={busy}
               >
-                Import PDF
+                PDF
               </button>
               <button
                 className="btn btn-ghost"
@@ -1282,7 +1522,7 @@ export const App = () => {
                 }}
                 disabled={busy}
               >
-                Import Webpage
+                Web
               </button>
             </div>
             <input
@@ -1306,13 +1546,13 @@ export const App = () => {
                   {persistedSources.length === 0 ? <p className="hint">No added sources yet.</p> : null}
                   {persistedSources.map((source, index) => (
                     <div key={source.id} className="session-item">
-                      <div>
+                      <div className="session-item-main">
                         <div className="session-item-title">{source.title || `Source ${index + 1}`}</div>
                         <div className="session-item-meta">
                           {source.kind === 'pdf' ? 'PDF' : source.kind === 'url' ? 'Web' : 'Text'} source · {source.content_text.length} chars
                         </div>
                       </div>
-                      <div className="actions">
+                      <div className="session-item-actions">
                         <button className="btn btn-ghost" type="button" onClick={() => openPersistedSource(source)}>
                           Edit
                         </button>
@@ -1329,13 +1569,15 @@ export const App = () => {
                   {draftSessions.length === 0 ? <p className="hint">Add a source to get started.</p> : null}
                   {draftSessions.map((session, index) => (
                     <div key={session.id} className="session-item">
-                      <div>
+                      <div className="session-item-main">
                         <div className="session-item-title">{session.title || `Source ${index + 1}`}</div>
                         <div className="session-item-meta">Text source · {session.contentText.length} chars</div>
                       </div>
-                      <button className="btn btn-ghost" type="button" onClick={() => removeDraftSource(session.id)}>
-                        Remove
-                      </button>
+                      <div className="session-item-actions">
+                        <button className="btn btn-ghost" type="button" onClick={() => removeDraftSource(session.id)}>
+                          Remove
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </>
@@ -1407,13 +1649,25 @@ export const App = () => {
                 </button>
               </div>
             </div>
-            <p className="map-interaction-hint">Drag nodes to move. Double-click node text to edit. Use &gt; / &lt; to collapse or expand branches.</p>
+            <p className="map-interaction-hint">Drag nodes to move. Double-click node text to edit. Right-click a node for add/delete actions. Use &gt; / &lt; to collapse or expand branches.</p>
             <div className="map-canvas">
               {isMapLoading ? (
                 <div className="map-loader">
                   <div className="map-loader-spinner" />
-                  <h3>Building your mind map</h3>
-                  <p>Combining sources and generating a fresh structure...</p>
+                  <h3>
+                    {mapBuildPhase === 'analyzing-chunks'
+                      ? `Analyzing part ${mapBuildProgress.current} of ${mapBuildProgress.total}`
+                      : mapBuildPhase === 'merging-ideas'
+                        ? 'Merging ideas'
+                        : 'Building final mind map'}
+                  </h3>
+                  <p>
+                    {mapBuildPhase === 'analyzing-chunks'
+                      ? 'Extracting key points from each section...'
+                      : mapBuildPhase === 'merging-ideas'
+                        ? 'Combining and deduplicating ideas...'
+                        : 'Generating one final, structured mind map...'}
+                  </p>
                 </div>
               ) : tree ? (
                 <ReactFlow
@@ -1525,8 +1779,16 @@ export const App = () => {
                       }
                     }}
                   >
-                    <span>{recentMapTitle(project)}</span>
-                    {!project.current_tree_json ? <span style={{ marginLeft: 8, color: '#9b2c2c', fontWeight: 700 }}>Failed</span> : null}
+                    <div className="project-item-copy">
+                      <div className="project-item-title-row">
+                        <span className="project-title">{recentMapTitle(project)}</span>
+                        {!project.current_tree_json ? <span className="project-flag-failed">Failed</span> : null}
+                      </div>
+                      <div className="project-preview">
+                        {(project.raw_text || 'No source preview').replace(/\s+/g, ' ').trim().slice(0, 84)}
+                        {(project.raw_text || '').length > 84 ? '...' : ''}
+                      </div>
+                    </div>
                   </button>
                   {editingRecentMapId === project.id ? (
                     <div className="project-item-rename">
@@ -1545,7 +1807,7 @@ export const App = () => {
                         }}
                       />
                       <button
-                        className="project-item-edit"
+                        className="btn-ghost"
                         type="button"
                         onClick={() => void saveRecentMapRename(project.id)}
                         disabled={renamingRecentMapId === project.id}
@@ -1553,7 +1815,7 @@ export const App = () => {
                         {renamingRecentMapId === project.id ? '...' : 'Save'}
                       </button>
                       <button
-                        className="project-item-edit"
+                        className="btn-ghost"
                         type="button"
                         onClick={() => {
                           setEditingRecentMapId(null);
@@ -1565,23 +1827,26 @@ export const App = () => {
                       </button>
                     </div>
                   ) : (
-                    <button className="project-item-edit" type="button" onClick={() => startRecentMapRename(project)}>
-                      Edit
-                    </button>
+                    <div className="project-actions">
+                      <button className="btn-ghost" type="button" onClick={() => startRecentMapRename(project)}>
+                        Edit
+                      </button>
+                      <button
+                        className="btn-ghost danger"
+                        type="button"
+                        onClick={() =>
+                          setPendingDelete({
+                            projectId: project.id,
+                            projectTitle: recentMapTitle(project),
+                          })
+                        }
+                        disabled={deletingProjectId === project.id}
+                        aria-label={`Delete ${recentMapTitle(project)}`}
+                      >
+                        {deletingProjectId === project.id ? '...' : 'Delete'}
+                      </button>
+                    </div>
                   )}
-                  <button
-                    className="project-item-delete"
-                    onClick={() =>
-                      setPendingDelete({
-                        projectId: project.id,
-                        projectTitle: recentMapTitle(project),
-                      })
-                    }
-                    disabled={deletingProjectId === project.id}
-                    aria-label={`Delete ${recentMapTitle(project)}`}
-                  >
-                    {deletingProjectId === project.id ? '...' : 'Delete'}
-                  </button>
                 </div>
               ))}
             </div>
@@ -1591,16 +1856,16 @@ export const App = () => {
             <div className="assets-header">
               <div className="assets-header-copy">
                 <h3>Mind Map Tools</h3>
-                <p>Email us about what feature you want to have here.</p>
+                <p>Future tools built from your map.</p>
               </div>
               <span className="asset-status-badge paused">Paused</span>
             </div>
-            <div className="asset-empty-state">
-              <div className="asset-empty-icon">🧩</div>
+            <div className="feature-request-card">
+              <div className="feature-icon">🧩</div>
               <h4>Tell us what feature you want</h4>
-              <p>Share your request for this area and we will save it to the backend database.</p>
-              <button className="btn btn-primary" type="button" onClick={openFeatureRequestModal}>
-                Email Us Your Feature Request
+              <p>Want quiz mode, summaries, or spaced repetition? Email us your idea and we will review it.</p>
+              <button className="feature-btn" type="button" onClick={openFeatureRequestModal}>
+                Request a Feature
               </button>
             </div>
           </div>
@@ -1700,6 +1965,10 @@ export const App = () => {
                   ? ' · Over your plan limit. Upgrade or split into sessions.'
                   : ` · ${remainingChars} left`}
               </p>
+              <p className={`hint warning ${isOverCombinedLimit ? 'error' : ''}`}>
+                Combined sources: {projectedCombinedChars}/{TOTAL_PROJECT_TEXT_LIMIT} characters
+                {isOverCombinedLimit ? ' · Over project limit.' : ` · ${remainingCombinedChars} left`}
+              </p>
               {isOverTextLimit ? (
                 <div className="limit-box">
                   <h4>Text too long for your plan</h4>
@@ -1709,8 +1978,20 @@ export const App = () => {
                   </p>
                 </div>
               ) : null}
+              {isOverCombinedLimit ? (
+                <div className="limit-box">
+                  <h4>Project total limit reached</h4>
+                  <p>
+                    A project supports up to {TOTAL_PROJECT_TEXT_LIMIT} combined characters across all added sources.
+                  </p>
+                </div>
+              ) : null}
               <div className="actions">
-                <button className="btn btn-primary" onClick={onAddSession} disabled={!rawText.trim() || busy}>
+                <button
+                  className="btn btn-primary"
+                  onClick={onAddSession}
+                  disabled={!rawText.trim() || busy || isOverCombinedLimit}
+                >
                   Save your edit
                 </button>
                 <button
@@ -1754,6 +2035,68 @@ export const App = () => {
                 disabled={deletingProjectId === pendingDelete.projectId}
               >
                 {deletingProjectId === pendingDelete.projectId ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {nodeContextMenu ? (
+        <div
+          className="node-context-menu"
+          style={{ top: nodeContextMenu.y, left: nodeContextMenu.x }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="node-context-menu-item"
+            onClick={() => {
+              void applyNodeAdd(nodeContextMenu.nodeId, nodeContextMenu.nodeText);
+            }}
+          >
+            Add child node
+          </button>
+          {nodeContextMenu.canDelete ? (
+            <button
+              type="button"
+              className="node-context-menu-item danger"
+              onClick={() => {
+                setPendingNodeDelete({
+                  nodeId: nodeContextMenu.nodeId,
+                  nodeText: nodeContextMenu.nodeText,
+                });
+                setNodeContextMenu(null);
+              }}
+            >
+              Delete node
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {pendingNodeDelete ? (
+        <div className="move-modal-backdrop">
+          <div className="move-modal">
+            <h3>Delete Node</h3>
+            <p>
+              Delete <strong>{pendingNodeDelete.nodeText}</strong> and its child nodes? This cannot be undone.
+            </p>
+            <div className="actions">
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setPendingNodeDelete(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  void applyNodeDelete(pendingNodeDelete.nodeId, pendingNodeDelete.nodeText);
+                }}
+              >
+                Delete Node
               </button>
             </div>
           </div>

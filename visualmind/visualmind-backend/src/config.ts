@@ -18,6 +18,7 @@ export const config = {
   databaseUrl: required(process.env.DATABASE_URL, 'DATABASE_URL'),
   modelApiBaseUrl: process.env.MODEL_API_BASE_URL || 'http://127.0.0.1:11434',
   modelName: process.env.MODEL_NAME || 'qwen2.5:7b',
+  modelNameStage1: process.env.MODEL_NAME_STAGE1 || 'qwen2.5:3b',
   modelTimeoutMs: Number(process.env.MODEL_TIMEOUT_MS || 300000),
 };
 

@@ -9,18 +9,21 @@ const ollamaResponseSchema = z.object({
 const MAX_INPUT_CHARS = 8000;
 const MAX_SLIDES = 12;
 const MAX_FLASHCARDS = 24;
-const MAX_MINDMAP_INPUT_CHARS = 2400;
-const MAX_MINDMAP_OUTPUT_TOKENS = 450;
-const MINDMAP_CHUNK_SIZE = 2000;
-const MINDMAP_KEYPOINT_TOKENS = 140;
-const MINDMAP_KEYPOINTS_PER_CHUNK = 6;
-const MINDMAP_MAX_MERGED_IDEAS = 42;
-const MINDMAP_CHUNK_THRESHOLD_CHARS = 4000;
+const MAX_MINDMAP_INPUT_CHARS = 9800;
+const MAX_MINDMAP_OUTPUT_TOKENS = 1100;
+const MINDMAP_CHUNK_SIZE = 3000;
+const MINDMAP_KEYPOINT_TOKENS = 220;
+const MINDMAP_KEYPOINTS_PER_CHUNK = 20;
+const MINDMAP_MAX_MERGED_IDEAS = 180;
+const MINDMAP_CHUNK_THRESHOLD_CHARS = 4500;
 const MINDMAP_CHUNK_CONCURRENCY = 2;
 const MINDMAP_KEYPOINT_CACHE_MAX_ENTRIES = 500;
-const MINDMAP_CLUSTER_MAX_THEMES = 8;
+const MINDMAP_CLUSTER_MAX_THEMES = 20;
 const MINDMAP_CLUSTER_TOKENS = 240;
 const mindMapKeyPointCache = new Map<string, string[]>();
+const STAGE1_MODEL_NAME = config.modelNameStage1;
+const STAGE2_MODEL_NAME = config.modelName;
+const STAGE2_FALLBACK_MODEL_NAME = config.modelNameStage1;
 
 const compressMindMapInput = (inputText: string): string => {
   const lines = inputText
@@ -28,15 +31,25 @@ const compressMindMapInput = (inputText: string): string => {
     .map((line) => line.trim())
     .filter(Boolean);
 
+  const isPriorityLine = (line: string): boolean =>
+    /^#{1,6}\s/.test(line) ||
+    /^[\-\*\u2022]\s+/.test(line) ||
+    /^\d+\.\s+/.test(line) ||
+    /:$/.test(line);
+
+  const prioritized = lines.filter(isPriorityLine);
+  const regular = lines.filter((line) => !isPriorityLine(line));
+  const merged = [...prioritized, ...regular];
+
   const unique = new Set<string>();
   const distilled: string[] = [];
-  for (const line of lines) {
+  for (const line of merged) {
     const normalized = line.replace(/\s+/g, ' ').trim();
     if (!normalized) continue;
     if (unique.has(normalized)) continue;
     unique.add(normalized);
     distilled.push(normalized);
-    if (distilled.length >= 120) break;
+    if (distilled.length >= 520) break;
   }
 
   return distilled.join('\n').slice(0, MAX_MINDMAP_INPUT_CHARS);
@@ -70,8 +83,9 @@ const chunkText = (text: string, size = MINDMAP_CHUNK_SIZE): string[] => {
 const buildKeyPointsPrompt = (chunk: string): string =>
   [
     'Extract the most important ideas from this text.',
-    `Return ${Math.min(3, MINDMAP_KEYPOINTS_PER_CHUNK)} to ${MINDMAP_KEYPOINTS_PER_CHUNK} bullet lines only.`,
-    'Each bullet must be under 10 words.',
+    `Return ${Math.min(5, MINDMAP_KEYPOINTS_PER_CHUNK)} to ${MINDMAP_KEYPOINTS_PER_CHUNK} bullet lines only.`,
+    'Each bullet must be under 16 words.',
+    'Include concrete topic names, key problems, tools, use-cases, and open questions when present.',
     'No numbering, no explanation, no markdown fence.',
     '',
     `Text:\n${chunk}`,
@@ -125,11 +139,28 @@ const mapWithConcurrency = async <T, R>(
 
 const buildPrompt = (inputText: string): string => {
   const clippedInput = compressMindMapInput(inputText);
+  const markdownHeadings = inputText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^##\s+/.test(line))
+    .map((line) => line.replace(/^##\s+/, '').trim())
+    .filter(Boolean)
+    .slice(0, 12);
+  const headingInstruction =
+    markdownHeadings.length >= 3
+      ? [
+          'Important structure rule:',
+          'The source includes markdown section headings. Use them as top-level children in the same order when possible.',
+          `Headings: ${markdownHeadings.join(' | ')}`,
+        ].join('\n')
+      : '';
   return [
-    'Build a compact mind map from the input.',
+    'Build a comprehensive but readable mind map from the input.',
     'Return only valid JSON:',
     '{"title":"root topic","children":[{"text":"node","children":[{"text":"subnode","children":[]}]}]}',
-    'Constraints: depth<=3, children_per_node<=5, total_nodes<=20, node_text<=6 words.',
+    'Constraints: depth<=4, children_per_node<=7, total_nodes<=60, node_text<=14 words.',
+    'Preserve major sections and meaningful details from the source when possible.',
+    headingInstruction,
     'No markdown. No prose.',
     `Input:\n${clippedInput}`,
   ].join('\n');
@@ -143,10 +174,11 @@ const buildPromptFromIdeas = (ideas: string[]): string => {
     .join('\n');
 
   return [
-    'Organize the ideas into a compact mind map.',
+    'Organize the ideas into a comprehensive but readable mind map.',
     'Return only valid JSON:',
     '{"title":"root topic","children":[{"text":"node","children":[{"text":"subnode","children":[]}]}]}',
-    'Constraints: depth<=3, children_per_node<=5, total_nodes<=20, node_text<=6 words.',
+    'Constraints: depth<=4, children_per_node<=7, total_nodes<=60, node_text<=14 words.',
+    'Keep breadth across distinct themes instead of over-compressing into too few nodes.',
     'No markdown. No prose.',
     '',
     `Ideas:\n${clippedIdeas}`,
@@ -211,9 +243,13 @@ const buildFlashcardsPrompt = (inputText: string, cardCount: number): string => 
   ].join('\n');
 };
 
-const runPrompt = async (prompt: string, maxTokens: number): Promise<string> => {
+const runPrompt = async (
+  prompt: string,
+  maxTokens: number,
+  modelName: string = STAGE2_MODEL_NAME,
+): Promise<string> => {
   console.log('[VisualMind] model:request:start', {
-    model: config.modelName,
+    model: modelName,
     modelApiBaseUrl: config.modelApiBaseUrl,
     promptChars: prompt.length,
     maxTokens,
@@ -228,7 +264,7 @@ const runPrompt = async (prompt: string, maxTokens: number): Promise<string> => 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: config.modelName,
+          model: modelName,
           prompt,
           stream: false,
           format: 'json',
@@ -277,6 +313,24 @@ const runPrompt = async (prompt: string, maxTokens: number): Promise<string> => 
       message: error instanceof Error ? error.message : 'Unknown error',
     });
     throw error;
+  }
+};
+
+const isTimeoutError = (error: unknown): boolean =>
+  error instanceof Error && /timed out/i.test(error.message);
+
+const runStage2Prompt = async (prompt: string, maxTokens: number): Promise<string> => {
+  try {
+    return await runPrompt(prompt, maxTokens, STAGE2_MODEL_NAME);
+  } catch (error) {
+    if (!isTimeoutError(error) || STAGE2_MODEL_NAME === STAGE2_FALLBACK_MODEL_NAME) {
+      throw error;
+    }
+    console.warn('[VisualMind] stage2:fallback-on-timeout', {
+      primaryModel: STAGE2_MODEL_NAME,
+      fallbackModel: STAGE2_FALLBACK_MODEL_NAME,
+    });
+    return runPrompt(prompt, maxTokens, STAGE2_FALLBACK_MODEL_NAME);
   }
 };
 
@@ -344,7 +398,7 @@ const clusterIdeas = async (ideas: string[]): Promise<string[]> => {
   if (ideas.length <= 12) return ideas;
 
   try {
-    const raw = await runPrompt(buildClusterPrompt(ideas), MINDMAP_CLUSTER_TOKENS);
+    const raw = await runPrompt(buildClusterPrompt(ideas), MINDMAP_CLUSTER_TOKENS, STAGE1_MODEL_NAME);
     const jsonCandidate = extractJsonCandidate(raw);
     const parsed = JSON.parse(jsonCandidate);
     const result = clusterSchema.safeParse(parsed);
@@ -405,29 +459,27 @@ const normalizeGeneratedFlashcards = (
 export const generateMindMapJson = async (inputText: string): Promise<string> => {
   const text = inputText.trim();
   if (!text) {
-    return runPrompt(buildPrompt(text), MAX_MINDMAP_OUTPUT_TOKENS);
+    return runStage2Prompt(buildPrompt(text), MAX_MINDMAP_OUTPUT_TOKENS);
   }
 
   if (text.length <= MINDMAP_CHUNK_THRESHOLD_CHARS) {
-    return runPrompt(buildPrompt(text), MAX_MINDMAP_OUTPUT_TOKENS);
+    return runStage2Prompt(buildPrompt(text), MAX_MINDMAP_OUTPUT_TOKENS);
   }
 
   const preparedText = normalizeTextForChunking(text);
   const chunks = chunkText(preparedText, MINDMAP_CHUNK_SIZE);
-  if (chunks.length <= 1) {
-    return runPrompt(buildPrompt(preparedText), MAX_MINDMAP_OUTPUT_TOKENS);
-  }
+  const effectiveChunks = chunks.length > 0 ? chunks : [preparedText];
 
   console.log('[VisualMind] mindmap:chunking', {
     originalChars: text.length,
     preparedChars: preparedText.length,
     chunkSize: MINDMAP_CHUNK_SIZE,
-    chunkCount: chunks.length,
+    chunkCount: effectiveChunks.length,
     concurrency: MINDMAP_CHUNK_CONCURRENCY,
   });
 
   const chunkIdeas = await mapWithConcurrency(
-    chunks,
+    effectiveChunks,
     MINDMAP_CHUNK_CONCURRENCY,
     async (chunk, index): Promise<string[]> => {
       const cacheKey = hashChunk(chunk);
@@ -441,7 +493,7 @@ export const generateMindMapJson = async (inputText: string): Promise<string> =>
         return cached;
       }
 
-      const rawIdeas = await runPrompt(buildKeyPointsPrompt(chunk), MINDMAP_KEYPOINT_TOKENS);
+      const rawIdeas = await runPrompt(buildKeyPointsPrompt(chunk), MINDMAP_KEYPOINT_TOKENS, STAGE1_MODEL_NAME);
       const ideas = parseKeyPoints(rawIdeas);
       setChunkCache(cacheKey, ideas);
       console.log('[VisualMind] mindmap:chunk-keypoints', {
@@ -468,7 +520,7 @@ export const generateMindMapJson = async (inputText: string): Promise<string> =>
     clusteredIdeaCount: clusteredIdeas.length,
   });
 
-  return runPrompt(buildPromptFromIdeas(clusteredIdeas), MAX_MINDMAP_OUTPUT_TOKENS);
+  return runStage2Prompt(buildPromptFromIdeas(clusteredIdeas), MAX_MINDMAP_OUTPUT_TOKENS);
 };
 
 export const generateSlides = async (

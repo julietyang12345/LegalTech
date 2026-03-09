@@ -21,6 +21,7 @@ import { getLimitsForPlan, PRO_MAX_TEXT_CHARS } from '../services/plan.service.j
 import { normalizeGeneratedTree } from '../services/tree.service.js';
 import { toFreemindXml, toNotionMarkdown } from '../utils/mm-export.js';
 import type { TreeNode } from '../types.js';
+const TOTAL_PASTED_INPUT_LIMIT = 10000;
 
 const createProjectSchema = z.object({
   title: z.string().min(1).max(120),
@@ -133,6 +134,13 @@ projectsRouter.post(
       });
       return;
     }
+    const totalChars = draftSessions.reduce((sum, session) => sum + session.length, 0);
+    if (totalChars > TOTAL_PASTED_INPUT_LIMIT) {
+      res.status(403).json({
+        message: `Total pasted input is limited to ${TOTAL_PASTED_INPUT_LIMIT} characters per project.`,
+      });
+      return;
+    }
 
     const project = await createProject({
       userId: req.user!.id,
@@ -187,6 +195,15 @@ projectsRouter.post(
       });
       return;
     }
+    const existingSources = await listProjectSources(project.id, req.user!.id);
+    const nextTotalChars =
+      existingSources.reduce((sum, source) => sum + source.content_text.length, 0) + contentText.length;
+    if (nextTotalChars > TOTAL_PASTED_INPUT_LIMIT) {
+      res.status(403).json({
+        message: `Total pasted input is limited to ${TOTAL_PASTED_INPUT_LIMIT} characters per project.`,
+      });
+      return;
+    }
 
     const source = await addProjectSource({
       projectId: project.id,
@@ -234,6 +251,22 @@ projectsRouter.patch(
     if (contentText.length > limits.maxTextChars) {
       res.status(403).json({
         message: `Your plan supports up to ${limits.maxTextChars} characters per source session.`,
+      });
+      return;
+    }
+    const existingSources = await listProjectSources(project.id, req.user!.id);
+    const existing = existingSources.find((source) => source.id === req.params.sourceId);
+    if (!existing) {
+      res.status(404).json({ message: 'Source not found' });
+      return;
+    }
+    const nextTotalChars =
+      existingSources.reduce((sum, source) => sum + source.content_text.length, 0) -
+      existing.content_text.length +
+      contentText.length;
+    if (nextTotalChars > TOTAL_PASTED_INPUT_LIMIT) {
+      res.status(403).json({
+        message: `Total pasted input is limited to ${TOTAL_PASTED_INPUT_LIMIT} characters per project.`,
       });
       return;
     }
