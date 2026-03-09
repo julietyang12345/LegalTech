@@ -127,6 +127,71 @@ function createBackendHeaders(
   return headers;
 }
 
+function createBackendProxyHeaders(
+  c: { env: Bindings; req: { header: (name: string) => string | undefined }; var?: Variables },
+  contentType?: string
+): Headers {
+  const headers = createBackendHeaders(c);
+
+  if (contentType) {
+    headers.set('Content-Type', contentType);
+  }
+
+  return headers;
+}
+
+function hasCloudflareAccessServiceToken(c: {
+  env: Bindings;
+}): boolean {
+  return Boolean(c.env.CF_ACCESS_CLIENT_ID && c.env.CF_ACCESS_CLIENT_SECRET);
+}
+
+function logMissingAccessServiceToken(c: {
+  env: Bindings;
+  req: { header: (name: string) => string | undefined };
+}, scope: string, backendUrl: string): void {
+  if (!hasCloudflareAccessServiceToken(c)) {
+    console.error(`[${scope}] Missing Cloudflare Access service token for protected backend request`, {
+      backendUrl,
+      requestCfRay: c.req.header('cf-ray') || '',
+      hasClientId: Boolean(c.env.CF_ACCESS_CLIENT_ID),
+      hasClientSecret: Boolean(c.env.CF_ACCESS_CLIENT_SECRET),
+    });
+  }
+}
+
+const summarizeAccessAuth = (headers: Headers): { hasClientId: boolean; hasClientSecret: boolean } => ({
+  hasClientId: Boolean(headers.get('CF-Access-Client-Id')),
+  hasClientSecret: Boolean(headers.get('CF-Access-Client-Secret')),
+});
+
+const logBackendResponseMeta = (scope: string, backendUrl: string, response: Response): void => {
+  const contentType = response.headers.get('content-type') || '';
+  const cfAccessDomain = response.headers.get('cf-access-domain') || '';
+  const cfRay = response.headers.get('cf-ray') || '';
+  const location = response.headers.get('location') || '';
+  console.log(`[${scope}] backend response`, {
+    backendUrl,
+    status: response.status,
+    contentType,
+    cfAccessDomain,
+    cfRay,
+    hasLocation: Boolean(location),
+  });
+};
+
+const looksLikeAccessChallenge = (
+  status: number,
+  contentType: string,
+  body: string,
+  cfAccessDomain: string
+): boolean =>
+  status === 530 ||
+  Boolean(cfAccessDomain) ||
+  body.includes('Cloudflare Access') ||
+  body.includes('cdn-cgi/access') ||
+  body.includes('Error 530');
+
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // CORS configuration
@@ -540,12 +605,17 @@ app.post('/api/v1/auth/google', async (c) => {
     }
 
     // Proxy to backend
-    const backendResponse = await fetch(`${c.env.BACKEND_URL}/api/v1/auth/google`, {
+    const backendUrl = `${c.env.BACKEND_URL}/api/v1/auth/google`;
+    const proxyHeaders = createBackendProxyHeaders(c, contentType);
+    logMissingAccessServiceToken(c, 'auth/google', backendUrl);
+    console.log('[auth/google] proxy request', {
+      backendUrl,
+      requestCfRay: c.req.header('cf-ray') || '',
+      ...summarizeAccessAuth(proxyHeaders),
+    });
+    const backendResponse = await fetch(backendUrl, {
       method: 'POST',
-      headers: new Headers({
-        ...Object.fromEntries(createBackendHeaders(c).entries()),
-        'Content-Type': contentType,
-      }),
+      headers: proxyHeaders,
       body: rawBody,
     });
 
@@ -569,6 +639,25 @@ app.post('/api/v1/auth/google', async (c) => {
     }
 
     const responseData = await backendResponse.text();
+    logBackendResponseMeta('auth/google', backendUrl, backendResponse);
+    const backendContentType = backendResponse.headers.get('content-type') || '';
+    const backendCfAccessDomain = backendResponse.headers.get('cf-access-domain') || '';
+    if (
+      looksLikeAccessChallenge(
+        backendResponse.status,
+        backendContentType,
+        responseData,
+        backendCfAccessDomain
+      )
+    ) {
+      console.error('[auth/google] Cloudflare Access challenge from backend origin', {
+        backendUrl,
+        status: backendResponse.status,
+        contentType: backendContentType,
+        cfAccessDomain: backendCfAccessDomain,
+        bodyPreview: responseData.slice(0, 180),
+      });
+    }
     return new Response(responseData, {
       status: backendResponse.status,
       headers: responseHeaders,
@@ -577,12 +666,10 @@ app.post('/api/v1/auth/google', async (c) => {
     console.error('Google auth intercept error:', error);
     const url = new URL(c.req.url);
     const backendUrl = `${c.env.BACKEND_URL}${url.pathname}${url.search}`;
+    logMissingAccessServiceToken(c, 'auth/google', backendUrl);
     const res = await fetch(backendUrl, {
       method: 'POST',
-      headers: new Headers({
-        ...Object.fromEntries(createBackendHeaders(c).entries()),
-        'Content-Type': contentType,
-      }),
+      headers: createBackendProxyHeaders(c, contentType),
       body: rawBody,
     });
     return new Response(res.body, { status: res.status, headers: res.headers });
@@ -614,15 +701,36 @@ app.post('/api/v1/auth/microsoft', async (c) => {
       return c.json({ message: 'Too many attempts. Please try again later.' }, 429);
     }
 
-    // Proxy to backend
-    const backendResponse = await fetch(`${c.env.BACKEND_URL}/api/v1/auth/microsoft`, {
-      method: 'POST',
-      headers: new Headers({
-        ...Object.fromEntries(createBackendHeaders(c).entries()),
-        'Content-Type': contentType,
-      }),
-      body: rawBody,
-    });
+    // Proxy to backend, supporting both legacy and versioned auth routes.
+    const backendPathCandidates = ['/api/v1/auth/microsoft', '/auth/microsoft'];
+    const proxyHeaders = createBackendProxyHeaders(c, contentType);
+
+    let backendUrl = `${c.env.BACKEND_URL}${backendPathCandidates[0]}`;
+    let backendResponse: Response | null = null;
+
+    for (const path of backendPathCandidates) {
+      backendUrl = `${c.env.BACKEND_URL}${path}`;
+      logMissingAccessServiceToken(c, 'auth/microsoft', backendUrl);
+      console.log('[auth/microsoft] proxy request', {
+        backendUrl,
+        requestCfRay: c.req.header('cf-ray') || '',
+        ...summarizeAccessAuth(proxyHeaders),
+      });
+      const candidateResponse = await fetch(backendUrl, {
+        method: 'POST',
+        headers: proxyHeaders,
+        body: rawBody,
+      });
+      if (candidateResponse.status !== 404) {
+        backendResponse = candidateResponse;
+        break;
+      }
+      backendResponse = candidateResponse;
+    }
+
+    if (!backendResponse) {
+      throw new Error('No backend response received for Microsoft auth proxy');
+    }
 
     // Forward response headers including Set-Cookie
     const responseHeaders = new Headers();
@@ -644,6 +752,25 @@ app.post('/api/v1/auth/microsoft', async (c) => {
     }
 
     const responseData = await backendResponse.text();
+    logBackendResponseMeta('auth/microsoft', backendUrl, backendResponse);
+    const backendContentType = backendResponse.headers.get('content-type') || '';
+    const backendCfAccessDomain = backendResponse.headers.get('cf-access-domain') || '';
+    if (
+      looksLikeAccessChallenge(
+        backendResponse.status,
+        backendContentType,
+        responseData,
+        backendCfAccessDomain
+      )
+    ) {
+      console.error('[auth/microsoft] Cloudflare Access challenge from backend origin', {
+        backendUrl,
+        status: backendResponse.status,
+        contentType: backendContentType,
+        cfAccessDomain: backendCfAccessDomain,
+        bodyPreview: responseData.slice(0, 180),
+      });
+    }
     return new Response(responseData, {
       status: backendResponse.status,
       headers: responseHeaders,
@@ -652,12 +779,10 @@ app.post('/api/v1/auth/microsoft', async (c) => {
     console.error('Microsoft auth intercept error:', error);
     const url = new URL(c.req.url);
     const backendUrl = `${c.env.BACKEND_URL}${url.pathname}${url.search}`;
+    logMissingAccessServiceToken(c, 'auth/microsoft', backendUrl);
     const res = await fetch(backendUrl, {
       method: 'POST',
-      headers: new Headers({
-        ...Object.fromEntries(createBackendHeaders(c).entries()),
-        'Content-Type': contentType,
-      }),
+      headers: createBackendProxyHeaders(c, contentType),
       body: rawBody,
     });
     return new Response(res.body, { status: res.status, headers: res.headers });
@@ -1127,9 +1252,16 @@ app.all('*', async (c) => {
   }
 
   const vmBackend = c.env.VISUALMIND_BACKEND_URL?.trim();
+  const isVisualMindAuthRoute =
+    url.pathname === '/api/v1/auth/me' ||
+    url.pathname.startsWith('/api/v1/auth/billing/');
   const useVisualMindBackend =
     Boolean(vmBackend) &&
-    (url.pathname.startsWith('/api/v1/vm/') || url.pathname.startsWith('/api/v1/imports/'));
+    (
+      url.pathname.startsWith('/api/v1/vm/') ||
+      url.pathname.startsWith('/api/v1/imports/') ||
+      isVisualMindAuthRoute
+    );
   const backendBase = useVisualMindBackend ? vmBackend! : c.env.BACKEND_URL;
   const backendUrl = `${backendBase}${url.pathname}${url.search}`;
 
@@ -1173,11 +1305,28 @@ app.all('*', async (c) => {
   }
 
   try {
+    console.log('[proxy] forwarding request', {
+      method: c.req.method,
+      pathname: url.pathname,
+      backendBase,
+      backendUrl,
+      requestCfRay: c.req.header('cf-ray') || '',
+      useVisualMindBackend,
+      ...summarizeAccessAuth(headers),
+    });
     const res = await fetch(backendUrl, {
       method: c.req.method,
       headers,
       body: bufferedBody,
     });
+    logBackendResponseMeta('proxy', backendUrl, res);
+    if (res.headers.get('cf-access-domain')) {
+      console.error('[proxy] backend responded with Cloudflare Access challenge headers', {
+        backendUrl,
+        status: res.status,
+        cfAccessDomain: res.headers.get('cf-access-domain') || '',
+      });
+    }
 
     // Forward response headers - manually handle Set-Cookie
     const responseHeaders = new Headers();

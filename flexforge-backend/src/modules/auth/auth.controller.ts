@@ -11,39 +11,17 @@ import {
 import { Response, Request } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
-import { IsEmail, IsString, MinLength, Matches } from 'class-validator';
 import { EdgeSignatureGuard } from './guards/edge-signature.guard';
 import { ResetPasswordDto, CheckEmailExistsDto } from './dto/password-reset.dto';
 import { GoogleAuthDto } from './dto/google-auth.dto';
 import { MicrosoftAuthDto } from './dto/microsoft-auth.dto';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
 
 // Extend Express Request to include edge-related properties
 interface EdgeRequest extends Request {
   edgeUserId?: string;
   edgePayload?: Record<string, unknown>;
-}
-
-class RegisterDto {
-  @IsEmail()
-  email: string;
-
-  @IsString()
-  @MinLength(8, { message: 'Password must be at least 8 characters' })
-  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
-    message: 'Password must contain at least one uppercase letter, one lowercase letter, and one number',
-  })
-  password: string;
-
-  @IsString()
-  name?: string;
-}
-
-class LoginDto {
-  @IsEmail()
-  email: string;
-
-  @IsString()
-  password: string;
 }
 
 @Controller('auth')

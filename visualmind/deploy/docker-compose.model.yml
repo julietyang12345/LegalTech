@@ -1,7 +1,6 @@
 services:
   visualmind-model:
     image: ollama/ollama:latest
-    container_name: visualmind-model
     ports:
       - "11434:11434"
     volumes:

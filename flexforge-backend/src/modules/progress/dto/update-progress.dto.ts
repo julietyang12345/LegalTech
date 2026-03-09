@@ -26,4 +26,8 @@ export class UpdateProgressDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @IsString()
+  @IsOptional()
+  submittedCode?: string;
 }

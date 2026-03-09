@@ -100,7 +100,10 @@ deploy_backend_remote() {
         echo "[INFO] Starting API container (using pre-built image)..."
         docker compose -f docker-compose.prod.yml --env-file .env.production up -d --no-build api
 
-        echo "[INFO] Ensuring tunnel is running..."
+        echo "[INFO] Recreating cf-tunnel..."
+        if docker ps -a --format '{{.Names}}' | grep -Fxq cf-tunnel; then
+            docker rm -f cf-tunnel
+        fi
         docker compose -f docker-compose.prod.yml --env-file .env.production up -d cf-tunnel
 
         echo "[INFO] Waiting for API to be healthy..."
@@ -129,6 +132,8 @@ deploy_backend_full() {
     build_backend
     echo ""
     transfer_backend
+    echo ""
+    run_migrations
     echo ""
     deploy_backend_remote
 }
@@ -176,8 +181,21 @@ deploy_backend() {
     log_info "Starting API container (keeping tunnel running)..."
     docker compose -f docker-compose.prod.yml up -d --no-deps api
 
+    # Apply additive SQL migrations before serving new codepaths.
+    SQL_MIGRATIONS=$(ls -1 "$BACKEND_DIR/src/database/migrations/"*.sql 2>/dev/null | sort)
+    if [ -n "$SQL_MIGRATIONS" ]; then
+        for migration in $SQL_MIGRATIONS; do
+            filename=$(basename "$migration")
+            log_info "Running SQL migration locally: $filename"
+            docker exec -i flexforge-db-prod psql -U flexforge -d flexforge_prod < "$migration" || true
+        done
+    fi
+
     # Ensure tunnel is running (starts if not already running)
-    log_info "Ensuring tunnel is running..."
+    log_info "Recreating cf-tunnel..."
+    if docker ps -a --format '{{.Names}}' | grep -Fxq cf-tunnel; then
+        docker rm -f cf-tunnel
+    fi
     docker compose -f docker-compose.prod.yml up -d cf-tunnel
 
     # Wait for services to be healthy

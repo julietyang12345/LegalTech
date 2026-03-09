@@ -848,11 +848,6 @@ export const App = () => {
     startBuildProgress(estimatedChars);
     let createdProjectId: string | null = null;
     try {
-      console.info('[VisualMind] create:start', {
-        draftCount: draftSessions.length,
-        hasUnsavedEditorText: Boolean(unsavedEditorText),
-        sourceCount: sourceSessions.length,
-      });
       setStatus('Creating project and generating mind map...');
       const finalTitle = projectTitle.trim() || inferTitle(sourceSessions[0] || '');
       const data = await api.createProject({
@@ -862,14 +857,8 @@ export const App = () => {
       });
       createdProjectId = data.project.id;
       setSelectedProjectId(data.project.id);
-      console.info('[VisualMind] create:project-created', { projectId: data.project.id });
       await loadSources(data.project.id);
       const generated = await api.generate(data.project.id);
-      console.info('[VisualMind] create:generate-success', {
-        projectId: data.project.id,
-        version: generated.version,
-        root: generated.tree?.text,
-      });
       setTree(generated.tree);
       setExpandedForTree(generated.tree);
       setNodePositions({});
@@ -882,7 +871,6 @@ export const App = () => {
       setStatus(`Created "${finalTitle}" and generated map`);
       await loadProjects();
     } catch (error) {
-      console.error('[VisualMind] create:failed', error);
       if (createdProjectId) {
         try {
           await api.deleteProject(createdProjectId);
@@ -972,18 +960,8 @@ export const App = () => {
     const estimatedChars = persistedSources.map((source) => source.content_text).join('\n\n').length;
     startBuildProgress(estimatedChars);
     try {
-      console.info('[VisualMind] generate:start', {
-        projectId: selectedProjectId,
-        sourceCount: persistedSources.length,
-        sourceChars: estimatedChars,
-      });
       setStatus('Generating mind map...');
       const data = await api.generate(selectedProjectId);
-      console.info('[VisualMind] generate:success', {
-        projectId: selectedProjectId,
-        version: data.version,
-        root: data.tree?.text,
-      });
       setTree(data.tree);
       setExpandedForTree(data.tree);
       setNodePositions({});
@@ -992,7 +970,6 @@ export const App = () => {
       setStatus(`Generated version ${data.version}`);
       await loadProjects();
     } catch (error) {
-      console.error('[VisualMind] generate:failed', error);
       const message = extractErrorMessage(error);
       setStatus(`Generate failed: ${message}`);
     } finally {
@@ -1003,13 +980,6 @@ export const App = () => {
   };
 
   const onPrimaryMapAction = async () => {
-    console.info('[VisualMind] primary-action:clicked', {
-      selectedProjectId,
-      draftCount: draftSessions.length,
-      hasUnsavedEditorText: Boolean(unsavedEditorText),
-      busy,
-      isMapLoading,
-    });
     let hasAuth = isLoggedIn;
     if (!hasAuth) {
       try {

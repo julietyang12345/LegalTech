@@ -14,6 +14,7 @@ import {
   CompanionService,
   CompanionContext,
 } from '../companion/companion.service';
+import { UpdateProgressDto } from './dto/update-progress.dto';
 
 @Controller('progress')
 @UseGuards(JwtAuthGuard)
@@ -47,13 +48,7 @@ export class ProgressController {
     @Param('sessionId') sessionId: string,
     @Param('taskId') taskId: string,
     @Body()
-    updates: {
-      completed?: boolean;
-      confidenceScore?: number;
-      timeSpentMinutes?: number;
-      notes?: string;
-      topic?: string;
-    },
+    updates: UpdateProgressDto & { topic?: string },
   ) {
     const progress = await this.progressService.updateTask(
       sessionId,

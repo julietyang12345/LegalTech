@@ -9,7 +9,7 @@ compatibility_flags = ["nodejs_compat"]
 # Environment variables (non-sensitive)
 # Backend URL via Cloudflare Tunnel (private access for worker only)
 [vars]
-BACKEND_URL = "https://api-backend.flexforge.ai"
+BACKEND_URL = "https://api-backend2.flexforge.ai"
 VISUALMIND_BACKEND_URL = "https://visualmind-api-backend.flexforge.ai"
 FRONTEND_URL = "https://app.flexforge.ai"
 FROM_EMAIL = "noreply@flexforge.ai"

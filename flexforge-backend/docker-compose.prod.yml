@@ -80,7 +80,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-cf-tunnel:
+  cf-tunnel:
     container_name: cf-tunnel
     image: cloudflare/cloudflared:latest
     restart: always

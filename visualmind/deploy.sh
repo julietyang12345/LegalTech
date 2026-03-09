@@ -21,6 +21,7 @@ DEPLOY_DIR="$VM_DIR/deploy"
 APP_SERVER_USER="${APP_SERVER_USER:-j}"
 APP_SERVER_HOST="${APP_SERVER_HOST:-10.3.8.169}"
 APP_SERVER_PATH="${APP_SERVER_PATH:-/home/j/visualmind}"
+APP_SERVER_DEPLOY_PATH="$APP_SERVER_PATH/deploy"
 
 # Model server config (can be same or different host)
 MODEL_SERVER_USER="${MODEL_SERVER_USER:-j}"
@@ -53,12 +54,31 @@ require_file() {
     fi
 }
 
+validate_env_file() {
+    local env_path="$1"
+    local invalid_lines
+    invalid_lines="$(awk '
+        /^[[:space:]]*$/ { next }
+        /^[[:space:]]*#/ { next }
+        /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=.*/ { next }
+        { printf "%d:%s\n", NR, $0 }
+    ' "$env_path")"
+
+    if [ -n "$invalid_lines" ]; then
+        log_error "Invalid dotenv syntax in $env_path"
+        echo "$invalid_lines"
+        log_info "Only KEY=value lines, comments (#), and blank lines are allowed."
+        exit 1
+    fi
+}
+
 # ============================================================================
 # App Deploy (frontend + backend + db)
 # ============================================================================
 sync_app_code() {
     log_info "Syncing VisualMind app code to remote server..."
     require_file "$BACKEND_DIR/.env" "Create backend env first: cp $BACKEND_DIR/.env.example $BACKEND_DIR/.env"
+    validate_env_file "$BACKEND_DIR/.env"
 
     ssh "$APP_SERVER_USER@$APP_SERVER_HOST" "mkdir -p '$APP_SERVER_PATH'"
 
@@ -76,9 +96,33 @@ deploy_app_remote() {
     log_info "Deploying VisualMind app stack remotely..."
     ssh "$APP_SERVER_USER@$APP_SERVER_HOST" << ENDSSH
 set -euo pipefail
-cd "$APP_SERVER_PATH/deploy"
-docker compose -p "$APP_PROJECT_NAME" -f docker-compose.app.yml up -d --build
-docker compose -p "$APP_PROJECT_NAME" -f docker-compose.app.yml ps
+APP_COMPOSE_FILE="$APP_SERVER_DEPLOY_PATH/docker-compose.app.yml"
+APP_BACKEND_DIR="$APP_SERVER_PATH/visualmind-backend"
+APP_FRONTEND_DIR="$APP_SERVER_PATH/visualmind-frontend"
+
+if [ ! -f "\$APP_COMPOSE_FILE" ]; then
+  echo "[ERROR] Missing compose file: \$APP_COMPOSE_FILE"
+  echo "[INFO] Remote deploy dir contents:"
+  ls -la "$APP_SERVER_DEPLOY_PATH" || true
+  exit 1
+fi
+
+if [ ! -d "\$APP_BACKEND_DIR" ] || [ ! -d "\$APP_FRONTEND_DIR" ]; then
+  echo "[ERROR] Expected app directories are missing under $APP_SERVER_PATH"
+  ls -la "$APP_SERVER_PATH" || true
+  exit 1
+fi
+
+for legacy_name in visualmind-db visualmind-backend visualmind-frontend; do
+  if docker ps -a --format '{{.Names}}' | grep -qx "\$legacy_name"; then
+    echo "[INFO] Removing legacy container name conflict: \$legacy_name"
+    docker rm -f "\$legacy_name" >/dev/null 2>&1 || true
+  fi
+done
+
+docker compose --project-directory "$APP_SERVER_DEPLOY_PATH" -p "$APP_PROJECT_NAME" -f "\$APP_COMPOSE_FILE" down --remove-orphans || true
+docker compose --project-directory "$APP_SERVER_DEPLOY_PATH" -p "$APP_PROJECT_NAME" -f "\$APP_COMPOSE_FILE" up -d --build
+docker compose --project-directory "$APP_SERVER_DEPLOY_PATH" -p "$APP_PROJECT_NAME" -f "\$APP_COMPOSE_FILE" ps
 ENDSSH
     log_success "VisualMind app deployed"
 }
@@ -86,13 +130,13 @@ ENDSSH
 app_status() {
     log_info "Fetching VisualMind app status..."
     ssh "$APP_SERVER_USER@$APP_SERVER_HOST" \
-      "cd '$APP_SERVER_PATH/deploy' && docker compose -p '$APP_PROJECT_NAME' -f docker-compose.app.yml ps"
+      "docker compose --project-directory '$APP_SERVER_DEPLOY_PATH' -p '$APP_PROJECT_NAME' -f '$APP_SERVER_DEPLOY_PATH/docker-compose.app.yml' ps"
 }
 
 app_logs() {
     log_info "Streaming VisualMind app logs (Ctrl+C to stop)..."
     ssh "$APP_SERVER_USER@$APP_SERVER_HOST" \
-      "cd '$APP_SERVER_PATH/deploy' && docker compose -p '$APP_PROJECT_NAME' -f docker-compose.app.yml logs -f --tail=200"
+      "docker compose --project-directory '$APP_SERVER_DEPLOY_PATH' -p '$APP_PROJECT_NAME' -f '$APP_SERVER_DEPLOY_PATH/docker-compose.app.yml' logs -f --tail=200"
 }
 
 deploy_app_full() {
@@ -144,7 +188,7 @@ model_status() {
 teardown_app() {
     log_warn "Stopping VisualMind app stack on remote server..."
     ssh "$APP_SERVER_USER@$APP_SERVER_HOST" \
-      "cd '$APP_SERVER_PATH/deploy' && docker compose -p '$APP_PROJECT_NAME' -f docker-compose.app.yml down"
+      "docker compose --project-directory '$APP_SERVER_DEPLOY_PATH' -p '$APP_PROJECT_NAME' -f '$APP_SERVER_DEPLOY_PATH/docker-compose.app.yml' down"
     log_success "App stack stopped"
 }
 

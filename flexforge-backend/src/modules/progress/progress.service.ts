@@ -10,14 +10,7 @@ import { Session } from '../../database/entities/session.entity';
 import { User, QuotaTier } from '../../database/entities/user.entity';
 import { AiService, AITask } from '../ai/ai.service';
 import { AnalyticsService } from '../analytics/analytics.service';
-
-export class UpdateProgressDto {
-  completed?: boolean;
-  confidenceScore?: number;
-  timeSpentMinutes?: number;
-  notes?: string;
-  submittedCode?: string;
-}
+import { UpdateProgressDto } from './dto/update-progress.dto';
 
 @Injectable()
 export class ProgressService {
