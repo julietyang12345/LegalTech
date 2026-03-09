@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GoogleOAuthProvider } from '@react-oauth/google';
@@ -46,6 +47,7 @@ const queryClient = new QueryClient({
 });
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+const VisualMindPage = lazy(() => import('@/visualmind'));
 
 function App() {
   return (
@@ -65,6 +67,14 @@ function App() {
           <Route path="/demo" element={<DemoSessionPage />} />
           <Route path="/demo/career-paths" element={<CareerPathsDemoPage />} />
           <Route path="/explore" element={<ExplorePage />} />
+          <Route
+            path="/visualmind"
+            element={
+              <Suspense fallback={<div style={{ padding: '24px' }}>Loading VisualMind...</div>}>
+                <VisualMindPage />
+              </Suspense>
+            }
+          />
 
           {/* Onboarding - protected but skip onboarding check to avoid redirect loop */}
           <Route

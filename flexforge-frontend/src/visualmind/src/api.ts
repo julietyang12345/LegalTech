@@ -81,6 +81,7 @@ export interface FlashcardDeck {
 }
 
 const DEV_BEARER_TOKEN_KEY = 'vm_dev_bearer_token';
+const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || '/api/v1';
 
 export const getDevBearerToken = (): string => localStorage.getItem(DEV_BEARER_TOKEN_KEY) || '';
 export const setDevBearerToken = (token: string): void => {
@@ -108,7 +109,7 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
     new Headers(init.headers).forEach((value, key) => headers.set(key, value));
   }
 
-  const resp = await fetch(path, {
+  const resp = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     credentials: 'include',
     headers,
@@ -134,7 +135,7 @@ const parseFilename = (headerValue: string | null, fallback: string): string => 
 };
 
 const downloadWithAuth = async (path: string, fallbackFilename: string): Promise<void> => {
-  const response = await fetch(path, {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'GET',
     credentials: 'include',
     headers: authHeaders(),
@@ -157,62 +158,62 @@ const downloadWithAuth = async (path: string, fallbackFilename: string): Promise
 };
 
 export const api = {
-  me: () => request<MeResponse>('/api/v1/auth/me'),
-  getUpgradeLink: () => request<UpgradeLinkResponse>('/api/v1/auth/billing/upgrade-link'),
-  claimMvpUpgrade: () => request<ClaimMvpUpgradeResponse>('/api/v1/auth/billing/claim-mvp-upgrade', { method: 'POST' }),
-  listProjects: () => request<{ projects: VmProject[] }>('/api/v1/vm/projects'),
+  me: () => request<MeResponse>('/auth/me'),
+  getUpgradeLink: () => request<UpgradeLinkResponse>('/auth/billing/upgrade-link'),
+  claimMvpUpgrade: () => request<ClaimMvpUpgradeResponse>('/auth/billing/claim-mvp-upgrade', { method: 'POST' }),
+  listProjects: () => request<{ projects: VmProject[] }>('/vm/projects'),
   createProject: (payload: { title: string; rawText: string; sourceSessions?: string[] }) =>
-    request<{ project: VmProject }>('/api/v1/vm/projects', {
+    request<{ project: VmProject }>('/vm/projects', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
   deleteProject: (projectId: string) =>
-    request<{ message: string }>(`/api/v1/vm/projects/${projectId}`, {
+    request<{ message: string }>(`/vm/projects/${projectId}`, {
       method: 'DELETE',
     }),
   updateProjectTitle: (projectId: string, title: string) =>
-    request<{ project: VmProject }>(`/api/v1/vm/projects/${projectId}/title`, {
+    request<{ project: VmProject }>(`/vm/projects/${projectId}/title`, {
       method: 'PATCH',
       body: JSON.stringify({ title }),
     }),
   createFeatureRequest: (message: string) =>
-    request<{ request: { id: string; created_at: string } }>('/api/v1/vm/projects/feature-requests', {
+    request<{ request: { id: string; created_at: string } }>('/vm/projects/feature-requests', {
       method: 'POST',
       body: JSON.stringify({ message }),
     }),
   listSources: (projectId: string) =>
-    request<{ sources: ProjectSource[] }>(`/api/v1/vm/projects/${projectId}/sources`),
+    request<{ sources: ProjectSource[] }>(`/vm/projects/${projectId}/sources`),
   addSource: (projectId: string, payload: { kind: 'text' | 'pdf' | 'url'; title?: string; contentText: string }) =>
-    request<{ source: ProjectSource }>(`/api/v1/vm/projects/${projectId}/sources`, {
+    request<{ source: ProjectSource }>(`/vm/projects/${projectId}/sources`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
   updateSource: (projectId: string, sourceId: string, payload: { title?: string; contentText: string }) =>
-    request<{ source: ProjectSource }>(`/api/v1/vm/projects/${projectId}/sources/${sourceId}`, {
+    request<{ source: ProjectSource }>(`/vm/projects/${projectId}/sources/${sourceId}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
   deleteSource: (projectId: string, sourceId: string) =>
-    request<{ message: string }>(`/api/v1/vm/projects/${projectId}/sources/${sourceId}/delete`, {
+    request<{ message: string }>(`/vm/projects/${projectId}/sources/${sourceId}/delete`, {
       method: 'POST',
     }),
   generate: (projectId: string, inputText?: string) =>
-    request<{ tree: TreeNode; version: number }>(`/api/v1/vm/projects/${projectId}/generate`, {
+    request<{ tree: TreeNode; version: number }>(`/vm/projects/${projectId}/generate`, {
       method: 'POST',
       body: JSON.stringify(inputText ? { inputText } : {}),
     }),
   generateSlides: (projectId: string, payload?: { inputText?: string; slideCount?: number }) =>
-    request<{ slides: SlideDeck }>(`/api/v1/vm/projects/${projectId}/generate/slides`, {
+    request<{ slides: SlideDeck }>(`/vm/projects/${projectId}/generate/slides`, {
       method: 'POST',
       body: JSON.stringify(payload ?? {}),
     }),
   generateFlashcards: (projectId: string, payload?: { inputText?: string; cardCount?: number }) =>
-    request<{ flashcards: FlashcardDeck }>(`/api/v1/vm/projects/${projectId}/generate/flashcards`, {
+    request<{ flashcards: FlashcardDeck }>(`/vm/projects/${projectId}/generate/flashcards`, {
       method: 'POST',
       body: JSON.stringify(payload ?? {}),
     }),
   saveTree: (projectId: string, tree: TreeNode) =>
-    request<{ tree: TreeNode }>(`/api/v1/vm/projects/${projectId}/tree/patch`, {
+    request<{ tree: TreeNode }>(`/vm/projects/${projectId}/tree/patch`, {
       method: 'POST',
       body: JSON.stringify({ tree }),
     }),
@@ -220,7 +221,7 @@ export const api = {
     const headers = authHeaders();
     headers.set('Content-Type', 'application/pdf');
 
-    const response = await fetch('/api/v1/imports/pdf', {
+    const response = await fetch(`${API_BASE_URL}/imports/pdf`, {
       method: 'POST',
       credentials: 'include',
       headers,
@@ -234,14 +235,14 @@ export const api = {
     return response.json() as Promise<{ text: string }>;
   },
   importWeb: (url: string) =>
-    request<{ text: string }>('/api/v1/imports/web', {
+    request<{ text: string }>('/imports/web', {
       method: 'POST',
       body: JSON.stringify({ url }),
     }),
   downloadMm: async (projectId: string) =>
-    downloadWithAuth(`/api/v1/vm/projects/${projectId}/export/mm`, `mindmap-${projectId}.mm`),
+    downloadWithAuth(`/vm/projects/${projectId}/export/mm`, `mindmap-${projectId}.mm`),
   downloadMarkdown: async (projectId: string) =>
-    downloadWithAuth(`/api/v1/vm/projects/${projectId}/export/md`, `mindmap-${projectId}.md`),
+    downloadWithAuth(`/vm/projects/${projectId}/export/md`, `mindmap-${projectId}.md`),
   downloadNotionMarkdown: async (projectId: string) =>
-    downloadWithAuth(`/api/v1/vm/projects/${projectId}/export/notion-markdown`, `mindmap-${projectId}-notion.md`),
+    downloadWithAuth(`/vm/projects/${projectId}/export/notion-markdown`, `mindmap-${projectId}-notion.md`),
 };

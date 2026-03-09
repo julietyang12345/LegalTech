@@ -92,8 +92,6 @@ const MINDMAP_CHUNK_SIZE = 3000;
 const MINDMAP_CHUNK_THRESHOLD_CHARS = 9000;
 const TOTAL_PROJECT_TEXT_LIMIT = 10000;
 const SLOW_UPGRADE_CTA_DELAY_MS = 20000;
-const LOGIN_URL = (import.meta.env.VITE_LOGIN_URL as string | undefined)?.trim();
-const AUTH_ORIGIN = (import.meta.env.VITE_AUTH_ORIGIN as string | undefined)?.trim();
 
 const MindMapNode = ({ id, data }: NodeProps<MindNode>) => (
   <div
@@ -767,15 +765,6 @@ export const App = () => {
 
   const onLogin = () => {
     const next = encodeURIComponent(window.location.href);
-    if (LOGIN_URL) {
-      const separator = LOGIN_URL.includes('?') ? '&' : '?';
-      window.location.href = `${LOGIN_URL}${separator}next=${next}`;
-      return;
-    }
-    if (AUTH_ORIGIN) {
-      window.location.href = `${AUTH_ORIGIN.replace(/\/$/, '')}/login?next=${next}`;
-      return;
-    }
     window.location.href = `/login?next=${next}`;
   };
 
