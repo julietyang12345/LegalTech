@@ -1,13 +1,15 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap');
+
 :root {
-  --bg-0: #edf3fb;
-  --bg-1: #edf3fb;
-  --ink: #182437;
-  --muted: #556a81;
-  --line: #d1deec;
-  --card: #fffffff0;
-  --primary: #1f6df0;
-  --primary-dark: #1746a0;
-  --accent: #0f9d8c;
+  --bg-0: #eaf1fb;
+  --bg-1: #f6f9ff;
+  --ink: #132238;
+  --muted: #5c7088;
+  --line: #d3deee;
+  --card: #ffffffd9;
+  --primary: #1867df;
+  --primary-dark: #124ea7;
+  --accent: #14a190;
 }
 
 * { box-sizing: border-box; }
@@ -15,9 +17,12 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+  font-family: "Plus Jakarta Sans", "Avenir Next", "Segoe UI", sans-serif;
   color: var(--ink);
-  background: var(--bg-0);
+  background:
+    radial-gradient(1200px 600px at -10% -15%, #dce9ff 0%, transparent 65%),
+    radial-gradient(900px 500px at 110% 10%, #d9f4ea 0%, transparent 60%),
+    linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
 }
 
 .vm-shell {
@@ -34,12 +39,18 @@ body {
   gap: 18px;
   align-items: flex-start;
   margin-bottom: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .vm-topbar h1 {
   margin: 0;
   font-size: 42px;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.04em;
+  font-family: "Space Grotesk", "Plus Jakarta Sans", sans-serif;
   animation: fadeInUp .5s ease both;
 }
 
@@ -58,10 +69,10 @@ body {
 .status-chip {
   padding: 8px 12px;
   border-radius: 999px;
-  background: #ffffffb3;
-  border: 1px solid var(--line);
+  background: #ffffff;
+  border: 1px solid #d8e3f2;
   font-size: 12px;
-  backdrop-filter: blur(8px);
+  box-shadow: 0 3px 10px rgba(23, 47, 84, 0.06);
   transition: transform .2s ease, background-color .2s ease;
 }
 
@@ -100,10 +111,10 @@ body {
 
 .card {
   background: var(--card);
-  border: 0;
-  border-radius: 20px;
+  border: 1px solid #e1e9f5;
+  border-radius: 22px;
   padding: 24px;
-  box-shadow: 0 10px 28px rgba(20, 40, 90, 0.08);
+  box-shadow: 0 18px 42px rgba(20, 40, 90, 0.1);
   backdrop-filter: blur(10px);
   transition: transform .28s cubic-bezier(.2,.6,.2,1), box-shadow .28s ease;
   animation: fadeInUp .55s ease both;
@@ -115,8 +126,8 @@ body {
 .card:nth-child(3) { animation-delay: .18s; }
 
 .card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 18px 45px #1a233914;
+  transform: translateY(-3px);
+  box-shadow: 0 22px 48px rgba(20, 40, 90, 0.12);
 }
 
 .card h2,
@@ -163,13 +174,13 @@ textarea {
 }
 
 .btn {
-  border: 0;
-  border-radius: 12px;
+  border: 1px solid transparent;
+  border-radius: 11px;
   padding: 10px 14px;
   cursor: pointer;
-  font-weight: 700;
+  font-weight: 650;
   text-decoration: none;
-  transition: transform .12s ease, filter .12s ease;
+  transition: transform .12s ease, filter .12s ease, box-shadow .15s ease;
 }
 
 .btn:hover { transform: translateY(-1px); }
@@ -182,25 +193,29 @@ textarea {
 
 .btn-primary {
   color: white;
-  background: var(--primary);
+  background: linear-gradient(135deg, #1c78f3 0%, #155ccc 100%);
+  box-shadow: 0 8px 16px rgba(24, 103, 223, 0.26);
 }
 
 .btn-secondary {
-  color: #14385f;
-  background: #d8ecff;
+  color: #1e4168;
+  background: #e9f2ff;
+  border-color: #d0def1;
 }
 
 .btn-ghost {
-  color: #2d4868;
-  background: #ecf7ff;
+  color: #2c4867;
+  background: #f2f8ff;
+  border-color: #dce7f6;
 }
 
 .btn-export {
-  color: #176b5d;
-  background: #def5ef;
+  color: #166757;
+  background: linear-gradient(135deg, #e2f8f0 0%, #d4f1e6 100%);
   border: 1px solid #bfe8dc;
   border-radius: 12px;
   padding: 10px 12px;
+  box-shadow: 0 6px 14px rgba(22, 103, 87, 0.12);
 }
 
 .project-list {
@@ -216,20 +231,21 @@ textarea {
   gap: 10px;
   padding: 14px 16px;
   border-radius: 14px;
-  background: #f7fbff;
-  border: 1px solid #d7e3f3;
+  background: linear-gradient(180deg, #fbfdff 0%, #f4f9ff 100%);
+  border: 1px solid #d6e2f2;
   color: var(--ink);
   transition: all .15s ease;
 }
 
 .project-item:hover {
   background: #eef6ff;
-  border-color: #b9d2f1;
+  border-color: #b6cff0;
+  box-shadow: inset 0 0 0 1px #d4e3f8;
 }
 
 .project-item.active {
-  border-color: #9cc0ff;
-  background: #eaf2ff;
+  border-color: #8fb9ff;
+  background: linear-gradient(180deg, #edf4ff 0%, #e5f0ff 100%);
 }
 
 .project-item.is-failed {
@@ -446,8 +462,8 @@ textarea {
 .feature-request-card {
   border-radius: 18px;
   padding: 24px;
-  background: #f3f7fc;
-  border: 1px solid #d9e5f3;
+  background: linear-gradient(180deg, #f8fbff 0%, #eef5ff 100%);
+  border: 1px solid #d6e4f4;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -650,6 +666,47 @@ textarea {
   color: var(--muted);
 }
 
+.plan-warning-card {
+  margin-top: 8px;
+  border: 1px solid #d7e4f5;
+  background: #f6f9ff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.plan-warning-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.plan-warning-copy strong {
+  font-size: 13px;
+  color: #1f3554;
+}
+
+.plan-warning-copy span {
+  font-size: 12px;
+  color: #5f7490;
+}
+
+.plan-upgrade-btn {
+  border: 1px solid #2a5fbe;
+  background: #2b64c9;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 9px;
+  font-size: 12px;
+  min-height: 32px;
+}
+
+.plan-upgrade-btn:hover {
+  background: #2559b6;
+}
+
 .source-guidance {
   margin-top: 10px;
   border: 1px solid #d7e4f4;
@@ -710,8 +767,8 @@ textarea {
   margin: 0 0 10px;
   font-size: 13px;
   color: #4a6380;
-  background: #eef5ff;
-  border: 1px solid #d8e5f7;
+  background: linear-gradient(180deg, #f5f9ff 0%, #edf4ff 100%);
+  border: 1px solid #d6e3f5;
   border-radius: 10px;
   padding: 8px 10px;
 }
@@ -761,7 +818,7 @@ textarea {
 .session-list {
   border: 1px solid var(--line);
   border-radius: 16px;
-  background: #f8fbff;
+  background: linear-gradient(180deg, #f9fcff 0%, #f2f8ff 100%);
   padding: 18px;
   margin-bottom: 4px;
   min-height: clamp(220px, 32vh, 420px);
@@ -779,8 +836,8 @@ textarea {
   grid-template-columns: 1fr;
   align-items: center;
   gap: 8px;
-  border: 1px solid #dce6f5;
-  background: #fff;
+  border: 1px solid #dbe6f5;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
   border-radius: 12px;
   padding: 12px;
   margin-bottom: 10px;
@@ -843,10 +900,10 @@ textarea {
 
 .source-add-btn {
   width: 100%;
-  border: 2px dashed #c9d8ea;
+  border: 2px dashed #bdd0e8;
   border-radius: 16px;
-  background: #f8fbff;
-  color: #2a4668;
+  background: linear-gradient(180deg, #fbfdff 0%, #f3f8ff 100%);
+  color: #244568;
   padding: 20px;
   text-align: left;
   font-size: 18px;
@@ -870,7 +927,7 @@ textarea {
 
 .source-add-btn:hover {
   background: #eef5ff;
-  border-color: #a7c4ef;
+  border-color: #98bbea;
   transform: translateY(-1px);
 }
 
@@ -899,7 +956,7 @@ textarea {
   font-size: 13px;
   font-weight: 600;
   color: #2a4668;
-  background: #fff;
+  background: #f9fcff;
   border: 1px solid #d6e1ef;
   border-radius: 10px;
   padding: 8px 12px;
@@ -929,13 +986,13 @@ textarea {
   font-weight: 700;
   letter-spacing: 0.01em;
   color: #fff;
-  background: #2457b8;
-  border: 1px solid #2e63c7;
-  box-shadow: 0 8px 16px #2457b829;
+  background: linear-gradient(135deg, #1d6fe8 0%, #1557be 100%);
+  border: 1px solid #2b6fd0;
+  box-shadow: 0 12px 20px rgba(25, 96, 202, 0.3);
 }
 
 .primary-actions .btn-map-action:hover {
-  background: #1f4da5;
+  background: linear-gradient(135deg, #1a66d6 0%, #134ea8 100%);
   transform: translateY(-1px);
 }
 
@@ -1090,9 +1147,9 @@ textarea {
 }
 
 .map-canvas {
-  border: 1px solid var(--line);
+  border: 1px solid #d6e2f3;
   border-radius: 16px;
-  background: #ffffff;
+  background: linear-gradient(180deg, #ffffff 0%, #f9fcff 100%);
   padding: 0;
   flex: 1 1 auto;
   min-height: 0;
@@ -1147,9 +1204,9 @@ textarea {
 .mindmap-node {
   min-width: 220px;
   max-width: 340px;
-  border: 1px solid #86aee3;
+  border: 1px solid #7ea8de;
   border-radius: 18px;
-  background: #d8edf9;
+  background: linear-gradient(180deg, #dff0fb 0%, #cfe7f6 100%);
   color: #1a2535;
   padding: 14px 14px;
   display: flex;
@@ -1447,6 +1504,15 @@ textarea {
   .composer-card {
     gap: 16px;
     padding: 18px 14px;
+  }
+
+  .plan-warning-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .plan-upgrade-btn {
+    width: 100%;
   }
 
   .source-tools {

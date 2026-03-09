@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import type { AuthUser } from '../types.js';
 import { inferPlanFromRole } from '../services/plan.service.js';
+import { getActivePlanOverride } from '../services/billing.service.js';
 
 interface JwtPayload {
   sub: string;
@@ -41,13 +42,20 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction): vo
 
   try {
     const payload = jwt.verify(token, config.jwtSecret) as JwtPayload;
-    req.user = {
-      id: payload.sub,
-      email: payload.email,
-      role: payload.role,
-      plan: inferPlanFromRole(payload.role),
-    };
-    next();
+    const basePlan = inferPlanFromRole(payload.role);
+    void (async () => {
+      const overridePlan = await getActivePlanOverride(payload.sub);
+      req.user = {
+        id: payload.sub,
+        email: payload.email,
+        role: payload.role,
+        plan: overridePlan ?? basePlan,
+      };
+      next();
+    })().catch((error) => {
+      console.error('[VisualMind] auth:plan-override-check-failed', error);
+      res.status(500).json({ message: 'Failed to resolve user plan' });
+    });
   } catch {
     res.status(401).json({ message: 'Unauthorized: token invalid' });
   }

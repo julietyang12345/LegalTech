@@ -19,7 +19,11 @@ export const config = {
   modelApiBaseUrl: process.env.MODEL_API_BASE_URL || 'http://127.0.0.1:11434',
   modelName: process.env.MODEL_NAME || 'qwen2.5:7b',
   modelNameStage1: process.env.MODEL_NAME_STAGE1 || 'qwen2.5:3b',
-  modelTimeoutMs: Number(process.env.MODEL_TIMEOUT_MS || 300000),
+  modelTimeoutMs: Math.max(Number(process.env.MODEL_TIMEOUT_MS || 600000), 300000),
+  openAiApiKey: process.env.OPENAI_API_KEY || '',
+  openAiModelPro: process.env.OPENAI_MODEL_PRO || 'gpt-4.1-mini',
+  stripeUpgradeUrl: process.env.STRIPE_UPGRADE_URL || '',
+  proMonthlyPriceUsd: Number(process.env.PRO_MONTHLY_PRICE_USD || 8),
 };
 
 export const isProd = config.nodeEnv === 'production';

@@ -32,6 +32,22 @@ export interface MeResponse {
   };
 }
 
+export interface UpgradeLinkResponse {
+  provider: 'stripe';
+  url: string;
+  priceUsdMonthly: number;
+  paymentReceivedUrl: string;
+  message?: string;
+}
+
+export interface ClaimMvpUpgradeResponse {
+  message: string;
+  plan: UserPlan;
+  source: string;
+  expiresAt: string;
+  limits: UsageLimits;
+}
+
 export interface ProjectSource {
   id: string;
   project_id: string;
@@ -142,6 +158,8 @@ const downloadWithAuth = async (path: string, fallbackFilename: string): Promise
 
 export const api = {
   me: () => request<MeResponse>('/api/v1/auth/me'),
+  getUpgradeLink: () => request<UpgradeLinkResponse>('/api/v1/auth/billing/upgrade-link'),
+  claimMvpUpgrade: () => request<ClaimMvpUpgradeResponse>('/api/v1/auth/billing/claim-mvp-upgrade', { method: 'POST' }),
   listProjects: () => request<{ projects: VmProject[] }>('/api/v1/vm/projects'),
   createProject: (payload: { title: string; rawText: string; sourceSessions?: string[] }) =>
     request<{ project: VmProject }>('/api/v1/vm/projects', {

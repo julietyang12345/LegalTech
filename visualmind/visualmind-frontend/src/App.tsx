@@ -91,6 +91,7 @@ const defaultLimits: UsageLimits = {
 const MINDMAP_CHUNK_SIZE = 3000;
 const MINDMAP_CHUNK_THRESHOLD_CHARS = 9000;
 const TOTAL_PROJECT_TEXT_LIMIT = 10000;
+const SLOW_UPGRADE_CTA_DELAY_MS = 20000;
 
 const MindMapNode = ({ id, data }: NodeProps<MindNode>) => (
   <div
@@ -183,6 +184,16 @@ const extractErrorMessage = (error: unknown): string => {
     // no-op
   }
   return raw;
+};
+
+const isAuthError = (error: unknown): boolean => {
+  const message = extractErrorMessage(error).toLowerCase();
+  return (
+    message.includes('unauthorized') ||
+    message.includes('token missing') ||
+    message.includes('token invalid') ||
+    message.includes('not authenticated')
+  );
 };
 
 const findNode = (node: TreeNode, nodeId: string): TreeNode | null => {
@@ -435,6 +446,9 @@ export const App = () => {
   const [isFeatureRequestOpen, setIsFeatureRequestOpen] = useState(false);
   const [featureRequestMessage, setFeatureRequestMessage] = useState('');
   const [sendingFeatureRequest, setSendingFeatureRequest] = useState(false);
+  const [upgradeBusy, setUpgradeBusy] = useState(false);
+  const [showSlowUpgradeCta, setShowSlowUpgradeCta] = useState(false);
+  const [slowUpgradeDismissed, setSlowUpgradeDismissed] = useState(false);
   const [editingRecentMapId, setEditingRecentMapId] = useState<string | null>(null);
   const [editingRecentMapTitle, setEditingRecentMapTitle] = useState('');
   const [renamingRecentMapId, setRenamingRecentMapId] = useState<string | null>(null);
@@ -669,6 +683,27 @@ export const App = () => {
     return data.sources;
   };
 
+  const ensureSourcesForProject = async (project: VmProject): Promise<ProjectSource[]> => {
+    const existingSources = await loadSources(project.id);
+    if (existingSources.length > 0) return existingSources;
+
+    const fallbackText = (project.raw_text || '').trim();
+    if (!fallbackText) return existingSources;
+
+    try {
+      await api.addSource(project.id, {
+        kind: 'text',
+        title: inferTitle(project.primary_source_title?.trim() || project.title || fallbackText),
+        contentText: fallbackText,
+      });
+      const refreshed = await loadSources(project.id);
+      setStatus('Loaded legacy source into Added Sources');
+      return refreshed;
+    } catch {
+      return existingSources;
+    }
+  };
+
   const loadProjects = async () => {
     const data = await api.listProjects();
     setProjects(data.projects);
@@ -678,11 +713,10 @@ export const App = () => {
       setSelectedProjectId(preferred.id);
       setTree(preferredTree);
       setExpandedForTree(preferredTree);
-      const sources = await loadSources(preferred.id);
-      const firstSource = sources[0];
+      await ensureSourcesForProject(preferred);
       setProjectTitle(preferred.title);
-      setRawText(firstSource?.content_text ?? preferred.raw_text ?? '');
-      setSourceTitle(firstSource?.title ?? '');
+      setRawText('');
+      setSourceTitle('');
       setIsAddTextOpen(false);
       setEditingSource(null);
       setHasSourceChanges(false);
@@ -706,9 +740,52 @@ export const App = () => {
     })();
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('upgrade') === 'success') {
+      setStatus('Payment received. Your account will be upgraded shortly.');
+      params.delete('upgrade');
+      const nextQuery = params.toString();
+      const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
+      window.history.replaceState({}, '', nextUrl);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isMapLoading || userPlan !== 'free') {
+      setShowSlowUpgradeCta(false);
+      return;
+    }
+    setSlowUpgradeDismissed(false);
+    const timer = window.setTimeout(() => {
+      setShowSlowUpgradeCta(true);
+    }, SLOW_UPGRADE_CTA_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [isMapLoading, userPlan]);
+
   const onLogin = () => {
     const next = encodeURIComponent(window.location.href);
     window.location.href = `/login?next=${next}`;
+  };
+
+  const onUpgrade = async () => {
+    if (!isAuthenticated) {
+      setStatus('Please log in first to upgrade.');
+      onLogin();
+      return;
+    }
+
+    setUpgradeBusy(true);
+    try {
+      const upgrade = await api.getUpgradeLink();
+      window.open(upgrade.url, '_blank', 'noopener,noreferrer');
+      setStatus(`Opening Stripe checkout ($${upgrade.priceUsdMonthly}/month).`);
+    } catch (error) {
+      const message = extractErrorMessage(error);
+      setStatus(`Upgrade unavailable: ${message}`);
+    } finally {
+      setUpgradeBusy(false);
+    }
   };
 
   const onCreateProject = async () => {
@@ -842,22 +919,27 @@ export const App = () => {
       setStatus('Create a project first, then generate.');
       return;
     }
+    if (unsavedEditorText) {
+      setStatus('Save your text into Added Sources before generating.');
+      return;
+    }
+    if (persistedSources.length === 0) {
+      setStatus('Add at least one source in Added Sources before generating.');
+      return;
+    }
     setBusy(true);
     setIsMapLoading(true);
     setTree(null);
-    const estimatedChars = (
-      unsavedEditorText ||
-      persistedSources.map((source) => source.content_text).join('\n\n')
-    ).length;
+    const estimatedChars = persistedSources.map((source) => source.content_text).join('\n\n').length;
     startBuildProgress(estimatedChars);
     try {
       console.info('[VisualMind] generate:start', {
         projectId: selectedProjectId,
-        hasUnsavedEditorText: Boolean(unsavedEditorText),
-        editorChars: unsavedEditorText.length,
+        sourceCount: persistedSources.length,
+        sourceChars: estimatedChars,
       });
       setStatus('Generating mind map...');
-      const data = await api.generate(selectedProjectId, unsavedEditorText || undefined);
+      const data = await api.generate(selectedProjectId);
       console.info('[VisualMind] generate:success', {
         projectId: selectedProjectId,
         version: data.version,
@@ -1435,6 +1517,11 @@ export const App = () => {
 
   const removePersistedSource = async (source: ProjectSource) => {
     if (!selectedProjectId) return;
+    if (!isAuthenticated) {
+      setStatus('Please log in to remove sources.');
+      onLogin();
+      return;
+    }
 
     try {
       await api.deleteSource(selectedProjectId, source.id);
@@ -1450,6 +1537,12 @@ export const App = () => {
 
       setStatus(`Removed source "${source.title}"`);
     } catch (error) {
+      if (isAuthError(error)) {
+        setIsAuthenticated(false);
+        setStatus('Session expired. Please log in again to remove sources.');
+        onLogin();
+        return;
+      }
       const message = extractErrorMessage(error);
       setStatus(`Remove source failed: ${message}`);
     }
@@ -1668,6 +1761,31 @@ export const App = () => {
                         ? 'Combining and deduplicating ideas...'
                         : 'Generating one final, structured mind map...'}
                   </p>
+                  {userPlan === 'free' && showSlowUpgradeCta && !slowUpgradeDismissed ? (
+                    <div className="map-loader-upgrade-card">
+                      <div className="map-loader-upgrade-copy">
+                        <strong>Free mode may take longer to generate.</strong>
+                        <span>Upgrade to a faster model for $8/month.</span>
+                      </div>
+                      <div className="map-loader-upgrade-actions">
+                        <button
+                          className="btn map-loader-upgrade-btn"
+                          type="button"
+                          onClick={() => void onUpgrade()}
+                          disabled={upgradeBusy}
+                        >
+                          {upgradeBusy ? 'Opening...' : 'Upgrade'}
+                        </button>
+                        <button
+                          className="btn map-loader-wait-btn"
+                          type="button"
+                          onClick={() => setSlowUpgradeDismissed(true)}
+                        >
+                          I'll wait
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ) : tree ? (
                 <ReactFlow
@@ -1760,10 +1878,9 @@ export const App = () => {
                         setProjectTitle(recentMapTitle(project));
                         setDraftSessions([]);
                         setHasSourceChanges(false);
-                        const sources = await loadSources(project.id);
-                        const firstSource = sources[0];
-                        setRawText(firstSource?.content_text ?? project.raw_text ?? '');
-                        setSourceTitle(firstSource?.title ?? '');
+                        await ensureSourcesForProject(project);
+                        setRawText('');
+                        setSourceTitle('');
                         setIsAddTextOpen(false);
                         setEditingSource(null);
                         setStatus(

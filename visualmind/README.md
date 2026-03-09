@@ -46,6 +46,8 @@ ollama pull qwen2.5:7b
 
 ```env
 MODEL_API_BASE_URL=http://<remote-model-server-ip>:11434
+STRIPE_UPGRADE_URL=https://buy.stripe.com/your-payment-link
+PRO_MONTHLY_PRICE_USD=8
 ```
 
 ## Local Frontend + Remote Backend (Dev Token Mode)

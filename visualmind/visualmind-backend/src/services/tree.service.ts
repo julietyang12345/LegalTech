@@ -19,6 +19,23 @@ const generatedSchema = z.object({
   ),
 });
 
+const PROCESS_ARROW_REGEX = /\s*(?:->|→|=>|➡|➜|⟶)\s*/g;
+
+const splitProcessChain = (value: string): string[] =>
+  value
+    .split(PROCESS_ARROW_REGEX)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+const toProcessChainNode = (parts: string[], idPrefix: string): TreeNode => {
+  const [head, ...rest] = parts;
+  return {
+    id: idPrefix,
+    text: (head || '').slice(0, 120),
+    children: rest.length > 0 ? [toProcessChainNode(rest, `${idPrefix}-1`)] : [],
+  };
+};
+
 const extractJsonCandidate = (raw: string): string => {
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fenced?.[1]) {
@@ -89,6 +106,13 @@ const normalizeNodeFromUnknown = (raw: unknown, idPrefix: string): TreeNode | nu
         .filter((v): v is TreeNode => Boolean(v))
     : [];
 
+  if (normalizedChildren.length === 0) {
+    const parts = splitProcessChain(text);
+    if (parts.length > 1) {
+      return toProcessChainNode(parts, idPrefix);
+    }
+  }
+
   return {
     id: idPrefix,
     text: text.slice(0, 120),
@@ -113,6 +137,13 @@ const normalizeNode = (text: string, children: unknown, idPrefix: string): TreeN
         })
         .filter((v): v is TreeNode => Boolean(v))
     : [];
+
+  if (normalizedChildren.length === 0) {
+    const parts = splitProcessChain(text);
+    if (parts.length > 1) {
+      return toProcessChainNode(parts, idPrefix);
+    }
+  }
 
   return {
     id: idPrefix,

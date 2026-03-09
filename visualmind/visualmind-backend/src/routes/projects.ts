@@ -90,15 +90,10 @@ const inferSourceTitle = (text: string, fallback: string): string => {
   return clean.slice(0, 120);
 };
 
-const buildGenerationInput = async (
-  projectId: string,
-  userId: string,
-  extraInput?: string,
-): Promise<string> => {
+const buildGenerationInput = async (projectId: string, userId: string): Promise<string> => {
   const sources = await listProjectSources(projectId, userId);
   const persistedText = sources.map((source) => source.content_text).join('\n\n---\n\n').trim();
-  const trimmedExtra = extraInput?.trim() ?? '';
-  return [persistedText, trimmedExtra].filter(Boolean).join('\n\n---\n\n');
+  return persistedText;
 };
 
 projectsRouter.post(
@@ -451,22 +446,14 @@ projectsRouter.post(
       return;
     }
 
-    const limits = getLimitsForPlan(req.user!.plan);
-    const extraInput = parsed.data.inputText?.trim() ?? '';
-
-    if (extraInput.length > limits.maxTextChars) {
-      console.warn('[VisualMind] /generate:input-limit', {
-        projectId: project.id,
-        inputChars: extraInput.length,
-        limit: limits.maxTextChars,
-      });
-      res.status(403).json({
-        message: `Your plan supports up to ${limits.maxTextChars} characters per source session.`,
+    if (parsed.data.inputText?.trim()) {
+      res.status(400).json({
+        message: 'Generation uses Added Sources only. Save text into Added Sources before generating.',
       });
       return;
     }
 
-    const inputText = await buildGenerationInput(project.id, req.user!.id, extraInput || project.raw_text);
+    const inputText = await buildGenerationInput(project.id, req.user!.id);
     console.log('[VisualMind] /generate:input-ready', {
       projectId: project.id,
       combinedChars: inputText.length,
@@ -480,7 +467,7 @@ projectsRouter.post(
     let rawModelOutput: string;
     let tree: TreeNode;
     try {
-      rawModelOutput = await generateMindMapJson(inputText);
+      rawModelOutput = await generateMindMapJson(inputText, req.user!.plan);
       tree = normalizeGeneratedTree(rawModelOutput);
     } catch (error) {
       console.error('[VisualMind] /generate:model-or-parse-failed', {
@@ -519,17 +506,14 @@ projectsRouter.post(
       return;
     }
 
-    const limits = getLimitsForPlan(req.user!.plan);
-    const extraInput = parsed.data.inputText?.trim() ?? '';
-
-    if (extraInput.length > limits.maxTextChars) {
-      res.status(403).json({
-        message: `Your plan supports up to ${limits.maxTextChars} characters per source session.`,
+    if (parsed.data.inputText?.trim()) {
+      res.status(400).json({
+        message: 'Slides use Added Sources only. Save text into Added Sources before generating.',
       });
       return;
     }
 
-    const inputText = await buildGenerationInput(project.id, req.user!.id, extraInput || project.raw_text);
+    const inputText = await buildGenerationInput(project.id, req.user!.id);
     const slides = await generateSlides(inputText, parsed.data.slideCount);
     res.json({ projectId: project.id, slides });
   }),
@@ -550,16 +534,14 @@ projectsRouter.post(
       return;
     }
 
-    const limits = getLimitsForPlan(req.user!.plan);
-    const extraInput = parsed.data.inputText?.trim() ?? '';
-    if (extraInput.length > limits.maxTextChars) {
-      res.status(403).json({
-        message: `Your plan supports up to ${limits.maxTextChars} characters per source session.`,
+    if (parsed.data.inputText?.trim()) {
+      res.status(400).json({
+        message: 'Flashcards use Added Sources only. Save text into Added Sources before generating.',
       });
       return;
     }
 
-    const inputText = await buildGenerationInput(project.id, req.user!.id, extraInput || project.raw_text);
+    const inputText = await buildGenerationInput(project.id, req.user!.id);
     const flashcards = await generateFlashcards(inputText, parsed.data.cardCount);
     res.json({ projectId: project.id, flashcards });
   }),

@@ -75,4 +75,20 @@ export const initDb = async (): Promise<void> => {
     CREATE INDEX IF NOT EXISTS vm_feature_requests_user_id_idx
     ON vm_feature_requests(user_id, created_at DESC);
   `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS vm_user_plan_overrides (
+      user_id UUID PRIMARY KEY,
+      plan TEXT NOT NULL CHECK (plan IN ('pro')),
+      source TEXT NOT NULL DEFAULT 'mvp-free-upgrade',
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await db.query(`
+    CREATE INDEX IF NOT EXISTS vm_user_plan_overrides_expires_at_idx
+    ON vm_user_plan_overrides(expires_at DESC);
+  `);
 };
