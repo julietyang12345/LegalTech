@@ -17,10 +17,11 @@ import {
   updateProjectSource,
 } from '../services/project.service.js';
 import { generateFlashcards, generateMindMapJson, generateSlides } from '../services/model.service.js';
+import { assertInputAllowed, InputPolicyViolationError } from '../services/input-policy.service.js';
 import { getLimitsForPlan, PRO_MAX_TEXT_CHARS } from '../services/plan.service.js';
 import { normalizeGeneratedTree } from '../services/tree.service.js';
 import { toFreemindXml, toNotionMarkdown } from '../utils/mm-export.js';
-import type { TreeNode } from '../types.js';
+import type { TreeNode, UserPlan } from '../types.js';
 const TOTAL_PASTED_INPUT_LIMIT = 10000;
 
 const createProjectSchema = z.object({
@@ -96,6 +97,33 @@ const buildGenerationInput = async (projectId: string, userId: string): Promise<
   return persistedText;
 };
 
+const enforceInputPolicy = async (
+  res: any,
+  plan: UserPlan,
+  inputText: string,
+  context: string,
+): Promise<boolean> => {
+  if (plan !== 'pro') return true;
+  try {
+    await assertInputAllowed(inputText, context);
+    return true;
+  } catch (error) {
+    if (error instanceof InputPolicyViolationError) {
+      res.status(400).json({
+        message: 'Input blocked by safety policy. Remove illegal or disallowed content and try again.',
+        categories: error.categories,
+      });
+      return false;
+    }
+    console.error('[VisualMind] input-policy:check-failed', {
+      context,
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+    res.status(502).json({ message: 'Unable to validate input safety policy. Please try again.' });
+    return false;
+  }
+};
+
 projectsRouter.post(
   '/',
   asyncHandler(async (req, res) => {
@@ -135,6 +163,16 @@ projectsRouter.post(
         message: `Total pasted input is limited to ${TOTAL_PASTED_INPUT_LIMIT} characters per project.`,
       });
       return;
+    }
+
+    for (let i = 0; i < draftSessions.length; i += 1) {
+      const isAllowed = await enforceInputPolicy(
+        res,
+        req.user!.plan,
+        draftSessions[i],
+        `create-project:source-${i + 1}`,
+      );
+      if (!isAllowed) return;
     }
 
     const project = await createProject({
@@ -199,6 +237,7 @@ projectsRouter.post(
       });
       return;
     }
+    if (!(await enforceInputPolicy(res, req.user!.plan, contentText, 'add-source'))) return;
 
     const source = await addProjectSource({
       projectId: project.id,
@@ -265,6 +304,7 @@ projectsRouter.patch(
       });
       return;
     }
+    if (!(await enforceInputPolicy(res, req.user!.plan, contentText, 'update-source'))) return;
 
     const source = await updateProjectSource({
       projectId: project.id,
@@ -463,6 +503,7 @@ projectsRouter.post(
       res.status(400).json({ message: 'No source content found. Add at least one source before generating.' });
       return;
     }
+    if (!(await enforceInputPolicy(res, req.user!.plan, inputText, 'generate-mindmap'))) return;
 
     let rawModelOutput: string;
     let tree: TreeNode;
@@ -514,6 +555,7 @@ projectsRouter.post(
     }
 
     const inputText = await buildGenerationInput(project.id, req.user!.id);
+    if (!(await enforceInputPolicy(res, req.user!.plan, inputText, 'generate-slides'))) return;
     const slides = await generateSlides(inputText, parsed.data.slideCount);
     res.json({ projectId: project.id, slides });
   }),
@@ -542,6 +584,7 @@ projectsRouter.post(
     }
 
     const inputText = await buildGenerationInput(project.id, req.user!.id);
+    if (!(await enforceInputPolicy(res, req.user!.plan, inputText, 'generate-flashcards'))) return;
     const flashcards = await generateFlashcards(inputText, parsed.data.cardCount);
     res.json({ projectId: project.id, flashcards });
   }),

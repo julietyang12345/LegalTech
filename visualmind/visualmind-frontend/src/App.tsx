@@ -92,6 +92,8 @@ const MINDMAP_CHUNK_SIZE = 3000;
 const MINDMAP_CHUNK_THRESHOLD_CHARS = 9000;
 const TOTAL_PROJECT_TEXT_LIMIT = 10000;
 const SLOW_UPGRADE_CTA_DELAY_MS = 20000;
+const LOGIN_URL = (import.meta.env.VITE_LOGIN_URL as string | undefined)?.trim();
+const AUTH_ORIGIN = (import.meta.env.VITE_AUTH_ORIGIN as string | undefined)?.trim();
 
 const MindMapNode = ({ id, data }: NodeProps<MindNode>) => (
   <div
@@ -765,6 +767,15 @@ export const App = () => {
 
   const onLogin = () => {
     const next = encodeURIComponent(window.location.href);
+    if (LOGIN_URL) {
+      const separator = LOGIN_URL.includes('?') ? '&' : '?';
+      window.location.href = `${LOGIN_URL}${separator}next=${next}`;
+      return;
+    }
+    if (AUTH_ORIGIN) {
+      window.location.href = `${AUTH_ORIGIN.replace(/\/$/, '')}/login?next=${next}`;
+      return;
+    }
     window.location.href = `/login?next=${next}`;
   };
 
@@ -1690,9 +1701,6 @@ export const App = () => {
                       : 'Generate Mind Map'
                     : 'Create Mind Map'}
               </button>
-              {!isAuthenticated ? (
-                <p className="auth-helper">Add your sources now, then log in to generate and save your map.</p>
-              ) : null}
             </div>
             {/* Mind Map Outputs section temporarily disabled */}
           </div>
@@ -1841,7 +1849,16 @@ export const App = () => {
                   <Controls showInteractive={false} />
                 </ReactFlow>
               ) : (
-                <p className="empty">Mind map appears here after you click Create Mind Map.</p>
+                <div className="map-empty-state">
+                  <div className="map-empty-illustration" aria-hidden="true">
+                    <div className="map-empty-center">Map</div>
+                    <div className="map-empty-branch map-empty-branch-left">Ideas</div>
+                    <div className="map-empty-branch map-empty-branch-right">Topics</div>
+                    <div className="map-empty-branch map-empty-branch-bottom">Notes</div>
+                  </div>
+                  <h3>Create your first mind map</h3>
+                  <p>Add sources on the left, then click Create Mind Map.</p>
+                </div>
               )}
             </div>
           </div>

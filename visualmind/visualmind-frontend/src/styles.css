@@ -1384,10 +1384,109 @@ textarea {
   background: #f9e9ed;
 }
 
-.empty {
+.map-empty-state {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 10px;
+  padding: 24px;
+  background:
+    radial-gradient(220px 120px at 50% 36%, #e7f1ff 0%, transparent 72%),
+    linear-gradient(180deg, #fbfdff 0%, #f4f9ff 100%);
+}
+
+.map-empty-illustration {
+  position: relative;
+  width: min(500px, 86%);
+  height: 170px;
+}
+
+.map-empty-center,
+.map-empty-branch {
+  position: absolute;
+  border-radius: 999px;
+  border: 1px solid #95b9ea;
+  background: linear-gradient(180deg, #e7f2ff 0%, #d9eafe 100%);
+  color: #1f3f67;
+  font-weight: 800;
+  font-size: 12px;
+  line-height: 1;
+  padding: 8px 12px;
+  box-shadow: 0 4px 10px rgba(39, 81, 146, 0.15);
+}
+
+.map-empty-center {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(180deg, #dff0ff 0%, #c8e4ff 100%);
+  border-color: #83afe6;
+  color: #173f70;
+  font-size: 13px;
+  padding: 10px 16px;
+}
+
+.map-empty-branch-left {
+  left: 18%;
+  top: 32%;
+}
+
+.map-empty-branch-right {
+  right: 16%;
+  top: 30%;
+}
+
+.map-empty-branch-bottom {
+  left: 50%;
+  bottom: 16%;
+  transform: translateX(-50%);
+}
+
+.map-empty-branch-left::after,
+.map-empty-branch-right::after,
+.map-empty-branch-bottom::after {
+  content: "";
+  position: absolute;
+  height: 2px;
+  background: #99bde9;
+  top: 50%;
+  z-index: -1;
+}
+
+.map-empty-branch-left::after {
+  width: 98px;
+  left: 98%;
+}
+
+.map-empty-branch-right::after {
+  width: 104px;
+  right: 98%;
+}
+
+.map-empty-branch-bottom::after {
+  width: 2px;
+  height: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  top: -42px;
+}
+
+.map-empty-state h3 {
   margin: 0;
-  color: var(--muted);
-  animation: pulseSoft 1.8s ease-in-out infinite;
+  font-size: 22px;
+  line-height: 1.15;
+  color: #17345a;
+  font-family: "Space Grotesk", "Plus Jakarta Sans", sans-serif;
+}
+
+.map-empty-state p {
+  margin: 0;
+  color: #617a97;
+  font-size: 14px;
 }
 
 @media (max-width: 1400px) {
