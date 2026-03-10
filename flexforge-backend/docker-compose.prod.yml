@@ -60,6 +60,8 @@ services:
       - AI_PRIMARY_PROVIDER=${AI_PRIMARY_PROVIDER:-anthropic}
       - AI_FALLBACK_ENABLED=${AI_FALLBACK_ENABLED:-true}
       - EDGE_SIGNING_SECRET=${EDGE_SIGNING_SECRET}
+      - CF_ACCESS_CLIENT_ID=${CF_ACCESS_CLIENT_ID}
+      - CF_ACCESS_CLIENT_SECRET=${CF_ACCESS_CLIENT_SECRET}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
     depends_on:
       postgres:
@@ -79,6 +81,7 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
 
   cf-tunnel:
     container_name: cf-tunnel

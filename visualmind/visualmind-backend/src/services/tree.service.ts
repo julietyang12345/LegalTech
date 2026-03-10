@@ -31,7 +31,7 @@ const toProcessChainNode = (parts: string[], idPrefix: string): TreeNode => {
   const [head, ...rest] = parts;
   return {
     id: idPrefix,
-    text: (head || '').slice(0, 120),
+    text: head || '',
     children: rest.length > 0 ? [toProcessChainNode(rest, `${idPrefix}-1`)] : [],
   };
 };
@@ -115,7 +115,7 @@ const normalizeNodeFromUnknown = (raw: unknown, idPrefix: string): TreeNode | nu
 
   return {
     id: idPrefix,
-    text: text.slice(0, 120),
+    text,
     children: normalizedChildren,
   };
 };
@@ -147,7 +147,7 @@ const normalizeNode = (text: string, children: unknown, idPrefix: string): TreeN
 
   return {
     id: idPrefix,
-    text: text.slice(0, 120),
+    text,
     children: normalizedChildren,
   };
 };

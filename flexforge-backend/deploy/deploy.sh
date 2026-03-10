@@ -16,6 +16,40 @@ fi
 # Load environment variables
 export $(cat .env.production | grep -v '^#' | xargs)
 
+# Preserve critical auth vars from existing container when .env.production has blanks
+if docker ps -a --format '{{.Names}}' | grep -Fxq flexforge-api-prod; then
+    echo "Preserving critical env vars from existing container when needed..."
+    tmp_current_env="$(mktemp)"
+    docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' flexforge-api-prod > "$tmp_current_env" || true
+
+    for key in CF_ACCESS_CLIENT_ID CF_ACCESS_CLIENT_SECRET GOOGLE_CLIENT_ID; do
+        container_val="$(grep -E "^${key}=" "$tmp_current_env" | tail -n1 | cut -d'=' -f2- || true)"
+        file_val="$(grep -E "^${key}=" .env.production | tail -n1 | cut -d'=' -f2- || true)"
+
+        if [ -n "$container_val" ] && [ -z "$file_val" ]; then
+            tmp_env="$(mktemp)"
+            awk -v key="$key" -v val="$container_val" '
+                BEGIN { updated = 0 }
+                $0 ~ ("^" key "=") {
+                    if (!updated) {
+                        print key "=" val
+                        updated = 1
+                    }
+                    next
+                }
+                { print }
+                END {
+                    if (!updated) print key "=" val
+                }
+            ' .env.production > "$tmp_env"
+            mv "$tmp_env" .env.production
+            echo "Preserved $key in .env.production"
+        fi
+    done
+
+    rm -f "$tmp_current_env"
+fi
+
 # Pull latest changes (if using git)
 if [ -d ".git" ]; then
     echo "Pulling latest changes..."

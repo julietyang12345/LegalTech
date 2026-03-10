@@ -23,6 +23,7 @@ export interface UsageLimits {
 export interface ProjectRecord {
   id: string;
   user_id: string;
+  user_email: string | null;
   title: string;
   primary_source_title?: string | null;
   raw_text: string;

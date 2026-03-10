@@ -21,6 +21,7 @@ FRONTEND_DIR="$SCRIPT_DIR/flexforge-frontend"
 SERVER_USER="j"
 SERVER_HOST="10.3.8.169"
 SERVER_PATH="/home/j"
+RUN_MIGRATIONS_ON_DEPLOY="${RUN_MIGRATIONS_ON_DEPLOY:-false}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -85,6 +86,45 @@ deploy_backend_remote() {
         set -e
         cd ~
 
+        if [ ! -f .env.production ]; then
+            echo "[ERROR] Missing ~/ .env.production (expected at /home/j/.env.production)"
+            exit 1
+        fi
+
+        preserve_keys=(CF_ACCESS_CLIENT_ID CF_ACCESS_CLIENT_SECRET GOOGLE_CLIENT_ID)
+        if docker ps -a --format '{{.Names}}' | grep -Fxq flexforge-api-prod; then
+            echo "[INFO] Preserving critical env vars from existing container if .env.production has blanks..."
+            tmp_current_env="$(mktemp)"
+            docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' flexforge-api-prod > "$tmp_current_env" || true
+
+            for key in "${preserve_keys[@]}"; do
+                container_val="$(grep -E "^${key}=" "$tmp_current_env" | tail -n1 | cut -d'=' -f2- || true)"
+                file_val="$(grep -E "^${key}=" .env.production | tail -n1 | cut -d'=' -f2- || true)"
+
+                if [ -n "$container_val" ] && [ -z "$file_val" ]; then
+                    tmp_env="$(mktemp)"
+                    awk -v key="$key" -v val="$container_val" '
+                        BEGIN { updated = 0 }
+                        $0 ~ ("^" key "=") {
+                            if (!updated) {
+                                print key "=" val
+                                updated = 1
+                            }
+                            next
+                        }
+                        { print }
+                        END {
+                            if (!updated) print key "=" val
+                        }
+                    ' .env.production > "$tmp_env"
+                    mv "$tmp_env" .env.production
+                    echo "[INFO] Preserved $key from existing container into .env.production"
+                fi
+            done
+
+            rm -f "$tmp_current_env"
+        fi
+
         echo "[INFO] Loading Docker image from transferred tar..."
         if [ -f /tmp/flexforge-api.tar.gz ]; then
             gunzip -c /tmp/flexforge-api.tar.gz | docker load
@@ -132,8 +172,12 @@ deploy_backend_full() {
     build_backend
     echo ""
     transfer_backend
-    echo ""
-    run_migrations
+    if [ "$RUN_MIGRATIONS_ON_DEPLOY" = "true" ]; then
+        echo ""
+        run_migrations
+    else
+        log_info "Skipping migrations by default (set RUN_MIGRATIONS_ON_DEPLOY=true to include them)."
+    fi
     echo ""
     deploy_backend_remote
 }
@@ -212,6 +256,9 @@ deploy_backend() {
 # ============================================================================
 run_migrations() {
     log_info "Running database migrations on server..."
+    local state_file=".flexforge_migrations_applied"
+
+    ssh "$SERVER_USER@$SERVER_HOST" "touch ~/$state_file"
 
     # Run SQL migrations
     SQL_MIGRATIONS=$(ls -1 "$BACKEND_DIR/src/database/migrations/"*.sql 2>/dev/null | sort)
@@ -219,11 +266,20 @@ run_migrations() {
     if [ -n "$SQL_MIGRATIONS" ]; then
         for migration in $SQL_MIGRATIONS; do
             filename=$(basename "$migration")
+            if ssh "$SERVER_USER@$SERVER_HOST" "grep -Fxq '$filename' ~/$state_file"; then
+                log_info "Skipping already applied SQL migration: $filename"
+                continue
+            fi
             log_info "Running SQL migration: $filename"
 
             # Copy migration to server and run it
             scp "$migration" "$SERVER_USER@$SERVER_HOST:/tmp/$filename"
-            ssh "$SERVER_USER@$SERVER_HOST" "docker exec -i flexforge-db-prod psql -U flexforge -d flexforge_prod < /tmp/$filename" || true
+            if ssh "$SERVER_USER@$SERVER_HOST" "docker exec -i flexforge-db-prod psql -U flexforge -d flexforge_prod < /tmp/$filename"; then
+                ssh "$SERVER_USER@$SERVER_HOST" "echo '$filename' >> ~/$state_file"
+            else
+                log_error "SQL migration failed: $filename"
+                exit 1
+            fi
         done
     else
         log_warn "No SQL migration files found"
@@ -240,6 +296,10 @@ run_migrations() {
 
         for migration in $TS_MIGRATIONS; do
             filename=$(basename "$migration")
+            if ssh "$SERVER_USER@$SERVER_HOST" "grep -Fxq '$filename' ~/$state_file"; then
+                log_info "Skipping already applied TypeScript migration: $filename"
+                continue
+            fi
             log_info "Running TypeScript migration: $filename"
 
             # Copy migration to server
@@ -260,6 +320,9 @@ run_migrations() {
 ENDSSH
             if [ $? -ne 0 ]; then
                 log_error "Migration $filename failed"
+                exit 1
+            else
+                ssh "$SERVER_USER@$SERVER_HOST" "echo '$filename' >> ~/$state_file"
             fi
         done
     else

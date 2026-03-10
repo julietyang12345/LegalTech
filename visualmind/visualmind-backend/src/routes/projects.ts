@@ -17,13 +17,24 @@ import {
   updateProjectTitle,
   updateProjectSource,
 } from '../services/project.service.js';
-import { generateFlashcards, generateMindMapJson, generateSlides } from '../services/model.service.js';
+import {
+  createGenerationJob,
+  getGenerationJob,
+  runGenerationJob,
+} from '../services/generation-jobs.service.js';
+import {
+  generateFlashcards,
+  generateMindMapJson,
+  generateSlides,
+  runWithGenerationUsageTracking,
+} from '../services/model.service.js';
 import { assertInputAllowed, InputPolicyViolationError } from '../services/input-policy.service.js';
 import { getLimitsForPlan, PRO_MAX_TEXT_CHARS } from '../services/plan.service.js';
 import { normalizeGeneratedTree } from '../services/tree.service.js';
 import { toFreemindXml, toNotionMarkdown } from '../utils/mm-export.js';
 import type { TreeNode, UserPlan } from '../types.js';
 const TOTAL_PASTED_INPUT_LIMIT = 10000;
+const GENERATE_ASYNC_THRESHOLD_CHARS = 1200;
 
 const createProjectSchema = z.object({
   title: z.string().min(1).max(120),
@@ -184,6 +195,7 @@ projectsRouter.post(
 
     const project = await createProject({
       userId: req.user!.id,
+      userEmail: req.user!.email,
       title: parsed.data.title,
       rawText: rawText || draftSessions[0],
     });
@@ -504,6 +516,7 @@ projectsRouter.post(
     const inputText = await buildGenerationInput(project.id, req.user!.id);
     console.log('[VisualMind] /generate:input-ready', {
       projectId: project.id,
+      plan: req.user!.plan,
       combinedChars: inputText.length,
     });
     if (!inputText.trim()) {
@@ -513,11 +526,73 @@ projectsRouter.post(
     }
     if (!(await enforceInputPolicy(res, req.user!.plan, inputText, 'generate-mindmap'))) return;
 
-    let rawModelOutput: string;
-    let tree: TreeNode;
+    if (inputText.length > GENERATE_ASYNC_THRESHOLD_CHARS) {
+      const job = createGenerationJob({
+        projectId: project.id,
+        userId: req.user!.id,
+      });
+      void runGenerationJob({
+        jobId: job.id,
+        projectId: project.id,
+        userId: req.user!.id,
+        inputText,
+        plan: req.user!.plan,
+      });
+      res.status(202).json({
+        projectId: project.id,
+        jobId: job.id,
+        status: job.status,
+      });
+      return;
+    }
+
     try {
-      rawModelOutput = await generateMindMapJson(inputText, req.user!.plan);
-      tree = normalizeGeneratedTree(rawModelOutput);
+      console.log('[VisualMind] /generate:before-generateMindMapJson', {
+        projectId: project.id,
+        plan: req.user!.plan,
+        inputChars: inputText.length,
+      });
+      const generation = await runWithGenerationUsageTracking(() => generateMindMapJson(inputText, req.user!.plan));
+      const rawModelOutput = generation.result;
+      console.log('[VisualMind] /generate:after-generateMindMapJson', {
+        projectId: project.id,
+        rawChars: rawModelOutput.length,
+        openAiPromptTokens: generation.usage.openAiPromptTokens,
+        openAiCompletionTokens: generation.usage.openAiCompletionTokens,
+        openAiTotalTokens: generation.usage.openAiTotalTokens,
+        openAiCostUsd: generation.usage.openAiCostUsd.toFixed(11),
+      });
+      const tree = normalizeGeneratedTree(rawModelOutput);
+      console.log('[VisualMind] /generate:after-normalize-tree', {
+        projectId: project.id,
+        root: tree.text,
+        childCount: tree.children.length,
+      });
+      const promptUsed = `Generate a coverage-first mind map tree from input text. Input length=${inputText.length}`;
+      const version = await saveGeneration({
+        projectId: project.id,
+        promptUsed,
+        rawModelOutput,
+        tree,
+        usage: generation.usage,
+      });
+      console.log('[VisualMind] /generate:gpt-usage-summary', {
+        projectId: project.id,
+        version,
+        userId: req.user!.id,
+        openAiPromptTokens: generation.usage.openAiPromptTokens,
+        openAiCompletionTokens: generation.usage.openAiCompletionTokens,
+        openAiTotalTokens: generation.usage.openAiTotalTokens,
+        openAiCostUsd: generation.usage.openAiCostUsd.toFixed(11),
+      });
+      console.log('[VisualMind] /generate:success', {
+        projectId: project.id,
+        version,
+        root: tree.text,
+      });
+
+      res.json({ projectId: project.id, version, tree });
+      return;
     } catch (error) {
       console.error('[VisualMind] /generate:model-or-parse-failed', {
         projectId: project.id,
@@ -528,15 +603,19 @@ projectsRouter.post(
       return;
     }
 
-    const promptUsed = `Generate a concise mind map tree from input text. Input length=${inputText.length}`;
-    const version = await saveGeneration({ projectId: project.id, promptUsed, rawModelOutput, tree });
-    console.log('[VisualMind] /generate:success', {
-      projectId: project.id,
-      version,
-      root: tree.text,
-    });
+  }),
+);
 
-    res.json({ projectId: project.id, version, tree });
+projectsRouter.get(
+  '/generate-jobs/:jobId',
+  asyncHandler(async (req, res) => {
+    const job = getGenerationJob(req.params.jobId, req.user!.id);
+    if (!job) {
+      res.status(404).json({ message: 'Generation job not found' });
+      return;
+    }
+
+    res.json(job);
   }),
 );
 

@@ -92,7 +92,10 @@ const defaultLimits: UsageLimits = {
 const MINDMAP_CHUNK_SIZE = 3000;
 const MINDMAP_CHUNK_THRESHOLD_CHARS = 9000;
 const TOTAL_PROJECT_TEXT_LIMIT = 10000;
-const SLOW_UPGRADE_CTA_DELAY_MS = 20000;
+const LOADER_COPY_ROTATION_MS = 1600;
+const UPGRADE_PROMPT_USE_THRESHOLD = 8;
+const GENERATION_USE_COUNT_KEY = 'vm_generation_use_count';
+const UPGRADE_PROMPT_SHOWN_KEY = 'vm_upgrade_prompt_shown';
 
 const MindMapNode = ({ id, data }: NodeProps<MindNode>) => (
   <div
@@ -449,8 +452,8 @@ export const App = () => {
   const [featureRequestMessage, setFeatureRequestMessage] = useState('');
   const [sendingFeatureRequest, setSendingFeatureRequest] = useState(false);
   const [upgradeBusy, setUpgradeBusy] = useState(false);
-  const [showSlowUpgradeCta, setShowSlowUpgradeCta] = useState(false);
-  const [slowUpgradeDismissed, setSlowUpgradeDismissed] = useState(false);
+  const [isUpgradeOfferOpen, setIsUpgradeOfferOpen] = useState(false);
+  const [isMvpUpgradeOpen, setIsMvpUpgradeOpen] = useState(false);
   const [editingRecentMapId, setEditingRecentMapId] = useState<string | null>(null);
   const [editingRecentMapTitle, setEditingRecentMapTitle] = useState('');
   const [renamingRecentMapId, setRenamingRecentMapId] = useState<string | null>(null);
@@ -460,6 +463,7 @@ export const App = () => {
   const [isMapLoading, setIsMapLoading] = useState(false);
   const [mapBuildPhase, setMapBuildPhase] = useState<MapBuildPhase>('idle');
   const [mapBuildProgress, setMapBuildProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
+  const [loaderTick, setLoaderTick] = useState(0);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [nodeEditText, setNodeEditText] = useState('');
   const [hasSourceChanges, setHasSourceChanges] = useState(false);
@@ -470,6 +474,20 @@ export const App = () => {
   const studyToolsRef = useRef<HTMLDivElement | null>(null);
   const buildProgressTimerRef = useRef<number | null>(null);
   const authRefreshInFlightRef = useRef(false);
+
+  const trackGenerationUsage = useCallback(() => {
+    if (userPlan !== 'free') return;
+
+    const rawCount = window.localStorage.getItem(GENERATION_USE_COUNT_KEY);
+    const nextCount = Number.parseInt(rawCount ?? '0', 10) + 1;
+    window.localStorage.setItem(GENERATION_USE_COUNT_KEY, String(nextCount));
+
+    const promptShown = window.localStorage.getItem(UPGRADE_PROMPT_SHOWN_KEY) === 'true';
+    if (!promptShown && nextCount >= UPGRADE_PROMPT_USE_THRESHOLD) {
+      window.localStorage.setItem(UPGRADE_PROMPT_SHOWN_KEY, 'true');
+      setIsUpgradeOfferOpen(true);
+    }
+  }, [userPlan]);
   const rawTextLength = rawText.length;
   const isLoggedIn = isAuthenticated || appIsAuthenticated || Boolean(userEmail);
   const isOverTextLimit = rawTextLength > limits.maxTextChars;
@@ -557,6 +575,33 @@ export const App = () => {
     [projects, hideFailedProjects],
   );
 
+  const loaderDisplay = useMemo(() => {
+    if (mapBuildPhase === 'analyzing-chunks') {
+      return {
+        title: `Analyzing part ${mapBuildProgress.current} of ${mapBuildProgress.total}`,
+        body: 'Extracting key points from each section...',
+      };
+    }
+
+    if (mapBuildPhase === 'merging-ideas') {
+      return {
+        title: 'Merging ideas',
+        body: 'Combining and deduplicating ideas...',
+      };
+    }
+
+    const buildingMessages = [
+      'Turning your source into a connected map...',
+      'Organizing branches and preserving structure...',
+      'Finalizing nodes for the canvas...',
+    ];
+
+    return {
+      title: 'Building final mind map',
+      body: status || buildingMessages[loaderTick % buildingMessages.length],
+    };
+  }, [loaderTick, mapBuildPhase, mapBuildProgress.current, mapBuildProgress.total, status]);
+
   const recentMapTitle = (project: VmProject): string => {
     const sourceTitle = project.primary_source_title?.trim();
     if (sourceTitle) return sourceTitle;
@@ -589,7 +634,7 @@ export const App = () => {
 
       if (candidates.length === 0) return null;
 
-      const dragWidth = dragNode.width ?? 220;
+      const dragWidth = dragNode.width ?? 260;
       const dragHeight = dragNode.height ?? 80;
       const dragCenterX = dragNode.position.x + dragWidth / 2;
       const dragCenterY = dragNode.position.y + dragHeight / 2;
@@ -598,7 +643,7 @@ export const App = () => {
       let bestDistance = Number.POSITIVE_INFINITY;
 
       for (const candidate of candidates) {
-        const width = candidate.width ?? 220;
+        const width = candidate.width ?? 260;
         const height = candidate.height ?? 80;
         const centerX = candidate.position.x + width / 2;
         const centerY = candidate.position.y + height / 2;
@@ -687,27 +732,6 @@ export const App = () => {
     return data.sources;
   };
 
-  const ensureSourcesForProject = async (project: VmProject): Promise<ProjectSource[]> => {
-    const existingSources = await loadSources(project.id);
-    if (existingSources.length > 0) return existingSources;
-
-    const fallbackText = (project.raw_text || '').trim();
-    if (!fallbackText) return existingSources;
-
-    try {
-      await api.addSource(project.id, {
-        kind: 'text',
-        title: inferTitle(project.primary_source_title?.trim() || project.title || fallbackText),
-        contentText: fallbackText,
-      });
-      const refreshed = await loadSources(project.id);
-      setStatus('Loaded legacy source into Added Sources');
-      return refreshed;
-    } catch {
-      return existingSources;
-    }
-  };
-
   const loadProjects = async () => {
     const data = await api.listProjects();
     setProjects(data.projects);
@@ -717,7 +741,7 @@ export const App = () => {
       setSelectedProjectId(preferred.id);
       setTree(preferredTree);
       setExpandedForTree(preferredTree);
-      await ensureSourcesForProject(preferred);
+      await loadSources(preferred.id);
       setProjectTitle(preferred.title);
       setRawText('');
       setSourceTitle('');
@@ -791,37 +815,52 @@ export const App = () => {
   }, []);
 
   useEffect(() => {
-    if (!isMapLoading || userPlan !== 'free') {
-      setShowSlowUpgradeCta(false);
+    if (!isMapLoading) {
+      setLoaderTick(0);
       return;
     }
-    setSlowUpgradeDismissed(false);
-    const timer = window.setTimeout(() => {
-      setShowSlowUpgradeCta(true);
-    }, SLOW_UPGRADE_CTA_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [isMapLoading, userPlan]);
+    const timer = window.setInterval(() => {
+      setLoaderTick((value) => value + 1);
+    }, LOADER_COPY_ROTATION_MS);
+    return () => window.clearInterval(timer);
+  }, [isMapLoading]);
 
   const onLogin = () => {
     const next = encodeURIComponent(window.location.href);
     window.location.href = `/login?next=${next}`;
   };
 
-  const onUpgrade = async () => {
-    if (!isLoggedIn) {
-      setStatus('Please log in first to upgrade.');
-      onLogin();
-      return;
-    }
-
+  const continueUpgradeFlow = async () => {
     setUpgradeBusy(true);
     try {
       const upgrade = await api.getUpgradeLink();
+      setIsUpgradeOfferOpen(false);
       window.open(upgrade.url, '_blank', 'noopener,noreferrer');
       setStatus(`Opening Stripe checkout ($${upgrade.priceUsdMonthly}/month).`);
     } catch (error) {
       const message = extractErrorMessage(error);
+      if (message.toLowerCase().includes('not configured')) {
+        setIsUpgradeOfferOpen(false);
+        setIsMvpUpgradeOpen(true);
+        return;
+      }
       setStatus(`Upgrade unavailable: ${message}`);
+    } finally {
+      setUpgradeBusy(false);
+    }
+  };
+
+  const claimMvpUpgrade = async () => {
+    setUpgradeBusy(true);
+    try {
+      const claim = await api.claimMvpUpgrade();
+      setUserPlan(claim.plan ?? 'pro');
+      setLimits(claim.limits ?? defaultLimits);
+      setStatus(claim.message || 'Upgrade applied.');
+      setIsMvpUpgradeOpen(false);
+    } catch (claimError) {
+      const claimMessage = extractErrorMessage(claimError);
+      setStatus(`Upgrade unavailable: ${claimMessage}`);
     } finally {
       setUpgradeBusy(false);
     }
@@ -859,9 +898,14 @@ export const App = () => {
       setSelectedProjectId(data.project.id);
       await loadSources(data.project.id);
       const generated = await api.generate(data.project.id);
-      setTree(generated.tree);
-      setExpandedForTree(generated.tree);
-      setNodePositions({});
+      if ('jobId' in generated) {
+        await waitForGeneratedTree(data.project.id, generated.jobId);
+      } else {
+        setTree(generated.tree);
+        setExpandedForTree(generated.tree);
+        setNodePositions({});
+        trackGenerationUsage();
+      }
       setDraftSessions([]);
       setRawText('');
       setSourceTitle('');
@@ -941,6 +985,36 @@ export const App = () => {
   //   }
   // };
 
+  const waitForGeneratedTree = async (projectId: string, jobId: string) => {
+    setStatus('Generation queued. Building your mind map...');
+    while (true) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const job = await api.getGenerateJob(jobId);
+      if (job.status === 'queued') {
+        setStatus('Generation queued. Starting soon...');
+        continue;
+      }
+      if (job.status === 'running') {
+        setStatus('Generating mind map...');
+        continue;
+      }
+      if (job.status === 'failed') {
+        throw new Error(job.error || 'Mind map generation failed');
+      }
+      if (job.status === 'done' && job.tree && typeof job.version === 'number') {
+        setTree(job.tree);
+        setExpandedForTree(job.tree);
+        setNodePositions({});
+        persistPositions(projectId, {});
+        setHasSourceChanges(false);
+        trackGenerationUsage();
+        setStatus(`Generated version ${job.version}`);
+        await loadProjects();
+        return;
+      }
+    }
+  };
+
   const onGenerate = async () => {
     if (!selectedProjectId) {
       setStatus('Create a project first, then generate.');
@@ -962,12 +1036,18 @@ export const App = () => {
     try {
       setStatus('Generating mind map...');
       const data = await api.generate(selectedProjectId);
-      setTree(data.tree);
-      setExpandedForTree(data.tree);
+      if ('jobId' in data) {
+        await waitForGeneratedTree(selectedProjectId, data.jobId);
+        return;
+      }
+      const immediate = data;
+      setTree(immediate.tree);
+      setExpandedForTree(immediate.tree);
       setNodePositions({});
       persistPositions(selectedProjectId, {});
       setHasSourceChanges(false);
-      setStatus(`Generated version ${data.version}`);
+      trackGenerationUsage();
+      setStatus(`Generated version ${immediate.version}`);
       await loadProjects();
     } catch (error) {
       const message = extractErrorMessage(error);
@@ -1206,7 +1286,7 @@ export const App = () => {
     }
     if (!nodes.length) return;
 
-    const defaultNodeWidth = 220;
+    const defaultNodeWidth = 260;
     const defaultNodeHeight = 80;
     const padding = 48;
 
@@ -1764,45 +1844,8 @@ export const App = () => {
               {isMapLoading ? (
                 <div className="map-loader">
                   <div className="map-loader-spinner" />
-                  <h3>
-                    {mapBuildPhase === 'analyzing-chunks'
-                      ? `Analyzing part ${mapBuildProgress.current} of ${mapBuildProgress.total}`
-                      : mapBuildPhase === 'merging-ideas'
-                        ? 'Merging ideas'
-                        : 'Building final mind map'}
-                  </h3>
-                  <p>
-                    {mapBuildPhase === 'analyzing-chunks'
-                      ? 'Extracting key points from each section...'
-                      : mapBuildPhase === 'merging-ideas'
-                        ? 'Combining and deduplicating ideas...'
-                        : 'Generating one final, structured mind map...'}
-                  </p>
-                  {userPlan === 'free' && showSlowUpgradeCta && !slowUpgradeDismissed ? (
-                    <div className="map-loader-upgrade-card">
-                      <div className="map-loader-upgrade-copy">
-                        <strong>Free mode may take longer to generate.</strong>
-                        <span>Upgrade to a faster model for $8/month.</span>
-                      </div>
-                      <div className="map-loader-upgrade-actions">
-                        <button
-                          className="btn map-loader-upgrade-btn"
-                          type="button"
-                          onClick={() => void onUpgrade()}
-                          disabled={upgradeBusy}
-                        >
-                          {upgradeBusy ? 'Opening...' : 'Upgrade'}
-                        </button>
-                        <button
-                          className="btn map-loader-wait-btn"
-                          type="button"
-                          onClick={() => setSlowUpgradeDismissed(true)}
-                        >
-                          I'll wait
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
+                  <h3>{loaderDisplay.title}</h3>
+                  <p>{loaderDisplay.body}</p>
                 </div>
               ) : tree ? (
                 <ReactFlow
@@ -1904,7 +1947,7 @@ export const App = () => {
                         setProjectTitle(recentMapTitle(project));
                         setDraftSessions([]);
                         setHasSourceChanges(false);
-                        await ensureSourcesForProject(project);
+                        await loadSources(project.id);
                         setRawText('');
                         setSourceTitle('');
                         setIsAddTextOpen(false);
@@ -2041,6 +2084,96 @@ export const App = () => {
                 }}
               >
                 Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isUpgradeOfferOpen ? (
+        <div className="move-modal-backdrop">
+          <div className="move-modal upgrade-modal">
+            <div className="upgrade-hero">
+              <p className="upgrade-kicker">VisualMind Pro</p>
+              <h3>Upgrade to VisualMind Pro</h3>
+              <p>
+                Remove free-plan limits and unlock a more flexible workflow for larger projects.
+              </p>
+            </div>
+            <div className="upgrade-benefits">
+              <div className="upgrade-benefit">
+                <strong>More generation capacity</strong>
+                <span>Handle larger projects with expanded access and fewer limits.</span>
+              </div>
+              <div className="upgrade-benefit">
+                <strong>Unlimited sources</strong>
+                <span>Add as many source sessions as you need for one map.</span>
+              </div>
+              <div className="upgrade-benefit">
+                <strong>Bigger input limits</strong>
+                <span>Longer source text support per session.</span>
+              </div>
+            </div>
+            <div className="upgrade-checkout-row">
+              <div>
+                <p className="upgrade-price">$8/month</p>
+                <p className="upgrade-price-sub">Cancel anytime</p>
+              </div>
+              <button
+                className="btn btn-primary upgrade-continue-btn"
+                type="button"
+                onClick={() => void continueUpgradeFlow()}
+                disabled={upgradeBusy}
+              >
+                {upgradeBusy ? 'Checking...' : 'Continue'}
+              </button>
+            </div>
+            <div className="actions">
+              <button
+                className="btn btn-ghost"
+                type="button"
+                onClick={() => setIsUpgradeOfferOpen(false)}
+                disabled={upgradeBusy}
+              >
+                Not now
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isMvpUpgradeOpen ? (
+        <div className="move-modal-backdrop">
+          <div className="move-modal upgrade-modal mvp-upgrade-modal">
+            <div className="upgrade-hero">
+              <p className="upgrade-kicker">Early User Offer</p>
+              <h3>We are in MVP: Enjoy 1 Month Free Pro</h3>
+              <p>
+                For now, early users get full Pro access free for one month while we finish billing rollout.
+              </p>
+            </div>
+            <div className="upgrade-benefits">
+              <div className="upgrade-benefit">
+                <strong>Full Pro access now</strong>
+                <span>Expanded limits unlock immediately.</span>
+              </div>
+            </div>
+            <div className="actions">
+              <button
+                className="btn btn-primary upgrade-continue-btn"
+                type="button"
+                onClick={() => void claimMvpUpgrade()}
+                disabled={upgradeBusy}
+              >
+                {upgradeBusy ? 'Upgrading...' : 'Activate Free Month'}
+              </button>
+              <button
+                className="btn btn-ghost"
+                type="button"
+                onClick={() => setIsMvpUpgradeOpen(false)}
+                disabled={upgradeBusy}
+              >
+                Cancel
               </button>
             </div>
           </div>

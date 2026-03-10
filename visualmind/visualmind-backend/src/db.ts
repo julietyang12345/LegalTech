@@ -12,6 +12,7 @@ export const initDb = async (): Promise<void> => {
     CREATE TABLE IF NOT EXISTS vm_projects (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID NOT NULL,
+      user_email TEXT,
       title TEXT NOT NULL,
       raw_text TEXT NOT NULL,
       current_tree_json JSONB,
@@ -29,9 +30,38 @@ export const initDb = async (): Promise<void> => {
       prompt_used TEXT NOT NULL,
       raw_model_output TEXT,
       tree_json JSONB NOT NULL,
+      openai_prompt_tokens INT NOT NULL DEFAULT 0,
+      openai_completion_tokens INT NOT NULL DEFAULT 0,
+      openai_total_tokens INT NOT NULL DEFAULT 0,
+      openai_cost_usd NUMERIC(18, 11) NOT NULL DEFAULT 0,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (project_id, version)
     );
+  `);
+
+  await db.query(`
+    ALTER TABLE vm_generations
+    ADD COLUMN IF NOT EXISTS openai_prompt_tokens INT NOT NULL DEFAULT 0;
+  `);
+
+  await db.query(`
+    ALTER TABLE vm_generations
+    ADD COLUMN IF NOT EXISTS openai_completion_tokens INT NOT NULL DEFAULT 0;
+  `);
+
+  await db.query(`
+    ALTER TABLE vm_generations
+    ADD COLUMN IF NOT EXISTS openai_total_tokens INT NOT NULL DEFAULT 0;
+  `);
+
+  await db.query(`
+    ALTER TABLE vm_generations
+    ADD COLUMN IF NOT EXISTS openai_cost_usd NUMERIC(18, 11) NOT NULL DEFAULT 0;
+  `);
+
+  await db.query(`
+    ALTER TABLE vm_generations
+    ALTER COLUMN openai_cost_usd TYPE NUMERIC(18, 11);
   `);
 
   await db.query(`
@@ -47,8 +77,18 @@ export const initDb = async (): Promise<void> => {
   `);
 
   await db.query(`
+    ALTER TABLE vm_projects
+    ADD COLUMN IF NOT EXISTS user_email TEXT;
+  `);
+
+  await db.query(`
     CREATE INDEX IF NOT EXISTS vm_projects_user_id_idx
     ON vm_projects(user_id, created_at DESC);
+  `);
+
+  await db.query(`
+    CREATE INDEX IF NOT EXISTS vm_projects_user_email_idx
+    ON vm_projects(user_email, created_at DESC);
   `);
 
   await db.query(`

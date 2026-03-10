@@ -4,6 +4,7 @@ import { config } from '../config.js';
 
 interface CreateProjectInput {
   userId: string;
+  userEmail: string;
   title: string;
   rawText: string;
 }
@@ -11,11 +12,11 @@ interface CreateProjectInput {
 export const createProject = async (input: CreateProjectInput): Promise<ProjectRecord> => {
   const result = await db.query<ProjectRecord>(
     `
-      INSERT INTO vm_projects (user_id, title, raw_text)
-      VALUES ($1, $2, $3)
+      INSERT INTO vm_projects (user_id, user_email, title, raw_text)
+      VALUES ($1, $2, $3, $4)
       RETURNING *
     `,
-    [input.userId, input.title, input.rawText],
+    [input.userId, input.userEmail, input.title, input.rawText],
   );
   return result.rows[0];
 };
@@ -185,6 +186,12 @@ export const saveGeneration = async (params: {
   promptUsed: string;
   rawModelOutput: string;
   tree: TreeNode;
+  usage?: {
+    openAiPromptTokens: number;
+    openAiCompletionTokens: number;
+    openAiTotalTokens: number;
+    openAiCostUsd: number;
+  };
 }): Promise<number> => {
   const versionRow = await db.query<{ next_version: number }>(
     `
@@ -199,8 +206,19 @@ export const saveGeneration = async (params: {
   await db.query(
     `
       INSERT INTO vm_generations
-      (project_id, version, model_name, prompt_used, raw_model_output, tree_json)
-      VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+      (
+        project_id,
+        version,
+        model_name,
+        prompt_used,
+        raw_model_output,
+        tree_json,
+        openai_prompt_tokens,
+        openai_completion_tokens,
+        openai_total_tokens,
+        openai_cost_usd
+      )
+      VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)
     `,
     [
       params.projectId,
@@ -209,6 +227,10 @@ export const saveGeneration = async (params: {
       params.promptUsed,
       params.rawModelOutput,
       JSON.stringify(params.tree),
+      params.usage?.openAiPromptTokens ?? 0,
+      params.usage?.openAiCompletionTokens ?? 0,
+      params.usage?.openAiTotalTokens ?? 0,
+      params.usage?.openAiCostUsd ?? 0,
     ],
   );
 

@@ -80,6 +80,29 @@ export interface FlashcardDeck {
   }>;
 }
 
+export interface GenerateImmediateResponse {
+  projectId: string;
+  version: number;
+  tree: TreeNode;
+}
+
+export interface GenerateQueuedResponse {
+  projectId: string;
+  jobId: string;
+  status: 'queued' | 'running';
+}
+
+export interface GenerateJobResponse {
+  id: string;
+  projectId: string;
+  status: 'queued' | 'running' | 'done' | 'failed';
+  createdAt: string;
+  updatedAt: string;
+  version?: number;
+  tree?: TreeNode;
+  error?: string;
+}
+
 const DEV_BEARER_TOKEN_KEY = 'vm_dev_bearer_token';
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || '/api/v1';
 const DEV_BEARER_ENABLED =
@@ -129,6 +152,22 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
     throw new Error(await resp.text());
   }
   return resp.json() as Promise<T>;
+};
+
+const requestWithResponse = async (path: string, init?: RequestInit): Promise<Response> => {
+  const headers = authHeaders();
+  headers.set('Content-Type', 'application/json');
+  headers.set('X-Requested-With', 'XMLHttpRequest');
+
+  if (init?.headers) {
+    new Headers(init.headers).forEach((value, key) => headers.set(key, value));
+  }
+
+  return fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    credentials: 'include',
+    headers,
+  });
 };
 
 const parseFilename = (headerValue: string | null, fallback: string): string => {
@@ -210,11 +249,18 @@ export const api = {
     request<{ message: string }>(`/vm/projects/${projectId}/sources/${sourceId}/delete`, {
       method: 'POST',
     }),
-  generate: (projectId: string, inputText?: string) =>
-    request<{ tree: TreeNode; version: number }>(`/vm/projects/${projectId}/generate`, {
+  generate: async (projectId: string, inputText?: string): Promise<GenerateImmediateResponse | GenerateQueuedResponse> => {
+    const resp = await requestWithResponse(`/vm/projects/${projectId}/generate`, {
       method: 'POST',
       body: JSON.stringify(inputText ? { inputText } : {}),
-    }),
+    });
+    if (!resp.ok) {
+      throw new Error(await resp.text());
+    }
+    return resp.json() as Promise<GenerateImmediateResponse | GenerateQueuedResponse>;
+  },
+  getGenerateJob: (jobId: string) =>
+    request<GenerateJobResponse>(`/vm/projects/generate-jobs/${jobId}`),
   generateSlides: (projectId: string, payload?: { inputText?: string; slideCount?: number }) =>
     request<{ slides: SlideDeck }>(`/vm/projects/${projectId}/generate/slides`, {
       method: 'POST',
