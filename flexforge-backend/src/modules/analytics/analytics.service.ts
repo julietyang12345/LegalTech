@@ -1,12 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { createHash } from 'crypto';
 import { AuditLog } from '../../database/entities/audit-log.entity';
 import { User } from '../../database/entities/user.entity';
 
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
+  private readonly pageViewBotPattern =
+    /bot|spider|crawler|crawl|headless|slurp|preview|facebookexternalhit|linkedinbot|whatsapp|discordbot|telegrambot|google-structured-data-testing-tool|bingpreview/i;
 
   constructor(
     @InjectRepository(AuditLog)
@@ -258,6 +261,40 @@ export class AnalyticsService {
   ): Promise<void> {
     await this.track(userId, action, userId, metadata);
     this.logger.debug(`📊 Tracked ${action}: user=${userId}`);
+  }
+
+  async trackPageView(params: {
+    userId?: string | null;
+    path: string;
+    metadata?: Record<string, any>;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+  }): Promise<void> {
+    if (params.userAgent && this.pageViewBotPattern.test(params.userAgent)) {
+      return;
+    }
+
+    const ipHash = params.ipAddress
+      ? createHash('sha256').update(params.ipAddress).digest('hex')
+      : null;
+
+    try {
+      await this.auditLogRepo.save({
+        userId: params.userId ?? null,
+        action: 'page_view',
+        resourceType: 'page',
+        resourceId: null,
+        metadata: {
+          path: params.path,
+          user_agent: params.userAgent ?? null,
+          ip_hash: ipHash,
+          ...(params.metadata ?? {}),
+        },
+        ipAddress: null,
+      });
+    } catch (error) {
+      this.logger.warn(`Analytics page_view tracking failed: ${error.message}`);
+    }
   }
 
   // ==========================================================================

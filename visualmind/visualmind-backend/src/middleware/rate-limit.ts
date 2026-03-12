@@ -74,4 +74,3 @@ export const createRateLimit = (options: RateLimitOptions) => {
     next();
   };
 };
-

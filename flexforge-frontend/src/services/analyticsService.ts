@@ -27,6 +27,11 @@ export interface TrackEventPayload {
   metadata?: Record<string, unknown>;
 }
 
+export interface PageViewPayload {
+  path: string;
+  metadata?: Record<string, unknown>;
+}
+
 export const analyticsService = {
   /**
    * Track an analytics event
@@ -38,6 +43,14 @@ export const analyticsService = {
     } catch (error) {
       // Log but don't fail the main operation
       console.warn('[Analytics] Failed to track event:', action, error);
+    }
+  },
+
+  async pageViewed(path: string, metadata?: Record<string, unknown>): Promise<void> {
+    try {
+      await api.post('/analytics/page-view', { path, metadata } as PageViewPayload);
+    } catch (error) {
+      console.warn('[Analytics] Failed to track page view:', path, error);
     }
   },
 

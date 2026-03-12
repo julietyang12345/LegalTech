@@ -1543,19 +1543,9 @@ const mergeProjectsById = (existing: VmProject[], incoming: VmProject[]): VmProj
   };
 
   const onPrimaryMapAction = async () => {
-    let hasAuth = isLoggedIn;
-    if (!hasAuth) {
-      try {
-        const profile = await api.me();
-        setIsAuthenticated(true);
-        setUserEmail(profile.user.email);
-        setUserPlan(profile.user.plan ?? 'free');
-        setLimits(profile.user.limits ?? defaultLimits);
-        hasAuth = true;
-      } catch {
-        onLogin();
-        return;
-      }
+    if (!isLoggedIn) {
+      onLogin();
+      return;
     }
 
     if (selectedProjectId) {
@@ -2522,7 +2512,7 @@ const mergeProjectsById = (existing: VmProject[], incoming: VmProject[]): VmProj
               >
                 <span className="btn-map-plus">+</span>
                 {!isLoggedIn
-                  ? 'Log in to Create Mind Map'
+                  ? 'Create Mind Map'
                   : selectedProjectId
                     ? hasSourceChanges
                       ? 'Update your mind map'

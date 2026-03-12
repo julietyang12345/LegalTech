@@ -1,5 +1,5 @@
-import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { Toaster } from 'react-hot-toast';
@@ -9,6 +9,8 @@ import { MainLayout } from '@/components/layout';
 
 // Auth
 import { ProtectedRoute } from '@/components/auth';
+import { useAuthStore } from '@/stores/authStore';
+import { analyticsService } from '@/services/analyticsService';
 
 // Pages
 import {
@@ -47,12 +49,51 @@ const queryClient = new QueryClient({
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 const VisualMindPage = lazy(() => import('@/visualmind'));
+const ANON_PAGE_VIEW_STORAGE_KEY = 'ff_anon_page_views';
+const ANON_PAGE_VIEW_DEDUPE_MS = 30_000;
+
+function AnonymousPageViewTracker() {
+  const location = useLocation();
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+
+  useEffect(() => {
+    if (isAuthenticated) return;
+    const path = `${location.pathname}${location.search}${location.hash}`;
+    const now = Date.now();
+
+    try {
+      const raw = sessionStorage.getItem(ANON_PAGE_VIEW_STORAGE_KEY);
+      const visits = raw ? (JSON.parse(raw) as Record<string, number>) : {};
+      const lastSeen = visits[path] ?? 0;
+      if (now - lastSeen < ANON_PAGE_VIEW_DEDUPE_MS) {
+        return;
+      }
+
+      visits[path] = now;
+      for (const [key, ts] of Object.entries(visits)) {
+        if (now - ts > ANON_PAGE_VIEW_DEDUPE_MS * 10) {
+          delete visits[key];
+        }
+      }
+      sessionStorage.setItem(ANON_PAGE_VIEW_STORAGE_KEY, JSON.stringify(visits));
+    } catch {
+      // Ignore sessionStorage failures and still attempt tracking.
+    }
+
+    void analyticsService.pageViewed(path, {
+      referrer: typeof document !== 'undefined' ? document.referrer || null : null,
+    });
+  }, [isAuthenticated, location.pathname, location.search, location.hash]);
+
+  return null;
+}
 
 function App() {
   return (
     <GoogleOAuthProvider clientId={googleClientId}>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <AnonymousPageViewTracker />
         <Routes>
           {/* Public routes - no login required */}
           <Route path="/" element={<Navigate to="/visualmind" replace />} />

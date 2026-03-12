@@ -131,4 +131,5 @@ export const initDb = async (): Promise<void> => {
     CREATE INDEX IF NOT EXISTS vm_user_plan_overrides_expires_at_idx
     ON vm_user_plan_overrides(expires_at DESC);
   `);
+
 };

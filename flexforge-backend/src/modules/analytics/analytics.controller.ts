@@ -9,19 +9,31 @@ import {
   BadRequestException,
   Headers,
   UnauthorizedException,
+  Req,
 } from '@nestjs/common';
 import { IsString, IsObject, IsOptional } from 'class-validator';
 import { ConfigService } from '@nestjs/config';
 import { timingSafeEqual } from 'crypto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalAuthGuard } from '../auth/guards/optional-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { User } from '../../database/entities/user.entity';
 import { AnalyticsService } from './analytics.service';
 import { AiService } from '../ai/ai.service';
+import type { Request } from 'express';
 
 class TrackEventDto {
   @IsString()
   action: string;
+
+  @IsObject()
+  @IsOptional()
+  metadata?: Record<string, any>;
+}
+
+class PageViewDto {
+  @IsString()
+  path: string;
 
   @IsObject()
   @IsOptional()
@@ -134,6 +146,28 @@ export class AnalyticsController {
       dto.action,
       dto.metadata || {},
     );
+
+    return { success: true };
+  }
+
+  @Post('page-view')
+  @UseGuards(OptionalAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async trackPageView(
+    @Body() dto: PageViewDto,
+    @Req() req: Request & { user?: User | null },
+  ): Promise<{ success: boolean }> {
+    if (!dto.path.startsWith('/')) {
+      throw new BadRequestException('Path must start with "/"');
+    }
+
+    await this.analyticsService.trackPageView({
+      userId: req.user?.id ?? null,
+      path: dto.path,
+      metadata: dto.metadata ?? {},
+      ipAddress: req.ip ?? null,
+      userAgent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null,
+    });
 
     return { success: true };
   }
