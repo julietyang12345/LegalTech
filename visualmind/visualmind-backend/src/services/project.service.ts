@@ -246,6 +246,21 @@ export const saveGeneration = async (params: {
   return version;
 };
 
+export const countGenerationsForUserToday = async (userId: string): Promise<number> => {
+  const result = await db.query<{ count: string }>(
+    `
+      SELECT COUNT(*)::text AS count
+      FROM vm_generations g
+      JOIN vm_projects p ON p.id = g.project_id
+      WHERE p.user_id = $1
+        AND g.created_at >= date_trunc('day', NOW())
+        AND g.created_at < date_trunc('day', NOW()) + INTERVAL '1 day'
+    `,
+    [userId],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+};
+
 export const createFeatureRequest = async (params: {
   userId: string;
   userEmail: string;

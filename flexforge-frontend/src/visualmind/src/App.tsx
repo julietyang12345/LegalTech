@@ -16,16 +16,21 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
+  ApiError,
   api,
   type FlashcardDeck,
+  type NodePriority,
+  type NodeStatus,
   type ProjectSource,
   type SlideDeck,
   type TreeNode,
+  type TreeNodeProperties,
   type UsageLimits,
   type UserPlan,
   type VmProject,
 } from './api';
 import { useAuthStore } from '@/stores/authStore';
+import { useThemeStore } from '@/stores/themeStore';
 
 const HORIZONTAL_GAP = 290;
 const VERTICAL_GAP = 110;
@@ -34,8 +39,16 @@ type NodePosition = { x: number; y: number };
 
 type MindNodeData = {
   label: string;
+  summary?: string;
+  heatClass?: string;
+  status?: NodeStatus;
+  priority?: NodePriority;
+  owner: string;
+  tags: string[];
   hasChildren: boolean;
   expanded: boolean;
+  selected: boolean;
+  onSelect: (nodeId: string) => void;
   onToggle: (nodeId: string) => void;
   onOpenContextMenu: (nodeId: string, label: string, canDelete: boolean, x: number, y: number) => void;
   canDelete: boolean;
@@ -76,11 +89,26 @@ type EditingSource =
   | { scope: 'persisted'; id: string }
   | { scope: 'draft'; id: string }
   | null;
+type SourceEditorMode = 'text' | 'web';
 type DraftSource = {
   id: string;
   title: string;
   contentText: string;
   kind: 'text';
+};
+
+type SortMode = 'manual' | 'alpha' | 'updated' | 'priority';
+
+type TreeFilters = {
+  query: string;
+  status: 'all' | NodeStatus;
+  priority: 'all' | NodePriority;
+  owner: string;
+  tag: string;
+  colorBy: 'none' | 'priority' | 'status' | 'depth' | 'childCount';
+  depth: number;
+  collapseNonMatches: boolean;
+  sort: SortMode;
 };
 
 const defaultLimits: UsageLimits = {
@@ -91,15 +119,35 @@ const defaultLimits: UsageLimits = {
 };
 const MINDMAP_CHUNK_SIZE = 3000;
 const MINDMAP_CHUNK_THRESHOLD_CHARS = 9000;
-const TOTAL_PROJECT_TEXT_LIMIT = 10000;
+const TOTAL_PROJECT_WORD_LIMIT = 20000;
 const LOADER_COPY_ROTATION_MS = 1600;
 const UPGRADE_PROMPT_USE_THRESHOLD = 8;
 const GENERATION_USE_COUNT_KEY = 'vm_generation_use_count';
 const UPGRADE_PROMPT_SHOWN_KEY = 'vm_upgrade_prompt_shown';
+const DEFAULT_TREE_FILTERS: TreeFilters = {
+  query: '',
+  status: 'all',
+  priority: 'all',
+  owner: '',
+  tag: '',
+  colorBy: 'none',
+  depth: 6,
+  collapseNonMatches: true,
+  sort: 'manual',
+};
+
+const HEATMAP_OPTIONS: Array<{ value: TreeFilters['colorBy']; label: string }> = [
+  { value: 'none', label: 'None' },
+  { value: 'priority', label: 'Priority' },
+  { value: 'status', label: 'Status' },
+  { value: 'depth', label: 'Depth' },
+  { value: 'childCount', label: 'Child count' },
+];
 
 const MindMapNode = ({ id, data }: NodeProps<MindNode>) => (
   <div
-    className="mindmap-node"
+    className={`mindmap-node ${data.heatClass ?? ''} ${data.status ? `status-${data.status}` : ''} ${data.priority ? `priority-${data.priority}` : ''} ${data.selected ? 'is-selected' : ''}`}
+    onClick={() => data.onSelect(id)}
     onContextMenu={(event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -111,6 +159,13 @@ const MindMapNode = ({ id, data }: NodeProps<MindNode>) => (
       <input
         className="mindmap-node-input nodrag"
         value={data.editValue}
+        name={`node-label-${id}`}
+        type="text"
+        autoComplete="off"
+        aria-label="Edit node label"
+        data-lpignore="true"
+        data-1p-ignore="true"
+        data-bwignore="true"
         autoFocus
         onClick={(event) => event.stopPropagation()}
         onChange={(event) => data.onEditValueChange(event.target.value)}
@@ -131,6 +186,11 @@ const MindMapNode = ({ id, data }: NodeProps<MindNode>) => (
       <button
         className="mindmap-node-label nodrag"
         type="button"
+        title={data.summary || data.label}
+        onClick={(event) => {
+          event.stopPropagation();
+          data.onSelect(id);
+        }}
         onDoubleClick={(event) => {
           event.stopPropagation();
           data.onStartEdit(id, data.label);
@@ -139,6 +199,18 @@ const MindMapNode = ({ id, data }: NodeProps<MindNode>) => (
         {data.label}
       </button>
     )}
+    <div className="mindmap-node-meta">
+      {data.status ? <span>{data.status}</span> : null}
+      {data.priority ? <span>{data.priority}</span> : null}
+      {data.owner ? <span>{data.owner}</span> : null}
+    </div>
+    {data.tags.length > 0 ? (
+      <div className="mindmap-node-tags">
+        {data.tags.slice(0, 3).map((tag) => (
+          <span key={tag}>{tag}</span>
+        ))}
+      </div>
+    ) : null}
     {data.hasChildren ? (
       <button
         className="mindmap-node-toggle nodrag"
@@ -163,18 +235,47 @@ const inferTitle = (text: string): string => {
   return clean.split(' ').slice(0, 8).join(' ').slice(0, 60);
 };
 
+const countWords = (text: string): number => {
+  const clean = text.trim();
+  if (!clean) return 0;
+  return clean.split(/\s+/).filter(Boolean).length;
+};
+
 const hasTree = (project: VmProject): boolean => Boolean(project.current_tree_json);
+
+const ensureNodeProperties = (node: TreeNode): TreeNode => {
+  const now = new Date().toISOString();
+  const properties: TreeNodeProperties = {
+    ...(node.properties?.status ? { status: node.properties.status } : {}),
+    ...(node.properties?.priority ? { priority: node.properties.priority } : {}),
+    owner: node.properties?.owner?.trim() || '',
+    source: node.properties?.source?.trim() || '',
+    confidence:
+      typeof node.properties?.confidence === 'number'
+        ? Math.max(0, Math.min(100, Math.round(node.properties.confidence)))
+        : 50,
+    tags: Array.from(new Set((node.properties?.tags ?? []).map((tag) => tag.trim()).filter(Boolean))),
+    createdAt: node.properties?.createdAt ?? now,
+    updatedAt: node.properties?.updatedAt ?? now,
+  };
+
+  return {
+    ...node,
+    properties,
+    children: node.children.map(ensureNodeProperties),
+  };
+};
 
 const normalizeTree = (value: unknown): TreeNode | null => {
   if (!value) return null;
   if (typeof value === 'string') {
     try {
-      return JSON.parse(value) as TreeNode;
+      return ensureNodeProperties(JSON.parse(value) as TreeNode);
     } catch {
       return null;
     }
   }
-  return value as TreeNode;
+  return ensureNodeProperties(value as TreeNode);
 };
 
 const extractErrorMessage = (error: unknown): string => {
@@ -189,6 +290,36 @@ const extractErrorMessage = (error: unknown): string => {
   }
   return raw;
 };
+
+const extractApiErrorMeta = (
+  error: unknown,
+): { code?: string; contactEmail?: string; limit?: number; usedToday?: number } | null => {
+  if (error instanceof ApiError) {
+    return {
+      code: error.code,
+      contactEmail: error.contactEmail,
+      limit: error.limit,
+      usedToday: error.usedToday,
+    };
+  }
+
+  if (!(error instanceof Error)) return null;
+
+  try {
+    const parsed = JSON.parse(error.message) as {
+      code?: string;
+      contactEmail?: string;
+      limit?: number;
+      usedToday?: number;
+    };
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const isProDailyLimitError = (error: unknown): boolean =>
+  extractApiErrorMeta(error)?.code === 'PRO_DAILY_GENERATION_LIMIT_REACHED';
 
 const isAuthError = (error: unknown): boolean => {
   const message = extractErrorMessage(error).toLowerCase();
@@ -209,6 +340,16 @@ const findNode = (node: TreeNode, nodeId: string): TreeNode | null => {
   return null;
 };
 
+const updateNodeById = (node: TreeNode, targetId: string, updater: (value: TreeNode) => TreeNode): TreeNode => {
+  if (node.id === targetId) {
+    return updater(node);
+  }
+  return {
+    ...node,
+    children: node.children.map((child) => updateNodeById(child, targetId, updater)),
+  };
+};
+
 const containsNode = (root: TreeNode, possibleDescendantId: string): boolean => {
   if (root.id === possibleDescendantId) return true;
   return root.children.some((child) => containsNode(child, possibleDescendantId));
@@ -216,7 +357,14 @@ const containsNode = (root: TreeNode, possibleDescendantId: string): boolean => 
 
 const updateNodeTextById = (node: TreeNode, targetId: string, nextText: string): TreeNode => {
   if (node.id === targetId) {
-    return { ...node, text: nextText };
+    return {
+      ...node,
+      text: nextText,
+      properties: {
+        ...node.properties,
+        updatedAt: new Date().toISOString(),
+      },
+    };
   }
   return {
     ...node,
@@ -253,12 +401,99 @@ const collectNodeIds = (node: TreeNode): string[] => {
 
 const insertNodeAsChild = (node: TreeNode, targetId: string, toInsert: TreeNode): TreeNode => {
   if (node.id === targetId) {
-    return { ...node, children: [...node.children, toInsert] };
+    return {
+      ...node,
+      properties: {
+        ...node.properties,
+        updatedAt: new Date().toISOString(),
+      },
+      children: [...node.children, ensureNodeProperties(toInsert)],
+    };
   }
   return {
     ...node,
     children: node.children.map((child) => insertNodeAsChild(child, targetId, toInsert)),
   };
+};
+
+const sortChildrenForView = (children: TreeNode[], sort: SortMode): TreeNode[] => {
+  const sorted = [...children];
+  if (sort === 'alpha') {
+    sorted.sort((a, b) => a.text.localeCompare(b.text));
+  } else if (sort === 'updated') {
+    sorted.sort((a, b) => {
+      const left = new Date(a.properties?.updatedAt ?? 0).getTime();
+      const right = new Date(b.properties?.updatedAt ?? 0).getTime();
+      return right - left;
+    });
+  } else if (sort === 'priority') {
+    const order: Record<NodePriority, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+    sorted.sort((a, b) => (order[b.properties?.priority as NodePriority] ?? 0) - (order[a.properties?.priority as NodePriority] ?? 0));
+  }
+  return sorted;
+};
+
+const treeNodeMatchesFilters = (node: TreeNode, filters: TreeFilters): boolean => {
+  const query = filters.query.trim().toLowerCase();
+  const owner = filters.owner.trim().toLowerCase();
+  const tag = filters.tag.trim().toLowerCase();
+  const textMatch = !query || node.text.toLowerCase().includes(query);
+  const statusMatch = filters.status === 'all' || node.properties?.status === filters.status;
+  const priorityMatch = filters.priority === 'all' || node.properties?.priority === filters.priority;
+  const ownerMatch = !owner || (node.properties?.owner ?? '').toLowerCase().includes(owner);
+  const tagMatch = !tag || (node.properties?.tags ?? []).some((item) => item.toLowerCase().includes(tag));
+  return textMatch && statusMatch && priorityMatch && ownerMatch && tagMatch;
+};
+
+const filterTreeForView = (node: TreeNode, filters: TreeFilters, depth = 0): TreeNode | null => {
+  if (depth > filters.depth) return null;
+
+  const filteredChildren = sortChildrenForView(
+    node.children
+      .map((child) => filterTreeForView(child, filters, depth + 1))
+      .filter((child): child is TreeNode => Boolean(child)),
+    filters.sort,
+  );
+
+  const selfMatches = treeNodeMatchesFilters(node, filters);
+  const hasMatchingChildren = filteredChildren.length > 0;
+
+  if (depth === 0 || selfMatches || hasMatchingChildren) {
+    return {
+      ...node,
+      children:
+        filters.collapseNonMatches && !selfMatches
+          ? filteredChildren
+          : filteredChildren,
+    };
+  }
+
+  return null;
+};
+
+const countTreeNodes = (node: TreeNode | null): number => {
+  if (!node) return 0;
+  return 1 + node.children.reduce((sum, child) => sum + countTreeNodes(child), 0);
+};
+
+const collectExpandedNodeIds = (node: TreeNode, acc: Record<string, boolean> = {}): Record<string, boolean> => {
+  acc[node.id] = true;
+  for (const child of node.children) {
+    collectExpandedNodeIds(child, acc);
+  }
+  return acc;
+};
+
+const countExpandableNodes = (node: TreeNode | null): number => {
+  if (!node) return 0;
+  const self = node.children.length > 0 ? 1 : 0;
+  return self + node.children.reduce((sum, child) => sum + countExpandableNodes(child), 0);
+};
+
+const countExpandedBranchNodes = (node: TreeNode | null, expandedById: Record<string, boolean>): number => {
+  if (!node) return 0;
+  const self = node.children.length > 0 && (expandedById[node.id] ?? false) ? 1 : 0;
+  return self + node.children.reduce((sum, child) => sum + countExpandedBranchNodes(child, expandedById), 0);
 };
 
 const makeNodeId = (): string => {
@@ -286,11 +521,40 @@ const persistPositions = (projectId: string, positions: Record<string, NodePosit
   localStorage.setItem(positionsStorageKey(projectId), JSON.stringify(positions));
 };
 
+const getNodeHeatClass = (
+  node: TreeNode,
+  depth: number,
+  colorBy: TreeFilters['colorBy'],
+): string => {
+  switch (colorBy) {
+    case 'priority':
+      return node.properties?.priority ? `heat-priority-${node.properties.priority}` : '';
+    case 'status':
+      return node.properties?.status ? `heat-status-${node.properties.status}` : '';
+    case 'depth':
+      if (depth === 0) return 'heat-depth-root';
+      if (depth === 1) return 'heat-depth-top';
+      if (depth === 2) return 'heat-depth-mid';
+      return 'heat-depth-deep';
+    case 'childCount': {
+      const count = node.children.length;
+      if (count >= 5) return 'heat-children-heavy';
+      if (count >= 2) return 'heat-children-medium';
+      return 'heat-children-light';
+    }
+    default:
+      return '';
+  }
+};
+
 const layoutVisibleTree = (
   node: TreeNode,
   depth: number,
+  colorBy: TreeFilters['colorBy'],
   expandedById: Record<string, boolean>,
   positionById: Record<string, NodePosition>,
+  selectedNodeId: string | null,
+  onSelect: (nodeId: string) => void,
   onToggle: (nodeId: string) => void,
   onOpenContextMenu: (nodeId: string, label: string, canDelete: boolean, x: number, y: number) => void,
   onRequestDelete: (nodeId: string, label: string) => void,
@@ -317,8 +581,11 @@ const layoutVisibleTree = (
       const childY = layoutVisibleTree(
         child,
         depth + 1,
+        colorBy,
         expandedById,
         positionById,
+        selectedNodeId,
+        onSelect,
         onToggle,
         onOpenContextMenu,
         onRequestDelete,
@@ -354,8 +621,16 @@ const layoutVisibleTree = (
     position,
     data: {
       label: node.text,
+      summary: node.summary,
+      heatClass: getNodeHeatClass(node, depth, colorBy),
+      status: node.properties?.status,
+      priority: node.properties?.priority,
+      owner: node.properties?.owner ?? '',
+      tags: node.properties?.tags ?? [],
       hasChildren: canExpand,
       expanded: isExpanded,
+      selected: selectedNodeId === node.id,
+      onSelect,
       onToggle,
       onOpenContextMenu,
       canDelete: node.id !== 'root',
@@ -375,8 +650,11 @@ const layoutVisibleTree = (
 
 const createFlowGraph = (
   root: TreeNode,
+  colorBy: TreeFilters['colorBy'],
   expandedById: Record<string, boolean>,
   positionById: Record<string, NodePosition>,
+  selectedNodeId: string | null,
+  onSelect: (nodeId: string) => void,
   onToggle: (nodeId: string) => void,
   onOpenContextMenu: (nodeId: string, label: string, canDelete: boolean, x: number, y: number) => void,
   onRequestDelete: (nodeId: string, label: string) => void,
@@ -394,8 +672,11 @@ const createFlowGraph = (
   layoutVisibleTree(
     root,
     0,
+    colorBy,
     expandedById,
     positionById,
+    selectedNodeId,
+    onSelect,
     onToggle,
     onOpenContextMenu,
     onRequestDelete,
@@ -422,6 +703,8 @@ const createFlowGraph = (
 
 export const App = () => {
   const appIsAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const logout = useAuthStore((state) => state.logout);
+  const { mode, setMode } = useThemeStore();
   const [userEmail, setUserEmail] = useState<string>('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userPlan, setUserPlan] = useState<UserPlan>('free');
@@ -433,11 +716,21 @@ export const App = () => {
   const [projectTitle, setProjectTitle] = useState('');
   const [sourceTitle, setSourceTitle] = useState('');
   const [isAddTextOpen, setIsAddTextOpen] = useState(false);
+  const [sourceEditorMode, setSourceEditorMode] = useState<SourceEditorMode>('text');
+  const [webUrl, setWebUrl] = useState('');
   const [rawText, setRawText] = useState('');
   const [tree, setTree] = useState<TreeNode | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [treeFilters, setTreeFilters] = useState<TreeFilters>(DEFAULT_TREE_FILTERS);
+  const [isMapFiltersOpen, setIsMapFiltersOpen] = useState(false);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [status, setStatus] = useState<string>('Checking auth...');
+  const [generationLimitMeta, setGenerationLimitMeta] = useState<{
+    contactEmail: string;
+    limit?: number;
+    usedToday?: number;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [hideFailedProjects, setHideFailedProjects] = useState(true);
   const [expandedById, setExpandedById] = useState<Record<string, boolean>>({});
   const [nodePositions, setNodePositions] = useState<Record<string, NodePosition>>({});
   const [nodes, setNodes] = useState<MindNode[]>([]);
@@ -451,6 +744,10 @@ export const App = () => {
   const [isFeatureRequestOpen, setIsFeatureRequestOpen] = useState(false);
   const [featureRequestMessage, setFeatureRequestMessage] = useState('');
   const [sendingFeatureRequest, setSendingFeatureRequest] = useState(false);
+  const [featureRequestFeedback, setFeatureRequestFeedback] = useState<{
+    tone: 'error' | 'success';
+    message: string;
+  } | null>(null);
   const [upgradeBusy, setUpgradeBusy] = useState(false);
   const [isUpgradeOfferOpen, setIsUpgradeOfferOpen] = useState(false);
   const [isMvpUpgradeOpen, setIsMvpUpgradeOpen] = useState(false);
@@ -468,6 +765,7 @@ export const App = () => {
   const [nodeEditText, setNodeEditText] = useState('');
   const [hasSourceChanges, setHasSourceChanges] = useState(false);
   const [studyToolsSpotlight, setStudyToolsSpotlight] = useState(false);
+  const selectedProjectIdRef = useRef('');
   const [activeAssetMode, setActiveAssetMode] = useState<AssetMode>('flashcards');
   const [slideDeck, setSlideDeck] = useState<SlideDeck | null>(null);
   const [flashcardDeck, setFlashcardDeck] = useState<FlashcardDeck | null>(null);
@@ -492,25 +790,76 @@ export const App = () => {
   const isLoggedIn = isAuthenticated || appIsAuthenticated || Boolean(userEmail);
   const isOverTextLimit = rawTextLength > limits.maxTextChars;
   const remainingChars = Math.max(0, limits.maxTextChars - rawTextLength);
-  const unsavedEditorText = isAddTextOpen ? rawText.trim() : '';
+  const unsavedEditorText = isAddTextOpen && sourceEditorMode === 'text' ? rawText.trim() : '';
   const pendingSourceCount = draftSessions.length + (unsavedEditorText ? 1 : 0);
-  const persistedSourceChars = persistedSources.reduce((sum, source) => sum + source.content_text.length, 0);
-  const draftSourceChars = draftSessions.reduce((sum, source) => sum + source.contentText.length, 0);
-  const activeSourceChars = selectedProjectId ? persistedSourceChars : draftSourceChars;
-  const editingSourceOriginalChars =
+  const persistedSourceWords = persistedSources.reduce((sum, source) => sum + countWords(source.content_text), 0);
+  const draftSourceWords = draftSessions.reduce((sum, source) => sum + countWords(source.contentText), 0);
+  const activeSourceWords = selectedProjectId ? persistedSourceWords : draftSourceWords;
+  const editingSourceOriginalWords =
     editingSource?.scope === 'persisted'
-      ? (persistedSources.find((source) => source.id === editingSource.id)?.content_text.length ?? 0)
+      ? countWords(persistedSources.find((source) => source.id === editingSource.id)?.content_text ?? '')
       : editingSource?.scope === 'draft'
-        ? (draftSessions.find((source) => source.id === editingSource.id)?.contentText.length ?? 0)
+        ? countWords(draftSessions.find((source) => source.id === editingSource.id)?.contentText ?? '')
         : 0;
-  const projectedCombinedChars = isAddTextOpen
-    ? activeSourceChars - editingSourceOriginalChars + unsavedEditorText.length
-    : activeSourceChars;
-  const isOverCombinedLimit = projectedCombinedChars > TOTAL_PROJECT_TEXT_LIMIT;
-  const remainingCombinedChars = Math.max(0, TOTAL_PROJECT_TEXT_LIMIT - projectedCombinedChars);
+  const projectedCombinedWords = isAddTextOpen
+    ? activeSourceWords - editingSourceOriginalWords + countWords(unsavedEditorText)
+    : activeSourceWords;
+  const isOverCombinedLimit = projectedCombinedWords > TOTAL_PROJECT_WORD_LIMIT;
+  const remainingCombinedWords = Math.max(0, TOTAL_PROJECT_WORD_LIMIT - projectedCombinedWords);
+  const isWebUrlValid = /^https?:\/\/\S+/i.test(webUrl.trim());
   const setExpandedForTree = (nextTree: TreeNode | null) => {
     setExpandedById(nextTree ? { [nextTree.id]: true } : {});
   };
+  const visibleTree = useMemo(() => {
+    if (!tree) return null;
+    return filterTreeForView(tree, treeFilters);
+  }, [tree, treeFilters]);
+  const selectedNode = useMemo(
+    () => (tree && selectedNodeId ? findNode(tree, selectedNodeId) : null),
+    [tree, selectedNodeId],
+  );
+  const visibleNodeCount = useMemo(() => countTreeNodes(visibleTree), [visibleTree]);
+  const totalNodeCount = useMemo(() => countTreeNodes(tree), [tree]);
+  const activeFilterChips = useMemo(() => {
+    const chips: Array<{ key: string; label: string; onRemove: () => void }> = [];
+    if (treeFilters.status !== 'all') {
+      chips.push({
+        key: 'status',
+        label: `Status: ${treeFilters.status}`,
+        onRemove: () => setTreeFilters((prev) => ({ ...prev, status: 'all' })),
+      });
+    }
+    if (treeFilters.priority !== 'all') {
+      chips.push({
+        key: 'priority',
+        label: `Priority: ${treeFilters.priority}`,
+        onRemove: () => setTreeFilters((prev) => ({ ...prev, priority: 'all' })),
+      });
+    }
+    if (treeFilters.owner.trim()) {
+      chips.push({
+        key: 'owner',
+        label: `Owner: ${treeFilters.owner.trim()}`,
+        onRemove: () => setTreeFilters((prev) => ({ ...prev, owner: '' })),
+      });
+    }
+    if (treeFilters.tag.trim()) {
+      chips.push({
+        key: 'tag',
+        label: `Tag: ${treeFilters.tag.trim()}`,
+        onRemove: () => setTreeFilters((prev) => ({ ...prev, tag: '' })),
+      });
+    }
+    return chips;
+  }, [treeFilters]);
+  const unlockMoreHref = useMemo(() => {
+    if (!generationLimitMeta?.contactEmail || !userEmail) return null;
+    const subject = encodeURIComponent('VisualMind unlock request');
+    const body = encodeURIComponent(
+      `Please unlock more VisualMind generations for today.\n\nUser email: ${userEmail}\nPlan: ${userPlan}\nUsed today: ${generationLimitMeta.usedToday ?? 'unknown'} / ${generationLimitMeta.limit ?? 'unknown'}`,
+    );
+    return `mailto:${generationLimitMeta.contactEmail}?subject=${subject}&body=${body}`;
+  }, [generationLimitMeta, userEmail, userPlan]);
 
   const showStudyToolsPanel = (mode: AssetMode) => {
     setActiveAssetMode(mode);
@@ -518,6 +867,23 @@ export const App = () => {
     studyToolsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     window.setTimeout(() => setStudyToolsSpotlight(false), 1200);
   };
+
+  const allNodesExpanded = useMemo(
+    () => {
+      const totalExpandable = countExpandableNodes(tree);
+      if (totalExpandable === 0) return false;
+      return countExpandedBranchNodes(tree, expandedById) >= totalExpandable;
+    },
+    [tree, expandedById],
+  );
+
+  const toggleAllNodes = useCallback(() => {
+    if (!tree) return;
+    setExpandedById(allNodesExpanded ? { [tree.id]: true } : collectExpandedNodeIds(tree));
+    window.requestAnimationFrame(() => {
+      flowInstance?.fitView({ padding: 0.14, duration: 260 });
+    });
+  }, [allNodesExpanded, tree, flowInstance]);
 
   const stopBuildProgress = useCallback(() => {
     if (buildProgressTimerRef.current !== null) {
@@ -570,10 +936,7 @@ export const App = () => {
     [stopBuildProgress],
   );
 
-  const visibleProjects = useMemo(
-    () => projects.filter((project) => !hideFailedProjects || Boolean(project.current_tree_json)),
-    [projects, hideFailedProjects],
-  );
+  const visibleProjects = useMemo(() => projects, [projects]);
 
   const loaderDisplay = useMemo(() => {
     if (mapBuildPhase === 'analyzing-chunks') {
@@ -602,11 +965,29 @@ export const App = () => {
     };
   }, [loaderTick, mapBuildPhase, mapBuildProgress.current, mapBuildProgress.total, status]);
 
-  const recentMapTitle = (project: VmProject): string => {
-    const sourceTitle = project.primary_source_title?.trim();
-    if (sourceTitle) return sourceTitle;
-    return project.title;
-  };
+const recentMapTitle = (project: VmProject): string => {
+  const sourceTitle = project.primary_source_title?.trim();
+  if (sourceTitle) return sourceTitle;
+  return project.title;
+};
+
+const sortProjectsNewestFirst = (items: VmProject[]): VmProject[] =>
+  [...items].sort((left, right) => {
+    const leftTime = new Date(left.created_at).getTime();
+    const rightTime = new Date(right.created_at).getTime();
+    return rightTime - leftTime;
+  });
+
+const mergeProjectsById = (existing: VmProject[], incoming: VmProject[]): VmProject[] => {
+  const merged = new Map<string, VmProject>();
+  for (const project of existing) {
+    merged.set(project.id, project);
+  }
+  for (const project of incoming) {
+    merged.set(project.id, project);
+  }
+  return sortProjectsNewestFirst(Array.from(merged.values()));
+};
 
   const toggleNode = useCallback((nodeId: string) => {
     setExpandedById((prev) => ({
@@ -660,11 +1041,14 @@ export const App = () => {
   );
 
   const graph = useMemo(() => {
-    if (!tree) return { nodes: [], edges: [] };
+    if (!visibleTree) return { nodes: [], edges: [] };
     return createFlowGraph(
-      tree,
+      visibleTree,
+      treeFilters.colorBy,
       expandedById,
       nodePositions,
+      selectedNodeId,
+      setSelectedNodeId,
       toggleNode,
       (nodeId, label, canDelete, x, y) => {
         setNodeContextMenu({ nodeId, nodeText: label, canDelete, x, y });
@@ -697,7 +1081,40 @@ export const App = () => {
       },
       dropTargetId,
     );
-  }, [tree, expandedById, nodePositions, toggleNode, dropTargetId, editingNodeId, nodeEditText]);
+  }, [visibleTree, treeFilters.colorBy, expandedById, nodePositions, selectedNodeId, toggleNode, dropTargetId, editingNodeId, nodeEditText]);
+
+  const heatmapLegend = useMemo(() => {
+    switch (treeFilters.colorBy) {
+      case 'priority':
+        return [
+          { label: 'Critical', className: 'heat-priority-critical' },
+          { label: 'High', className: 'heat-priority-high' },
+          { label: 'Medium / Low', className: 'heat-priority-low' },
+        ];
+      case 'status':
+        return [
+          { label: 'Blocked', className: 'heat-status-blocked' },
+          { label: 'Active', className: 'heat-status-active' },
+          { label: 'Done', className: 'heat-status-done' },
+          { label: 'Backlog', className: 'heat-status-backlog' },
+        ];
+      case 'depth':
+        return [
+          { label: 'Root', className: 'heat-depth-root' },
+          { label: 'Level 1', className: 'heat-depth-top' },
+          { label: 'Level 2', className: 'heat-depth-mid' },
+          { label: 'Level 3+', className: 'heat-depth-deep' },
+        ];
+      case 'childCount':
+        return [
+          { label: 'Many children', className: 'heat-children-heavy' },
+          { label: 'Some children', className: 'heat-children-medium' },
+          { label: 'Few / none', className: 'heat-children-light' },
+        ];
+      default:
+        return [];
+    }
+  }, [treeFilters.colorBy]);
 
   useEffect(() => {
     setNodes(graph.nodes);
@@ -717,6 +1134,10 @@ export const App = () => {
   useEffect(() => () => stopBuildProgress(), [stopBuildProgress]);
 
   useEffect(() => {
+    selectedProjectIdRef.current = selectedProjectId;
+  }, [selectedProjectId]);
+
+  useEffect(() => {
     if (!selectedProjectId) {
       setNodePositions({});
       setPersistedSources([]);
@@ -732,23 +1153,41 @@ export const App = () => {
     return data.sources;
   };
 
-  const loadProjects = async () => {
+  const loadProjects = async (options?: { preferredProjectId?: string | null }) => {
     const data = await api.listProjects();
-    setProjects(data.projects);
-    if (!selectedProjectId && data.projects[0]) {
-      const preferred = data.projects.find(hasTree) ?? data.projects[0];
-      const preferredTree = normalizeTree(preferred.current_tree_json);
-      setSelectedProjectId(preferred.id);
-      setTree(preferredTree);
-      setExpandedForTree(preferredTree);
-      await loadSources(preferred.id);
-      setProjectTitle(preferred.title);
+    setProjects((prev) => mergeProjectsById(prev, data.projects));
+
+    const preferredProjectId = options?.preferredProjectId ?? selectedProjectIdRef.current;
+    const activeProject = preferredProjectId
+      ? data.projects.find((project) => project.id === preferredProjectId)
+      : null;
+
+    if (activeProject) {
+      return;
+    }
+
+    if (data.projects[0]) {
+      const fallbackProject = data.projects.find(hasTree) ?? data.projects[0];
+      const fallbackTree = normalizeTree(fallbackProject.current_tree_json);
+      setSelectedProjectId(fallbackProject.id);
+      setTree(fallbackTree);
+      setSelectedNodeId(fallbackTree?.id ?? null);
+      setExpandedForTree(fallbackTree);
+      await loadSources(fallbackProject.id);
+      setProjectTitle(fallbackProject.title);
       setRawText('');
       setSourceTitle('');
       setIsAddTextOpen(false);
       setEditingSource(null);
       setHasSourceChanges(false);
+      return;
     }
+
+    setSelectedProjectId('');
+    setTree(null);
+    setSelectedNodeId(null);
+    setExpandedForTree(null);
+    setPersistedSources([]);
   };
 
   const refreshAuthState = useCallback(
@@ -770,6 +1209,7 @@ export const App = () => {
         setPersistedSources([]);
         setSelectedProjectId('');
         setTree(null);
+        setSelectedNodeId(null);
         setExpandedForTree(null);
         if (!options?.silent) {
           setStatus('Ready');
@@ -815,6 +1255,11 @@ export const App = () => {
   }, []);
 
   useEffect(() => {
+    if (!isOverCombinedLimit || userPlan !== 'free' || isUpgradeOfferOpen) return;
+    setIsUpgradeOfferOpen(true);
+  }, [isOverCombinedLimit, isUpgradeOfferOpen, userPlan]);
+
+  useEffect(() => {
     if (!isMapLoading) {
       setLoaderTick(0);
       return;
@@ -828,6 +1273,31 @@ export const App = () => {
   const onLogin = () => {
     const next = encodeURIComponent(window.location.href);
     window.location.href = `/login?next=${next}`;
+  };
+
+  const onLogout = async () => {
+    try {
+      await logout();
+    } finally {
+      setIsAuthenticated(false);
+      setUserEmail('');
+      setProjects([]);
+      setPersistedSources([]);
+      setDraftSessions([]);
+      setSelectedProjectId('');
+      setProjectTitle('');
+      setSourceTitle('');
+      setRawText('');
+      setTree(null);
+      setSelectedNodeId(null);
+      setExpandedForTree(null);
+      setHasSourceChanges(false);
+      setStatus('Logged out');
+    }
+  };
+
+  const onToggleTheme = () => {
+    setMode(mode === 'dark' ? 'light' : 'dark');
   };
 
   const continueUpgradeFlow = async () => {
@@ -875,9 +1345,9 @@ export const App = () => {
       setStatus('Add at least one source before generating a mind map.');
       return;
     }
-    const combinedChars = sourceSessions.reduce((sum, session) => sum + session.length, 0);
-    if (combinedChars > TOTAL_PROJECT_TEXT_LIMIT) {
-      setStatus(`Combined source text exceeds ${TOTAL_PROJECT_TEXT_LIMIT} characters. Remove text and try again.`);
+    const combinedWords = sourceSessions.reduce((sum, session) => sum + countWords(session), 0);
+    if (combinedWords > TOTAL_PROJECT_WORD_LIMIT) {
+      setStatus(`Combined source text exceeds ${TOTAL_PROJECT_WORD_LIMIT} words. Remove text and try again.`);
       return;
     }
     setBusy(true);
@@ -885,8 +1355,8 @@ export const App = () => {
     setTree(null);
     const estimatedChars = sourceSessions.join('\n\n').length;
     startBuildProgress(estimatedChars);
-    let createdProjectId: string | null = null;
     try {
+      setGenerationLimitMeta(null);
       setStatus('Creating project and generating mind map...');
       const finalTitle = projectTitle.trim() || inferTitle(sourceSessions[0] || '');
       const data = await api.createProject({
@@ -894,7 +1364,7 @@ export const App = () => {
         rawText: sourceSessions[0] || '',
         sourceSessions: sourceSessions.slice(1),
       });
-      createdProjectId = data.project.id;
+      setProjects((prev) => mergeProjectsById(prev, [data.project]));
       setSelectedProjectId(data.project.id);
       await loadSources(data.project.id);
       const generated = await api.generate(data.project.id);
@@ -902,6 +1372,7 @@ export const App = () => {
         await waitForGeneratedTree(data.project.id, generated.jobId);
       } else {
         setTree(generated.tree);
+        setSelectedNodeId(generated.tree.id);
         setExpandedForTree(generated.tree);
         setNodePositions({});
         trackGenerationUsage();
@@ -913,20 +1384,19 @@ export const App = () => {
       setEditingSource(null);
       setHasSourceChanges(false);
       setStatus(`Created "${finalTitle}" and generated map`);
-      await loadProjects();
+      await loadProjects({ preferredProjectId: data.project.id });
     } catch (error) {
-      if (createdProjectId) {
-        try {
-          await api.deleteProject(createdProjectId);
-          if (selectedProjectId === createdProjectId) {
-            setSelectedProjectId('');
-            setTree(null);
-          }
-        } catch {
-          // keep original error as primary status
-        }
-      }
       const message = extractErrorMessage(error);
+      const meta = extractApiErrorMeta(error);
+      if (meta?.code === 'PRO_DAILY_GENERATION_LIMIT_REACHED' && meta.contactEmail) {
+        setGenerationLimitMeta({
+          contactEmail: meta.contactEmail,
+          limit: meta.limit,
+          usedToday: meta.usedToday,
+        });
+      } else {
+        setGenerationLimitMeta(null);
+      }
       setStatus(`Create failed: ${message}`);
       await loadProjects();
     } finally {
@@ -1003,6 +1473,7 @@ export const App = () => {
       }
       if (job.status === 'done' && job.tree && typeof job.version === 'number') {
         setTree(job.tree);
+        setSelectedNodeId(job.tree.id);
         setExpandedForTree(job.tree);
         setNodePositions({});
         persistPositions(projectId, {});
@@ -1034,6 +1505,7 @@ export const App = () => {
     const estimatedChars = persistedSources.map((source) => source.content_text).join('\n\n').length;
     startBuildProgress(estimatedChars);
     try {
+      setGenerationLimitMeta(null);
       setStatus('Generating mind map...');
       const data = await api.generate(selectedProjectId);
       if ('jobId' in data) {
@@ -1042,6 +1514,7 @@ export const App = () => {
       }
       const immediate = data;
       setTree(immediate.tree);
+      setSelectedNodeId(immediate.tree.id);
       setExpandedForTree(immediate.tree);
       setNodePositions({});
       persistPositions(selectedProjectId, {});
@@ -1051,6 +1524,16 @@ export const App = () => {
       await loadProjects();
     } catch (error) {
       const message = extractErrorMessage(error);
+      const meta = extractApiErrorMeta(error);
+      if (meta?.code === 'PRO_DAILY_GENERATION_LIMIT_REACHED' && meta.contactEmail) {
+        setGenerationLimitMeta({
+          contactEmail: meta.contactEmail,
+          limit: meta.limit,
+          usedToday: meta.usedToday,
+        });
+      } else {
+        setGenerationLimitMeta(null);
+      }
       setStatus(`Generate failed: ${message}`);
     } finally {
       stopBuildProgress();
@@ -1090,7 +1573,7 @@ export const App = () => {
       return;
     }
     if (isOverCombinedLimit) {
-      setStatus(`Combined source text exceeds ${TOTAL_PROJECT_TEXT_LIMIT} characters.`);
+      setStatus(`Combined source text exceeds ${TOTAL_PROJECT_WORD_LIMIT} words.`);
       return;
     }
 
@@ -1105,6 +1588,8 @@ export const App = () => {
         );
         setRawText('');
         setSourceTitle('');
+        setWebUrl('');
+        setSourceEditorMode('text');
         setEditingSource(null);
         setIsAddTextOpen(false);
         setStatus('Saved source edit');
@@ -1124,6 +1609,8 @@ export const App = () => {
       setDraftSessions((prev) => [...prev, nextDraft]);
       setRawText('');
       setSourceTitle('');
+      setWebUrl('');
+      setSourceEditorMode('text');
       setIsAddTextOpen(false);
       setStatus('Added source');
       return;
@@ -1139,6 +1626,8 @@ export const App = () => {
         const contentChanged = (existingSource?.content_text ?? '').trim() !== nextContent;
         if (!titleChanged && !contentChanged) {
           setStatus('No changes to save');
+          setWebUrl('');
+          setSourceEditorMode('text');
           setIsAddTextOpen(false);
           setEditingSource(null);
           return;
@@ -1158,6 +1647,8 @@ export const App = () => {
       }
       setRawText('');
       setSourceTitle('');
+      setWebUrl('');
+      setSourceEditorMode('text');
       setEditingSource(null);
       setIsAddTextOpen(false);
       await loadSources(selectedProjectId);
@@ -1174,6 +1665,15 @@ export const App = () => {
     }
   };
 
+  const resetSourceEditor = () => {
+    setIsAddTextOpen(false);
+    setSourceEditorMode('text');
+    setWebUrl('');
+    setRawText('');
+    setSourceTitle('');
+    setEditingSource(null);
+  };
+
   const onPdfSelected = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1183,7 +1683,9 @@ export const App = () => {
       const result = await api.importPdf(file);
       setRawText(result.text);
       setSourceTitle(file.name.replace(/\.pdf$/i, ''));
+      setWebUrl('');
       setEditingSource(null);
+      setSourceEditorMode('text');
       setIsAddTextOpen(true);
       setStatus(`Imported PDF: ${file.name}`);
     } catch (error) {
@@ -1201,9 +1703,11 @@ export const App = () => {
       const result = await api.importWeb(url);
       setRawText(result.text);
       setSourceTitle(inferTitle(url));
+      setWebUrl(url.trim());
       setEditingSource(null);
+      setSourceEditorMode('text');
       setIsAddTextOpen(true);
-      setStatus('Imported webpage content');
+      setStatus('Imported webpage or Notion content');
     } catch (error) {
       const message = extractErrorMessage(error);
       setStatus(`Web import failed: ${message}`);
@@ -1220,7 +1724,9 @@ export const App = () => {
       const text = await file.text();
       setRawText(text);
       setSourceTitle(file.name.replace(/\.md$/i, ''));
+      setWebUrl('');
       setEditingSource(null);
+      setSourceEditorMode('text');
       setIsAddTextOpen(true);
       setStatus(`Imported Markdown: ${file.name}`);
     } catch {
@@ -1475,6 +1981,27 @@ export const App = () => {
     }
   };
 
+  const applyNodeTags = async (nodeId: string, nodeText: string) => {
+    if (!tree) return;
+
+    const node = findNode(tree, nodeId);
+    if (!node) {
+      setStatus('Node not found.');
+      return;
+    }
+
+    const currentTags = (node.properties?.tags ?? []).join(', ');
+    const nextValue = window.prompt(`Add tags for "${nodeText}"`, currentTags);
+    if (nextValue === null) {
+      setNodeContextMenu(null);
+      return;
+    }
+
+    const tags = Array.from(new Set(nextValue.split(',').map((tag) => tag.trim()).filter(Boolean)));
+    await applyNodeProperties(nodeId, nodeText, { tags });
+    setStatus(tags.length > 0 ? `Updated tags for "${nodeText}"` : `Cleared tags for "${nodeText}"`);
+  };
+
   const applyNodeDelete = async (nodeId: string, nodeText: string) => {
     if (!tree) return;
     if (nodeId === 'root') {
@@ -1528,9 +2055,11 @@ export const App = () => {
     setDeletingProjectId(projectId);
     try {
       await api.deleteProject(projectId);
+      setProjects((prev) => prev.filter((project) => project.id !== projectId));
       if (selectedProjectId === projectId) {
         setSelectedProjectId('');
         setTree(null);
+        setSelectedNodeId(null);
         setPersistedSources([]);
         setNodePositions({});
         setHasSourceChanges(false);
@@ -1552,24 +2081,40 @@ export const App = () => {
       onLogin();
       return;
     }
+    setFeatureRequestFeedback(null);
     setIsFeatureRequestOpen(true);
   };
 
   const submitFeatureRequest = async () => {
     const message = featureRequestMessage.trim();
     if (message.length < 10) {
+      setFeatureRequestFeedback({
+        tone: 'error',
+        message: 'Please enter at least 10 characters before sending.',
+      });
       setStatus('Please enter at least 10 characters.');
       return;
     }
 
     setSendingFeatureRequest(true);
+    setFeatureRequestFeedback(null);
     try {
-      await api.createFeatureRequest(message);
-      setStatus('Feature request sent. Thank you.');
+      const response = await api.createFeatureRequest(message);
+      const backendMessage = response.request?.id
+        ? 'Feature request sent. Thank you.'
+        : 'Request submitted.';
+      setFeatureRequestFeedback({
+        tone: 'success',
+        message: backendMessage,
+      });
+      setStatus(backendMessage);
       setFeatureRequestMessage('');
-      setIsFeatureRequestOpen(false);
     } catch (error) {
       const requestMessage = extractErrorMessage(error);
+      setFeatureRequestFeedback({
+        tone: 'error',
+        message: requestMessage,
+      });
       setStatus(`Feature request failed: ${requestMessage}`);
     } finally {
       setSendingFeatureRequest(false);
@@ -1609,6 +2154,8 @@ export const App = () => {
   const openPersistedSource = (source: ProjectSource) => {
     setSourceTitle(source.title);
     setRawText(source.content_text);
+    setWebUrl('');
+    setSourceEditorMode('text');
     setIsAddTextOpen(true);
     setEditingSource({ scope: 'persisted', id: source.id });
     setStatus(`Loaded source "${source.title}" into editor`);
@@ -1648,21 +2195,191 @@ export const App = () => {
     }
   };
 
+  const applySelectedNodeProperties = async (patch: Partial<TreeNodeProperties>) => {
+    if (!tree || !selectedNodeId) return;
+    const nextTree = updateNodeById(tree, selectedNodeId, (node) =>
+      ensureNodeProperties({
+        ...node,
+        properties: {
+          ...node.properties,
+          ...patch,
+          updatedAt: new Date().toISOString(),
+        },
+      }),
+    );
+    setTree(nextTree);
+
+    if (!selectedProjectId) {
+      setStatus('Updated node properties');
+      return;
+    }
+
+    try {
+      await api.saveTree(selectedProjectId, nextTree);
+      await loadProjects();
+      setStatus('Updated node properties');
+    } catch (error) {
+      const message = extractErrorMessage(error);
+      setStatus(`Save node properties failed: ${message}`);
+    }
+  };
+
+  const applyNodeProperties = async (
+    nodeId: string,
+    nodeText: string,
+    patch: Partial<TreeNodeProperties>,
+    options?: { colorBy?: TreeFilters['colorBy'] },
+  ) => {
+    if (!tree) return;
+
+    const nextTree = updateNodeById(tree, nodeId, (node) =>
+      ensureNodeProperties({
+        ...node,
+        properties: {
+          ...node.properties,
+          ...patch,
+          updatedAt: new Date().toISOString(),
+        },
+      }),
+    );
+    setNodeContextMenu(null);
+    setTree(nextTree);
+
+    if (options?.colorBy) {
+      setTreeFilters((prev) => ({ ...prev, colorBy: options.colorBy as TreeFilters['colorBy'] }));
+    }
+
+    if (!selectedProjectId) {
+      setStatus(`Updated "${nodeText}"`);
+      return;
+    }
+
+    try {
+      await api.saveTree(selectedProjectId, nextTree);
+      await loadProjects();
+      setStatus(`Updated "${nodeText}"`);
+    } catch (error) {
+      const message = extractErrorMessage(error);
+      setStatus(`Save node update failed: ${message}`);
+    }
+  };
+
+  const applySelectedNodeSummary = async (summary: string) => {
+    if (!tree || !selectedNodeId) return;
+    const nextTree = updateNodeById(tree, selectedNodeId, (node) =>
+      ensureNodeProperties({
+        ...node,
+        ...(summary.trim() ? { summary: summary.trim() } : {}),
+        ...(summary.trim() ? {} : { summary: undefined }),
+        properties: {
+          ...node.properties,
+          updatedAt: new Date().toISOString(),
+        },
+      }),
+    );
+    setTree(nextTree);
+
+    if (!selectedProjectId) {
+      setStatus('Updated node summary');
+      return;
+    }
+
+    try {
+      await api.saveTree(selectedProjectId, nextTree);
+      await loadProjects();
+      setStatus('Updated node summary');
+    } catch (error) {
+      const message = extractErrorMessage(error);
+      setStatus(`Save node summary failed: ${message}`);
+    }
+  };
+
+  const createRelatedNode = async (mode: 'child' | 'sibling') => {
+    if (!tree || !selectedNodeId) return;
+
+    const newNode = ensureNodeProperties({
+      id: makeNodeId(),
+      text: mode === 'child' ? 'New child' : 'New sibling',
+      properties: {},
+      children: [],
+    });
+
+    let nextTree = tree;
+    if (mode === 'child') {
+      nextTree = insertNodeAsChild(tree, selectedNodeId, newNode);
+      setExpandedById((prev) => ({ ...prev, [selectedNodeId]: true }));
+    } else if (selectedNodeId !== 'root') {
+      const attachSibling = (node: TreeNode): TreeNode => {
+        const index = node.children.findIndex((child) => child.id === selectedNodeId);
+        if (index >= 0) {
+          const nextChildren = [...node.children];
+          nextChildren.splice(index + 1, 0, newNode);
+          return {
+            ...node,
+            properties: {
+              ...node.properties,
+              updatedAt: new Date().toISOString(),
+            },
+            children: nextChildren,
+          };
+        }
+        return {
+          ...node,
+          children: node.children.map(attachSibling),
+        };
+      };
+      nextTree = attachSibling(tree);
+    }
+
+    setTree(nextTree);
+    setSelectedNodeId(newNode.id);
+    setEditingNodeId(newNode.id);
+    setNodeEditText(newNode.text);
+
+    if (!selectedProjectId) {
+      setStatus(`Added ${mode} node`);
+      return;
+    }
+
+    try {
+      await api.saveTree(selectedProjectId, nextTree);
+      await loadProjects();
+      setStatus(`Added ${mode} node`);
+    } catch (error) {
+      const message = extractErrorMessage(error);
+      setStatus(`Add ${mode} node failed: ${message}`);
+    }
+  };
+
   return (
     <div className="vm-shell">
       <header className="vm-topbar">
         <div>
           <h1>VisualMind</h1>
-          <p>Turn large text into a structured mind map.</p>
+          <p>Turn large text into a structured mind map with live filters, sorting, and node properties.</p>
         </div>
         <div className="vm-topbar-right">
+          <button className="theme-toggle" type="button" onClick={onToggleTheme}>
+            <span className="theme-toggle-icon" aria-hidden="true">{mode === 'dark' ? 'D' : 'L'}</span>
+            <span>{mode === 'dark' ? 'Dark' : 'Light'}</span>
+          </button>
           {status !== 'Ready' ? <span className="status-chip">{status}</span> : null}
+          {unlockMoreHref ? (
+            <a className="btn btn-ghost status-action" href={unlockMoreHref}>
+              Email us to unlock more
+            </a>
+          ) : null}
           {!isLoggedIn ? (
             <button className="btn btn-ghost" type="button" onClick={onLogin}>
               Log in
             </button>
           ) : null}
           {isLoggedIn ? <span className="status-chip user">{userEmail || 'Signed in'}</span> : null}
+          {isLoggedIn ? (
+            <button className="btn btn-ghost" type="button" onClick={() => void onLogout()}>
+              Logout
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -1670,25 +2387,25 @@ export const App = () => {
         <section className="vm-pane vm-pane-left">
           <div className="card composer-card">
             <div className="composer-intro">
-              <h2>Sources</h2>
-              <p>Paste text or import other sources below to build your mind map.</p>
+              <h2 className="panel-title">Sources</h2>
+              <p className="panel-subtitle">Build the map from notes, docs, PDFs, and saved research.</p>
             </div>
+            <div className="workspace-divider" />
             <div className="composer-source-entry">
               <button
                 className="source-add-btn"
                 type="button"
                 onClick={() => {
-                  setEditingSource(null);
-                  setSourceTitle('');
-                  setRawText('');
+                  resetSourceEditor();
                   setIsAddTextOpen(true);
+                  setSourceEditorMode('text');
                 }}
               >
                 <span className="source-add-title">+ Add Source</span>
                 <span className="source-add-subtext">Paste text, notes, or research</span>
               </button>
             </div>
-            <div className="actions source-tools">
+            <div className="source-tools source-tools-stack">
               <button
                 className="btn btn-ghost"
                 onClick={() => {
@@ -1710,8 +2427,9 @@ export const App = () => {
               <button
                 className="btn btn-ghost"
                 onClick={() => {
-                  const url = window.prompt('Enter webpage URL');
-                  if (url) void onImportWeb(url);
+                  resetSourceEditor();
+                  setIsAddTextOpen(true);
+                  setSourceEditorMode('web');
                 }}
                 disabled={busy}
               >
@@ -1732,11 +2450,22 @@ export const App = () => {
               style={{ display: 'none' }}
               onChange={onPdfSelected}
             />
+            <div className="sources-list-header">
+              <h4>Added Sources</h4>
+              <span className="sources-list-state">
+                {selectedProjectId
+                  ? persistedSources.length === 0
+                    ? '(empty)'
+                    : `(${persistedSources.length})`
+                  : draftSessions.length === 0
+                    ? '(empty)'
+                    : `(${draftSessions.length})`}
+              </span>
+            </div>
             <div className="session-list">
               {selectedProjectId ? (
                 <>
-                  <h4>Added Sources ({persistedSources.length})</h4>
-                  {persistedSources.length === 0 ? <p className="hint">No added sources yet.</p> : null}
+                  {persistedSources.length === 0 ? <p className="hint sources-empty">(empty)</p> : null}
                   {persistedSources.map((source, index) => (
                     <div key={source.id} className="session-item">
                       <div className="session-item-main">
@@ -1758,8 +2487,7 @@ export const App = () => {
                 </>
               ) : (
                 <>
-                  <h4>Added Sources ({draftSessions.length})</h4>
-                  {draftSessions.length === 0 ? <p className="hint">Add a source to get started.</p> : null}
+                  {draftSessions.length === 0 ? <p className="hint sources-empty">(empty)</p> : null}
                   {draftSessions.map((session, index) => (
                     <div key={session.id} className="session-item">
                       <div className="session-item-main">
@@ -1776,12 +2504,23 @@ export const App = () => {
                 </>
               )}
             </div>
+            {(selectedProjectId ? persistedSources.length : draftSessions.length) > 1 ? (
+              <div className="source-warning-card">
+                <div className="source-warning-copy">
+                  <strong>All added sources are included</strong>
+                  <span>
+                    Remove any unused source before generating so the map reflects only what you want included.
+                  </span>
+                </div>
+              </div>
+            ) : null}
             <div className="primary-actions">
               <button
-                className={`btn btn-map-action btn-map-primary ${busy ? 'is-generating' : ''}`}
+                className={`btn btn-map-action btn-map-primary btn-map-fab ${busy ? 'is-generating' : ''}`}
                 onClick={() => void onPrimaryMapAction()}
                 disabled={busy || (isLoggedIn && !selectedProjectId && pendingSourceCount === 0)}
               >
+                <span className="btn-map-plus">+</span>
                 {!isLoggedIn
                   ? 'Log in to Create Mind Map'
                   : selectedProjectId
@@ -1798,49 +2537,240 @@ export const App = () => {
         <section className="vm-pane vm-pane-main">
           <div className="card map-card">
             <div className="map-header">
-              <div className="map-header-copy">
-                <h2>Your Mind Map</h2>
-              </div>
-              <div className="actions map-export-actions">
-                <button
-                  type="button"
-                  className={`btn btn-export ${selectedProjectId ? '' : 'disabled'}`}
-                  onClick={() => void onExportMm()}
-                >
-                  Export .mm
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-export ${selectedProjectId ? '' : 'disabled'}`}
-                  onClick={() => void onExportMarkdown()}
-                >
-                  Export .md
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-export ${selectedProjectId ? '' : 'disabled'}`}
-                  onClick={() => void onExportNotionMarkdown()}
-                >
-                  Notion .md
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-export ${tree ? '' : 'disabled'}`}
-                  onClick={() => onExportImage('png')}
-                >
-                  Export PNG
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-export ${tree ? '' : 'disabled'}`}
-                  onClick={() => onExportImage('jpg')}
-                >
-                  Export JPG
-                </button>
-              </div>
+              <h2 className="panel-title panel-title-small">Your Mind Map</h2>
             </div>
-            <p className="map-interaction-hint">Drag nodes to move. Double-click node text to edit. Right-click a node for add/delete actions. Use &gt; / &lt; to collapse or expand branches.</p>
             <div className="map-canvas">
+              <div className="map-canvas-overlay">
+                <div className="map-command-bar">
+                  <div className="map-command-bar-main">
+                    <div className="map-search-shell">
+                      <input
+                        className="map-toolbar-search"
+                        type="search"
+                        name="node-search"
+                        autoComplete="off"
+                        aria-label="Search nodes"
+                        inputMode="search"
+                        enterKeyHint="search"
+                        data-lpignore="true"
+                        data-1p-ignore="true"
+                        data-bwignore="true"
+                        placeholder="Search nodes"
+                        value={treeFilters.query}
+                        onChange={(event) => setTreeFilters((prev) => ({ ...prev, query: event.target.value }))}
+                      />
+                    </div>
+                    <div className="map-toolbar-group">
+                      <div className="map-toolbar-menu map-toolbar-menu-filter">
+                        <button
+                          type="button"
+                          className={`map-toolbar-button ${isMapFiltersOpen ? 'is-active' : ''}`}
+                          onClick={() => setIsMapFiltersOpen((prev) => !prev)}
+                        >
+                          <span className="map-button-icon" aria-hidden="true">+</span>
+                          <span>Filter</span>
+                        </button>
+                        {isMapFiltersOpen ? (
+                          <div className="map-toolbar-popover map-filter-panel">
+                            <div className="map-filter-grid">
+                              <select
+                                name="filter-status"
+                                aria-label="Filter by status"
+                                data-lpignore="true"
+                                data-1p-ignore="true"
+                                data-bwignore="true"
+                                value={treeFilters.status}
+                                onChange={(event) => setTreeFilters((prev) => ({ ...prev, status: event.target.value as TreeFilters['status'] }))}
+                              >
+                                <option value="all">All status</option>
+                                <option value="backlog">Backlog</option>
+                                <option value="active">Active</option>
+                                <option value="done">Done</option>
+                                <option value="blocked">Blocked</option>
+                              </select>
+                              <select
+                                name="filter-priority"
+                                aria-label="Filter by priority"
+                                data-lpignore="true"
+                                data-1p-ignore="true"
+                                data-bwignore="true"
+                                value={treeFilters.priority}
+                                onChange={(event) => setTreeFilters((prev) => ({ ...prev, priority: event.target.value as TreeFilters['priority'] }))}
+                              >
+                                <option value="all">All priority</option>
+                                <option value="low">Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
+                                <option value="critical">Critical</option>
+                              </select>
+                              <input
+                                className="map-filter-input"
+                                type="text"
+                                name="filter-owner"
+                                autoComplete="off"
+                                aria-label="Filter by owner"
+                                data-lpignore="true"
+                                data-1p-ignore="true"
+                                data-bwignore="true"
+                                placeholder="Owner"
+                                value={treeFilters.owner}
+                                onChange={(event) => setTreeFilters((prev) => ({ ...prev, owner: event.target.value }))}
+                              />
+                              <input
+                                className="map-filter-input"
+                                type="text"
+                                name="filter-tag"
+                                autoComplete="off"
+                                aria-label="Filter by tag"
+                                data-lpignore="true"
+                                data-1p-ignore="true"
+                                data-bwignore="true"
+                                placeholder="Tag"
+                                value={treeFilters.tag}
+                                onChange={(event) => setTreeFilters((prev) => ({ ...prev, tag: event.target.value }))}
+                              />
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                      <label className="map-toolbar-depth">
+                        <span className="map-toolbar-label">Depth</span>
+                        <span className="map-toolbar-value">{treeFilters.depth}</span>
+                        <input
+                          type="range"
+                          name="filter-depth"
+                          aria-label="Visible depth"
+                          data-lpignore="true"
+                          data-1p-ignore="true"
+                          data-bwignore="true"
+                          min={1}
+                          max={8}
+                          value={treeFilters.depth}
+                          onChange={(event) => setTreeFilters((prev) => ({ ...prev, depth: Number(event.target.value) }))}
+                        />
+                      </label>
+                      <label className="map-toolbar-select-shell">
+                        <span className="map-toolbar-label">Color by</span>
+                        <select
+                          className="map-toolbar-select"
+                          name="color-by"
+                          aria-label="Color nodes by"
+                          data-lpignore="true"
+                          data-1p-ignore="true"
+                          data-bwignore="true"
+                          value={treeFilters.colorBy}
+                          onChange={(event) =>
+                            setTreeFilters((prev) => ({ ...prev, colorBy: event.target.value as TreeFilters['colorBy'] }))
+                          }
+                        >
+                          {HEATMAP_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="map-toolbar-button"
+                        onClick={toggleAllNodes}
+                        disabled={!tree}
+                      >
+                        <span>{allNodesExpanded ? 'Collapse' : 'Expand'}</span>
+                      </button>
+                      <div className="map-toolbar-menu">
+                        <button
+                          type="button"
+                          className="map-toolbar-button"
+                          onClick={() => setIsExportMenuOpen((prev) => !prev)}
+                        >
+                          <span>Export</span>
+                          <span className="map-button-caret" aria-hidden="true">v</span>
+                        </button>
+                        {isExportMenuOpen ? (
+                          <div className="map-toolbar-popover map-export-menu">
+                            <button
+                              type="button"
+                              className="map-menu-item"
+                              disabled={!selectedProjectId}
+                              onClick={() => {
+                                setIsExportMenuOpen(false);
+                                void onExportMm();
+                              }}
+                            >
+                              FreeMind .mm
+                            </button>
+                            <button
+                              type="button"
+                              className="map-menu-item"
+                              disabled={!selectedProjectId}
+                              onClick={() => {
+                                setIsExportMenuOpen(false);
+                                void onExportMarkdown();
+                              }}
+                            >
+                              Markdown .md
+                            </button>
+                            <button
+                              type="button"
+                              className="map-menu-item"
+                              disabled={!selectedProjectId}
+                              onClick={() => {
+                                setIsExportMenuOpen(false);
+                                void onExportNotionMarkdown();
+                              }}
+                            >
+                              Notion .md
+                            </button>
+                            <button
+                              type="button"
+                              className="map-menu-item"
+                              disabled={!tree}
+                              onClick={() => {
+                                setIsExportMenuOpen(false);
+                                onExportImage('png');
+                              }}
+                            >
+                              PNG
+                            </button>
+                            <button
+                              type="button"
+                              className="map-menu-item"
+                              disabled={!tree}
+                              onClick={() => {
+                                setIsExportMenuOpen(false);
+                                onExportImage('jpg');
+                              }}
+                            >
+                              JPG
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                  {activeFilterChips.length > 0 ? (
+                    <div className="map-filter-chips">
+                      {activeFilterChips.map((chip) => (
+                        <button key={chip.key} type="button" className="map-filter-chip" onClick={chip.onRemove}>
+                          {chip.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              {heatmapLegend.length > 0 ? (
+                <div className="heatmap-legend">
+                  {heatmapLegend.map((entry) => (
+                    <div key={entry.label} className="heatmap-legend-item">
+                      <span className={`heatmap-legend-swatch ${entry.className}`} />
+                      <span>{entry.label}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <div className="map-canvas-hint">
+                Drag nodes to move • Double-click to rename • Right-click for actions
+              </div>
               {isMapLoading ? (
                 <div className="map-loader">
                   <div className="map-loader-spinner" />
@@ -1903,13 +2833,13 @@ export const App = () => {
               ) : (
                 <div className="map-empty-state">
                   <div className="map-empty-illustration" aria-hidden="true">
-                    <div className="map-empty-center">Map</div>
-                    <div className="map-empty-branch map-empty-branch-left">Ideas</div>
-                    <div className="map-empty-branch map-empty-branch-right">Topics</div>
-                    <div className="map-empty-branch map-empty-branch-bottom">Notes</div>
+                    <div className="map-empty-center">Mind Map</div>
+                    <div className="map-empty-branch map-empty-branch-left">Sources</div>
+                    <div className="map-empty-branch map-empty-branch-right">Themes</div>
+                    <div className="map-empty-branch map-empty-branch-bottom">Insights</div>
                   </div>
                   <h3>Create your first mind map</h3>
-                  <p>Add sources on the left, then click Create Mind Map.</p>
+                  <p>Add sources on the left, then create a mind map to explore your ideas visually.</p>
                 </div>
               )}
             </div>
@@ -1918,18 +2848,10 @@ export const App = () => {
 
         <section className="vm-pane vm-pane-side">
           <div className="card history-card">
-            <h3>Recent Maps</h3>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <input
-                type="checkbox"
-                checked={hideFailedProjects}
-                onChange={(e) => setHideFailedProjects(e.target.checked)}
-                style={{ width: 'auto', margin: 0 }}
-              />
-              Hide failed projects
-            </label>
+            <h3 className="panel-title panel-title-small">Recent Maps</h3>
+            <p className="panel-subtitle">Your latest saved maps.</p>
             <div className="project-list">
-              {visibleProjects.length === 0 ? <p>No maps yet.</p> : null}
+              {visibleProjects.length === 0 ? <p className="hint">No maps yet.</p> : null}
               {visibleProjects.map((project) => (
                 <div
                   key={project.id}
@@ -1943,6 +2865,7 @@ export const App = () => {
                         const nextTree = normalizeTree(project.current_tree_json);
                         setSelectedProjectId(project.id);
                         setTree(nextTree);
+                        setSelectedNodeId(nextTree?.id ?? null);
                         setExpandedForTree(nextTree);
                         setProjectTitle(recentMapTitle(project));
                         setDraftSessions([]);
@@ -2041,15 +2964,11 @@ export const App = () => {
           <div ref={studyToolsRef} className={`card assets-card ${studyToolsSpotlight ? 'spotlight' : ''}`}>
             <div className="assets-header">
               <div className="assets-header-copy">
-                <h3>Mind Map Tools</h3>
-                <p>Future tools built from your map.</p>
+                <h3 className="panel-title panel-title-small">Feature Requests</h3>
+                <p className="panel-subtitle">Tell us what you want next.</p>
               </div>
-              <span className="asset-status-badge paused">Paused</span>
             </div>
             <div className="feature-request-card">
-              <div className="feature-icon">🧩</div>
-              <h4>Tell us what feature you want</h4>
-              <p>Want quiz mode, summaries, or spaced repetition? Email us your idea and we will review it.</p>
               <button className="feature-btn" type="button" onClick={openFeatureRequestModal}>
                 Request a Feature
               </button>
@@ -2187,18 +3106,34 @@ export const App = () => {
             <div className="add-source-panel">
               <p className="hint">Describe the feature you want in this section.</p>
               <textarea
+                name="feature-request-message"
+                autoComplete="off"
+                aria-label="Feature request message"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                data-bwignore="true"
                 placeholder="Type your feature request here..."
                 value={featureRequestMessage}
-                onChange={(event) => setFeatureRequestMessage(event.target.value)}
+                onChange={(event) => {
+                  setFeatureRequestMessage(event.target.value);
+                  if (featureRequestFeedback?.tone === 'error') {
+                    setFeatureRequestFeedback(null);
+                  }
+                }}
                 rows={8}
               />
               <p className="hint">{featureRequestMessage.trim().length}/2000 characters</p>
+              {featureRequestFeedback ? (
+                <p className={`hint ${featureRequestFeedback.tone}`}>
+                  {featureRequestFeedback.message}
+                </p>
+              ) : null}
               <div className="actions">
                 <button
                   className="btn btn-primary"
                   type="button"
                   onClick={submitFeatureRequest}
-                  disabled={sendingFeatureRequest || featureRequestMessage.trim().length < 10}
+                  disabled={sendingFeatureRequest}
                 >
                   {sendingFeatureRequest ? 'Sending...' : 'Send Request'}
                 </button>
@@ -2208,6 +3143,7 @@ export const App = () => {
                   onClick={() => {
                     setIsFeatureRequestOpen(false);
                     setFeatureRequestMessage('');
+                    setFeatureRequestFeedback(null);
                   }}
                   disabled={sendingFeatureRequest}
                 >
@@ -2222,63 +3158,128 @@ export const App = () => {
       {isAddTextOpen ? (
         <div className="move-modal-backdrop">
           <div className="move-modal source-editor-modal">
-            <h3>{editingSource ? 'Edit Source' : 'Add Text Source'}</h3>
+            <h3>
+              {editingSource
+                ? 'Edit Source'
+                : sourceEditorMode === 'web'
+                  ? 'Add Web Source'
+                  : 'Add Text Source'}
+            </h3>
             <div className="add-source-panel">
-              <input
-                placeholder="Source title (optional)"
-                value={sourceTitle}
-                onChange={(e) => setSourceTitle(e.target.value)}
-              />
-              <textarea
-                placeholder="Paste one article, transcript section, notes chunk, or brainstorm here..."
-                value={rawText}
-                onChange={(e) => setRawText(e.target.value)}
-                rows={10}
-              />
-              <p className={`hint ${isOverTextLimit ? 'error' : ''}`}>
-                {rawTextLength}/{limits.maxTextChars} characters
-                {isOverTextLimit
-                  ? ' · Over your plan limit. Upgrade or split into sessions.'
-                  : ` · ${remainingChars} left`}
-              </p>
-              <p className={`hint warning ${isOverCombinedLimit ? 'error' : ''}`}>
-                Combined sources: {projectedCombinedChars}/{TOTAL_PROJECT_TEXT_LIMIT} characters
-                {isOverCombinedLimit ? ' · Over project limit.' : ` · ${remainingCombinedChars} left`}
-              </p>
-              {isOverTextLimit ? (
-                <div className="limit-box">
-                  <h4>Text too long for your plan</h4>
-                  <p>
-                    Your plan supports up to {limits.maxTextChars} characters per session. Upgrade for longer input, or
-                    split content into sessions and combine.
+              {sourceEditorMode === 'web' ? (
+                <>
+                  <input
+                    name="source-title"
+                    autoComplete="off"
+                    aria-label="Source title"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    data-bwignore="true"
+                    placeholder="Source title (optional)"
+                    value={sourceTitle}
+                    onChange={(e) => setSourceTitle(e.target.value)}
+                  />
+                  <input
+                    name="source-web-url"
+                    autoComplete="url"
+                    type="url"
+                    aria-label="Source webpage URL"
+                    inputMode="url"
+                    enterKeyHint="go"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    data-bwignore="true"
+                    placeholder="Paste a public webpage URL"
+                    value={webUrl}
+                    onChange={(e) => setWebUrl(e.target.value)}
+                  />
+                  <p className="hint">Notion content needs to be pasted directly.</p>
+                </>
+              ) : (
+                <>
+                  <input
+                    name="source-title"
+                    autoComplete="off"
+                    aria-label="Source title"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    data-bwignore="true"
+                    placeholder="Source title (optional)"
+                    value={sourceTitle}
+                    onChange={(e) => setSourceTitle(e.target.value)}
+                  />
+                  <textarea
+                    name="source-raw-text"
+                    autoComplete="off"
+                    aria-label="Source text"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    data-bwignore="true"
+                    placeholder="Paste one article, transcript section, notes chunk, or brainstorm here..."
+                    value={rawText}
+                    onChange={(e) => setRawText(e.target.value)}
+                    rows={10}
+                  />
+                  <p className={`hint ${isOverTextLimit ? 'error' : ''}`}>
+                    {rawTextLength}/{limits.maxTextChars} characters
+                    {isOverTextLimit
+                      ? ' · Over your plan limit. Upgrade or split into sessions.'
+                      : ` · ${remainingChars} left`}
                   </p>
-                </div>
-              ) : null}
-              {isOverCombinedLimit ? (
-                <div className="limit-box">
-                  <h4>Project total limit reached</h4>
-                  <p>
-                    A project supports up to {TOTAL_PROJECT_TEXT_LIMIT} combined characters across all added sources.
+                  <p className={`hint warning ${isOverCombinedLimit ? 'error' : ''}`}>
+                    Combined sources: {projectedCombinedWords}/{TOTAL_PROJECT_WORD_LIMIT} words
+                    {isOverCombinedLimit ? ' · Over project limit.' : ` · ${remainingCombinedWords} left`}
                   </p>
-                </div>
-              ) : null}
+                  {isOverTextLimit ? (
+                    <div className="limit-box">
+                      <h4>Text too long for your plan</h4>
+                      <p>
+                        Your plan supports up to {limits.maxTextChars} characters per session. Upgrade for longer input, or
+                        split content into sessions and combine.
+                      </p>
+                    </div>
+                  ) : null}
+                  {isOverCombinedLimit ? (
+                    <div className="limit-box">
+                      <h4>Project total limit reached</h4>
+                      <p>
+                        A project supports up to {TOTAL_PROJECT_WORD_LIMIT} combined words across all added sources.
+                      </p>
+                      {userPlan === 'free' ? (
+                        <button
+                          className="btn btn-primary"
+                          type="button"
+                          onClick={() => setIsUpgradeOfferOpen(true)}
+                        >
+                          Upgrade to continue
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
+              )}
               <div className="actions">
-                <button
-                  className="btn btn-primary"
-                  onClick={onAddSession}
-                  disabled={!rawText.trim() || busy || isOverCombinedLimit}
-                >
-                  Save your edit
-                </button>
+                {sourceEditorMode === 'web' ? (
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => void onImportWeb(webUrl.trim())}
+                    disabled={!isWebUrlValid || busy}
+                  >
+                    Fetch page
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-primary"
+                    onClick={onAddSession}
+                    disabled={!rawText.trim() || busy || isOverCombinedLimit}
+                  >
+                    Save your edit
+                  </button>
+                )}
                 <button
                   className="btn btn-ghost"
                   type="button"
-                  onClick={() => {
-                    setIsAddTextOpen(false);
-                    setRawText('');
-                    setSourceTitle('');
-                    setEditingSource(null);
-                  }}
+                  onClick={resetSourceEditor}
                 >
                   Cancel
                 </button>
@@ -2332,6 +3333,88 @@ export const App = () => {
           >
             Add child node
           </button>
+          <button
+            type="button"
+            className="node-context-menu-item"
+            onClick={() => {
+              void applyNodeTags(nodeContextMenu.nodeId, nodeContextMenu.nodeText);
+            }}
+          >
+            Add tags
+          </button>
+          <div className="node-context-menu-group">
+            <span className="node-context-menu-label">Priority</span>
+            <div className="node-context-menu-pills">
+              <button
+                type="button"
+                className="node-context-menu-pill"
+                onClick={() => {
+                  void applyNodeProperties(nodeContextMenu.nodeId, nodeContextMenu.nodeText, { priority: 'high' }, { colorBy: 'priority' });
+                }}
+              >
+                High
+              </button>
+              <button
+                type="button"
+                className="node-context-menu-pill"
+                onClick={() => {
+                  void applyNodeProperties(nodeContextMenu.nodeId, nodeContextMenu.nodeText, { priority: 'critical' }, { colorBy: 'priority' });
+                }}
+              >
+                Critical
+              </button>
+              <button
+                type="button"
+                className="node-context-menu-pill"
+                onClick={() => {
+                  void applyNodeProperties(nodeContextMenu.nodeId, nodeContextMenu.nodeText, { priority: undefined }, { colorBy: 'priority' });
+                }}
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          <div className="node-context-menu-group">
+            <span className="node-context-menu-label">Status</span>
+            <div className="node-context-menu-pills">
+              <button
+                type="button"
+                className="node-context-menu-pill"
+                onClick={() => {
+                  void applyNodeProperties(nodeContextMenu.nodeId, nodeContextMenu.nodeText, { status: 'active' }, { colorBy: 'status' });
+                }}
+              >
+                Active
+              </button>
+              <button
+                type="button"
+                className="node-context-menu-pill"
+                onClick={() => {
+                  void applyNodeProperties(nodeContextMenu.nodeId, nodeContextMenu.nodeText, { status: 'done' }, { colorBy: 'status' });
+                }}
+              >
+                Done
+              </button>
+              <button
+                type="button"
+                className="node-context-menu-pill"
+                onClick={() => {
+                  void applyNodeProperties(nodeContextMenu.nodeId, nodeContextMenu.nodeText, { status: 'blocked' }, { colorBy: 'status' });
+                }}
+              >
+                Blocked
+              </button>
+              <button
+                type="button"
+                className="node-context-menu-pill"
+                onClick={() => {
+                  void applyNodeProperties(nodeContextMenu.nodeId, nodeContextMenu.nodeText, { status: undefined }, { colorBy: 'status' });
+                }}
+              >
+                Clear
+              </button>
+            </div>
+          </div>
           {nodeContextMenu.canDelete ? (
             <button
               type="button"

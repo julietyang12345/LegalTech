@@ -218,13 +218,18 @@ export function LoginPage() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-content-secondary mb-1.5">
+                <label htmlFor="login-email" className="block text-sm font-medium text-content-secondary mb-1.5">
                   Email
                 </label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-content-tertiary" />
                   <input
+                    id="login-email"
+                    name="email"
                     type="email"
+                    autoComplete="email"
+                    inputMode="email"
+                    aria-label="Email address"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
@@ -238,7 +243,7 @@ export function LoginPage() {
 
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-sm font-medium text-content-secondary">
+                  <label htmlFor="login-password" className="block text-sm font-medium text-content-secondary">
                     Password
                   </label>
                   <Link
@@ -251,7 +256,11 @@ export function LoginPage() {
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-content-tertiary" />
                   <input
+                    id="login-password"
+                    name="password"
                     type="password"
+                    autoComplete="current-password"
+                    aria-label="Password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"

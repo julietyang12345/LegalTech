@@ -42,6 +42,8 @@ const MAX_SLIDES = 12;
 const MAX_FLASHCARDS = 24;
 const MAX_MINDMAP_INPUT_CHARS = 120000;
 const MINDMAP_FINAL_MERGE_TOKENS = 1800;
+const MINDMAP_REGROUP_TOKENS = 500;
+const MAX_REGROUP_CALLS = 3;
 const STAGE1_MODEL_NAME = config.modelName;
 const STAGE2_MODEL_NAME = config.modelName;
 const SEMANTIC_MODEL_NAME = config.modelNameSemantic;
@@ -125,28 +127,96 @@ const cloneTree = (node: TreeNode): TreeNode => ({
   children: node.children.map(cloneTree),
 });
 
+const cloneNodeWithChildren = (node: TreeNode, children: TreeNode[]): TreeNode => ({
+  ...node,
+  children,
+});
+
 const cleanDisplayLabel = (text: string): string =>
   text
     .replace(/^[\s:：\-–—]+|[\s:：\-–—]+$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 
+const labelKey = (text: string): string =>
+  cleanDisplayLabel(text)
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const labelsEquivalent = (left: string, right: string): boolean => {
+  const leftKey = labelKey(left);
+  const rightKey = labelKey(right);
+  return Boolean(leftKey) && leftKey === rightKey;
+};
+
+const isSyntheticSummary = (summary?: string): boolean => {
+  const value = summary?.trim();
+  if (!value) return false;
+
+  const normalized = value.toLowerCase();
+  return (
+    normalized.startsWith('groups related items under ') ||
+    normalized.startsWith('clarifies how ')
+  );
+};
+
+const mergeNodePair = (base: TreeNode, incoming: TreeNode): TreeNode => {
+  const mergedSummary =
+    base.summary?.trim() && !isSyntheticSummary(base.summary)
+      ? base.summary.trim()
+      : incoming.summary?.trim() && !isSyntheticSummary(incoming.summary)
+        ? incoming.summary.trim()
+        : undefined;
+
+  const merged: TreeNode = {
+    ...base,
+    children: [...base.children, ...incoming.children],
+  };
+  if (mergedSummary) {
+    merged.summary = mergedSummary;
+  } else {
+    delete merged.summary;
+  }
+  return merged;
+};
+
 const dedupeSiblingLabels = (tree: TreeNode): TreeNode => {
   const visit = (node: TreeNode): TreeNode => {
-    const seen = new Set<string>();
-    const deduped: TreeNode[] = [];
+    const deduped = new Map<string, TreeNode>();
 
     for (const child of node.children.map(visit)) {
-      const key = child.text.trim().toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      deduped.push(child);
+      const key = labelKey(child.text);
+      if (!key) continue;
+      const existing = deduped.get(key);
+      deduped.set(key, existing ? mergeNodePair(existing, child) : child);
     }
 
-    return { ...node, children: deduped };
+    return { ...node, children: Array.from(deduped.values()) };
   };
 
   return visit(tree);
+};
+
+const collapseRedundantBranches = (tree: TreeNode, isRoot = true): TreeNode => {
+  const collapsedChildren = tree.children.map((child) => collapseRedundantBranches(child, false));
+  const next = cloneNodeWithChildren(tree, collapsedChildren);
+
+  if (isRoot || next.children.length !== 1 || next.summary?.trim()) {
+    return next;
+  }
+
+  const onlyChild = next.children[0];
+  if (!labelsEquivalent(next.text, onlyChild.text)) {
+    return next;
+  }
+
+  return {
+    ...onlyChild,
+    id: next.id,
+    properties: next.properties ?? onlyChild.properties,
+  };
 };
 
 const finalizeTree = (node: TreeNode): TreeNode => {
@@ -155,109 +225,61 @@ const finalizeTree = (node: TreeNode): TreeNode => {
 
   for (const child of node.children) {
     const next = finalizeTree(child);
-    const key = next.text.trim().toLowerCase();
+    const key = labelKey(next.text);
     if (!key || seen.has(key)) continue;
     seen.add(key);
     children.push(next);
   }
 
   return {
-    ...node,
-    children,
+    ...(() => {
+      const finalized: TreeNode = { ...node, children };
+      if (node.summary?.trim() && !isSyntheticSummary(node.summary) && !labelsEquivalent(node.text, node.summary)) {
+        finalized.summary = node.summary.trim();
+      } else {
+        delete finalized.summary;
+      }
+      return finalized;
+    })(),
   };
 };
 
 
-const conceptExtractionSchema = z.object({
-  concepts: z.array(z.string().min(1).max(40)).min(2).max(16),
-});
-
-const buildConceptExtractionPrompt = (text: string): string =>
-  [
-    'What are the important concepts mentioned in this text?',
-    'Return only valid JSON with this exact schema:',
-    '{"concepts":["concept phrase"]}',
-    'Rules:',
-    '- identify the main claim, problem, opportunity, or solution idea, not just repeated surface words',
-    '- use noun phrases only',
-    '- keep concepts concise but specific',
-    '- extract only the strongest concepts needed to support the tree',
-    '- usually 2 to 6 words per concept',
-    '- no sentences',
-    '- prefer source-native concepts over generic category words',
-    '- when a procedure or sequence is presented as evidence of a pain point, keep both the pain point and the procedure evidence',
-    '- when an example supports a broader idea, include the broader idea as a concept',
-    '- preserve the semantic role of important content such as core problem, supporting evidence, inputs, outputs, proposed solution, and market implication when present',
-    '- avoid duplicates',
-    '',
-    `Text:\n${text}`,
-  ].join('\n');
-
-const buildTreeSynthesisPrompt = (text: string, concepts: string[]): string =>
+const buildTreeSynthesisPrompt = (text: string): string =>
   [
     'Create a mind map from the following text.',
     'Return only valid JSON:',
-    '{"title":"root topic","children":[{"text":"node","children":[{"text":"subnode","children":[]}]}]}',
+    '{"title":"root topic","children":[{"text":"short node title","summary":"fuller meaning or null","children":[{"text":"subnode","summary":"fuller meaning or null","children":[]}]}]}',
     'Rules:',
-    '- choose 2 to 6 main themes',
-    '- top-level themes should be major solution concepts, systems, or product ideas',
-    '- avoid making one giant umbrella theme that absorbs everything',
-    '- avoid generic top-level labels unless they are clearly central to the source',
-    '- if the input describes a product, startup idea, or solution concept, organize the direct children as meaningful product-side branches rather than repeating the title',
-    '- identify the author’s main point, then organize supporting details beneath it',
-    '- preserve the reasoning structure of the source when it is present, such as main point, supporting evidence, example, input, output, solution, implication, or conclusion',
-    '- use source-native labels at every level',
-    '- the root label and a direct child label must not repeat the same concept',
-    '- parent-child relationships must reflect the actual logic of the text, not just word overlap',
-    '- make a node the parent when its children explain it, support it, exemplify it, provide inputs to it, produce outputs from it, or describe its consequences',
-    '- do not group nodes together only because they share similar keywords if their logical roles are different',
-    '- when the source centers on one main topic, prefer grouping child branches by semantic role rather than surface wording, using roles like problem, process, components, inputs, outputs, examples, comparisons, causes, effects, implications, or evaluation when supported by the text',
-    '- when several details relate to the same central topic in different ways, group them by semantic role such as components, process, inputs, outputs, examples, comparisons, causes, effects, implications, or evaluation, when those roles are supported by the text',
-    '- prefer explicit parent-child relationships over flat lists when several details clearly belong together',
-    '- sibling nodes at the same level should have similar semantic roles',
-    '- intermediate nodes may summarize the branches below them',
-    '- only the lowest-layer leaf nodes should stay close to the source details',
-    '- keep the final leaf nodes concrete when the source contains concrete phrases',
-    '- if a workflow, sequence, or example is presented as evidence for a pain point, value proposition, or opportunity, place that workflow under the broader idea instead of making the workflow the main theme',
-    '- distinguish between the point being made and the example used to explain it',
-    '- do not reduce important supporting text into isolated keyword fragments when the source expresses a clear claim-evidence-conclusion relationship',
-    '- prefer compact meaningful labels over bare keyword extraction',
-    '- AI may choose depth when the structure supports it',
-    '- keep labels concise, but allow slightly longer labels when needed to preserve meaning',
+    '- Prioritize structural quality and correct thematic grouping over maximum compression, while still keeping labels and summaries concise.',
+    '- Build a theme-first, detail-later tree directly from the source text.',
+    '- Choose 3 to 8 top-level themes when the source supports them. Do not compress a clearly multi-part source into a few umbrella buckets.',
+    '- Root children must be parallel thematic summary branches drawn from the source, such as problems, features, audiences, use cases, integrations, technical considerations, business considerations, constraints, workflow, or outcomes.',
+    '- Avoid one giant umbrella branch; split clearly distinct source themes.',
+    '- Avoid generic top-level labels unless they are truly central to the source.',
+    '- First classify the content into distinct themes, then place details under the right theme.',
+    '- Identify the author main point, then organize supporting details beneath it.',
+    '- Keep each parent role-pure: a parent should represent one coherent theme, and its children should stay at a similar abstraction level.',
+    '- Non-leaf parent nodes must represent one coherent theme shared by their children.',
+    '- If a branch mixes roles, add an intermediate split before the leaves. Example: "Use Cases and Audiences" should usually split into "Audiences" and "Use Cases". Audience leaves should be people/groups; use-case leaves should be tasks, scenarios, or outcomes.',
+    '- For technical or business content, prefer grouped subthemes like "Integrations", "Development", "Architecture", "Differentiation", "Cost", or "Constraints" before listing concrete items. Do not flatten mixed technical concerns into one sibling list when they can be grouped cleanly.',
+    '- Only add an intermediate node when it groups multiple related children under a meaningful theme. Do not create redundant single-child wrappers.',
+    '- When introducing an intermediate node, classify its children into one clean theme instead of a mixed bucket.',
+    '- Parent-child relationships must reflect meaning, not keyword overlap. Do not group by shared words alone. Make a node the parent when its children explain it, support it, exemplify it, provide inputs/outputs, or describe consequences.',
+    '- Preserve the source logic when present, including claims, evidence, examples, workflows, solutions, implications, and constraints.',
+    '- Keep labels concise and source-native at every level. Prefer compact meaningful phrases over generic category language or isolated keyword fragments.',
+    '- Avoid duplicates: sibling labels must be unique, root and direct child labels must not repeat the same concept, and parent-child label duplication should be collapsed.',
+    '- Sibling nodes at the same level should stay at a similar abstraction level.',
+    '- Prefer the simplest structure that still preserves clear thematic classification.',
+    '- Deepest child nodes may be loosely summarized, but each should still convey its meaning clearly in one short understandable phrase.',
+    '- Distinguish between the point being made and the example used to explain it.',
+    '- Use summary only when a higher-level label needs clarification. Most concrete leaves and examples should have summary set to null.',
     '',
-    `Concepts:\n${JSON.stringify(concepts)}`,
     `Text:\n${text}`,
   ].join('\n');
 const buildMindMapDirectly = async (text: string, plan: UserPlan): Promise<TreeNode> => {
-  const conceptResult = await runSemanticPrompt(buildConceptExtractionPrompt(text), 500, {
-    name: 'concept_extraction',
-    validator: conceptExtractionSchema,
-    schema: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        concepts: {
-          type: 'array',
-          minItems: 2,
-          maxItems: 16,
-          items: {
-            type: 'string',
-            minLength: 1,
-            maxLength: 40,
-          },
-        },
-      },
-      required: ['concepts'],
-    },
-  });
-
-  const parsedConcepts = conceptExtractionSchema.safeParse(conceptResult);
-  if (!parsedConcepts.success) {
-    throw new Error('Concept extraction failed validation');
-  }
-
   const rawTree = await runStage2Prompt(
-    buildTreeSynthesisPrompt(text, parsedConcepts.data.concepts),
+    buildTreeSynthesisPrompt(text),
     MINDMAP_FINAL_MERGE_TOKENS,
     plan,
     treeJsonSchema,
@@ -266,10 +288,357 @@ const buildMindMapDirectly = async (text: string, plan: UserPlan): Promise<TreeN
   return normalizeGeneratedTree(typeof rawTree === 'string' ? rawTree : JSON.stringify(rawTree));
 };
 
-const shapeTreeForMindMap = (tree: TreeNode): TreeNode => {
+const regroupSchema = z.object({
+  groups: z.array(
+    z.object({
+      text: z.string().min(1).max(80),
+      summary: z.string().min(1).max(220).nullable(),
+      childIds: z.array(z.string().min(1).max(80)).min(1),
+    }),
+  ).min(2).max(4),
+});
+
+const buildRegroupPrompt = (
+  parent: string,
+  childDescriptors: Array<{ id: string; text: string; summary?: string }>,
+): string =>
+  [
+    'Classify the following child nodes into clearer thematic summary groups.',
+    'Return only valid JSON with this exact schema:',
+    '{"groups":[{"text":"summary label","summary":"optional short explanation","childIds":["c1","c2"]}]}',
+    'Rules:',
+    '- create 2 to 4 summary groups',
+    '- summary labels must be concise noun phrases',
+    '- use the optional summary field when it helps preserve meaning while keeping the text label short',
+    '- use the provided childIds exactly; do not rename or paraphrase them',
+    '- first classify children by theme, then group them under thematic summary labels',
+    '- create intermediate summary nodes when several children belong to the same theme',
+    '- only leave a child effectively ungrouped when it is already the most detailed useful node',
+    '- group by theme and meaning, not just shared words',
+    '- do not invent factual content that is not implied by the children',
+    '- every listed childId must come from the provided list',
+    '- avoid singleton groups unless the child is structurally distinct and truly deserves its own branch',
+    '- do not add a group if its label would just repeat the parent or a single child label',
+    '- do not combine distinct roles like problem, feature, audience, use case, integration, constraint, or business concern into one mixed group unless the children clearly express the same role',
+    '',
+    `Parent: ${parent}`,
+    `Children: ${JSON.stringify(childDescriptors)}`,
+  ].join('\n');
+
+const buildParentClassificationPrompt = (
+  parent: string,
+  childDescriptors: Array<{ id: string; text: string; summary?: string; childLabels: string[] }>,
+): string =>
+  [
+    'Improve the intermediate category structure of this mind map.',
+    'Return only valid JSON with this exact schema:',
+    '{"groups":[{"text":"category label","summary":"short clarification or null","childIds":["p1","p2"]}]}',
+    'Rules:',
+    '- group only by clean semantic category',
+    '- each category must represent one coherent role or concept',
+    '- do not mix use cases with integrations, or business concerns with technical constraints, unless the source explicitly unifies them',
+    '- prefer short category labels',
+    '- use summary only when the category title would otherwise be ambiguous; otherwise use null',
+    '- if children belong to different roles, split them into separate categories instead of using a catch-all label',
+    '- use the provided childIds exactly',
+    '',
+    `Parent: ${parent}`,
+    `Children: ${JSON.stringify(childDescriptors)}`,
+  ].join('\n');
+
+const averageLabelWords = (nodes: TreeNode[]): number =>
+  nodes.reduce((sum, node) => sum + countWords(cleanDisplayLabel(node.text)), 0) / Math.max(nodes.length, 1);
+
+const hasMixedDepth = (nodes: TreeNode[]): boolean =>
+  new Set(nodes.map((child) => (child.children.length === 0 ? 'leaf' : 'branch'))).size > 1;
+
+const hasMixedAbstraction = (nodes: TreeNode[]): boolean => {
+  const summaryLikeCount = nodes.filter((child) => countWords(cleanDisplayLabel(child.text)) <= 3 && !child.summary).length;
+  const detailLikeCount = nodes.filter(
+    (child) => countWords(cleanDisplayLabel(child.text)) >= 4 || Boolean(child.summary?.trim()),
+  ).length;
+  return summaryLikeCount > 0 && detailLikeCount > 0;
+};
+
+const shouldRegroupNode = (node: TreeNode): boolean => {
+  if (node.children.length < 4) return false;
+
+  const leafCount = node.children.filter((child) => child.children.length === 0).length;
+  const leafRatio = leafCount / node.children.length;
+  const avgWords = averageLabelWords(node.children);
+  const mixedDepth = hasMixedDepth(node.children);
+  const mixedAbstraction = hasMixedAbstraction(node.children);
+
+  return (
+    node.children.length >= 6 ||
+    leafRatio >= 0.6 ||
+    mixedDepth ||
+    mixedAbstraction ||
+    avgWords >= 4
+  );
+};
+
+const shouldRegroupRoot = (node: TreeNode): boolean => {
+  if (node.children.length <= 6) return false;
+
+  const avgWords = averageLabelWords(node.children);
+  return node.children.length >= 7 || avgWords >= 4 || hasMixedDepth(node.children) || hasMixedAbstraction(node.children);
+};
+
+const shouldReclassifyParentLayer = (node: TreeNode): boolean => {
+  if (node.children.length < 4) return false;
+  const branchChildren = node.children.filter((child) => child.children.length > 0).length;
+  const avgWords = averageLabelWords(node.children);
+  return branchChildren >= 2 && (hasMixedDepth(node.children) || hasMixedAbstraction(node.children) || avgWords >= 3.5);
+};
+
+const shouldKeepSingletonGroup = (
+  groupLabel: string,
+  child: TreeNode,
+  totalGroups: number,
+): boolean => {
+  const groupKey = cleanDisplayLabel(groupLabel).toLowerCase();
+  const childKey = cleanDisplayLabel(child.text).toLowerCase();
+  if (!groupKey || groupKey === childKey) return false;
+  return totalGroups >= 3;
+};
+
+const regroupNodeChildren = async (node: TreeNode): Promise<TreeNode> => {
+  const originalChildren = node.children;
+  const childDescriptors = originalChildren.map((child, index) => ({
+    id: `c${index + 1}`,
+    text: child.text,
+    ...(child.summary?.trim() ? { summary: child.summary.trim() } : {}),
+  }));
+  const childIdMap = new Map(childDescriptors.map((descriptor, index) => [descriptor.id, originalChildren[index]]));
+
+  const grouped = await runSemanticPrompt(
+    buildRegroupPrompt(node.text, childDescriptors),
+    MINDMAP_REGROUP_TOKENS,
+    {
+      name: 'mind_map_regroup',
+      validator: regroupSchema,
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          groups: {
+            type: 'array',
+            minItems: 2,
+            maxItems: 4,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                text: { type: 'string', minLength: 1, maxLength: 80 },
+                summary: {
+                  anyOf: [{ type: 'string', minLength: 1, maxLength: 220 }, { type: 'null' }],
+                },
+                childIds: {
+                  type: 'array',
+                  minItems: 1,
+                  items: { type: 'string', minLength: 1, maxLength: 80 },
+                },
+              },
+              required: ['text', 'summary', 'childIds'],
+            },
+          },
+        },
+        required: ['groups'],
+      },
+    },
+  );
+
+  const parsed = regroupSchema.safeParse(grouped);
+  if (!parsed.success) return node;
+
+  const usedIds = new Set<string>();
+  const regroupedChildren: TreeNode[] = [];
+
+  for (const [index, group] of parsed.data.groups.entries()) {
+    const matchedChildren: TreeNode[] = [];
+
+    for (const childId of group.childIds) {
+      const matched = childIdMap.get(childId);
+      if (!matched || usedIds.has(childId)) continue;
+      usedIds.add(childId);
+      matchedChildren.push(matched);
+    }
+
+    if (matchedChildren.length === 0) continue;
+
+    if (matchedChildren.length === 1) {
+      if (shouldKeepSingletonGroup(group.text, matchedChildren[0], parsed.data.groups.length)) {
+        regroupedChildren.push({
+          id: `${node.id}-g${index + 1}`,
+          text: cleanDisplayLabel(group.text) || `Group ${index + 1}`,
+          ...(group.summary?.trim() ? { summary: group.summary.trim() } : {}),
+          properties: {
+            createdAt: node.properties?.createdAt,
+            updatedAt: node.properties?.updatedAt ?? new Date().toISOString(),
+          },
+          children: matchedChildren,
+        });
+      } else {
+        regroupedChildren.push(matchedChildren[0]);
+      }
+      continue;
+    }
+
+    regroupedChildren.push({
+      id: `${node.id}-g${index + 1}`,
+      text: cleanDisplayLabel(group.text) || `Group ${index + 1}`,
+      ...(group.summary?.trim() ? { summary: group.summary.trim() } : {}),
+      properties: {
+        createdAt: node.properties?.createdAt,
+        updatedAt: node.properties?.updatedAt ?? new Date().toISOString(),
+      },
+      children: matchedChildren,
+    });
+  }
+
+  for (const descriptor of childDescriptors) {
+    if (!usedIds.has(descriptor.id)) {
+      const child = childIdMap.get(descriptor.id);
+      if (child) regroupedChildren.push(child);
+    }
+  }
+
+  return regroupedChildren.length >= 2 ? cloneNodeWithChildren(node, regroupedChildren) : node;
+};
+
+const reclassifyParentLayer = async (node: TreeNode): Promise<TreeNode> => {
+  const originalChildren = node.children;
+  const childDescriptors = originalChildren.map((child, index) => ({
+    id: `p${index + 1}`,
+    text: child.text,
+    ...(child.summary?.trim() ? { summary: child.summary.trim() } : {}),
+    childLabels: child.children.slice(0, 8).map((grandchild) => grandchild.text),
+  }));
+  const childIdMap = new Map(childDescriptors.map((descriptor, index) => [descriptor.id, originalChildren[index]]));
+
+  const grouped = await runSemanticPrompt(
+    buildParentClassificationPrompt(node.text, childDescriptors),
+    MINDMAP_REGROUP_TOKENS,
+    {
+      name: 'mind_map_parent_classification',
+      validator: regroupSchema,
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          groups: {
+            type: 'array',
+            minItems: 2,
+            maxItems: 4,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                text: { type: 'string', minLength: 1, maxLength: 80 },
+                summary: {
+                  anyOf: [{ type: 'string', minLength: 1, maxLength: 220 }, { type: 'null' }],
+                },
+                childIds: {
+                  type: 'array',
+                  minItems: 1,
+                  items: { type: 'string', minLength: 1, maxLength: 80 },
+                },
+              },
+              required: ['text', 'summary', 'childIds'],
+            },
+          },
+        },
+        required: ['groups'],
+      },
+    },
+  );
+
+  const parsed = regroupSchema.safeParse(grouped);
+  if (!parsed.success) return node;
+
+  const usedIds = new Set<string>();
+  const regroupedChildren: TreeNode[] = [];
+
+  for (const [index, group] of parsed.data.groups.entries()) {
+    const matchedChildren: TreeNode[] = [];
+
+    for (const childId of group.childIds) {
+      const matched = childIdMap.get(childId);
+      if (!matched || usedIds.has(childId)) continue;
+      usedIds.add(childId);
+      matchedChildren.push(matched);
+    }
+
+    if (matchedChildren.length === 0) continue;
+    if (matchedChildren.length === 1) {
+      regroupedChildren.push(matchedChildren[0]);
+      continue;
+    }
+
+    regroupedChildren.push({
+      id: `${node.id}-c${index + 1}`,
+      text: cleanDisplayLabel(group.text) || `Category ${index + 1}`,
+      ...(group.summary?.trim() ? { summary: group.summary.trim() } : {}),
+      properties: {
+        createdAt: node.properties?.createdAt,
+        updatedAt: node.properties?.updatedAt ?? new Date().toISOString(),
+      },
+      children: matchedChildren,
+    });
+  }
+
+  for (const descriptor of childDescriptors) {
+    if (!usedIds.has(descriptor.id)) {
+      const child = childIdMap.get(descriptor.id);
+      if (child) regroupedChildren.push(child);
+    }
+  }
+
+  return regroupedChildren.length >= 2 ? cloneNodeWithChildren(node, regroupedChildren) : node;
+};
+
+const shapeTreeForMindMap = async (tree: TreeNode): Promise<TreeNode> => {
   let next = cloneTree(tree);
   next = removeDuplicateRootChild(next);
   next = dedupeSiblingLabels(next);
+  let shapingCalls = 0;
+
+  const shapeNode = async (node: TreeNode, isRoot = false): Promise<TreeNode> => {
+    const shapedChildren = await Promise.all(node.children.map((child) => shapeNode(child, false)));
+    let nextNode = cloneNodeWithChildren(node, shapedChildren);
+
+    if (shapingCalls < MAX_REGROUP_CALLS && (isRoot ? shouldReclassifyParentLayer(nextNode) : shouldReclassifyParentLayer(nextNode))) {
+      shapingCalls += 1;
+      try {
+        nextNode = await reclassifyParentLayer(nextNode);
+      } catch (error) {
+        console.warn('[VisualMind] mindmap:reclassify:failed', {
+          node: nextNode.text,
+          message: error instanceof Error ? error.message : 'unknown',
+        });
+      }
+    }
+
+    if (shapingCalls < MAX_REGROUP_CALLS && (isRoot ? shouldRegroupRoot(nextNode) : shouldRegroupNode(nextNode))) {
+      shapingCalls += 1;
+      try {
+        nextNode = await regroupNodeChildren(nextNode);
+      } catch (error) {
+        console.warn('[VisualMind] mindmap:regroup:failed', {
+          node: nextNode.text,
+          message: error instanceof Error ? error.message : 'unknown',
+        });
+      }
+    }
+
+    return nextNode;
+  };
+
+  next = await shapeNode(next, true);
+  next = removeDuplicateRootChild(next);
+  next = dedupeSiblingLabels(next);
+  next = collapseRedundantBranches(next);
   next = finalizeTree(next);
   return next;
 };
@@ -305,12 +674,18 @@ const treeJsonSchema: StructuredOutputSchema<unknown> = {
         additionalProperties: false,
         properties: {
           text: { type: 'string' },
+          summary: {
+            anyOf: [
+              { type: 'string' },
+              { type: 'null' },
+            ],
+          },
           children: {
             type: 'array',
             items: { $ref: '#/$defs/node' },
           },
         },
-        required: ['text', 'children'],
+        required: ['text', 'summary', 'children'],
       },
     },
   },
@@ -415,61 +790,83 @@ const runOpenAiStructuredPrompt = async <T>(
       maxTokens,
     });
 
-    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${config.openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: modelName,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.1,
-        max_tokens: maxTokens,
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: structuredSchema.name,
-            strict: true,
-            schema: structuredSchema.schema,
-          },
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.openAiApiKey}`,
         },
-      }),
-      signal: controller.signal,
-    });
-
-    if (!resp.ok) {
-      const text = await resp.text();
-      console.error('[VisualMind] model:structured-request:non-200', {
-        provider: 'openai',
-        status: resp.status,
-        schema: structuredSchema.name,
-        bodyPreview: text.slice(0, 300),
+        body: JSON.stringify({
+          model: modelName,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.1,
+          max_tokens: maxTokens,
+          response_format: {
+            type: 'json_schema',
+            json_schema: {
+              name: structuredSchema.name,
+              strict: true,
+              schema: structuredSchema.schema,
+            },
+          },
+        }),
+        signal: controller.signal,
       });
-      throw new Error(`OpenAI request failed (${resp.status}): ${text}`);
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        console.error('[VisualMind] model:structured-request:non-200', {
+          provider: 'openai',
+          status: resp.status,
+          schema: structuredSchema.name,
+          bodyPreview: text.slice(0, 300),
+        });
+        throw new Error(`OpenAI request failed (${resp.status}): ${text}`);
+      }
+
+      const data = await resp.json();
+      const usage = extractOpenAiUsage(data);
+      recordOpenAiUsage(usage);
+      const content = parseOpenAiMessageContent(data);
+
+      try {
+        const parsedJson = JSON.parse(extractJsonCandidate(content));
+        const result = structuredSchema.validator.safeParse(parsedJson);
+        if (!result.success) {
+          console.error('[VisualMind] model:structured-request:validation-failed', {
+            schema: structuredSchema.name,
+            attempt,
+            issues: result.error.issues,
+          });
+          throw new Error(`Structured output validation failed for ${structuredSchema.name}`);
+        }
+
+        console.log('[VisualMind] model:structured-request:success', {
+          provider: 'openai',
+          model: modelName,
+          schema: structuredSchema.name,
+          attempt,
+          ...usageLogDetails(usage),
+        });
+        return result.data;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown parse error';
+        console.warn('[VisualMind] model:structured-request:parse-or-validate-retry', {
+          provider: 'openai',
+          model: modelName,
+          schema: structuredSchema.name,
+          attempt,
+          message,
+          contentPreview: content.slice(0, 300),
+        });
+        if (attempt === 2) {
+          throw error;
+        }
+      }
     }
 
-    const data = await resp.json();
-    const usage = extractOpenAiUsage(data);
-    recordOpenAiUsage(usage);
-    const content = parseOpenAiMessageContent(data);
-    const parsedJson = JSON.parse(extractJsonCandidate(content));
-    const result = structuredSchema.validator.safeParse(parsedJson);
-    if (!result.success) {
-      console.error('[VisualMind] model:structured-request:validation-failed', {
-        schema: structuredSchema.name,
-        issues: result.error.issues,
-      });
-      throw new Error(`Structured output validation failed for ${structuredSchema.name}`);
-    }
-
-    console.log('[VisualMind] model:structured-request:success', {
-      provider: 'openai',
-      model: modelName,
-      schema: structuredSchema.name,
-      ...usageLogDetails(usage),
-    });
-    return result.data;
+    throw new Error(`Structured output retry exhausted for ${structuredSchema.name}`);
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error(
@@ -839,7 +1236,7 @@ export const generateMindMapJson = async (inputText: string, plan: UserPlan = 'f
   }
 
   let finalTree = await buildMindMapDirectly(structuredInput, plan);
-  finalTree = shapeTreeForMindMap(finalTree);
+  finalTree = await shapeTreeForMindMap(finalTree);
 
   console.log('[VisualMind] mindmap:path', {
     path: 'direct-concept-synthesis',

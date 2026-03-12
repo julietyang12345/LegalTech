@@ -5,9 +5,26 @@ export interface AuthUser {
   plan: UserPlan;
 }
 
+export type NodeStatus = 'backlog' | 'active' | 'done' | 'blocked';
+
+export type NodePriority = 'low' | 'medium' | 'high' | 'critical';
+
+export interface TreeNodeProperties {
+  status?: NodeStatus;
+  priority?: NodePriority;
+  owner?: string;
+  source?: string;
+  confidence?: number;
+  tags?: string[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface TreeNode {
   id: string;
   text: string;
+  summary?: string;
+  properties?: TreeNodeProperties;
   children: TreeNode[];
 }
 

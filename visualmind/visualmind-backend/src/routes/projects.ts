@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { byUserOrIpKey, createRateLimit } from '../middleware/rate-limit.js';
 import {
   addProjectSource,
+  countGenerationsForUserToday,
   countProjectSources,
   createProject,
   deleteProjectById,
@@ -30,11 +31,19 @@ import {
 } from '../services/model.service.js';
 import { assertInputAllowed, InputPolicyViolationError } from '../services/input-policy.service.js';
 import { getLimitsForPlan, PRO_MAX_TEXT_CHARS } from '../services/plan.service.js';
-import { normalizeGeneratedTree } from '../services/tree.service.js';
+import { normalizeGeneratedTree, normalizePatchedTree } from '../services/tree.service.js';
 import { toFreemindXml, toNotionMarkdown } from '../utils/mm-export.js';
 import type { TreeNode, UserPlan } from '../types.js';
-const TOTAL_PASTED_INPUT_LIMIT = 10000;
+const TOTAL_PASTED_INPUT_WORD_LIMIT = 20000;
 const GENERATE_ASYNC_THRESHOLD_CHARS = 1200;
+const PRO_DAILY_GENERATION_LIMIT = 15;
+const PRO_DAILY_LIMIT_CONTACT_EMAIL = 'junni@ymuniverse.com';
+const PRO_DAILY_LIMIT_BYPASS_EMAILS = new Set([
+  'junni@ymuniverse.com',
+  'juliet.y28@outlook.com',
+  'junni.yang0208@gmail.com',
+  'juliet.yang0208@gmail.com',
+]);
 
 const createProjectSchema = z.object({
   title: z.string().min(1).max(120),
@@ -79,6 +88,17 @@ const treeNodeSchema: z.ZodType<TreeNode> = z.lazy(() =>
   z.object({
     id: z.string().min(1),
     text: z.string().min(1).max(120),
+    summary: z.string().trim().min(1).max(280).optional(),
+    properties: z.object({
+      status: z.enum(['backlog', 'active', 'done', 'blocked']).optional(),
+      priority: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+      owner: z.string().trim().min(1).max(80).optional(),
+      source: z.string().trim().min(1).max(120).optional(),
+      confidence: z.number().min(0).max(100).optional(),
+      tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+      createdAt: z.string().datetime().optional(),
+      updatedAt: z.string().datetime().optional(),
+    }).optional(),
     children: z.array(treeNodeSchema),
   }),
 );
@@ -101,6 +121,12 @@ const inferSourceTitle = (text: string, fallback: string): string => {
   const clean = text.replace(/\s+/g, ' ').trim();
   if (!clean) return fallback;
   return clean.slice(0, 120);
+};
+
+const countWords = (text: string): number => {
+  const clean = text.trim();
+  if (!clean) return 0;
+  return clean.split(/\s+/).filter(Boolean).length;
 };
 
 const buildGenerationInput = async (projectId: string, userId: string): Promise<string> => {
@@ -142,6 +168,24 @@ const enforceInputPolicy = async (
   }
 };
 
+const enforceProDailyGenerationLimit = async (req: any, res: any): Promise<boolean> => {
+  const user = req.user!;
+  if (user.plan !== 'pro') return true;
+  if (PRO_DAILY_LIMIT_BYPASS_EMAILS.has(user.email.toLowerCase())) return true;
+
+  const usedToday = await countGenerationsForUserToday(user.id);
+  if (usedToday < PRO_DAILY_GENERATION_LIMIT) return true;
+
+  res.status(403).json({
+    message: `You have reached your ${PRO_DAILY_GENERATION_LIMIT} pro mind maps for today. Email us to unlock more.`,
+    code: 'PRO_DAILY_GENERATION_LIMIT_REACHED',
+    contactEmail: PRO_DAILY_LIMIT_CONTACT_EMAIL,
+    limit: PRO_DAILY_GENERATION_LIMIT,
+    usedToday,
+  });
+  return false;
+};
+
 projectsRouter.post(
   '/',
   asyncHandler(async (req, res) => {
@@ -175,10 +219,10 @@ projectsRouter.post(
       });
       return;
     }
-    const totalChars = draftSessions.reduce((sum, session) => sum + session.length, 0);
-    if (totalChars > TOTAL_PASTED_INPUT_LIMIT) {
+    const totalWords = draftSessions.reduce((sum, session) => sum + countWords(session), 0);
+    if (totalWords > TOTAL_PASTED_INPUT_WORD_LIMIT) {
       res.status(403).json({
-        message: `Total pasted input is limited to ${TOTAL_PASTED_INPUT_LIMIT} characters per project.`,
+        message: `Total pasted input is limited to ${TOTAL_PASTED_INPUT_WORD_LIMIT} words per project.`,
       });
       return;
     }
@@ -248,11 +292,11 @@ projectsRouter.post(
       return;
     }
     const existingSources = await listProjectSources(project.id, req.user!.id);
-    const nextTotalChars =
-      existingSources.reduce((sum, source) => sum + source.content_text.length, 0) + contentText.length;
-    if (nextTotalChars > TOTAL_PASTED_INPUT_LIMIT) {
+    const nextTotalWords =
+      existingSources.reduce((sum, source) => sum + countWords(source.content_text), 0) + countWords(contentText);
+    if (nextTotalWords > TOTAL_PASTED_INPUT_WORD_LIMIT) {
       res.status(403).json({
-        message: `Total pasted input is limited to ${TOTAL_PASTED_INPUT_LIMIT} characters per project.`,
+        message: `Total pasted input is limited to ${TOTAL_PASTED_INPUT_WORD_LIMIT} words per project.`,
       });
       return;
     }
@@ -313,13 +357,13 @@ projectsRouter.patch(
       res.status(404).json({ message: 'Source not found' });
       return;
     }
-    const nextTotalChars =
-      existingSources.reduce((sum, source) => sum + source.content_text.length, 0) -
-      existing.content_text.length +
-      contentText.length;
-    if (nextTotalChars > TOTAL_PASTED_INPUT_LIMIT) {
+    const nextTotalWords =
+      existingSources.reduce((sum, source) => sum + countWords(source.content_text), 0) -
+      countWords(existing.content_text) +
+      countWords(contentText);
+    if (nextTotalWords > TOTAL_PASTED_INPUT_WORD_LIMIT) {
       res.status(403).json({
-        message: `Total pasted input is limited to ${TOTAL_PASTED_INPUT_LIMIT} characters per project.`,
+        message: `Total pasted input is limited to ${TOTAL_PASTED_INPUT_WORD_LIMIT} words per project.`,
       });
       return;
     }
@@ -466,7 +510,7 @@ projectsRouter.post(
       return;
     }
 
-    const { tree } = parsed.data;
+    const tree = normalizePatchedTree(parsed.data.tree);
     await saveGeneration({
       projectId: project.id,
       promptUsed: 'manual-tree-patch',
@@ -525,6 +569,7 @@ projectsRouter.post(
       return;
     }
     if (!(await enforceInputPolicy(res, req.user!.plan, inputText, 'generate-mindmap'))) return;
+    if (!(await enforceProDailyGenerationLimit(req, res))) return;
 
     if (inputText.length > GENERATE_ASYNC_THRESHOLD_CHARS) {
       const job = createGenerationJob({

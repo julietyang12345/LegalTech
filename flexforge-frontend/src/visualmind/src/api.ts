@@ -1,3 +1,18 @@
+export type NodeStatus = 'backlog' | 'active' | 'done' | 'blocked';
+
+export type NodePriority = 'low' | 'medium' | 'high' | 'critical';
+
+export interface TreeNodeProperties {
+  status?: NodeStatus;
+  priority?: NodePriority;
+  owner?: string;
+  source?: string;
+  confidence?: number;
+  tags?: string[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface VmProject {
   id: string;
   title: string;
@@ -10,6 +25,8 @@ export interface VmProject {
 export interface TreeNode {
   id: string;
   text: string;
+  summary?: string;
+  properties?: TreeNodeProperties;
   children: TreeNode[];
 }
 
@@ -103,6 +120,30 @@ export interface GenerateJobResponse {
   error?: string;
 }
 
+export interface ApiErrorPayload {
+  message?: string;
+  code?: string;
+  contactEmail?: string;
+  limit?: number;
+  usedToday?: number;
+}
+
+export class ApiError extends Error {
+  code?: string;
+  contactEmail?: string;
+  limit?: number;
+  usedToday?: number;
+
+  constructor(message: string, payload?: ApiErrorPayload) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = payload?.code;
+    this.contactEmail = payload?.contactEmail;
+    this.limit = payload?.limit;
+    this.usedToday = payload?.usedToday;
+  }
+}
+
 const DEV_BEARER_TOKEN_KEY = 'vm_dev_bearer_token';
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || '/api/v1';
 const DEV_BEARER_ENABLED =
@@ -134,6 +175,20 @@ const authHeaders = (): Headers => {
   return headers;
 };
 
+const toApiError = async (resp: Response): Promise<ApiError> => {
+  const text = await resp.text();
+  if (!text.trim()) {
+    return new ApiError(`Request failed (${resp.status})`);
+  }
+
+  try {
+    const payload = JSON.parse(text) as ApiErrorPayload;
+    return new ApiError(payload.message ?? `Request failed (${resp.status})`, payload);
+  } catch {
+    return new ApiError(text);
+  }
+};
+
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const headers = authHeaders();
   headers.set('Content-Type', 'application/json');
@@ -149,7 +204,7 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
     headers,
   });
   if (!resp.ok) {
-    throw new Error(await resp.text());
+    throw await toApiError(resp);
   }
   return resp.json() as Promise<T>;
 };
@@ -255,7 +310,7 @@ export const api = {
       body: JSON.stringify(inputText ? { inputText } : {}),
     });
     if (!resp.ok) {
-      throw new Error(await resp.text());
+      throw await toApiError(resp);
     }
     return resp.json() as Promise<GenerateImmediateResponse | GenerateQueuedResponse>;
   },
@@ -289,7 +344,7 @@ export const api = {
     });
 
     if (!response.ok) {
-      throw new Error(await response.text());
+      throw await toApiError(response);
     }
 
     return response.json() as Promise<{ text: string }>;

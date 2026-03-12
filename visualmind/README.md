@@ -97,4 +97,17 @@ rm -rf /home/junni/repos/Startup/flexforge/visualmind
 4. Tail logs if needed:
 
   ./visualmind/deploy.sh app:logs
+
+## Other 
+1. See all users
+docker exec -it visualmind-visualmind-db-1 psql -U visualmind -d visualmind_dev -c "select distinct user_id, user_email from vm_projects order by user_email
+  nulls last, user_id;"
+
+2. Check how many maps each user created 
+docker exec -it visualmind-visualmind-db-1 psql -U visualmind -d visualmind_dev -c "select user_id, user_email, count(*) as map_count from vm_projects group
+  by user_id, user_email order by map_count desc, user_email nulls last;"
+
+2. Check User Message
+docker exec -it visualmind-visualmind-db-1 psql -U visualmind -d visualmind_dev -c "select id, user_email, message, created_at from vm_feature_requests
+  order by created_at desc limit 20;"
 ```
