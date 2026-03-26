@@ -6,6 +6,7 @@ import { spawn } from 'child_process';
 import { join } from 'path';
 import { TRANSFORMHUB_MAX_BASE64_CHARS, TRANSFORMHUB_MAX_TEXT_CHARS, TRANSFORMHUB_MAX_XLSX_BUFFER_BYTES } from './transformhub.constants';
 import { ThSchemaTemplate } from '../../database/entities/th-schema-template.entity';
+import { TransformHubAiService } from './transformhub-ai.service';
 
 export const COA = [
   { id: '14', code: '1000', name: 'Operating Cash' },
@@ -149,6 +150,7 @@ export class TransformHubPipelineService implements OnModuleInit {
   constructor(
     @InjectRepository(ThSchemaTemplate)
     private readonly schemaTemplateRepo: Repository<ThSchemaTemplate>,
+    private readonly ai: TransformHubAiService,
   ) {}
 
   async onModuleInit() {
@@ -370,7 +372,7 @@ export class TransformHubPipelineService implements OnModuleInit {
     return LEGACY_MAPPINGS.some((m) => m.legacyValue.toLowerCase() === normalized);
   }
 
-  resolveSchema(file: any): any {
+  async resolveSchema(file: any): Promise<any> {
     const fingerprint = this.createFingerprint(file.platform, file.headers);
     const cached = this.templateCache.get(fingerprint);
     if (cached) return { ...cached, confidence: 1, fingerprint, fromTemplateCache: true };
@@ -389,18 +391,61 @@ export class TransformHubPipelineService implements OnModuleInit {
       fieldMap.account_name = fieldMap.gl_account;
     }
 
-    const unresolvedFields = required.filter((f) => !fieldMap[f]);
-    if (!fieldMap.account_code && !fieldMap.amount && !(fieldMap.debit && fieldMap.credit)) unresolvedFields.push('account_or_amount_shape');
+    let unresolvedFields = required.filter((field) => !fieldMap[field]);
+    if (!fieldMap.account_code && !fieldMap.amount && !(fieldMap.debit && fieldMap.credit)) {
+      unresolvedFields.push('account_or_amount_shape');
+    }
 
     const matchedCriticalFields = 6 - unresolvedFields.length;
     const exactKnownTemplate = file.platform === 'AppFolio' && Boolean(fieldMap.gl_account && fieldMap.amount && fieldMap.entity_name);
-    const confidence = exactKnownTemplate ? 0.98 : Math.max(0.45, Math.min(0.92, matchedCriticalFields / 6));
+    let confidence = exactKnownTemplate ? 0.98 : Math.max(0.45, Math.min(0.92, matchedCriticalFields / 6));
+    let aiSuggested = false;
+    let aiSuggestedFieldMap: Record<string, string> = {};
+    let aiReasoning: string | null = null;
 
-    return { reportType: this.detectReportType(file.platform, file.headers), confidence, fieldMap, unresolvedFields, fingerprint, fromTemplateCache: false };
+    if (confidence < 0.9 && unresolvedFields.length > 0) {
+      const aiResult = await this.ai.suggestFieldMappings(file.platform, file.headers, unresolvedFields, file.rows);
+      if (aiResult && Object.keys(aiResult.fieldMap).length > 0) {
+        Object.entries(aiResult.fieldMap).forEach(([field, header]) => {
+          if (!fieldMap[field]) {
+            fieldMap[field] = header;
+            aiSuggestedFieldMap[field] = header;
+          }
+        });
+
+        if (fieldMap.gl_account && !fieldMap.account_code) {
+          fieldMap.account_code = fieldMap.gl_account;
+          fieldMap.account_name = fieldMap.gl_account;
+        }
+
+        unresolvedFields = required.filter((field) => !fieldMap[field]);
+        if (!fieldMap.account_code && !fieldMap.amount && !(fieldMap.debit && fieldMap.credit)) {
+          unresolvedFields.push('account_or_amount_shape');
+        }
+
+        const aiMatchedCriticalFields = 6 - unresolvedFields.length;
+        confidence = Math.max(confidence, Math.min(0.91, Math.max(0.45, aiMatchedCriticalFields / 6)));
+        aiSuggested = true;
+        aiReasoning = aiResult.reasoning;
+      }
+    }
+
+    return {
+      reportType: this.detectReportType(file.platform, file.headers),
+      confidence,
+      fieldMap,
+      unresolvedFields,
+      fingerprint,
+      fromTemplateCache: false,
+      aiSuggested,
+      aiSuggestedFieldMap,
+      aiReasoning,
+      requiresHumanApproval: aiSuggested,
+    };
   }
 
   async persistResolvedTemplate(platform: string, schema: any) {
-    if (schema.confidence < 0.98 || !schema.fingerprint) return;
+    if (schema.confidence < 0.98 || !schema.fingerprint || schema.aiSuggested) return;
 
     await this.schemaTemplateRepo.save(
       this.schemaTemplateRepo.create({
@@ -469,7 +514,7 @@ export class TransformHubPipelineService implements OnModuleInit {
   }
 
   mapToCanonicalRows(file: any, schema: any, guardrails: any[]): any[] {
-    const forceReview = guardrails.some((g) => g.triggered);
+    const forceReview = guardrails.some((g) => g.triggered) || Boolean(schema.aiSuggested);
     return file.rows.map((row: any, index: number) => {
       const accountSource = row.values[schema.fieldMap.gl_account ?? schema.fieldMap.account_name ?? schema.fieldMap.account_code ?? ''] ?? '';
       const account = this.parseAccount(accountSource);
@@ -485,7 +530,14 @@ export class TransformHubPipelineService implements OnModuleInit {
         needsReview = true;
         suggestedFix = 'Single amount detected. Add or confirm the opposing entry before posting.';
       }
-      if (!account.code || !account.name) { needsReview = true; suggestedFix = suggestedFix ?? 'Resolve the account mapping before posting.'; }
+      if (!account.code || !account.name) {
+        needsReview = true;
+        suggestedFix = suggestedFix ?? 'Resolve the account mapping before posting.';
+      }
+      if (schema.aiSuggested) {
+        needsReview = true;
+        suggestedFix = suggestedFix ?? '[AI suggested - requires human approval] Review the AI-suggested schema mapping before approving this row.';
+      }
 
       const rawFund = schema.fieldMap.fund ? (row.values[schema.fieldMap.fund] ?? null) : null;
       const rawAppeal = schema.fieldMap.appeal ? (row.values[schema.fieldMap.appeal] ?? null) : null;

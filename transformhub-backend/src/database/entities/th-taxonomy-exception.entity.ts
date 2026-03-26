@@ -38,6 +38,12 @@ export class ThTaxonomyException {
   @Column({ type: 'timestamp', nullable: true })
   resolvedAt: Date | null;
 
+  @Column({ default: false })
+  aiSuggested: boolean;
+
+  @Column({ type: 'text', nullable: true })
+  aiReasoning: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -1,7 +1,7 @@
 {
   "name": "transformhub-backend",
   "version": "1.0.0",
-  "description": "TransformHub \u2014 Accounting pipeline & identity resolution backend",
+  "description": "TransformHub — Accounting pipeline & identity resolution backend",
   "author": "FlexForge Team",
   "private": true,
   "license": "MIT",
@@ -28,6 +28,7 @@
     "class-validator": "^0.14.1",
     "cookie-parser": "^1.4.7",
     "helmet": "^8.1.0",
+    "openai": "^6.33.0",
     "pg": "^8.11.3",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1",

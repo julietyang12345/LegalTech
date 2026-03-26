@@ -3,12 +3,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ThTaxonomyException } from '../../database/entities/th-taxonomy-exception.entity';
 import { TAXONOMY_REGISTRY, LEGACY_MAPPINGS } from './transformhub-pipeline.service';
+import { TransformHubAiService } from './transformhub-ai.service';
 
 @Injectable()
 export class TransformHubTaxonomyService {
   constructor(
     @InjectRepository(ThTaxonomyException)
     private readonly exceptionRepo: Repository<ThTaxonomyException>,
+    private readonly ai: TransformHubAiService,
   ) {}
 
   private normalizeRawValue(rawValue: string): string {
@@ -106,15 +108,29 @@ export class TransformHubTaxonomyService {
           continue;
         }
 
-        const suggestedCode = LEGACY_MAPPINGS.find(
+        let suggestedCode = LEGACY_MAPPINGS.find(
           (mapping) => mapping.type === check.type && this.normalizeRawValue(check.rawValue).includes(mapping.legacyValue.toLowerCase().split(' ')[0]),
         )?.canonicalCode ?? null;
+
+        // AI fallback: only fires when deterministic lookup finds nothing.
+        // The suggestion is stored but requires human approval — status stays 'open'.
+        let aiSuggested = false;
+        let aiReasoning: string | null = null;
+        if (!suggestedCode) {
+          const aiResult = await this.ai.suggestTaxonomyCode(check.rawValue, check.type, TAXONOMY_REGISTRY, LEGACY_MAPPINGS);
+          if (aiResult?.code) {
+            suggestedCode = aiResult.code;
+            aiSuggested = true;
+            aiReasoning = aiResult.reasoning;
+          }
+        }
 
         violations.push({
           rowRef: row.source_row_ref,
           field: check.type,
           rawValue: check.rawValue,
           suggestedCode,
+          aiSuggested,
         });
 
         const exceptionId = 'EX-' + String(1000 + exCount++).padStart(4, '0');
@@ -125,10 +141,12 @@ export class TransformHubTaxonomyService {
           sourceRowRef: row.source_row_ref,
           sessionId: row.sessionId ?? null,
           status: 'open',
-          resolvedCode: suggestedCode,
+          resolvedCode: suggestedCode,  // pre-filled but not auto-applied
           notes: null,
           assignedTo: null,
           resolvedAt: null,
+          aiSuggested,
+          aiReasoning,
         });
         await this.exceptionRepo.save(exception);
         exceptions.push(exception);

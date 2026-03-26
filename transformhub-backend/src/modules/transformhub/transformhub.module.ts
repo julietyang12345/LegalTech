@@ -23,6 +23,7 @@ import { TransformHubEntityModelService } from './transformhub-entity-model.serv
 import { TransformHubRoutingService } from './transformhub-routing.service';
 import { TransformHubOutputService } from './transformhub-output.service';
 import { TransformHubAuditRuleEngineService } from './transformhub-audit-rule-engine.service';
+import { TransformHubAiService } from './transformhub-ai.service';
 import { TransformHubApiKeyGuard } from './guards/transformhub-api-key.guard';
 
 @Module({
@@ -54,6 +55,7 @@ import { TransformHubApiKeyGuard } from './guards/transformhub-api-key.guard';
     TransformHubRoutingService,
     TransformHubOutputService,
     TransformHubAuditRuleEngineService,
+    TransformHubAiService,
     TransformHubApiKeyGuard,
   ],
 })

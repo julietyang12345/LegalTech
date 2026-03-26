@@ -2,6 +2,8 @@ import axios, { AxiosError } from 'axios';
 import { useAuthStore } from '@/stores/authStore';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+const TRANSFORMHUB_API_KEY = import.meta.env.VITE_TRANSFORMHUB_API_KEY;
+
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -11,6 +13,15 @@ export const api = axios.create({
   },
   timeout: 600000, // 10 minutes for curriculum generation
   withCredentials: true, // Send HTTP-only cookies with requests
+});
+
+api.interceptors.request.use((config) => {
+  const requestUrl = config.url || '';
+  if (TRANSFORMHUB_API_KEY && requestUrl.startsWith('/transformhub')) {
+    config.headers.set('X-TransformHub-Api-Key', TRANSFORMHUB_API_KEY);
+  }
+
+  return config;
 });
 
 // Response interceptor - handle errors

@@ -12,6 +12,7 @@ import { TransformHubEntityModelService } from './transformhub-entity-model.serv
 import { TransformHubRoutingService } from './transformhub-routing.service';
 import { TransformHubOutputService } from './transformhub-output.service';
 import { TransformHubAuditRuleEngineService } from './transformhub-audit-rule-engine.service';
+import { TransformHubAiService } from './transformhub-ai.service';
 import { TRANSFORMHUB_MAX_ROWS_PER_REQUEST } from './transformhub.constants';
 
 const HARD_STOP_GUARDRAILS = new Set([
@@ -38,6 +39,7 @@ export class TransformHubService {
     private readonly routing: TransformHubRoutingService,
     private readonly output: TransformHubOutputService,
     private readonly auditEngine: TransformHubAuditRuleEngineService,
+    private readonly ai: TransformHubAiService,
   ) {}
 
   healthCheck() {
@@ -55,7 +57,7 @@ export class TransformHubService {
   async ingest(body: any) {
     const parsedFile = await this.pipeline.parseInboundFile(body);
     this.assertRowCount(parsedFile.rows, 'ingest');
-    const schema = this.pipeline.resolveSchema(parsedFile);
+    const schema = await this.pipeline.resolveSchema(parsedFile);
     await this.pipeline.persistResolvedTemplate(parsedFile.platform, schema);
     const guardrails = this.pipeline.evaluateGuardrails(parsedFile, schema);
     const hardStops = guardrails.filter((guardrail: any) => guardrail.triggered && HARD_STOP_GUARDRAILS.has(guardrail.code));
@@ -72,7 +74,7 @@ export class TransformHubService {
 
     const canonicalRows = this.pipeline.mapToCanonicalRows(parsedFile, schema, guardrails);
     const taxonomyQueue = await this.taxonomy.queueTaxonomyExceptions(canonicalRows);
-    const rows = taxonomyQueue.rows;
+    const rows = await this.enrichSuggestedFixes(taxonomyQueue.rows);
 
     const session = this.sessionRepo.create({
       status: TransformSessionStatus.REVIEW,
@@ -87,7 +89,7 @@ export class TransformHubService {
     });
     await this.sessionRepo.save(session);
 
-    const rowEntities = rows.map((row: any) => this.rowRepo.create({ ...row, sessionId: session.id }));
+    const rowEntities = this.rowRepo.create(rows.map((row: any) => ({ ...row, sessionId: session.id })));
     await this.rowRepo.save(rowEntities);
     const audit = await this.auditRules({ rows, sessionId: session.id });
 
@@ -471,6 +473,17 @@ export class TransformHubService {
       }));
     const issues = [...basePreflight.issues, ...taxonomyIssues, ...auditIssues];
     return { valid: issues.every((issue) => issue.severity !== 'error'), issues };
+  }
+
+  private async enrichSuggestedFixes(rows: any[]) {
+    if (!this.ai.isEnabled) return rows;
+    return Promise.all(
+      rows.map(async (row) => {
+        if (!row.needs_review) return row;
+        const aiSuggestedFix = await this.ai.enrichSuggestedFix(row);
+        return aiSuggestedFix ? { ...row, suggested_fix: aiSuggestedFix } : row;
+      }),
+    );
   }
 
   private buildIdentityDecisionKey(entityName?: string | null) {

@@ -17,4 +17,12 @@ export default () => ({
     apiKey: process.env.TRANSFORMHUB_API_KEY || '',
     requestBodyLimit: process.env.TRANSFORMHUB_REQUEST_BODY_LIMIT || '10mb',
   },
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY || '',
+    models: {
+      taxonomySuggestion: process.env.OPENAI_MODEL_TAXONOMY || 'gpt-5.4-nano',
+      schemaFallback: process.env.OPENAI_MODEL_SCHEMA || 'gpt-5.4-mini',
+      suggestedFix: process.env.OPENAI_MODEL_SUGGESTED_FIX || 'gpt-5.4-nano',
+    },
+  },
 });
