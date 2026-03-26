@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GoogleOAuthProvider } from '@react-oauth/google';
@@ -12,43 +12,41 @@ import { ProtectedRoute } from '@/components/auth';
 import { useAuthStore } from '@/stores/authStore';
 import { analyticsService } from '@/services/analyticsService';
 
-// Pages
-import {
-  LoginPage,
-  RegisterPage,
-  OnboardingPage,
-  ConfirmationPage,
-  TodayPage,
-  SessionPage,
-  PlanPage,
-  ShowcasePage,
-  VaultPage,
-  CommunityPage,
-  ForgotPasswordPage,
-  ResetPasswordPage,
-  VerifyEmailPage,
-  TermsPage,
-  PrivacyPage,
-  DemoSessionPage,
-  CareerPathsDemoPage,
-  ExplorePage,
-  SettingsPage,
-  RepsPage,
-  AbilityPage,
-} from '@/pages';
+// Pages kept eager for app boot, auth, and public/legal flows
+import { LoginPage } from '@/pages/LoginPage';
+import { RegisterPage } from '@/pages/RegisterPage';
+import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage';
+import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
+import { VerifyEmailPage } from '@/pages/VerifyEmailPage';
+import { TermsPage } from '@/pages/TermsPage';
+import { PrivacyPage } from '@/pages/PrivacyPage';
 
 // React Query client
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
+      staleTime: 1000 * 60 * 5,
       retry: 1,
     },
   },
 });
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
-const VisualMindPage = lazy(() => import('@/visualmind'));
+const OnboardingPage = lazy(() => import('@/pages/OnboardingPage'));
+const ConfirmationPage = lazy(() => import('@/pages/ConfirmationPage').then((module) => ({ default: module.ConfirmationPage })));
+const TodayPage = lazy(() => import('@/pages/TodayPage').then((module) => ({ default: module.TodayPage })));
+const SessionPage = lazy(() => import('@/pages/SessionPage').then((module) => ({ default: module.SessionPage })));
+const PlanPage = lazy(() => import('@/pages/PlanPage').then((module) => ({ default: module.PlanPage })));
+const ShowcasePage = lazy(() => import('@/pages/ShowcasePage').then((module) => ({ default: module.ShowcasePage })));
+const VaultPage = lazy(() => import('@/pages/VaultPage').then((module) => ({ default: module.VaultPage })));
+const CommunityPage = lazy(() => import('@/pages/CommunityPage').then((module) => ({ default: module.CommunityPage })));
+const DemoSessionPage = lazy(() => import('@/pages/DemoSessionPage').then((module) => ({ default: module.DemoSessionPage })));
+const CareerPathsDemoPage = lazy(() => import('@/pages/CareerPathsDemoPage').then((module) => ({ default: module.CareerPathsDemoPage })));
+const ExplorePage = lazy(() => import('@/pages/ExplorePage').then((module) => ({ default: module.ExplorePage })));
+const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((module) => ({ default: module.SettingsPage })));
+const RepsPage = lazy(() => import('@/pages/RepsPage').then((module) => ({ default: module.RepsPage })));
+const AbilityPage = lazy(() => import('@/pages/AbilityPage').then((module) => ({ default: module.AbilityPage })));
+const TransformHubPage = lazy(() => import('@/transformhub'));
 const ANON_PAGE_VIEW_STORAGE_KEY = 'ff_anon_page_views';
 const ANON_PAGE_VIEW_DEDUPE_MS = 30_000;
 
@@ -88,130 +86,121 @@ function AnonymousPageViewTracker() {
   return null;
 }
 
+function renderLazyPage(node: ReactNode, label = 'Loading...') {
+  return <Suspense fallback={<div style={{ padding: '24px' }}>{label}</div>}>{node}</Suspense>;
+}
+
 function App() {
   return (
     <GoogleOAuthProvider clientId={googleClientId}>
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AnonymousPageViewTracker />
-        <Routes>
-          {/* Public routes - no login required */}
-          <Route path="/" element={<Navigate to="/visualmind" replace />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route path="/verify-email" element={<VerifyEmailPage />} />
-          <Route path="/terms" element={<TermsPage />} />
-          <Route path="/privacy" element={<PrivacyPage />} />
-          <Route path="/demo" element={<DemoSessionPage />} />
-          <Route path="/demo/career-paths" element={<CareerPathsDemoPage />} />
-          <Route path="/explore" element={<ExplorePage />} />
-          <Route
-            path="/visualmind"
-            element={
-              <Suspense fallback={<div style={{ padding: '24px' }}>Loading VisualMind...</div>}>
-                <VisualMindPage />
-              </Suspense>
-            }
-          />
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <AnonymousPageViewTracker />
+          <Routes>
+            <Route path="/" element={<Navigate to="/transformhub" replace />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
+            <Route path="/terms" element={<TermsPage />} />
+            <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/demo" element={renderLazyPage(<DemoSessionPage />, 'Loading demo...')} />
+            <Route path="/demo/career-paths" element={renderLazyPage(<CareerPathsDemoPage />, 'Loading demo...')} />
+            <Route path="/explore" element={renderLazyPage(<ExplorePage />, 'Loading explore...')} />
+            <Route
+              path="/transformhub"
+              element={renderLazyPage(<TransformHubPage />, 'Loading TransformHub...')}
+            />
 
-          {/* Onboarding - protected but skip onboarding check to avoid redirect loop */}
-          <Route
-            path="/onboarding"
-            element={
-              <ProtectedRoute skipOnboardingCheck>
-                <OnboardingPage />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/onboarding"
+              element={
+                <ProtectedRoute skipOnboardingCheck>
+                  {renderLazyPage(<OnboardingPage />, 'Loading onboarding...')}
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Protected routes - require login + onboarding */}
-          <Route
-            path="/confirm"
-            element={
-              <ProtectedRoute>
-                <ConfirmationPage />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/confirm"
+              element={
+                <ProtectedRoute>
+                  {renderLazyPage(<ConfirmationPage />, 'Loading confirmation...')}
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Main app layout with sidebar/nav */}
-          <Route
-            element={
-              <ProtectedRoute>
-                <MainLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route path="/today" element={<TodayPage />} />
-            <Route path="/plan" element={<PlanPage />} />
-            <Route path="/showcase" element={<ShowcasePage />} />
-            <Route path="/vault" element={<VaultPage />} />
-            <Route path="/community" element={<CommunityPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Route>
+            <Route
+              element={
+                <ProtectedRoute>
+                  <MainLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route path="/today" element={renderLazyPage(<TodayPage />, 'Loading today...')} />
+              <Route path="/plan" element={renderLazyPage(<PlanPage />, 'Loading plan...')} />
+              <Route path="/showcase" element={renderLazyPage(<ShowcasePage />, 'Loading showcase...')} />
+              <Route path="/vault" element={renderLazyPage(<VaultPage />, 'Loading vault...')} />
+              <Route path="/community" element={renderLazyPage(<CommunityPage />, 'Loading community...')} />
+              <Route path="/settings" element={renderLazyPage(<SettingsPage />, 'Loading settings...')} />
+            </Route>
 
-          {/* Focus mode - full screen session */}
-          <Route
-            path="/session/:sessionId"
-            element={
-              <ProtectedRoute>
-                <SessionPage />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/session/:sessionId"
+              element={
+                <ProtectedRoute>
+                  {renderLazyPage(<SessionPage />, 'Loading session...')}
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Reps - full screen practice */}
-          <Route
-            path="/reps"
-            element={
-              <ProtectedRoute skipOnboardingCheck>
-                <RepsPage />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/reps"
+              element={
+                <ProtectedRoute skipOnboardingCheck>
+                  {renderLazyPage(<RepsPage />, 'Loading reps...')}
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Ability dashboard - full screen */}
-          <Route
-            path="/ability"
-            element={
-              <ProtectedRoute skipOnboardingCheck>
-                <AbilityPage />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/ability"
+              element={
+                <ProtectedRoute skipOnboardingCheck>
+                  {renderLazyPage(<AbilityPage />, 'Loading ability...')}
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Catch all - redirect to landing or today */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
 
-      {/* Global toast notifications */}
-      <Toaster
-        position="top-right"
-        toastOptions={{
-          duration: 4000,
-          style: {
-            background: '#363636',
-            color: '#fff',
-            borderRadius: '12px',
-          },
-          success: {
-            iconTheme: {
-              primary: '#10B981',
-              secondary: '#fff',
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            duration: 4000,
+            style: {
+              background: '#363636',
+              color: '#fff',
+              borderRadius: '12px',
             },
-          },
-          error: {
-            iconTheme: {
-              primary: '#EF4444',
-              secondary: '#fff',
+            success: {
+              iconTheme: {
+                primary: '#10B981',
+                secondary: '#fff',
+              },
             },
-          },
-        }}
-      />
-    </QueryClientProvider>
+            error: {
+              iconTheme: {
+                primary: '#EF4444',
+                secondary: '#fff',
+              },
+            },
+          }}
+        />
+      </QueryClientProvider>
     </GoogleOAuthProvider>
   );
 }

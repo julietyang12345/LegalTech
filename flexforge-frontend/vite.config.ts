@@ -13,6 +13,10 @@ export default defineConfig({
     port: 3001,
     host: true, // Allow access from network (for phone testing)
     proxy: {
+      '/api/v1/transformhub': {
+        target: 'http://localhost:4010',
+        changeOrigin: true,
+      },
       '/api': {
         target: 'http://localhost:4000',
         changeOrigin: true,

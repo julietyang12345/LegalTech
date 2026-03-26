@@ -1,0 +1,12 @@
+import { Type } from 'class-transformer';
+import { ArrayMaxSize, IsArray, ValidateNested } from 'class-validator';
+import { TRANSFORMHUB_MAX_ROWS_PER_REQUEST } from '../transformhub.constants';
+import { CanonicalRowDto } from './canonical-row.dto';
+
+export class CampaignPerformanceReportDto {
+  @IsArray()
+  @ArrayMaxSize(TRANSFORMHUB_MAX_ROWS_PER_REQUEST)
+  @ValidateNested({ each: true })
+  @Type(() => CanonicalRowDto)
+  rows: CanonicalRowDto[];
+}
