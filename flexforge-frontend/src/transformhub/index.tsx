@@ -2,16 +2,12 @@ import { startTransition, type ChangeEvent, useEffect, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
-  BadgeCheck,
-  Bot,
-  BrainCircuit,
   Building2,
   CheckCircle2,
   Database,
   FileSpreadsheet,
   FolderTree,
   PlayCircle,
-  Receipt,
   RefreshCcw,
   Save,
   ShieldAlert,
@@ -66,11 +62,8 @@ import type {
   TransformSession,
   TransformSessionStatus,
 } from './types';
+import { TransformHubAuditModePanel, TransformHubMappingLayerPanel } from './product-panels';
 
-const SOURCE_PLATFORMS: SourcePlatform[] = [
-  'AppFolio', 'Buildium', 'Shopify', 'Stripe', 'TikTok',
-  'Bloomerang', 'Salesforce', 'NeonOne', 'GiveButter', 'Xero',
-];
 
 const PLATFORM_GROUPS: Record<string, SourcePlatform[]> = {
   'Accounting': ['AppFolio', 'Buildium', 'Xero'],
@@ -160,6 +153,9 @@ export default function TransformHubPage() {
   const [auditResult, setAuditResult] = useState<AuditRuleResult | null>(null);
   const [auditCatalog, setAuditCatalog] = useState<AuditRuleCatalogEntry[]>([]);
   const [auditEngineVersion, setAuditEngineVersion] = useState<string | null>(null);
+  const [rowSpotlight, setRowSpotlight] = useState<'all' | 'donor-review' | 'identity-review' | 'mapping-review'>('all');
+  const [activeOperatorIntent, setActiveOperatorIntent] = useState<'run-audit' | 'review-donors' | 'resolve-identities' | 'open-mapping' | null>(null);
+  const [pendingReturnRowId, setPendingReturnRowId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -188,6 +184,17 @@ export default function TransformHubPage() {
   const templateMatched = Boolean(schema?.fromTemplateCache);
   const structureAnalysis = parsedFile?.structureAnalysis ?? null;
   const isCrmPlatform = CRM_PLATFORMS.has(platform);
+  const activeRows = rows.filter((row) => row.review_status !== 'rejected');
+  const highConfidenceRows = rows.filter((row) => row.mapping_confidence >= 0.85).length;
+  const rowsWithCanonicalDestination = rows.filter((row) => Boolean(row.account_code || row.journal_id)).length;
+  const visibleRows = rows.filter((row) => {
+    if (rowSpotlight === 'donor-review') return row.needs_review;
+    if (rowSpotlight === 'identity-review') return row.needs_review && !row.canonical_person_id;
+    if (rowSpotlight === 'mapping-review') return Boolean(row.taxonomy_exception_id || row.raw_fund || row.raw_appeal);
+    return true;
+  });
+  const activeFixRowId = rowSpotlight === 'all' ? null : visibleRows[0]?.id ?? null;
+
 
   function applySession(session: TransformSession, nextMessage?: string) {
     startTransition(() => {
@@ -202,8 +209,70 @@ export default function TransformHubPage() {
       setPreflight(session.preflight);
       setReceipts(session.receipts);
       setMergeDecisions(buildMergeDecisionMap(session.rows, session.auditDecisions));
+      setActiveOperatorIntent(null);
       if (nextMessage) setMessage(nextMessage);
     });
+  }
+
+  function jumpToSection(id: string) {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function scrollToSelector(selector: string) {
+    window.setTimeout(() => {
+      document.querySelector<HTMLElement>(selector)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 140);
+  }
+
+  function queueReturnToActiveRow() {
+    if (!activeFixRowId) return;
+    setPendingReturnRowId(activeFixRowId);
+  }
+
+  function restoreReturnRowFocus(nextRowId = pendingReturnRowId) {
+    if (!nextRowId) return;
+    jumpToSection('th-review');
+    scrollToSelector('#th-row-' + nextRowId);
+    setPendingReturnRowId(null);
+  }
+
+  function focusReviewQueue(nextSpotlight: 'donor-review' | 'identity-review' | 'mapping-review', nextMessage: string) {
+    setRowSpotlight(nextSpotlight);
+    setActiveOperatorIntent(nextSpotlight === 'donor-review' ? 'review-donors' : nextSpotlight === 'identity-review' ? 'resolve-identities' : 'open-mapping');
+    setMessage(nextMessage);
+    jumpToSection('th-review');
+    scrollToSelector('#th-review tbody tr');
+  }
+
+  function clearOperatorFocus() {
+    setRowSpotlight('all');
+    setActiveOperatorIntent(null);
+    setPendingReturnRowId(null);
+  }
+
+  function handleOperatorAction(action: 'run-audit' | 'review-donors' | 'resolve-identities' | 'open-mapping') {
+    if (action === 'run-audit') {
+      void handleRunAuditRules();
+      setActiveOperatorIntent('run-audit');
+      jumpToSection('th-audit-mode');
+      return;
+    }
+
+    if (action === 'review-donors') {
+      focusReviewQueue('donor-review', 'Spotlighting rows that still need donor-review attention.');
+      return;
+    }
+
+    if (action === 'resolve-identities') {
+      focusReviewQueue('identity-review', 'Spotlighting rows that still need identity ownership resolution.');
+      return;
+    }
+
+    setRowSpotlight('mapping-review');
+    setActiveOperatorIntent('open-mapping');
+    setMessage('Jumped to mapping layer and taxonomy exceptions for reconciliation.');
+    jumpToSection('th-mapping-layer');
+    scrollToSelector('#th-mapping-layer .th-map-rule, #th-mapping-layer .th-map-row');
   }
 
   async function hydrateUpload(payload: { fileName: string; kind: 'text' | 'xlsx'; contents?: string; contentsBase64?: string }) {
@@ -282,11 +351,31 @@ export default function TransformHubPage() {
   }
 
   function handleRowChange(rowId: string, field: keyof CanonicalLedgerRow, value: string) {
-    setRows(updateCanonicalRow(rows, rowId, { [field]: value }));
+    const nextRows = updateCanonicalRow(rows, rowId, { [field]: value });
+    setRows(nextRows);
     setReceipts([]);
-    setPreflight(null);
     setFallbackFileName(null);
     setSessionStatus('review');
+
+    if (preflight || auditResult || taxonomyResult) {
+      const inlineWindow = window as typeof window & { __transformHubInlineTimer?: number };
+      if (inlineWindow.__transformHubInlineTimer) window.clearTimeout(inlineWindow.__transformHubInlineTimer);
+      inlineWindow.__transformHubInlineTimer = window.setTimeout(async () => {
+        setIsLoading(true);
+        try {
+          const result = await runBackendPreflight(nextRows, sessionId ?? undefined);
+          setPreflight(result);
+          if (result.audit) setAuditResult(result.audit);
+          setSessionStatus(deriveSessionStatus(nextRows, result, []));
+          setSessionUpdatedAt(new Date().toISOString());
+          setMessage(result.valid ? 'Inline fixes cleared the current issues.' : 'Inline issues refreshed after your edits.');
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : 'Inline issue refresh failed.');
+        } finally {
+          setIsLoading(false);
+        }
+      }, 700);
+    }
   }
 
   function handleAddBalancingRow(rowId: string) {
@@ -346,7 +435,7 @@ export default function TransformHubPage() {
       if (result.audit) setAuditResult(result.audit);
       setSessionStatus(deriveSessionStatus(rows, result, []));
       setSessionUpdatedAt(new Date().toISOString());
-      setMessage(result.valid ? 'Pre-flight passed. Batch is ready to post.' : 'Pre-flight found issues that need review.');
+      setMessage(result.valid ? 'Pre-flight passed. Batch is ready to post.' : 'Inline issue markers updated. Fix highlighted rows and the batch will re-check automatically.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Pre-flight failed.');
     } finally {
@@ -398,6 +487,8 @@ export default function TransformHubPage() {
   }
 
   async function handleRunPersonResolver() {
+    const returnRowId = activeFixRowId;
+    queueReturnToActiveRow();
     setIsLoading(true);
     try {
       const result = await resolvePersonsBackend(rows, personResult?.persons ?? [], sessionId ?? undefined);
@@ -406,7 +497,9 @@ export default function TransformHubPage() {
       if (result.audit) setAuditResult(result.audit);
       setSessionUpdatedAt(new Date().toISOString());
       setMessage(`PersonResolver: ${result.autoMatched} auto-matched, ${result.needsReview} need review, ${result.separated} new.`);
+      restoreReturnRowFocus(returnRowId);
     } catch (error) {
+      setPendingReturnRowId(null);
       setMessage(error instanceof Error ? error.message : 'PersonResolver failed.');
     } finally {
       setIsLoading(false);
@@ -461,12 +554,16 @@ export default function TransformHubPage() {
   }
 
   async function handleRunTaxonomy() {
+    const returnRowId = activeFixRowId;
+    queueReturnToActiveRow();
     setIsLoading(true);
     try {
       const result = await evaluateTaxonomyBackend(rows, sessionId ?? undefined);
       setTaxonomyResult(result);
       setMessage(`Taxonomy: ${result.resolvedCount} resolved, ${result.unmappedCount} unknown → exception queue.`);
+      restoreReturnRowFocus(returnRowId);
     } catch (error) {
+      setPendingReturnRowId(null);
       setMessage(error instanceof Error ? error.message : 'Taxonomy evaluation failed.');
     } finally {
       setIsLoading(false);
@@ -621,777 +718,742 @@ export default function TransformHubPage() {
   const activeAuditEngineVersion = auditResult?.engineVersion ?? auditEngineVersion;
   const auditCatalogByCode = new Map(activeAuditCatalog.map((rule) => [rule.code, rule]));
 
+  function scrollToSection(sectionId: string) {
+    const el = document.getElementById(sectionId);
+    if (el) {
+      const top = el.getBoundingClientRect().top + window.scrollY - 70;
+      window.scrollTo({ top, behavior: 'smooth' });
+    }
+  }
+
+  type NodeStatus = 'idle' | 'ok' | 'warning' | 'error';
+
+  const pipelineNodes: Array<{ id: string; label: string; status: NodeStatus; count: string | null; target: string }> = [
+    {
+      id: 'source',
+      label: 'Source',
+      status: parsedFile ? 'ok' : 'idle',
+      count: parsedFile ? `${structureAnalysis?.dataRowCount ?? parsedFile.rows.length} rows · ${parsedFile.platform}` : null,
+      target: 'th-ingest',
+    },
+    {
+      id: 'schema',
+      label: 'Schema',
+      status: !schema ? 'idle' : schema.confidence >= 0.75 ? 'ok' : 'warning',
+      count: schema ? `${schema.reportType} · ${Math.round(schema.confidence * 100)}%` : null,
+      target: 'th-guardrails',
+    },
+    {
+      id: 'guardrails',
+      label: 'Guardrails',
+      status: guardrails.length === 0 ? 'idle' : guardrails.some((g) => g.triggered) ? 'error' : 'ok',
+      count: guardrails.length > 0 ? `${guardrails.filter((g) => !g.triggered).length}/${guardrails.length} clear` : null,
+      target: 'th-guardrails',
+    },
+    ...(isCrmPlatform
+      ? [
+          {
+            id: 'identity',
+            label: 'Identity',
+            status: (!personResult ? 'idle' : personResult.needsReview > 0 ? 'warning' : 'ok') as NodeStatus,
+            count: personResult ? `${personResult.persons.length} persons · ${personResult.needsReview} review` : null,
+            target: 'th-identity',
+          },
+        ]
+      : []),
+    {
+      id: 'mapping',
+      label: 'Mapping',
+      status: rows.length === 0 ? 'idle' : highConfidenceRows >= rows.length * 0.7 ? 'ok' : rows.length > 0 ? 'warning' : 'idle',
+      count: rows.length > 0 ? `${highConfidenceRows}/${rows.length} high-conf` : null,
+      target: 'th-mapping-layer',
+    },
+    {
+      id: 'taxonomy',
+      label: 'Taxonomy',
+      status: !taxonomyResult ? 'idle' : taxonomyResult.unmappedCount > 0 ? 'warning' : 'ok',
+      count: taxonomyResult ? `${taxonomyResult.resolvedCount} resolved · ${taxonomyResult.unmappedCount} queued` : null,
+      target: 'th-taxonomy',
+    },
+    {
+      id: 'review',
+      label: 'Review',
+      status: rows.length === 0 ? 'idle' : reviewRows > 0 ? 'warning' : readyRows > 0 ? 'ok' : 'idle',
+      count: rows.length > 0 ? `${readyRows} approved · ${reviewRows} pending` : null,
+      target: 'th-review',
+    },
+    {
+      id: 'audit',
+      label: 'Audit',
+      status: !auditResult ? 'idle' : auditResult.errorCount > 0 ? 'error' : auditResult.warningCount > 0 ? 'warning' : 'ok',
+      count: auditResult ? `${auditResult.errorCount} errors · ${auditResult.warningCount} warnings` : null,
+      target: 'th-audit',
+    },
+    {
+      id: 'export',
+      label: 'Export',
+      status: receipts.length > 0 ? 'ok' : preflight?.valid ? 'ok' : 'idle',
+      count: receipts.length > 0 ? `${receipts.length} posted` : preflight?.valid ? 'ready' : null,
+      target: 'th-export',
+    },
+  ];
+
   return (
     <div className="th-shell">
-      {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <section className="th-hero">
-        <div className="th-hero-copy th-panel">
-          <div className="th-eyebrow">
+      {/* ── Top bar ───────────────────────────────────────────────────────── */}
+      <header className="th-topbar">
+        <div className="th-topbar-inner">
+          <div className="th-brand">
             <WandSparkles size={16} />
             TransformHub
           </div>
-          <h1>App-to-app data transformation with identity resolution and taxonomy governance.</h1>
-          <p>
-            Ingests CSV/XLSX from CRM, donation, and accounting platforms. Resolves person identity,
-            groups households, enforces canonical taxonomy, and produces clean finance + donor outputs.
-          </p>
-          <div className="th-note-row">
-            <span><BadgeCheck size={15} /> Canonical ledger</span>
-            <span><ShieldAlert size={15} /> 7 hard-stop guardrails</span>
-            <span><Users size={15} /> PersonResolver</span>
-            <span><FolderTree size={15} /> Taxonomy governance</span>
+          <div className="th-topbar-actions">
+            {sessionId && (
+              <span className="th-session-badge">
+                {sessionStatus} · {sessionId.slice(0, 8)}
+                {sessionUpdatedAt && ` · ${new Date(sessionUpdatedAt).toLocaleTimeString()}`}
+              </span>
+            )}
+            <button type="button" className="th-button th-button-secondary" onClick={handleSaveSession} disabled={!sessionId || rows.length === 0} style={{ minHeight: 34, fontSize: '0.82rem' }}>
+              <Save size={14} /> Save
+            </button>
+            <button type="button" className="th-button th-button-secondary" onClick={handleReloadSession} disabled={!sessionId} style={{ minHeight: 34, fontSize: '0.82rem' }}>
+              <RefreshCcw size={14} /> Reload
+            </button>
           </div>
         </div>
+      </header>
 
-        <div className="th-panel th-uploader">
-          <div className="th-panel-head">
-            <span>Ingestion controls</span>
-            <span>{isLoading ? 'Processing…' : message}</span>
+      <div className="th-content">
+        <section className="th-section">
+          <div className="th-canonical-hero">
+            <div className="th-canonical-copy">
+              <span className="th-eyebrow">System of record</span>
+              <h1>Canonical ledger in the center</h1>
+              <p>Everything flows into one final ledger, and every export flows back out from the same reviewed rows.</p>
+            </div>
+            <div className="th-canonical-metrics">
+              <div className="th-metric-card">
+                <strong>{activeRows.length}</strong>
+                <span>Active ledger rows</span>
+              </div>
+              <div className="th-metric-card">
+                <strong>{rowsWithCanonicalDestination}</strong>
+                <span>Rows with posting destination</span>
+              </div>
+              <div className="th-metric-card">
+                <strong>{highConfidenceRows}</strong>
+                <span>High-confidence mappings</span>
+              </div>
+            </div>
           </div>
-          <div className="th-stack" style={{ gap: 8 }}>
-            {Object.entries(PLATFORM_GROUPS).map(([group, platforms]) => (
-              <div key={group}>
-                <div className="th-platform-group-label">{group}</div>
-                <div className="th-chip-row">
-                  {platforms.map((item) => (
-                    <button key={item} type="button" className={`th-chip ${item === platform ? 'is-active' : ''}`} onClick={() => setPlatform(item)}>
-                      {item}
-                    </button>
-                  ))}
+        </section>
+
+        {/* ── Ingestion ─────────────────────────────────────────────────── */}
+        <section className="th-section" id="th-ingest">
+          <div className="th-panel">
+            <div className="th-ingest-header">
+              <span className="th-ingest-title">Ingestion</span>
+              <span className="th-status-msg">{isLoading ? 'Processing…' : message}</span>
+            </div>
+            <div className="th-platform-groups">
+              {Object.entries(PLATFORM_GROUPS).map(([group, platforms]) => (
+                <div key={group} className="th-platform-group">
+                  <span className="th-platform-group-label">{group}</span>
+                  <div className="th-chip-row">
+                    {platforms.map((item) => (
+                      <button key={item} type="button" className={`th-chip${item === platform ? ' is-active' : ''}`} onClick={() => setPlatform(item)}>
+                        {item}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+              ))}
+            </div>
+            <div className="th-upload-actions">
+              <label className="th-file-input">
+                <Upload size={14} />
+                Upload CSV / XLSX
+                <input type="file" accept=".csv,.txt,.tsv,.xlsx" onChange={handleFileChange} />
+              </label>
+              <button type="button" className="th-button th-button-secondary" onClick={loadSample}>
+                <PlayCircle size={14} />
+                Load {platform} sample
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Pipeline strip ──────────────────────────────────────────────── */}
+        <section className="th-section">
+          <div className="th-pipeline-wrap">
+            {pipelineNodes.map((node, i) => (
+              <div key={node.id} className="th-pipeline-step">
+                <button
+                  type="button"
+                  className={`th-pipeline-node th-pipeline-${node.status}`}
+                  onClick={() => scrollToSection(node.target)}
+                  title={node.count ?? node.label}
+                >
+                  <div className="th-pipeline-dot" />
+                  <div className="th-pipeline-info">
+                    <span className="th-pipeline-label">{node.label}</span>
+                    {node.count && <span className="th-pipeline-count">{node.count}</span>}
+                  </div>
+                </button>
+                {i < pipelineNodes.length - 1 && (
+                  <div className="th-pipeline-connector">
+                    <div className="th-pipeline-line" />
+                    <svg width="8" height="12" viewBox="0 0 8 12" fill="none" className="th-pipeline-arrow">
+                      <path d="M1 1l6 5-6 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                )}
               </div>
             ))}
           </div>
-          <div className="th-upload-actions">
-            <label className="th-file-input">
-              <Upload size={16} />
-              Upload CSV/XLSX
-              <input type="file" accept=".csv,.txt,.tsv,.xlsx" onChange={handleFileChange} />
-            </label>
-            <button type="button" className="th-button th-button-secondary" onClick={loadSample}>
-              <PlayCircle size={16} />
-              Load {platform} sample
-            </button>
-          </div>
-          <div className="th-mini-block">
-            <strong>Session state</strong>
-            <p>
-              {sessionId
-                ? `${sessionStatus} · ${sessionId.slice(0, 12)}…${sessionId.slice(-6)}${sessionUpdatedAt ? ` · updated ${new Date(sessionUpdatedAt).toLocaleString()}` : ''}`
-                : 'No backend session yet'}
-            </p>
-          </div>
-          <div className="th-action-row">
-            <button type="button" className="th-button th-button-secondary" onClick={handleSaveSession} disabled={!sessionId || rows.length === 0}>
-              <Save size={16} />
-              Save review state
-            </button>
-            <button type="button" className="th-button th-button-secondary" onClick={handleReloadSession} disabled={!sessionId}>
-              <RefreshCcw size={16} />
-              Reload saved state
-            </button>
-          </div>
-        </div>
-      </section>
+        </section>
 
-      {/* ── Layer 02 stats ──────────────────────────────────────────────── */}
-      <section className="th-section">
-        <div className="th-grid th-grid-4">
-          <article className="th-card">
-            <div className="th-card-head"><FileSpreadsheet size={18} /><h3>Parser</h3></div>
-            <strong>{parsedFile ? parsedFile.fileName : 'No file loaded'}</strong>
-            <p>{parsedFile ? `${structureAnalysis?.dataRowCount ?? parsedFile.rows.length} data rows · ${parsedFile.platform}` : 'Parser idle'}</p>
-          </article>
-          <article className="th-card">
-            <div className="th-card-head"><BrainCircuit size={18} /><h3>Schema</h3></div>
-            <strong>{schema ? schema.reportType : 'Unknown'}</strong>
-            <p>{schema ? `${Math.round(schema.confidence * 100)}% confidence${templateMatched ? ' · template match' : ''}` : 'Awaiting file'}</p>
-          </article>
-          <article className="th-card">
-            <div className="th-card-head"><Database size={18} /><h3>Canonical rows</h3></div>
-            <strong>{rows.length}</strong>
-            <p>{readyRows} approved · {reviewRows} pending · {rejectedRows} rejected</p>
-          </article>
-          <article className="th-card">
-            <div className="th-card-head"><Receipt size={18} /><h3>Posting</h3></div>
-            <strong>{receipts.length}</strong>
-            <p>{receipts.length ? 'Simulated receipts created' : 'No posted journals yet'}</p>
-          </article>
-        </div>
-      </section>
+        {/* ── Guardrails ──────────────────────────────────────────────────── */}
+        {guardrails.length > 0 && (
+          <section className="th-section th-grid th-main-grid" id="th-guardrails">
+            <article className="th-panel">
+              <div className="th-panel-head">
+                <span><span className="th-layer-badge">05</span> Guardrails</span>
+                <span>{guardrails.filter((g) => g.triggered).length}/{guardrails.length} triggered</span>
+              </div>
+              <div className="th-stack">
+                {guardrails.map((item) => (
+                  <div key={item.code} className={`th-guardrail ${item.triggered ? 'is-triggered' : 'is-clear'}`}>
+                    {item.triggered ? <AlertTriangle size={15} /> : <CheckCircle2 size={15} />}
+                    <div>
+                      <strong>{item.label}</strong>
+                      <p>{item.detail}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </article>
 
-      {/* ── Layer 05: Guardrails ─────────────────────────────────────────── */}
-      <section className="th-section th-grid th-main-grid">
-        <article className="th-panel">
-          <div className="th-panel-head">
-            <span><span className="th-layer-badge">05</span> Guardrails</span>
-            <span>{guardrails.filter((item) => item.triggered).length} of {guardrails.length} triggered</span>
-          </div>
-          <div className="th-stack">
-            {guardrails.length === 0 ? (
-              <div className="th-empty">Upload or load a sample to evaluate guardrails.</div>
-            ) : (
-              guardrails.map((item) => (
-                <div key={item.code} className={`th-guardrail ${item.triggered ? 'is-triggered' : 'is-clear'}`}>
-                  {item.triggered ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
-                  <div>
-                    <strong>{item.label}</strong>
-                    <p>{item.detail}</p>
+            <article className="th-panel">
+              <div className="th-panel-head"><span>Schema</span><span>{schema?.fingerprint ? 'fingerprint ready' : 'no schema'}</span></div>
+              <div className="th-mini-block">
+                <strong>Report type</strong>
+                <p>{schema?.reportType ?? '—'} · {schema ? `${Math.round(schema.confidence * 100)}% confidence` : 'no schema'}</p>
+              </div>
+              <div className="th-mini-block" style={{ marginTop: 8 }}>
+                <strong>Fingerprint</strong>
+                <p style={{ fontFamily: 'monospace', fontSize: '0.76rem', wordBreak: 'break-all' }}>{schema?.fingerprint ?? '—'}</p>
+              </div>
+              {structureAnalysis && (
+                <div className="th-mini-block" style={{ marginTop: 8 }}>
+                  <strong>Structure</strong>
+                  <p>Skipped {structureAnalysis.skippedTopRows} header rows · removed {structureAnalysis.removedRows} non-data rows</p>
+                </div>
+              )}
+            </article>
+          </section>
+        )}
+
+        {/* ── Identity Resolution (CRM platforms only) ────────────────────── */}
+        {isCrmPlatform && rows.length > 0 && (
+          <section className="th-section" id="th-identity">
+            <div className="th-panel">
+              <div className="th-panel-head">
+                <span><span className="th-layer-badge">03</span> Identity Resolution</span>
+                <div className="th-action-row" style={{ marginBottom: 0 }}>
+                  <button type="button" className="th-button th-button-primary" onClick={handleRunPersonResolver}>
+                    <Users size={14} /> PersonResolver
+                  </button>
+                  <button type="button" className="th-button th-button-secondary" onClick={handleRunHouseholdResolver} disabled={!personResult}>
+                    <Building2 size={14} /> Households
+                  </button>
+                </div>
+              </div>
+              <div className="th-grid th-main-grid">
+                <article className="th-panel th-inner-panel">
+                  <div className="th-panel-head">
+                    <span>Persons</span>
+                    <span>{personResult ? `${personResult.persons.length} resolved` : 'not run'}</span>
+                  </div>
+                  {!personResult ? (
+                    <p className="th-helper">Deduplicate donor identities across canonical rows.</p>
+                  ) : (
+                    <>
+                      <div className="th-grid th-grid-3" style={{ marginBottom: 10 }}>
+                        <div className="th-stat-chip th-band-auto"><strong>{personResult.autoMatched}</strong><span>Auto ≥85</span></div>
+                        <div className="th-stat-chip th-band-review"><strong>{personResult.needsReview}</strong><span>Review</span></div>
+                        <div className="th-stat-chip th-band-separate"><strong>{personResult.separated}</strong><span>New</span></div>
+                      </div>
+                      <div className="th-stack" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                        {personResult.persons.slice(0, 8).map((person) => (
+                          <div key={person.id} className="th-person-card">
+                            <div className="th-person-id">{person.id}</div>
+                            <strong>{person.firstName} {person.lastName}</strong>
+                            <span>{person.sourceRowRefs.length} rows</span>
+                          </div>
+                        ))}
+                        {personResult.persons.length > 8 && (
+                          <p className="th-helper">+{personResult.persons.length - 8} more persons</p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </article>
+
+                <article className="th-panel th-inner-panel">
+                  <div className="th-panel-head">
+                    <span>Households</span>
+                    <span>{householdResult ? `${householdResult.households.length} formed` : 'not run'}</span>
+                  </div>
+                  {!householdResult ? (
+                    <p className="th-helper">Group persons by last name and address after running PersonResolver.</p>
+                  ) : householdResult.households.length === 0 ? (
+                    <div className="th-guardrail is-clear">
+                      <CheckCircle2 size={15} />
+                      <div><strong>No multi-person households</strong><p>All persons grouped individually.</p></div>
+                    </div>
+                  ) : (
+                    <div className="th-stack" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                      {householdResult.households.map((hh) => (
+                        <div key={hh.id} className="th-household-card">
+                          <div className="th-person-id">{hh.id}</div>
+                          <strong>{hh.salutationText}</strong>
+                          <span>{hh.memberIds.length} members</span>
+                        </div>
+                      ))}
+                      {householdResult.ungroupedPersonIds.length > 0 && (
+                        <p className="th-helper">{householdResult.ungroupedPersonIds.length} ungrouped</p>
+                      )}
+                    </div>
+                  )}
+                </article>
+              </div>
+
+              {personResult && personResult.matches.filter((m) => m.band === 'review').length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <div className="th-panel-head" style={{ marginBottom: 10 }}>
+                    <span>Review decisions</span>
+                    <span>{personResult.matches.filter((m) => m.band === 'review').length} need confirmation</span>
+                  </div>
+                  <div className="th-stack">
+                    {personResult.matches
+                      .filter((m) => m.band === 'review')
+                      .map((match) => {
+                        const decision = mergeDecisions.get(match.inputRef);
+                        return (
+                          <div key={match.inputRef} className="th-guardrail is-warning" style={{ alignItems: 'center', gap: 14 }}>
+                            <div style={{ flex: 1 }}>
+                              <strong>Ref {match.inputRef} · score {match.score}</strong>
+                              <p>Matched on: {match.matchedFields.join(', ') || 'name similarity'}</p>
+                            </div>
+                            {decision ? (
+                              <span className={`th-status ${decision === 'confirmed' ? 'is-ready' : 'is-rejected'}`}>
+                                {decision === 'confirmed' ? 'Merged' : 'Separated'}
+                              </span>
+                            ) : (
+                              <div style={{ display: 'flex', gap: 8 }}>
+                                <button type="button" className="th-button th-button-primary" style={{ minHeight: 34 }} onClick={() => handleMergeDecision(match, 'confirmed')}>Confirm merge</button>
+                                <button type="button" className="th-button th-button-secondary" style={{ minHeight: 34 }} onClick={() => handleMergeDecision(match, 'separated')}>Keep separate</button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-        </article>
+              )}
+            </div>
+          </section>
+        )}
 
-        <article className="th-panel">
-          <div className="th-panel-head">
-            <span>Canonical contract</span>
-            <span>{schema?.fingerprint ? 'fingerprint ready' : 'no schema'}</span>
-          </div>
-          <div className="th-mini-block">
-            <strong>Report type</strong>
-            <p>{schema?.reportType ?? '—'} · {schema ? `${Math.round(schema.confidence * 100)}% confidence` : 'no schema'}</p>
-          </div>
-          <div className="th-mini-block">
-            <strong>Template fingerprint</strong>
-            <p style={{ fontFamily: 'monospace', fontSize: '0.8rem', wordBreak: 'break-all' }}>{schema?.fingerprint ?? 'No fingerprint yet'}</p>
-          </div>
-          <div className="th-mini-block">
-            <strong>Structure analyzer</strong>
-            <p>
-              {structureAnalysis
-                ? `Skipped ${structureAnalysis.skippedTopRows} top row(s) · removed ${structureAnalysis.removedRows} non-data row(s)`
-                : 'No structural analysis yet'}
-            </p>
-          </div>
-          <div className="th-mini-block">
-            <strong>Chart of accounts</strong>
-            <p>{coa.map((item) => `${item.code} ${item.name}`).join(' · ')}</p>
-          </div>
-        </article>
-      </section>
+        {rows.length > 0 && (
+          <TransformHubMappingLayerPanel
+            platform={platform}
+            schema={schema}
+            rows={rows}
+            legacyMap={legacyMap}
+          />
+        )}
 
-      {/* ── Layer 03: Identity + Household Resolution ────────────────────── */}
-      <section className="th-section">
-        <div className="th-panel">
-          <div className="th-panel-head">
-            <span><span className="th-layer-badge">03</span> Identity + Household Resolution</span>
-            <span className="th-phase-badge">Phase 1</span>
-          </div>
-          <div className="th-action-row" style={{ marginBottom: 16 }}>
-            <button type="button" className="th-button th-button-primary" onClick={handleRunPersonResolver} disabled={rows.length === 0}>
-              <Users size={16} />
-              Run PersonResolver
-            </button>
-            <button type="button" className="th-button th-button-secondary" onClick={handleRunHouseholdResolver} disabled={!personResult}>
-              <Building2 size={16} />
-              Run HouseholdResolver
-            </button>
-          </div>
-          <div className="th-grid th-main-grid">
-            <article className="th-panel" style={{ boxShadow: 'none', background: 'rgba(255,255,255,0.42)' }}>
-              <div className="th-panel-head"><span>PersonResolver</span><span>{personResult ? `${personResult.persons.length} persons` : 'not run'}</span></div>
-              {!personResult ? (
-                <div className="th-empty">Run PersonResolver to extract and deduplicate donor identities from canonical rows.</div>
+        {/* ── Taxonomy ────────────────────────────────────────────────────── */}
+        {rows.length > 0 && (
+          <section className="th-section" id="th-taxonomy">
+            <div className="th-panel">
+              <div className="th-panel-head">
+                <span><span className="th-layer-badge">04</span> Taxonomy</span>
+                <button type="button" className="th-button th-button-primary" onClick={handleRunTaxonomy} style={{ minHeight: 34 }}>
+                  <FolderTree size={14} /> Evaluate
+                </button>
+              </div>
+              <div className="th-grid th-main-grid">
+                <article className="th-panel th-inner-panel">
+                  <div className="th-panel-head"><span>Registry</span><span>{registry.length} codes</span></div>
+                  <div className="th-taxonomy-grid">
+                    {registry.map((code) => (
+                      <div key={code.code} className={`th-taxonomy-item th-taxonomy-${code.type}`}>
+                        <span className="th-taxonomy-type">{code.type}</span>
+                        <strong>{code.code}</strong>
+                        <span>{code.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {legacyMap.length > 0 && (
+                    <div className="th-mini-block" style={{ marginTop: 10 }}>
+                      <strong>Legacy mappings ({legacyMap.length})</strong>
+                      <p>{legacyMap.slice(0, 3).map((m) => `"${m.legacyValue}" → ${m.canonicalCode}`).join(' · ')}{legacyMap.length > 3 ? ` +${legacyMap.length - 3} more` : ''}</p>
+                    </div>
+                  )}
+                </article>
+
+                <article className="th-panel th-inner-panel">
+                  <div className="th-panel-head">
+                    <span>Exception queue</span>
+                    <span>{taxonomyResult ? `${taxonomyResult.unmappedCount} unmapped` : 'not evaluated'}</span>
+                  </div>
+                  {!taxonomyResult ? (
+                    <p className="th-helper">Check fund/appeal codes against the canonical registry.</p>
+                  ) : taxonomyResult.violations.length === 0 ? (
+                    <div className="th-guardrail is-clear">
+                      <CheckCircle2 size={15} />
+                      <div>
+                        <strong>All codes resolved</strong>
+                        <p>{taxonomyResult.resolvedCount} code{taxonomyResult.resolvedCount === 1 ? '' : 's'} matched.</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="th-stack">
+                      {taxonomyResult.violations.map((v, i) => (
+                        <div key={i} className="th-guardrail is-triggered">
+                          <AlertTriangle size={15} />
+                          <div>
+                            <strong>Row {v.rowRef} · {v.field}</strong>
+                            <p>"{v.rawValue}"{v.suggestedCode ? ` → ${v.suggestedCode}` : ' — no match'}</p>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="th-mini-block">
+                        <strong>{taxonomyResult.resolvedCount} resolved · {taxonomyResult.unmappedCount} queued</strong>
+                      </div>
+                    </div>
+                  )}
+                </article>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ── Review ledger ────────────────────────────────────────────────── */}
+        {rows.length > 0 && (
+          <section className="th-section" id="th-review">
+            <div className="th-panel">
+              <div className="th-panel-head">
+                <span><span className="th-layer-badge">09</span> Review ledger</span>
+                <span>{readyRows} approved · {reviewRows} pending · {rejectedRows} rejected</span>
+              </div>
+              <div className="th-review-intro">
+                <div>
+                  <strong>Final truth before export</strong>
+                  <p className="th-helper">Review rows exactly as they will post. Each row keeps a visible path back to the original source record. Issues stay in the table now, and inline fixes trigger an automatic pre-flight refresh.</p>
+                </div>
+                <div className="th-review-pill-row">
+                  <span className="th-audit-meta-pill">Inline edits</span>
+                  <span className="th-audit-meta-pill">Traceable rows</span>
+                  <span className="th-audit-meta-pill">No wizard flow</span>
+                </div>
+              </div>
+              <div className="th-review-toolbar">
+                <div className="th-chip-row">
+                  <button type="button" className={`th-chip${rowSpotlight === 'all' ? ' is-active' : ''}`} onClick={() => { setRowSpotlight('all'); setActiveOperatorIntent(null); }}>All rows</button>
+                  <button type="button" className={`th-chip${rowSpotlight === 'donor-review' ? ' is-active' : ''}`} onClick={() => { setRowSpotlight('donor-review'); setActiveOperatorIntent('review-donors'); }}>Donor review</button>
+                  <button type="button" className={`th-chip${rowSpotlight === 'identity-review' ? ' is-active' : ''}`} onClick={() => { setRowSpotlight('identity-review'); setActiveOperatorIntent('resolve-identities'); }}>Identity gaps</button>
+                  <button type="button" className={`th-chip${rowSpotlight === 'mapping-review' ? ' is-active' : ''}`} onClick={() => { setRowSpotlight('mapping-review'); setActiveOperatorIntent('open-mapping'); }}>Mapping exceptions</button>
+                </div>
+                <span className="th-helper">Showing {visibleRows.length} of {rows.length} rows{activeOperatorIntent ? ` · active intent ${activeOperatorIntent}` : ''}</span>
+              </div>
+              <div className="th-table-wrap">
+                <table className="th-table">
+                  <thead>
+                    <tr>
+                      <th>Source</th>
+                      <th>Trace</th>
+                      <th>Date</th>
+                      <th>Entity</th>
+                      <th>Account</th>
+                      <th>Debit</th>
+                      <th>Credit</th>
+                      <th>Fund / Appeal</th>
+                      <th>Journal</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleRows.map((row) => {
+                      const preflightIssues = (preflight?.issues ?? []).filter((issue) => issue.rowId === row.id || issue.journalId === row.journal_id);
+                      const auditFindings = (auditResult?.findings ?? []).filter((finding) => finding.rowIds.includes(row.id));
+                      const taxonomyViolations = (taxonomyResult?.violations ?? []).filter((violation) => String(violation.rowRef) === row.source_row_ref);
+                      const rowHasIssue = row.needs_review || Boolean(row.suggested_fix) || preflightIssues.length > 0 || auditFindings.length > 0 || taxonomyViolations.length > 0;
+                      const rowClassName = [
+                        row.id === activeFixRowId ? 'th-row-active-fix' : '',
+                        rowSpotlight !== 'all' ? 'th-row-spotlight' : '',
+                        rowHasIssue ? 'has-inline-issue' : '',
+                      ].filter(Boolean).join(' ') || undefined;
+                      const entityIssue = row.needs_review || auditFindings.some((finding) => /donor|entity|identity|person/i.test(`${finding.label} ${finding.message} ${finding.detail}`));
+                      const accountIssue = preflightIssues.some((issue) => /account|gl|chart of accounts/i.test(issue.message)) || auditFindings.some((finding) => /account|gl|chart of accounts/i.test(`${finding.label} ${finding.message} ${finding.detail}`));
+                      const amountIssue = preflightIssues.some((issue) => /balance|debit|credit|amount/i.test(issue.message)) || auditFindings.some((finding) => /balance|debit|credit|amount/i.test(`${finding.label} ${finding.message} ${finding.detail}`));
+                      const taxonomyIssue = taxonomyViolations.length > 0 || preflightIssues.some((issue) => /campaign|appeal|fund|mapping|taxonomy/i.test(issue.message)) || auditFindings.some((finding) => /campaign|appeal|fund|mapping|taxonomy/i.test(`${finding.label} ${finding.message} ${finding.detail}`));
+                      const issueChips = [
+                        entityIssue ? 'Duplicate donor / identity' : null,
+                        accountIssue ? 'Wrong GL account' : null,
+                        amountIssue ? 'Amount mismatch' : null,
+                        taxonomyIssue ? 'Campaign mapping' : null,
+                      ].filter(Boolean) as string[];
+
+                      return (
+                        <tr key={row.id} id={`th-row-${row.id}`} className={rowClassName}>
+                          <td>
+                            <div className="th-source-cell">
+                              <strong>{row.source_platform}</strong>
+                              <span>{row.source_row_ref}</span>
+                              {row.canonical_person_id && <span className="th-person-tag">{row.canonical_person_id}</span>}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="th-trace-cell">
+                              <span className="th-trace-path">{row.source_row_ref} <ArrowRight size={12} /> {row.journal_id || row.account_code || 'pending'}</span>
+                              <span>{Math.round(row.mapping_confidence * 100)}% mapping confidence</span>
+                              {(row.normalized_fund || row.normalized_appeal) && <span>{row.normalized_fund || row.normalized_appeal}</span>}
+                            </div>
+                          </td>
+                          <td><input value={row.date} onChange={(e) => handleRowChange(row.id, 'date', e.target.value)} /></td>
+                          <td className={entityIssue ? 'th-cell-issue' : undefined}><input value={row.entity_name} onChange={(e) => handleRowChange(row.id, 'entity_name', e.target.value)} /></td>
+                          <td className={accountIssue ? 'th-cell-issue' : undefined}>
+                            <input value={row.account_code} onChange={(e) => handleRowChange(row.id, 'account_code', e.target.value)} style={{ width: 72 }} />
+                            <input value={row.account_name} onChange={(e) => handleRowChange(row.id, 'account_name', e.target.value)} style={{ marginTop: 3 }} />
+                          </td>
+                          <td className={amountIssue ? 'th-cell-issue' : undefined}><input value={row.debit} onChange={(e) => handleRowChange(row.id, 'debit', e.target.value)} style={{ width: 80 }} /></td>
+                          <td className={amountIssue ? 'th-cell-issue' : undefined}><input value={row.credit} onChange={(e) => handleRowChange(row.id, 'credit', e.target.value)} style={{ width: 80 }} /></td>
+                          <td className={taxonomyIssue ? 'th-cell-issue' : undefined}>
+                            <input value={row.raw_fund ?? ''} placeholder="Fund" onChange={(e) => handleRowChange(row.id, 'raw_fund', e.target.value)} />
+                            <input value={row.raw_appeal ?? ''} placeholder="Appeal / Campaign" onChange={(e) => handleRowChange(row.id, 'raw_appeal', e.target.value)} style={{ marginTop: 3 }} />
+                          </td>
+                          <td><input value={row.journal_id} onChange={(e) => handleRowChange(row.id, 'journal_id', e.target.value)} /></td>
+                          <td>
+                            <span className={`th-status ${row.review_status === 'rejected' ? 'is-rejected' : row.review_status === 'approved' ? 'is-ready' : 'is-review'}`}>
+                              {row.review_status === 'rejected' ? 'Rejected' : row.review_status === 'approved' ? 'Approved' : 'Pending'}
+                            </span>
+                            {row.suggested_fix && <p className="th-inline-note">{row.suggested_fix}</p>}
+                            {rowHasIssue && (
+                              <div className="th-cell-chip-row">
+                                {issueChips.map((chip) => <span key={chip} className="th-cell-chip">{chip}</span>)}
+                              </div>
+                            )}
+                          </td>
+                          <td>
+                            <button type="button" className="th-link-button" onClick={() => handleAddBalancingRow(row.id)}>Balance</button>
+                            <button type="button" className="th-link-button" onClick={() => handleReviewAction(row.id, 'approved')}>Approve</button>
+                            <button type="button" className="th-link-button" onClick={() => handleReviewAction(row.id, 'rejected')}>Reject</button>
+                            {row.review_status === 'rejected' && (
+                              <button type="button" className="th-link-button" onClick={() => handleReviewAction(row.id, 'pending')}>Reopen</button>
+                            )}
+                            {row.id === activeFixRowId && activeOperatorIntent && (
+                              <div className="th-inline-fix">
+                                <strong>Active fix target</strong>
+                                <p>
+                                  {activeOperatorIntent === 'review-donors'
+                                    ? 'Approve or reject this donor row to clear the checklist.'
+                                    : activeOperatorIntent === 'resolve-identities'
+                                      ? 'Send this row into PersonResolver or keep it pending until ownership is clear.'
+                                      : 'Open mapping work for this fund or appeal mismatch, then return to approve the row.'}
+                                </p>
+                                <div className="th-inline-fix-actions">
+                                  {activeOperatorIntent === 'review-donors' && (
+                                    <>
+                                      <button type="button" className="th-map-action" onClick={() => handleReviewAction(row.id, 'approved')}>Approve now</button>
+                                      <button type="button" className="th-map-action" onClick={() => handleReviewAction(row.id, 'rejected')}>Reject row</button>
+                                    </>
+                                  )}
+                                  {activeOperatorIntent === 'resolve-identities' && (
+                                    <>
+                                      <button type="button" className="th-map-action" onClick={() => { jumpToSection('th-identity'); void handleRunPersonResolver(); }}>Run PersonResolver</button>
+                                      <button type="button" className="th-map-action" onClick={() => handleReviewAction(row.id, 'pending')}>Keep pending</button>
+                                    </>
+                                  )}
+                                  {activeOperatorIntent === 'open-mapping' && (
+                                    <>
+                                      <button type="button" className="th-map-action" onClick={() => { jumpToSection('th-mapping-layer'); void handleRunTaxonomy(); }}>Run taxonomy</button>
+                                      <button type="button" className="th-map-action" onClick={() => handleReviewAction(row.id, 'pending')}>Keep pending</button>
+                                    </>
+                                  )}
+                                  <button type="button" className="th-link-button" onClick={clearOperatorFocus}>Clear focus</button>
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ── Audit + Pre-flight ───────────────────────────────────────────── */}
+        {rows.length > 0 && (
+          <section className="th-section th-grid th-main-grid" id="th-audit">
+            <article className="th-panel" id="th-audit-mode">
+              <div className="th-panel-head">
+                <span><span className="th-layer-badge">08</span> Audit mode</span>
+                <button type="button" className="th-button th-button-primary" onClick={handleRunAuditRules} style={{ minHeight: 34 }}>
+                  <ShieldAlert size={14} /> Run audit
+                </button>
+              </div>
+              <TransformHubAuditModePanel rows={rows} taxonomyResult={taxonomyResult} auditResult={auditResult} activeAction={activeOperatorIntent} onAction={handleOperatorAction} />
+              {!auditResult ? (
+                <p className="th-helper">
+                  Check for donor tag gaps, wrong GL accounts, LYBUNT/SYBUNT, and more.
+                  {activeAuditCatalog.length > 0 && ` ${activeAuditCatalog.length} rules ready.`}
+                </p>
               ) : (
                 <>
                   <div className="th-grid th-grid-3" style={{ marginBottom: 12 }}>
-                    <div className="th-stat-chip th-band-auto">
-                      <strong>{personResult.autoMatched}</strong>
-                      <span>Auto-matched ≥85</span>
-                    </div>
-                    <div className="th-stat-chip th-band-review">
-                      <strong>{personResult.needsReview}</strong>
-                      <span>Review 60–84</span>
-                    </div>
-                    <div className="th-stat-chip th-band-separate">
-                      <strong>{personResult.separated}</strong>
-                      <span>New &lt;60</span>
-                    </div>
+                    <div className="th-stat-chip" style={{ background: 'var(--th-red-bg)', color: 'var(--th-red)' }}><strong>{auditResult.errorCount}</strong><span>Errors</span></div>
+                    <div className="th-stat-chip" style={{ background: 'rgba(255,183,60,0.18)', color: '#c07800' }}><strong>{auditResult.warningCount}</strong><span>Warnings</span></div>
+                    <div className="th-stat-chip" style={{ background: 'var(--th-green-bg)', color: 'var(--th-green)' }}><strong>{auditResult.infoCount}</strong><span>Info</span></div>
                   </div>
-                  <div className="th-stack" style={{ maxHeight: 260, overflowY: 'auto' }}>
-                    {personResult.persons.slice(0, 10).map((person) => (
-                      <div key={person.id} className="th-person-card">
-                        <div className="th-person-id">{person.id}</div>
-                        <strong>{person.firstName} {person.lastName}</strong>
-                        <span>{person.sourceRowRefs.length} source row{person.sourceRowRefs.length === 1 ? '' : 's'}</span>
-                      </div>
-                    ))}
-                    {personResult.persons.length > 10 && (
-                      <div className="th-empty">…and {personResult.persons.length - 10} more persons</div>
+                  <div className="th-audit-meta-row">
+                    <span className="th-audit-meta-pill">Engine {activeAuditEngineVersion ?? 'local'}</span>
+                    <span className="th-audit-meta-pill">Trend {auditResult.deltaTrend ?? auditResult.delta?.trend ?? 'baseline'}</span>
+                    {auditResult.latestPersistedRunId && (
+                      <span className="th-audit-meta-pill">Run {auditResult.latestPersistedRunId.slice(0, 8)}</span>
                     )}
+                  </div>
+                  <div className="th-stack">
+                    {auditResult.findings.map((finding) => {
+                      const catalogEntry = auditCatalogByCode.get(finding.ruleCode);
+                      return (
+                        <div key={finding.ruleCode} className={`th-guardrail ${finding.severity === 'error' ? 'is-triggered' : finding.severity === 'warning' ? 'is-warning' : 'is-info'}`}>
+                          {finding.severity === 'error' ? <ShieldAlert size={15} /> : finding.severity === 'warning' ? <AlertTriangle size={15} /> : <CheckCircle2 size={15} />}
+                          <div>
+                            <strong>{finding.label} <span style={{ fontWeight: 400, opacity: 0.7 }}>· {finding.count}</span></strong>
+                            <div className="th-audit-code-row">
+                              <span className="th-audit-code">{finding.ruleCode}</span>
+                              <span className="th-audit-version">v{catalogEntry?.version ?? finding.ruleVersion ?? 1}</span>
+                            </div>
+                            <p>{finding.message}</p>
+                            <p className="th-inline-note">{catalogEntry?.description ?? finding.detail}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </>
               )}
             </article>
 
-            <article className="th-panel" style={{ boxShadow: 'none', background: 'rgba(255,255,255,0.42)' }}>
-              <div className="th-panel-head"><span>HouseholdResolver</span><span>{householdResult ? `${householdResult.households.length} households` : 'not run'}</span></div>
-              {!householdResult ? (
-                <div className="th-empty">Run HouseholdResolver after PersonResolver to group members by last name + address.</div>
-              ) : (
-                <div className="th-stack" style={{ maxHeight: 260, overflowY: 'auto' }}>
-                  {householdResult.households.length === 0 ? (
-                    <div className="th-empty">No multi-person households found. All persons grouped individually.</div>
-                  ) : (
-                    householdResult.households.map((hh) => (
-                      <div key={hh.id} className="th-household-card">
-                        <div className="th-person-id">{hh.id}</div>
-                        <strong>{hh.salutationText}</strong>
-                        <span>{hh.memberIds.length} member{hh.memberIds.length === 1 ? '' : 's'} · {hh.salutation}</span>
-                      </div>
-                    ))
-                  )}
-                  {householdResult.ungroupedPersonIds.length > 0 && (
-                    <div className="th-mini-block">
-                      <strong>Ungrouped</strong>
-                      <p>{householdResult.ungroupedPersonIds.length} person{householdResult.ungroupedPersonIds.length === 1 ? '' : 's'} without a household match.</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </article>
-          </div>
-          {/* Merge / split review panel — shows review-band matches only */}
-          {personResult && personResult.matches.filter((m) => m.band === 'review').length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <div className="th-panel-head" style={{ marginBottom: 10 }}>
-                <span>Identity review decisions</span>
-                <span>{personResult.matches.filter((m) => m.band === 'review').length} match{personResult.matches.filter((m) => m.band === 'review').length === 1 ? '' : 'es'} need confirmation</span>
+            <article className="th-panel">
+              <div className="th-panel-head">
+                <span><span className="th-layer-badge">09</span> Inline issues</span>
+              </div>
+              <div className="th-action-row" style={{ marginBottom: 14 }}>
+                <button type="button" className="th-button th-button-primary" onClick={handleRunPreflight}>
+                  <RefreshCcw size={14} /> Run pre-flight
+                </button>
+                <button type="button" className="th-button th-button-secondary" onClick={handleSimulatePost} disabled={!preflight?.valid}>
+                  <ArrowRight size={14} /> Simulate post
+                </button>
+                <button type="button" className="th-button th-button-secondary" onClick={handleExportCsvFallback}>
+                  <FileSpreadsheet size={14} /> Export CSV
+                </button>
               </div>
               <div className="th-stack">
-                {personResult.matches
-                  .filter((m) => m.band === 'review')
-                  .map((match) => {
-                    const decision = mergeDecisions.get(match.inputRef);
-                    return (
-                      <div key={match.inputRef} className="th-guardrail is-warning" style={{ alignItems: 'center', gap: 14 }}>
-                        <div style={{ flex: 1 }}>
-                          <strong>Ref {match.inputRef} · score {match.score}</strong>
-                          <p>Matched on: {match.matchedFields.join(', ') || 'name similarity'} · candidate ID: {match.matchedPersonId ?? 'new person'}</p>
-                        </div>
-                        {decision ? (
-                          <span className={`th-status ${decision === 'confirmed' ? 'is-ready' : 'is-rejected'}`}>
-                            {decision === 'confirmed' ? 'Merged' : 'Separated'}
-                          </span>
-                        ) : (
-                          <div style={{ display: 'flex', gap: 8 }}>
-                            <button type="button" className="th-button th-button-primary" style={{ minHeight: 34 }} onClick={() => handleMergeDecision(match, 'confirmed')}>
-                              Confirm merge
-                            </button>
-                            <button type="button" className="th-button th-button-secondary" style={{ minHeight: 34 }} onClick={() => handleMergeDecision(match, 'separated')}>
-                              Keep separate
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-              </div>
-            </div>
-          )}
-          {!isCrmPlatform && (
-            <p className="th-helper" style={{ marginTop: 12 }}>
-              PersonResolver works best with CRM/donation platforms (Bloomerang, Salesforce, NeonOne, GiveButter) that export constituent names. Try loading a Bloomerang sample to see it in action.
-            </p>
-          )}
-        </div>
-      </section>
-
-      {/* ── Layer 04: Taxonomy Governance ───────────────────────────────── */}
-      <section className="th-section">
-        <div className="th-panel">
-          <div className="th-panel-head">
-            <span><span className="th-layer-badge">04</span> Taxonomy Governance</span>
-            <span className="th-phase-badge">Phase 1</span>
-          </div>
-          <div className="th-action-row" style={{ marginBottom: 16 }}>
-            <button type="button" className="th-button th-button-primary" onClick={handleRunTaxonomy} disabled={rows.length === 0}>
-              <FolderTree size={16} />
-              Evaluate taxonomy
-            </button>
-          </div>
-          <div className="th-grid th-main-grid">
-            <article className="th-panel" style={{ boxShadow: 'none', background: 'rgba(255,255,255,0.42)' }}>
-              <div className="th-panel-head"><span>Canonical registry</span><span>{registry.length} codes</span></div>
-              <div className="th-taxonomy-grid">
-                {registry.map((code) => (
-                  <div key={code.code} className={`th-taxonomy-item th-taxonomy-${code.type}`}>
-                    <span className="th-taxonomy-type">{code.type}</span>
-                    <strong>{code.code}</strong>
-                    <span>{code.label}</span>
-                    {code.retiredAt && <span className="th-taxonomy-retired">Retires {code.retiredAt}</span>}
-                  </div>
-                ))}
-              </div>
-              <div className="th-mini-block" style={{ marginTop: 12 }}>
-                <strong>Legacy mappings ({legacyMap.length})</strong>
-                <p>{legacyMap.slice(0, 5).map((m) => `"${m.legacyValue}" → ${m.canonicalCode}`).join(' · ')}{legacyMap.length > 5 ? ` … +${legacyMap.length - 5} more` : ''}</p>
-              </div>
-            </article>
-
-            <article className="th-panel" style={{ boxShadow: 'none', background: 'rgba(255,255,255,0.42)' }}>
-              <div className="th-panel-head">
-                <span>Exception queue</span>
-                <span>{taxonomyResult ? `${taxonomyResult.unmappedCount} unmapped` : 'not evaluated'}</span>
-              </div>
-              {!taxonomyResult ? (
-                <div className="th-empty">Run taxonomy evaluation to check fund/appeal codes against the canonical registry.</div>
-              ) : taxonomyResult.violations.length === 0 ? (
-                <div className="th-guardrail is-clear">
-                  <CheckCircle2 size={16} />
-                  <div>
-                    <strong>All codes resolved</strong>
-                    <p>{taxonomyResult.resolvedCount} fund/appeal code{taxonomyResult.resolvedCount === 1 ? '' : 's'} resolved via registry or legacy mapping.</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="th-stack">
-                  {taxonomyResult.violations.map((v, i) => (
-                    <div key={i} className="th-guardrail is-triggered">
-                      <AlertTriangle size={16} />
+                {!preflight ? (
+                  <p className="th-helper">Validate journal balance, duplicate donors, missing campaign mappings, and wrong GL accounts directly from the ledger.</p>
+                ) : preflight.issues.length === 0 ? (
+                  <div className="th-guardrail is-clear"><CheckCircle2 size={15} /><div><strong>Pre-flight passed</strong><p>Ready to post.</p></div></div>
+                ) : (
+                  preflight.issues.map((issue, index) => (
+                    <div key={`${issue.message}-${index}`} className={`th-guardrail ${issue.severity === 'error' ? 'is-triggered' : 'is-clear'}`}>
+                      {issue.severity === 'error' ? <ShieldAlert size={15} /> : <CheckCircle2 size={15} />}
                       <div>
-                        <strong>Row {v.rowRef} · {v.field}</strong>
-                        <p>"{v.rawValue}" not in registry{v.suggestedCode ? ` — suggested: ${v.suggestedCode}` : ' — no suggestion'}</p>
+                        <strong>{issue.journalId ?? issue.rowId ?? 'Issue'}</strong>
+                        <p>{issue.message}</p>
                       </div>
                     </div>
-                  ))}
-                  <div className="th-mini-block">
-                    <strong>{taxonomyResult.resolvedCount} resolved · {taxonomyResult.unmappedCount} in exception queue</strong>
-                    <p>Unknown codes are held pending staff mapping or rejection.</p>
-                  </div>
-                </div>
-              )}
-            </article>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Layer 09: Human review table ─────────────────────────────────── */}
-      <section className="th-section">
-        <div className="th-panel">
-          <div className="th-panel-head">
-            <span><span className="th-layer-badge">09</span> Human review checkpoint</span>
-            <span>Edit rows, then run pre-flight</span>
-          </div>
-          {rows.length === 0 ? (
-            <div className="th-empty">No canonical rows yet.</div>
-          ) : (
-            <div className="th-table-wrap">
-              <table className="th-table">
-                <thead>
-                  <tr>
-                    <th>Source</th>
-                    <th>Date</th>
-                    <th>Entity</th>
-                    <th>Account code</th>
-                    <th>Account name</th>
-                    <th>Debit</th>
-                    <th>Credit</th>
-                    <th>Fund / Appeal</th>
-                    <th>Journal</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.id}>
-                      <td>
-                        <div className="th-source-cell">
-                          <strong>{row.source_platform}</strong>
-                          <span>{row.source_row_ref}</span>
-                          {row.canonical_person_id && <span className="th-person-tag">{row.canonical_person_id}</span>}
-                        </div>
-                      </td>
-                      <td><input value={row.date} onChange={(e) => handleRowChange(row.id, 'date', e.target.value)} /></td>
-                      <td><input value={row.entity_name} onChange={(e) => handleRowChange(row.id, 'entity_name', e.target.value)} /></td>
-                      <td><input value={row.account_code} onChange={(e) => handleRowChange(row.id, 'account_code', e.target.value)} /></td>
-                      <td><input value={row.account_name} onChange={(e) => handleRowChange(row.id, 'account_name', e.target.value)} /></td>
-                      <td><input value={row.debit} onChange={(e) => handleRowChange(row.id, 'debit', e.target.value)} /></td>
-                      <td><input value={row.credit} onChange={(e) => handleRowChange(row.id, 'credit', e.target.value)} /></td>
-                      <td>
-                        <div className="th-source-cell">
-                          {row.raw_fund && <span className="th-taxonomy-tag">{row.raw_fund}</span>}
-                          {row.raw_appeal && <span className="th-taxonomy-tag">{row.raw_appeal}</span>}
-                          {!row.raw_fund && !row.raw_appeal && <span style={{ color: 'var(--th-muted)', fontSize: '0.8rem' }}>—</span>}
-                        </div>
-                      </td>
-                      <td><input value={row.journal_id} onChange={(e) => handleRowChange(row.id, 'journal_id', e.target.value)} /></td>
-                      <td>
-                        <span className={`th-status ${row.review_status === 'rejected' ? 'is-rejected' : row.review_status === 'approved' ? 'is-ready' : 'is-review'}`}>
-                          {row.review_status === 'rejected' ? 'Rejected' : row.review_status === 'approved' ? 'Approved' : 'Pending'}
-                        </span>
-                        {row.suggested_fix && <p className="th-inline-note">{row.suggested_fix}</p>}
-                      </td>
-                      <td>
-                        <button type="button" className="th-link-button" onClick={() => handleAddBalancingRow(row.id)}>Balance</button>
-                        <button type="button" className="th-link-button" onClick={() => handleReviewAction(row.id, 'approved')}>Approve</button>
-                        <button type="button" className="th-link-button" onClick={() => handleReviewAction(row.id, 'rejected')}>Reject</button>
-                        {row.review_status === 'rejected' && (
-                          <button type="button" className="th-link-button" onClick={() => handleReviewAction(row.id, 'pending')}>Reopen</button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* ── Layer 08: Operational Audit Rules ───────────────────────────── */}
-      <section className="th-section">
-        <div className="th-panel">
-          <div className="th-panel-head">
-            <span><span className="th-layer-badge">08</span> Operational Audit Rules</span>
-            <span className="th-phase-badge">Phase 1</span>
-          </div>
-          <div className="th-action-row" style={{ marginBottom: 16 }}>
-            <button type="button" className="th-button th-button-primary" onClick={handleRunAuditRules} disabled={rows.length === 0}>
-              <ShieldAlert size={16} />
-              Run audit rules
-            </button>
-          </div>
-          {!auditResult ? (
-            <div className="th-empty">
-              Run audit rules to check for donor tag gaps, wrong GL accounts, major gifts without donor IDs, LYBUNT/SYBUNT, and more.
-              {activeAuditCatalog.length > 0 && (
-                <p className="th-inline-note">
-                  Catalog ready: {activeAuditCatalog.length} rules loaded from engine {activeAuditEngineVersion ?? 'unknown'}.
-                </p>
-              )}
-            </div>
-          ) : (
-            <>
-              <div className="th-grid th-grid-3" style={{ marginBottom: 16 }}>
-                <div className="th-stat-chip" style={{ background: 'var(--th-red-bg)', color: 'var(--th-red)' }}>
-                  <strong>{auditResult.errorCount}</strong><span>Errors</span>
-                </div>
-                <div className="th-stat-chip" style={{ background: 'rgba(255,183,60,0.18)', color: '#c07800' }}>
-                  <strong>{auditResult.warningCount}</strong><span>Warnings</span>
-                </div>
-                <div className="th-stat-chip" style={{ background: 'var(--th-green-bg)', color: 'var(--th-green)' }}>
-                  <strong>{auditResult.infoCount}</strong><span>Info</span>
-                </div>
-              </div>
-              <div className="th-audit-meta-row">
-                <span className="th-audit-meta-pill">Engine {activeAuditEngineVersion ?? 'local'}</span>
-                <span className="th-audit-meta-pill">Trend {auditResult.deltaTrend ?? auditResult.delta?.trend ?? 'baseline'}</span>
-                {auditResult.latestPersistedRunId && (
-                  <span className="th-audit-meta-pill">Run {auditResult.latestPersistedRunId.slice(0, 8)}</span>
+                  ))
                 )}
               </div>
-              <div className="th-stack">
-                {auditResult.findings.map((finding) => {
-                  const catalogEntry = auditCatalogByCode.get(finding.ruleCode);
-                  return (
-                    <div key={finding.ruleCode} className={`th-guardrail ${finding.severity === 'error' ? 'is-triggered' : finding.severity === 'warning' ? 'is-warning' : 'is-info'}`}>
-                      {finding.severity === 'error' ? <ShieldAlert size={16} /> : finding.severity === 'warning' ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
-                      <div>
-                        <strong>
-                          {finding.label} <span style={{ fontWeight: 400, opacity: 0.7 }}>· {finding.count}</span>
-                        </strong>
-                        <div className="th-audit-code-row">
-                          <span className="th-audit-code">{finding.ruleCode}</span>
-                          <span className="th-audit-version">v{catalogEntry?.version ?? finding.ruleVersion ?? 1}</span>
-                        </div>
-                        <p>{finding.message}</p>
-                        <p className="th-inline-note">{catalogEntry?.description ?? finding.detail}</p>
+              {(receipts.length > 0 || fallbackFileName) && (
+                <div style={{ marginTop: 14 }}>
+                  <div className="th-panel-head" style={{ marginBottom: 10 }}><span>Receipts</span><span>{receipts.length}</span></div>
+                  <div className="th-stack">
+                    {fallbackFileName && (
+                      <div className="th-mini-block"><strong>CSV fallback</strong><p>{fallbackFileName}</p></div>
+                    )}
+                    {receipts.map((receipt) => (
+                      <div key={receipt.qboTxnId} className="th-receipt">
+                        <div className="th-card-head"><Building2 size={15} /><strong>{receipt.qboTxnId}</strong></div>
+                        <p>Journal: {receipt.journalId}</p>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </div>
-      </section>
-
-      {/* ── Layer 09: Pre-flight + posting ───────────────────────────────── */}
-      <section className="th-section th-grid th-main-grid">
-        <article className="th-panel">
-          <div className="th-panel-head">
-            <span><span className="th-layer-badge">09</span> Pre-flight</span>
-            <span>Balance + CoA + audit rules must pass</span>
-          </div>
-          <div className="th-action-row" style={{ marginBottom: 16 }}>
-            <button type="button" className="th-button th-button-primary" onClick={handleRunPreflight} disabled={rows.length === 0}>
-              <RefreshCcw size={16} />
-              Run pre-flight
-            </button>
-            <button type="button" className="th-button th-button-secondary" onClick={handleSimulatePost} disabled={rows.length === 0 || !preflight?.valid}>
-              <ArrowRight size={16} />
-              Simulate post to QBO
-            </button>
-            <button type="button" className="th-button th-button-secondary" onClick={handleExportCsvFallback} disabled={rows.length === 0}>
-              <FileSpreadsheet size={16} />
-              Export CSV fallback
-            </button>
-          </div>
-          <div className="th-stack">
-            {!preflight ? (
-              <div className="th-empty">Run pre-flight to validate journal balance, chart-of-accounts matches, taxonomy, and audit rules.</div>
-            ) : preflight.issues.length === 0 ? (
-              <div className="th-guardrail is-clear"><CheckCircle2 size={16} /><div><strong>Pre-flight passed</strong><p>Debit equals credit, all accounts resolve, and audit rules are clear.</p></div></div>
-            ) : (
-              preflight.issues.map((issue, index) => (
-                <div key={`${issue.message}-${index}`} className={`th-guardrail ${issue.severity === 'error' ? 'is-triggered' : 'is-clear'}`}>
-                  {issue.severity === 'error' ? <ShieldAlert size={16} /> : <CheckCircle2 size={16} />}
-                  <div>
-                    <strong>{issue.journalId ?? issue.rowId ?? 'Pipeline issue'}</strong>
-                    <p>{issue.message}</p>
+                    ))}
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-        </article>
+              )}
+            </article>
+          </section>
+        )}
 
-        <article className="th-panel">
-          <div className="th-panel-head">
-            <span>Posting receipts</span>
-            <span>{receipts.length} receipt{receipts.length === 1 ? '' : 's'}</span>
-          </div>
-          <div className="th-stack">
-            {fallbackFileName && (
-              <div className="th-mini-block">
-                <strong>CSV fallback ready</strong>
-                <p>{fallbackFileName}</p>
+        {/* ── Outputs ─────────────────────────────────────────────────────── */}
+        {rows.length > 0 && (
+          <section className="th-section" id="th-export">
+            <div className="th-panel">
+              <div className="th-panel-head">
+                <span><span className="th-layer-badge">10</span> Outputs</span>
               </div>
-            )}
-            {receipts.length === 0 ? (
-              <div className="th-empty">No posted journals yet.</div>
-            ) : (
-              receipts.map((receipt) => (
-                <div key={receipt.qboTxnId} className="th-receipt">
-                  <div className="th-card-head"><Building2 size={16} /><strong>{receipt.qboTxnId}</strong></div>
-                  <p>Journal: {receipt.journalId}</p>
-                  <p>Idempotency: {receipt.idempotencyKey}</p>
-                </div>
-              ))
-            )}
-          </div>
-        </article>
-      </section>
-
-      {/* ── Layer 06: Entity Model ────────────────────────────────────────── */}
-      <section className="th-section">
-        <div className="th-panel">
-          <div className="th-panel-head">
-            <span><span className="th-layer-badge">06</span> Entity Model</span>
-            <span className="th-phase-badge">Target defined · persistence missing</span>
-          </div>
-          <div className="th-grid th-grid-3">
-            <article className="th-entity-card">
-              <div className="th-card-head"><Users size={16} /><strong>Person</strong></div>
-              <p>{personResult ? `${personResult.persons.length} demo person${personResult.persons.length === 1 ? '' : 's'} resolved` : 'Run PersonResolver'}</p>
-              <span className="th-status is-partial">Derived only</span>
-            </article>
-            <article className="th-entity-card">
-              <div className="th-card-head"><Building2 size={16} /><strong>Household</strong></div>
-              <p>{householdResult ? `${householdResult.households.length} demo household${householdResult.households.length === 1 ? '' : 's'} formed` : 'Run HouseholdResolver'}</p>
-              <span className="th-status is-partial">Derived only</span>
-            </article>
-            <article className="th-entity-card">
-              <div className="th-card-head"><Receipt size={16} /><strong>Donation</strong></div>
-              <p>{rows.filter((r) => r.raw_fund || r.raw_appeal).length} donation row{rows.filter((r) => r.raw_fund || r.raw_appeal).length === 1 ? '' : 's'} with fund/appeal</p>
-              <span className="th-status is-partial">Row-level only</span>
-            </article>
-            <article className="th-entity-card th-entity-future">
-              <div className="th-card-head"><Database size={16} /><strong>Organization</strong></div>
-              <p>Corporate donors, employer entities, foundations.</p>
-              <span className="th-entity-future-tag">Missing</span>
-            </article>
-            <article className="th-entity-card th-entity-future">
-              <div className="th-card-head"><ArrowRight size={16} /><strong>Attribution</strong></div>
-              <p>Links donations to campaigns, appeals, and solicitation channels.</p>
-              <span className="th-entity-future-tag">Missing</span>
-            </article>
-            <article className="th-entity-card th-entity-future">
-              <div className="th-card-head"><FolderTree size={16} /><strong>Campaign / Fund</strong></div>
-              <p>Goal tracking, campaign hierarchy, multi-year rollup.</p>
-              <span className="th-entity-future-tag">Missing</span>
-            </article>
-          </div>
-          <div className="th-inline-note" style={{ marginTop: 14 }}>
-            PersonResolver and HouseholdResolver currently improve review and export flows, but the first-class entity layer in the target architecture is not persisted yet.
-          </div>
-        </div>
-      </section>
-
-      {/* ── Layer 07: Multi-axis Source of Truth ─────────────────────────── */}
-      <section className="th-section">
-        <div className="th-panel">
-          <div className="th-panel-head">
-            <span><span className="th-layer-badge">07</span> Multi-axis Source of Truth</span>
-            <span className="th-phase-badge">Concept present · not yet authoritative</span>
-          </div>
-          <div className="th-grid th-grid-4">
-            <article className="th-axis-card">
-              <div className="th-axis-number">1</div>
-              <strong>Constituent identity</strong>
-              <p>CRM — Bloomerang, Salesforce, NeonOne, GiveButter</p>
-              <div className="th-mini-block" style={{ marginTop: 8 }}>
-                <strong>{personResult ? personResult.persons.length : '—'}</strong>
-                <p>persons resolved</p>
+              <div className="th-grid th-grid-3">
+                <article className="th-output-card">
+                  <div className="th-card-head"><FileSpreadsheet size={16} /><strong>Finance CSV</strong></div>
+                  <p>Approved rows formatted for QBO / Xero import.</p>
+                  <button type="button" className="th-button th-button-primary" onClick={handleExportCsvFallback}>
+                    <FileSpreadsheet size={14} /> Export
+                  </button>
+                </article>
+                <article className="th-output-card">
+                  <div className="th-card-head"><Users size={16} /><strong>Donor report</strong></div>
+                  <p>Resolved persons and households with giving totals.</p>
+                  <button type="button" className="th-button th-button-primary" onClick={handleExportDonorReport}>
+                    <Users size={14} /> Export
+                  </button>
+                </article>
+                <article className="th-output-card">
+                  <div className="th-card-head"><ShieldAlert size={16} /><strong>Audit dashboard</strong></div>
+                  <p>Rule findings with severity and recommended actions.</p>
+                  <button type="button" className="th-button th-button-primary" onClick={handleExportAuditDashboard}>
+                    <ShieldAlert size={14} /> Export
+                  </button>
+                </article>
+                <article className="th-output-card">
+                  <div className="th-card-head"><FolderTree size={16} /><strong>Campaign performance</strong></div>
+                  <p>Fund and appeal activity by campaign with retention buckets.</p>
+                  <button type="button" className="th-button th-button-primary" onClick={handleExportCampaignPerformanceReport}>
+                    <FolderTree size={14} /> Export
+                  </button>
+                </article>
+                <article className="th-output-card">
+                  <div className="th-card-head"><Database size={16} /><strong>CRM sync</strong></div>
+                  <p>Person and household mappings for CRM import pipelines.</p>
+                  <button type="button" className="th-button th-button-primary" onClick={handleExportCrmSyncExport}>
+                    <Database size={14} /> Export
+                  </button>
+                </article>
               </div>
-            </article>
-            <article className="th-axis-card">
-              <div className="th-axis-number">2</div>
-              <strong>Fundraising events</strong>
-              <p>Donation platform — gift records, recurring, appeals</p>
-              <div className="th-mini-block" style={{ marginTop: 8 }}>
-                <strong>{rows.filter((r) => r.raw_fund || r.raw_appeal).length}</strong>
-                <p>donation rows</p>
-              </div>
-            </article>
-            <article className="th-axis-card">
-              <div className="th-axis-number">3</div>
-              <strong>Finance posting</strong>
-              <p>QBO / Xero — journal entries, GL codes, debit/credit</p>
-              <div className="th-mini-block" style={{ marginTop: 8 }}>
-                <strong>{receipts.length}</strong>
-                <p>posted receipt{receipts.length === 1 ? '' : 's'}</p>
-              </div>
-            </article>
-            <article className="th-axis-card">
-              <div className="th-axis-number">4</div>
-              <strong>Reporting layer</strong>
-              <p>TransformHub — canonical ledger, audit trail, donor report</p>
-              <div className="th-mini-block" style={{ marginTop: 8 }}>
-                <strong>{rows.length}</strong>
-                <p>canonical rows</p>
-              </div>
-            </article>
-          </div>
-          <div className="th-inline-note" style={{ marginTop: 14 }}>
-            The four axes are visible in the UI, but ownership, export formatting, and sync behavior are not yet driven by a real multi-axis configuration model.
-          </div>
-        </div>
-      </section>
-
-      {/* ── Layer 10: Outputs ─────────────────────────────────────────────── */}
-      <section className="th-section">
-        <div className="th-panel">
-          <div className="th-panel-head">
-            <span><span className="th-layer-badge">10</span> Outputs</span>
-            <span>Download finance and donor exports</span>
-          </div>
-          <div className="th-grid th-grid-3">
-            <article className="th-output-card">
-              <div className="th-card-head"><FileSpreadsheet size={18} /><strong>Finance-ready CSV</strong></div>
-              <p>Approved canonical rows formatted for QBO / Xero import. Requires pre-flight pass.</p>
-              <button type="button" className="th-button th-button-primary" style={{ marginTop: 12 }} onClick={handleExportCsvFallback} disabled={rows.length === 0}>
-                <FileSpreadsheet size={15} />
-                Export finance CSV
-              </button>
-            </article>
-            <article className="th-output-card">
-              <div className="th-card-head"><Users size={18} /><strong>Clean donor report</strong></div>
-              <p>Resolved persons and households with giving totals, lifecycle stage, and salutation text.</p>
-              <button type="button" className="th-button th-button-primary" style={{ marginTop: 12 }} onClick={handleExportDonorReport} disabled={rows.length === 0}>
-                <Users size={15} />
-                Export donor report
-              </button>
-            </article>
-            <article className="th-output-card">
-              <div className="th-card-head"><ShieldAlert size={18} /><strong>Audit dashboard CSV</strong></div>
-              <p>Summary of all rule findings with severity, count, and recommended action per finding code.</p>
-              <button type="button" className="th-button th-button-primary" style={{ marginTop: 12 }} onClick={handleExportAuditDashboard} disabled={rows.length === 0}>
-                <ShieldAlert size={15} />
-                Export audit dashboard
-              </button>
-            </article>
-            <article className="th-output-card">
-              <div className="th-card-head"><FolderTree size={18} /><strong>Campaign performance</strong></div>
-              <p>Rolls up normalized fund and appeal activity into campaign-level totals and retention buckets.</p>
-              <button type="button" className="th-button th-button-primary" style={{ marginTop: 12 }} onClick={handleExportCampaignPerformanceReport} disabled={rows.length === 0}>
-                <FolderTree size={15} />
-                Export campaign report
-              </button>
-            </article>
-            <article className="th-output-card">
-              <div className="th-card-head"><Database size={18} /><strong>CRM sync export</strong></div>
-              <p>Exports resolved person and household mappings for CRM import and downstream sync pipelines.</p>
-              <button type="button" className="th-button th-button-primary" style={{ marginTop: 12 }} onClick={handleExportCrmSyncExport} disabled={rows.length === 0}>
-                <Database size={15} />
-                Export CRM sync
-              </button>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Implementation status ─────────────────────────────────────────── */}
-      <section className="th-section">
-        <div className="th-panel">
-          <div className="th-panel-head">
-            <span>Implementation status</span>
-            <span>Updated to match current build state</span>
-          </div>
-          <div className="th-status-board">
-            <article className="th-status-section is-exists">
-              <div className="th-card-head">
-                <strong>Built or already usable</strong>
-                <span className="th-status-pill is-exists">Exists</span>
-              </div>
-              <p>Layers 01, 02, 05, 09, and the CSV-first parts of 10 are the strongest parts of the system today.</p>
-              <div className="th-status-list">
-                <div className="th-status-row"><Bot size={16} /><span>Data sources and ingest normalize: CSV/XLSX import, parse and detect, schema resolution, canonical row output.</span></div>
-                <div className="th-status-row"><ShieldAlert size={16} /><span>Guardrails and preflight: 6 existing guardrails plus taxonomy audit, balance and CoA checks before post-simulate.</span></div>
-                <div className="th-status-row"><FileSpreadsheet size={16} /><span>Review table and outputs: editable review flow, finance-ready CSV, QBO post-simulate, donor report, audit dashboard.</span></div>
-              </div>
-            </article>
-
-            <article className="th-status-section is-partial">
-              <div className="th-card-head">
-                <strong>Partially built and needs wiring</strong>
-                <span className="th-status-pill is-partial">Partial</span>
-              </div>
-              <p>The endpoints or demo logic exist, but the full target behavior from the architecture diagrams is not finished.</p>
-              <div className="th-status-list">
-                <div className="th-status-row"><Users size={16} /><span>Layer 03 PersonResolver: endpoint exists, but fuzzy scoring, confidence bands, canonical person assignment, and merge-split workflow are still thin.</span></div>
-                <div className="th-status-row"><Users size={16} /><span>Layer 03 HouseholdResolver: endpoint exists, but grouping rules, salutation generation, primary address selection, rollup, and versioning are incomplete.</span></div>
-                <div className="th-status-row"><FolderTree size={16} /><span>Layer 04 Taxonomy governance: registry and lookup work, but legacy mapping depth, version history, and the exception-queue governance model are still shallow.</span></div>
-                <div className="th-status-row"><ShieldAlert size={16} /><span>Layer 08 Audit rules: the endpoint exists, but the named versioned rule engine and automatic rerun-on-import behavior are not complete yet.</span></div>
-              </div>
-            </article>
-
-            <article className="th-status-section is-missing">
-              <div className="th-card-head">
-                <strong>Not built yet</strong>
-                <span className="th-status-pill is-missing">Missing</span>
-              </div>
-              <p>These are the actual gaps that still separate the current product from the target TransformationHub architecture.</p>
-              <div className="th-status-list">
-                <div className="th-status-row"><Database size={16} /><span>Layer 06 Entity model: no persisted Person, Household, Organization, Donation, Attribution, Relationship, Campaign, Appeal, or AuditDecision object model yet.</span></div>
-                <div className="th-status-row"><FolderTree size={16} /><span>Layer 07 Multi-axis source of truth: the concept exists, but no authoritative axis configuration drives exports, sync rules, or ownership boundaries.</span></div>
-                <div className="th-status-row"><AlertTriangle size={16} /><span>Taxonomy legacy mapping table and exception queue: more governance structure is needed so unknown codes queue for staff resolution instead of only hard-blocking.</span></div>
-                <div className="th-status-row"><ShieldAlert size={16} /><span>Audit auto-rerun and delta reporting: post-ingest hooks, improvement tracking, and surfaced batch deltas are still missing.</span></div>
-                <div className="th-status-row"><Building2 size={16} /><span>SemanticInferenceEngine and QuickBooksGateway: interfaces are defined, but the real implementation seam is still interface-only.</span></div>
-              </div>
-            </article>
-
-            <article className="th-status-section is-next">
-              <div className="th-card-head">
-                <strong>Recommended build order</strong>
-                <span className="th-status-pill is-next">Start here</span>
-              </div>
-              <p>The target-state diagrams imply a strict dependency order. Building out of order will keep creating shallow seams.</p>
-              <div className="th-status-list">
-                <div className="th-status-row"><span className="th-step-index">1</span><span>Define the Layer 06 entity types first. Everything downstream depends on having real resolved objects, not only decorated rows.</span></div>
-                <div className="th-status-row"><span className="th-step-index">2</span><span>Deepen PersonResolver and wire it into the semantic-inference seam so canonical person IDs become durable.</span></div>
-                <div className="th-status-row"><span className="th-step-index">3</span><span>Implement HouseholdResolver fully so salutation, primary address, rollups, and version history behave like the target model.</span></div>
-                <div className="th-status-row"><span className="th-step-index">4</span><span>Expand taxonomy into a real governance layer with legacy mappings, version history, and an exception queue.</span></div>
-                <div className="th-status-row"><span className="th-step-index">5</span><span>Finish the named AuditRuleEngine with all rule types, automatic reruns, and delta reporting after each import.</span></div>
-              </div>
-            </article>
-          </div>
-        </div>
-      </section>
+            </div>
+          </section>
+        )}
+      </div>
     </div>
   );
 }
