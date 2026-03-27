@@ -31,6 +31,7 @@ type IngestPayload = {
   kind: 'text' | 'xlsx';
   contents?: string;
   contentsBase64?: string;
+  forceIngest?: boolean;
 };
 
 type IngestResponse = {

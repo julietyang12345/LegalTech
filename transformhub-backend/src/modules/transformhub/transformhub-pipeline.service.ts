@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { createHash } from 'crypto';
@@ -7,6 +7,14 @@ import { join } from 'path';
 import { TRANSFORMHUB_MAX_BASE64_CHARS, TRANSFORMHUB_MAX_TEXT_CHARS, TRANSFORMHUB_MAX_XLSX_BUFFER_BYTES } from './transformhub.constants';
 import { ThSchemaTemplate } from '../../database/entities/th-schema-template.entity';
 import { TransformHubAiService } from './transformhub-ai.service';
+
+type FileClass = 'ledger' | 'constituent' | 'donor' | 'campaign' | 'coa' | 'unknown';
+
+type ClassExpectation = {
+  reportType: string;
+  canonicalModel: string;
+  expectedFields: string[];
+};
 
 export const COA = [
   { id: '14', code: '1000', name: 'Operating Cash' },
@@ -143,8 +151,67 @@ const FIELD_ALIASES: Record<string, Record<string, string[]>> = {
   },
 };
 
+const CLASS_FIELD_ALIASES: Record<FileClass, Record<string, string[]>> = {
+  ledger: {},
+  constituent: {
+    constituent_type: ['constituent type', 'record type', 'type'],
+    first_name: ['first name'],
+    last_name: ['last name', 'last'],
+    organization_name: ['organization name', 'organization', 'account name'],
+    household_name: ['household name'],
+    email: ['email address', 'email', 'email 1'],
+    phone: ['phone number', 'phone', 'mobile phone', 'home phone'],
+    address: ['address', 'mailing address'],
+    city: ['city'],
+    state: ['state'],
+    postal_code: ['zip code', 'zip', 'postal code'],
+    country: ['country'],
+    created_at: ['created date', 'created at', 'created'],
+    updated_at: ['last updated date', 'updated at', 'last modified date'],
+    tags: ['tags', 'categories'],
+    assigned_staff: ['assigned staff', 'owner'],
+  },
+  donor: {
+    date: ['date', 'gift date', 'payment date', 'transaction date', 'close date', 'closedate'],
+    donor_name: ['constituent name', 'donor name', 'full name', 'name', 'account name', 'contact name'],
+    amount: ['amount', 'gift amount', 'total amount paid', 'gross amount', 'total'],
+    fund: ['fund', 'fund name', 'designation', 'campaign', 'campaign name'],
+    appeal: ['appeal', 'appeal name', 'source'],
+    email: ['email', 'email address', 'email 1'],
+    memo: ['note', 'notes', 'memo', 'description', 'message'],
+    currency: ['currency', 'currencyisocode'],
+  },
+  campaign: {
+    code: ['code', 'campaign code', 'appeal code', 'fund code'],
+    campaign_name: ['campaign', 'campaign name', 'appeal', 'appeal name', 'fund', 'fund name'],
+    start_date: ['start date', 'effective from', 'created date'],
+    end_date: ['end date', 'retired at', 'last updated date'],
+    status: ['status', 'state', 'active'],
+    goal_amount: ['goal', 'goal amount', 'target amount'],
+  },
+  coa: {
+    account_code: ['account code', 'account number', 'code', 'gl account'],
+    account_name: ['account name', 'name', 'gl account'],
+    account_type: ['account type', 'type', 'category'],
+    balance: ['balance', 'amount', 'net amount'],
+  },
+  unknown: {},
+};
+
+const CLASS_ALIAS_CONFIDENCE_THRESHOLD = 0.6;
+
+const CLASS_EXPECTATIONS: Record<FileClass, ClassExpectation> = {
+  ledger: { reportType: 'general-ledger', canonicalModel: 'canonical-ledger-row', expectedFields: ['date', 'entity_name', 'memo', 'account_or_amount_shape'] },
+  constituent: { reportType: 'constituent-export', canonicalModel: 'canonical-constituent', expectedFields: ['first_name_or_org', 'email_or_phone', 'created_at'] },
+  donor: { reportType: 'donor-export', canonicalModel: 'canonical-donor', expectedFields: ['date', 'donor_name', 'amount'] },
+  campaign: { reportType: 'campaign-export', canonicalModel: 'canonical-campaign', expectedFields: ['campaign_name_or_code'] },
+  coa: { reportType: 'chart-of-accounts', canonicalModel: 'canonical-account', expectedFields: ['account_code', 'account_name'] },
+  unknown: { reportType: 'unknown', canonicalModel: 'raw-record', expectedFields: [] },
+};
+
 @Injectable()
 export class TransformHubPipelineService implements OnModuleInit {
+  private readonly logger = new Logger(TransformHubPipelineService.name);
   private readonly templateCache = new Map<string, any>();
 
   constructor(
@@ -158,6 +225,9 @@ export class TransformHubPipelineService implements OnModuleInit {
     templates.forEach((template) => {
       this.templateCache.set(template.fingerprint, {
         reportType: template.reportType,
+        fileClass: 'ledger',
+        canonicalModel: 'canonical-ledger-row',
+        expectedFields: CLASS_EXPECTATIONS.ledger.expectedFields,
         fieldMap: template.fieldMap,
         unresolvedFields: template.unresolvedFields,
         confidence: 1,
@@ -353,16 +423,111 @@ export class TransformHubPipelineService implements OnModuleInit {
     return headers.map((h) => ({ original: h, normalized: this.sanitizeHeader(h) })).find((h) => aliases.includes(h.normalized))?.original;
   }
 
-  private detectReportType(platform: string, headers: string[]): string {
+  private hasAny(normalized: string[], needles: string[]): boolean {
+    return needles.some((needle) => normalized.includes(needle));
+  }
+
+  private detectFileClass(platform: string, headers: string[]): FileClass {
     const normalized = headers.map((h) => this.sanitizeHeader(h));
-    if ((platform === 'AppFolio' || platform === 'Xero') && normalized.includes('gl account')) return 'general-ledger';
-    if (platform === 'Xero' || platform === 'Buildium') return 'general-ledger';
-    if (platform === 'Stripe') return 'payout-export';
-    if (platform === 'Shopify') return 'sales-export';
-    if (platform === 'TikTok') return 'ad-spend';
-    if (platform === 'Bloomerang' || platform === 'Salesforce' || platform === 'NeonOne') return 'crm-export';
-    if (platform === 'GiveButter') return 'donation-export';
+    const hasDate = this.hasAny(normalized, ['date', 'transaction date', 'posting date', 'gift date', 'payment date', 'closedate', 'close date', 'created at']);
+    const hasDebitCredit = normalized.includes('debit') || normalized.includes('credit');
+    const hasAccount = this.hasAny(normalized, ['gl account', 'account code', 'account number', 'account name']);
+    const hasAmount = normalized.some((h) => /amount|total amount paid|gift amount|gross amount|net amount|spend/.test(h));
+    const hasConstituentSignals = normalized.includes('constituent type') || normalized.includes('household name') || normalized.includes('first name') || normalized.includes('organization name');
+    const hasDonorSignals = this.hasAny(normalized, ['fund', 'fund name', 'appeal', 'appeal name', 'campaign', 'campaign name']);
+    const hasCoaSignals = hasAccount && !hasDate && !hasDebitCredit && !this.hasAny(normalized, ['description', 'memo', 'entity', 'property', 'contact']);
+    const hasCampaignSignals = this.hasAny(normalized, ['campaign', 'campaign name', 'appeal', 'appeal name', 'fund code', 'campaign code']) && this.hasAny(normalized, ['status', 'start date', 'end date', 'goal']);
+
+    if (hasConstituentSignals && !hasAmount) return 'constituent';
+    if (hasDebitCredit || (hasDate && hasAccount) || ((platform === 'AppFolio' || platform === 'Xero' || platform === 'Buildium') && hasAccount)) return 'ledger';
+    if (hasCoaSignals) return 'coa';
+    if (hasCampaignSignals) return 'campaign';
+    if (hasAmount && (hasDate || hasDonorSignals || platform === 'GiveButter')) return 'donor';
+    if (platform === 'Bloomerang' || platform === 'Salesforce' || platform === 'NeonOne') return hasAmount ? 'donor' : 'constituent';
     return 'unknown';
+  }
+
+  private resolveClassFieldMap(headers: string[], aliases: Record<string, string[]>): Record<string, string> {
+    const fieldMap: Record<string, string> = {};
+    Object.entries(aliases).forEach(([target, names]) => {
+      const header = this.findHeader(headers, names);
+      if (header) fieldMap[target] = header;
+    });
+    return fieldMap;
+  }
+
+  private normalizeFieldMap(fieldMap: Record<string, string>): Record<string, string> {
+    const normalized = { ...fieldMap };
+    if (normalized.gl_account && !normalized.account_code) {
+      normalized.account_code = normalized.gl_account;
+      normalized.account_name = normalized.gl_account;
+    }
+    return normalized;
+  }
+
+  private isExpectedFieldResolved(fieldMap: Record<string, string>, field: string): boolean {
+    if (field === 'account_or_amount_shape') {
+      return Boolean(fieldMap.account_code || fieldMap.amount || (fieldMap.debit && fieldMap.credit));
+    }
+    if (field === 'first_name_or_org') {
+      return Boolean(fieldMap.first_name || fieldMap.organization_name || fieldMap.household_name);
+    }
+    if (field === 'email_or_phone') {
+      return Boolean(fieldMap.email || fieldMap.phone);
+    }
+    if (field === 'campaign_name_or_code') {
+      return Boolean(fieldMap.campaign_name || fieldMap.code);
+    }
+    return Boolean(fieldMap[field]);
+  }
+
+  private buildSchemaCandidate(file: any, fileClass: FileClass, fieldMapOverrides: Record<string, string> = {}) {
+    const expectation = CLASS_EXPECTATIONS[fileClass];
+    const aliases = fileClass === 'ledger' ? (FIELD_ALIASES[file.platform] || {}) : CLASS_FIELD_ALIASES[fileClass];
+    const fieldMap = this.normalizeFieldMap({
+      ...this.resolveClassFieldMap(file.headers, aliases),
+      ...fieldMapOverrides,
+    });
+    const unresolvedFields = expectation.expectedFields.filter((field) => !this.isExpectedFieldResolved(fieldMap, field));
+    const denominator = Math.max(1, expectation.expectedFields.length);
+    const matchedCriticalFields = denominator - unresolvedFields.length;
+    const aliasCoverage = matchedCriticalFields / denominator;
+    const confidenceFloor = fileClass === 'unknown' ? 0.2 : 0.45;
+    const confidence = Math.max(confidenceFloor, Math.min(0.95, aliasCoverage));
+
+    return {
+      fileClass,
+      expectation,
+      fieldMap,
+      unresolvedFields,
+      matchedCriticalFields,
+      aliasCoverage,
+      confidence,
+    };
+  }
+
+  private getAiClassFieldOptions(platform: string): Record<string, string[]> {
+    return {
+      ledger: Object.keys(FIELD_ALIASES[platform] || {}),
+      constituent: Object.keys(CLASS_FIELD_ALIASES.constituent),
+      donor: Object.keys(CLASS_FIELD_ALIASES.donor),
+      campaign: Object.keys(CLASS_FIELD_ALIASES.campaign),
+      coa: Object.keys(CLASS_FIELD_ALIASES.coa),
+      unknown: [],
+    };
+  }
+
+  private detectReportType(platform: string, headers: string[], fileClass: FileClass): string {
+    const normalized = headers.map((h) => this.sanitizeHeader(h));
+    if (fileClass === 'ledger') {
+      if ((platform === 'AppFolio' || platform === 'Xero') && normalized.includes('gl account')) return 'general-ledger';
+      if (platform === 'Xero' || platform === 'Buildium') return 'general-ledger';
+      if (platform === 'Stripe') return 'payout-export';
+      if (platform === 'Shopify') return 'sales-export';
+      if (platform === 'TikTok') return 'ad-spend';
+      return 'general-ledger';
+    }
+    return CLASS_EXPECTATIONS[fileClass].reportType;
   }
 
   resolveTaxonomyValue(rawValue: string): boolean {
@@ -373,68 +538,85 @@ export class TransformHubPipelineService implements OnModuleInit {
   }
 
   async resolveSchema(file: any): Promise<any> {
-    const fingerprint = this.createFingerprint(file.platform, file.headers);
-    const cached = this.templateCache.get(fingerprint);
-    if (cached) return { ...cached, confidence: 1, fingerprint, fromTemplateCache: true };
+    const structuralClass = this.detectFileClass(file.platform, file.headers);
+    const classCandidates = (['ledger', 'constituent', 'donor', 'campaign', 'coa'] as FileClass[])
+      .map((fileClass) => {
+        const candidate = this.buildSchemaCandidate(file, fileClass);
+        const structuralBonus = fileClass === structuralClass ? 0.08 : 0;
+        return {
+          ...candidate,
+          score: candidate.aliasCoverage + structuralBonus,
+        };
+      })
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        if (b.matchedCriticalFields !== a.matchedCriticalFields) return b.matchedCriticalFields - a.matchedCriticalFields;
+        return a.fileClass.localeCompare(b.fileClass);
+      });
 
-    const aliases = FIELD_ALIASES[file.platform] || {};
-    const fieldMap: Record<string, string> = {};
-    const required = ['date', 'entity_name', 'memo'];
-
-    Object.entries(aliases).forEach(([target, names]) => {
-      const header = this.findHeader(file.headers, names as string[]);
-      if (header) fieldMap[target] = header;
-    });
-
-    if (fieldMap.gl_account && !fieldMap.account_code) {
-      fieldMap.account_code = fieldMap.gl_account;
-      fieldMap.account_name = fieldMap.gl_account;
-    }
-
-    let unresolvedFields = required.filter((field) => !fieldMap[field]);
-    if (!fieldMap.account_code && !fieldMap.amount && !(fieldMap.debit && fieldMap.credit)) {
-      unresolvedFields.push('account_or_amount_shape');
-    }
-
-    const matchedCriticalFields = 6 - unresolvedFields.length;
-    const exactKnownTemplate = file.platform === 'AppFolio' && Boolean(fieldMap.gl_account && fieldMap.amount && fieldMap.entity_name);
-    let confidence = exactKnownTemplate ? 0.98 : Math.max(0.45, Math.min(0.92, matchedCriticalFields / 6));
+    let selected = classCandidates[0] ?? this.buildSchemaCandidate(file, structuralClass === 'unknown' ? 'ledger' : structuralClass);
     let aiSuggested = false;
     let aiSuggestedFieldMap: Record<string, string> = {};
     let aiReasoning: string | null = null;
 
-    if (confidence < 0.9 && unresolvedFields.length > 0) {
-      const aiResult = await this.ai.suggestFieldMappings(file.platform, file.headers, unresolvedFields, file.rows);
+    const shouldUseAiForClassification = selected.fileClass !== 'ledger' && selected.aliasCoverage < CLASS_ALIAS_CONFIDENCE_THRESHOLD;
+    if (shouldUseAiForClassification) {
+      this.logger.log(`Triggering AI schema class+mappings fallback for platform ${file.platform} with candidate ${selected.fileClass} at alias coverage ${selected.aliasCoverage.toFixed(2)}.`);
+      const aiResult = await this.ai.suggestSchemaClassAndMappings(
+        file.platform,
+        file.headers,
+        file.rows,
+        this.getAiClassFieldOptions(file.platform),
+      );
+
+      const aiFileClass = ['ledger', 'constituent', 'donor', 'campaign', 'coa', 'unknown'].includes(aiResult?.fileClass || '')
+        ? (aiResult?.fileClass as FileClass)
+        : 'unknown';
+
+      if (aiResult && aiFileClass !== 'unknown') {
+        selected = this.buildSchemaCandidate(file, aiFileClass, aiResult.fieldMap);
+        aiSuggested = true;
+        aiSuggestedFieldMap = { ...aiResult.fieldMap };
+        aiReasoning = aiResult.reasoning;
+        selected.confidence = Math.max(selected.confidence, Math.min(0.88, Math.max(0.62, selected.aliasCoverage)));
+      }
+    }
+
+    const fingerprint = this.createFingerprint(file.platform, selected.fileClass, file.headers);
+    const cached = this.templateCache.get(fingerprint);
+    if (cached) {
+      return {
+        ...cached,
+        fileClass: selected.fileClass,
+        canonicalModel: cached.canonicalModel || selected.expectation.canonicalModel,
+        expectedFields: cached.expectedFields || selected.expectation.expectedFields,
+        reportType: cached.reportType || this.detectReportType(file.platform, file.headers, selected.fileClass),
+        confidence: 1,
+        fingerprint,
+        fromTemplateCache: true,
+      };
+    }
+
+    if (selected.fileClass === 'ledger' && selected.confidence < 0.9 && selected.unresolvedFields.length > 0) {
+      this.logger.log(`Triggering AI ledger field-mapping fallback for platform ${file.platform} with confidence ${selected.confidence.toFixed(2)} and unresolved fields: ${selected.unresolvedFields.join(', ')}`);
+      const aiResult = await this.ai.suggestFieldMappings(file.platform, file.headers, selected.unresolvedFields, file.rows);
       if (aiResult && Object.keys(aiResult.fieldMap).length > 0) {
-        Object.entries(aiResult.fieldMap).forEach(([field, header]) => {
-          if (!fieldMap[field]) {
-            fieldMap[field] = header;
-            aiSuggestedFieldMap[field] = header;
-          }
-        });
-
-        if (fieldMap.gl_account && !fieldMap.account_code) {
-          fieldMap.account_code = fieldMap.gl_account;
-          fieldMap.account_name = fieldMap.gl_account;
-        }
-
-        unresolvedFields = required.filter((field) => !fieldMap[field]);
-        if (!fieldMap.account_code && !fieldMap.amount && !(fieldMap.debit && fieldMap.credit)) {
-          unresolvedFields.push('account_or_amount_shape');
-        }
-
-        const aiMatchedCriticalFields = 6 - unresolvedFields.length;
-        confidence = Math.max(confidence, Math.min(0.91, Math.max(0.45, aiMatchedCriticalFields / 6)));
+        selected = this.buildSchemaCandidate(file, 'ledger', aiResult.fieldMap);
         aiSuggested = true;
         aiReasoning = aiResult.reasoning;
+        aiSuggestedFieldMap = { ...aiSuggestedFieldMap, ...aiResult.fieldMap };
+        selected.confidence = Math.max(selected.confidence, Math.min(0.91, Math.max(0.45, selected.aliasCoverage)));
       }
     }
 
     return {
-      reportType: this.detectReportType(file.platform, file.headers),
-      confidence,
-      fieldMap,
-      unresolvedFields,
+      reportType: this.detectReportType(file.platform, file.headers, selected.fileClass),
+      fileClass: selected.fileClass,
+      canonicalModel: selected.expectation.canonicalModel,
+      expectedFields: selected.expectation.expectedFields,
+      confidence: selected.confidence,
+      fieldMap: selected.fieldMap,
+      unresolvedFields: selected.unresolvedFields,
       fingerprint,
       fromTemplateCache: false,
       aiSuggested,
@@ -445,6 +627,7 @@ export class TransformHubPipelineService implements OnModuleInit {
   }
 
   async persistResolvedTemplate(platform: string, schema: any) {
+    if (schema.fileClass !== 'ledger') return;
     if (schema.confidence < 0.98 || !schema.fingerprint || schema.aiSuggested) return;
 
     await this.schemaTemplateRepo.save(
@@ -475,10 +658,12 @@ export class TransformHubPipelineService implements OnModuleInit {
   evaluateGuardrails(file: any, schema: any): any[] {
     const normalized = file.headers.map((h) => this.sanitizeHeader(h));
     const amountLike = normalized.filter((h) => /amount|net|total|spend/.test(h));
-    const hasTaxonomyFields = Boolean(schema.fieldMap.fund || schema.fieldMap.appeal);
+    const hasTaxonomyFields = Boolean(schema.fieldMap.fund || schema.fieldMap.appeal || schema.fieldMap.campaign_name);
+    const isLedger = schema.fileClass === 'ledger';
+    const isDonor = schema.fileClass === 'donor';
     let taxonomyViolationTriggered = false;
 
-    if (hasTaxonomyFields) {
+    if (hasTaxonomyFields && (isLedger || isDonor || schema.fileClass === 'campaign')) {
       for (const row of file.rows) {
         const rawFund = schema.fieldMap.fund ? row.values[schema.fieldMap.fund] : '';
         const rawAppeal = schema.fieldMap.appeal ? row.values[schema.fieldMap.appeal] : '';
@@ -489,11 +674,11 @@ export class TransformHubPipelineService implements OnModuleInit {
 
     return [
       { code: 'LOW_REPORT_CONFIDENCE', label: 'Report confidence', triggered: schema.confidence < 0.9, detail: 'Schema confidence is below 0.9.' },
-      { code: 'AMOUNT_COLUMN_AMBIGUITY', label: 'Amount ambiguity', triggered: amountLike.length > 1 && !(schema.fieldMap.debit && schema.fieldMap.credit), detail: 'Multiple plausible amount columns without debit/credit shape.' },
-      { code: 'MIXED_AMOUNT_SHAPES', label: 'Mixed amount shapes', triggered: Boolean(schema.fieldMap.amount && (schema.fieldMap.debit || schema.fieldMap.credit)), detail: 'Single-amount and debit-credit columns appear together.' },
-      { code: 'UNRESOLVED_KEY_FIELDS', label: 'Unresolved keys', triggered: schema.unresolvedFields.length >= 2, detail: 'Two or more critical fields remain unresolved.' },
+      { code: 'AMOUNT_COLUMN_AMBIGUITY', label: 'Amount ambiguity', triggered: isLedger && amountLike.length > 1 && !(schema.fieldMap.debit && schema.fieldMap.credit), detail: 'Multiple plausible amount columns without debit/credit shape.' },
+      { code: 'MIXED_AMOUNT_SHAPES', label: 'Mixed amount shapes', triggered: isLedger && Boolean(schema.fieldMap.amount && (schema.fieldMap.debit || schema.fieldMap.credit)), detail: 'Single-amount and debit-credit columns appear together.' },
+      { code: 'UNRESOLVED_KEY_FIELDS', label: 'Unresolved keys', triggered: schema.unresolvedFields.length >= (schema.fileClass === 'unknown' ? 1 : 2), detail: 'Two or more critical fields remain unresolved.' },
       { code: 'UNSTABLE_SUBTOTALS', label: 'Subtotal instability', triggered: file.structureAnalysis.rowRoleSummary.subtotal > 0 || file.structureAnalysis.rowRoleSummary.footer > 0, detail: 'Subtotal or footer rows detected and removed.' },
-      { code: 'CURRENCY_DATE_CONFLICT', label: 'Currency/date conflict', triggered: this.detectCurrencyDateConflict(file.rows), detail: 'Mixed currency codes or date formats.' },
+      { code: 'CURRENCY_DATE_CONFLICT', label: 'Currency/date conflict', triggered: (isLedger || isDonor) && this.detectCurrencyDateConflict(file.rows), detail: 'Mixed currency codes or date formats.' },
       { code: 'TAXONOMY_VIOLATION', label: 'Taxonomy violation', triggered: taxonomyViolationTriggered, detail: hasTaxonomyFields ? 'Unknown appeal/campaign/fund codes detected.' : 'No taxonomy fields in this file.' },
     ];
   }
@@ -511,6 +696,111 @@ export class TransformHubPipelineService implements OnModuleInit {
     const parsed = Number(cleaned);
     if (!Number.isFinite(parsed)) return '';
     return Math.abs(parsed).toFixed(2);
+  }
+
+  private valueFromRow(row: any, fieldMap: Record<string, string>, key: string): string {
+    return String(row.values[fieldMap[key] ?? ''] ?? '').trim();
+  }
+
+  private buildDisplayName(values: string[]): string {
+    return values.map((value) => String(value || '').trim()).filter(Boolean).join(' ').trim();
+  }
+
+  private splitTags(raw: string): string[] {
+    return String(raw || '').split(/[;,]/).map((tag) => tag.trim()).filter(Boolean);
+  }
+
+  buildStructuredPreview(file: any, schema: any): any {
+    const fileClass = schema.fileClass as FileClass;
+    const canonicalModel = schema.canonicalModel;
+    const records = file.rows.map((row: any, index: number) => {
+      if (fileClass === 'constituent') {
+        const firstName = this.valueFromRow(row, schema.fieldMap, 'first_name');
+        const lastName = this.valueFromRow(row, schema.fieldMap, 'last_name');
+        const organizationName = this.valueFromRow(row, schema.fieldMap, 'organization_name');
+        const householdName = this.valueFromRow(row, schema.fieldMap, 'household_name');
+        return {
+          id: `${fileClass}-${index + 1}`,
+          sourceRowRef: row.ref,
+          displayName: organizationName || this.buildDisplayName([firstName, lastName]) || householdName || row.ref,
+          constituentType: this.valueFromRow(row, schema.fieldMap, 'constituent_type'),
+          firstName,
+          lastName,
+          organizationName,
+          householdName,
+          email: this.valueFromRow(row, schema.fieldMap, 'email'),
+          phone: this.valueFromRow(row, schema.fieldMap, 'phone'),
+          address: this.valueFromRow(row, schema.fieldMap, 'address'),
+          city: this.valueFromRow(row, schema.fieldMap, 'city'),
+          state: this.valueFromRow(row, schema.fieldMap, 'state'),
+          postalCode: this.valueFromRow(row, schema.fieldMap, 'postal_code'),
+          country: this.valueFromRow(row, schema.fieldMap, 'country'),
+          tags: this.splitTags(this.valueFromRow(row, schema.fieldMap, 'tags')),
+          assignedStaff: this.valueFromRow(row, schema.fieldMap, 'assigned_staff'),
+          createdAt: this.valueFromRow(row, schema.fieldMap, 'created_at'),
+          updatedAt: this.valueFromRow(row, schema.fieldMap, 'updated_at'),
+        };
+      }
+
+      if (fileClass === 'donor') {
+        return {
+          id: `${fileClass}-${index + 1}`,
+          sourceRowRef: row.ref,
+          donorName: this.valueFromRow(row, schema.fieldMap, 'donor_name') || this.valueFromRow(row, schema.fieldMap, 'entity_name') || row.ref,
+          date: this.valueFromRow(row, schema.fieldMap, 'date'),
+          amount: this.money(this.valueFromRow(row, schema.fieldMap, 'amount')),
+          fund: this.valueFromRow(row, schema.fieldMap, 'fund'),
+          appeal: this.valueFromRow(row, schema.fieldMap, 'appeal'),
+          email: this.valueFromRow(row, schema.fieldMap, 'email'),
+          memo: this.valueFromRow(row, schema.fieldMap, 'memo'),
+          currency: this.valueFromRow(row, schema.fieldMap, 'currency') || 'USD',
+        };
+      }
+
+      if (fileClass === 'campaign') {
+        return {
+          id: `${fileClass}-${index + 1}`,
+          sourceRowRef: row.ref,
+          code: this.valueFromRow(row, schema.fieldMap, 'code'),
+          campaignName: this.valueFromRow(row, schema.fieldMap, 'campaign_name') || row.ref,
+          startDate: this.valueFromRow(row, schema.fieldMap, 'start_date'),
+          endDate: this.valueFromRow(row, schema.fieldMap, 'end_date'),
+          status: this.valueFromRow(row, schema.fieldMap, 'status'),
+          goalAmount: this.money(this.valueFromRow(row, schema.fieldMap, 'goal_amount')),
+        };
+      }
+
+      if (fileClass === 'coa') {
+        return {
+          id: `${fileClass}-${index + 1}`,
+          sourceRowRef: row.ref,
+          accountCode: this.valueFromRow(row, schema.fieldMap, 'account_code'),
+          accountName: this.valueFromRow(row, schema.fieldMap, 'account_name'),
+          accountType: this.valueFromRow(row, schema.fieldMap, 'account_type'),
+          balance: this.money(this.valueFromRow(row, schema.fieldMap, 'balance')),
+        };
+      }
+
+      const values = row.values as Record<string, string>;
+      const preview = Object.entries(values).filter(([, value]) => String(value || '').trim()).slice(0, 3).map(([key, value]) => `${key}: ${value}`).join(' · ');
+      return {
+        id: `${fileClass}-${index + 1}`,
+        sourceRowRef: row.ref,
+        preview: preview || row.ref,
+        values,
+      };
+    });
+
+    return {
+      fileClass,
+      canonicalModel,
+      summary: {
+        rowCount: records.length,
+        populatedFields: Object.keys(schema.fieldMap || {}).length,
+        primaryLabel: fileClass === 'ledger' ? 'Ledger rows' : fileClass === 'constituent' ? 'Constituent records' : fileClass === 'donor' ? 'Donation records' : fileClass === 'campaign' ? 'Campaign rows' : fileClass === 'coa' ? 'Accounts' : 'Raw rows',
+      },
+      records,
+    };
   }
 
   mapToCanonicalRows(file: any, schema: any, guardrails: any[]): any[] {
@@ -624,7 +914,7 @@ export class TransformHubPipelineService implements OnModuleInit {
       ['TxnDate', 'JournalId', 'AccountCode', 'AccountName', 'Debit', 'Credit', 'Currency', 'Memo', 'SourcePlatform', 'SourceRowRef'].join(','),
       ...activeRows.map((row) =>
         [row.date, row.journal_id, row.account_code, row.account_name, row.debit || '', row.credit || '', row.currency, row.memo, row.source_platform, row.source_row_ref]
-          .map((v) => { const cell = String(v ?? ''); return /[",\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell; }).join(',')
+          .map((v) => { const cell = String(v ?? ''); return /[",\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell; }).join(','),
       ),
     ];
 

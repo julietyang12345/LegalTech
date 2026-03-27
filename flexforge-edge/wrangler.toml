@@ -11,6 +11,7 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 BACKEND_URL = "https://api-backend2.flexforge.ai"
 VISUALMIND_BACKEND_URL = "https://visualmind-api-backend.flexforge.ai"
+TRANSFORMHUB_BACKEND_URL = "https://transformhub-api-backend.flexforge.ai"
 FRONTEND_URL = "https://app.flexforge.ai"
 FROM_EMAIL = "noreply@flexforge.ai"
 FROM_NAME = "FlexForge"
@@ -57,8 +58,8 @@ id = "9c1b2e317e904d2195d4b2b49327ebe3"
 
 # Development overrides
 [env.development]
-vars = { BACKEND_URL = "http://localhost:4000", VISUALMIND_BACKEND_URL = "http://localhost:4300", FRONTEND_URL = "http://localhost:5173", FROM_EMAIL = "noreply@flexforge.ai", FROM_NAME = "FlexForge" }
+vars = { BACKEND_URL = "http://localhost:4000", VISUALMIND_BACKEND_URL = "http://localhost:4300", TRANSFORMHUB_BACKEND_URL = "http://localhost:4010", FRONTEND_URL = "http://localhost:5173", FROM_EMAIL = "noreply@flexforge.ai", FROM_NAME = "FlexForge" }
 
 # Staging environment (optional)
 [env.staging]
-vars = { BACKEND_URL = "https://staging-api.flexforge.app", VISUALMIND_BACKEND_URL = "https://staging-visualmind-backend.flexforge.app" }
+vars = { BACKEND_URL = "https://staging-api.flexforge.app", VISUALMIND_BACKEND_URL = "https://staging-visualmind-backend.flexforge.app", TRANSFORMHUB_BACKEND_URL = "https://staging-transformhub-api.flexforge.app" }

@@ -136,6 +136,8 @@ export default function TransformHubPage() {
   const [message, setMessage] = useState<string>('Load a sample or upload CSV/XLSX to run the backend-backed pipeline.');
   const [fallbackFileName, setFallbackFileName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [blockedHardStops, setBlockedHardStops] = useState<any[] | null>(null);
+  const [pendingIngestPayload, setPendingIngestPayload] = useState<any | null>(null);
 
   // Layer 03 state
   const [personResult, setPersonResult] = useState<PersonResolverResult | null>(null);
@@ -147,7 +149,7 @@ export default function TransformHubPage() {
   const [taxonomyResult, setTaxonomyResult] = useState<TaxonomyGovernanceResult | null>(null);
   const [registry, setRegistry] = useState<TaxonomyCode[]>([]);
   const [legacyMap, setLegacyMap] = useState<LegacyMapping[]>([]);
-  const [coa, setCoa] = useState<Array<{ id: string; code: string; name: string }>>([]);
+  const [, setCoa] = useState<Array<{ id: string; code: string; name: string }>>([]);
 
   // Layer 08 state
   const [auditResult, setAuditResult] = useState<AuditRuleResult | null>(null);
@@ -181,7 +183,6 @@ export default function TransformHubPage() {
   const readyRows = rows.filter((row) => row.review_status === 'approved').length;
   const reviewRows = rows.filter((row) => row.review_status === 'pending').length;
   const rejectedRows = rows.filter((row) => row.review_status === 'rejected').length;
-  const templateMatched = Boolean(schema?.fromTemplateCache);
   const structureAnalysis = parsedFile?.structureAnalysis ?? null;
   const isCrmPlatform = CRM_PLATFORMS.has(platform);
   const activeRows = rows.filter((row) => row.review_status !== 'rejected');
@@ -194,6 +195,16 @@ export default function TransformHubPage() {
     return true;
   });
   const activeFixRowId = rowSpotlight === 'all' ? null : visibleRows[0]?.id ?? null;
+  const preview = parsedFile?.preview ?? null;
+  const fileClass = schema?.fileClass ?? preview?.fileClass ?? 'ledger';
+  const isLedgerFile = fileClass === 'ledger';
+  const previewRecords = preview?.records ?? [];
+  const previewCount = preview?.summary.rowCount ?? parsedFile?.rows.length ?? 0;
+  const heroTitle = isLedgerFile ? 'Canonical ledger in the center.' : 'Canonical records in the center.';
+  const heroSummary = isLedgerFile
+    ? 'Everything flows into one final ledger, and every export flows back out from the same reviewed rows.'
+    : 'Each upload is classified first, normalized into its own canonical model, and reviewed in a file-specific table before export.';
+
 
 
   function applySession(session: TransformSession, nextMessage?: string) {
@@ -275,8 +286,10 @@ export default function TransformHubPage() {
     scrollToSelector('#th-mapping-layer .th-map-rule, #th-mapping-layer .th-map-row');
   }
 
-  async function hydrateUpload(payload: { fileName: string; kind: 'text' | 'xlsx'; contents?: string; contentsBase64?: string }) {
+  async function hydrateUpload(payload: { fileName: string; kind: 'text' | 'xlsx'; contents?: string; contentsBase64?: string }, forceIngest = false) {
     setIsLoading(true);
+    setBlockedHardStops(null);
+    setPendingIngestPayload(null);
     setReceipts([]);
     setPreflight(null);
     setFallbackFileName(null);
@@ -287,7 +300,7 @@ export default function TransformHubPage() {
     setMergeDecisions(new Map());
 
     try {
-      const result = await ingestFile({ platform, fileName: payload.fileName, kind: payload.kind, contents: payload.contents, contentsBase64: payload.contentsBase64 });
+      const result = await ingestFile({ platform, fileName: payload.fileName, kind: payload.kind, contents: payload.contents, contentsBase64: payload.contentsBase64, forceIngest });
       const nextStatus = deriveSessionStatus(result.rows, null, []);
       const nextTaxonomy = result.taxonomy ?? null;
       const nextAudit = result.audit ?? null;
@@ -304,20 +317,36 @@ export default function TransformHubPage() {
         setAuditResult(nextAudit);
         setMessage(`Loaded ${result.parsedFile.rows.length} rows · ${nextAudit?.errorCount ?? 0} audit error(s) · ${nextTaxonomy?.unmappedCount ?? 0} taxonomy exception(s).`);
       });
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Failed to process the file.');
-      setParsedFile(null);
-      setSchema(null);
-      setRows([]);
-      setGuardrails([]);
-      setReceipts([]);
-      setPreflight(null);
-      setSessionId(null);
-      setSessionStatus('review');
-      setSessionUpdatedAt(null);
+    } catch (error: any) {
+      const body = error?.response?.data ?? error?.data ?? null;
+      if (body?.hardStops?.length > 0) {
+        setBlockedHardStops(body.hardStops);
+        setPendingIngestPayload(payload);
+        setGuardrails(body.guardrails ?? []);
+        setParsedFile(body.parsedFile ?? null);
+        setSchema(body.schema ?? null);
+        setRows([]);
+        setMessage(`Blocked by ${body.hardStops.length} hard-stop guardrail${body.hardStops.length === 1 ? '' : 's'}. Review below and ingest anyway if intentional.`);
+      } else {
+        setMessage(error instanceof Error ? error.message : 'Failed to process the file.');
+        setParsedFile(null);
+        setSchema(null);
+        setRows([]);
+        setGuardrails([]);
+        setReceipts([]);
+        setPreflight(null);
+        setSessionId(null);
+        setSessionStatus('review');
+        setSessionUpdatedAt(null);
+      }
     } finally {
       setIsLoading(false);
     }
+  }
+
+  async function handleForceIngest() {
+    if (!pendingIngestPayload) return;
+    await hydrateUpload(pendingIngestPayload, true);
   }
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -714,6 +743,42 @@ export default function TransformHubPage() {
     URL.revokeObjectURL(href);
   }
 
+  function csvCell(value: unknown) {
+    const cell = String(value ?? "");
+    return /[",\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell;
+  }
+
+  function buildPreviewCsv() {
+    if (!preview || previewRecords.length === 0) return "";
+    if (fileClass === "constituent") return [
+      "SourceRowRef,DisplayName,ConstituentType,FirstName,LastName,OrganizationName,HouseholdName,Email,Phone,City,State,Country,AssignedStaff,CreatedAt,UpdatedAt",
+      ...previewRecords.map((record: any) => [record.sourceRowRef, record.displayName, record.constituentType, record.firstName, record.lastName, record.organizationName, record.householdName, record.email, record.phone, record.city, record.state, record.country, record.assignedStaff, record.createdAt, record.updatedAt].map(csvCell).join(",")),
+    ].join("\n");
+    if (fileClass === "donor") return [
+      "SourceRowRef,DonorName,Date,Amount,Fund,Appeal,Email,Memo,Currency",
+      ...previewRecords.map((record: any) => [record.sourceRowRef, record.donorName, record.date, record.amount, record.fund, record.appeal, record.email, record.memo, record.currency].map(csvCell).join(",")),
+    ].join("\n");
+    if (fileClass === "campaign") return [
+      "SourceRowRef,Code,CampaignName,StartDate,EndDate,Status,GoalAmount",
+      ...previewRecords.map((record: any) => [record.sourceRowRef, record.code, record.campaignName, record.startDate, record.endDate, record.status, record.goalAmount].map(csvCell).join(",")),
+    ].join("\n");
+    if (fileClass === "coa") return [
+      "SourceRowRef,AccountCode,AccountName,AccountType,Balance",
+      ...previewRecords.map((record: any) => [record.sourceRowRef, record.accountCode, record.accountName, record.accountType, record.balance].map(csvCell).join(",")),
+    ].join("\n");
+    return ["SourceRowRef,Preview", ...previewRecords.map((record: any) => [record.sourceRowRef, record.preview ?? ""].map(csvCell).join(","))].join("\n");
+  }
+
+  function handleExportPreview() {
+    const csv = buildPreviewCsv();
+    if (!csv) {
+      setMessage("Nothing to export from this file class yet.");
+      return;
+    }
+    downloadCsv("transformhub-" + fileClass + "-" + new Date().toISOString().slice(0, 10) + ".csv", csv);
+    setMessage("Exported " + previewRecords.length + " " + fileClass + " record" + (previewRecords.length === 1 ? "" : "s") + ".");
+  }
+
   const activeAuditCatalog = auditResult?.ruleCatalog ?? auditCatalog;
   const activeAuditEngineVersion = auditResult?.engineVersion ?? auditEngineVersion;
   const auditCatalogByCode = new Map(activeAuditCatalog.map((rule) => [rule.code, rule]));
@@ -750,7 +815,7 @@ export default function TransformHubPage() {
       count: guardrails.length > 0 ? `${guardrails.filter((g) => !g.triggered).length}/${guardrails.length} clear` : null,
       target: 'th-guardrails',
     },
-    ...(isCrmPlatform
+    ...(isLedgerFile && isCrmPlatform
       ? [
           {
             id: 'identity',
@@ -761,41 +826,67 @@ export default function TransformHubPage() {
           },
         ]
       : []),
-    {
-      id: 'mapping',
-      label: 'Mapping',
-      status: rows.length === 0 ? 'idle' : highConfidenceRows >= rows.length * 0.7 ? 'ok' : rows.length > 0 ? 'warning' : 'idle',
-      count: rows.length > 0 ? `${highConfidenceRows}/${rows.length} high-conf` : null,
-      target: 'th-mapping-layer',
-    },
-    {
-      id: 'taxonomy',
-      label: 'Taxonomy',
-      status: !taxonomyResult ? 'idle' : taxonomyResult.unmappedCount > 0 ? 'warning' : 'ok',
-      count: taxonomyResult ? `${taxonomyResult.resolvedCount} resolved · ${taxonomyResult.unmappedCount} queued` : null,
-      target: 'th-taxonomy',
-    },
-    {
-      id: 'review',
-      label: 'Review',
-      status: rows.length === 0 ? 'idle' : reviewRows > 0 ? 'warning' : readyRows > 0 ? 'ok' : 'idle',
-      count: rows.length > 0 ? `${readyRows} approved · ${reviewRows} pending` : null,
-      target: 'th-review',
-    },
-    {
-      id: 'audit',
-      label: 'Audit',
-      status: !auditResult ? 'idle' : auditResult.errorCount > 0 ? 'error' : auditResult.warningCount > 0 ? 'warning' : 'ok',
-      count: auditResult ? `${auditResult.errorCount} errors · ${auditResult.warningCount} warnings` : null,
-      target: 'th-audit',
-    },
-    {
-      id: 'export',
-      label: 'Export',
-      status: receipts.length > 0 ? 'ok' : preflight?.valid ? 'ok' : 'idle',
-      count: receipts.length > 0 ? `${receipts.length} posted` : preflight?.valid ? 'ready' : null,
-      target: 'th-export',
-    },
+    ...(isLedgerFile
+      ? [
+          {
+            id: 'mapping',
+            label: 'Mapping',
+            status: (rows.length === 0 ? 'idle' : highConfidenceRows >= rows.length * 0.7 ? 'ok' : rows.length > 0 ? 'warning' : 'idle') as NodeStatus,
+            count: rows.length > 0 ? `${highConfidenceRows}/${rows.length} high-conf` : null,
+            target: 'th-mapping-layer',
+          },
+          {
+            id: 'taxonomy',
+            label: 'Taxonomy',
+            status: (!taxonomyResult ? 'idle' : taxonomyResult.unmappedCount > 0 ? 'warning' : 'ok') as NodeStatus,
+            count: taxonomyResult ? `${taxonomyResult.resolvedCount} resolved · ${taxonomyResult.unmappedCount} queued` : null,
+            target: 'th-taxonomy',
+          },
+          {
+            id: 'review',
+            label: 'Review',
+            status: (rows.length === 0 ? 'idle' : reviewRows > 0 ? 'warning' : readyRows > 0 ? 'ok' : 'idle') as NodeStatus,
+            count: rows.length > 0 ? `${readyRows} approved · ${reviewRows} pending` : null,
+            target: 'th-review',
+          },
+          {
+            id: 'audit',
+            label: 'Audit',
+            status: (!auditResult ? 'idle' : auditResult.errorCount > 0 ? 'error' : auditResult.warningCount > 0 ? 'warning' : 'ok') as NodeStatus,
+            count: auditResult ? `${auditResult.errorCount} errors · ${auditResult.warningCount} warnings` : null,
+            target: 'th-audit',
+          },
+          {
+            id: 'export',
+            label: 'Export',
+            status: (receipts.length > 0 ? 'ok' : preflight?.valid ? 'ok' : 'idle') as NodeStatus,
+            count: receipts.length > 0 ? `${receipts.length} posted` : preflight?.valid ? 'ready' : null,
+            target: 'th-export',
+          },
+        ]
+      : [
+          {
+            id: 'mapping',
+            label: 'Canonical model',
+            status: (!preview ? 'idle' : previewRecords.length > 0 ? 'ok' : schema ? 'warning' : 'idle') as NodeStatus,
+            count: preview ? `${previewRecords.length}/${previewCount} previewed` : null,
+            target: 'th-nonledger-review',
+          },
+          {
+            id: 'review',
+            label: 'Review',
+            status: (!preview ? 'idle' : previewRecords.length > 0 ? 'ok' : 'warning') as NodeStatus,
+            count: preview ? `${previewRecords.length} ${fileClass} records` : null,
+            target: 'th-nonledger-review',
+          },
+          {
+            id: 'export',
+            label: 'Export',
+            status: (previewRecords.length > 0 ? 'ok' : 'idle') as NodeStatus,
+            count: previewRecords.length > 0 ? `${previewRecords.length} rows ready` : null,
+            target: 'th-nonledger-output',
+          },
+        ]),
   ];
 
   return (
@@ -814,7 +905,7 @@ export default function TransformHubPage() {
                 {sessionUpdatedAt && ` · ${new Date(sessionUpdatedAt).toLocaleTimeString()}`}
               </span>
             )}
-            <button type="button" className="th-button th-button-secondary" onClick={handleSaveSession} disabled={!sessionId || rows.length === 0} style={{ minHeight: 34, fontSize: '0.82rem' }}>
+            <button type="button" className="th-button th-button-secondary" onClick={handleSaveSession} disabled={!sessionId || (rows.length === 0 && previewRecords.length === 0)} style={{ minHeight: 34, fontSize: '0.82rem' }}>
               <Save size={14} /> Save
             </button>
             <button type="button" className="th-button th-button-secondary" onClick={handleReloadSession} disabled={!sessionId} style={{ minHeight: 34, fontSize: '0.82rem' }}>
@@ -829,21 +920,21 @@ export default function TransformHubPage() {
           <div className="th-canonical-hero">
             <div className="th-canonical-copy">
               <span className="th-eyebrow">System of record</span>
-              <h1>Canonical ledger in the center</h1>
-              <p>Everything flows into one final ledger, and every export flows back out from the same reviewed rows.</p>
+              <h1>{heroTitle}</h1>
+              <p>{heroSummary}</p>
             </div>
             <div className="th-canonical-metrics">
               <div className="th-metric-card">
-                <strong>{activeRows.length}</strong>
-                <span>Active ledger rows</span>
+                <strong>{isLedgerFile ? activeRows.length : previewCount}</strong>
+                <span>{isLedgerFile ? 'Active ledger rows' : 'Classified records'}</span>
               </div>
               <div className="th-metric-card">
-                <strong>{rowsWithCanonicalDestination}</strong>
-                <span>Rows with posting destination</span>
+                <strong>{isLedgerFile ? rowsWithCanonicalDestination : Object.keys(schema?.fieldMap ?? {}).length}</strong>
+                <span>{isLedgerFile ? 'Rows with posting destination' : 'Mapped source fields'}</span>
               </div>
               <div className="th-metric-card">
-                <strong>{highConfidenceRows}</strong>
-                <span>High-confidence mappings</span>
+                <strong>{isLedgerFile ? highConfidenceRows : Math.round((schema?.confidence ?? 0) * 100) + '%'}</strong>
+                <span>{isLedgerFile ? 'High-confidence mappings' : 'Classifier confidence'}</span>
               </div>
             </div>
           </div>
@@ -883,6 +974,37 @@ export default function TransformHubPage() {
             </div>
           </div>
         </section>
+
+        {/* ── Hard-stop banner ────────────────────────────────────────────── */}
+        {blockedHardStops && blockedHardStops.length > 0 && (
+          <section className="th-section">
+            <div className="th-panel" style={{ borderColor: 'rgba(166,64,52,0.3)', background: 'rgba(255,232,228,0.6)' }}>
+              <div className="th-panel-head">
+                <span style={{ color: 'var(--th-red)' }}>
+                  <ShieldAlert size={16} style={{ display: 'inline', marginRight: 6 }} />
+                  Ingest blocked — {blockedHardStops.length} hard-stop guardrail{blockedHardStops.length === 1 ? '' : 's'}
+                </span>
+                <button type="button" className="th-button th-button-primary" style={{ background: 'var(--th-red)', borderColor: 'var(--th-red)' }} onClick={handleForceIngest} disabled={isLoading}>
+                  <ArrowRight size={14} /> Ingest anyway
+                </button>
+              </div>
+              <div className="th-stack">
+                {blockedHardStops.map((stop: any) => (
+                  <div key={stop.code} className="th-guardrail is-triggered">
+                    <AlertTriangle size={15} />
+                    <div>
+                      <strong>{stop.label ?? stop.code}</strong>
+                      <p>{stop.detail}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="th-helper" style={{ marginTop: 10 }}>
+                These guardrails indicate the file may not produce valid canonical rows. "Ingest anyway" bypasses the block and lets you review the raw data.
+              </p>
+            </div>
+          </section>
+        )}
 
         {/* ── Pipeline strip ──────────────────────────────────────────────── */}
         <section className="th-section">
@@ -956,7 +1078,7 @@ export default function TransformHubPage() {
         )}
 
         {/* ── Identity Resolution (CRM platforms only) ────────────────────── */}
-        {isCrmPlatform && rows.length > 0 && (
+        {isLedgerFile && isCrmPlatform && rows.length > 0 && (
           <section className="th-section" id="th-identity">
             <div className="th-panel">
               <div className="th-panel-head">
@@ -1067,7 +1189,7 @@ export default function TransformHubPage() {
           </section>
         )}
 
-        {rows.length > 0 && (
+        {isLedgerFile && rows.length > 0 && (
           <TransformHubMappingLayerPanel
             platform={platform}
             schema={schema}
@@ -1077,7 +1199,7 @@ export default function TransformHubPage() {
         )}
 
         {/* ── Taxonomy ────────────────────────────────────────────────────── */}
-        {rows.length > 0 && (
+        {isLedgerFile && rows.length > 0 && (
           <section className="th-section" id="th-taxonomy">
             <div className="th-panel">
               <div className="th-panel-head">
@@ -1144,7 +1266,7 @@ export default function TransformHubPage() {
         )}
 
         {/* ── Review ledger ────────────────────────────────────────────────── */}
-        {rows.length > 0 && (
+        {isLedgerFile && rows.length > 0 && (
           <section className="th-section" id="th-review">
             <div className="th-panel">
               <div className="th-panel-head">
@@ -1302,7 +1424,173 @@ export default function TransformHubPage() {
         )}
 
         {/* ── Audit + Pre-flight ───────────────────────────────────────────── */}
-        {rows.length > 0 && (
+        {!isLedgerFile && preview && previewRecords.length > 0 && (
+          <section className="th-section" id="th-review">
+            <div className="th-panel">
+              <div className="th-panel-head">
+                <span><span className="th-layer-badge">09</span> Review {fileClass}</span>
+                <span>{preview.summary.rowCount} records · {preview.canonicalModel}</span>
+              </div>
+              <p className="th-helper">This file was classified as <strong>{fileClass}</strong>. It stays out of the ledger posting flow and is reviewed in its own canonical table.</p>
+              <div className="th-table-wrap">
+                {fileClass === 'constituent' && (
+                  <table className="th-table">
+                    <thead>
+                      <tr>
+                        <th>Source</th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Location</th>
+                        <th>Owner</th>
+                        <th>Updated</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewRecords.map((record: any) => (
+                        <tr key={record.id}>
+                          <td>{record.sourceRowRef}</td>
+                          <td><strong>{record.displayName}</strong><div className="th-inline-note">{record.householdName || record.organizationName || record.firstName}</div></td>
+                          <td>{record.constituentType || 'Unknown'}</td>
+                          <td>{record.email || '—'}</td>
+                          <td>{record.phone || '—'}</td>
+                          <td>{[record.city, record.state, record.country].filter(Boolean).join(', ') || '—'}</td>
+                          <td>{record.assignedStaff || '—'}</td>
+                          <td>{record.updatedAt || record.createdAt || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {fileClass === 'donor' && (
+                  <table className="th-table">
+                    <thead>
+                      <tr>
+                        <th>Source</th>
+                        <th>Donor</th>
+                        <th>Date</th>
+                        <th>Amount</th>
+                        <th>Fund</th>
+                        <th>Appeal</th>
+                        <th>Email</th>
+                        <th>Memo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewRecords.map((record: any) => (
+                        <tr key={record.id}>
+                          <td>{record.sourceRowRef}</td>
+                          <td><strong>{record.donorName}</strong></td>
+                          <td>{record.date || '—'}</td>
+                          <td>{record.amount || '—'} {record.currency || ''}</td>
+                          <td>{record.fund || '—'}</td>
+                          <td>{record.appeal || '—'}</td>
+                          <td>{record.email || '—'}</td>
+                          <td>{record.memo || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {fileClass === 'campaign' && (
+                  <table className="th-table">
+                    <thead>
+                      <tr>
+                        <th>Source</th>
+                        <th>Code</th>
+                        <th>Name</th>
+                        <th>Status</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Goal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewRecords.map((record: any) => (
+                        <tr key={record.id}>
+                          <td>{record.sourceRowRef}</td>
+                          <td>{record.code || '—'}</td>
+                          <td><strong>{record.campaignName}</strong></td>
+                          <td>{record.status || '—'}</td>
+                          <td>{record.startDate || '—'}</td>
+                          <td>{record.endDate || '—'}</td>
+                          <td>{record.goalAmount || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {fileClass === 'coa' && (
+                  <table className="th-table">
+                    <thead>
+                      <tr>
+                        <th>Source</th>
+                        <th>Account Code</th>
+                        <th>Account Name</th>
+                        <th>Type</th>
+                        <th>Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewRecords.map((record: any) => (
+                        <tr key={record.id}>
+                          <td>{record.sourceRowRef}</td>
+                          <td>{record.accountCode || '—'}</td>
+                          <td><strong>{record.accountName || '—'}</strong></td>
+                          <td>{record.accountType || '—'}</td>
+                          <td>{record.balance || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {fileClass === 'unknown' && (
+                  <table className="th-table">
+                    <thead>
+                      <tr>
+                        <th>Source</th>
+                        <th>Preview</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewRecords.map((record: any) => (
+                        <tr key={record.id}>
+                          <td>{record.sourceRowRef}</td>
+                          <td>{record.preview || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {!isLedgerFile && preview && previewRecords.length > 0 && (
+          <section className="th-section" id="th-export">
+            <div className="th-panel">
+              <div className="th-panel-head">
+                <span><span className="th-layer-badge">10</span> Outputs</span>
+              </div>
+              <div className="th-grid th-grid-3">
+                <article className="th-output-card">
+                  <div className="th-card-head"><FileSpreadsheet size={16} /><strong>{fileClass} export</strong></div>
+                  <p>Export the class-specific canonical view without forcing this file through the ledger posting flow.</p>
+                  <button type="button" className="th-button th-button-primary" onClick={handleExportPreview}>
+                    <FileSpreadsheet size={14} /> Export
+                  </button>
+                </article>
+                <article className="th-output-card">
+                  <div className="th-card-head"><Database size={16} /><strong>Classifier summary</strong></div>
+                  <p>{preview.summary.primaryLabel} · {Object.keys(schema?.fieldMap ?? {}).length} mapped field{Object.keys(schema?.fieldMap ?? {}).length === 1 ? '' : 's'} · {Math.round((schema?.confidence ?? 0) * 100)}% confidence.</p>
+                </article>
+              </div>
+            </div>
+          </section>
+        )}
+        {isLedgerFile && rows.length > 0 && (
           <section className="th-section th-grid th-main-grid" id="th-audit">
             <article className="th-panel" id="th-audit-mode">
               <div className="th-panel-head">
@@ -1407,7 +1695,7 @@ export default function TransformHubPage() {
         )}
 
         {/* ── Outputs ─────────────────────────────────────────────────────── */}
-        {rows.length > 0 && (
+        {isLedgerFile && rows.length > 0 && (
           <section className="th-section" id="th-export">
             <div className="th-panel">
               <div className="th-panel-head">

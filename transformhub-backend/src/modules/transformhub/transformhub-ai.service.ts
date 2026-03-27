@@ -87,6 +87,8 @@ Respond ONLY with valid JSON: {"code": "CANONICAL-CODE" | null, "reasoning": "on
   ): Promise<{ fieldMap: Record<string, string>; reasoning: string } | null> {
     if (!this.client || unresolvedFields.length === 0) return null;
 
+    this.logger.log(`AI schema mapping triggered for platform ${platform} with ${headers.length} headers and unresolved fields: ${unresolvedFields.join(', ')}`);
+
     const sampleValues = sampleRows.slice(0, 3).map((row) => row.values ?? row);
     const prompt = `You are suggesting canonical field mappings for an imported financial data file.
 
@@ -140,6 +142,66 @@ Respond ONLY with valid JSON: {"fieldMap": {"canonical_field": "exact_header_str
       return { fieldMap, reasoning: String(parsed.reasoning ?? '') };
     } catch (err) {
       this.logger.warn(`AI schema mapping failed for platform "${platform}": ${String(err)}`);
+      return null;
+    }
+  }
+
+
+  async suggestSchemaClassAndMappings(
+    platform: string,
+    headers: string[],
+    sampleRows: any[],
+    classFieldOptions: Record<string, string[]>,
+  ): Promise<{ fileClass: string; fieldMap: Record<string, string>; reasoning: string } | null> {
+    if (!this.client) return null;
+
+    this.logger.log(`AI schema class+mappings triggered for platform ${platform} with ${headers.length} headers.`);
+
+    const sampleValues = sampleRows.slice(0, 3).map((row) => row.values ?? row);
+    const prompt = `You are classifying an imported TransformHub file and mapping its fields in one pass.
+
+Rules:
+- This is an AI suggestion only.
+- A human reviewer must approve before it is treated as final.
+- Choose exactly one file class from: ledger | constituent | donor | campaign | coa | unknown.
+- Use exact header strings from the provided header list.
+- Only map fields that belong to the chosen class.
+- Only map fields you are reasonably confident about.
+
+Platform: ${platform}
+Headers: ${JSON.stringify(headers)}
+Sample rows: ${JSON.stringify(sampleValues)}
+Allowed canonical fields by class: ${JSON.stringify(classFieldOptions)}
+
+Respond ONLY with valid JSON: {"fileClass":"ledger|constituent|donor|campaign|coa|unknown","fieldMap":{"canonical_field":"exact_header_string"},"reasoning":"one short sentence"}`;
+
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.schemaModel,
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        max_tokens: 350,
+        temperature: 0,
+      });
+
+      const parsed = JSON.parse(response.choices[0].message.content ?? '{}');
+      const fileClass = typeof parsed.fileClass === 'string' ? parsed.fileClass.trim() : 'unknown';
+      const fieldMap: Record<string, string> = {};
+      if (parsed.fieldMap && typeof parsed.fieldMap === 'object') {
+        for (const [field, header] of Object.entries(parsed.fieldMap)) {
+          if (typeof header === 'string' && headers.includes(header)) {
+            fieldMap[field] = header;
+          }
+        }
+      }
+
+      return {
+        fileClass,
+        fieldMap,
+        reasoning: String(parsed.reasoning ?? ''),
+      };
+    } catch (err) {
+      this.logger.warn(`AI schema class+mappings failed for platform "${platform}": ${String(err)}`);
       return null;
     }
   }

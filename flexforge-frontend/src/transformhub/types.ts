@@ -10,6 +10,8 @@ export type SourcePlatform =
   | 'GiveButter'
   | 'Xero';
 
+export type FileClass = 'ledger' | 'constituent' | 'donor' | 'campaign' | 'coa' | 'unknown';
+
 export type ReportType =
   | 'general-ledger'
   | 'payout-export'
@@ -17,6 +19,10 @@ export type ReportType =
   | 'ad-spend'
   | 'donation-export'
   | 'crm-export'
+  | 'constituent-export'
+  | 'donor-export'
+  | 'campaign-export'
+  | 'chart-of-accounts'
   | 'unknown';
 
 export type GuardrailCode =
@@ -52,6 +58,81 @@ export type StructureAnalysis = {
   warnings: string[];
 };
 
+export type ConstituentPreviewRecord = {
+  id: string;
+  sourceRowRef: string;
+  displayName: string;
+  constituentType: string;
+  firstName: string;
+  lastName: string;
+  organizationName: string;
+  householdName: string;
+  email: string;
+  phone: string;
+  address: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  tags: string[];
+  assignedStaff: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DonorPreviewRecord = {
+  id: string;
+  sourceRowRef: string;
+  donorName: string;
+  date: string;
+  amount: string;
+  fund: string;
+  appeal: string;
+  email: string;
+  memo: string;
+  currency: string;
+};
+
+export type CampaignPreviewRecord = {
+  id: string;
+  sourceRowRef: string;
+  code: string;
+  campaignName: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  goalAmount: string;
+};
+
+export type CoaPreviewRecord = {
+  id: string;
+  sourceRowRef: string;
+  accountCode: string;
+  accountName: string;
+  accountType: string;
+  balance: string;
+};
+
+export type UnknownPreviewRecord = {
+  id: string;
+  sourceRowRef: string;
+  preview: string;
+  values: Record<string, string>;
+};
+
+export type ClassifiedPreview = {
+  fileClass: FileClass;
+  canonicalModel: string;
+  summary: {
+    rowCount: number;
+    populatedFields: number;
+    primaryLabel: string;
+  };
+  records: Array<
+    ConstituentPreviewRecord | DonorPreviewRecord | CampaignPreviewRecord | CoaPreviewRecord | UnknownPreviewRecord
+  >;
+};
+
 export type ParsedFile = {
   fileName: string;
   delimiter: string;
@@ -59,20 +140,28 @@ export type ParsedFile = {
   rows: ParsedSourceRow[];
   platform: SourcePlatform;
   structureAnalysis: StructureAnalysis;
+  preview?: ClassifiedPreview;
 };
 
 export type ResolvedSchema = {
   reportType: ReportType;
+  fileClass: FileClass;
+  canonicalModel: string;
+  expectedFields: string[];
   confidence: number;
   fieldMap: Partial<
     Record<
-      CanonicalFieldKey | 'amount' | 'gl_account' | 'fund' | 'appeal' | 'email' | 'phone' | 'address',
+      CanonicalFieldKey | 'amount' | 'gl_account' | 'fund' | 'appeal' | 'email' | 'phone' | 'address' | 'constituent_type' | 'first_name' | 'last_name' | 'organization_name' | 'household_name' | 'city' | 'state' | 'postal_code' | 'country' | 'created_at' | 'updated_at' | 'tags' | 'assigned_staff' | 'donor_name' | 'campaign_name' | 'start_date' | 'end_date' | 'status' | 'goal_amount' | 'code' | 'account_type' | 'balance',
       string
     >
   >;
   unresolvedFields: string[];
   fingerprint: string;
   fromTemplateCache: boolean;
+  aiSuggested?: boolean;
+  aiSuggestedFieldMap?: Record<string, string>;
+  aiReasoning?: string | null;
+  requiresHumanApproval?: boolean;
 };
 
 export type CanonicalFieldKey =
@@ -108,13 +197,11 @@ export type CanonicalLedgerRow = {
   suggested_fix: string | null;
   qbo_account_id: string | null;
   qbo_txn_id: string | null;
-  // Layer 03 + 04 fields
   canonical_person_id: string | null;
   canonical_household_id: string | null;
   raw_fund: string | null;
   raw_appeal: string | null;
   taxonomy_exception_id: string | null;
-  // Layer 06 fields
   canonical_org_id: string | null;
   attribution_entry_id: string | null;
   normalized_fund: string | null;
@@ -167,8 +254,6 @@ export type TransformSession = {
   status: TransformSessionStatus;
   auditDecisions?: PersistedMergeDecision[];
 };
-
-// ─── Layer 03: Identity + Household Resolution ───────────────────────────────
 
 export type PersonMatchDecision = 'auto' | 'review' | 'new';
 
@@ -230,8 +315,6 @@ export type HouseholdResolverResult = {
   audit?: AuditRuleResult;
 };
 
-// ─── Layer 04: Taxonomy Governance ───────────────────────────────────────────
-
 export type TaxonomyCodeType = 'appeal' | 'campaign' | 'fund';
 
 export type TaxonomyCode = {
@@ -259,55 +342,42 @@ export type TaxonomyException = {
   resolvedAt: string | null;
 };
 
+export type TaxonomyViolation = {
+  rowRef: string;
+  field: string;
+  rawValue: string;
+  suggestedCode?: string | null;
+};
+
 export type TaxonomyGovernanceResult = {
-  violations: Array<{ rowRef: string; field: string; rawValue: string; suggestedCode: string | null }>;
+  violations: TaxonomyViolation[];
   exceptions: TaxonomyException[];
   resolvedCount: number;
   unmappedCount: number;
 };
 
-// ─── Layer 08: Operational Audit Rules ───────────────────────────────────────
+export type AuditRuleCatalogEntry = {
+  code: string;
+  label: string;
+  severity: 'error' | 'warning' | 'info';
+  version?: number;
+  description?: string;
+};
 
-export type AuditRuleCode =
-  | 'MONTHLY_DONOR_TAG_GAP'
-  | 'LAPSED_MONTHLY_DONOR'
-  | 'DOWNGRADE_RISK'
-  | 'MAJOR_GIFT_NO_DD'
-  | 'SPLIT_DD_ACROSS_HOUSEHOLD'
-  | 'WRONG_GL_ACCOUNT'
-  | 'WORKPLACE_GIFT_NO_EMPLOYER'
-  | 'UNMATCHED_MATCHING_GIFT'
-  | 'CAMPAIGN_VS_GOAL'
-  | 'UNKNOWN_APPEAL_CODE'
-  | 'LYBUNT_SYBUNT'
-  | 'AUTO_RERUN';
+export type AuditRuleCatalogResponse = {
+  engineVersion: string;
+  ruleCatalog: AuditRuleCatalogEntry[];
+};
 
 export type AuditRuleFinding = {
-  ruleCode: AuditRuleCode;
+  ruleCode: string;
+  ruleVersion?: number;
   label: string;
   severity: 'error' | 'warning' | 'info';
-  rowIds: string[];
   count: number;
   message: string;
-  detail: string;
-  ruleVersion?: number;
-};
-
-export type AuditRuleCatalogEntry = {
-  code: AuditRuleCode;
-  label: string;
-  severity: 'error' | 'warning' | 'info';
-  version: number;
-  description: string;
-};
-
-export type AuditDelta = {
-  trend: string;
-  newFindings: string[];
-  resolvedFindings: string[];
-  issueCountChange?: number;
-  errorCountChange?: number;
-  warningCountChange?: number;
+  detail?: string;
+  rowIds: string[];
 };
 
 export type AuditRuleResult = {
@@ -315,61 +385,45 @@ export type AuditRuleResult = {
   errorCount: number;
   warningCount: number;
   infoCount: number;
-  totalIssues: number;
+  generatedAt?: string;
   engineVersion?: string;
-  ruleCatalog?: AuditRuleCatalogEntry[];
-  delta?: AuditDelta;
   deltaTrend?: string;
   latestPersistedRunId?: string | null;
-  generatedAt?: string;
+  delta?: { trend?: string };
+  ruleCatalog?: AuditRuleCatalogEntry[];
 };
-
-
-export type AuditRuleCatalogResponse = {
-  engineVersion: string;
-  ruleCatalog: AuditRuleCatalogEntry[];
-};
-
-// ─── Layer 10: Outputs ────────────────────────────────────────────────────────
 
 export type DonorReport = {
-  persons: CanonicalPerson[];
-  households: CanonicalHousehold[];
+  generatedAt: string;
   donationCount: number;
   totalDebit: number;
   totalCredit: number;
-  generatedAt: string;
+  persons: CanonicalPerson[];
+  households: CanonicalHousehold[];
 };
 
-export type AuditDashboard = AuditRuleResult & {
-  deltaTrend: string;
-  generatedAt: string;
-};
-
-export type CampaignPerformanceReportItem = {
-  canonicalCode: string;
-  totalRaised: number;
-  donationCount: number;
-  retentionBucket: string;
-};
+export type AuditDashboard = AuditRuleResult;
 
 export type CampaignPerformanceReport = {
-  campaigns: CampaignPerformanceReportItem[];
   generatedAt: string;
-};
-
-export type CrmSyncExportRow = {
-  canonical_person_id: string | null;
-  canonical_household_id: string | null;
-  canonical_org_id: string | null;
-  name: string;
-  formatted_for: string;
-  source_row_ref: string;
+  campaigns: Array<{
+    canonicalCode: string;
+    totalRaised: number;
+    donationCount: number;
+    retentionBucket: string;
+  }>;
 };
 
 export type CrmSyncExport = {
+  generatedAt: string;
   persons: CanonicalPerson[];
   households: CanonicalHousehold[];
-  rows: CrmSyncExportRow[];
-  generatedAt: string;
+  rows: Array<{
+    canonical_person_id: string | null;
+    canonical_household_id: string | null;
+    canonical_org_id: string | null;
+    name: string;
+    formatted_for: string;
+    source_row_ref: string;
+  }>;
 };

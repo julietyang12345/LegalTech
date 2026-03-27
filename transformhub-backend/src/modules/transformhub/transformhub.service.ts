@@ -15,8 +15,10 @@ import { TransformHubAuditRuleEngineService } from './transformhub-audit-rule-en
 import { TransformHubAiService } from './transformhub-ai.service';
 import { TRANSFORMHUB_MAX_ROWS_PER_REQUEST } from './transformhub.constants';
 
+// LOW_REPORT_CONFIDENCE is a schema-quality warning, not a data-correctness blocker.
+// It is intentionally excluded so constituent exports, contact lists, and low-confidence
+// files can still be ingested — the user sees the warning and decides.
 const HARD_STOP_GUARDRAILS = new Set([
-  'LOW_REPORT_CONFIDENCE',
   'AMOUNT_COLUMN_AMBIGUITY',
   'MIXED_AMOUNT_SHAPES',
 ]);
@@ -60,9 +62,10 @@ export class TransformHubService {
     const schema = await this.pipeline.resolveSchema(parsedFile);
     await this.pipeline.persistResolvedTemplate(parsedFile.platform, schema);
     const guardrails = this.pipeline.evaluateGuardrails(parsedFile, schema);
+    parsedFile.preview = this.pipeline.buildStructuredPreview(parsedFile, schema);
     const hardStops = guardrails.filter((guardrail: any) => guardrail.triggered && HARD_STOP_GUARDRAILS.has(guardrail.code));
 
-    if (hardStops.length > 0) {
+    if (hardStops.length > 0 && !body.forceIngest) {
       throw new BadRequestException({
         message: 'Ingest blocked by hard-stop guardrails.',
         hardStops,
@@ -71,10 +74,6 @@ export class TransformHubService {
         schema,
       });
     }
-
-    const canonicalRows = this.pipeline.mapToCanonicalRows(parsedFile, schema, guardrails);
-    const taxonomyQueue = await this.taxonomy.queueTaxonomyExceptions(canonicalRows);
-    const rows = await this.enrichSuggestedFixes(taxonomyQueue.rows);
 
     const session = this.sessionRepo.create({
       status: TransformSessionStatus.REVIEW,
@@ -89,6 +88,19 @@ export class TransformHubService {
     });
     await this.sessionRepo.save(session);
 
+    if (schema.fileClass !== 'ledger') {
+      return {
+        sessionId: session.id,
+        parsedFile,
+        schema,
+        guardrails,
+        rows: [],
+      };
+    }
+
+    const canonicalRows = this.pipeline.mapToCanonicalRows(parsedFile, schema, guardrails);
+    const taxonomyQueue = await this.taxonomy.queueTaxonomyExceptions(canonicalRows);
+    const rows = await this.enrichSuggestedFixes(taxonomyQueue.rows);
     const rowEntities = this.rowRepo.create(rows.map((row: any) => ({ ...row, sessionId: session.id })));
     await this.rowRepo.save(rowEntities);
     const audit = await this.auditRules({ rows, sessionId: session.id });

@@ -26,9 +26,9 @@ export function LoginPage() {
     const stateFrom = (location.state as any)?.from?.pathname;
     const params = new URLSearchParams(location.search);
     const queryNext = params.get('next');
-    const candidate = queryNext || stateFrom || '/today';
+    const candidate = queryNext || stateFrom || '/transformhub';
 
-    if (typeof candidate !== 'string' || !candidate.trim()) return '/today';
+    if (typeof candidate !== 'string' || !candidate.trim()) return '/transformhub';
 
     if (candidate.startsWith('/')) {
       return candidate.startsWith('//') ? '/today' : candidate;
@@ -36,10 +36,10 @@ export function LoginPage() {
 
     try {
       const parsed = new URL(candidate);
-      if (parsed.origin !== window.location.origin) return '/today';
+      if (parsed.origin !== window.location.origin) return '/transformhub';
       return `${parsed.pathname}${parsed.search}${parsed.hash}`;
     } catch {
-      return '/today';
+      return '/transformhub';
     }
   };
 

@@ -28,6 +28,7 @@ type Bindings = {
   RATE_LIMIT_COUNTERS: KVNamespace;
   BACKEND_URL: string;
   VISUALMIND_BACKEND_URL?: string;
+  TRANSFORMHUB_BACKEND_URL?: string;
   FRONTEND_URL: string;
   FROM_EMAIL: string;
   FROM_NAME: string;
@@ -90,6 +91,7 @@ const ALLOWED_ROUTE_PREFIXES = [
   '/api/v1/vm/projects/',
   '/api/v1/imports/',
   '/api/v1/reps/',
+  '/api/v1/transformhub/',
 ];
 
 // Check if route is public
@@ -207,7 +209,7 @@ app.use(
     ],
     credentials: true,
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'x-turnstile-required', 'X-Requested-With'],
+    allowHeaders: ['Content-Type', 'Authorization', 'x-turnstile-required', 'X-Requested-With', 'X-TransformHub-Api-Key'],
     exposeHeaders: ['Content-Length', 'X-Request-Id'],
     maxAge: 86400,
   })
@@ -1252,9 +1254,11 @@ app.all('*', async (c) => {
   }
 
   const vmBackend = c.env.VISUALMIND_BACKEND_URL?.trim();
+  const transformHubBackend = c.env.TRANSFORMHUB_BACKEND_URL?.trim();
   const isVisualMindAuthRoute =
     url.pathname === '/api/v1/auth/me' ||
     url.pathname.startsWith('/api/v1/auth/billing/');
+  const isTransformHubRoute = url.pathname.startsWith('/api/v1/transformhub/');
   const useVisualMindBackend =
     Boolean(vmBackend) &&
     (
@@ -1262,7 +1266,11 @@ app.all('*', async (c) => {
       url.pathname.startsWith('/api/v1/imports/') ||
       isVisualMindAuthRoute
     );
-  const backendBase = useVisualMindBackend ? vmBackend! : c.env.BACKEND_URL;
+  const backendBase = isTransformHubRoute && transformHubBackend
+    ? transformHubBackend
+    : useVisualMindBackend
+      ? vmBackend!
+      : c.env.BACKEND_URL;
   const backendUrl = `${backendBase}${url.pathname}${url.search}`;
 
   // Build headers with Cloudflare Access auth
@@ -1276,7 +1284,7 @@ app.all('*', async (c) => {
   }
 
   // Forward additional headers
-  const forwardHeaders = ['accept', 'content-type', 'user-agent', 'referer', 'x-requested-with'];
+  const forwardHeaders = ['accept', 'content-type', 'user-agent', 'referer', 'x-requested-with', 'x-transformhub-api-key'];
   for (const header of forwardHeaders) {
     const value = c.req.header(header);
     if (value) {
