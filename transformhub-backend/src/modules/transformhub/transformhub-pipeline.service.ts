@@ -7,6 +7,7 @@ import { join } from 'path';
 import { TRANSFORMHUB_MAX_BASE64_CHARS, TRANSFORMHUB_MAX_TEXT_CHARS, TRANSFORMHUB_MAX_XLSX_BUFFER_BYTES } from './transformhub.constants';
 import { ThSchemaTemplate } from '../../database/entities/th-schema-template.entity';
 import { TransformHubAiService } from './transformhub-ai.service';
+import { matchesNormalizedKey, normalizeKey } from './transformhub-key-normalization';
 
 type FileClass = 'ledger' | 'constituent' | 'donor' | 'campaign' | 'coa' | 'unknown';
 
@@ -14,6 +15,35 @@ type ClassExpectation = {
   reportType: string;
   canonicalModel: string;
   expectedFields: string[];
+};
+
+type HeaderDiagnostic = {
+  rawKey: string;
+  cleanedKey: string;
+  strippedKey: string;
+  canonicalHint: string | null;
+  mappedCanonicalFields: string[];
+  status: 'mapped' | 'covered_variant' | 'candidate' | 'unknown';
+};
+
+type SchemaFieldSuggestion = {
+  id: string;
+  rawKey: string;
+  cleanedKey: string;
+  strippedKey: string;
+  canonicalHint: string | null;
+  suggestedTarget: string | null;
+  confidence: 'high' | 'medium' | 'low';
+  reasoning: string;
+  evidence: string[];
+  ruleEvidence: Array<Record<string, any>>;
+  sampleValues: string[];
+  model: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  notes: string | null;
+  generatedAt: string;
 };
 
 export const COA = [
@@ -174,10 +204,21 @@ const CLASS_FIELD_ALIASES: Record<FileClass, Record<string, string[]>> = {
   donor: {
     date: ['date', 'gift date', 'payment date', 'transaction date', 'close date', 'closedate'],
     donor_name: ['constituent name', 'donor name', 'full name', 'name', 'account name', 'contact name'],
+    first_name: ['first name'],
+    last_name: ['last name', 'last'],
+    organization_name: ['organization name', 'organization', 'account name'],
+    household_name: ['household name'],
     amount: ['amount', 'gift amount', 'total amount paid', 'gross amount', 'total'],
     fund: ['fund', 'fund name', 'designation', 'campaign', 'campaign name'],
     appeal: ['appeal', 'appeal name', 'source'],
     email: ['email', 'email address', 'email 1'],
+    phone: ['phone', 'phone number', 'mobile phone', 'home phone'],
+    address: ['address', 'mailing address'],
+    city: ['city'],
+    state: ['state'],
+    postal_code: ['zip', 'zip code', 'postal code'],
+    tags: ['tags', 'categories'],
+    assigned_staff: ['assigned staff', 'owner'],
     memo: ['note', 'notes', 'memo', 'description', 'message'],
     currency: ['currency', 'currencyisocode'],
   },
@@ -246,7 +287,7 @@ export class TransformHubPipelineService implements OnModuleInit {
   }
 
   private sanitizeHeader(value: string): string {
-    return String(value).trim().toLowerCase().replace(/[_-]+/g, ' ');
+    return normalizeKey(value).cleanedKey;
   }
 
   private inferDelimiter(text: string): string {
@@ -420,20 +461,20 @@ export class TransformHubPipelineService implements OnModuleInit {
   }
 
   private findHeader(headers: string[], aliases: string[]): string | undefined {
-    return headers.map((h) => ({ original: h, normalized: this.sanitizeHeader(h) })).find((h) => aliases.includes(h.normalized))?.original;
+    return headers.find((header) => matchesNormalizedKey(header, aliases));
   }
 
   private hasAny(normalized: string[], needles: string[]): boolean {
-    return needles.some((needle) => normalized.includes(needle));
+    return needles.some((needle) => normalized.some((value) => matchesNormalizedKey(value, [needle])));
   }
 
   private detectFileClass(platform: string, headers: string[]): FileClass {
     const normalized = headers.map((h) => this.sanitizeHeader(h));
     const hasDate = this.hasAny(normalized, ['date', 'transaction date', 'posting date', 'gift date', 'payment date', 'closedate', 'close date', 'created at']);
-    const hasDebitCredit = normalized.includes('debit') || normalized.includes('credit');
+    const hasDebitCredit = normalized.some((value) => matchesNormalizedKey(value, ['debit', 'credit']) || /(^| )debit($| )|(^| )credit($| )/.test(value));
     const hasAccount = this.hasAny(normalized, ['gl account', 'account code', 'account number', 'account name']);
-    const hasAmount = normalized.some((h) => /amount|total amount paid|gift amount|gross amount|net amount|spend/.test(h));
-    const hasConstituentSignals = normalized.includes('constituent type') || normalized.includes('household name') || normalized.includes('first name') || normalized.includes('organization name');
+    const hasAmount = normalized.some((h) => /amount|total amount paid|gift amount|gross amount|net amount|spend/.test(normalizeKey(h).strippedKey));
+    const hasConstituentSignals = this.hasAny(normalized, ['constituent type', 'household name', 'first name', 'organization name']);
     const hasDonorSignals = this.hasAny(normalized, ['fund', 'fund name', 'appeal', 'appeal name', 'campaign', 'campaign name']);
     const hasCoaSignals = hasAccount && !hasDate && !hasDebitCredit && !this.hasAny(normalized, ['description', 'memo', 'entity', 'property', 'contact']);
     const hasCampaignSignals = this.hasAny(normalized, ['campaign', 'campaign name', 'appeal', 'appeal name', 'fund code', 'campaign code']) && this.hasAny(normalized, ['status', 'start date', 'end date', 'goal']);
@@ -463,6 +504,184 @@ export class TransformHubPipelineService implements OnModuleInit {
       normalized.account_name = normalized.gl_account;
     }
     return normalized;
+  }
+
+  private buildHeaderDiagnostics(headers: string[], fieldMap: Record<string, string>): HeaderDiagnostic[] {
+    const mappedByHeader = new Map<string, string[]>();
+    Object.entries(fieldMap).forEach(([target, header]) => {
+      if (!header) return;
+      const existing = mappedByHeader.get(header) ?? [];
+      mappedByHeader.set(header, [...existing, target]);
+    });
+
+    return headers.map((header) => {
+      const normalized = normalizeKey(header);
+      const mappedCanonicalFields = mappedByHeader.get(header) ?? [];
+      let status: 'mapped' | 'covered_variant' | 'candidate' | 'unknown' = 'unknown';
+      if (mappedCanonicalFields.length > 0) {
+        status = 'mapped';
+      } else if (normalized.canonicalHint && fieldMap[normalized.canonicalHint]) {
+        status = 'covered_variant';
+      } else if (normalized.canonicalHint) {
+        status = 'candidate';
+      }
+
+      return {
+        rawKey: normalized.rawKey,
+        cleanedKey: normalized.cleanedKey,
+        strippedKey: normalized.strippedKey,
+        canonicalHint: normalized.canonicalHint,
+        mappedCanonicalFields,
+        status,
+      };
+    });
+  }
+
+  private buildNormalizedFieldAlerts(headerDiagnostics: HeaderDiagnostic[]) {
+    return headerDiagnostics.filter((item) => item.status === 'candidate' || item.status === 'unknown');
+  }
+
+  private getAllowedCanonicalFields(platform: string, fileClass: FileClass): string[] {
+    if (fileClass === 'ledger') return Object.keys(FIELD_ALIASES[platform] || {});
+    return Object.keys(CLASS_FIELD_ALIASES[fileClass] || {});
+  }
+
+  private buildFieldSuggestionId(fileClass: FileClass, rawKey: string): string {
+    return this.createFingerprint('field-suggestion', fileClass, normalizeKey(rawKey).strippedKey).slice(0, 16);
+  }
+
+  private buildFieldSuggestionRuleEvidence(file: any, fileClass: FileClass, item: HeaderDiagnostic) {
+    return [
+      { source: 'rule', key: 'platform', value: file.platform },
+      { source: 'rule', key: 'fileClass', value: fileClass },
+      { source: 'rule', key: 'rawKey', value: item.rawKey },
+      { source: 'rule', key: 'cleanedKey', value: item.cleanedKey },
+      { source: 'rule', key: 'strippedKey', value: item.strippedKey },
+      { source: 'rule', key: 'canonicalHint', value: item.canonicalHint },
+      { source: 'rule', key: 'status', value: item.status },
+      { source: 'rule', key: 'mappedCanonicalFields', value: item.mappedCanonicalFields.join(', ') || null },
+    ];
+  }
+
+  private buildFieldSuggestionSampleValues(file: any, rawKey: string): string[] {
+    const values = (file.rows || [])
+      .slice(0, 6)
+      .map((row: any) => String(row?.values?.[rawKey] || '').trim())
+      .filter((value: string) => Boolean(value));
+    return Array.from(new Set<string>(values)).slice(0, 6);
+  }
+
+  private mergeExistingFieldSuggestion(base: SchemaFieldSuggestion, existing?: Partial<SchemaFieldSuggestion> | null): SchemaFieldSuggestion {
+    if (!existing) return base;
+    return {
+      ...base,
+      suggestedTarget: existing.suggestedTarget ?? base.suggestedTarget,
+      confidence: existing.confidence ?? base.confidence,
+      reasoning: existing.reasoning ?? base.reasoning,
+      evidence: Array.isArray(existing.evidence) && existing.evidence.length > 0 ? existing.evidence : base.evidence,
+      ruleEvidence: Array.isArray(existing.ruleEvidence) && existing.ruleEvidence.length > 0 ? existing.ruleEvidence : base.ruleEvidence,
+      sampleValues: Array.isArray(existing.sampleValues) && existing.sampleValues.length > 0 ? existing.sampleValues : base.sampleValues,
+      model: existing.model ?? base.model,
+      status: existing.status ?? base.status,
+      reviewedAt: existing.reviewedAt ?? base.reviewedAt,
+      reviewedBy: existing.reviewedBy ?? base.reviewedBy,
+      notes: existing.notes ?? base.notes,
+      generatedAt: existing.generatedAt ?? base.generatedAt,
+    };
+  }
+
+  private async buildFieldSuggestions(file: any, fileClass: FileClass, normalizedFieldAlerts: HeaderDiagnostic[], existingSuggestions: Array<Partial<SchemaFieldSuggestion>> = []): Promise<SchemaFieldSuggestion[]> {
+    const allowedCanonicalFields = this.getAllowedCanonicalFields(file.platform, fileClass);
+    const existingById = new Map(existingSuggestions.map((item) => [String(item.id || ''), item]));
+    const suggestions: SchemaFieldSuggestion[] = [];
+
+    for (const item of normalizedFieldAlerts.slice(0, 10)) {
+      const id = this.buildFieldSuggestionId(fileClass, item.rawKey);
+      const existing = existingById.get(id);
+      const sampleValues = this.buildFieldSuggestionSampleValues(file, item.rawKey);
+      const ruleEvidence = this.buildFieldSuggestionRuleEvidence(file, fileClass, item);
+      const base: SchemaFieldSuggestion = {
+        id,
+        rawKey: item.rawKey,
+        cleanedKey: item.cleanedKey,
+        strippedKey: item.strippedKey,
+        canonicalHint: item.canonicalHint,
+        suggestedTarget: null,
+        confidence: 'low',
+        reasoning: '',
+        evidence: [],
+        ruleEvidence,
+        sampleValues,
+        model: null,
+        status: 'pending',
+        reviewedAt: null,
+        reviewedBy: null,
+        notes: null,
+        generatedAt: new Date().toISOString(),
+      };
+
+      if (existing?.status === 'approved' || existing?.status === 'rejected') {
+        suggestions.push(this.mergeExistingFieldSuggestion(base, existing));
+        continue;
+      }
+
+      if (existing?.status === 'pending' && existing.suggestedTarget) {
+        suggestions.push(this.mergeExistingFieldSuggestion(base, existing));
+        continue;
+      }
+
+      const aiResult = await this.ai.suggestFieldTarget({
+        rawKey: item.rawKey,
+        cleanedKey: item.cleanedKey,
+        strippedKey: item.strippedKey,
+        canonicalHint: item.canonicalHint,
+        fileClass,
+        platform: file.platform,
+        allowedCanonicalFields,
+        sampleValues,
+        ruleEvidence,
+      });
+
+      if (aiResult?.suggestedTarget) {
+        suggestions.push({
+          ...base,
+          suggestedTarget: aiResult.suggestedTarget,
+          confidence: aiResult.confidence,
+          reasoning: aiResult.reasoning,
+          evidence: aiResult.evidence,
+          model: aiResult.model,
+        });
+      } else if (existing) {
+        suggestions.push(this.mergeExistingFieldSuggestion(base, existing));
+      }
+    }
+
+    return suggestions;
+  }
+
+  async refreshSchema(file: any, currentSchema: any, fieldMapOverrides: Record<string, string> = {}, existingSuggestions: Array<Partial<SchemaFieldSuggestion>> = []) {
+    const fileClass = (currentSchema?.fileClass || this.detectFileClass(file.platform, file.headers)) as FileClass;
+    const selected = this.buildSchemaCandidate(file, fileClass, { ...(currentSchema?.fieldMap || {}), ...fieldMapOverrides });
+    const headerDiagnostics = this.buildHeaderDiagnostics(file.headers, selected.fieldMap);
+    const normalizedFieldAlerts = this.buildNormalizedFieldAlerts(headerDiagnostics);
+    const fieldSuggestions = await this.buildFieldSuggestions(file, fileClass, normalizedFieldAlerts, existingSuggestions);
+
+    return {
+      ...currentSchema,
+      reportType: this.detectReportType(file.platform, file.headers, selected.fileClass),
+      fileClass: selected.fileClass,
+      canonicalModel: selected.expectation.canonicalModel,
+      expectedFields: selected.expectation.expectedFields,
+      confidence: selected.confidence,
+      fieldMap: selected.fieldMap,
+      unresolvedFields: selected.unresolvedFields,
+      fingerprint: currentSchema?.fingerprint || this.createFingerprint(file.platform, selected.fileClass, file.headers),
+      fromTemplateCache: false,
+      requiresHumanApproval: Boolean((fieldSuggestions || []).some((item) => item.status === 'pending')),
+      headerDiagnostics,
+      normalizedFieldAlerts,
+      fieldSuggestions,
+    };
   }
 
   private isExpectedFieldResolved(fieldMap: Record<string, string>, field: string): boolean {
@@ -585,6 +804,10 @@ export class TransformHubPipelineService implements OnModuleInit {
     const fingerprint = this.createFingerprint(file.platform, selected.fileClass, file.headers);
     const cached = this.templateCache.get(fingerprint);
     if (cached) {
+      const fieldMap = cached.fieldMap || selected.fieldMap;
+      const headerDiagnostics = this.buildHeaderDiagnostics(file.headers, fieldMap);
+      const normalizedFieldAlerts = this.buildNormalizedFieldAlerts(headerDiagnostics);
+      const fieldSuggestions = await this.buildFieldSuggestions(file, selected.fileClass, normalizedFieldAlerts, cached.fieldSuggestions || []);
       return {
         ...cached,
         fileClass: selected.fileClass,
@@ -594,6 +817,9 @@ export class TransformHubPipelineService implements OnModuleInit {
         confidence: 1,
         fingerprint,
         fromTemplateCache: true,
+        headerDiagnostics,
+        normalizedFieldAlerts,
+        fieldSuggestions,
       };
     }
 
@@ -609,6 +835,10 @@ export class TransformHubPipelineService implements OnModuleInit {
       }
     }
 
+    const headerDiagnostics = this.buildHeaderDiagnostics(file.headers, selected.fieldMap);
+    const normalizedFieldAlerts = this.buildNormalizedFieldAlerts(headerDiagnostics);
+    const fieldSuggestions = await this.buildFieldSuggestions(file, selected.fileClass, normalizedFieldAlerts);
+
     return {
       reportType: this.detectReportType(file.platform, file.headers, selected.fileClass),
       fileClass: selected.fileClass,
@@ -622,7 +852,10 @@ export class TransformHubPipelineService implements OnModuleInit {
       aiSuggested,
       aiSuggestedFieldMap,
       aiReasoning,
-      requiresHumanApproval: aiSuggested,
+      requiresHumanApproval: aiSuggested || fieldSuggestions.length > 0,
+      headerDiagnostics,
+      normalizedFieldAlerts,
+      fieldSuggestions,
     };
   }
 
@@ -715,6 +948,7 @@ export class TransformHubPipelineService implements OnModuleInit {
     const canonicalModel = schema.canonicalModel;
     const records = file.rows.map((row: any, index: number) => {
       if (fileClass === 'constituent') {
+        const rawValues = row.values as Record<string, string>;
         const firstName = this.valueFromRow(row, schema.fieldMap, 'first_name');
         const lastName = this.valueFromRow(row, schema.fieldMap, 'last_name');
         const organizationName = this.valueFromRow(row, schema.fieldMap, 'organization_name');
@@ -739,21 +973,39 @@ export class TransformHubPipelineService implements OnModuleInit {
           assignedStaff: this.valueFromRow(row, schema.fieldMap, 'assigned_staff'),
           createdAt: this.valueFromRow(row, schema.fieldMap, 'created_at'),
           updatedAt: this.valueFromRow(row, schema.fieldMap, 'updated_at'),
+          rawValues,
         };
       }
 
       if (fileClass === 'donor') {
+        const rawValues = row.values as Record<string, string>;
+        const firstName = this.valueFromRow(row, schema.fieldMap, 'first_name');
+        const lastName = this.valueFromRow(row, schema.fieldMap, 'last_name');
+        const organizationName = this.valueFromRow(row, schema.fieldMap, 'organization_name');
+        const householdName = this.valueFromRow(row, schema.fieldMap, 'household_name');
         return {
           id: `${fileClass}-${index + 1}`,
           sourceRowRef: row.ref,
           donorName: this.valueFromRow(row, schema.fieldMap, 'donor_name') || this.valueFromRow(row, schema.fieldMap, 'entity_name') || row.ref,
+          firstName,
+          lastName,
+          organizationName,
+          householdName,
           date: this.valueFromRow(row, schema.fieldMap, 'date'),
           amount: this.money(this.valueFromRow(row, schema.fieldMap, 'amount')),
           fund: this.valueFromRow(row, schema.fieldMap, 'fund'),
           appeal: this.valueFromRow(row, schema.fieldMap, 'appeal'),
           email: this.valueFromRow(row, schema.fieldMap, 'email'),
+          phone: this.valueFromRow(row, schema.fieldMap, 'phone'),
+          address: this.valueFromRow(row, schema.fieldMap, 'address'),
+          city: this.valueFromRow(row, schema.fieldMap, 'city'),
+          state: this.valueFromRow(row, schema.fieldMap, 'state'),
+          postalCode: this.valueFromRow(row, schema.fieldMap, 'postal_code'),
+          tags: this.splitTags(this.valueFromRow(row, schema.fieldMap, 'tags')),
+          assignedStaff: this.valueFromRow(row, schema.fieldMap, 'assigned_staff'),
           memo: this.valueFromRow(row, schema.fieldMap, 'memo'),
           currency: this.valueFromRow(row, schema.fieldMap, 'currency') || 'USD',
+          rawValues,
         };
       }
 

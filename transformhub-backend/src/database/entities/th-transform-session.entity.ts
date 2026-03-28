@@ -9,6 +9,7 @@ import {
 import { ThCanonicalRow } from './th-canonical-row.entity';
 
 export enum TransformSessionStatus {
+  BLOCKED = 'blocked',
   REVIEW = 'review',
   READY = 'ready',
   POSTED = 'posted',
@@ -46,6 +47,24 @@ export class ThTransformSession {
 
   @Column({ type: 'jsonb', default: [] })
   receipts: object[];
+
+  @Column({ type: 'jsonb', default: [] })
+  blockingIssues: object[];
+
+  @Column({ nullable: true })
+  forcedFromStatus: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  forcedBlockingIssuesSnapshot: object[] | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  forcedAt: Date | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  personResult: object | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  householdResult: object | null;
 
   @Column({ nullable: true })
   fingerprint: string;

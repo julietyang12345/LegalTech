@@ -20,6 +20,8 @@ import { addBalancingRow, updateCanonicalRow } from './engine';
 import {
   evaluateTaxonomyBackend,
   exportCsvFallback,
+  reviewFieldSuggestionBackend,
+  reviewTaxonomySuggestionBackend,
   fetchAuditDashboard,
   fetchAuditRuleCatalog,
   fetchCampaignPerformanceReport,
@@ -49,6 +51,7 @@ import type {
   DonorReport,
   GuardrailFinding,
   HouseholdResolverResult,
+  HouseholdReviewSuggestion,
   LegacyMapping,
   ParsedFile,
   PersonMatch,
@@ -122,6 +125,33 @@ function buildMergeDecisionMap(rows: CanonicalLedgerRow[], auditDecisions: Trans
   return decisions;
 }
 
+function deriveReviewDecision(match: PersonMatch, mergeDecisions: Map<string, 'confirmed' | 'separated'>) {
+  const persistedDecision = mergeDecisions.get(match.inputRef);
+  if (persistedDecision) return persistedDecision;
+  if (match.band !== 'review') return null;
+  if (match.decision === 'auto') return 'confirmed' as const;
+  if (match.decision === 'new') return 'separated' as const;
+  return null;
+}
+
+function describeAiSuggestion(match: PersonMatch): string | null {
+  const suggestion = match.reviewPayload?.aiSuggestion;
+  if (!suggestion) return null;
+  const action = suggestion.suggestedAction === 'confirm_merge' ? 'suggest merge' : 'suggest separate';
+  const evidence = suggestion.evidence.filter(Boolean).slice(0, 2).join(' + ');
+  const reason = suggestion.reason.trim();
+  return ['AI', suggestion.confidence, action, evidence || reason].filter(Boolean).join(' · ');
+}
+
+function describeHouseholdAiSuggestion(suggestion: HouseholdReviewSuggestion): string | null {
+  const aiSuggestion = suggestion.aiSuggestion;
+  if (!aiSuggestion) return null;
+  const action = aiSuggestion.suggestedAction === 'confirm_merge' ? 'suggest same household' : 'suggest separate households';
+  const evidence = aiSuggestion.evidence.filter(Boolean).slice(0, 2).join(' + ');
+  const reason = aiSuggestion.reason.trim();
+  return ['AI', aiSuggestion.confidence, action, evidence || reason].filter(Boolean).join(' · ');
+}
+
 export default function TransformHubPage() {
   const [platform, setPlatform] = useState<SourcePlatform>('AppFolio');
   const [parsedFile, setParsedFile] = useState<ParsedFile | null>(null);
@@ -136,7 +166,7 @@ export default function TransformHubPage() {
   const [message, setMessage] = useState<string>('Load a sample or upload CSV/XLSX to run the backend-backed pipeline.');
   const [fallbackFileName, setFallbackFileName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [blockedHardStops, setBlockedHardStops] = useState<any[] | null>(null);
+  const [blockingIssues, setBlockingIssues] = useState<any[]>([]);
   const [pendingIngestPayload, setPendingIngestPayload] = useState<any | null>(null);
 
   // Layer 03 state
@@ -200,6 +230,15 @@ export default function TransformHubPage() {
   const isLedgerFile = fileClass === 'ledger';
   const previewRecords = preview?.records ?? [];
   const previewCount = preview?.summary.rowCount ?? parsedFile?.rows.length ?? 0;
+  const isConstituentFile = fileClass === "constituent";
+  const isDonorFile = fileClass === "donor";
+  const supportsIdentityWorkflow = isConstituentFile || isDonorFile;
+  const canonicalPersons = personResult?.canonicalPersons ?? personResult?.persons ?? [];
+  const resolvedReviewDecisions = personResult?.matches.filter((match) => deriveReviewDecision(match, mergeDecisions)).length ?? 0;
+  const pendingPeopleReviews = Math.max(0, (personResult?.pendingReviewCount ?? personResult?.needsReview ?? 0) - resolvedReviewDecisions);
+  const peopleStepReady = !supportsIdentityWorkflow || (!!personResult && pendingPeopleReviews === 0);
+  const householdsStepReady = !supportsIdentityWorkflow || (!!householdResult && peopleStepReady);
+  const nonLedgerExportReady = !supportsIdentityWorkflow || householdsStepReady;
   const heroTitle = isLedgerFile ? 'Canonical ledger in the center.' : 'Canonical records in the center.';
   const heroSummary = isLedgerFile
     ? 'Everything flows into one final ledger, and every export flows back out from the same reviewed rows.'
@@ -216,9 +255,12 @@ export default function TransformHubPage() {
       setPlatform(session.parsedFile.platform);
       setSchema(session.schema);
       setGuardrails(session.guardrails);
+      setBlockingIssues(session.blockingIssues ?? []);
       setRows(session.rows);
       setPreflight(session.preflight);
       setReceipts(session.receipts);
+      setPersonResult(session.personResult ?? null);
+      setHouseholdResult(session.householdResult ?? null);
       setMergeDecisions(buildMergeDecisionMap(session.rows, session.auditDecisions));
       setActiveOperatorIntent(null);
       if (nextMessage) setMessage(nextMessage);
@@ -288,8 +330,7 @@ export default function TransformHubPage() {
 
   async function hydrateUpload(payload: { fileName: string; kind: 'text' | 'xlsx'; contents?: string; contentsBase64?: string }, forceIngest = false) {
     setIsLoading(true);
-    setBlockedHardStops(null);
-    setPendingIngestPayload(null);
+    setBlockingIssues([]);
     setReceipts([]);
     setPreflight(null);
     setFallbackFileName(null);
@@ -300,8 +341,8 @@ export default function TransformHubPage() {
     setMergeDecisions(new Map());
 
     try {
-      const result = await ingestFile({ platform, fileName: payload.fileName, kind: payload.kind, contents: payload.contents, contentsBase64: payload.contentsBase64, forceIngest });
-      const nextStatus = deriveSessionStatus(result.rows, null, []);
+      const result = await ingestFile({ platform, fileName: payload.fileName, kind: payload.kind, contents: payload.contents, contentsBase64: payload.contentsBase64, sessionId: forceIngest ? sessionId ?? undefined : undefined, forceIngest });
+      const nextStatus = result.status;
       const nextTaxonomy = result.taxonomy ?? null;
       const nextAudit = result.audit ?? null;
 
@@ -312,40 +353,35 @@ export default function TransformHubPage() {
         setParsedFile(result.parsedFile);
         setSchema(result.schema);
         setGuardrails(result.guardrails);
+        setBlockingIssues(result.blockingIssues ?? []);
         setRows(result.rows);
         setTaxonomyResult(nextTaxonomy);
         setAuditResult(nextAudit);
-        setMessage(`Loaded ${result.parsedFile.rows.length} rows · ${nextAudit?.errorCount ?? 0} audit error(s) · ${nextTaxonomy?.unmappedCount ?? 0} taxonomy exception(s).`);
+        setPendingIngestPayload(result.status === 'blocked' ? payload : null);
+        setMessage(result.status === 'blocked'
+          ? `Blocked by ${result.blockingIssues.length} blocking issue${result.blockingIssues.length === 1 ? '' : 's'}. Review the report below, then force continue if intentional.`
+          : `Loaded ${result.parsedFile.rows.length} rows · ${nextAudit?.errorCount ?? 0} audit error(s) · ${nextTaxonomy?.unmappedCount ?? 0} taxonomy exception(s).`);
       });
     } catch (error: any) {
-      const body = error?.response?.data ?? error?.data ?? null;
-      if (body?.hardStops?.length > 0) {
-        setBlockedHardStops(body.hardStops);
-        setPendingIngestPayload(payload);
-        setGuardrails(body.guardrails ?? []);
-        setParsedFile(body.parsedFile ?? null);
-        setSchema(body.schema ?? null);
-        setRows([]);
-        setMessage(`Blocked by ${body.hardStops.length} hard-stop guardrail${body.hardStops.length === 1 ? '' : 's'}. Review below and ingest anyway if intentional.`);
-      } else {
-        setMessage(error instanceof Error ? error.message : 'Failed to process the file.');
-        setParsedFile(null);
-        setSchema(null);
-        setRows([]);
-        setGuardrails([]);
-        setReceipts([]);
-        setPreflight(null);
-        setSessionId(null);
-        setSessionStatus('review');
-        setSessionUpdatedAt(null);
-      }
+      setMessage(error instanceof Error ? error.message : 'Failed to process the file.');
+      setParsedFile(null);
+      setSchema(null);
+      setRows([]);
+      setGuardrails([]);
+      setBlockingIssues([]);
+      setReceipts([]);
+      setPreflight(null);
+      setSessionId(null);
+      setSessionStatus('review');
+      setSessionUpdatedAt(null);
+      setPendingIngestPayload(null);
     } finally {
       setIsLoading(false);
     }
   }
 
   async function handleForceIngest() {
-    if (!pendingIngestPayload) return;
+    if (!pendingIngestPayload || !sessionId) return;
     await hydrateUpload(pendingIngestPayload, true);
   }
 
@@ -434,7 +470,7 @@ export default function TransformHubPage() {
     setIsLoading(true);
     try {
       const nextStatus = deriveSessionStatus(rows, preflight, receipts);
-      const session = await saveSession(sessionId, rows, nextStatus, preflight);
+      const session = await saveSession(sessionId, rows, nextStatus, preflight, personResult, householdResult);
       applySession(session, 'Review state saved to the backend session.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Failed to save the current session.');
@@ -494,9 +530,9 @@ export default function TransformHubPage() {
     setIsLoading(true);
     try {
       const result = await exportCsvFallback(rows, sessionId ?? undefined);
-      const blob = new Blob([result.csv], { type: 'text/csv;charset=utf-8' });
+      const blob = new Blob([result.csv], { type: "text/csv;charset=utf-8" });
       const href = URL.createObjectURL(blob);
-      const link = document.createElement('a');
+      const link = document.createElement("a");
       link.href = href;
       link.download = result.fileName;
       document.body.appendChild(link);
@@ -507,9 +543,27 @@ export default function TransformHubPage() {
       if (result.audit) setAuditResult(result.audit);
       setFallbackFileName(result.fileName);
       setSessionUpdatedAt(new Date().toISOString());
-      setMessage(`Exported ${result.rowCount} approved row${result.rowCount === 1 ? '' : 's'} to CSV fallback.`);
+      setMessage(`Exported ${result.rowCount} approved row${result.rowCount === 1 ? "" : "s"} to CSV fallback.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'CSV fallback export failed.');
+      setMessage(error instanceof Error ? error.message : "CSV fallback export failed.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+  async function handleReviewFieldSuggestion(suggestionId: string, action: 'approve' | 'reject') {
+    if (!sessionId) return;
+    setIsLoading(true);
+    setMessage(action === 'approve' ? 'Applying AI field suggestion…' : 'Rejecting AI field suggestion…');
+    try {
+      const result = await reviewFieldSuggestionBackend(sessionId, suggestionId, action, { reviewedBy: 'user' });
+      setSchema(result.schema ?? result.session.schema);
+      setRows(result.updatedRows?.length ? result.updatedRows : result.session.rows ?? []);
+      if (result.taxonomy) setTaxonomyResult(result.taxonomy);
+      if (result.audit) setAuditResult(result.audit);
+      setSessionUpdatedAt(result.session.updatedAt ?? null);
+      setMessage(action === 'approve' ? 'AI field suggestion applied.' : 'AI field suggestion rejected.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to review field suggestion.');
     } finally {
       setIsLoading(false);
     }
@@ -520,7 +574,30 @@ export default function TransformHubPage() {
     queueReturnToActiveRow();
     setIsLoading(true);
     try {
-      const result = await resolvePersonsBackend(rows, personResult?.persons ?? [], sessionId ?? undefined);
+      if (!isLedgerFile && supportsIdentityWorkflow) {
+        const result = await resolvePersonsBackend(buildPreviewIdentityRows(), undefined, sessionId ?? undefined, {
+          usePersistentIdentityMemory: true,
+          forceReviewOnAutoMatches: true,
+          seedExistingPersonsFromDb: true,
+          baselinePlatform: platform,
+          baselineFileClass: fileClass,
+        });
+        setPersonResult(result);
+        setHouseholdResult(null);
+        setMergeDecisions(new Map());
+        setSessionUpdatedAt(new Date().toISOString());
+        setMessage(`PersonResolver: ${result.autoMergedCount} auto-merged, ${result.pendingReviewCount} pending review, ${result.separated} new.`);
+        restoreReturnRowFocus(returnRowId);
+        return;
+      }
+
+      const result = await resolvePersonsBackend(rows, personResult ? canonicalPersons : undefined, sessionId ?? undefined, {
+        usePersistentIdentityMemory: Boolean(sessionId),
+        forceReviewOnAutoMatches: false,
+        seedExistingPersonsFromDb: Boolean(sessionId) && !personResult,
+        baselinePlatform: platform,
+        baselineFileClass: fileClass,
+      });
       setPersonResult(result);
       if (result.updatedRows) setRows(result.updatedRows);
       if (result.audit) setAuditResult(result.audit);
@@ -529,7 +606,31 @@ export default function TransformHubPage() {
       restoreReturnRowFocus(returnRowId);
     } catch (error) {
       setPendingReturnRowId(null);
-      setMessage(error instanceof Error ? error.message : 'PersonResolver failed.');
+      setMessage(error instanceof Error ? error.message : "PersonResolver failed.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleResetPeopleState() {
+    const nextStatus = deriveSessionStatus(rows, preflight, receipts);
+    setPersonResult(null);
+    setHouseholdResult(null);
+    setMergeDecisions(new Map());
+    setSessionStatus(nextStatus);
+    setSessionUpdatedAt(new Date().toISOString());
+
+    if (!sessionId) {
+      setMessage('People and household state cleared. Run PersonResolver to rebuild from source rows.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const session = await saveSession(sessionId, rows, nextStatus, preflight, null, null);
+      applySession(session, 'People and household state cleared. Run PersonResolver to rebuild from source rows.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to reset people state.');
     } finally {
       setIsLoading(false);
     }
@@ -537,33 +638,73 @@ export default function TransformHubPage() {
 
   async function handleRunHouseholdResolver() {
     if (!personResult) return;
+    if (!isLedgerFile && supportsIdentityWorkflow && pendingPeopleReviews > 0) {
+      setMessage(`Resolve ${pendingPeopleReviews} pending people match${pendingPeopleReviews === 1 ? "" : "es"} before continuing to households.`);
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const result = await resolveHouseholdsBackend(personResult.persons, sessionId ?? undefined);
+      const result = await resolveHouseholdsBackend(canonicalPersons, sessionId ?? undefined);
       setHouseholdResult(result);
       if (result.updatedRows) setRows(result.updatedRows);
       if (result.audit) setAuditResult(result.audit);
       setSessionUpdatedAt(new Date().toISOString());
-      setMessage(`HouseholdResolver: ${result.households.length} household${result.households.length === 1 ? '' : 's'} formed.`);
+      setMessage(`HouseholdResolver: ${result.households.length} household${result.households.length === 1 ? "" : "s"} formed.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'HouseholdResolver failed.');
+      setMessage(error instanceof Error ? error.message : "HouseholdResolver failed.");
     } finally {
       setIsLoading(false);
     }
   }
 
-  async function handleMergeDecision(match: PersonMatch, action: 'confirmed' | 'separated') {
-    if (!sessionId) {
-      setMergeDecisions((prev) => new Map(prev).set(match.inputRef, action));
-      if (action === 'confirmed' && match.matchedPersonId) {
-        setRows((current) =>
-          current.map((row) =>
+  async function handleMergeDecision(match: PersonMatch, action: "confirmed" | "separated") {
+    if (!sessionId || !isLedgerFile) {
+      const nextMergeDecisions = new Map(mergeDecisions).set(match.inputRef, action);
+      const nextPersonResult: PersonResolverResult | null = personResult
+        ? {
+            ...personResult,
+            matches: personResult.matches.map((candidate) =>
+              candidate.inputRef === match.inputRef
+                ? {
+                    ...candidate,
+                    decision: action === "confirmed" ? 'auto' as const : 'new' as const,
+                    matchedPersonId: action === "confirmed" ? match.matchedPersonId : null,
+                  }
+                : candidate,
+            ),
+          }
+        : personResult;
+      const nextRows = action === "confirmed" && match.matchedPersonId
+        ? rows.map((row) =>
             row.source_row_ref === match.inputRef
               ? { ...row, canonical_person_id: match.matchedPersonId }
               : row,
-          ),
-        );
+          )
+        : rows;
+
+      setMergeDecisions(nextMergeDecisions);
+      setPersonResult(nextPersonResult);
+      setHouseholdResult(null);
+      if (action === "confirmed" && match.matchedPersonId) {
+        setRows(nextRows);
       }
+
+      if (sessionId) {
+        setIsLoading(true);
+        try {
+          const nextStatus = deriveSessionStatus(nextRows, preflight, receipts);
+          const session = await saveSession(sessionId, nextRows, nextStatus, preflight, nextPersonResult, null);
+          applySession(session, action === "confirmed" ? "Merge decision saved to the backend session." : "Separate decision saved to the backend session.");
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : "Failed to save the merge decision.");
+        } finally {
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      setMessage(action === "confirmed" ? "Merge confirmed. Continue after all pending people reviews are resolved." : "Records marked separate. Continue after all pending people reviews are resolved.");
       return;
     }
 
@@ -594,6 +735,31 @@ export default function TransformHubPage() {
     } catch (error) {
       setPendingReturnRowId(null);
       setMessage(error instanceof Error ? error.message : 'Taxonomy evaluation failed.');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleReviewTaxonomySuggestion(exceptionId: string, action: 'approve' | 'reject', resolvedCode?: string) {
+    setIsLoading(true);
+    try {
+      const result = await reviewTaxonomySuggestionBackend(exceptionId, action, {
+        resolvedCode,
+        reviewedBy: 'user',
+      });
+      const nextRows = result.updatedRows.length > 0 ? result.updatedRows : rows;
+      if (result.updatedRows.length > 0) {
+        setRows(result.updatedRows);
+      }
+      if (result.audit) {
+        setAuditResult(result.audit);
+      }
+      const nextTaxonomy = await evaluateTaxonomyBackend(nextRows, sessionId ?? undefined);
+      setTaxonomyResult(nextTaxonomy);
+      setSessionUpdatedAt(new Date().toISOString());
+      setMessage(action === 'approve' ? 'AI taxonomy suggestion approved and applied.' : 'AI taxonomy suggestion rejected. Exception remains open for manual mapping.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to review the taxonomy suggestion.');
     } finally {
       setIsLoading(false);
     }
@@ -720,21 +886,21 @@ export default function TransformHubPage() {
 
   function buildCrmSyncCsv(report: CrmSyncExport) {
     return [
-      'CanonicalPersonId,CanonicalHouseholdId,CanonicalOrgId,Name,FormattedFor,SourceRowRef',
+      "CanonicalPersonId,CanonicalHouseholdId,CanonicalOrgId,Name,FormattedFor,SourceRowRef",
       ...report.rows.map(
-        (row) => `${row.canonical_person_id ?? ''},${row.canonical_household_id ?? ''},${row.canonical_org_id ?? ''},"${row.name}",${row.formatted_for},${row.source_row_ref}`,
+        (row) => `${row.canonical_person_id ?? ""},${row.canonical_household_id ?? ""},${row.canonical_org_id ?? ""},"${row.name}",${row.formatted_for},${row.source_row_ref}`,
       ),
-      '',
+      "",
       `GeneratedAt,${report.generatedAt}`,
       `Persons,${report.persons.length}`,
       `Households,${report.households.length}`,
-    ].join('\n');
+    ].join("\n");
   }
 
   function downloadCsv(fileName: string, csv: string) {
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const href = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = href;
     link.download = fileName;
     document.body.appendChild(link);
@@ -745,7 +911,9 @@ export default function TransformHubPage() {
 
   function csvCell(value: unknown) {
     const cell = String(value ?? "");
-    return /[",\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell;
+    const quote = String.fromCharCode(34);
+    const escaped = cell.split(quote).join(quote + quote);
+    return /[",]/.test(cell) || cell.includes("\n") ? quote + escaped + quote : cell;
   }
 
   function buildPreviewCsv() {
@@ -769,6 +937,60 @@ export default function TransformHubPage() {
     return ["SourceRowRef,Preview", ...previewRecords.map((record: any) => [record.sourceRowRef, record.preview ?? ""].map(csvCell).join(","))].join("\n");
   }
 
+  function buildPreviewIdentityRows(): CanonicalLedgerRow[] {
+    if (!supportsIdentityWorkflow || previewRecords.length === 0) return [];
+    return previewRecords.map((record: any, index: number) => {
+      const entityName = isDonorFile
+        ? record.donorName || record.email || record.sourceRowRef
+        : record.displayName || [record.firstName, record.lastName].filter(Boolean).join(" ") || record.organizationName || record.householdName || record.sourceRowRef;
+      const rowDate = isDonorFile ? record.date || "" : record.updatedAt || record.createdAt || "";
+      const memo = isDonorFile ? [record.memo, record.fund, record.appeal].filter(Boolean).join(" | ") : "";
+
+      return {
+        id: `preview-person-${index + 1}`,
+        date: rowDate,
+        entity_name: entityName,
+        account_code: "",
+        account_name: "",
+        debit: "",
+        credit: "",
+        currency: record.currency || "",
+        memo,
+        source_platform: platform,
+        source_row_ref: record.sourceRowRef,
+        journal_id: "",
+        mapping_confidence: schema?.confidence ?? 0,
+        review_status: "pending",
+        needs_review: false,
+        suggested_fix: null,
+        qbo_account_id: null,
+        qbo_txn_id: null,
+        canonical_person_id: null,
+        canonical_household_id: null,
+        raw_fund: isDonorFile ? (record.fund || null) : null,
+        raw_appeal: isDonorFile ? (record.appeal || null) : null,
+        taxonomy_exception_id: null,
+        canonical_org_id: null,
+        attribution_entry_id: null,
+        normalized_fund: null,
+        normalized_appeal: null,
+        email: record.email || "",
+        phone: record.phone || "",
+        address: record.address || "",
+        postalCode: record.postalCode || "",
+        zip: record.postalCode || "",
+        householdName: record.householdName || "",
+        firstName: record.firstName || "",
+        lastName: record.lastName || "",
+        organizationName: record.organizationName || "",
+        city: record.city || "",
+        state: record.state || "",
+        tags: record.tags || [],
+        rawValues: record.rawValues || {},
+      } as CanonicalLedgerRow;
+    });
+  }
+
   function handleExportPreview() {
     const csv = buildPreviewCsv();
     if (!csv) {
@@ -778,7 +1000,6 @@ export default function TransformHubPage() {
     downloadCsv("transformhub-" + fileClass + "-" + new Date().toISOString().slice(0, 10) + ".csv", csv);
     setMessage("Exported " + previewRecords.length + " " + fileClass + " record" + (previewRecords.length === 1 ? "" : "s") + ".");
   }
-
   const activeAuditCatalog = auditResult?.ruleCatalog ?? auditCatalog;
   const activeAuditEngineVersion = auditResult?.engineVersion ?? auditEngineVersion;
   const auditCatalogByCode = new Map(activeAuditCatalog.map((rule) => [rule.code, rule]));
@@ -976,31 +1197,31 @@ export default function TransformHubPage() {
         </section>
 
         {/* ── Hard-stop banner ────────────────────────────────────────────── */}
-        {blockedHardStops && blockedHardStops.length > 0 && (
+        {blockingIssues.length > 0 && (
           <section className="th-section">
             <div className="th-panel" style={{ borderColor: 'rgba(166,64,52,0.3)', background: 'rgba(255,232,228,0.6)' }}>
               <div className="th-panel-head">
                 <span style={{ color: 'var(--th-red)' }}>
                   <ShieldAlert size={16} style={{ display: 'inline', marginRight: 6 }} />
-                  Ingest blocked — {blockedHardStops.length} hard-stop guardrail{blockedHardStops.length === 1 ? '' : 's'}
+                  {sessionStatus === 'blocked' ? 'Ingest blocked' : 'Forced from blocked'} — {blockingIssues.length} blocking issue{blockingIssues.length === 1 ? '' : 's'}
                 </span>
-                <button type="button" className="th-button th-button-primary" style={{ background: 'var(--th-red)', borderColor: 'var(--th-red)' }} onClick={handleForceIngest} disabled={isLoading}>
-                  <ArrowRight size={14} /> Ingest anyway
+                <button type="button" className="th-button th-button-primary" style={{ background: 'var(--th-red)', borderColor: 'var(--th-red)' }} onClick={handleForceIngest} disabled={isLoading || sessionStatus !== 'blocked' || !pendingIngestPayload}>
+                  <ArrowRight size={14} /> Force continue
                 </button>
               </div>
               <div className="th-stack">
-                {blockedHardStops.map((stop: any) => (
+                {blockingIssues.map((stop: any) => (
                   <div key={stop.code} className="th-guardrail is-triggered">
                     <AlertTriangle size={15} />
                     <div>
-                      <strong>{stop.label ?? stop.code}</strong>
+                      <strong>{stop.reason ?? stop.label ?? stop.code}</strong>
                       <p>{stop.detail}</p>
                     </div>
                   </div>
                 ))}
               </div>
               <p className="th-helper" style={{ marginTop: 10 }}>
-                These guardrails indicate the file may not produce valid canonical rows. "Ingest anyway" bypasses the block and lets you review the raw data.
+                This session keeps the blocking report for audit history. Force continue upgrades the blocked session into a review session without discarding the original block reason.
               </p>
             </div>
           </section>
@@ -1071,6 +1292,55 @@ export default function TransformHubPage() {
                 <div className="th-mini-block" style={{ marginTop: 8 }}>
                   <strong>Structure</strong>
                   <p>Skipped {structureAnalysis.skippedTopRows} header rows · removed {structureAnalysis.removedRows} non-data rows</p>
+                </div>
+              )}
+              {schema?.normalizedFieldAlerts && schema.normalizedFieldAlerts.length > 0 && (
+                <div className="th-mini-block" style={{ marginTop: 8 }}>
+                  <strong>Normalized diff alerts</strong>
+                  <p>
+                    {schema.normalizedFieldAlerts
+                      .slice(0, 4)
+                      .map((item) => (item.canonicalHint ? '"' + item.rawKey + '" -> ' + item.canonicalHint : '"' + item.rawKey + '" -> unknown concept'))
+                      .join(' · ')}
+                    {schema.normalizedFieldAlerts.length > 4 ? ' +' + (schema.normalizedFieldAlerts.length - 4) + ' more' : ''}
+                  </p>
+                </div>
+              )}
+              {schema?.fieldSuggestions && schema.fieldSuggestions.length > 0 && (
+                <div className="th-mini-block" style={{ marginTop: 8 }}>
+                  <strong>AI field suggestions</strong>
+                  <div className="th-stack" style={{ marginTop: 8 }}>
+                    {schema.fieldSuggestions.slice(0, 4).map((item) => (
+                      <div key={item.id} className="th-person-card">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                          <strong>{item.rawKey}</strong>
+                          <span>{item.status} · {item.confidence}</span>
+                        </div>
+                        <span>{item.suggestedTarget ? item.suggestedTarget : 'no target suggested'}</span>
+                        <p className="th-helper" style={{ marginBottom: 0 }}>{item.reasoning || 'AI suggestion pending review.'}</p>
+                        {item.sampleValues.length > 0 && <p className="th-helper" style={{ marginBottom: 0 }}>Samples: {item.sampleValues.slice(0, 3).join(' · ')}</p>}
+                        {item.status === 'pending' && sessionId && (
+                          <div className="th-action-row" style={{ marginTop: 8 }}>
+                            <button type="button" className="th-button th-button-primary" onClick={() => handleReviewFieldSuggestion(item.id, 'approve')} disabled={!item.suggestedTarget || isLoading}>Approve</button>
+                            <button type="button" className="th-button th-button-secondary" onClick={() => handleReviewFieldSuggestion(item.id, 'reject')} disabled={isLoading}>Reject</button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {schema.fieldSuggestions.length > 4 && <p className="th-helper">+{schema.fieldSuggestions.length - 4} more suggestions</p>}
+                  </div>
+                </div>
+              )}
+              {schema?.headerDiagnostics && schema.headerDiagnostics.length > 0 && (
+                <div className="th-mini-block" style={{ marginTop: 8 }}>
+                  <strong>Header normalization</strong>
+                  <p>
+                    {schema.headerDiagnostics
+                      .slice(0, 4)
+                      .map((item) => '"' + item.rawKey + '" -> ' + item.strippedKey + (item.mappedCanonicalFields.length ? ' (' + item.mappedCanonicalFields.join(', ') + ')' : ''))
+                      .join(' · ')}
+                    {schema.headerDiagnostics.length > 4 ? ' +' + (schema.headerDiagnostics.length - 4) + ' more' : ''}
+                  </p>
                 </div>
               )}
             </article>
@@ -1152,6 +1422,24 @@ export default function TransformHubPage() {
                 </article>
               </div>
 
+              {householdResult?.reviewSuggestions && householdResult.reviewSuggestions.length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <div className="th-panel-head" style={{ marginBottom: 10 }}>
+                    <span>Household suggestions</span>
+                    <span>{householdResult.reviewSuggestions.length} AI suggestions</span>
+                  </div>
+                  <div className="th-stack">
+                    {householdResult.reviewSuggestions.map((suggestion) => (
+                      <div key={suggestion.id} className="th-guardrail is-warning">
+                        <strong>{suggestion.proposedMembers.map((member) => [member.firstName, member.lastName].filter(Boolean).join(' ') || member.id).join(' · ')}</strong>
+                        <p>Matched on: {suggestion.matchedEvidence.join(', ')}</p>
+                        {describeHouseholdAiSuggestion(suggestion) && <p className="th-helper">{describeHouseholdAiSuggestion(suggestion)}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {personResult && personResult.matches.filter((m) => m.band === 'review').length > 0 && (
                 <div style={{ marginTop: 14 }}>
                   <div className="th-panel-head" style={{ marginBottom: 10 }}>
@@ -1162,12 +1450,13 @@ export default function TransformHubPage() {
                     {personResult.matches
                       .filter((m) => m.band === 'review')
                       .map((match) => {
-                        const decision = mergeDecisions.get(match.inputRef);
+                        const decision = deriveReviewDecision(match, mergeDecisions);
                         return (
                           <div key={match.inputRef} className="th-guardrail is-warning" style={{ alignItems: 'center', gap: 14 }}>
                             <div style={{ flex: 1 }}>
                               <strong>Ref {match.inputRef} · score {match.score}</strong>
                               <p>Matched on: {match.matchedFields.join(', ') || 'name similarity'}</p>
+                              {describeAiSuggestion(match) && <p className="th-helper">{describeAiSuggestion(match)}</p>}
                             </div>
                             {decision ? (
                               <span className={`th-status ${decision === 'confirmed' ? 'is-ready' : 'is-rejected'}`}>
@@ -1245,12 +1534,47 @@ export default function TransformHubPage() {
                     </div>
                   ) : (
                     <div className="th-stack">
-                      {taxonomyResult.violations.map((v, i) => (
+                      {taxonomyResult.exceptions.length > 0 ? taxonomyResult.exceptions.map((exception) => {
+                        const suggestedCode = exception.aiSuggestion?.code ?? exception.resolvedCode;
+                        const evidence = exception.aiSuggestion?.evidence?.length
+                          ? exception.aiSuggestion.evidence
+                          : (exception.ruleEvidence ?? []).map((item) => `${item.key}: ${item.value}`);
+                        return (
+                          <div key={exception.id} className={`th-guardrail ${exception.aiSuggestion ? 'is-warning' : 'is-triggered'}`}>
+                            <AlertTriangle size={15} />
+                            <div style={{ width: "100%" }}>
+                              <strong>Row {exception.sourceRowRef} · {exception.type}</strong>
+                              <p>"{exception.rawValue}"{suggestedCode ? ` → ${suggestedCode}` : " — no candidate yet"}</p>
+                              {exception.aiSuggestion ? (
+                                <p>AI {exception.aiSuggestion.confidence} confidence · {exception.aiSuggestion.reasoning}</p>
+                              ) : (
+                                <p className="th-helper">Rule-layer queue item. No AI suggestion was produced for this exception.</p>
+                              )}
+                              {evidence.length > 0 && (
+                                <p className="th-helper">Evidence: {evidence.join(' · ')}</p>
+                              )}
+                              {exception.aiReviewStatus === "rejected" && exception.aiRejectedReason && (
+                                <p className="th-helper">Rejected: {exception.aiRejectedReason}</p>
+                              )}
+                              {exception.aiSuggestion && exception.aiReviewStatus !== "approved" && suggestedCode && (
+                                <div className="th-review-pill-row" style={{ marginTop: 10 }}>
+                                  <button type="button" className="th-button th-button-primary" onClick={() => void handleReviewTaxonomySuggestion(exception.id, "approve", suggestedCode)} disabled={isLoading}>
+                                    Approve AI suggestion
+                                  </button>
+                                  <button type="button" className="th-button th-button-secondary" onClick={() => void handleReviewTaxonomySuggestion(exception.id, "reject")} disabled={isLoading}>
+                                    Reject AI suggestion
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }) : taxonomyResult.violations.map((v, i) => (
                         <div key={i} className="th-guardrail is-triggered">
                           <AlertTriangle size={15} />
                           <div>
                             <strong>Row {v.rowRef} · {v.field}</strong>
-                            <p>"{v.rawValue}"{v.suggestedCode ? ` → ${v.suggestedCode}` : ' — no match'}</p>
+                            <p>"{v.rawValue}"{v.suggestedCode ? ` → ${v.suggestedCode}` : " — no match"}</p>
                           </div>
                         </div>
                       ))}
@@ -1432,6 +1756,86 @@ export default function TransformHubPage() {
                 <span>{preview.summary.rowCount} records · {preview.canonicalModel}</span>
               </div>
               <p className="th-helper">This file was classified as <strong>{fileClass}</strong>. It stays out of the ledger posting flow and is reviewed in its own canonical table.</p>
+              {supportsIdentityWorkflow && (
+                <div className="th-grid th-main-grid" style={{ marginBottom: 14 }}>
+                  <article className="th-panel th-inner-panel">
+                    <div className="th-panel-head"><span>People</span><span>{personResult ? `${canonicalPersons.length} resolved` : "not run"}</span></div>
+                    <p className="th-helper">Run PersonResolver before households. Any pending {isDonorFile ? 'donor identity' : 'identity'} review blocks the next step.</p>
+                    <div className="th-grid th-grid-3" style={{ marginBottom: 10 }}>
+                      <div className="th-stat-chip th-band-auto"><strong>{personResult?.autoMergedCount ?? 0}</strong><span>Auto merged</span></div>
+                      <div className="th-stat-chip th-band-review"><strong>{pendingPeopleReviews}</strong><span>Pending review</span></div>
+                      <div className="th-stat-chip th-band-separate"><strong>{personResult?.separated ?? 0}</strong><span>New persons</span></div>
+                    </div>
+                    <div className="th-action-row">
+                      <button type="button" className="th-button th-button-primary" onClick={handleRunPersonResolver}>
+                        <Users size={14} /> {personResult ? 'Rebuild People' : 'Run PersonResolver'}
+                      </button>
+                      <button type="button" className="th-button th-button-secondary" onClick={handleResetPeopleState} disabled={!personResult && !householdResult}>
+                        <RefreshCcw size={14} /> Reset People
+                      </button>
+                      <button type="button" className="th-button th-button-secondary" onClick={() => scrollToSection("th-identity-review-queue")} disabled={!personResult || pendingPeopleReviews === 0}>
+                        <ArrowRight size={14} /> Continue To Review
+                      </button>
+                    </div>
+                  </article>
+                  <article className="th-panel th-inner-panel">
+                    <div className="th-panel-head"><span>Households</span><span>{householdResult ? `${householdResult.households.length} formed` : "blocked"}</span></div>
+                    <p className="th-helper">Households unlock only after all person matches are resolved.</p>
+                    <div className="th-action-row">
+                      <button type="button" className="th-button th-button-primary" onClick={handleRunHouseholdResolver} disabled={!peopleStepReady}>
+                        <Building2 size={14} /> Run Households
+                      </button>
+                      <button type="button" className="th-button th-button-secondary" onClick={() => scrollToSection("th-export")} disabled={!nonLedgerExportReady}>
+                        <ArrowRight size={14} /> Continue To Export
+                      </button>
+                    </div>
+                    {!peopleStepReady && (
+                      <p className="th-helper">Resolve {pendingPeopleReviews} pending {isDonorFile ? 'donor identity' : 'identity'} review{pendingPeopleReviews === 1 ? "" : "s"} to unlock households.</p>
+                    )}
+                  </article>
+                </div>
+              )}
+              {supportsIdentityWorkflow && householdResult?.reviewSuggestions && householdResult.reviewSuggestions.length > 0 && (
+                <div className="th-stack" style={{ marginBottom: 14 }}>
+                  <div className="th-panel-head"><span>Household review queue</span><span>{householdResult.reviewSuggestions.length} AI suggestions</span></div>
+                  {householdResult.reviewSuggestions.map((suggestion) => (
+                    <div key={suggestion.id} className="th-guardrail is-warning" style={{ alignItems: "center", gap: 14 }}>
+                      <div style={{ flex: 1 }}>
+                        <strong>{suggestion.proposedMembers.map((member) => [member.firstName, member.lastName].filter(Boolean).join(' ') || member.id).join(' · ')}</strong>
+                        <p>Matched on: {suggestion.matchedEvidence.join(", ")}</p>
+                        {describeHouseholdAiSuggestion(suggestion) && <p className="th-helper">{describeHouseholdAiSuggestion(suggestion)}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {supportsIdentityWorkflow && personResult && personResult.matches.some((match) => match.band === "review") && (
+                <div id="th-identity-review-queue" className="th-stack" style={{ marginBottom: 14 }}>
+                  <div className="th-panel-head"><span>People review queue</span><span>{pendingPeopleReviews} pending</span></div>
+                  {personResult.matches.filter((match) => match.band === "review").map((match) => {
+                    const decision = deriveReviewDecision(match, mergeDecisions);
+                    return (
+                      <div key={match.inputRef} className="th-guardrail is-warning" style={{ alignItems: "center", gap: 14 }}>
+                        <div style={{ flex: 1 }}>
+                          <strong>Ref {match.inputRef} · score {match.score}</strong>
+                          <p>Matched on: {match.matchedFields.join(", ") || "name similarity"}</p>
+                          {describeAiSuggestion(match) && <p className="th-helper">{describeAiSuggestion(match)}</p>}
+                        </div>
+                        {decision ? (
+                          <span className={`th-status ${decision === "confirmed" ? "is-ready" : "is-rejected"}`}>
+                            {decision === "confirmed" ? "Merged" : "Separated"}
+                          </span>
+                        ) : (
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button type="button" className="th-button th-button-primary" style={{ minHeight: 34 }} onClick={() => handleMergeDecision(match, "confirmed")}>Confirm merge</button>
+                            <button type="button" className="th-button th-button-secondary" style={{ minHeight: 34 }} onClick={() => handleMergeDecision(match, "separated")}>Keep separate</button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               <div className="th-table-wrap">
                 {fileClass === 'constituent' && (
                   <table className="th-table">
@@ -1473,7 +1877,8 @@ export default function TransformHubPage() {
                         <th>Amount</th>
                         <th>Fund</th>
                         <th>Appeal</th>
-                        <th>Email</th>
+                        <th>Contact</th>
+                        <th>Location</th>
                         <th>Memo</th>
                       </tr>
                     </thead>
@@ -1481,12 +1886,13 @@ export default function TransformHubPage() {
                       {previewRecords.map((record: any) => (
                         <tr key={record.id}>
                           <td>{record.sourceRowRef}</td>
-                          <td><strong>{record.donorName}</strong></td>
+                          <td><strong>{record.donorName}</strong><div className="th-inline-note">{record.householdName || record.organizationName || [record.firstName, record.lastName].filter(Boolean).join(' ') || '—'}</div></td>
                           <td>{record.date || '—'}</td>
                           <td>{record.amount || '—'} {record.currency || ''}</td>
                           <td>{record.fund || '—'}</td>
                           <td>{record.appeal || '—'}</td>
-                          <td>{record.email || '—'}</td>
+                          <td>{[record.email, record.phone].filter(Boolean).join(' · ') || '—'}</td>
+                          <td>{[record.city, record.state, record.postalCode].filter(Boolean).join(', ') || '—'}</td>
                           <td>{record.memo || '—'}</td>
                         </tr>
                       ))}
@@ -1578,7 +1984,10 @@ export default function TransformHubPage() {
                 <article className="th-output-card">
                   <div className="th-card-head"><FileSpreadsheet size={16} /><strong>{fileClass} export</strong></div>
                   <p>Export the class-specific canonical view without forcing this file through the ledger posting flow.</p>
-                  <button type="button" className="th-button th-button-primary" onClick={handleExportPreview}>
+                  {supportsIdentityWorkflow && !nonLedgerExportReady && (
+                    <p className="th-helper">Complete identity review and households before export unlocks.</p>
+                  )}
+                  <button type="button" className="th-button th-button-primary" onClick={handleExportPreview} disabled={!nonLedgerExportReady}>
                     <FileSpreadsheet size={14} /> Export
                   </button>
                 </article>

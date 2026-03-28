@@ -9,6 +9,8 @@ export class UpdateSessionDto {
   @ValidateNested({ each: true })
   @Type(() => CanonicalRowDto)
   rows?: CanonicalRowDto[];
-  @IsString() @IsIn(['review', 'ready', 'posted']) @IsOptional() status?: string;
+  @IsString() @IsIn(['blocked', 'review', 'ready', 'posted']) @IsOptional() status?: string;
   @IsObject() @IsOptional() preflight?: any;
+  @IsObject() @IsOptional() personResult?: any;
+  @IsObject() @IsOptional() householdResult?: any;
 }

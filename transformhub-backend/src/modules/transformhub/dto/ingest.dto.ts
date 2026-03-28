@@ -7,5 +7,6 @@ export class IngestDto {
   @IsIn(['text', 'xlsx']) @IsOptional() kind?: 'text' | 'xlsx';
   @IsString() @IsOptional() @MaxLength(TRANSFORMHUB_MAX_TEXT_CHARS) contents?: string;
   @IsString() @IsOptional() @MaxLength(TRANSFORMHUB_MAX_BASE64_CHARS) contentsBase64?: string;
+  @IsString() @IsOptional() sessionId?: string;
   @IsBoolean() @IsOptional() forceIngest?: boolean;
 }

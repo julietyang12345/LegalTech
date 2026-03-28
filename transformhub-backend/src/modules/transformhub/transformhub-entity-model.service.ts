@@ -39,8 +39,15 @@ export class TransformHubEntityModelService {
   ) {}
 
   async buildEntityModel(rows: any[], existingPersons: any[] = [], sessionId?: string, persist = true): Promise<any> {
-    const personResolution = await this.identity.resolvePersons(rows, existingPersons, sessionId);
-    const householdsResolution = this.identity.resolveHouseholds(personResolution.persons);
+    const personResolution = await this.identity.resolvePersons(rows, existingPersons, {
+      usePersistentIdentityMemory: Boolean(sessionId),
+      seedExistingPersonsFromDb: Boolean(sessionId) && existingPersons.length === 0,
+      baselinePlatform: rows[0]?.source_platform,
+      baselineFileClass: 'ledger',
+    });
+    const householdsResolution = await this.identity.resolveHouseholds(personResolution.persons, {
+      usePersistentHouseholdMemory: Boolean(sessionId),
+    });
     const normalizedRows = this.taxonomy.applyNormalizedTaxonomy(rows);
     const householdByMemberId = new Map<string, string>();
     const personMatchByRef = new Map<string, any>(personResolution.matches.map((match: any) => [match.inputRef, match]));

@@ -16,6 +16,8 @@ import { AuditDashboardDto } from './dto/audit-dashboard.dto';
 import { CampaignPerformanceReportDto } from './dto/campaign-performance-report.dto';
 import { CrmSyncExportDto } from './dto/crm-sync-export.dto';
 import { ResolveTaxonomyExceptionDto } from './dto/resolve-taxonomy-exception.dto';
+import { ReviewTaxonomySuggestionDto } from './dto/review-taxonomy-suggestion.dto';
+import { ReviewFieldSuggestionDto } from './dto/review-field-suggestion.dto';
 import { MergeDecisionDto } from './dto/merge-decision.dto';
 import { TransformHubApiKeyGuard } from './guards/transformhub-api-key.guard';
 import { PublicTransformHub } from './decorators/public-transformhub.decorator';
@@ -119,6 +121,20 @@ export class TransformHubController {
   @Post('taxonomy-exceptions/:id/resolve')
   resolveTaxonomyException(@Param('id') id: string, @Body() dto: ResolveTaxonomyExceptionDto) {
     return this.service.resolveTaxonomyException(id, dto);
+  }
+
+  @Post('taxonomy-exceptions/:id/review')
+  reviewTaxonomySuggestion(@Param('id') id: string, @Body() dto: ReviewTaxonomySuggestionDto) {
+    return this.service.reviewTaxonomySuggestion(id, dto);
+  }
+
+  @Post('session/:id/field-suggestions/:suggestionId/review')
+  reviewFieldSuggestion(
+    @Param('id') id: string,
+    @Param('suggestionId') suggestionId: string,
+    @Body() dto: ReviewFieldSuggestionDto,
+  ) {
+    return this.service.reviewFieldSuggestion(id, suggestionId, dto);
   }
 
   @Post('source-of-truth')

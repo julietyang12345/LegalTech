@@ -25,14 +25,17 @@ export class TransformHubAiService {
     return this.client !== null;
   }
 
-  async suggestTaxonomyCode(
-    rawValue: string,
-    type: string,
-    registry: any[],
-    legacyMappings: any[],
-  ): Promise<{ code: string | null; reasoning: string } | null> {
+  async suggestTaxonomyCode(input: {
+    rawValue: string;
+    type: string;
+    registry: any[];
+    legacyMappings: any[];
+    ruleEvidence?: Array<Record<string, any>>;
+    sampleValues?: string[];
+  }): Promise<{ code: string | null; reasoning: string; confidence: 'high' | 'medium' | 'low'; evidence: string[]; model: string } | null> {
     if (!this.client) return null;
 
+    const { rawValue, type, registry, legacyMappings, ruleEvidence = [], sampleValues = [] } = input;
     const relevantRegistry = registry.filter((entry) => entry.type === type);
     const relevantLegacy = legacyMappings.filter((entry) => entry.type === type);
 
@@ -41,10 +44,15 @@ export class TransformHubAiService {
 Rules:
 - This is an AI suggestion only.
 - A human reviewer must approve before it is applied.
+- You are receiving rule-layer evidence from the previous stage. Use that evidence instead of re-deriving it.
 - Only return a canonical code that already exists in the registry.
 - If there is no reasonable match, return null.
+- Confidence must be one of: high, medium, low.
+- Evidence must be a short list of the most important facts you used.
 
 Raw ${type} value: "${rawValue}"
+Rule-layer evidence: ${JSON.stringify(ruleEvidence)}
+Sample values: ${JSON.stringify(sampleValues)}
 
 Canonical ${type} registry:
 ${relevantRegistry.map((entry) => `- ${entry.code}: ${entry.label}`).join('\n')}
@@ -52,14 +60,14 @@ ${relevantRegistry.map((entry) => `- ${entry.code}: ${entry.label}`).join('\n')}
 Legacy mappings:
 ${relevantLegacy.map((entry) => `- "${entry.legacyValue}" -> ${entry.canonicalCode}`).join('\n')}
 
-Respond ONLY with valid JSON: {"code": "CANONICAL-CODE" | null, "reasoning": "one short sentence"}`;
+Respond ONLY with valid JSON: {"code": "CANONICAL-CODE" | null, "reasoning": "one short sentence", "confidence": "high|medium|low", "evidence": ["short fact"]}`;
 
     try {
       const response = await this.client.chat.completions.create({
         model: this.taxonomyModel,
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
-        max_tokens: 120,
+        max_tokens: 220,
         temperature: 0,
       });
 
@@ -68,13 +76,92 @@ Respond ONLY with valid JSON: {"code": "CANONICAL-CODE" | null, "reasoning": "on
       const isValidCode = code
         ? relevantRegistry.some((entry) => entry.code === code) || relevantLegacy.some((entry) => entry.canonicalCode === code)
         : true;
+      const confidence = parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low'
+        ? parsed.confidence
+        : 'low';
+      const evidence = Array.isArray(parsed.evidence)
+        ? parsed.evidence.filter((value: unknown) => typeof value === 'string').slice(0, 5)
+        : [];
 
       return {
         code: isValidCode ? code : null,
         reasoning: String(parsed.reasoning ?? ''),
+        confidence,
+        evidence,
+        model: this.taxonomyModel,
       };
     } catch (err) {
       this.logger.warn(`AI taxonomy suggestion failed for "${rawValue}": ${String(err)}`);
+      return null;
+    }
+  }
+
+  async suggestFieldTarget(input: {
+    rawKey: string;
+    cleanedKey: string;
+    strippedKey: string;
+    canonicalHint?: string | null;
+    fileClass: string;
+    platform: string;
+    allowedCanonicalFields: string[];
+    sampleValues?: string[];
+    ruleEvidence?: Array<Record<string, any>>;
+  }): Promise<{ suggestedTarget: string | null; reasoning: string; confidence: 'high' | 'medium' | 'low'; evidence: string[]; model: string } | null> {
+    if (!this.client) return null;
+
+    const { rawKey, cleanedKey, strippedKey, canonicalHint = null, fileClass, platform, allowedCanonicalFields, sampleValues = [], ruleEvidence = [] } = input;
+
+    const prompt = `You are suggesting a canonical field target for an imported TransformHub file.
+
+Rules:
+- This is an AI suggestion only.
+- A human reviewer must approve before it is applied.
+- Use the rule-layer evidence instead of re-deriving it.
+- Only choose a target from the allowed canonical fields list.
+- If there is no reasonable match, return null.
+- Confidence must be one of: high, medium, low.
+- Evidence must be a short list of the most important facts you used.
+
+Platform: ${platform}
+File class: ${fileClass}
+Raw header: "${rawKey}"
+Cleaned key: "${cleanedKey}"
+Stripped key: "${strippedKey}"
+Canonical hint from rules: ${canonicalHint ? '"' + canonicalHint + '"' : 'null'}
+Rule-layer evidence: ${JSON.stringify(ruleEvidence)}
+Sample values: ${JSON.stringify(sampleValues)}
+Allowed canonical fields: ${JSON.stringify(allowedCanonicalFields)}
+
+Respond ONLY with valid JSON: {"suggestedTarget":"canonical_field"|null,"reasoning":"one short sentence","confidence":"high|medium|low","evidence":["short fact"]}`;
+
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.schemaModel,
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        max_tokens: 220,
+        temperature: 0,
+      });
+
+      const parsed = JSON.parse(response.choices[0].message.content ?? '{}');
+      const suggestedTarget = typeof parsed.suggestedTarget === 'string' && parsed.suggestedTarget.trim() ? parsed.suggestedTarget.trim() : null;
+      const isValidTarget = suggestedTarget ? allowedCanonicalFields.includes(suggestedTarget) : true;
+      const confidence = parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low'
+        ? parsed.confidence
+        : 'low';
+      const evidence = Array.isArray(parsed.evidence)
+        ? parsed.evidence.filter((value: unknown) => typeof value === 'string').slice(0, 5)
+        : [];
+
+      return {
+        suggestedTarget: isValidTarget ? suggestedTarget : null,
+        reasoning: String(parsed.reasoning ?? ''),
+        confidence,
+        evidence,
+        model: this.schemaModel,
+      };
+    } catch (err) {
+      this.logger.warn(`AI field suggestion failed for "${rawKey}": ${String(err)}`);
       return null;
     }
   }
@@ -146,7 +233,6 @@ Respond ONLY with valid JSON: {"fieldMap": {"canonical_field": "exact_header_str
     }
   }
 
-
   async suggestSchemaClassAndMappings(
     platform: string,
     headers: string[],
@@ -202,6 +288,165 @@ Respond ONLY with valid JSON: {"fileClass":"ledger|constituent|donor|campaign|co
       };
     } catch (err) {
       this.logger.warn(`AI schema class+mappings failed for platform "${platform}": ${String(err)}`);
+      return null;
+    }
+  }
+
+
+  async suggestPersonMatch(input: {
+    rowRef: string;
+    name: string;
+    email: string;
+    phone: string;
+    address: string;
+    zip: string;
+    householdName: string;
+    city: string;
+    state: string;
+    candidate: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      phone: string;
+      addressLine1: string;
+      city: string;
+      state: string;
+      zip: string;
+    };
+    matchedEvidence: string[];
+    score: number;
+  }): Promise<{ suggestedAction: 'confirm_merge' | 'keep_separate'; confidence: 'high' | 'medium' | 'low'; reason: string; evidence: string[]; model: string } | null> {
+    if (!this.client) return null;
+
+    const prompt = `You are suggesting whether a human reviewer should merge two person records in TransformHub.
+
+Rules:
+- This is an AI suggestion only.
+- The human reviewer makes the final decision.
+- Use the provided rule-layer evidence instead of re-deriving it.
+- Be conservative. If the evidence is ambiguous, prefer keep_separate.
+- suggestedAction must be one of: confirm_merge, keep_separate.
+- confidence must be one of: high, medium, low.
+- evidence must be a short list of the most important facts you used.
+
+Input row ref: ${input.rowRef}
+Candidate id: ${input.candidate.id}
+Rule-layer matched evidence: ${JSON.stringify(input.matchedEvidence)}
+Rule-layer score: ${input.score}
+
+Incoming record:
+${JSON.stringify({
+      name: input.name,
+      email: input.email,
+      phone: input.phone,
+      address: input.address,
+      zip: input.zip,
+      householdName: input.householdName,
+      city: input.city,
+      state: input.state,
+    })}
+
+Candidate record:
+${JSON.stringify(input.candidate)}
+
+Respond ONLY with valid JSON: {"suggestedAction":"confirm_merge|keep_separate","confidence":"high|medium|low","reason":"one short sentence","evidence":["short fact"]}`;
+
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.schemaModel,
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        max_tokens: 220,
+        temperature: 0,
+      });
+
+      const parsed = JSON.parse(response.choices[0].message.content ?? '{}');
+      const suggestedAction = parsed.suggestedAction === 'confirm_merge' || parsed.suggestedAction === 'keep_separate'
+        ? parsed.suggestedAction
+        : 'keep_separate';
+      const confidence = parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low'
+        ? parsed.confidence
+        : 'low';
+      const evidence = Array.isArray(parsed.evidence)
+        ? parsed.evidence.filter((value: unknown) => typeof value === 'string').slice(0, 5)
+        : [];
+
+      return {
+        suggestedAction,
+        confidence,
+        reason: String(parsed.reason ?? ''),
+        evidence,
+        model: this.schemaModel,
+      };
+    } catch (err) {
+      this.logger.warn(`AI person-match suggestion failed for row "${input.rowRef}": ${String(err)}`);
+      return null;
+    }
+  }
+
+  async suggestHouseholdMatch(input: {
+    addressKey: string;
+    evidence: string[];
+    members: Array<{
+      id: string;
+      firstName: string;
+      lastName: string;
+      addressLine1: string;
+      city: string;
+      state: string;
+      zip: string;
+    }>;
+  }): Promise<{ suggestedAction: 'confirm_merge' | 'keep_separate'; confidence: 'high' | 'medium' | 'low'; reason: string; evidence: string[]; model: string } | null> {
+    if (!this.client) return null;
+
+    const prompt = `You are suggesting whether a human reviewer should group people into the same household in TransformHub.
+
+Rules:
+- This is an AI suggestion only.
+- The human reviewer makes the final decision.
+- Use the provided rule-layer evidence instead of re-deriving it.
+- Be conservative. If the evidence is ambiguous, prefer keep_separate.
+- suggestedAction must be one of: confirm_merge, keep_separate.
+- confidence must be one of: high, medium, low.
+- evidence must be a short list of the most important facts you used.
+
+Address key: ${input.addressKey}
+Rule-layer evidence: ${JSON.stringify(input.evidence)}
+Members:
+${JSON.stringify(input.members)}
+
+Respond ONLY with valid JSON: {"suggestedAction":"confirm_merge|keep_separate","confidence":"high|medium|low","reason":"one short sentence","evidence":["short fact"]}`;
+
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.schemaModel,
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        max_tokens: 220,
+        temperature: 0,
+      });
+
+      const parsed = JSON.parse(response.choices[0].message.content ?? '{}');
+      const suggestedAction = parsed.suggestedAction === 'confirm_merge' || parsed.suggestedAction === 'keep_separate'
+        ? parsed.suggestedAction
+        : 'keep_separate';
+      const confidence = parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low'
+        ? parsed.confidence
+        : 'low';
+      const evidence = Array.isArray(parsed.evidence)
+        ? parsed.evidence.filter((value: unknown) => typeof value === 'string').slice(0, 5)
+        : [];
+
+      return {
+        suggestedAction,
+        confidence,
+        reason: String(parsed.reason ?? ''),
+        evidence,
+        model: this.schemaModel,
+      };
+    } catch (err) {
+      this.logger.warn(`AI household suggestion failed for address key "${input.addressKey}": ${String(err)}`);
       return null;
     }
   }

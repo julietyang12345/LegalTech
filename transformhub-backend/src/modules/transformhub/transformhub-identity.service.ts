@@ -2,32 +2,96 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { ThCanonicalPerson } from '../../database/entities/th-canonical-person.entity';
+import { ThHousehold } from '../../database/entities/th-household.entity';
 import { ThAuditDecision } from '../../database/entities/th-audit-decision.entity';
+import { matchesNormalizedKey } from './transformhub-key-normalization';
+import { TransformHubAiService } from './transformhub-ai.service';
 
 @Injectable()
 export class TransformHubIdentityService {
   constructor(
     @InjectRepository(ThCanonicalPerson)
     private readonly personRepo: Repository<ThCanonicalPerson>,
+    @InjectRepository(ThHousehold)
+    private readonly householdRepo: Repository<ThHousehold>,
     @InjectRepository(ThAuditDecision)
     private readonly auditDecisionRepo: Repository<ThAuditDecision>,
+    private readonly ai: TransformHubAiService,
   ) {}
 
   private normStr(s: string): string {
-    return String(s || '').toLowerCase().trim().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+    return String(s || "").toLowerCase().trim().replace(/[^a-z0-9 ]/g, "").replace(/ +/g, " ");
   }
 
   private normalizePhone(s: string): string {
     return String(s || '').replace(/\D/g, '').slice(-10);
   }
 
-  private scorePersonPair(candidate: any, input: { name: string; email: string; phone: string; address: string; zip: string }): { score: number; matchedFields: string[] } {
+  private normalizeEmail(s: string): string {
+    const raw = String(s || '').toLowerCase().trim();
+    if (!raw || !raw.includes('@')) return raw;
+    const [localPart, domain] = raw.split('@');
+    const normalizedLocal = localPart.split('+')[0];
+    return `${normalizedLocal}@${domain}`;
+  }
+
+  private buildEntityName(row: any): string {
+    return String(
+      row.entity_name
+        || row.displayName
+        || row.donorName
+        || [row.firstName, row.lastName].filter(Boolean).join(' ')
+        || row.organizationName
+        || row.householdName
+        || '',
+    ).trim();
+  }
+
+  private fallbackRawValue(rawValues: Record<string, string> | undefined, aliases: string[], validator?: (value: string) => boolean): string {
+    if (!rawValues) return '';
+    for (const [key, value] of Object.entries(rawValues)) {
+      if (!matchesNormalizedKey(key, aliases)) continue;
+      const normalizedValue = String(value || '').trim();
+      if (!normalizedValue) continue;
+      if (!validator || validator(normalizedValue)) return normalizedValue;
+    }
+    return '';
+  }
+
+  private extractPersonInput(row: any): { name: string; email: string; phone: string; address: string; zip: string; householdName: string; city: string; state: string } {
+    const rawValues = row.rawValues as Record<string, string> | undefined;
+    const email = String(row.email || '').trim() || this.fallbackRawValue(rawValues, ['email', 'email address', 'e-mail', 'mail address'], (value) => value.includes('@'));
+    const phone = String(row.phone || '').trim() || this.fallbackRawValue(rawValues, ['phone', 'phone number', 'telephone', 'mobile', 'cell'], (value) => this.normalizePhone(value).length >= 10);
+    const address = String(row.addressLine1 || row.address || '').trim() || this.fallbackRawValue(rawValues, ['address', 'address 1', 'mailing address', 'street', 'addr']);
+    const zip = String(row.zip || row.postalCode || '').trim() || this.fallbackRawValue(rawValues, ['zip', 'zip code', 'postal', 'postal code'], (value) => /\d{5}/.test(value));
+    const householdName = String(row.householdName || row.household_name || '').trim() || this.fallbackRawValue(rawValues, ['household', 'household name']);
+    const city = String(row.city || '').trim() || this.fallbackRawValue(rawValues, ['city']);
+    const state = String(row.state || '').trim() || this.fallbackRawValue(rawValues, ['state', 'province']);
+
+    return {
+      name: this.buildEntityName(row),
+      email,
+      phone,
+      address,
+      zip,
+      householdName,
+      city,
+      state,
+    };
+  }
+
+  private scorePersonPair(
+    candidate: any,
+    input: { name: string; email: string; phone: string; address: string; zip: string; householdName: string },
+  ): { score: number; matchedFields: string[] } {
     let score = 0;
     const matchedFields: string[] = [];
 
-    if (input.email && candidate.email && input.email.toLowerCase().trim() === candidate.email.toLowerCase().trim()) {
-      score += 50;
-      matchedFields.push('email');
+    const inputEmail = this.normalizeEmail(input.email);
+    const candidateEmail = this.normalizeEmail(candidate.email);
+    if (inputEmail && candidateEmail && inputEmail === candidateEmail) {
+      score += 35;
+      matchedFields.push('email_alias');
     }
 
     const inputName = this.normStr(input.name);
@@ -53,19 +117,29 @@ export class TransformHubIdentityService {
     const inputPhone = this.normalizePhone(input.phone);
     const candidatePhone = this.normalizePhone(candidate.phone);
     if (inputPhone && candidatePhone && inputPhone.length >= 7 && inputPhone === candidatePhone) {
-      score += 20;
+      score += 25;
       matchedFields.push('phone');
     }
 
     if (
-      input.zip &&
-      candidate.zip &&
-      input.zip.trim() === candidate.zip.trim() &&
-      this.normStr(input.address) &&
-      this.normStr(input.address) === this.normStr(candidate.addressLine1)
+      input.zip
+      && candidate.zip
+      && input.zip.trim() === candidate.zip.trim()
+      && this.normStr(input.address)
+      && this.normStr(input.address) === this.normStr(candidate.addressLine1)
     ) {
-      score += 20;
+      score += 25;
       matchedFields.push('address_zip');
+    }
+
+    if (input.householdName && candidate.lastName && this.normStr(input.householdName).includes(this.normStr(candidate.lastName))) {
+      score += 10;
+      matchedFields.push('household');
+    }
+
+    if (matchedFields.includes('full_name') && matchedFields.includes('phone') && matchedFields.includes('address_zip')) {
+      score += 15;
+      matchedFields.push('strong_multisignal');
     }
 
     return { score, matchedFields };
@@ -89,10 +163,73 @@ export class TransformHubIdentityService {
     return this.personDisplayName(person).split(' ').filter((token) => token.length > 1);
   }
 
+
+  private householdAddressKey(person: any): string | null {
+    const address = this.normStr(person.addressLine1 || person.address || '');
+    const zip = String(person.zip || '').trim();
+    if (address && zip) return `${address}|${zip}`;
+    if (address) return `${address}|${this.householdLocationKey(person)}`;
+    return null;
+  }
+
+  private householdLocationKey(person: any): string {
+    const zip = String(person.zip || '').trim();
+    if (zip) return `zip:${zip}`;
+    const city = this.normStr(person.city || '');
+    const state = this.normStr(person.state || '');
+    if (city || state) return `city:${city}|state:${state}`;
+    return 'unknown';
+  }
+
+  private householdKeyForPeople(people: any[]): string | null {
+    const primary = people.find((person) => person.lastName) ?? people[0];
+    if (!primary?.lastName) return null;
+    return `${this.normStr(primary.lastName)}|${this.householdLocationKey(primary)}`;
+  }
+
+  private householdKeyForHousehold(household: any): string | null {
+    if (!household?.lastName) return null;
+    const locationKey = String(household.locationKey || '').trim() || 'unknown';
+    return `${this.normStr(household.lastName)}|${locationKey}`;
+  }
+
+  private nextHouseholdId(count: number): string {
+    return `HH-${String(10000 + count).padStart(5, '0')}`;
+  }
+
+  private buildHouseholdPayload(group: any[], existing?: any) {
+    const primary = group[0];
+    const salutation = group.length === 2 ? 'joint' : 'formal';
+    const salutationText = salutation === 'joint' && group.length === 2
+      ? `${group[0].firstName} and ${group[1].firstName} ${group[0].lastName}`
+      : `The ${primary.lastName} Family`;
+    const primaryAddress = primary.addressLine1 || `${primary.city || ''}, ${primary.state || ''} ${primary.zip || ''}`.trim() || null;
+    const memberIds = Array.from(new Set(group.map((person) => person.id)));
+
+    return {
+      ...existing,
+      lastName: primary.lastName || existing?.lastName || null,
+      primaryMemberId: primary.id || existing?.primaryMemberId || null,
+      primaryAddress: primaryAddress || existing?.primaryAddress || null,
+      locationKey: this.householdLocationKey(primary),
+      salutation,
+      salutationText,
+      memberIds,
+      version: existing
+        ? JSON.stringify(existing.memberIds || []) === JSON.stringify(memberIds)
+          ? existing.version
+          : (existing.version || 1) + 1
+        : 1,
+      jointGivingTotal: existing?.jointGivingTotal || 0,
+    };
+  }
+
   private createPersonIndex(persons: any[]) {
     const exactName = new Map<string, Set<any>>();
     const lastName = new Map<string, Set<any>>();
     const token = new Map<string, Set<any>>();
+    const email = new Map<string, Set<any>>();
+    const phone = new Map<string, Set<any>>();
 
     const add = (map: Map<string, Set<any>>, key: string, person: any) => {
       if (!key) return;
@@ -104,11 +241,13 @@ export class TransformHubIdentityService {
     const addPerson = (person: any) => {
       add(exactName, this.personDisplayName(person), person);
       add(lastName, this.normStr(person.lastName || ''), person);
+      add(email, this.normalizeEmail(person.email || ''), person);
+      add(phone, this.normalizePhone(person.phone || ''), person);
       this.personNameTokens(person).forEach((tokenValue) => add(token, tokenValue, person));
     };
 
     persons.forEach(addPerson);
-    return { exactName, lastName, token, addPerson };
+    return { exactName, lastName, token, email, phone, addPerson };
   }
 
   private candidatePersonsForInput(
@@ -117,6 +256,8 @@ export class TransformHubIdentityService {
   ): any[] {
     const candidates = new Set<any>();
     const normalizedName = this.normStr(input.name);
+    const normalizedEmail = this.normalizeEmail(input.email);
+    const normalizedPhone = this.normalizePhone(input.phone);
     const parts = normalizedName.split(' ').filter((part) => part.length > 1);
     const inputLastName = parts.at(-1) ?? '';
 
@@ -126,6 +267,8 @@ export class TransformHubIdentityService {
 
     addAll(index.exactName.get(normalizedName));
     addAll(index.lastName.get(inputLastName));
+    addAll(index.email.get(normalizedEmail));
+    addAll(index.phone.get(normalizedPhone));
     parts.forEach((part) => addAll(index.token.get(part)));
 
     return Array.from(candidates);
@@ -140,32 +283,130 @@ export class TransformHubIdentityService {
     return dbPerson;
   }
 
-  private createNewPerson(row: any, persons: any[], dbPersonCount: number, sequence: number) {
-    const nameParts = row.entity_name.trim().split(/\s+/);
-    const firstName = nameParts.slice(0, -1).join(' ') || nameParts[0] || '';
-    const lastName = nameParts.slice(-1)[0] || '';
+  private createNewPerson(row: any, persons: any[], sequence: number, scope: { platform?: string | null; fileClass?: string | null } = {}, rowRef?: string) {
+    const input = this.extractPersonInput(row);
+    const nameParts = input.name.trim().split(/\s+/);
+    const firstName = row.firstName || nameParts.slice(0, -1).join(' ') || nameParts[0] || '';
+    const lastName = row.lastName || nameParts.slice(-1)[0] || '';
     const newPerson = this.personRepo.create({
-      id: this.nextPersonId(dbPersonCount + sequence),
+      id: this.nextPersonId(persons.length + sequence),
       firstName,
       lastName,
-      email: '',
-      phone: '',
-      addressLine1: '',
-      city: '',
-      state: '',
-      zip: '',
-      tags: [],
+      email: input.email,
+      phone: input.phone,
+      addressLine1: input.address,
+      city: input.city,
+      state: input.state,
+      zip: input.zip,
+      tags: Array.isArray(row.tags) ? row.tags : [],
       lifecycle: 'active',
-      sourceRowRefs: [row.source_row_ref],
+      sourceRowRefs: rowRef ? [rowRef] : [],
+      sourcePlatform: scope.platform ?? null,
+      sourceFileClass: scope.fileClass ?? null,
     });
     persons.push(newPerson);
     return newPerson;
   }
 
-  async resolvePersons(rows: any[], existingPersons: any[] = [], sessionId?: string): Promise<any> {
-    void sessionId;
-    const dbPersons = existingPersons.length > 0 ? existingPersons : await this.personRepo.find();
-    const persons = [...dbPersons];
+  private mergePersonSignals(person: any, input: { email: string; phone: string; address: string; zip: string; city: string; state: string }, rowRef: string, scope: { platform?: string | null; fileClass?: string | null } = {}) {
+    person.updatedAt = new Date();
+    person.sourceRowRefs = Array.from(new Set([...(person.sourceRowRefs || []), rowRef]));
+    if (!person.email && input.email) person.email = input.email;
+    if (!person.phone && input.phone) person.phone = input.phone;
+    if (!person.addressLine1 && input.address) person.addressLine1 = input.address;
+    if (!person.zip && input.zip) person.zip = input.zip;
+    if (!person.city && input.city) person.city = input.city;
+    if (!person.state && input.state) person.state = input.state;
+    if (!person.sourcePlatform && scope.platform) person.sourcePlatform = scope.platform;
+    if (!person.sourceFileClass && scope.fileClass) person.sourceFileClass = scope.fileClass;
+  }
+
+  private buildMatchReviewPayload(
+    row: any,
+    rowRef: string,
+    input: { name: string; email: string; phone: string; address: string; zip: string; householdName: string; city: string; state: string },
+    matchedFields: string[],
+    candidate?: any,
+    aiSuggestion?: { suggestedAction: 'confirm_merge' | 'keep_separate'; confidence: 'high' | 'medium' | 'low'; reason: string; evidence: string[]; model: string } | null,
+  ) {
+    return {
+      rowRef,
+      rawValues: row.rawValues ?? null,
+      input: {
+        name: input.name,
+        email: input.email,
+        phone: input.phone,
+        address: input.address,
+        zip: input.zip,
+        householdName: input.householdName,
+        city: input.city,
+        state: input.state,
+      },
+      matchedEvidence: matchedFields,
+      aiSuggestion: aiSuggestion ?? null,
+      candidate: candidate
+        ? {
+            id: candidate.id,
+            firstName: candidate.firstName,
+            lastName: candidate.lastName,
+            email: candidate.email,
+            phone: candidate.phone,
+            addressLine1: candidate.addressLine1,
+            city: candidate.city,
+            state: candidate.state,
+            zip: candidate.zip,
+          }
+        : null,
+    };
+  }
+
+  private async buildAiReviewSuggestion(
+    rowRef: string,
+    input: { name: string; email: string; phone: string; address: string; zip: string; householdName: string; city: string; state: string },
+    matchedFields: string[],
+    score: number,
+    candidate?: any,
+  ) {
+    if (!candidate || !this.ai.isEnabled) return null;
+    return this.ai.suggestPersonMatch({
+      rowRef,
+      name: input.name,
+      email: input.email,
+      phone: input.phone,
+      address: input.address,
+      zip: input.zip,
+      householdName: input.householdName,
+      city: input.city,
+      state: input.state,
+      matchedEvidence: matchedFields,
+      score,
+      candidate: {
+        id: candidate.id,
+        firstName: candidate.firstName,
+        lastName: candidate.lastName,
+        email: candidate.email,
+        phone: candidate.phone,
+        addressLine1: candidate.addressLine1,
+        city: candidate.city,
+        state: candidate.state,
+        zip: candidate.zip,
+      },
+    });
+  }
+
+  async resolvePersons(rows: any[], existingPersons?: any[], options?: { usePersistentIdentityMemory?: boolean; forceReviewOnAutoMatches?: boolean; seedExistingPersonsFromDb?: boolean; baselinePlatform?: string; baselineFileClass?: string }): Promise<any> {
+    const usePersistentIdentityMemory = options?.usePersistentIdentityMemory === true;
+    const forceReviewOnAutoMatches = options?.forceReviewOnAutoMatches === true;
+    const seedExistingPersonsFromDb = options?.seedExistingPersonsFromDb === true;
+    const baselinePlatform = options?.baselinePlatform || null;
+    const baselineFileClass = options?.baselineFileClass || null;
+    const personScope = { platform: baselinePlatform, fileClass: baselineFileClass };
+    const seedPersons = Array.isArray(existingPersons)
+      ? existingPersons
+      : seedExistingPersonsFromDb && baselinePlatform && baselineFileClass
+        ? await this.personRepo.find({ where: { sourcePlatform: baselinePlatform, sourceFileClass: baselineFileClass } })
+        : [];
+    const persons = [...seedPersons];
     const personIndex = this.createPersonIndex(persons);
     const matches: any[] = [];
     const pendingPersonSaves: ThCanonicalPerson[] = [];
@@ -175,8 +416,8 @@ export class TransformHubIdentityService {
     let newPersonCount = 0;
     const seen = new Set<string>();
 
-    const inputKeys = Array.from(new Set(rows.map((row) => this.normStr(row.entity_name || '')).filter(Boolean)));
-    const permanentDecisions = inputKeys.length > 0
+    const inputKeys = Array.from(new Set(rows.map((row) => this.normStr(this.buildEntityName(row))).filter(Boolean)));
+    const permanentDecisions = usePersistentIdentityMemory && inputKeys.length > 0
       ? await this.auditDecisionRepo.find({ where: { permanent: true, inputKey: In(inputKeys) }, order: { updatedAt: 'DESC' } })
       : [];
     const decisionsByInputKey = new Map<string, ThAuditDecision[]>();
@@ -187,30 +428,31 @@ export class TransformHubIdentityService {
       decisionsByInputKey.set(key, current);
     });
 
-    for (const row of rows) {
-      if (!row.entity_name) continue;
-      const seenKey = `${this.normStr(row.entity_name)}|${row.source_row_ref}`;
+    for (const [index, row] of rows.entries()) {
+      const input = this.extractPersonInput(row);
+      if (!input.name) continue;
+      const rowRef = row.source_row_ref || row.sourceRowRef || String(index);
+      const seenKey = `${this.normStr(input.name)}|${rowRef}`;
       if (seen.has(seenKey)) continue;
       seen.add(seenKey);
 
-      const input = { name: row.entity_name, email: '', phone: '', address: '', zip: '' };
-      const inputKey = this.normStr(row.entity_name);
+      const inputKey = this.normStr(input.name);
       const storedDecisions = decisionsByInputKey.get(inputKey) ?? [];
       const storedMergeDecision = storedDecisions.find((decision) => decision.merge && decision.matchedPersonId);
 
       if (storedMergeDecision?.matchedPersonId) {
         const storedPerson = await this.ensureStoredMatchPerson(persons, storedMergeDecision.matchedPersonId);
         if (storedPerson) {
-          storedPerson.updatedAt = new Date();
-          storedPerson.sourceRowRefs = [...(storedPerson.sourceRowRefs || []), row.source_row_ref];
+          this.mergePersonSignals(storedPerson, input, rowRef, personScope);
           pendingPersonSaves.push(storedPerson);
           matches.push({
-            inputRef: row.source_row_ref,
+            inputRef: rowRef,
             score: 100,
             band: 'auto',
             decision: 'auto',
             matchedPersonId: storedPerson.id,
             matchedFields: ['stored_decision'],
+            reviewPayload: this.buildMatchReviewPayload(row, rowRef, input, ['stored_decision'], storedPerson),
           });
           autoMatched++;
           continue;
@@ -234,13 +476,14 @@ export class TransformHubIdentityService {
       const storedSplitDecision = storedDecisions.find(
         (decision) => decision.split && (!decision.matchedPersonId || decision.matchedPersonId === bestMatch?.id),
       );
-      const band = storedSplitDecision ? 'separate' : this.getConfidenceBand(bestScore);
+      const baseBand = storedSplitDecision ? 'separate' : this.getConfidenceBand(bestScore);
+      const band = forceReviewOnAutoMatches && baseBand === 'auto' && bestMatch ? 'review' : baseBand;
       let matchedPersonId: string | null = null;
       let decision = 'new';
 
+      let aiSuggestion = null;
       if (band === 'auto' && bestMatch) {
-        bestMatch.updatedAt = new Date();
-        bestMatch.sourceRowRefs = [...(bestMatch.sourceRowRefs || []), row.source_row_ref];
+        this.mergePersonSignals(bestMatch, input, rowRef, personScope);
         pendingPersonSaves.push(bestMatch);
         matchedPersonId = bestMatch.id;
         decision = 'auto';
@@ -249,8 +492,9 @@ export class TransformHubIdentityService {
         matchedPersonId = bestMatch.id;
         decision = 'review';
         needsReviewCount++;
+        aiSuggestion = await this.buildAiReviewSuggestion(rowRef, input, bestMatchedFields, bestScore, bestMatch);
       } else {
-        const newPerson = this.createNewPerson(row, persons, dbPersons.length, ++newPersonCount);
+        const newPerson = this.createNewPerson(row, persons, ++newPersonCount, personScope, rowRef);
         pendingPersonSaves.push(newPerson);
         personIndex.addPerson(newPerson);
         matchedPersonId = newPerson.id;
@@ -259,60 +503,145 @@ export class TransformHubIdentityService {
         if (storedSplitDecision) bestMatchedFields = [...bestMatchedFields, 'stored_separate_decision'];
       }
 
-      matches.push({ inputRef: row.source_row_ref, score: bestScore, band, decision, matchedPersonId, matchedFields: bestMatchedFields });
+      matches.push({
+        inputRef: rowRef,
+        score: bestScore,
+        band,
+        decision,
+        matchedPersonId,
+        matchedFields: bestMatchedFields,
+        reviewPayload: this.buildMatchReviewPayload(row, rowRef, input, bestMatchedFields, bestMatch, aiSuggestion),
+      });
     }
-
 
     if (pendingPersonSaves.length > 0) {
       const dedupedPersonSaves = Array.from(new Map(pendingPersonSaves.map((person) => [person.id, person])).values());
       await this.personRepo.save(dedupedPersonSaves);
     }
 
-    return { persons, matches, autoMatched, needsReview: needsReviewCount, separated };
+    return {
+      persons,
+      canonicalPersons: persons,
+      matches,
+      autoMatched,
+      autoMergedCount: autoMatched,
+      needsReview: needsReviewCount,
+      pendingReviewCount: needsReviewCount,
+      separated,
+    };
   }
 
-  resolveHouseholds(persons: any[]): any {
+  private async buildHouseholdReviewSuggestions(persons: any[], households: any[]) {
+    if (!this.ai.isEnabled) return [];
+
+    const householdMemberIds = new Set<string>();
+    households.forEach((household) => (household.memberIds || []).forEach((memberId: string) => householdMemberIds.add(memberId)));
+
+    const buckets = new Map<string, any[]>();
+    persons.forEach((person) => {
+      const addressKey = this.householdAddressKey(person);
+      if (!addressKey || householdMemberIds.has(person.id)) return;
+      const current = buckets.get(addressKey) ?? [];
+      current.push(person);
+      buckets.set(addressKey, current);
+    });
+
+    const suggestions: any[] = [];
+    let sequence = 0;
+    for (const [addressKey, members] of buckets.entries()) {
+      if (members.length < 2) continue;
+      const uniqueLastNames = Array.from(new Set(members.map((member) => this.normStr(member.lastName || '')).filter(Boolean)));
+      const evidence = ['same_address'];
+      if (members.every((member) => member.zip) && new Set(members.map((member) => String(member.zip))).size === 1) evidence.push('same_zip');
+      if (uniqueLastNames.length > 1) evidence.push('distinct_last_names');
+      const aiSuggestion = await this.ai.suggestHouseholdMatch({
+        addressKey,
+        evidence,
+        members: members.map((member) => ({
+          id: member.id,
+          firstName: member.firstName,
+          lastName: member.lastName,
+          addressLine1: member.addressLine1,
+          city: member.city,
+          state: member.state,
+          zip: member.zip,
+        })),
+      });
+      suggestions.push({
+        id: `hs-review-${++sequence}`,
+        proposedMemberIds: members.map((member) => member.id),
+        proposedMembers: members.map((member) => ({
+          id: member.id,
+          firstName: member.firstName,
+          lastName: member.lastName,
+          addressLine1: member.addressLine1,
+          city: member.city,
+          state: member.state,
+          zip: member.zip,
+        })),
+        matchedEvidence: evidence,
+        aiSuggestion,
+      });
+    }
+
+    return suggestions;
+  }
+
+  async resolveHouseholds(persons: any[], options?: { usePersistentHouseholdMemory?: boolean }): Promise<any> {
     const households: any[] = [];
     const grouped = new Map<string, any[]>();
     const ungroupedPersonIds: string[] = [];
-    let hhCount = 0;
+    const usePersistentHouseholdMemory = options?.usePersistentHouseholdMemory === true;
 
     for (const person of persons) {
       if (!person.lastName) {
         ungroupedPersonIds.push(person.id);
         continue;
       }
-      const key = `${this.normStr(person.lastName)}|${person.zip || person.city || 'unknown'}`;
+      const key = this.householdKeyForPeople([person]);
+      if (!key) {
+        ungroupedPersonIds.push(person.id);
+        continue;
+      }
       const group = grouped.get(key) ?? [];
       group.push(person);
       grouped.set(key, group);
     }
 
-    for (const [, group] of grouped) {
+    const existingHouseholds = usePersistentHouseholdMemory ? await this.householdRepo.find() : [];
+    const existingByKey = new Map<string, ThHousehold>();
+    existingHouseholds.forEach((household) => {
+      const key = this.householdKeyForHousehold(household);
+      if (key && !existingByKey.has(key)) existingByKey.set(key, household);
+    });
+
+    let hhCount = existingHouseholds.length;
+    const pendingHouseholdSaves: ThHousehold[] = [];
+
+    for (const [key, group] of grouped) {
       if (group.length < 2) {
         ungroupedPersonIds.push(group[0].id);
         continue;
       }
-      const primary = group[0];
-      const salutation = group.length === 2 ? 'joint' : 'formal';
-      const salutationText = salutation === 'joint' && group.length === 2
-        ? `${group[0].firstName} and ${group[1].firstName} ${group[0].lastName}`
-        : `The ${primary.lastName} Family`;
-      households.push({
-        id: `HH-${String(10000 + hhCount++).padStart(5, '0')}`,
-        lastName: primary.lastName,
-        memberIds: group.map((person) => person.id),
-        primaryAddress: primary.addressLine1 || `${primary.city}, ${primary.state} ${primary.zip}`.trim(),
-        salutation,
-        salutationText,
-        jointGivingTotal: 0,
-        version: 1,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+
+      const existing = existingByKey.get(key);
+      const payload = this.buildHouseholdPayload(group, existing);
+      const household = {
+        id: existing?.id || this.nextHouseholdId(++hhCount),
+        ...payload,
+      } as ThHousehold;
+      households.push(household);
+      pendingHouseholdSaves.push(household);
+      existingByKey.set(key, household);
     }
 
-    return { households, ungroupedPersonIds };
+    if (pendingHouseholdSaves.length > 0 && usePersistentHouseholdMemory) {
+      await this.householdRepo.save(pendingHouseholdSaves);
+    }
+
+    const reviewSuggestions = await this.buildHouseholdReviewSuggestions(persons, households);
+
+    return { households, ungroupedPersonIds, reviewSuggestions };
   }
 
   async getAllPersons(): Promise<ThCanonicalPerson[]> {

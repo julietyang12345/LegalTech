@@ -78,19 +78,32 @@ export type ConstituentPreviewRecord = {
   assignedStaff: string;
   createdAt: string;
   updatedAt: string;
+  rawValues?: Record<string, string>;
 };
 
 export type DonorPreviewRecord = {
   id: string;
   sourceRowRef: string;
   donorName: string;
+  firstName: string;
+  lastName: string;
+  organizationName: string;
+  householdName: string;
   date: string;
   amount: string;
   fund: string;
   appeal: string;
   email: string;
+  phone: string;
+  address: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  tags: string[];
+  assignedStaff: string;
   memo: string;
   currency: string;
+  rawValues?: Record<string, string>;
 };
 
 export type CampaignPreviewRecord = {
@@ -143,6 +156,41 @@ export type ParsedFile = {
   preview?: ClassifiedPreview;
 };
 
+export type SchemaRuleEvidence = {
+  source: 'rule';
+  key: string;
+  value: string | null;
+};
+
+export type SchemaFieldSuggestion = {
+  id: string;
+  rawKey: string;
+  cleanedKey: string;
+  strippedKey: string;
+  canonicalHint: string | null;
+  suggestedTarget: string | null;
+  confidence: 'high' | 'medium' | 'low';
+  reasoning: string;
+  evidence: string[];
+  ruleEvidence: SchemaRuleEvidence[];
+  sampleValues: string[];
+  model: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  notes: string | null;
+  generatedAt: string;
+};
+
+export type SchemaHeaderDiagnostic = {
+  rawKey: string;
+  cleanedKey: string;
+  strippedKey: string;
+  canonicalHint: string | null;
+  mappedCanonicalFields: string[];
+  status: 'mapped' | 'covered_variant' | 'candidate' | 'unknown';
+};
+
 export type ResolvedSchema = {
   reportType: ReportType;
   fileClass: FileClass;
@@ -162,6 +210,9 @@ export type ResolvedSchema = {
   aiSuggestedFieldMap?: Record<string, string>;
   aiReasoning?: string | null;
   requiresHumanApproval?: boolean;
+  headerDiagnostics?: SchemaHeaderDiagnostic[];
+  normalizedFieldAlerts?: SchemaHeaderDiagnostic[];
+  fieldSuggestions?: SchemaFieldSuggestion[];
 };
 
 export type CanonicalFieldKey =
@@ -206,6 +257,17 @@ export type CanonicalLedgerRow = {
   attribution_entry_id: string | null;
   normalized_fund: string | null;
   normalized_appeal: string | null;
+  resolution_source?: 'direct' | 'reused_resolved_exception' | null;
+};
+
+export type BlockingIssue = {
+  code: string;
+  severity: 'error';
+  scope: 'file' | 'row' | 'field';
+  reason: string;
+  detail: string;
+  rowRef?: string | null;
+  column?: string | null;
 };
 
 export type PreflightIssue = {
@@ -226,7 +288,7 @@ export type PostingReceipt = {
   idempotencyKey: string;
 };
 
-export type TransformSessionStatus = 'review' | 'ready' | 'posted';
+export type TransformSessionStatus = 'blocked' | 'review' | 'ready' | 'posted';
 
 export type PersistedMergeDecision = {
   id: string;
@@ -249,9 +311,15 @@ export type TransformSession = {
   schema: ResolvedSchema;
   guardrails: GuardrailFinding[];
   rows: CanonicalLedgerRow[];
+  blockingIssues: BlockingIssue[];
   preflight: PreflightResult | null;
   receipts: PostingReceipt[];
   status: TransformSessionStatus;
+  forcedFromStatus?: TransformSessionStatus | null;
+  forcedBlockingIssuesSnapshot?: BlockingIssue[] | null;
+  forcedAt?: string | null;
+  personResult?: PersonResolverResult | null;
+  householdResult?: HouseholdResolverResult | null;
   auditDecisions?: PersistedMergeDecision[];
 };
 
@@ -264,6 +332,39 @@ export type PersonMatch = {
   decision: PersonMatchDecision;
   matchedPersonId: string | null;
   matchedFields: string[];
+  reviewPayload?: {
+    rowRef: string;
+    rawValues: Record<string, string> | null;
+    input: {
+      name: string;
+      email: string;
+      phone: string;
+      address: string;
+      zip: string;
+      householdName: string;
+      city: string;
+      state: string;
+    };
+    matchedEvidence: string[];
+    aiSuggestion?: {
+      suggestedAction: 'confirm_merge' | 'keep_separate';
+      confidence: 'high' | 'medium' | 'low';
+      reason: string;
+      evidence: string[];
+      model: string;
+    } | null;
+    candidate: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      phone: string;
+      addressLine1: string;
+      city: string;
+      state: string;
+      zip: string;
+    } | null;
+  };
 };
 
 export type CanonicalPerson = {
@@ -284,7 +385,6 @@ export type CanonicalPerson = {
 };
 
 export type Salutation = 'formal' | 'informal' | 'joint' | 'individual';
-
 export type CanonicalHousehold = {
   id: string;
   lastName: string;
@@ -298,11 +398,37 @@ export type CanonicalHousehold = {
   updatedAt: string;
 };
 
+
+export type HouseholdReviewSuggestion = {
+  id: string;
+  proposedMemberIds: string[];
+  proposedMembers: Array<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    addressLine1: string;
+    city: string;
+    state: string;
+    zip: string;
+  }>;
+  matchedEvidence: string[];
+  aiSuggestion: {
+    suggestedAction: 'confirm_merge' | 'keep_separate';
+    confidence: 'high' | 'medium' | 'low';
+    reason: string;
+    evidence: string[];
+    model: string;
+  } | null;
+};
+
 export type PersonResolverResult = {
   persons: CanonicalPerson[];
+  canonicalPersons: CanonicalPerson[];
   matches: PersonMatch[];
   autoMatched: number;
+  autoMergedCount: number;
   needsReview: number;
+  pendingReviewCount: number;
   separated: number;
   updatedRows?: CanonicalLedgerRow[];
   audit?: AuditRuleResult;
@@ -311,6 +437,7 @@ export type PersonResolverResult = {
 export type HouseholdResolverResult = {
   households: CanonicalHousehold[];
   ungroupedPersonIds: string[];
+  reviewSuggestions?: HouseholdReviewSuggestion[];
   updatedRows?: CanonicalLedgerRow[];
   audit?: AuditRuleResult;
 };
@@ -332,6 +459,23 @@ export type LegacyMapping = {
   type: TaxonomyCodeType;
 };
 
+export type TaxonomyRuleEvidence = {
+  source: 'rule';
+  key: string;
+  value: string | null;
+};
+
+export type TaxonomyAiSuggestion = {
+  code: string | null;
+  reasoning: string;
+  confidence: 'high' | 'medium' | 'low';
+  evidence: string[];
+  model: string;
+  generatedAt: string;
+  ruleEvidence?: TaxonomyRuleEvidence[];
+  sampleValues?: string[];
+};
+
 export type TaxonomyException = {
   id: string;
   rawValue: string;
@@ -340,13 +484,29 @@ export type TaxonomyException = {
   createdAt: string;
   resolvedCode: string | null;
   resolvedAt: string | null;
+  status?: 'open' | 'resolved';
+  aiSuggested?: boolean;
+  aiReasoning?: string | null;
+  aiSuggestion?: TaxonomyAiSuggestion | null;
+  aiReviewStatus?: 'pending' | 'approved' | 'rejected' | null;
+  aiRejectedReason?: string | null;
+  ruleEvidence?: TaxonomyRuleEvidence[];
+  sampleValues?: string[];
 };
 
 export type TaxonomyViolation = {
   rowRef: string;
   field: string;
   rawValue: string;
+  exceptionId?: string | null;
   suggestedCode?: string | null;
+  suggestionSource?: 'rule' | 'ai' | null;
+  aiSuggested?: boolean;
+  aiReviewStatus?: 'pending' | 'approved' | 'rejected' | null;
+  aiReasoning?: string | null;
+  aiConfidence?: 'high' | 'medium' | 'low' | null;
+  aiEvidence?: string[];
+  ruleEvidence?: TaxonomyRuleEvidence[];
 };
 
 export type TaxonomyGovernanceResult = {

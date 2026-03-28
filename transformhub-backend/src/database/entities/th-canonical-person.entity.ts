@@ -44,6 +44,12 @@ export class ThCanonicalPerson {
   @Column({ type: 'jsonb', default: [] })
   sourceRowRefs: string[];
 
+  @Column({ nullable: true })
+  sourcePlatform: string | null;
+
+  @Column({ nullable: true })
+  sourceFileClass: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

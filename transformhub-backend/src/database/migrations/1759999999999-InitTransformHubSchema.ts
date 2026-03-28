@@ -54,6 +54,7 @@ export class InitTransformHubSchema1759999999999 implements MigrationInterface {
       "raw_fund" character varying,
       "raw_appeal" character varying,
       "taxonomy_exception_id" character varying,
+      "resolution_source" character varying,
       "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
       "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
       CONSTRAINT "FK_th_canonical_rows_session" FOREIGN KEY ("sessionId") REFERENCES "th_transform_sessions"("id") ON DELETE CASCADE
@@ -77,6 +78,23 @@ export class InitTransformHubSchema1759999999999 implements MigrationInterface {
 
     await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_th_taxonomy_exceptions_source_row_ref" ON "th_taxonomy_exceptions" ("sourceRowRef")`);
 
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS "th_households" (
+      "id" character varying PRIMARY KEY,
+      "lastName" character varying,
+      "primaryMemberId" character varying,
+      "primaryAddress" text,
+      "locationKey" character varying,
+      "salutation" character varying NOT NULL DEFAULT 'formal',
+      "salutationText" text,
+      "jointGivingTotal" double precision NOT NULL DEFAULT 0,
+      "version" integer NOT NULL DEFAULT 1,
+      "memberIds" jsonb NOT NULL DEFAULT '[]',
+      "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
+      "updatedAt" TIMESTAMP NOT NULL DEFAULT now()
+    )`);
+
+    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_th_households_last_name" ON "th_households" ("lastName")`);
+
     await queryRunner.query(`CREATE TABLE IF NOT EXISTS "th_canonical_persons" (
       "id" character varying PRIMARY KEY,
       "firstName" character varying,
@@ -97,6 +115,8 @@ export class InitTransformHubSchema1759999999999 implements MigrationInterface {
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query('DROP TABLE IF EXISTS "th_canonical_persons"');
+    await queryRunner.query('DROP INDEX IF EXISTS "IDX_th_households_last_name"');
+    await queryRunner.query('DROP TABLE IF EXISTS "th_households"');
     await queryRunner.query('DROP INDEX IF EXISTS "IDX_th_taxonomy_exceptions_source_row_ref"');
     await queryRunner.query('DROP TABLE IF EXISTS "th_taxonomy_exceptions"');
     await queryRunner.query('DROP INDEX IF EXISTS "IDX_th_canonical_rows_taxonomy_exception_id"');

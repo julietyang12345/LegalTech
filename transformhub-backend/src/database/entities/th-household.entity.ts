@@ -14,6 +14,9 @@ export class ThHousehold {
   @Column({ type: 'text', nullable: true })
   primaryAddress: string | null;
 
+  @Column({ nullable: true })
+  locationKey: string | null;
+
   @Column({ default: 'formal' })
   salutation: string;
 

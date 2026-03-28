@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { TRANSFORMHUB_MAX_ROWS_PER_REQUEST } from '../transformhub.constants';
 import { CanonicalRowDto } from './canonical-row.dto';
 
@@ -11,4 +11,10 @@ export class PersonResolveDto {
   @Type(() => CanonicalRowDto)
   rows: CanonicalRowDto[];
   @IsArray() @IsOptional() existingPersons?: any[];
+  @IsBoolean() @IsOptional() usePersistentIdentityMemory?: boolean;
+  @IsBoolean() @IsOptional() forceReviewOnAutoMatches?: boolean;
+  @IsBoolean() @IsOptional() seedExistingPersonsFromDb?: boolean;
+  @IsString() @IsOptional() baselinePlatform?: string;
+  @IsString() @IsOptional() baselineFileClass?: string;
 }
+

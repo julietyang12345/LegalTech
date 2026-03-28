@@ -9,6 +9,7 @@ import type {
   CanonicalPerson,
   CrmSyncExport,
   DonorReport,
+  BlockingIssue,
   GuardrailFinding,
   HouseholdResolverResult,
   LegacyMapping,
@@ -31,6 +32,7 @@ type IngestPayload = {
   kind: 'text' | 'xlsx';
   contents?: string;
   contentsBase64?: string;
+  sessionId?: string;
   forceIngest?: boolean;
 };
 
@@ -38,7 +40,9 @@ type IngestResponse = {
   sessionId: string;
   parsedFile: ParsedFile;
   schema: ResolvedSchema;
+  status: TransformSessionStatus;
   guardrails: GuardrailFinding[];
+  blockingIssues: BlockingIssue[];
   rows: CanonicalLedgerRow[];
   taxonomy?: TaxonomyGovernanceResult;
   audit?: AuditRuleResult;
@@ -113,8 +117,16 @@ export async function saveSession(
   rows: CanonicalLedgerRow[],
   status: TransformSessionStatus,
   preflight: PreflightResult | null,
+  personResult?: PersonResolverResult | null,
+  householdResult?: HouseholdResolverResult | null,
 ): Promise<TransformSession> {
-  const response = await api.put<TransformSession>(`/transformhub/session/${sessionId}`, { rows, status, preflight });
+  const response = await api.put<TransformSession>(`/transformhub/session/${sessionId}`, {
+    rows,
+    status,
+    preflight,
+    personResult,
+    householdResult,
+  });
   return response.data;
 }
 
@@ -127,13 +139,15 @@ export async function exportCsvFallback(rows: CanonicalLedgerRow[], sessionId?: 
 
 export async function resolvePersonsBackend(
   rows: CanonicalLedgerRow[],
-  existingPersons: CanonicalPerson[],
+  existingPersons?: CanonicalPerson[],
   sessionId?: string,
+  options: { usePersistentIdentityMemory?: boolean; forceReviewOnAutoMatches?: boolean; seedExistingPersonsFromDb?: boolean; baselinePlatform?: string; baselineFileClass?: string } = {},
 ): Promise<PersonResolverResult> {
   const response = await api.post<PersonResolverResult>('/transformhub/person-resolve', {
     rows,
     existingPersons,
     sessionId,
+    ...options,
   });
   return response.data;
 }
@@ -168,6 +182,37 @@ export async function evaluateTaxonomyBackend(
   sessionId?: string,
 ): Promise<TaxonomyGovernanceResult> {
   const response = await api.post<TaxonomyGovernanceResult>('/transformhub/taxonomy-evaluate', { rows, sessionId });
+  return response.data;
+}
+
+export async function reviewFieldSuggestionBackend(
+  sessionId: string,
+  suggestionId: string,
+  action: 'approve' | 'reject',
+  payload: { reviewedBy?: string; notes?: string } = {},
+): Promise<{ session: TransformSession; schema: ResolvedSchema; updatedRows: CanonicalLedgerRow[]; taxonomy?: TaxonomyGovernanceResult | null; audit?: AuditRuleResult | null }> {
+  const response = await api.post<{ session: TransformSession; schema: ResolvedSchema; updatedRows: CanonicalLedgerRow[]; taxonomy?: TaxonomyGovernanceResult | null; audit?: AuditRuleResult | null }>(
+    '/transformhub/session/' + sessionId + '/field-suggestions/' + suggestionId + '/review',
+    {
+      action,
+      ...payload,
+    },
+  );
+  return response.data;
+}
+
+export async function reviewTaxonomySuggestionBackend(
+  exceptionId: string,
+  action: 'approve' | 'reject',
+  payload: { resolvedCode?: string; notes?: string; reviewedBy?: string } = {},
+): Promise<{ exception: any; updatedRows: CanonicalLedgerRow[]; audit?: AuditRuleResult | null }> {
+  const response = await api.post<{ exception: any; updatedRows: CanonicalLedgerRow[]; audit?: AuditRuleResult | null }>(
+    "/transformhub/taxonomy-exceptions/" + exceptionId + "/review",
+    {
+      action,
+      ...payload,
+    },
+  );
   return response.data;
 }
 

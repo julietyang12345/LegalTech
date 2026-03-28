@@ -15,6 +15,9 @@ export class ThTaxonomyException {
   rawValue: string;
 
   @Column()
+  normalizedRawValue: string;
+
+  @Column()
   type: string;
 
   @Column()
@@ -43,6 +46,27 @@ export class ThTaxonomyException {
 
   @Column({ type: 'text', nullable: true })
   aiReasoning: string | null;
+
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
+  ruleEvidence: Array<Record<string, any>>;
+
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
+  sampleValues: string[];
+
+  @Column({ type: 'jsonb', nullable: true })
+  aiSuggestion: Record<string, any> | null;
+
+  @Column({ nullable: true })
+  aiReviewStatus: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  aiReviewedAt: Date | null;
+
+  @Column({ nullable: true })
+  aiReviewedBy: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  aiRejectedReason: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -101,6 +101,9 @@ export class ThCanonicalRow {
   @Column({ nullable: true })
   normalized_appeal: string | null;
 
+  @Column({ nullable: true })
+  resolution_source: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

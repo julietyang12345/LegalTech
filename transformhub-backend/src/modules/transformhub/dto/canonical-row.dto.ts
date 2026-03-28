@@ -28,6 +28,21 @@ export class CanonicalRowDto {
   @IsString() @IsOptional() taxonomy_exception_id?: string | null;
   @IsString() @IsOptional() canonical_org_id?: string | null;
   @IsString() @IsOptional() attribution_entry_id?: string | null;
+  @IsString() @IsOptional() sourceRowRef?: string;
+  @IsString() @IsOptional() email?: string;
+  @IsString() @IsOptional() phone?: string;
+  @IsString() @IsOptional() address?: string;
+  @IsString() @IsOptional() addressLine1?: string;
+  @IsString() @IsOptional() postalCode?: string;
+  @IsString() @IsOptional() zip?: string;
+  @IsString() @IsOptional() householdName?: string;
+  @IsString() @IsOptional() firstName?: string;
+  @IsString() @IsOptional() lastName?: string;
+  @IsString() @IsOptional() organizationName?: string;
+  @IsString() @IsOptional() city?: string;
+  @IsString() @IsOptional() state?: string;
+  @IsOptional() tags?: any[];
+  @IsOptional() rawValues?: Record<string, string>;
   @IsString() @IsOptional() normalized_fund?: string | null;
   @IsString() @IsOptional() normalized_appeal?: string | null;
 }

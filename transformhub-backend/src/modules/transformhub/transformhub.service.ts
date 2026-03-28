@@ -48,6 +48,22 @@ export class TransformHubService {
     return { ok: true, service: 'transformhub', timestamp: new Date().toISOString() };
   }
 
+  private buildBlockingIssues(hardStops: any[]) {
+    return hardStops.map((guardrail: any) => ({
+      code: guardrail.code,
+      severity: 'error',
+      scope: 'file',
+      reason: guardrail.label ?? guardrail.code,
+      detail: guardrail.detail,
+    }));
+  }
+
+  private async findExistingSessionForForceIngest(sessionId?: string) {
+    if (!sessionId) return null;
+    return this.sessionRepo.findOne({ where: { id: sessionId } });
+  }
+
+
   getChartOfAccounts() {
     return { chartOfAccounts: this.pipeline.getChartOfAccounts() };
   }
@@ -64,36 +80,89 @@ export class TransformHubService {
     const guardrails = this.pipeline.evaluateGuardrails(parsedFile, schema);
     parsedFile.preview = this.pipeline.buildStructuredPreview(parsedFile, schema);
     const hardStops = guardrails.filter((guardrail: any) => guardrail.triggered && HARD_STOP_GUARDRAILS.has(guardrail.code));
+    const blockingIssues = this.buildBlockingIssues(hardStops);
+    const existingSession = body.forceIngest ? await this.findExistingSessionForForceIngest(body.sessionId) : null;
 
     if (hardStops.length > 0 && !body.forceIngest) {
-      throw new BadRequestException({
-        message: 'Ingest blocked by hard-stop guardrails.',
-        hardStops,
-        guardrails,
+      const blockedSession = this.sessionRepo.create({
+        status: TransformSessionStatus.BLOCKED,
+        fileName: parsedFile.fileName,
+        platform: parsedFile.platform,
         parsedFile,
         schema,
+        guardrails,
+        blockingIssues,
+        preflight: null,
+        receipts: [],
+        personResult: null,
+        householdResult: null,
+        fingerprint: schema.fingerprint,
+        forcedFromStatus: null,
+        forcedBlockingIssuesSnapshot: null,
+        forcedAt: null,
       });
+      await this.sessionRepo.save(blockedSession);
+
+      return {
+        sessionId: blockedSession.id,
+        status: TransformSessionStatus.BLOCKED,
+        parsedFile,
+        schema,
+        guardrails,
+        blockingIssues,
+        rows: [],
+      };
     }
 
-    const session = this.sessionRepo.create({
-      status: TransformSessionStatus.REVIEW,
-      fileName: parsedFile.fileName,
-      platform: parsedFile.platform,
-      parsedFile,
-      schema,
-      guardrails,
-      preflight: null,
-      receipts: [],
-      fingerprint: schema.fingerprint,
-    });
+    const session = existingSession
+      ? Object.assign(existingSession, {
+          status: TransformSessionStatus.REVIEW,
+          fileName: parsedFile.fileName,
+          platform: parsedFile.platform,
+          parsedFile,
+          schema,
+          guardrails,
+          blockingIssues,
+          preflight: null,
+          receipts: [],
+          personResult: null,
+          householdResult: null,
+          fingerprint: schema.fingerprint,
+          forcedFromStatus: existingSession.status,
+          forcedBlockingIssuesSnapshot: existingSession.blockingIssues ?? blockingIssues,
+          forcedAt: new Date(),
+        })
+      : this.sessionRepo.create({
+          status: TransformSessionStatus.REVIEW,
+          fileName: parsedFile.fileName,
+          platform: parsedFile.platform,
+          parsedFile,
+          schema,
+          guardrails,
+          blockingIssues,
+          preflight: null,
+          receipts: [],
+          personResult: null,
+          householdResult: null,
+          fingerprint: schema.fingerprint,
+          forcedFromStatus: null,
+          forcedBlockingIssuesSnapshot: null,
+          forcedAt: null,
+        });
     await this.sessionRepo.save(session);
+
+    if (existingSession) {
+      await this.rowRepo.delete({ sessionId: session.id });
+    }
 
     if (schema.fileClass !== 'ledger') {
       return {
         sessionId: session.id,
+        status: session.status,
         parsedFile,
         schema,
         guardrails,
+        blockingIssues,
         rows: [],
       };
     }
@@ -107,9 +176,11 @@ export class TransformHubService {
 
     return {
       sessionId: session.id,
+      status: session.status,
       parsedFile,
       schema,
       guardrails,
+      blockingIssues,
       rows,
       taxonomy: {
         violations: taxonomyQueue.violations,
@@ -186,11 +257,19 @@ export class TransformHubService {
     return { ...result, preflight, audit };
   }
 
+  private normalizeSchemaFieldSuggestions(schema: any) {
+    if (!schema) return schema;
+    return {
+      ...schema,
+      fieldSuggestions: Array.isArray(schema.fieldSuggestions) ? schema.fieldSuggestions : [],
+    };
+  }
+
   async getSession(sessionId: string) {
     const session = await this.sessionRepo.findOne({ where: { id: sessionId }, relations: ['rows'] });
     if (!session) throw new NotFoundException('Session ' + sessionId + ' not found.');
     const auditDecisions = await this.auditDecisionRepo.find({ where: { sessionId }, order: { createdAt: 'ASC' } });
-    return { ...session, auditDecisions };
+    return { ...session, schema: this.normalizeSchemaFieldSuggestions(session.schema), auditDecisions };
   }
 
   async updateSession(sessionId: string, body: any) {
@@ -199,6 +278,8 @@ export class TransformHubService {
 
     if (body.status) await this.sessionRepo.update(sessionId, { status: body.status });
     if (body.preflight) await this.sessionRepo.update(sessionId, { preflight: body.preflight });
+    if (body.personResult !== undefined) await this.sessionRepo.update(sessionId, { personResult: body.personResult });
+    if (body.householdResult !== undefined) await this.sessionRepo.update(sessionId, { householdResult: body.householdResult });
     if (body.rows?.length > 0) {
       await this.updateSessionRows(sessionId, body.rows);
     }
@@ -223,7 +304,13 @@ export class TransformHubService {
 
   async personResolve(body: any) {
     this.assertRowCount(body.rows, 'person-resolve');
-    const result = await this.identity.resolvePersons(body.rows, body.existingPersons || [], body.sessionId);
+    const result = await this.identity.resolvePersons(body.rows, body.existingPersons, {
+      usePersistentIdentityMemory: body.usePersistentIdentityMemory === true,
+      forceReviewOnAutoMatches: body.forceReviewOnAutoMatches === true,
+      seedExistingPersonsFromDb: body.seedExistingPersonsFromDb === true,
+      baselinePlatform: body.baselinePlatform,
+      baselineFileClass: body.baselineFileClass,
+    });
 
     if (!body.sessionId) {
       return result;
@@ -243,12 +330,22 @@ export class TransformHubService {
     });
 
     await this.rowRepo.save(updatedRows);
+    await this.sessionRepo.update(body.sessionId, {
+      personResult: {
+        ...result,
+        updatedRows: undefined,
+        audit: undefined,
+      },
+      householdResult: null,
+    });
     const audit = await this.previewAuditForSession(body.sessionId, updatedRows);
     return { ...result, updatedRows, audit };
   }
 
   async householdResolve(body: any) {
-    const result = this.identity.resolveHouseholds(body.persons);
+    const result = await this.identity.resolveHouseholds(body.persons, {
+      usePersistentHouseholdMemory: body.usePersistentHouseholdMemory === true || Boolean(body.sessionId),
+    });
 
     if (!body.sessionId) {
       return result;
@@ -268,6 +365,13 @@ export class TransformHubService {
     });
 
     await this.rowRepo.save(updatedRows);
+    await this.sessionRepo.update(body.sessionId, {
+      householdResult: {
+        ...result,
+        updatedRows: undefined,
+        audit: undefined,
+      },
+    });
     const audit = await this.previewAuditForSession(body.sessionId, updatedRows);
     return { ...result, updatedRows, audit };
   }
@@ -371,6 +475,91 @@ export class TransformHubService {
     }
 
     return { ...result, updatedRows: [] };
+  }
+
+  async reviewFieldSuggestion(sessionId: string, suggestionId: string, body: any) {
+    const session = await this.sessionRepo.findOne({ where: { id: sessionId } });
+    if (!session) throw new NotFoundException('Session ' + sessionId + ' not found.');
+
+    const schema = this.normalizeSchemaFieldSuggestions(session.schema as any);
+    const fieldSuggestions = Array.isArray(schema.fieldSuggestions) ? [...schema.fieldSuggestions] : [];
+    const index = fieldSuggestions.findIndex((item: any) => item.id === suggestionId);
+    if (index < 0) throw new NotFoundException('Field suggestion ' + suggestionId + ' not found.');
+
+    const target = fieldSuggestions[index];
+    if (body.action === 'approve' && !target.suggestedTarget) {
+      throw new BadRequestException('suggestedTarget is required to approve a field suggestion.');
+    }
+
+    const updatedSuggestion = {
+      ...target,
+      status: body.action === 'approve' ? 'approved' : 'rejected',
+      reviewedAt: new Date().toISOString(),
+      reviewedBy: body.reviewedBy ?? 'user',
+      notes: body.notes ?? target.notes ?? null,
+    };
+    fieldSuggestions[index] = updatedSuggestion;
+
+    let nextSchema = schema;
+    let updatedRows: any[] = [];
+    let taxonomy: any = null;
+    let audit: any = null;
+
+    if (body.action === 'approve') {
+      const overrides = { [updatedSuggestion.suggestedTarget]: updatedSuggestion.rawKey };
+      nextSchema = await this.pipeline.refreshSchema(session.parsedFile, schema, overrides, fieldSuggestions);
+
+      if (nextSchema.fileClass === 'ledger') {
+        await this.rowRepo.delete({ sessionId });
+        const canonicalRows = this.pipeline.mapToCanonicalRows(session.parsedFile, nextSchema, session.guardrails || []);
+        const rowsWithSession = canonicalRows.map((row: any) => ({ ...row, sessionId }));
+        const taxonomyQueue = await this.taxonomy.queueTaxonomyExceptions(rowsWithSession);
+        updatedRows = await this.enrichSuggestedFixes(taxonomyQueue.rows);
+        await this.rowRepo.save(this.rowRepo.create(updatedRows.map((row: any) => ({ ...row, sessionId }))));
+        audit = await this.previewAuditForSession(sessionId, updatedRows);
+        taxonomy = {
+          violations: taxonomyQueue.violations,
+          exceptions: taxonomyQueue.exceptions,
+          resolvedCount: taxonomyQueue.resolvedCount,
+          unmappedCount: taxonomyQueue.unmappedCount,
+        };
+      }
+    } else {
+      nextSchema = await this.pipeline.refreshSchema(session.parsedFile, schema, {}, fieldSuggestions);
+    }
+
+    await this.sessionRepo.update(sessionId, { schema: nextSchema });
+    const refreshedSession = await this.getSession(sessionId);
+    return { session: refreshedSession, schema: nextSchema, updatedRows, taxonomy, audit };
+  }
+
+  async reviewTaxonomySuggestion(exceptionId: string, body: any) {
+    const result = await this.taxonomy.reviewSuggestion(exceptionId, body);
+
+    if (body.action !== 'approve') {
+      return { ...result, updatedRows: [], audit: null };
+    }
+
+    const rows = await this.rowRepo.find({ where: { taxonomy_exception_id: exceptionId } });
+    if (rows.length === 0) {
+      return { ...result, updatedRows: [], audit: null };
+    }
+
+    const updatedRows = rows.map((row) => {
+      const next = { ...row, taxonomy_exception_id: null };
+      if (result.exception.type === 'fund') {
+        return { ...next, normalized_fund: result.exception.resolvedCode };
+      }
+      if (result.exception.type === 'appeal') {
+        return { ...next, normalized_appeal: result.exception.resolvedCode };
+      }
+      return next;
+    });
+    await this.rowRepo.save(updatedRows);
+    const audit = result.exception.sessionId
+      ? await this.previewAuditForSession(result.exception.sessionId, updatedRows)
+      : null;
+    return { ...result, updatedRows, audit };
   }
 
   sourceOfTruth(body: any) {
