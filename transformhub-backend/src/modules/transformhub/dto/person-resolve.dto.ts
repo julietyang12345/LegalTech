@@ -16,5 +16,6 @@ export class PersonResolveDto {
   @IsBoolean() @IsOptional() seedExistingPersonsFromDb?: boolean;
   @IsString() @IsOptional() baselinePlatform?: string;
   @IsString() @IsOptional() baselineFileClass?: string;
+  @IsBoolean() @IsOptional() persistIdentityMemory?: boolean;
 }
 

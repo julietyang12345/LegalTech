@@ -5,7 +5,7 @@ import configuration from './config/configuration';
 
 import { ThTransformSession } from './database/entities/th-transform-session.entity';
 import { ThCanonicalRow } from './database/entities/th-canonical-row.entity';
-import { ThCanonicalPerson } from './database/entities/th-canonical-person.entity';
+import { ThIdentityMemory } from './database/entities/th-identity-memory.entity';
 import { ThTaxonomyException } from './database/entities/th-taxonomy-exception.entity';
 import { ThHousehold } from './database/entities/th-household.entity';
 import { ThOrganization } from './database/entities/th-organization.entity';
@@ -17,6 +17,7 @@ import { ThAppeal } from './database/entities/th-appeal.entity';
 import { ThAuditDecision } from './database/entities/th-audit-decision.entity';
 import { ThAuditRun } from './database/entities/th-audit-run.entity';
 import { ThSchemaTemplate } from './database/entities/th-schema-template.entity';
+import { ThKeySynonym } from './database/entities/th-key-synonym.entity';
 
 import { TransformHubModule } from './modules/transformhub/transformhub.module';
 
@@ -44,7 +45,7 @@ import { TransformHubModule } from './modules/transformhub/transformhub.module';
         return {
           type: 'postgres',
           ...base,
-          entities: [ThTransformSession, ThCanonicalRow, ThCanonicalPerson, ThTaxonomyException, ThHousehold, ThOrganization, ThDonation, ThAttribution, ThRelationship, ThCampaign, ThAppeal, ThAuditDecision, ThAuditRun, ThSchemaTemplate],
+          entities: [ThTransformSession, ThCanonicalRow, ThIdentityMemory, ThTaxonomyException, ThHousehold, ThOrganization, ThDonation, ThAttribution, ThRelationship, ThCampaign, ThAppeal, ThAuditDecision, ThAuditRun, ThSchemaTemplate, ThKeySynonym],
           synchronize: configService.get('nodeEnv') === 'development',
           logging: configService.get('nodeEnv') === 'development',
           ssl: configService.get('database.ssl') ? { rejectUnauthorized: false } : false,

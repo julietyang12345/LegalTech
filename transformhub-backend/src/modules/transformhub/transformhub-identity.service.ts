@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { ThCanonicalPerson } from '../../database/entities/th-canonical-person.entity';
+import { ThIdentityMemory } from '../../database/entities/th-identity-memory.entity';
 import { ThHousehold } from '../../database/entities/th-household.entity';
 import { ThAuditDecision } from '../../database/entities/th-audit-decision.entity';
 import { matchesNormalizedKey } from './transformhub-key-normalization';
@@ -10,8 +10,8 @@ import { TransformHubAiService } from './transformhub-ai.service';
 @Injectable()
 export class TransformHubIdentityService {
   constructor(
-    @InjectRepository(ThCanonicalPerson)
-    private readonly personRepo: Repository<ThCanonicalPerson>,
+    @InjectRepository(ThIdentityMemory)
+    private readonly personRepo: Repository<ThIdentityMemory>,
     @InjectRepository(ThHousehold)
     private readonly householdRepo: Repository<ThHousehold>,
     @InjectRepository(ThAuditDecision)
@@ -33,6 +33,32 @@ export class TransformHubIdentityService {
     const [localPart, domain] = raw.split('@');
     const normalizedLocal = localPart.split('+')[0];
     return `${normalizedLocal}@${domain}`;
+  }
+
+  private buildFingerprints(input: { name?: string; email?: string; phone?: string; address?: string; zip?: string; city?: string; state?: string }, firstName?: string, lastName?: string): string[] {
+    const fingerprints = new Set<string>();
+    const normalizedName = this.normStr(input.name || [firstName, lastName].filter(Boolean).join(' '));
+    const normalizedEmail = this.normalizeEmail(input.email || '');
+    const normalizedPhone = this.normalizePhone(input.phone || '');
+    const normalizedAddress = this.normStr(input.address || '');
+    const normalizedZip = this.normStr(input.zip || '');
+    const normalizedCity = this.normStr(input.city || '');
+    const normalizedState = this.normStr(input.state || '');
+
+    if (normalizedEmail) fingerprints.add(`email:${normalizedEmail}`);
+    if (normalizedPhone) fingerprints.add(`phone:${normalizedPhone}`);
+    if (normalizedName && normalizedZip) fingerprints.add(`name_zip:${normalizedName}|${normalizedZip}`);
+    if (normalizedName && normalizedCity && normalizedState) fingerprints.add(`name_location:${normalizedName}|${normalizedCity}|${normalizedState}`);
+    if (normalizedAddress && normalizedZip) fingerprints.add(`address_zip:${normalizedAddress}|${normalizedZip}`);
+
+    return Array.from(fingerprints);
+  }
+
+  private buildInputFingerprints(input: { name?: string; email?: string; phone?: string; address?: string; zip?: string; city?: string; state?: string }): string[] {
+    const nameParts = this.normStr(input.name || '').split(' ').filter(Boolean);
+    const firstName = nameParts.slice(0, -1).join(' ') || nameParts[0] || '';
+    const lastName = nameParts.slice(-1)[0] || '';
+    return this.buildFingerprints(input, firstName, lastName);
   }
 
   private buildEntityName(row: any): string {
@@ -230,6 +256,7 @@ export class TransformHubIdentityService {
     const token = new Map<string, Set<any>>();
     const email = new Map<string, Set<any>>();
     const phone = new Map<string, Set<any>>();
+    const fingerprint = new Map<string, Set<any>>();
 
     const add = (map: Map<string, Set<any>>, key: string, person: any) => {
       if (!key) return;
@@ -243,16 +270,17 @@ export class TransformHubIdentityService {
       add(lastName, this.normStr(person.lastName || ''), person);
       add(email, this.normalizeEmail(person.email || ''), person);
       add(phone, this.normalizePhone(person.phone || ''), person);
+      (Array.isArray(person.fingerprints) ? person.fingerprints : []).forEach((fingerprintValue: string) => add(fingerprint, fingerprintValue, person));
       this.personNameTokens(person).forEach((tokenValue) => add(token, tokenValue, person));
     };
 
     persons.forEach(addPerson);
-    return { exactName, lastName, token, email, phone, addPerson };
+    return { exactName, lastName, token, email, phone, fingerprint, addPerson };
   }
 
   private candidatePersonsForInput(
     index: ReturnType<TransformHubIdentityService['createPersonIndex']>,
-    input: { name: string; email: string; phone: string; address: string; zip: string },
+    input: { name: string; email: string; phone: string; address: string; zip: string; city?: string; state?: string },
   ): any[] {
     const candidates = new Set<any>();
     const normalizedName = this.normStr(input.name);
@@ -260,6 +288,7 @@ export class TransformHubIdentityService {
     const normalizedPhone = this.normalizePhone(input.phone);
     const parts = normalizedName.split(' ').filter((part) => part.length > 1);
     const inputLastName = parts.at(-1) ?? '';
+    const inputFingerprints = this.buildInputFingerprints(input);
 
     const addAll = (values?: Set<any>) => {
       values?.forEach((person) => candidates.add(person));
@@ -269,9 +298,28 @@ export class TransformHubIdentityService {
     addAll(index.lastName.get(inputLastName));
     addAll(index.email.get(normalizedEmail));
     addAll(index.phone.get(normalizedPhone));
+    inputFingerprints.forEach((fingerprint) => addAll(index.fingerprint.get(fingerprint)));
     parts.forEach((part) => addAll(index.token.get(part)));
 
     return Array.from(candidates);
+  }
+
+  private applyDecisionPolicy(storedDecisions: ThAuditDecision[], candidates: any[]) {
+    const storedMergeDecision = storedDecisions.find((decision) => decision.merge && decision.matchedPersonId);
+    const blockedPersonIds = new Set(
+      storedDecisions
+        .filter((decision) => decision.split && decision.matchedPersonId)
+        .map((decision) => decision.matchedPersonId as string),
+    );
+    const hasGlobalSplitDecision = storedDecisions.some((decision) => decision.split && !decision.matchedPersonId);
+    const eligibleCandidates = candidates.filter((candidate) => !blockedPersonIds.has(candidate.id));
+
+    return {
+      storedMergeDecision,
+      blockedPersonIds,
+      hasGlobalSplitDecision,
+      eligibleCandidates,
+    };
   }
 
   private async ensureStoredMatchPerson(persons: any[], matchedPersonId: string | null | undefined) {
@@ -300,9 +348,11 @@ export class TransformHubIdentityService {
       zip: input.zip,
       tags: Array.isArray(row.tags) ? row.tags : [],
       lifecycle: 'active',
-      sourceRowRefs: rowRef ? [rowRef] : [],
       sourcePlatform: scope.platform ?? null,
       sourceFileClass: scope.fileClass ?? null,
+      fingerprints: this.buildFingerprints(input, firstName, lastName),
+      decisionState: 'confirmed',
+      lastConfirmedAt: new Date(),
     });
     persons.push(newPerson);
     return newPerson;
@@ -310,7 +360,6 @@ export class TransformHubIdentityService {
 
   private mergePersonSignals(person: any, input: { email: string; phone: string; address: string; zip: string; city: string; state: string }, rowRef: string, scope: { platform?: string | null; fileClass?: string | null } = {}) {
     person.updatedAt = new Date();
-    person.sourceRowRefs = Array.from(new Set([...(person.sourceRowRefs || []), rowRef]));
     if (!person.email && input.email) person.email = input.email;
     if (!person.phone && input.phone) person.phone = input.phone;
     if (!person.addressLine1 && input.address) person.addressLine1 = input.address;
@@ -319,6 +368,17 @@ export class TransformHubIdentityService {
     if (!person.state && input.state) person.state = input.state;
     if (!person.sourcePlatform && scope.platform) person.sourcePlatform = scope.platform;
     if (!person.sourceFileClass && scope.fileClass) person.sourceFileClass = scope.fileClass;
+    person.fingerprints = this.buildFingerprints({
+      name: [person.firstName, person.lastName].filter(Boolean).join(' '),
+      email: person.email,
+      phone: person.phone,
+      address: person.addressLine1,
+      zip: person.zip,
+      city: person.city,
+      state: person.state,
+    }, person.firstName, person.lastName);
+    person.lastConfirmedAt = new Date();
+    if (!person.decisionState) person.decisionState = 'confirmed';
   }
 
   private buildMatchReviewPayload(
@@ -328,10 +388,12 @@ export class TransformHubIdentityService {
     matchedFields: string[],
     candidate?: any,
     aiSuggestion?: { suggestedAction: 'confirm_merge' | 'keep_separate'; confidence: 'high' | 'medium' | 'low'; reason: string; evidence: string[]; model: string } | null,
+    matchedInputRef?: string | null,
   ) {
     return {
       rowRef,
       rawValues: row.rawValues ?? null,
+      matchedInputRef: matchedInputRef ?? null,
       input: {
         name: input.name,
         email: input.email,
@@ -394,12 +456,13 @@ export class TransformHubIdentityService {
     });
   }
 
-  async resolvePersons(rows: any[], existingPersons?: any[], options?: { usePersistentIdentityMemory?: boolean; forceReviewOnAutoMatches?: boolean; seedExistingPersonsFromDb?: boolean; baselinePlatform?: string; baselineFileClass?: string }): Promise<any> {
+  async resolvePersons(rows: any[], existingPersons?: any[], options?: { usePersistentIdentityMemory?: boolean; forceReviewOnAutoMatches?: boolean; seedExistingPersonsFromDb?: boolean; baselinePlatform?: string; baselineFileClass?: string; persistIdentityMemory?: boolean }): Promise<any> {
     const usePersistentIdentityMemory = options?.usePersistentIdentityMemory === true;
     const forceReviewOnAutoMatches = options?.forceReviewOnAutoMatches === true;
     const seedExistingPersonsFromDb = options?.seedExistingPersonsFromDb === true;
     const baselinePlatform = options?.baselinePlatform || null;
     const baselineFileClass = options?.baselineFileClass || null;
+    const persistIdentityMemory = options?.persistIdentityMemory !== false;
     const personScope = { platform: baselinePlatform, fileClass: baselineFileClass };
     const seedPersons = Array.isArray(existingPersons)
       ? existingPersons
@@ -409,7 +472,8 @@ export class TransformHubIdentityService {
     const persons = [...seedPersons];
     const personIndex = this.createPersonIndex(persons);
     const matches: any[] = [];
-    const pendingPersonSaves: ThCanonicalPerson[] = [];
+    const pendingPersonSaves: ThIdentityMemory[] = [];
+    const personInputRefs = new Map<string, string>();
     let autoMatched = 0;
     let needsReviewCount = 0;
     let separated = 0;
@@ -438,13 +502,15 @@ export class TransformHubIdentityService {
 
       const inputKey = this.normStr(input.name);
       const storedDecisions = decisionsByInputKey.get(inputKey) ?? [];
-      const storedMergeDecision = storedDecisions.find((decision) => decision.merge && decision.matchedPersonId);
+      const decisionPolicy = this.applyDecisionPolicy(storedDecisions, this.candidatePersonsForInput(personIndex, input));
+      const storedMergeDecision = decisionPolicy.storedMergeDecision;
 
       if (storedMergeDecision?.matchedPersonId) {
         const storedPerson = await this.ensureStoredMatchPerson(persons, storedMergeDecision.matchedPersonId);
         if (storedPerson) {
           this.mergePersonSignals(storedPerson, input, rowRef, personScope);
           pendingPersonSaves.push(storedPerson);
+          const matchedInputRef = personInputRefs.get(storedPerson.id) ?? null;
           matches.push({
             inputRef: rowRef,
             score: 100,
@@ -452,14 +518,14 @@ export class TransformHubIdentityService {
             decision: 'auto',
             matchedPersonId: storedPerson.id,
             matchedFields: ['stored_decision'],
-            reviewPayload: this.buildMatchReviewPayload(row, rowRef, input, ['stored_decision'], storedPerson),
+            reviewPayload: this.buildMatchReviewPayload(row, rowRef, input, ['stored_decision'], storedPerson, null, matchedInputRef),
           });
           autoMatched++;
           continue;
         }
       }
 
-      const candidates = this.candidatePersonsForInput(personIndex, input);
+      const candidates = decisionPolicy.eligibleCandidates;
       let bestScore = 0;
       let bestMatch: any = null;
       let bestMatchedFields: string[] = [];
@@ -476,12 +542,14 @@ export class TransformHubIdentityService {
       const storedSplitDecision = storedDecisions.find(
         (decision) => decision.split && (!decision.matchedPersonId || decision.matchedPersonId === bestMatch?.id),
       );
-      const baseBand = storedSplitDecision ? 'separate' : this.getConfidenceBand(bestScore);
+      const baseBand = decisionPolicy.hasGlobalSplitDecision ? 'separate' : this.getConfidenceBand(bestScore);
       const band = forceReviewOnAutoMatches && baseBand === 'auto' && bestMatch ? 'review' : baseBand;
       let matchedPersonId: string | null = null;
       let decision = 'new';
 
       let aiSuggestion = null;
+      const matchedInputRef = bestMatch ? (personInputRefs.get(bestMatch.id) ?? null) : null;
+
       if (band === 'auto' && bestMatch) {
         this.mergePersonSignals(bestMatch, input, rowRef, personScope);
         pendingPersonSaves.push(bestMatch);
@@ -498,9 +566,10 @@ export class TransformHubIdentityService {
         pendingPersonSaves.push(newPerson);
         personIndex.addPerson(newPerson);
         matchedPersonId = newPerson.id;
+        personInputRefs.set(newPerson.id, rowRef);
         decision = 'new';
         separated++;
-        if (storedSplitDecision) bestMatchedFields = [...bestMatchedFields, 'stored_separate_decision'];
+        if (storedSplitDecision || decisionPolicy.hasGlobalSplitDecision) bestMatchedFields = [...bestMatchedFields, 'stored_separate_decision'];
       }
 
       matches.push({
@@ -510,11 +579,11 @@ export class TransformHubIdentityService {
         decision,
         matchedPersonId,
         matchedFields: bestMatchedFields,
-        reviewPayload: this.buildMatchReviewPayload(row, rowRef, input, bestMatchedFields, bestMatch, aiSuggestion),
+        reviewPayload: this.buildMatchReviewPayload(row, rowRef, input, bestMatchedFields, bestMatch, aiSuggestion, matchedInputRef),
       });
     }
 
-    if (pendingPersonSaves.length > 0) {
+    if (persistIdentityMemory && pendingPersonSaves.length > 0) {
       const dedupedPersonSaves = Array.from(new Map(pendingPersonSaves.map((person) => [person.id, person])).values());
       await this.personRepo.save(dedupedPersonSaves);
     }
@@ -644,7 +713,7 @@ export class TransformHubIdentityService {
     return { households, ungroupedPersonIds, reviewSuggestions };
   }
 
-  async getAllPersons(): Promise<ThCanonicalPerson[]> {
+  async getAllPersons(): Promise<ThIdentityMemory[]> {
     return this.personRepo.find();
   }
 }

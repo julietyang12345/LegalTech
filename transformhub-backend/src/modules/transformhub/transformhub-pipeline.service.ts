@@ -6,6 +6,7 @@ import { spawn } from 'child_process';
 import { join } from 'path';
 import { TRANSFORMHUB_MAX_BASE64_CHARS, TRANSFORMHUB_MAX_TEXT_CHARS, TRANSFORMHUB_MAX_XLSX_BUFFER_BYTES } from './transformhub.constants';
 import { ThSchemaTemplate } from '../../database/entities/th-schema-template.entity';
+import { ThKeySynonym } from '../../database/entities/th-key-synonym.entity';
 import { TransformHubAiService } from './transformhub-ai.service';
 import { matchesNormalizedKey, normalizeKey } from './transformhub-key-normalization';
 
@@ -254,10 +255,13 @@ const CLASS_EXPECTATIONS: Record<FileClass, ClassExpectation> = {
 export class TransformHubPipelineService implements OnModuleInit {
   private readonly logger = new Logger(TransformHubPipelineService.name);
   private readonly templateCache = new Map<string, any>();
+  private readonly keySynonymCache = new Map<string, string[]>();
 
   constructor(
     @InjectRepository(ThSchemaTemplate)
     private readonly schemaTemplateRepo: Repository<ThSchemaTemplate>,
+    @InjectRepository(ThKeySynonym)
+    private readonly keySynonymRepo: Repository<ThKeySynonym>,
     private readonly ai: TransformHubAiService,
   ) {}
 
@@ -276,6 +280,9 @@ export class TransformHubPipelineService implements OnModuleInit {
         fromTemplateCache: true,
       });
     });
+
+    const synonyms = await this.keySynonymRepo.find();
+    synonyms.forEach((synonym) => this.cacheKeySynonym(synonym));
   }
 
   getChartOfAccounts() { return COA; }
@@ -284,6 +291,51 @@ export class TransformHubPipelineService implements OnModuleInit {
 
   createFingerprint(...parts: any[]): string {
     return createHash('sha256').update(parts.flat().join('|')).digest('hex');
+  }
+
+  private buildKeySynonymScopeKey(platform: string | null | undefined, fileClass: string | null | undefined, canonicalTarget: string): string {
+    return `${String(platform || '*').toLowerCase()}::${String(fileClass || '*').toLowerCase()}::${String(canonicalTarget || '').toLowerCase()}`;
+  }
+
+  private cacheKeySynonym(synonym: Pick<ThKeySynonym, 'sourcePlatform' | 'sourceFileClass' | 'canonicalTarget' | 'rawKey'>) {
+    const scopeKey = this.buildKeySynonymScopeKey(synonym.sourcePlatform, synonym.sourceFileClass, synonym.canonicalTarget);
+    const current = this.keySynonymCache.get(scopeKey) ?? [];
+    if (!current.includes(synonym.rawKey)) this.keySynonymCache.set(scopeKey, [...current, synonym.rawKey]);
+  }
+
+  private getAliasesForTarget(platform: string, fileClass: FileClass, canonicalTarget: string, aliases: string[]): string[] {
+    const scoped = this.keySynonymCache.get(this.buildKeySynonymScopeKey(platform, fileClass, canonicalTarget)) ?? [];
+    const wildcardPlatform = this.keySynonymCache.get(this.buildKeySynonymScopeKey('*', fileClass, canonicalTarget)) ?? [];
+    return Array.from(new Set([...aliases, ...scoped, ...wildcardPlatform]));
+  }
+
+  async recordApprovedFieldSuggestion(input: {
+    platform: string;
+    fileClass: FileClass;
+    suggestedTarget: string;
+    rawKey: string;
+    cleanedKey?: string;
+    strippedKey?: string;
+    reviewedBy?: string | null;
+    confidence?: 'high' | 'medium' | 'low';
+  }) {
+    const normalized = normalizeKey(input.rawKey);
+    const entity = this.keySynonymRepo.create({
+      id: this.createFingerprint('key-synonym', input.platform, input.fileClass, input.suggestedTarget, normalized.strippedKey).slice(0, 24),
+      sourcePlatform: input.platform || null,
+      sourceFileClass: input.fileClass || null,
+      canonicalTarget: input.suggestedTarget,
+      rawKey: input.rawKey,
+      cleanedKey: input.cleanedKey || normalized.cleanedKey,
+      strippedKey: input.strippedKey || normalized.strippedKey,
+      source: 'approved_ai',
+      confidence: input.confidence || 'high',
+      approvedBy: input.reviewedBy || 'user',
+      approvedAt: new Date(),
+    });
+    await this.keySynonymRepo.save(entity);
+    this.cacheKeySynonym(entity);
+    return entity;
   }
 
   private sanitizeHeader(value: string): string {
@@ -488,10 +540,10 @@ export class TransformHubPipelineService implements OnModuleInit {
     return 'unknown';
   }
 
-  private resolveClassFieldMap(headers: string[], aliases: Record<string, string[]>): Record<string, string> {
+  private resolveClassFieldMap(platform: string, fileClass: FileClass, headers: string[], aliases: Record<string, string[]>): Record<string, string> {
     const fieldMap: Record<string, string> = {};
     Object.entries(aliases).forEach(([target, names]) => {
-      const header = this.findHeader(headers, names);
+      const header = this.findHeader(headers, this.getAliasesForTarget(platform, fileClass, target, names));
       if (header) fieldMap[target] = header;
     });
     return fieldMap;
@@ -704,7 +756,7 @@ export class TransformHubPipelineService implements OnModuleInit {
     const expectation = CLASS_EXPECTATIONS[fileClass];
     const aliases = fileClass === 'ledger' ? (FIELD_ALIASES[file.platform] || {}) : CLASS_FIELD_ALIASES[fileClass];
     const fieldMap = this.normalizeFieldMap({
-      ...this.resolveClassFieldMap(file.headers, aliases),
+      ...this.resolveClassFieldMap(file.platform, fileClass, file.headers, aliases),
       ...fieldMapOverrides,
     });
     const unresolvedFields = expectation.expectedFields.filter((field) => !this.isExpectedFieldResolved(fieldMap, field));

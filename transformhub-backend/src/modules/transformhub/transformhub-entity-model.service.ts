@@ -44,6 +44,7 @@ export class TransformHubEntityModelService {
       seedExistingPersonsFromDb: Boolean(sessionId) && existingPersons.length === 0,
       baselinePlatform: rows[0]?.source_platform,
       baselineFileClass: 'ledger',
+      persistIdentityMemory: true,
     });
     const householdsResolution = await this.identity.resolveHouseholds(personResolution.persons, {
       usePersistentHouseholdMemory: Boolean(sessionId),

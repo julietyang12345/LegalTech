@@ -41,8 +41,6 @@ export class ThCanonicalPerson {
   @Column({ default: 'active' })
   lifecycle: string;
 
-  @Column({ type: 'jsonb', default: [] })
-  sourceRowRefs: string[];
 
   @Column({ nullable: true })
   sourcePlatform: string | null;

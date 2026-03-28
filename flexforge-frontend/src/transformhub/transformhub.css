@@ -538,6 +538,29 @@ body:has(.th-shell) {
 }
 
 
+
+.th-review-match-card {
+  flex-direction: column;
+  width: 100%;
+}
+
+.th-review-match-card > * {
+  width: 100%;
+}
+
+.th-review-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .th-review-compare-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .th-review-intro {
   display: flex;
   align-items: flex-start;
@@ -560,6 +583,83 @@ body:has(.th-shell) {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.th-review-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.th-review-match-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.th-review-match-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.th-review-compare-copy {
+  padding: 4px 0 0;
+}
+
+.th-review-summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(192, 120, 0, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.58);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.th-review-summary strong {
+  display: inline;
+  margin-right: 6px;
+}
+
+.th-review-summary.is-open {
+  background: rgba(255, 255, 255, 0.78);
+  border-color: rgba(20, 99, 255, 0.24);
+}
+
+.th-review-compare-table {
+  min-width: 1180px;
+}
+
+.th-review-compare-table td:first-child,
+.th-review-compare-table th:first-child {
+  position: sticky;
+  left: 0;
+  background: rgba(255, 255, 255, 0.96);
+  z-index: 1;
+}
+
+.th-review-compare-input {
+  width: 100%;
+  min-width: 140px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--th-line);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--th-ink);
+  font: inherit;
+  font-size: 0.84rem;
 }
 
 /* ─── Guardrails ──────────────────────────────────────────────── */

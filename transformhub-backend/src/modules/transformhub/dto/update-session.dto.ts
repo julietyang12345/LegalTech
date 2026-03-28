@@ -11,6 +11,7 @@ export class UpdateSessionDto {
   rows?: CanonicalRowDto[];
   @IsString() @IsIn(['blocked', 'review', 'ready', 'posted']) @IsOptional() status?: string;
   @IsObject() @IsOptional() preflight?: any;
+  @IsObject() @IsOptional() parsedFile?: any;
   @IsObject() @IsOptional() personResult?: any;
   @IsObject() @IsOptional() householdResult?: any;
 }

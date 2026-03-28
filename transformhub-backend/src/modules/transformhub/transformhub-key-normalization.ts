@@ -16,6 +16,10 @@ const NOISE_PREFIXES = [
   'raw',
   'source',
   'import',
+  'record',
+  'profile',
+  'detail',
+  'details',
 ];
 
 const NOISE_SUFFIXES = [
@@ -84,6 +88,27 @@ function stripNoise(tokens: string[]): string[] {
   return next;
 }
 
+function stripNoiseCollapsed(value: string): string {
+  let next = value;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const prefix of NOISE_PREFIXES) {
+      if (next.startsWith(prefix) && next.length - prefix.length >= 4) {
+        next = next.slice(prefix.length);
+        changed = true;
+      }
+    }
+    for (const suffix of NOISE_SUFFIXES) {
+      if (next.endsWith(suffix) && next.length - suffix.length >= 4) {
+        next = next.slice(0, -suffix.length);
+        changed = true;
+      }
+    }
+  }
+  return next;
+}
+
 function collapseSynonyms(value: string): string {
   return SYNONYM_PATTERNS.reduce((acc, { pattern, replacement }) => acc.replace(pattern, replacement), value);
 }
@@ -110,7 +135,8 @@ function inferCanonicalHint(strippedKey: string): string | null {
 export function normalizeKey(rawKey: string): NormalizedKey {
   const cleanedKey = cleanKey(rawKey);
   const strippedTokens = stripNoise(tokenize(cleanedKey));
-  const strippedKey = collapseSynonyms(strippedTokens.join(''));
+  const collapsed = stripNoiseCollapsed(strippedTokens.join(''));
+  const strippedKey = collapseSynonyms(collapsed);
   return {
     rawKey: String(rawKey || ''),
     cleanedKey,

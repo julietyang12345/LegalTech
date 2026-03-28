@@ -335,6 +335,7 @@ export type PersonMatch = {
   reviewPayload?: {
     rowRef: string;
     rawValues: Record<string, string> | null;
+    matchedInputRef?: string | null;
     input: {
       name: string;
       email: string;
@@ -379,7 +380,6 @@ export type CanonicalPerson = {
   zip: string;
   tags: string[];
   lifecycle: string;
-  sourceRowRefs: string[];
   createdAt: string;
   updatedAt: string;
 };

@@ -119,6 +119,7 @@ export async function saveSession(
   preflight: PreflightResult | null,
   personResult?: PersonResolverResult | null,
   householdResult?: HouseholdResolverResult | null,
+  parsedFile?: ParsedFile | null,
 ): Promise<TransformSession> {
   const response = await api.put<TransformSession>(`/transformhub/session/${sessionId}`, {
     rows,
@@ -126,6 +127,7 @@ export async function saveSession(
     preflight,
     personResult,
     householdResult,
+    parsedFile,
   });
   return response.data;
 }
@@ -141,7 +143,7 @@ export async function resolvePersonsBackend(
   rows: CanonicalLedgerRow[],
   existingPersons?: CanonicalPerson[],
   sessionId?: string,
-  options: { usePersistentIdentityMemory?: boolean; forceReviewOnAutoMatches?: boolean; seedExistingPersonsFromDb?: boolean; baselinePlatform?: string; baselineFileClass?: string } = {},
+  options: { usePersistentIdentityMemory?: boolean; forceReviewOnAutoMatches?: boolean; seedExistingPersonsFromDb?: boolean; baselinePlatform?: string; baselineFileClass?: string; persistIdentityMemory?: boolean } = {},
 ): Promise<PersonResolverResult> {
   const response = await api.post<PersonResolverResult>('/transformhub/person-resolve', {
     rows,

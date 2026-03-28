@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, LessThan, Repository } from 'typeorm';
 import { ThTransformSession, TransformSessionStatus } from '../../database/entities/th-transform-session.entity';
 import { ThCanonicalRow } from '../../database/entities/th-canonical-row.entity';
 import { ThAuditRun } from '../../database/entities/th-audit-run.entity';
@@ -24,7 +24,10 @@ const HARD_STOP_GUARDRAILS = new Set([
 ]);
 
 @Injectable()
-export class TransformHubService {
+export class TransformHubService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(TransformHubService.name);
+  private cleanupTimer: NodeJS.Timeout | null = null;
+
   constructor(
     @InjectRepository(ThTransformSession)
     private readonly sessionRepo: Repository<ThTransformSession>,
@@ -43,6 +46,76 @@ export class TransformHubService {
     private readonly auditEngine: TransformHubAuditRuleEngineService,
     private readonly ai: TransformHubAiService,
   ) {}
+
+  onModuleInit() {
+    this.cleanupTimer = setInterval(() => {
+      void this.scrubExpiredSessionArtifacts();
+    }, 24 * 60 * 60 * 1000);
+    void this.scrubExpiredSessionArtifacts();
+  }
+
+  onModuleDestroy() {
+    if (this.cleanupTimer) clearInterval(this.cleanupTimer);
+  }
+
+  private buildScrubbedParsedFile(session: ThTransformSession) {
+    const current = (session.parsedFile as Record<string, any> | null) ?? {};
+    return {
+      scrubbed: true,
+      scrubbedAt: new Date().toISOString(),
+      fileName: session.fileName,
+      platform: session.platform,
+      kind: current.kind ?? null,
+      rowCount: current.rowCount ?? current.rows?.length ?? null,
+      headers: Array.isArray(current.headers) ? current.headers : [],
+    };
+  }
+
+  private buildScrubbedSchema(session: ThTransformSession) {
+    const current = (session.schema as Record<string, any> | null) ?? {};
+    return {
+      fileClass: current.fileClass ?? null,
+      fingerprint: session.fingerprint ?? current.fingerprint ?? null,
+      fieldMap: current.fieldMap ?? {},
+      scrubbed: true,
+      scrubbedAt: new Date().toISOString(),
+      fieldSuggestions: [],
+    };
+  }
+
+  private async scrubExpiredSessionArtifacts() {
+    const now = Date.now();
+    const finishedCutoff = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    const staleReviewCutoff = new Date(now - 14 * 24 * 60 * 60 * 1000);
+    const sessions = await this.sessionRepo.find({
+      where: [
+        { status: In([TransformSessionStatus.READY, TransformSessionStatus.POSTED, TransformSessionStatus.BLOCKED]), updatedAt: LessThan(finishedCutoff) },
+        { status: TransformSessionStatus.REVIEW, updatedAt: LessThan(staleReviewCutoff) },
+      ],
+      take: 200,
+      order: { updatedAt: 'ASC' },
+    });
+    if (sessions.length === 0) return;
+
+    const scrubbed = sessions
+      .filter((session) => session.personResult || session.householdResult || session.preflight || !((session.parsedFile as any)?.scrubbed) || !((session.schema as any)?.scrubbed) || ((session.schema as any)?.fieldSuggestions?.length ?? 0) > 0)
+      .map((session) => ({
+        ...session,
+        parsedFile: this.buildScrubbedParsedFile(session),
+        schema: this.buildScrubbedSchema(session),
+        preflight: null,
+        personResult: null,
+        householdResult: null,
+      }));
+
+    if (scrubbed.length === 0) return;
+    await this.sessionRepo.save(scrubbed);
+    await this.rowRepo.update(
+      { sessionId: In(scrubbed.map((session) => session.id)) },
+      { canonical_person_id: null, canonical_household_id: null },
+    );
+    this.logger.log(`Scrubbed ${scrubbed.length} stale TransformHub session payload(s).`);
+  }
 
   healthCheck() {
     return { ok: true, service: 'transformhub', timestamp: new Date().toISOString() };
@@ -278,6 +351,7 @@ export class TransformHubService {
 
     if (body.status) await this.sessionRepo.update(sessionId, { status: body.status });
     if (body.preflight) await this.sessionRepo.update(sessionId, { preflight: body.preflight });
+    if (body.parsedFile !== undefined) await this.sessionRepo.update(sessionId, { parsedFile: body.parsedFile });
     if (body.personResult !== undefined) await this.sessionRepo.update(sessionId, { personResult: body.personResult });
     if (body.householdResult !== undefined) await this.sessionRepo.update(sessionId, { householdResult: body.householdResult });
     if (body.rows?.length > 0) {
@@ -310,6 +384,7 @@ export class TransformHubService {
       seedExistingPersonsFromDb: body.seedExistingPersonsFromDb === true,
       baselinePlatform: body.baselinePlatform,
       baselineFileClass: body.baselineFileClass,
+      persistIdentityMemory: body.persistIdentityMemory,
     });
 
     if (!body.sessionId) {
@@ -507,6 +582,16 @@ export class TransformHubService {
 
     if (body.action === 'approve') {
       const overrides = { [updatedSuggestion.suggestedTarget]: updatedSuggestion.rawKey };
+      await this.pipeline.recordApprovedFieldSuggestion({
+        platform: session.platform,
+        fileClass: schema.fileClass,
+        suggestedTarget: updatedSuggestion.suggestedTarget,
+        rawKey: updatedSuggestion.rawKey,
+        cleanedKey: updatedSuggestion.cleanedKey,
+        strippedKey: updatedSuggestion.strippedKey,
+        reviewedBy: updatedSuggestion.reviewedBy,
+        confidence: updatedSuggestion.confidence,
+      });
       nextSchema = await this.pipeline.refreshSchema(session.parsedFile, schema, overrides, fieldSuggestions);
 
       if (nextSchema.fileClass === 'ledger') {
