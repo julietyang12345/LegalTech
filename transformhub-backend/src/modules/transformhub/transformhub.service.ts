@@ -85,8 +85,12 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
 
   private async scrubExpiredSessionArtifacts() {
     const now = Date.now();
-    const finishedCutoff = new Date(now - 7 * 24 * 60 * 60 * 1000);
-    const staleReviewCutoff = new Date(now - 14 * 24 * 60 * 60 * 1000);
+    const finishedCutoff = new Date(now - 2 * 24 * 60 * 60 * 1000);
+    const staleReviewCutoff = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    const deletefinishedCutoff = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    const deleteReviewCutoff = new Date(now - 14 * 24 * 60 * 60 * 1000);
+
+    // Step 1: scrub large fields from sessions past the scrub threshold
     const sessions = await this.sessionRepo.find({
       where: [
         { status: In([TransformSessionStatus.READY, TransformSessionStatus.POSTED, TransformSessionStatus.BLOCKED]), updatedAt: LessThan(finishedCutoff) },
@@ -95,26 +99,45 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
       take: 200,
       order: { updatedAt: 'ASC' },
     });
-    if (sessions.length === 0) return;
+    if (sessions.length > 0) {
+      const scrubbed = sessions
+        .filter((session) => session.personResult || session.householdResult || session.preflight || !((session.parsedFile as any)?.scrubbed) || !((session.schema as any)?.scrubbed) || ((session.schema as any)?.fieldSuggestions?.length ?? 0) > 0)
+        .map((session) => ({
+          ...session,
+          parsedFile: this.buildScrubbedParsedFile(session),
+          schema: this.buildScrubbedSchema(session),
+          preflight: null,
+          personResult: null,
+          householdResult: null,
+        }));
+      if (scrubbed.length > 0) {
+        await this.sessionRepo.save(scrubbed);
+        await this.rowRepo.update(
+          { sessionId: In(scrubbed.map((session) => session.id)) },
+          { canonical_person_id: null, canonical_household_id: null },
+        );
+        this.logger.log(`Scrubbed ${scrubbed.length} stale TransformHub session payload(s).`);
+      }
+    }
 
-    const scrubbed = sessions
-      .filter((session) => session.personResult || session.householdResult || session.preflight || !((session.parsedFile as any)?.scrubbed) || !((session.schema as any)?.scrubbed) || ((session.schema as any)?.fieldSuggestions?.length ?? 0) > 0)
-      .map((session) => ({
-        ...session,
-        parsedFile: this.buildScrubbedParsedFile(session),
-        schema: this.buildScrubbedSchema(session),
-        preflight: null,
-        personResult: null,
-        householdResult: null,
-      }));
-
-    if (scrubbed.length === 0) return;
-    await this.sessionRepo.save(scrubbed);
-    await this.rowRepo.update(
-      { sessionId: In(scrubbed.map((session) => session.id)) },
-      { canonical_person_id: null, canonical_household_id: null },
-    );
-    this.logger.log(`Scrubbed ${scrubbed.length} stale TransformHub session payload(s).`);
+    // Step 2: hard-delete sessions past the delete threshold
+    const expiredSessions = await this.sessionRepo.find({
+      where: [
+        { status: In([TransformSessionStatus.READY, TransformSessionStatus.POSTED, TransformSessionStatus.BLOCKED]), updatedAt: LessThan(deletefinishedCutoff) },
+        { status: TransformSessionStatus.REVIEW, updatedAt: LessThan(deleteReviewCutoff) },
+      ],
+      select: ['id'],
+      take: 200,
+      order: { updatedAt: 'ASC' },
+    });
+    if (expiredSessions.length > 0) {
+      const expiredIds = expiredSessions.map((s) => s.id);
+      await this.rowRepo.delete({ sessionId: In(expiredIds) });
+      await this.auditRunRepo.delete({ sessionId: In(expiredIds) });
+      await this.auditDecisionRepo.delete({ sessionId: In(expiredIds) });
+      await this.sessionRepo.delete(expiredIds);
+      this.logger.log(`Deleted ${expiredSessions.length} expired TransformHub session(s).`);
+    }
   }
 
   healthCheck() {
@@ -352,6 +375,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     if (body.status) await this.sessionRepo.update(sessionId, { status: body.status });
     if (body.preflight) await this.sessionRepo.update(sessionId, { preflight: body.preflight });
     if (body.parsedFile !== undefined) await this.sessionRepo.update(sessionId, { parsedFile: body.parsedFile });
+    if (body.schema !== undefined) await this.sessionRepo.update(sessionId, { schema: body.schema });
     if (body.personResult !== undefined) await this.sessionRepo.update(sessionId, { personResult: body.personResult });
     if (body.householdResult !== undefined) await this.sessionRepo.update(sessionId, { householdResult: body.householdResult });
     if (body.rows?.length > 0) {

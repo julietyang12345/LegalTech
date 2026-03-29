@@ -1062,6 +1062,7 @@ export class TransformHubPipelineService implements OnModuleInit {
       }
 
       if (fileClass === 'campaign') {
+        const rawValues = row.values as Record<string, string>;
         return {
           id: `${fileClass}-${index + 1}`,
           sourceRowRef: row.ref,
@@ -1071,10 +1072,12 @@ export class TransformHubPipelineService implements OnModuleInit {
           endDate: this.valueFromRow(row, schema.fieldMap, 'end_date'),
           status: this.valueFromRow(row, schema.fieldMap, 'status'),
           goalAmount: this.money(this.valueFromRow(row, schema.fieldMap, 'goal_amount')),
+          rawValues,
         };
       }
 
       if (fileClass === 'coa') {
+        const rawValues = row.values as Record<string, string>;
         return {
           id: `${fileClass}-${index + 1}`,
           sourceRowRef: row.ref,
@@ -1082,6 +1085,7 @@ export class TransformHubPipelineService implements OnModuleInit {
           accountName: this.valueFromRow(row, schema.fieldMap, 'account_name'),
           accountType: this.valueFromRow(row, schema.fieldMap, 'account_type'),
           balance: this.money(this.valueFromRow(row, schema.fieldMap, 'balance')),
+          rawValues,
         };
       }
 

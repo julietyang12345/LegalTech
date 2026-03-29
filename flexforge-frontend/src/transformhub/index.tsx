@@ -66,6 +66,7 @@ import type {
   TransformSessionStatus,
 } from './types';
 import { TransformHubAuditModePanel, TransformHubMappingLayerPanel } from './product-panels';
+import { buildAppendColumnDecisions, getPendingColumnMerges, mergeUploadIntoExisting, prepareIncomingUpload, resolvePendingColumnMerge as resolvePendingColumnMergeInParsedFile, type AppendColumnDecision, type PendingColumnMerge } from './merge-table';
 
 
 const PLATFORM_GROUPS: Record<string, SourcePlatform[]> = {
@@ -182,6 +183,87 @@ function previewRecordLabel(record: any): string {
   return record.displayName || record.donorName || record.campaignName || record.accountName || record.preview || record.sourceRowRef || record.id || 'Unknown preview record';
 }
 
+function formatPreviewHeaderLabel(header: string): string {
+  return header.replace(/[_-]+/g, ' ').trim() || header;
+}
+
+function getPreviewRecordRawValues(record: any): Record<string, string> {
+  return record?.rawValues ?? record?.values ?? {};
+}
+
+function getPreviewRecordRawCell(record: any, header: string): string {
+  const rawValues = getPreviewRecordRawValues(record);
+  const value = rawValues[header];
+  if (value === undefined || value === null || value === '') return '—';
+  return String(value);
+}
+
+function getSourceOriginKey(sourceRef: string | null | undefined, fallbackContext?: string | null): string {
+  if (!sourceRef) return fallbackContext || 'current upload';
+  const parts = sourceRef.split(':').filter(Boolean);
+  return (parts.length > 1 ? parts.slice(0, -1).join(' · ') : null) || fallbackContext || 'current upload';
+}
+
+function buildUploadNamespace(fileName: string): string {
+  const stem = fileName
+    .replace(/\.[^.]+$/, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 24) || 'upload';
+  return `${stem}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function summarizeAppendColumnDecisions(decisions: AppendColumnDecision[]) {
+  const mergedColumns = decisions.filter((decision) => decision.action === 'merge' && decision.targetHeader);
+  const newColumns = decisions.filter((decision) => decision.action !== 'merge' || !decision.targetHeader).map((decision) => decision.incomingHeader);
+  const fuzzyMerges = decisions.filter((decision) => decision.matchType === 'fuzzy');
+  return { mergedColumns, newColumns, fuzzyMerges };
+}
+
+function formatAppendDecisionLabel(matchType: AppendColumnDecision['matchType']): string {
+  if (matchType === 'exact') return 'Exact match';
+  if (matchType === 'alias') return 'Alias match';
+  if (matchType === 'fuzzy') return 'Fuzzy match';
+  return 'New column';
+}
+
+function buildAppendPreviewColumns(existingHeaders: string[], decisions: AppendColumnDecision[]) {
+  const mergedInto = new Map<string, AppendColumnDecision[]>();
+  const separated: AppendColumnDecision[] = [];
+
+  decisions.forEach((decision) => {
+    if (decision.action === 'merge' && decision.targetHeader) {
+      const current = mergedInto.get(decision.targetHeader) ?? [];
+      current.push(decision);
+      mergedInto.set(decision.targetHeader, current);
+      return;
+    }
+    separated.push(decision);
+  });
+
+  const preview = existingHeaders.map((header) => ({
+    key: `existing-${header}`,
+    header,
+    status: (mergedInto.get(header)?.length ?? 0) > 0 ? 'merge-target' : 'existing',
+    mergedFrom: (mergedInto.get(header) ?? []).map((decision) => decision.incomingHeader),
+    editors: mergedInto.get(header) ?? [],
+  }));
+
+  separated.forEach((decision) => {
+    preview.push({
+      key: `${decision.action === 'drop' ? 'drop' : 'new'}-${decision.id}`,
+      header: decision.incomingHeader,
+      status: decision.action === 'drop' ? 'drop' : 'new',
+      mergedFrom: [],
+      editors: [decision],
+    });
+  });
+
+  return preview;
+}
+
 type PeopleReviewFilter = 'pending' | 'merged' | 'separated' | 'all';
 
 function getPeopleReviewBucket(decision: ReturnType<typeof deriveReviewDecision>): Exclude<PeopleReviewFilter, 'all'> {
@@ -267,6 +349,33 @@ function getPreviewCompareValue(record: any, key: string): string {
   return String(value);
 }
 
+function buildMatchedPersonCompareRecord(person: CanonicalPerson | null) {
+  if (!person) return null;
+  return {
+    sourceRowRef: `db:${person.id}`,
+    firstName: person.firstName,
+    lastName: person.lastName,
+    organizationName: '',
+    householdName: '',
+    constituentType: 'Existing person',
+    email: person.email,
+    phone: person.phone,
+    address: person.addressLine1,
+    city: person.city,
+    state: person.state,
+    postalCode: person.zip,
+    country: '',
+    assignedStaff: '',
+    date: '',
+    amount: '',
+    fund: '',
+    appeal: '',
+    memo: '',
+    donorName: [person.firstName, person.lastName].filter(Boolean).join(' ').trim(),
+    displayName: [person.firstName, person.lastName].filter(Boolean).join(' ').trim() || person.id,
+  };
+}
+
 function describePreviewRecord(record: any, fileClass: string): string {
   if (!record) return 'No preview record details.';
   if (fileClass === 'constituent') {
@@ -307,6 +416,8 @@ export default function TransformHubPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [blockingIssues, setBlockingIssues] = useState<any[]>([]);
   const [pendingIngestPayload, setPendingIngestPayload] = useState<any | null>(null);
+  const [isResolvingPendingMerge, setIsResolvingPendingMerge] = useState(false);
+  const [pendingAppendReview, setPendingAppendReview] = useState<any | null>(null);
 
   // Layer 03 state
   const [personResult, setPersonResult] = useState<PersonResolverResult | null>(null);
@@ -331,6 +442,8 @@ export default function TransformHubPage() {
   const [activeOperatorIntent, setActiveOperatorIntent] = useState<'run-audit' | 'review-donors' | 'resolve-identities' | 'open-mapping' | null>(null);
   const [pendingReturnRowId, setPendingReturnRowId] = useState<string | null>(null);
   const [expandedPeopleReviewRef, setExpandedPeopleReviewRef] = useState<string | null>(null);
+  const [previewSourceFocus, setPreviewSourceFocus] = useState<string>('all');
+  const [hiddenPreviewHeaders, setHiddenPreviewHeaders] = useState<string[]>([]);
   const [editingMergedRecordRef, setEditingMergedRecordRef] = useState<string | null>(null);
   const [editingMergedDraft, setEditingMergedDraft] = useState<Record<string, string>>({});
   const [peopleReviewFilter, setPeopleReviewFilter] = useState<PeopleReviewFilter>('pending');
@@ -372,6 +485,8 @@ export default function TransformHubPage() {
   });
   const activeFixRowId = rowSpotlight === 'all' ? null : visibleRows[0]?.id ?? null;
   const preview = parsedFile?.preview ?? null;
+  const pendingColumnMerges = getPendingColumnMerges(parsedFile);
+  const triggeredGuardrails = guardrails.filter((item) => item.triggered);
   const fileClass = schema?.fileClass ?? preview?.fileClass ?? 'ledger';
   const isLedgerFile = fileClass === 'ledger';
   const previewRecords = preview?.records ?? [];
@@ -388,17 +503,14 @@ export default function TransformHubPage() {
   });
   const previewReviewMatches = (personResult?.matches ?? []).filter((match) => {
     if (match.band !== 'review') return false;
-    const matchedRecordRef = match.reviewPayload?.matchedInputRef ?? null;
-    if (matchedRecordRef && previewRecords.some((record: any) => record.sourceRowRef === matchedRecordRef)) return true;
-    if (!match.matchedPersonId) return false;
-    return (personResult?.matches ?? []).some(
-      (candidate) => candidate.inputRef !== match.inputRef && candidate.matchedPersonId === match.matchedPersonId && previewRecords.some((record: any) => record.sourceRowRef === candidate.inputRef),
-    );
+    return previewRecords.some((record: any) => record.sourceRowRef === match.inputRef);
   });
   const filteredLedgerReviewMatches = ledgerReviewMatches.filter((match) => matchesPeopleReviewFilter(peopleReviewFilter, deriveReviewDecision(match, mergeDecisions)));
   const filteredPreviewReviewMatches = previewReviewMatches.filter((match) => matchesPeopleReviewFilter(peopleReviewFilter, deriveReviewDecision(match, mergeDecisions)));
   const ledgerReviewCounts = countPeopleReviewBuckets(ledgerReviewMatches, mergeDecisions);
   const previewReviewCounts = countPeopleReviewBuckets(previewReviewMatches, mergeDecisions);
+  const mergeableLedgerReviewMatches = filteredLedgerReviewMatches.filter((match) => !deriveReviewDecision(match, mergeDecisions));
+  const mergeablePreviewReviewMatches = filteredPreviewReviewMatches.filter((match) => !deriveReviewDecision(match, mergeDecisions));
   const resolvedReviewDecisions = personResult?.matches.filter((match) => deriveReviewDecision(match, mergeDecisions)).length ?? 0;
   const pendingPeopleReviews = Math.max(0, (personResult?.pendingReviewCount ?? personResult?.needsReview ?? 0) - resolvedReviewDecisions);
   const peopleStepReady = !supportsIdentityWorkflow || (!!personResult && pendingPeopleReviews === 0);
@@ -462,9 +574,49 @@ export default function TransformHubPage() {
   const displayedPreviewRecords = supportsIdentityWorkflow
     ? previewRecords.filter((record: any) => !representativeByAbsorbedRef.has(record.sourceRowRef))
     : previewRecords;
+  const nonLedgerTableHeaders = parsedFile?.headers ?? [];
+  const visibleNonLedgerTableHeaders = nonLedgerTableHeaders.filter((header) => !hiddenPreviewHeaders.includes(header));
+  const hiddenNonLedgerTableHeaders = nonLedgerTableHeaders.filter((header) => hiddenPreviewHeaders.includes(header));
+  const previewSourceOrigins = Array.from(new Set(previewRecords.map((record: any) => getSourceOriginKey(record.sourceRowRef, parsedFile?.fileName))));
+  const previewSourcePalette = ['#2563eb', '#16a34a', '#d97706', '#7c3aed', '#dc2626', '#0891b2'];
+  const previewSourceBadgeByOrigin = new Map(previewSourceOrigins.map((origin, index) => [origin, `S${index + 1}`]));
+  const previewSourceColorByOrigin = new Map(previewSourceOrigins.map((origin, index) => [origin, previewSourcePalette[index % previewSourcePalette.length]]));
+  function getRecordSourceOrigins(record: any) {
+    const refs = [record.sourceRowRef, ...(mergedSourceRefsByRepresentative.get(record.sourceRowRef) ?? [])];
+    return Array.from(new Set(refs.map((ref) => getSourceOriginKey(ref, parsedFile?.fileName))));
+  }
+  const filteredDisplayedPreviewRecords = previewSourceFocus === 'all'
+    ? displayedPreviewRecords
+    : displayedPreviewRecords.filter((record: any) => getRecordSourceOrigins(record).includes(previewSourceFocus));
+  const editablePreviewFieldToCanonicalKey: Record<string, string> = {
+    firstName: 'first_name',
+    lastName: 'last_name',
+    organizationName: 'organization_name',
+    householdName: 'household_name',
+    email: 'email',
+    phone: 'phone',
+    address: 'address',
+    city: 'city',
+    state: 'state',
+    postalCode: 'postal_code',
+    country: 'country',
+    assignedStaff: 'assigned_staff',
+    amount: 'amount',
+    fund: 'fund',
+    appeal: 'appeal',
+    memo: 'memo',
+  };
 
   function applyPreviewRecordEdits(record: any, draft: Record<string, any>) {
-    const nextRecord = { ...record, ...draft };
+    const nextRawValues = { ...getPreviewRecordRawValues(record) };
+    Object.entries(editablePreviewFieldToCanonicalKey).forEach(([draftKey, canonicalKey]) => {
+      if (!(draftKey in draft)) return;
+      const header = (schema?.fieldMap as Record<string, string> | undefined)?.[canonicalKey];
+      if (!header) return;
+      const value = draft[draftKey];
+      nextRawValues[header] = Array.isArray(value) ? value.join('; ') : (value ?? '');
+    });
+    const nextRecord = { ...record, ...draft, rawValues: nextRawValues };
     if (fileClass === 'constituent') {
       const displayName = nextRecord.organizationName || [nextRecord.firstName, nextRecord.lastName].filter(Boolean).join(' ');
       nextRecord.displayName = displayName || nextRecord.displayName || nextRecord.sourceRowRef;
@@ -476,10 +628,19 @@ export default function TransformHubPage() {
     return nextRecord;
   }
 
+  function getCompactSourceRef(sourceRef: string | null | undefined) {
+    if (!sourceRef) return { primary: '—', context: null as string | null };
+    const parts = sourceRef.split(':').filter(Boolean);
+    const primary = parts[parts.length - 1] || sourceRef;
+    const context = parts.length > 1 ? parts.slice(0, -1).join(' · ') : null;
+    return { primary, context };
+  }
+
   function describeRepresentativeSource(record: any) {
-    const mergedRefs = mergedSourceRefsByRepresentative.get(record.sourceRowRef) ?? [];
-    if (mergedRefs.length === 0) return record.sourceRowRef;
-    return `${record.sourceRowRef} (merged ${mergedRefs.join(', ')})`;
+    const primary = getCompactSourceRef(record.sourceRowRef).primary;
+    const mergedRefs = (mergedSourceRefsByRepresentative.get(record.sourceRowRef) ?? []).map((ref) => getCompactSourceRef(ref).primary);
+    if (mergedRefs.length === 0) return primary;
+    return `${primary} (merged ${mergedRefs.join(', ')})`;
   }
 
   function startMergedRecordEdit(record: any) {
@@ -528,7 +689,7 @@ export default function TransformHubPage() {
       setIsLoading(true);
       try {
         const nextStatus = deriveSessionStatus(rows, preflight, receipts);
-        const session = await saveSession(sessionId, rows, nextStatus, preflight, personResult, householdResult, nextParsedFile);
+        const session = await saveSession(sessionId, rows, nextStatus, preflight, personResult, householdResult, nextParsedFile, schema);
         applySession(session, 'Merged result updated in this session.');
       } catch (error) {
         setMessage(error instanceof Error ? error.message : 'Failed to save merged result edits.');
@@ -638,26 +799,90 @@ export default function TransformHubPage() {
 
     try {
       const result = await ingestFile({ platform, fileName: payload.fileName, kind: payload.kind, contents: payload.contents, contentsBase64: payload.contentsBase64, sessionId: forceIngest ? sessionId ?? undefined : undefined, forceIngest });
-      const nextStatus = result.status;
       const nextTaxonomy = result.taxonomy ?? null;
       const nextAudit = result.audit ?? null;
+      const uploadNamespace = buildUploadNamespace(payload.fileName);
+      const prepared = prepareIncomingUpload(result.parsedFile, result.schema, result.rows, payload.fileName, uploadNamespace);
+      const canAppend = result.status !== 'blocked' && Boolean(parsedFile && schema && parsedFile.platform === prepared.parsedFile.platform && ((schema.fileClass === 'ledger' && prepared.schema.fileClass === 'ledger') || (schema.fileClass !== 'ledger' && prepared.schema.fileClass !== 'ledger')));
+      const appendColumnDecisions = canAppend && parsedFile ? buildAppendColumnDecisions(parsedFile.headers, prepared.parsedFile.headers, payload.fileName) : [];
+      const merged = canAppend && parsedFile && schema
+        ? mergeUploadIntoExisting({
+            currentParsedFile: parsedFile,
+            currentSchema: schema,
+            currentRows: rows,
+            incomingParsedFile: prepared.parsedFile,
+            incomingSchema: prepared.schema,
+            incomingRows: prepared.rows,
+            sourceFile: payload.fileName,
+            columnDecisions: appendColumnDecisions,
+          })
+        : { parsedFile: prepared.parsedFile, schema: prepared.schema, rows: prepared.rows, pendingMergeCount: getPendingColumnMerges(prepared.parsedFile).length };
+      const nextSchema = merged.schema;
+      const nextParsedFile = merged.parsedFile;
+      const nextRows = merged.rows;
+      const nextStatus = result.status === 'blocked' ? result.status : 'review';
+      const nextMessage = result.status === 'blocked'
+        ? `Blocked by ${result.blockingIssues.length} blocking issue${result.blockingIssues.length === 1 ? '' : 's'}. Review the report below, then force continue if intentional.`
+        : canAppend
+          ? `Appended ${prepared.rows.length} row${prepared.rows.length === 1 ? '' : 's'} from ${payload.fileName}. Combined table now has ${nextParsedFile.rows.length} source row${nextParsedFile.rows.length === 1 ? '' : 's'} · ${merged.pendingMergeCount} pending fuzzy column merge${merged.pendingMergeCount === 1 ? '' : 's'}.`
+          : `Loaded ${prepared.rows.length} row${prepared.rows.length === 1 ? '' : 's'} from ${payload.fileName} · ${nextAudit?.errorCount ?? 0} audit error(s) · ${nextTaxonomy?.unmappedCount ?? 0} taxonomy exception(s).`;
+
+      if (canAppend) {
+        const decisionSummary = summarizeAppendColumnDecisions(appendColumnDecisions);
+        setPendingAppendReview({
+          sessionId: result.sessionId,
+          currentParsedFile: parsedFile,
+          currentSchema: schema,
+          currentRows: rows,
+          incomingParsedFile: prepared.parsedFile,
+          incomingSchema: prepared.schema,
+          incomingRows: prepared.rows,
+          columnDecisions: appendColumnDecisions,
+          guardrails: result.guardrails,
+          blockingIssues: result.blockingIssues ?? [],
+          summary: {
+            sourceFile: payload.fileName,
+            appendedRows: prepared.rows.length,
+            combinedColumns: decisionSummary.mergedColumns.length,
+            newColumns: decisionSummary.newColumns,
+            fuzzyMerges: decisionSummary.fuzzyMerges,
+          },
+        });
+        setPendingIngestPayload(result.status === 'blocked' ? payload : null);
+        setMessage(`Review the merge plan for ${payload.fileName} before applying it to the current table.`);
+        jumpToSection('th-ingest');
+        return;
+      }
 
       startTransition(() => {
+        setPendingAppendReview(null);
         setSessionId(result.sessionId);
         setSessionStatus(nextStatus);
         setSessionUpdatedAt(new Date().toISOString());
-        setParsedFile(result.parsedFile);
-        setSchema(result.schema);
+        setParsedFile(nextParsedFile);
+        setSchema(nextSchema);
         setGuardrails(result.guardrails);
         setBlockingIssues(result.blockingIssues ?? []);
-        setRows(result.rows);
+        setRows(nextRows);
         setTaxonomyResult(nextTaxonomy);
         setAuditResult(nextAudit);
         setPendingIngestPayload(result.status === 'blocked' ? payload : null);
-        setMessage(result.status === 'blocked'
-          ? `Blocked by ${result.blockingIssues.length} blocking issue${result.blockingIssues.length === 1 ? '' : 's'}. Review the report below, then force continue if intentional.`
-          : `Loaded ${result.parsedFile.rows.length} rows · ${nextAudit?.errorCount ?? 0} audit error(s) · ${nextTaxonomy?.unmappedCount ?? 0} taxonomy exception(s).`);
+        setMessage(nextMessage);
       });
+
+      if (result.status !== 'blocked') {
+        const session = await saveSession(
+          result.sessionId,
+          nextRows,
+          nextStatus,
+          null,
+          null,
+          null,
+          nextParsedFile,
+          nextSchema,
+        );
+        applySession(session, nextMessage);
+      }
     } catch (error: any) {
       setMessage(error instanceof Error ? error.message : 'Failed to process the file.');
       setParsedFile(null);
@@ -674,6 +899,101 @@ export default function TransformHubPage() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  async function handleResolvePendingColumnMerge(merge: PendingColumnMerge, action: 'merge' | 'keep_separate' | 'drop') {
+    if (!parsedFile) return;
+    const nextParsedFile = resolvePendingColumnMergeInParsedFile(parsedFile, merge, action);
+    setParsedFile(nextParsedFile);
+
+    if (!sessionId) {
+      setMessage(action === 'merge' ? 'Fuzzy column merge confirmed.' : action === 'drop' ? 'Column deleted from the merged table.' : 'Fuzzy column kept separate.');
+      return;
+    }
+
+    setIsResolvingPendingMerge(true);
+    try {
+      const nextStatus = deriveSessionStatus(rows, preflight, receipts);
+      const session = await saveSession(sessionId, rows, nextStatus, preflight, personResult, householdResult, nextParsedFile, schema);
+      applySession(session, action === 'merge' ? 'Fuzzy column merge confirmed.' : action === 'drop' ? 'Column deleted from the merged table.' : 'Fuzzy column kept separate.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to update the pending column merge.');
+    } finally {
+      setIsResolvingPendingMerge(false);
+    }
+  }
+
+  function updatePendingAppendDecision(decisionId: string, patch: Partial<AppendColumnDecision>) {
+    setPendingAppendReview((current: any | null) => {
+      if (!current) return current;
+      const columnDecisions = current.columnDecisions.map((decision: AppendColumnDecision) => {
+        if (decision.id !== decisionId) return decision;
+        return { ...decision, ...patch };
+      });
+      const decisionSummary = summarizeAppendColumnDecisions(columnDecisions);
+      return {
+        ...current,
+        columnDecisions,
+        summary: {
+          ...current.summary,
+          combinedColumns: decisionSummary.mergedColumns.length,
+          newColumns: decisionSummary.newColumns,
+          fuzzyMerges: decisionSummary.fuzzyMerges,
+        },
+      };
+    });
+  }
+
+  async function handleApplyPendingAppendReview() {
+    if (!pendingAppendReview) return;
+    const appliedMerge = mergeUploadIntoExisting({
+      currentParsedFile: pendingAppendReview.currentParsedFile,
+      currentSchema: pendingAppendReview.currentSchema,
+      currentRows: pendingAppendReview.currentRows,
+      incomingParsedFile: pendingAppendReview.incomingParsedFile,
+      incomingSchema: pendingAppendReview.incomingSchema,
+      incomingRows: pendingAppendReview.incomingRows,
+      sourceFile: pendingAppendReview.summary.sourceFile,
+      columnDecisions: pendingAppendReview.columnDecisions,
+    });
+    const nextStatus: TransformSessionStatus = 'review';
+    startTransition(() => {
+      setPendingAppendReview(null);
+      setSessionId(pendingAppendReview.sessionId);
+      setSessionStatus(nextStatus);
+      setSessionUpdatedAt(new Date().toISOString());
+      setParsedFile(appliedMerge.parsedFile);
+      setSchema(appliedMerge.schema);
+      setGuardrails(pendingAppendReview.guardrails);
+      setBlockingIssues(pendingAppendReview.blockingIssues);
+      setRows(appliedMerge.rows);
+      setTaxonomyResult(null);
+      setAuditResult(null);
+      setMessage(`Applied merge plan for ${pendingAppendReview.summary.sourceFile}. Run PersonResolver after reviewing column decisions.`);
+    });
+
+    try {
+      const session = await saveSession(
+        pendingAppendReview.sessionId,
+        appliedMerge.rows,
+        nextStatus,
+        null,
+        null,
+        null,
+        appliedMerge.parsedFile,
+        appliedMerge.schema,
+      );
+      applySession(session, `Applied merge plan for ${pendingAppendReview.summary.sourceFile}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to apply the merge plan.');
+    }
+  }
+
+  function handleCancelPendingAppendReview() {
+    if (!pendingAppendReview) return;
+    const sourceFile = pendingAppendReview.summary.sourceFile;
+    setPendingAppendReview(null);
+    setMessage(`Discarded merge plan for ${sourceFile}. Current table was left unchanged.`);
   }
 
   async function handleForceIngest() {
@@ -934,6 +1254,78 @@ export default function TransformHubPage() {
       setMessage(error instanceof Error ? error.message : 'Failed to reset people state.');
     } finally {
       setIsResettingPeople(false);
+      setIsLoading(false);
+    }
+  }
+
+  async function handleMergeAllPeopleReviews(matches: PersonMatch[]) {
+    const pendingMatches = matches.filter((match) => !deriveReviewDecision(match, mergeDecisions));
+    if (pendingMatches.length === 0 || !personResult) return;
+
+    setIsLoading(true);
+    setMessage(`Merging ${pendingMatches.length} review item${pendingMatches.length === 1 ? '' : 's'}...`);
+
+    try {
+      if (sessionId && isLedgerFile) {
+        let latestResult: Awaited<ReturnType<typeof persistMergeDecisionBackend>> | null = null;
+        for (const match of pendingMatches) {
+          latestResult = await persistMergeDecisionBackend(sessionId, match.inputRef, 'confirmed', match.matchedPersonId);
+        }
+
+        if (latestResult) {
+          setRows(latestResult.updatedRows);
+          setMergeDecisions(buildMergeDecisionMap(latestResult.updatedRows, latestResult.auditDecisions));
+          if (latestResult.audit) setAuditResult(latestResult.audit);
+        }
+
+        setExpandedPeopleReviewRef(null);
+        setSessionUpdatedAt(new Date().toISOString());
+        setMessage(`Merged ${pendingMatches.length} review item${pendingMatches.length === 1 ? '' : 's'}.`);
+        return;
+      }
+
+      const pendingRefs = new Set(pendingMatches.map((match) => match.inputRef));
+      const matchedPersonByRef = new Map(
+        pendingMatches
+          .filter((match) => Boolean(match.matchedPersonId))
+          .map((match) => [match.inputRef, match.matchedPersonId as string]),
+      );
+      const nextMergeDecisions = new Map(mergeDecisions);
+      pendingMatches.forEach((match) => nextMergeDecisions.set(match.inputRef, 'confirmed'));
+
+      const nextPersonResult: PersonResolverResult = {
+        ...personResult,
+        matches: personResult.matches.map((candidate) =>
+          pendingRefs.has(candidate.inputRef)
+            ? { ...candidate, decision: 'auto', matchedPersonId: matchedPersonByRef.get(candidate.inputRef) ?? candidate.matchedPersonId }
+            : candidate,
+        ),
+      };
+
+      const nextRows = isLedgerFile
+        ? rows.map((row) => {
+            const matchedPersonId = matchedPersonByRef.get(row.source_row_ref);
+            return matchedPersonId ? { ...row, canonical_person_id: matchedPersonId } : row;
+          })
+        : rows;
+
+      setMergeDecisions(nextMergeDecisions);
+      setPersonResult(nextPersonResult);
+      if (isLedgerFile) setRows(nextRows);
+      setHouseholdResult(null);
+      setExpandedPeopleReviewRef(null);
+
+      if (sessionId) {
+        const nextStatus = deriveSessionStatus(nextRows, preflight, receipts);
+        const session = await saveSession(sessionId, nextRows, nextStatus, preflight, nextPersonResult, null);
+        applySession(session, `Merged ${pendingMatches.length} review item${pendingMatches.length === 1 ? '' : 's'}.`);
+        return;
+      }
+
+      setMessage(`Merged ${pendingMatches.length} review item${pendingMatches.length === 1 ? '' : 's'}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to merge all shown review items.');
+    } finally {
       setIsLoading(false);
     }
   }
@@ -1497,6 +1889,105 @@ export default function TransformHubPage() {
                 Load {platform} sample
               </button>
             </div>
+            {pendingAppendReview && (
+              <div className="th-stack" style={{ marginTop: 12 }}>
+                <div className="th-panel-head"><span>Append review</span><span>{pendingAppendReview.summary.appendedRows} rows pending</span></div>
+                <div className="th-mini-block th-append-preview-block">
+                  <strong>{pendingAppendReview.summary.sourceFile}</strong>
+                  {(() => {
+                    const previewCols = buildAppendPreviewColumns(pendingAppendReview.currentParsedFile.headers, pendingAppendReview.columnDecisions);
+                    const unchangedCount = previewCols.filter((column) => column.status === 'existing').length;
+                    const mergedCount = previewCols.filter((column) => column.status === 'merge-target').length;
+                    const newCount = previewCols.filter((column) => column.status === 'new').length;
+                    const deletedCount = previewCols.filter((column) => column.status === 'drop').length;
+                    return (
+                      <>
+                        <p className="th-helper">{unchangedCount} unchanged · <span style={{ color: 'var(--th-blue)' }}>{mergedCount} merged</span> · <span style={{ color: 'var(--th-green)' }}>{newCount} new</span>{deletedCount > 0 ? <> · <span style={{ color: 'var(--th-red)' }}>{deletedCount} deleted</span></> : null}</p>
+                        <p className="th-helper">Edit each box directly. Blue boxes merge into an existing column. Green boxes stay as new columns. Nothing is appended until you click confirm.</p>
+                        <div className="th-append-preview-grid">
+                          {previewCols.map((column) => (
+                            <div key={column.key} className={`th-append-preview-col is-${column.status}`}>
+                              <div className="th-append-preview-head">
+                                <strong>{column.header}</strong>
+                                {column.status !== 'existing' && (
+                                  <span className="th-append-preview-badge">
+                                    {column.status === 'merge-target' ? 'Merged' : column.status === 'drop' ? 'Delete' : 'New'}
+                                  </span>
+                                )}
+                              </div>
+                              {column.editors.length > 0 && (
+                                <div className="th-append-preview-editors">
+                                  {column.editors.map((decision: AppendColumnDecision) => (
+                                    <label key={decision.id} className="th-append-preview-editor">
+                                      <span>{column.status === 'new' ? decision.incomingHeader : `${decision.incomingHeader} -> ${column.header}`}</span>
+                                      {(() => {
+                                        const selectValue = decision.action === 'drop' ? '__drop__' : (decision.targetHeader ?? '');
+                                        return (
+                                          <select
+                                            className="th-select th-append-preview-select"
+                                            value={selectValue}
+                                            onChange={(event) => {
+                                              const nextValue = event.target.value;
+                                              updatePendingAppendDecision(
+                                                decision.id,
+                                                nextValue === '__drop__'
+                                                  ? { targetHeader: null, action: 'drop' }
+                                                  : { targetHeader: nextValue || null, action: nextValue ? 'merge' : 'keep_separate' },
+                                              );
+                                            }}
+                                          >
+                                            <option value="">Add as new column</option>
+                                            <option value="__drop__">Delete column</option>
+                                            {pendingAppendReview.currentParsedFile.headers.map((header: string) => (
+                                              <option key={`${decision.id}-${header}`} value={header}>{header}</option>
+                                            ))}
+                                          </select>
+                                        );
+                                      })()}
+                                    </label>
+                                  ))}
+                                </div>
+                              )}
+                              {column.mergedFrom.length > 0 && (
+                                <p className="th-helper">From: {column.mergedFrom.join(' · ')}</p>
+                              )}
+                              <div className="th-append-preview-cells" aria-hidden="true">
+                                <span />
+                                <span />
+                                <span />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+                <div className="th-review-match-actions">
+                  <button type="button" className="th-button th-button-primary" onClick={() => void handleApplyPendingAppendReview()}>Confirm append</button>
+                  <button type="button" className="th-button th-button-secondary" onClick={handleCancelPendingAppendReview}>Discard</button>
+                </div>
+              </div>
+            )}
+            {pendingColumnMerges.length > 0 && (
+              <div className="th-stack" style={{ marginTop: 12 }}>
+                <div className="th-panel-head"><span>Pending column merges</span><span>{pendingColumnMerges.length} fuzzy match{pendingColumnMerges.length === 1 ? '' : 'es'}</span></div>
+                {pendingColumnMerges.map((merge) => (
+                  <div key={merge.id} className="th-guardrail is-warning" style={{ alignItems: 'center', gap: 14 }}>
+                    <div style={{ flex: 1 }}>
+                      <strong>{merge.sourceFile}</strong>
+                      <p>{merge.incomingHeader} looks close to {merge.suggestedHeader}</p>
+                      <p className="th-helper">Fuzzy column match · {Math.round(merge.score * 100)}%</p>
+                    </div>
+                    <div className="th-review-match-actions">
+                      <button type="button" className="th-button th-button-primary" onClick={() => void handleResolvePendingColumnMerge(merge, 'merge')} disabled={isResolvingPendingMerge}>Merge columns</button>
+                      <button type="button" className="th-button th-button-secondary" onClick={() => void handleResolvePendingColumnMerge(merge, 'keep_separate')} disabled={isResolvingPendingMerge}>Keep separate</button>
+                      <button type="button" className="th-button th-button-secondary" style={{ borderColor: 'rgba(166,64,52,0.28)', color: 'var(--th-red)' }} onClick={() => void handleResolvePendingColumnMerge(merge, 'drop')} disabled={isResolvingPendingMerge}>Delete column</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
 
@@ -1563,88 +2054,37 @@ export default function TransformHubPage() {
 
         {/* ── Guardrails ──────────────────────────────────────────────────── */}
         {guardrails.length > 0 && (
-          <section className="th-section th-grid th-main-grid" id="th-guardrails">
+          <section className="th-section" id="th-guardrails">
             <article className="th-panel">
               <div className="th-panel-head">
-                <span><span className="th-layer-badge">05</span> Guardrails</span>
-                <span>{guardrails.filter((g) => g.triggered).length}/{guardrails.length} triggered</span>
+                <span><span className="th-layer-badge">05</span> Intake summary</span>
+                <span>{triggeredGuardrails.length === 0 ? 'ready to continue' : `${triggeredGuardrails.length} attention item${triggeredGuardrails.length === 1 ? '' : 's'}`}</span>
               </div>
-              <div className="th-stack">
-                {guardrails.map((item) => (
-                  <div key={item.code} className={`th-guardrail ${item.triggered ? 'is-triggered' : 'is-clear'}`}>
-                    {item.triggered ? <AlertTriangle size={15} /> : <CheckCircle2 size={15} />}
-                    <div>
-                      <strong>{item.label}</strong>
-                      <p>{item.detail}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </article>
-
-            <article className="th-panel">
-              <div className="th-panel-head"><span>Schema</span><span>{schema?.fingerprint ? 'fingerprint ready' : 'no schema'}</span></div>
-              <div className="th-mini-block">
-                <strong>Report type</strong>
-                <p>{schema?.reportType ?? '—'} · {schema ? `${Math.round(schema.confidence * 100)}% confidence` : 'no schema'}</p>
-              </div>
-              <div className="th-mini-block" style={{ marginTop: 8 }}>
-                <strong>Fingerprint</strong>
-                <p style={{ fontFamily: 'monospace', fontSize: '0.76rem', wordBreak: 'break-all' }}>{schema?.fingerprint ?? '—'}</p>
-              </div>
-              {structureAnalysis && (
-                <div className="th-mini-block" style={{ marginTop: 8 }}>
-                  <strong>Structure</strong>
-                  <p>Skipped {structureAnalysis.skippedTopRows} header rows · removed {structureAnalysis.removedRows} non-data rows</p>
+              <div className="th-grid th-grid-3" style={{ marginBottom: 12 }}>
+                <div className="th-mini-block">
+                  <strong>File type</strong>
+                  <p>{schema?.reportType ?? '—'}</p>
                 </div>
-              )}
-              {schema?.normalizedFieldAlerts && schema.normalizedFieldAlerts.length > 0 && (
-                <div className="th-mini-block" style={{ marginTop: 8 }}>
-                  <strong>Normalized diff alerts</strong>
-                  <p>
-                    {schema.normalizedFieldAlerts
-                      .slice(0, 4)
-                      .map((item) => (item.canonicalHint ? '"' + item.rawKey + '" -> ' + item.canonicalHint : '"' + item.rawKey + '" -> unknown concept'))
-                      .join(' · ')}
-                    {schema.normalizedFieldAlerts.length > 4 ? ' +' + (schema.normalizedFieldAlerts.length - 4) + ' more' : ''}
-                  </p>
+                <div className="th-mini-block">
+                  <strong>Confidence</strong>
+                  <p>{schema ? `${Math.round(schema.confidence * 100)}%` : '—'}</p>
                 </div>
-              )}
-              {schema?.fieldSuggestions && schema.fieldSuggestions.length > 0 && (
-                <div className="th-mini-block" style={{ marginTop: 8 }}>
-                  <strong>AI field suggestions</strong>
-                  <div className="th-stack" style={{ marginTop: 8 }}>
-                    {schema.fieldSuggestions.slice(0, 4).map((item) => (
-                      <div key={item.id} className="th-person-card">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                          <strong>{item.rawKey}</strong>
-                          <span>{item.status} · {item.confidence}</span>
-                        </div>
-                        <span>{item.suggestedTarget ? item.suggestedTarget : 'no target suggested'}</span>
-                        <p className="th-helper" style={{ marginBottom: 0 }}>{item.reasoning || 'AI suggestion pending review.'}</p>
-                        {item.sampleValues.length > 0 && <p className="th-helper" style={{ marginBottom: 0 }}>Samples: {item.sampleValues.slice(0, 3).join(' · ')}</p>}
-                        {item.status === 'pending' && sessionId && (
-                          <div className="th-action-row" style={{ marginTop: 8 }}>
-                            <button type="button" className="th-button th-button-primary" onClick={() => handleReviewFieldSuggestion(item.id, 'approve')} disabled={!item.suggestedTarget || isLoading}>Approve</button>
-                            <button type="button" className="th-button th-button-secondary" onClick={() => handleReviewFieldSuggestion(item.id, 'reject')} disabled={isLoading}>Reject</button>
-                          </div>
-                        )}
+                <div className="th-mini-block">
+                  <strong>Status</strong>
+                  <p>{triggeredGuardrails.length === 0 ? 'Ready to continue' : 'Review triggered items before continuing'}</p>
+                </div>
+              </div>
+              {triggeredGuardrails.length > 0 && (
+                <div className="th-stack">
+                  {triggeredGuardrails.map((item) => (
+                    <div key={item.code} className="th-guardrail is-triggered">
+                      <AlertTriangle size={15} />
+                      <div>
+                        <strong>{item.label}</strong>
+                        <p>{item.detail}</p>
                       </div>
-                    ))}
-                    {schema.fieldSuggestions.length > 4 && <p className="th-helper">+{schema.fieldSuggestions.length - 4} more suggestions</p>}
-                  </div>
-                </div>
-              )}
-              {schema?.headerDiagnostics && schema.headerDiagnostics.length > 0 && (
-                <div className="th-mini-block" style={{ marginTop: 8 }}>
-                  <strong>Header normalization</strong>
-                  <p>
-                    {schema.headerDiagnostics
-                      .slice(0, 4)
-                      .map((item) => '"' + item.rawKey + '" -> ' + item.strippedKey + (item.mappedCanonicalFields.length ? ' (' + item.mappedCanonicalFields.join(', ') + ')' : ''))
-                      .join(' · ')}
-                    {schema.headerDiagnostics.length > 4 ? ' +' + (schema.headerDiagnostics.length - 4) + ' more' : ''}
-                  </p>
+                    </div>
+                  ))}
                 </div>
               )}
             </article>
@@ -1757,7 +2197,12 @@ export default function TransformHubPage() {
                 <div style={{ marginTop: 14 }}>
                   <div className="th-panel-head" style={{ marginBottom: 10 }}>
                     <span>Review decisions</span>
-                    <span>{filteredLedgerReviewMatches.length} shown</span>
+                    <div className="th-review-match-actions">
+                      {mergeableLedgerReviewMatches.length > 0 && (
+                        <button type="button" className="th-button th-button-primary" style={{ minHeight: 34 }} onClick={() => void handleMergeAllPeopleReviews(filteredLedgerReviewMatches)} disabled={isLoading}>Merge all shown ({mergeableLedgerReviewMatches.length})</button>
+                      )}
+                      <span>{filteredLedgerReviewMatches.length} shown</span>
+                    </div>
                   </div>
                   <div className="th-review-filter-row" style={{ marginBottom: 10 }}>
                     <button type="button" className={`th-chip${peopleReviewFilter === 'pending' ? ' is-active' : ''}`} onClick={() => setPeopleReviewFilter('pending')}>Pending {ledgerReviewCounts.pending}</button>
@@ -2049,7 +2494,64 @@ export default function TransformHubPage() {
                 </div>
                 <span className="th-helper">Showing {visibleRows.length} of {rows.length} rows{activeOperatorIntent ? ` · active intent ${activeOperatorIntent}` : ''}</span>
               </div>
+              {previewSourceOrigins.length > 1 && (
+                <div className="th-review-filter-row" style={{ marginBottom: 12 }}>
+                  <button type="button" className={`th-chip${previewSourceFocus === 'all' ? ' is-active' : ''}`} onClick={() => setPreviewSourceFocus('all')}>All {displayedPreviewRecords.length}</button>
+                  {previewSourceOrigins.map((origin) => (
+                    <button
+                      key={origin}
+                      type="button"
+                      title={origin}
+                      className={`th-chip${previewSourceFocus === origin ? ' is-active' : ''}`}
+                      onClick={() => setPreviewSourceFocus(origin)}
+                    >
+                      <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 999, background: previewSourceColorByOrigin.get(origin), marginRight: 6 }} />
+                      {previewSourceBadgeByOrigin.get(origin)}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="th-table-wrap">
+                {nonLedgerTableHeaders.length > 0 && (
+                  <div className="th-column-visibility-panel">
+                    <div className="th-column-visibility-group">
+                      <span className="th-helper">Visible columns</span>
+                      <div className="th-chip-row">
+                        {visibleNonLedgerTableHeaders.map((header) => (
+                          <button
+                            key={`visible-${header}`}
+                            type="button"
+                            className="th-chip th-column-chip"
+                            onClick={() => setHiddenPreviewHeaders((current) => Array.from(new Set([...current, header])))}
+                            title={`Hide ${formatPreviewHeaderLabel(header)}`}
+                          >
+                            {formatPreviewHeaderLabel(header)}
+                            <span className="th-column-chip-action">Hide</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {hiddenNonLedgerTableHeaders.length > 0 && (
+                      <div className="th-column-visibility-group">
+                        <span className="th-helper">Hidden columns</span>
+                        <div className="th-chip-row">
+                          {hiddenNonLedgerTableHeaders.map((header) => (
+                            <button
+                              key={`hidden-${header}`}
+                              type="button"
+                              className="th-chip th-column-chip is-hidden"
+                              onClick={() => setHiddenPreviewHeaders((current) => current.filter((item) => item !== header))}
+                              title={`Show ${formatPreviewHeaderLabel(header)}`}
+                            >
+                              {formatPreviewHeaderLabel(header)}
+                              <span className="th-column-chip-action">Show</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <table className="th-table">
                   <thead>
                     <tr>
@@ -2094,7 +2596,9 @@ export default function TransformHubPage() {
                             <div className="th-source-cell">
                               <strong>{row.source_platform}</strong>
                               <span>{row.source_row_ref}</span>
+                              {row.source_file && <span>{row.source_file}</span>}
                               {row.canonical_person_id && <span className="th-person-tag">{row.canonical_person_id}</span>}
+                              {row.needs_person_resolve && <span className="th-person-tag">needs person resolve</span>}
                             </div>
                           </td>
                           <td>
@@ -2243,7 +2747,15 @@ export default function TransformHubPage() {
               )}
               {supportsIdentityWorkflow && previewReviewMatches.length > 0 && (
                 <div id="th-identity-review-queue" className="th-stack" style={{ marginBottom: 14 }}>
-                  <div className="th-panel-head"><span>People review queue</span><span>{filteredPreviewReviewMatches.length} shown</span></div>
+                  <div className="th-panel-head">
+                    <span>People review queue</span>
+                    <div className="th-review-match-actions">
+                      {mergeablePreviewReviewMatches.length > 0 && (
+                        <button type="button" className="th-button th-button-primary" style={{ minHeight: 34 }} onClick={() => void handleMergeAllPeopleReviews(filteredPreviewReviewMatches)} disabled={isLoading}>Merge all shown ({mergeablePreviewReviewMatches.length})</button>
+                      )}
+                      <span>{filteredPreviewReviewMatches.length} shown</span>
+                    </div>
+                  </div>
                   <div className="th-review-filter-row">
                     <button type="button" className={`th-chip${peopleReviewFilter === 'pending' ? ' is-active' : ''}`} onClick={() => setPeopleReviewFilter('pending')}>Pending {previewReviewCounts.pending}</button>
                     <button type="button" className={`th-chip${peopleReviewFilter === 'merged' ? ' is-active' : ''}`} onClick={() => setPeopleReviewFilter('merged')}>Merged {previewReviewCounts.merged}</button>
@@ -2264,19 +2776,26 @@ export default function TransformHubPage() {
                     const siblingMatch = !matchedRecordRef && match.matchedPersonId
                       ? (personResult?.matches ?? []).find((candidate) => candidate.inputRef !== match.inputRef && candidate.matchedPersonId === match.matchedPersonId)
                       : null;
-                    const matchedRecord = matchedRecordRef
+                    const matchedPreviewRecord = matchedRecordRef
                       ? previewRecords.find((record: any) => record.sourceRowRef === matchedRecordRef) ?? null
                       : siblingMatch
                         ? previewRecords.find((record: any) => record.sourceRowRef === siblingMatch.inputRef) ?? null
                         : null;
+                    const matchedPerson = !matchedPreviewRecord && match.matchedPersonId
+                      ? canonicalPersons.find((person) => person.id === match.matchedPersonId) ?? null
+                      : null;
+                    const matchedRecord = matchedPreviewRecord ?? buildMatchedPersonCompareRecord(matchedPerson);
+                    const matchedLabel = matchedPreviewRecord
+                      ? previewRecordLabel(matchedPreviewRecord)
+                      : formatPersonLabel(matchedPerson);
                     const isExpanded = expandedPeopleReviewRef === match.inputRef;
                     if (!matchedRecord) return null;
                     return (
                       <div key={match.inputRef} className="th-guardrail is-warning th-review-match-card" style={{ gap: 14 }}>
                         <div className="th-review-match-head">
                           <div style={{ flex: 1 }}>
-                            <strong>Ref {match.inputRef} · score {match.score}</strong>
-                            <p>{incomingRecord ? previewRecordLabel(incomingRecord) : match.inputRef} → {previewRecordLabel(matchedRecord)}</p>
+                            <strong>{getCompactSourceRef(match.inputRef).primary} ↔ {matchedPreviewRecord ? getCompactSourceRef(matchedRecord.sourceRowRef).primary : 'existing person'}</strong>
+                            <p>{incomingRecord ? previewRecordLabel(incomingRecord) : match.inputRef} → {matchedLabel}</p>
                             <p>{summarizeMatchSignals(match)}</p>
                             {describeAiSuggestion(match) && <p className="th-helper">{describeAiSuggestion(match)}</p>}
                           </div>
@@ -2307,7 +2826,7 @@ export default function TransformHubPage() {
                           onClick={() => setExpandedPeopleReviewRef(isExpanded ? null : match.inputRef)}
                         >
                           <span><strong>Incoming</strong> {incomingRecord ? (previewRecordLabel(incomingRecord)) : match.inputRef}</span>
-                          <span><strong>Matched row</strong> {previewRecordLabel(matchedRecord)}</span>
+                          <span><strong>{matchedPreviewRecord ? 'Matched row' : 'Matched person'}</strong> {matchedLabel}</span>
                         </button>
                         {isExpanded && matchedRecord && (
                           <div className="th-stack" style={{ width: '100%' }}>
@@ -2415,142 +2934,96 @@ export default function TransformHubPage() {
                     </div>
                   </div>
                 )}
-                {fileClass === 'constituent' && (
-                  <table className="th-table">
-                    <thead>
-                      <tr>
-                        <th>Source</th>
-                        <th>Name</th>
-                        <th>Type</th>
-                        <th>Email</th>
-                        <th>Phone</th>
-                        <th>Location</th>
-                        <th>Owner</th>
-                        <th>Updated</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayedPreviewRecords.map((record: any) => (
-                        <tr key={record.id}>
-                          <td>{describeRepresentativeSource(record)}</td>
-                          <td><strong>{record.displayName}</strong><div className="th-inline-note">{record.householdName || record.organizationName || record.firstName}</div></td>
-                          <td>{record.constituentType || 'Unknown'}</td>
-                          <td>{record.email || '—'}</td>
-                          <td>{record.phone || '—'}</td>
-                          <td>{[record.city, record.state, record.country].filter(Boolean).join(', ') || '—'}</td>
-                          <td>{record.assignedStaff || '—'}</td>
-                          <td>{record.updatedAt || record.createdAt || '—'}</td>
-                          <td><button type="button" className="th-button th-button-secondary" style={{ minHeight: 32 }} onClick={() => startMergedRecordEdit(record)}>Edit result</button>{(mergedSourceRefsByRepresentative.get(record.sourceRowRef)?.length ?? 0) > 0 && <div className="th-inline-note">Merged {mergedSourceRefsByRepresentative.get(record.sourceRowRef)?.join(', ')}</div>}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                {nonLedgerTableHeaders.length > 0 && (
+                  <div className="th-column-visibility-panel">
+                    <div className="th-column-visibility-group">
+                      <span className="th-helper">Visible columns</span>
+                      <div className="th-chip-row">
+                        {visibleNonLedgerTableHeaders.map((header) => (
+                          <button
+                            key={`visible-${header}`}
+                            type="button"
+                            className="th-chip th-column-chip"
+                            onClick={() => setHiddenPreviewHeaders((current) => Array.from(new Set([...current, header])))}
+                            title={`Hide ${formatPreviewHeaderLabel(header)}`}
+                          >
+                            {formatPreviewHeaderLabel(header)}
+                            <span className="th-column-chip-action">Hide</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {hiddenNonLedgerTableHeaders.length > 0 && (
+                      <div className="th-column-visibility-group">
+                        <span className="th-helper">Hidden columns</span>
+                        <div className="th-chip-row">
+                          {hiddenNonLedgerTableHeaders.map((header) => (
+                            <button
+                              key={`hidden-${header}`}
+                              type="button"
+                              className="th-chip th-column-chip is-hidden"
+                              onClick={() => setHiddenPreviewHeaders((current) => current.filter((item) => item !== header))}
+                              title={`Show ${formatPreviewHeaderLabel(header)}`}
+                            >
+                              {formatPreviewHeaderLabel(header)}
+                              <span className="th-column-chip-action">Show</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
-                {fileClass === 'donor' && (
-                  <table className="th-table">
-                    <thead>
-                      <tr>
-                        <th>Source</th>
-                        <th>Donor</th>
-                        <th>Date</th>
-                        <th>Amount</th>
-                        <th>Fund</th>
-                        <th>Appeal</th>
-                        <th>Contact</th>
-                        <th>Location</th>
-                        <th>Memo</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayedPreviewRecords.map((record: any) => (
-                        <tr key={record.id}>
-                          <td>{describeRepresentativeSource(record)}</td>
-                          <td><strong>{record.donorName}</strong><div className="th-inline-note">{record.householdName || record.organizationName || [record.firstName, record.lastName].filter(Boolean).join(' ') || '—'}</div></td>
-                          <td>{record.date || '—'}</td>
-                          <td>{record.amount || '—'} {record.currency || ''}</td>
-                          <td>{record.fund || '—'}</td>
-                          <td>{record.appeal || '—'}</td>
-                          <td>{[record.email, record.phone].filter(Boolean).join(' · ') || '—'}</td>
-                          <td>{[record.city, record.state, record.postalCode].filter(Boolean).join(', ') || '—'}</td>
-                          <td>{record.memo || '—'}</td>
-                          <td><button type="button" className="th-button th-button-secondary" style={{ minHeight: 32 }} onClick={() => startMergedRecordEdit(record)}>Edit result</button>{(mergedSourceRefsByRepresentative.get(record.sourceRowRef)?.length ?? 0) > 0 && <div className="th-inline-note">Merged {mergedSourceRefsByRepresentative.get(record.sourceRowRef)?.join(', ')}</div>}</td>
-                        </tr>
+                <table className="th-table">
+                  <thead>
+                    <tr>
+                      <th>Source</th>
+                      {visibleNonLedgerTableHeaders.map((header) => (
+                        <th key={header}>{formatPreviewHeaderLabel(header)}</th>
                       ))}
-                    </tbody>
-                  </table>
-                )}
-                {fileClass === 'campaign' && (
-                  <table className="th-table">
-                    <thead>
-                      <tr>
-                        <th>Source</th>
-                        <th>Code</th>
-                        <th>Name</th>
-                        <th>Status</th>
-                        <th>Start</th>
-                        <th>End</th>
-                        <th>Goal</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayedPreviewRecords.map((record: any) => (
-                        <tr key={record.id}>
-                          <td>{record.sourceRowRef}</td>
-                          <td>{record.code || '—'}</td>
-                          <td><strong>{record.campaignName}</strong></td>
-                          <td>{record.status || '—'}</td>
-                          <td>{record.startDate || '—'}</td>
-                          <td>{record.endDate || '—'}</td>
-                          <td>{record.goalAmount || '—'}</td>
+                      {(fileClass === 'constituent' || fileClass === 'donor') && <th>Actions</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredDisplayedPreviewRecords.map((record: any) => {
+                      const recordOrigins = getRecordSourceOrigins(record);
+                      const isSourceFocused = previewSourceFocus === 'all' || recordOrigins.includes(previewSourceFocus);
+                      return (
+                        <tr key={record.id} style={previewSourceFocus === 'all' ? undefined : isSourceFocused ? { background: `${previewSourceColorByOrigin.get(previewSourceFocus)}12` } : { opacity: 0.48 }}>
+                          <td>
+                            <strong>{supportsIdentityWorkflow ? describeRepresentativeSource(record) : getCompactSourceRef(record.sourceRowRef).primary}</strong>
+                            <div className="th-cell-chip-row" style={{ marginTop: 6 }}>
+                              {recordOrigins.map((origin) => (
+                                <span
+                                  key={`${record.id}-${origin}`}
+                                  className="th-cell-chip"
+                                  title={origin}
+                                  style={{
+                                    background: `${previewSourceColorByOrigin.get(origin)}1A`,
+                                    color: previewSourceColorByOrigin.get(origin),
+                                    borderColor: `${previewSourceColorByOrigin.get(origin)}55`,
+                                  }}
+                                >
+                                  {previewSourceBadgeByOrigin.get(origin)}
+                                </span>
+                              ))}
+                            </div>
+                            {record.needs_person_resolve && <div className="th-inline-note">needs person resolve</div>}
+                          </td>
+                          {visibleNonLedgerTableHeaders.map((header) => (
+                            <td key={`${record.id}-${header}`}>{getPreviewRecordRawCell(record, header)}</td>
+                          ))}
+                          {(fileClass === 'constituent' || fileClass === 'donor') && (
+                            <td>
+                              <button type="button" className="th-button th-button-secondary" style={{ minHeight: 32 }} onClick={() => startMergedRecordEdit(record)}>Edit result</button>
+                              {(mergedSourceRefsByRepresentative.get(record.sourceRowRef)?.length ?? 0) > 0 && <div className="th-inline-note">Merged {mergedSourceRefsByRepresentative.get(record.sourceRowRef)?.join(', ')}</div>}
+                            </td>
+                          )}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-                {fileClass === 'coa' && (
-                  <table className="th-table">
-                    <thead>
-                      <tr>
-                        <th>Source</th>
-                        <th>Account Code</th>
-                        <th>Account Name</th>
-                        <th>Type</th>
-                        <th>Balance</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayedPreviewRecords.map((record: any) => (
-                        <tr key={record.id}>
-                          <td>{record.sourceRowRef}</td>
-                          <td>{record.accountCode || '—'}</td>
-                          <td><strong>{record.accountName || '—'}</strong></td>
-                          <td>{record.accountType || '—'}</td>
-                          <td>{record.balance || '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-                {fileClass === 'unknown' && (
-                  <table className="th-table">
-                    <thead>
-                      <tr>
-                        <th>Source</th>
-                        <th>Preview</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayedPreviewRecords.map((record: any) => (
-                        <tr key={record.id}>
-                          <td>{record.sourceRowRef}</td>
-                          <td>{record.preview || '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
           </section>

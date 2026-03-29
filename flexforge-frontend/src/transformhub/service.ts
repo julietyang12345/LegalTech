@@ -120,6 +120,7 @@ export async function saveSession(
   personResult?: PersonResolverResult | null,
   householdResult?: HouseholdResolverResult | null,
   parsedFile?: ParsedFile | null,
+  schema?: ResolvedSchema | null,
 ): Promise<TransformSession> {
   const response = await api.put<TransformSession>(`/transformhub/session/${sessionId}`, {
     rows,
@@ -128,6 +129,7 @@ export async function saveSession(
     personResult,
     householdResult,
     parsedFile,
+    schema,
   });
   return response.data;
 }

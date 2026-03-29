@@ -115,6 +115,7 @@ export type CampaignPreviewRecord = {
   endDate: string;
   status: string;
   goalAmount: string;
+  rawValues?: Record<string, string>;
 };
 
 export type CoaPreviewRecord = {
@@ -124,6 +125,7 @@ export type CoaPreviewRecord = {
   accountName: string;
   accountType: string;
   balance: string;
+  rawValues?: Record<string, string>;
 };
 
 export type UnknownPreviewRecord = {
@@ -241,10 +243,12 @@ export type CanonicalLedgerRow = {
   memo: string;
   source_platform: SourcePlatform;
   source_row_ref: string;
+  source_file?: string;
   journal_id: string;
   mapping_confidence: number;
   review_status: ReviewStatus;
   needs_review: boolean;
+  needs_person_resolve?: boolean;
   suggested_fix: string | null;
   qbo_account_id: string | null;
   qbo_txn_id: string | null;
