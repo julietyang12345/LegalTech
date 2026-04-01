@@ -65,6 +65,9 @@ export class ThTransformSession {
 
   @Column({ type: 'jsonb', nullable: true })
   householdResult: object | null;
+  @Column({ type: 'jsonb', nullable: true })
+  taxonomyState: object | null;
+
 
   @Column({ nullable: true })
   fingerprint: string;

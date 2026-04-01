@@ -456,13 +456,14 @@ export class TransformHubIdentityService {
     });
   }
 
-  async resolvePersons(rows: any[], existingPersons?: any[], options?: { usePersistentIdentityMemory?: boolean; forceReviewOnAutoMatches?: boolean; seedExistingPersonsFromDb?: boolean; baselinePlatform?: string; baselineFileClass?: string; persistIdentityMemory?: boolean }): Promise<any> {
+  async resolvePersons(rows: any[], existingPersons?: any[], options?: { usePersistentIdentityMemory?: boolean; forceReviewOnAutoMatches?: boolean; seedExistingPersonsFromDb?: boolean; baselinePlatform?: string; baselineFileClass?: string; persistIdentityMemory?: boolean; includeAiSuggestions?: boolean }): Promise<any> {
     const usePersistentIdentityMemory = options?.usePersistentIdentityMemory === true;
     const forceReviewOnAutoMatches = options?.forceReviewOnAutoMatches === true;
     const seedExistingPersonsFromDb = options?.seedExistingPersonsFromDb === true;
     const baselinePlatform = options?.baselinePlatform || null;
     const baselineFileClass = options?.baselineFileClass || null;
     const persistIdentityMemory = options?.persistIdentityMemory !== false;
+    const includeAiSuggestions = options?.includeAiSuggestions !== false;
     const personScope = { platform: baselinePlatform, fileClass: baselineFileClass };
     const seedPersons = Array.isArray(existingPersons)
       ? existingPersons
@@ -560,7 +561,9 @@ export class TransformHubIdentityService {
         matchedPersonId = bestMatch.id;
         decision = 'review';
         needsReviewCount++;
-        aiSuggestion = await this.buildAiReviewSuggestion(rowRef, input, bestMatchedFields, bestScore, bestMatch);
+        if (includeAiSuggestions) {
+          aiSuggestion = await this.buildAiReviewSuggestion(rowRef, input, bestMatchedFields, bestScore, bestMatch);
+        }
       } else {
         const newPerson = this.createNewPerson(row, persons, ++newPersonCount, personScope, rowRef);
         pendingPersonSaves.push(newPerson);

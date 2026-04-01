@@ -41,6 +41,15 @@ export class ThKeySynonym {
   @Column({ type: 'timestamptz', nullable: true })
   approvedAt: Date | null;
 
+  @Column({ default: 1 })
+  approvalCount: number;
+
+  @Column({ default: false })
+  promoted: boolean;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  lastSeenAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

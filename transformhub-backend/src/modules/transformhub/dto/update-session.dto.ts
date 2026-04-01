@@ -15,4 +15,5 @@ export class UpdateSessionDto {
   @IsObject() @IsOptional() schema?: any;
   @IsObject() @IsOptional() personResult?: any;
   @IsObject() @IsOptional() householdResult?: any;
+  @IsObject() @IsOptional() taxonomyState?: any;
 }

@@ -109,6 +109,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
           preflight: null,
           personResult: null,
           householdResult: null,
+          taxonomyState: null,
         }));
       if (scrubbed.length > 0) {
         await this.sessionRepo.save(scrubbed);
@@ -192,6 +193,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
         receipts: [],
         personResult: null,
         householdResult: null,
+        taxonomyState: null,
         fingerprint: schema.fingerprint,
         forcedFromStatus: null,
         forcedBlockingIssuesSnapshot: null,
@@ -223,6 +225,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
           receipts: [],
           personResult: null,
           householdResult: null,
+          taxonomyState: null,
           fingerprint: schema.fingerprint,
           forcedFromStatus: existingSession.status,
           forcedBlockingIssuesSnapshot: existingSession.blockingIssues ?? blockingIssues,
@@ -240,6 +243,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
           receipts: [],
           personResult: null,
           householdResult: null,
+          taxonomyState: null,
           fingerprint: schema.fingerprint,
           forcedFromStatus: null,
           forcedBlockingIssuesSnapshot: null,
@@ -372,12 +376,27 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     const session = await this.sessionRepo.findOne({ where: { id: sessionId } });
     if (!session) throw new NotFoundException('Session ' + sessionId + ' not found.');
 
-    if (body.status) await this.sessionRepo.update(sessionId, { status: body.status });
-    if (body.preflight) await this.sessionRepo.update(sessionId, { preflight: body.preflight });
-    if (body.parsedFile !== undefined) await this.sessionRepo.update(sessionId, { parsedFile: body.parsedFile });
-    if (body.schema !== undefined) await this.sessionRepo.update(sessionId, { schema: body.schema });
-    if (body.personResult !== undefined) await this.sessionRepo.update(sessionId, { personResult: body.personResult });
-    if (body.householdResult !== undefined) await this.sessionRepo.update(sessionId, { householdResult: body.householdResult });
+    if (body.status) {
+      await this.sessionRepo.update(sessionId, { status: body.status });
+    }
+    if (body.preflight) {
+      await this.sessionRepo.update(sessionId, { preflight: body.preflight });
+    }
+    if (body.parsedFile !== undefined) {
+      await this.sessionRepo.update(sessionId, { parsedFile: body.parsedFile });
+    }
+    if (body.schema !== undefined) {
+      await this.sessionRepo.update(sessionId, { schema: body.schema });
+    }
+    if (body.personResult !== undefined) {
+      await this.sessionRepo.update(sessionId, { personResult: body.personResult });
+    }
+    if (body.householdResult !== undefined) {
+      await this.sessionRepo.update(sessionId, { householdResult: body.householdResult });
+    }
+    if (body.taxonomyState !== undefined) {
+      await this.sessionRepo.update(sessionId, { taxonomyState: body.taxonomyState });
+    }
     if (body.rows?.length > 0) {
       await this.updateSessionRows(sessionId, body.rows);
     }
@@ -409,6 +428,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
       baselinePlatform: body.baselinePlatform,
       baselineFileClass: body.baselineFileClass,
       persistIdentityMemory: body.persistIdentityMemory,
+      includeAiSuggestions: body.includeAiSuggestions !== false,
     });
 
     if (!body.sessionId) {

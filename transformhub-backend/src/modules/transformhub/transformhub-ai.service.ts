@@ -15,7 +15,7 @@ export class TransformHubAiService {
     this.taxonomyModel = this.configService.get<string>('openai.models.taxonomySuggestion') || 'gpt-5.4-nano';
     this.schemaModel = this.configService.get<string>('openai.models.schemaFallback') || 'gpt-5.4-mini';
     this.suggestedFixModel = this.configService.get<string>('openai.models.suggestedFix') || 'gpt-5.4-nano';
-    this.client = apiKey ? new OpenAI({ apiKey }) : null;
+    this.client = apiKey ? new OpenAI({ apiKey, timeout: 20000 }) : null;
     if (!this.client) {
       this.logger.warn('OPENAI_API_KEY not set — AI enrichment disabled. Set OPENAI_API_KEY to enable.');
     }
@@ -60,14 +60,14 @@ ${relevantRegistry.map((entry) => `- ${entry.code}: ${entry.label}`).join('\n')}
 Legacy mappings:
 ${relevantLegacy.map((entry) => `- "${entry.legacyValue}" -> ${entry.canonicalCode}`).join('\n')}
 
-Respond ONLY with valid JSON: {"code": "CANONICAL-CODE" | null, "reasoning": "one short sentence", "confidence": "high|medium|low", "evidence": ["short fact"]}`;
+    Respond ONLY with valid JSON: {"code": "CANONICAL-CODE" | null, "reasoning": "one short sentence", "confidence": "high|medium|low", "evidence": ["short fact"]}`;
 
     try {
       const response = await this.client.chat.completions.create({
         model: this.taxonomyModel,
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
-        max_tokens: 220,
+        max_completion_tokens: 220,
         temperature: 0,
       });
 
@@ -139,7 +139,7 @@ Respond ONLY with valid JSON: {"suggestedTarget":"canonical_field"|null,"reasoni
         model: this.schemaModel,
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
-        max_tokens: 220,
+        max_completion_tokens: 220,
         temperature: 0,
       });
 
@@ -212,7 +212,7 @@ Respond ONLY with valid JSON: {"fieldMap": {"canonical_field": "exact_header_str
         model: this.schemaModel,
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
-        max_tokens: 250,
+        max_completion_tokens: 250,
         temperature: 0,
       });
 
@@ -266,7 +266,7 @@ Respond ONLY with valid JSON: {"fileClass":"ledger|constituent|donor|campaign|co
         model: this.schemaModel,
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
-        max_tokens: 350,
+        max_completion_tokens: 350,
         temperature: 0,
       });
 
@@ -357,7 +357,7 @@ Respond ONLY with valid JSON: {"suggestedAction":"confirm_merge|keep_separate","
         model: this.schemaModel,
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
-        max_tokens: 220,
+        max_completion_tokens: 220,
         temperature: 0,
       });
 
@@ -423,7 +423,7 @@ Respond ONLY with valid JSON: {"suggestedAction":"confirm_merge|keep_separate","
         model: this.schemaModel,
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
-        max_tokens: 220,
+        max_completion_tokens: 220,
         temperature: 0,
       });
 
@@ -476,13 +476,13 @@ Rules:
 - Write one direct actionable instruction in at most 2 sentences.
 - Refer to the row values when useful.
 
-Row data: ${JSON.stringify(context)}`;
+    Row data: ${JSON.stringify(context)}`;
 
     try {
       const response = await this.client.chat.completions.create({
         model: this.suggestedFixModel,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 100,
+        max_completion_tokens: 100,
         temperature: 0.2,
       });
       const suggestion = response.choices[0].message.content?.trim();

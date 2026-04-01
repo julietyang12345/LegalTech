@@ -14,6 +14,7 @@ import type {
   HouseholdResolverResult,
   LegacyMapping,
   ParsedFile,
+  SessionTaxonomyState,
   PersonResolverResult,
   PostingReceipt,
   PreflightResult,
@@ -121,6 +122,7 @@ export async function saveSession(
   householdResult?: HouseholdResolverResult | null,
   parsedFile?: ParsedFile | null,
   schema?: ResolvedSchema | null,
+  taxonomyState?: SessionTaxonomyState | null,
 ): Promise<TransformSession> {
   const response = await api.put<TransformSession>(`/transformhub/session/${sessionId}`, {
     rows,
@@ -130,6 +132,7 @@ export async function saveSession(
     householdResult,
     parsedFile,
     schema,
+    taxonomyState,
   });
   return response.data;
 }
@@ -145,7 +148,7 @@ export async function resolvePersonsBackend(
   rows: CanonicalLedgerRow[],
   existingPersons?: CanonicalPerson[],
   sessionId?: string,
-  options: { usePersistentIdentityMemory?: boolean; forceReviewOnAutoMatches?: boolean; seedExistingPersonsFromDb?: boolean; baselinePlatform?: string; baselineFileClass?: string; persistIdentityMemory?: boolean } = {},
+  options: { usePersistentIdentityMemory?: boolean; forceReviewOnAutoMatches?: boolean; seedExistingPersonsFromDb?: boolean; baselinePlatform?: string; baselineFileClass?: string; persistIdentityMemory?: boolean; includeAiSuggestions?: boolean } = {},
 ): Promise<PersonResolverResult> {
   const response = await api.post<PersonResolverResult>('/transformhub/person-resolve', {
     rows,

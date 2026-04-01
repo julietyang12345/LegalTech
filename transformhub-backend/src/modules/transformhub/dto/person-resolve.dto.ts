@@ -17,5 +17,5 @@ export class PersonResolveDto {
   @IsString() @IsOptional() baselinePlatform?: string;
   @IsString() @IsOptional() baselineFileClass?: string;
   @IsBoolean() @IsOptional() persistIdentityMemory?: boolean;
+  @IsBoolean() @IsOptional() includeAiSuggestions?: boolean;
 }
-

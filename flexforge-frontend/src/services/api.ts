@@ -30,13 +30,14 @@ api.interceptors.response.use(
   (error: AxiosError) => {
     if (error.response?.status === 401) {
       const requestUrl = error.config?.url || '';
+      const isTransformHubRequest = requestUrl.startsWith('/transformhub');
       const isAuthAttempt =
         requestUrl.includes('/auth/login') ||
         requestUrl.includes('/auth/google') ||
         requestUrl.includes('/auth/microsoft') ||
         requestUrl.includes('/auth/register');
 
-      if (isAuthAttempt) {
+      if (isAuthAttempt || isTransformHubRequest) {
         return Promise.reject(error);
       }
 

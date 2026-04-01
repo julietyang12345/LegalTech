@@ -158,6 +158,72 @@ export type ParsedFile = {
   preview?: ClassifiedPreview;
 };
 
+export type TaxonomyObjectType = 'Campaign' | 'Appeal' | 'Fund';
+
+export type TaxonomyConfidenceBand = 'high' | 'medium';
+
+export type TaxonomyScanColumn = {
+  header: string;
+  objectType: TaxonomyObjectType;
+  score: number;
+  included: boolean;
+  reasonSignals: string[];
+  sampleValues: string[];
+  source: 'schema' | 'scored' | 'manual';
+};
+
+export type TaxonomyObservedValue = {
+  id: string;
+  objectType: TaxonomyObjectType;
+  header: string;
+  rawValue: string;
+  normalizedValue: string;
+  sourceField: string;
+  sourceFiles: string[];
+  sourceRowRefs: string[];
+  rowCount: number;
+  years: string[];
+  tokenSet: string[];
+};
+
+export type TaxonomyCandidateMember = {
+  observedValueId: string;
+  rawValue: string;
+  header: string;
+  rowCount: number;
+  sourceFiles: string[];
+  sourceRowRefs: string[];
+};
+
+export type TaxonomyCandidateGroup = {
+  id: string;
+  objectType: TaxonomyObjectType;
+  confidenceBand: TaxonomyConfidenceBand;
+  score: number;
+  reasonSignals: string[];
+  suggestedCanonicalLabel: string;
+  members: TaxonomyCandidateMember[];
+  status: 'pending' | 'merged' | 'separate';
+};
+
+export type SessionTaxonomyGroup = {
+  id: string;
+  objectType: TaxonomyObjectType;
+  canonicalLabel: string;
+  aliases: string[];
+  sourceObservedValueIds: string[];
+  status: 'active' | 'separate';
+  createdAt: string;
+};
+
+export type SessionTaxonomyState = {
+  scanColumns: TaxonomyScanColumn[];
+  observedValues: TaxonomyObservedValue[];
+  candidateGroups: TaxonomyCandidateGroup[];
+  resolvedGroups: SessionTaxonomyGroup[];
+  dismissedCandidateIds: string[];
+};
+
 export type SchemaRuleEvidence = {
   source: 'rule';
   key: string;
@@ -322,6 +388,7 @@ export type TransformSession = {
   forcedFromStatus?: TransformSessionStatus | null;
   forcedBlockingIssuesSnapshot?: BlockingIssue[] | null;
   forcedAt?: string | null;
+  taxonomyState?: SessionTaxonomyState | null;
   personResult?: PersonResolverResult | null;
   householdResult?: HouseholdResolverResult | null;
   auditDecisions?: PersistedMergeDecision[];

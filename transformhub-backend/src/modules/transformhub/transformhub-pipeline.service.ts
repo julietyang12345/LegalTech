@@ -241,6 +241,9 @@ const CLASS_FIELD_ALIASES: Record<FileClass, Record<string, string[]>> = {
 };
 
 const CLASS_ALIAS_CONFIDENCE_THRESHOLD = 0.6;
+const AI_FIELD_SUGGESTION_LIMIT = 5;
+const AI_FIELD_SUGGESTION_CONCURRENCY = 2;
+const KEY_SYNONYM_PROMOTION_THRESHOLD = 3;
 
 const CLASS_EXPECTATIONS: Record<FileClass, ClassExpectation> = {
   ledger: { reportType: 'general-ledger', canonicalModel: 'canonical-ledger-row', expectedFields: ['date', 'entity_name', 'memo', 'account_or_amount_shape'] },
@@ -281,7 +284,7 @@ export class TransformHubPipelineService implements OnModuleInit {
       });
     });
 
-    const synonyms = await this.keySynonymRepo.find();
+    const synonyms = await this.keySynonymRepo.find({ where: { promoted: true } });
     synonyms.forEach((synonym) => this.cacheKeySynonym(synonym));
   }
 
@@ -320,8 +323,12 @@ export class TransformHubPipelineService implements OnModuleInit {
     confidence?: 'high' | 'medium' | 'low';
   }) {
     const normalized = normalizeKey(input.rawKey);
+    const id = this.createFingerprint('key-synonym', input.platform, input.fileClass, input.suggestedTarget, normalized.strippedKey).slice(0, 24);
+    const existing = await this.keySynonymRepo.findOne({ where: { id } });
+    const approvalCount = (existing?.approvalCount ?? 0) + 1;
+    const promoted = Boolean(existing?.promoted) || approvalCount >= KEY_SYNONYM_PROMOTION_THRESHOLD;
     const entity = this.keySynonymRepo.create({
-      id: this.createFingerprint('key-synonym', input.platform, input.fileClass, input.suggestedTarget, normalized.strippedKey).slice(0, 24),
+      id,
       sourcePlatform: input.platform || null,
       sourceFileClass: input.fileClass || null,
       canonicalTarget: input.suggestedTarget,
@@ -332,10 +339,71 @@ export class TransformHubPipelineService implements OnModuleInit {
       confidence: input.confidence || 'high',
       approvedBy: input.reviewedBy || 'user',
       approvedAt: new Date(),
+      approvalCount,
+      promoted,
+      lastSeenAt: new Date(),
+      createdAt: existing?.createdAt,
+      updatedAt: existing?.updatedAt,
     });
     await this.keySynonymRepo.save(entity);
-    this.cacheKeySynonym(entity);
+    if (entity.promoted) this.cacheKeySynonym(entity);
     return entity;
+  }
+
+  private valueRatio(values: string[], predicate: (value: string) => boolean): number {
+    const cleaned = values.map((value) => String(value || '').trim()).filter(Boolean);
+    if (cleaned.length === 0) return 0;
+    return cleaned.filter(predicate).length / cleaned.length;
+  }
+
+  private isDateLikeValue(value: string): boolean {
+    const trimmed = value.trim();
+    return /^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2})?$/.test(trimmed)
+      || /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(trimmed);
+  }
+
+  private isNumericLikeValue(value: string): boolean {
+    return /^[-+]?[\d,.]+$/.test(value.trim());
+  }
+
+  private isIdLikeValue(value: string): boolean {
+    const trimmed = value.trim();
+    if (!trimmed) return false;
+    return /^[A-Z0-9_-]{6,}$/i.test(trimmed) && /\d/.test(trimmed);
+  }
+
+  private isStateLikeValue(value: string): boolean {
+    return /^[A-Z]{2}$/i.test(value.trim());
+  }
+
+  private isCountryLikeValue(value: string): boolean {
+    const normalized = this.sanitizeHeader(value);
+    return ['us', 'usa', 'united states', 'ca', 'canada', 'uk', 'united kingdom'].includes(normalized);
+  }
+
+  private isAddressLikeValue(value: string): boolean {
+    const trimmed = value.trim();
+    return /\d+\s+\w+/.test(trimmed) && /(street|st|avenue|ave|road|rd|lane|ln|drive|dr|court|ct|boulevard|blvd|suite|apt)/i.test(trimmed);
+  }
+
+  private shouldSkipAiFieldSuggestion(item: HeaderDiagnostic, sampleValues: string[]): { skip: boolean; reason?: string } {
+    const key = `${item.cleanedKey} ${item.strippedKey}`.toLowerCase();
+    if (/\b(transaction|contact|account|record|external|internal)\s*id\b/.test(key) || /\bid\b/.test(item.strippedKey)) {
+      return { skip: true, reason: 'id_like_header' };
+    }
+    if (/\b(address|street|city|state|country|zip|postal)\b/.test(key)) {
+      return { skip: true, reason: 'structured_address_header' };
+    }
+    if (/\b(schedule|frequency|status|method)\b/.test(key)) {
+      return { skip: true, reason: 'operational_metadata_header' };
+    }
+    if (this.valueRatio(sampleValues, (value) => this.isDateLikeValue(value)) >= 0.8) return { skip: true, reason: 'mostly_date_values' };
+    if (this.valueRatio(sampleValues, (value) => this.isNumericLikeValue(value)) >= 0.8) return { skip: true, reason: 'mostly_numeric_values' };
+    if (this.valueRatio(sampleValues, (value) => this.isIdLikeValue(value)) >= 0.8) return { skip: true, reason: 'mostly_id_values' };
+    if (this.valueRatio(sampleValues, (value) => this.isStateLikeValue(value)) >= 0.8) return { skip: true, reason: 'mostly_state_values' };
+    if (this.valueRatio(sampleValues, (value) => this.isCountryLikeValue(value)) >= 0.8) return { skip: true, reason: 'mostly_country_values' };
+    if (this.valueRatio(sampleValues, (value) => this.isAddressLikeValue(value)) >= 0.8) return { skip: true, reason: 'mostly_address_values' };
+    return { skip: false };
   }
 
   private sanitizeHeader(value: string): string {
@@ -646,8 +714,9 @@ export class TransformHubPipelineService implements OnModuleInit {
     const allowedCanonicalFields = this.getAllowedCanonicalFields(file.platform, fileClass);
     const existingById = new Map(existingSuggestions.map((item) => [String(item.id || ''), item]));
     const suggestions: SchemaFieldSuggestion[] = [];
+    const aiCandidates: Array<{ item: HeaderDiagnostic; base: SchemaFieldSuggestion }> = [];
 
-    for (const item of normalizedFieldAlerts.slice(0, 10)) {
+    for (const item of normalizedFieldAlerts) {
       const id = this.buildFieldSuggestionId(fileClass, item.rawKey);
       const existing = existingById.get(id);
       const sampleValues = this.buildFieldSuggestionSampleValues(file, item.rawKey);
@@ -682,28 +751,90 @@ export class TransformHubPipelineService implements OnModuleInit {
         continue;
       }
 
-      const aiResult = await this.ai.suggestFieldTarget({
-        rawKey: item.rawKey,
-        cleanedKey: item.cleanedKey,
-        strippedKey: item.strippedKey,
-        canonicalHint: item.canonicalHint,
-        fileClass,
-        platform: file.platform,
-        allowedCanonicalFields,
-        sampleValues,
-        ruleEvidence,
-      });
-
-      if (aiResult?.suggestedTarget) {
+      const skipDecision = this.shouldSkipAiFieldSuggestion(item, sampleValues);
+      if (skipDecision.skip) {
         suggestions.push({
           ...base,
-          suggestedTarget: aiResult.suggestedTarget,
-          confidence: aiResult.confidence,
-          reasoning: aiResult.reasoning,
-          evidence: aiResult.evidence,
-          model: aiResult.model,
+          reasoning: skipDecision.reason || '',
+          evidence: skipDecision.reason ? [skipDecision.reason] : [],
         });
-      } else if (existing) {
+        continue;
+      }
+
+      if (aiCandidates.length >= AI_FIELD_SUGGESTION_LIMIT) {
+        suggestions.push({
+          ...base,
+          reasoning: 'ai_limit_reached',
+          evidence: ['ai_limit_reached'],
+        });
+        continue;
+      }
+
+      aiCandidates.push({ item, base });
+    }
+
+    for (let index = 0; index < aiCandidates.length; index += AI_FIELD_SUGGESTION_CONCURRENCY) {
+      const batch = aiCandidates.slice(index, index + AI_FIELD_SUGGESTION_CONCURRENCY);
+      const batchResults = await Promise.all(batch.map(async ({ item, base }) => {
+        const aiResult = await this.ai.suggestFieldTarget({
+          rawKey: item.rawKey,
+          cleanedKey: item.cleanedKey,
+          strippedKey: item.strippedKey,
+          canonicalHint: item.canonicalHint,
+          fileClass,
+          platform: file.platform,
+          allowedCanonicalFields,
+          sampleValues: base.sampleValues,
+          ruleEvidence: base.ruleEvidence,
+        });
+
+        if (aiResult?.suggestedTarget) {
+          return {
+            ...base,
+            suggestedTarget: aiResult.suggestedTarget,
+            confidence: aiResult.confidence,
+            reasoning: aiResult.reasoning,
+            evidence: aiResult.evidence,
+            model: aiResult.model,
+          } satisfies SchemaFieldSuggestion;
+        }
+
+        const existing = existingById.get(base.id);
+        if (existing) {
+          return this.mergeExistingFieldSuggestion(base, existing);
+        }
+
+        return base;
+      }));
+      suggestions.push(...batchResults);
+    }
+
+    for (const item of normalizedFieldAlerts) {
+      const id = this.buildFieldSuggestionId(fileClass, item.rawKey);
+      const alreadyIncluded = suggestions.some((suggestion) => suggestion.id === id);
+      if (!alreadyIncluded) {
+        const existing = existingById.get(id);
+        const sampleValues = this.buildFieldSuggestionSampleValues(file, item.rawKey);
+        const ruleEvidence = this.buildFieldSuggestionRuleEvidence(file, fileClass, item);
+        const base: SchemaFieldSuggestion = {
+          id,
+          rawKey: item.rawKey,
+          cleanedKey: item.cleanedKey,
+          strippedKey: item.strippedKey,
+          canonicalHint: item.canonicalHint,
+          suggestedTarget: null,
+          confidence: 'low',
+          reasoning: '',
+          evidence: [],
+          ruleEvidence,
+          sampleValues,
+          model: null,
+          status: 'pending',
+          reviewedAt: null,
+          reviewedBy: null,
+          notes: null,
+          generatedAt: new Date().toISOString(),
+        };
         suggestions.push(this.mergeExistingFieldSuggestion(base, existing));
       }
     }

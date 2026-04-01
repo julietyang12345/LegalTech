@@ -2,6 +2,8 @@
 
 ## Database Access (Production)
 
+### Main FlexForge App
+
 - **Container name**: `flexforge-db-prod`
 - **Database name**: `flexforge_dev`
 - **User**: `flexforge`
@@ -28,6 +30,28 @@ docker exec -it flexforge-db-prod psql -U flexforge -d flexforge_dev -c 'SELECT 
 
 # List all users with their tiers
 docker exec -it flexforge-db-prod psql -U flexforge -d flexforge_dev -c 'SELECT email, "quotaTier" FROM users;'
+```
+
+### TransformHub Backend
+
+- **Backend container**: `transformhub-backend-prod`
+- **Database host/container**: `flexforge-db-prod`
+- **Database name**: `transformhub_prod`
+- **User**: `flexforge`
+- **Important**: TransformHub production does **not** use `transformhub-postgres`; it connects to `flexforge-db-prod`
+
+```bash
+# Check TransformHub backend DB env
+docker inspect transformhub-backend-prod --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E 'DB_HOST|DB_PORT|DB_DATABASE|DB_USERNAME'
+
+# Connect to TransformHub production DB
+docker exec -it flexforge-db-prod psql -U flexforge -d transformhub_prod
+
+# Check TransformHub tables
+docker exec -it flexforge-db-prod psql -U flexforge -d transformhub_prod -c "\dt public.th_*"
+
+# Add a new JSONB session column in TransformHub
+docker exec -it flexforge-db-prod psql -U flexforge -d transformhub_prod -c 'ALTER TABLE public.th_transform_sessions ADD COLUMN "taxonomyState" jsonb NULL;'
 ```
 
 ## Key Table Columns
