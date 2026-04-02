@@ -42,6 +42,7 @@ const MAX_OBSERVED_VALUES_PER_COLUMN = 40;
 const MAX_CANDIDATE_GROUP_SIZE = 8;
 const MIN_PAIR_SCORE = 0.5;
 const MIN_GROUP_AVERAGE_SCORE = 0.58;
+const TAXONOMY_SCHEMA_FIELD_KEYS = new Set(['fund', 'appeal', 'campaign_name']);
 
 function safeValues(parsedFile: ParsedFile, header: string) {
   return parsedFile.rows
@@ -215,11 +216,17 @@ function scoreTaxonomyHeader(header: string, values: string[], objectType: Taxon
 }
 
 export function deriveTaxonomyScanColumns(parsedFile: ParsedFile | null, schema: ResolvedSchema | null): TaxonomyScanColumn[] {
+  const fieldMap = (schema?.fieldMap ?? {}) as Record<string, string>;
+  const taxonomyHeaders = new Set(
+    Array.from(TAXONOMY_SCHEMA_FIELD_KEYS)
+      .map((fieldKey) => fieldMap[fieldKey])
+      .filter((header): header is string => Boolean(header)),
+  );
   if (!parsedFile?.headers?.length) return [];
   return parsedFile.headers
     .map((header) => {
       const objectType = inferObjectType(header, schema, schema?.fileClass ?? 'unknown');
-      const schemaHeader = Object.values((schema?.fieldMap ?? {}) as Record<string, string>).includes(header);
+      const schemaHeader = taxonomyHeaders.has(header);
       const values = safeValues(parsedFile, header).slice(0, 40);
       const { score, reasons } = scoreTaxonomyHeader(header, values, objectType, schemaHeader);
       const dateLikeRatio = valueRatio(values, isDateLikeValue);
@@ -395,6 +402,13 @@ function suggestCanonicalLabel(values: TaxonomyObservedValue[]) {
     .sort((left, right) => (right.rowCount - left.rowCount) || (right.rawValue.length - left.rawValue.length))[0]?.rawValue ?? values[0]?.rawValue ?? 'Untitled taxonomy';
 }
 
+function isExactDuplicateLabelGroup(values: TaxonomyObservedValue[]) {
+  if (values.length < 2) return false;
+  const rawLabels = new Set(values.map((value) => value.rawValue.trim().toLowerCase()));
+  const normalizedLabels = new Set(values.map((value) => value.normalizedValue));
+  return rawLabels.size === 1 && normalizedLabels.size === 1;
+}
+
 function averagePairScore(values: TaxonomyObservedValue[], pairReasons: Map<string, { score: number; reasons: string[] }>) {
   const scores: number[] = [];
   const reasons = new Set<string>();
@@ -512,6 +526,12 @@ export function buildTaxonomyState(parsedFile: ParsedFile | null, schema: Resolv
   const nextResolvedGroups = previousResolvedGroups.filter((group) =>
     group.sourceObservedValueIds.every((id) => observedValues.some((observed) => observed.id === id)),
   );
+  const resolvedBySignature = new Map(
+    nextResolvedGroups.map((group) => [
+      observedValueSignature(group.sourceObservedValueIds),
+      group,
+    ]),
+  );
   const resolvedSignatureSet = new Set(
     nextResolvedGroups.map((group) => observedValueSignature(group.sourceObservedValueIds)),
   );
@@ -567,6 +587,23 @@ export function buildTaxonomyState(parsedFile: ParsedFile | null, schema: Resolv
             : previousCandidate?.status === 'merged' || previousCandidate?.status === 'separate'
               ? previousCandidate.status
               : 'pending';
+
+        if (!resolvedSignatureSet.has(signature) && isExactDuplicateLabelGroup(groupValues)) {
+          const previousResolved = resolvedBySignature.get(signature);
+          const nextGroup: SessionTaxonomyGroup = previousResolved ?? {
+            id: `resolved-auto-${signature}`,
+            objectType,
+            canonicalLabel: suggestCanonicalLabel(groupValues),
+            aliases: Array.from(new Set(groupValues.map((value) => value.rawValue))),
+            sourceObservedValueIds: memberIds,
+            status: 'active',
+            createdAt: new Date().toISOString(),
+          };
+          resolvedBySignature.set(signature, nextGroup);
+          resolvedSignatureSet.add(signature);
+          nextResolvedGroups.push(nextGroup);
+          return;
+        }
 
         candidateGroups.push({
           id: previousCandidate?.id ?? `cand-${objectType}-${groupIndex + 1}`,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildTaxonomyState, mergeTaxonomyCandidate, summarizeTaxonomyState } from '../taxonomy-session';
+import { buildTaxonomyState, deriveTaxonomyScanColumns, mergeTaxonomyCandidate, summarizeTaxonomyState } from '../taxonomy-session';
 import type { ParsedFile, ResolvedSchema } from '../types';
 
 describe('taxonomy-session', () => {
@@ -108,5 +108,83 @@ describe('taxonomy-session', () => {
     const nextState = mergeTaxonomyCandidate(state, pendingCandidate.id, 'Annual Fund');
     expect(nextState.resolvedGroups.length).toBeGreaterThan(0);
     expect(nextState.candidateGroups.find((group) => group.id === pendingCandidate.id)?.status).toBe('merged');
+  });
+
+  it('auto-resolves exact duplicate labels instead of showing a merge candidate', () => {
+    const basePreview = parsedFile.preview!;
+    const duplicateParsedFile: ParsedFile = {
+      ...parsedFile,
+      headers: ['fund', 'designation'],
+      preview: {
+        ...basePreview,
+        fileClass: basePreview.fileClass,
+        canonicalModel: basePreview.canonicalModel,
+        summary: { rowCount: 2, populatedFields: 2, primaryLabel: 'donor' },
+        records: [
+          {
+            ...basePreview.records[0],
+            rawValues: { fund: 'Scholarship', designation: 'Scholarship' },
+            fund: 'Scholarship',
+          },
+          {
+            ...basePreview.records[1],
+            rawValues: { fund: 'Scholarship', designation: 'Scholarship' },
+            fund: 'Scholarship',
+          },
+        ],
+      },
+    };
+
+    const duplicateSchema: ResolvedSchema = {
+      ...schema,
+      expectedFields: ['fund'],
+      fieldMap: { fund: 'fund' },
+    };
+
+    const state = buildTaxonomyState(duplicateParsedFile, duplicateSchema);
+
+    expect(state.candidateGroups.some((group) =>
+      group.status === 'pending' &&
+      group.members.every((member) => member.rawValue === 'Scholarship'),
+    )).toBe(false);
+    expect(state.resolvedGroups.some((group) =>
+      group.canonicalLabel === 'Scholarship' &&
+      group.aliases.includes('Scholarship'),
+    )).toBe(true);
+  });
+
+  it('does not include person-name schema fields in taxonomy scan columns', () => {
+    const basePreview = parsedFile.preview!;
+    const nameParsedFile: ParsedFile = {
+      ...parsedFile,
+      headers: ['last_name', 'campaign_name'],
+      preview: {
+        ...basePreview,
+        summary: { rowCount: 2, populatedFields: 2, primaryLabel: 'donor' },
+        records: [
+          {
+            ...basePreview.records[0],
+            lastName: 'Waters',
+            rawValues: { last_name: 'Waters', campaign_name: 'Annual Gala 2025' },
+          },
+          {
+            ...basePreview.records[1],
+            lastName: 'Waters Jr',
+            rawValues: { last_name: 'Waters Jr', campaign_name: 'Annual Gala' },
+          },
+        ],
+      },
+    };
+
+    const nameSchema: ResolvedSchema = {
+      ...schema,
+      expectedFields: ['last_name', 'campaign_name'],
+      fieldMap: { last_name: 'last_name', campaign_name: 'campaign_name' },
+    };
+
+    const scanColumns = deriveTaxonomyScanColumns(nameParsedFile, nameSchema);
+
+    expect(scanColumns.some((column) => column.header === 'last_name')).toBe(false);
+    expect(scanColumns.some((column) => column.header === 'campaign_name')).toBe(true);
   });
 });

@@ -1,4 +1,4 @@
-import { startTransition, type ChangeEvent, useCallback, useEffect, useMemo, type PointerEvent as ReactPointerEvent, useState } from 'react';
+import { startTransition, type ChangeEvent, useCallback, useEffect, useMemo, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
@@ -7,7 +7,7 @@ import {
   Database,
   FileSpreadsheet,
   FolderTree,
-  PlayCircle,
+  GripVertical,
   RefreshCcw,
   Save,
   ShieldAlert,
@@ -28,7 +28,6 @@ import {
   fetchChartOfAccounts,
   fetchCrmSyncExport,
   fetchDonorReport,
-  fetchSample,
   fetchTaxonomy,
   fetchSession,
   ingestFile,
@@ -73,20 +72,12 @@ import type {
 import { TransformHubAuditModePanel, TransformHubMappingLayerPanel } from './product-panels';
 import { applyTaxonomyGroupsToPreviewRecords, buildTaxonomyState, dismissTaxonomyCandidate, mergeTaxonomyCandidate, renameResolvedTaxonomyGroup, summarizeTaxonomyState, updateTaxonomyScanColumn } from './taxonomy-session';
 import { buildAppendColumnDecisions, getPendingColumnMerges, mergeUploadIntoExisting, prepareIncomingUpload, resolvePendingColumnMerge as resolvePendingColumnMergeInParsedFile, type AppendColumnDecision, type PendingColumnMerge } from './merge-table';
-import { AttributionDraftFields, EntityGraphEditors, HouseholdDraftFields } from './review-editors';
+import { EntityGraphEditors } from './review-editors';
 import { EntityGraphTable, type EntityGraphSelection, type EntityGraphView } from './review-graph';
 import type { FinalAttributionDraftMap, FinalHouseholdDraft } from './review-types';
 import { useTransformHubReviewGraph } from './use-transformhub-review-graph';
 import { useTransformHubHouseholdReview } from './use-transformhub-household-review';
 import { useTransformHubReviewDrafts } from './use-transformhub-review-drafts';
-
-
-const PLATFORM_GROUPS: Record<string, SourcePlatform[]> = {
-  'Accounting': ['AppFolio', 'Buildium', 'Xero'],
-  'Commerce': ['Shopify', 'Stripe', 'TikTok'],
-  'CRM': ['Bloomerang', 'Salesforce', 'NeonOne'],
-  'Donation': ['GiveButter'],
-};
 
 const CRM_PLATFORMS = new Set<SourcePlatform>(['Bloomerang', 'Salesforce', 'NeonOne', 'GiveButter']);
 const PREVIEW_SOURCE_PALETTE = ['#2563eb', '#16a34a', '#d97706', '#7c3aed', '#dc2626', '#0891b2'];
@@ -96,6 +87,19 @@ type UploadPayload = {
   kind: 'text' | 'xlsx';
   contents?: string;
   contentsBase64?: string;
+};
+
+type WorkbookSheetAction = 'append' | 'ignore' | 'separate';
+
+type PendingWorkbookSheetReview = {
+  payload: UploadPayload;
+  workbookSheets: NonNullable<ParsedFile['workbookSheets']>;
+  actionsBySheet: Record<string, WorkbookSheetAction>;
+};
+
+type DeferredWorkbookSheetReview = {
+  payload: UploadPayload;
+  workbookSheets: NonNullable<ParsedFile['workbookSheets']>;
 };
 
 type AppendReviewSummary = {
@@ -122,6 +126,17 @@ type PendingAppendReview = {
 
 type EditablePreviewDraftValue = string | string[];
 type EditablePreviewDraft = Record<string, EditablePreviewDraftValue>;
+type PreviewTableContextMenu =
+  | { kind: 'row'; rowRef: string; x: number; y: number }
+  | { kind: 'column'; header: string; x: number; y: number };
+type PreviewRowDropTarget = {
+  rowRef: string;
+  position: 'before' | 'after';
+};
+type PreviewCellRef = {
+  rowRef: string;
+  header: string;
+};
 
 type ParsedFileWithOptionalMergeState = ParsedFile & {
   mergeState?: {
@@ -224,6 +239,13 @@ function previewRecordLabel(record: PreviewRecord | null | undefined): string {
   return String(record.displayName || record.donorName || record.campaignName || record.accountName || record.preview || record.sourceRowRef || record.id || 'Unknown preview record');
 }
 
+function formatReviewDate(value: string | null | undefined): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
 function formatPreviewHeaderLabel(header: string): string {
   return header.replace(/[_-]+/g, ' ').trim() || header;
 }
@@ -249,10 +271,98 @@ function getPreviewRecordAttribution(record: PreviewRecord | null | undefined): 
     mode: attribution.mode,
     primaryPersonId: attribution.primaryPersonId ?? null,
     secondaryPersonId: attribution.secondaryPersonId ?? null,
+    householdId: attribution.householdId ?? null,
+    creditAmount: attribution.creditAmount ?? null,
+    campaignFund: attribution.campaignFund ?? '',
     organizationName: attribution.organizationName ?? '',
     splitPercent: attribution.splitPercent ?? 50,
     notes: attribution.notes ?? '',
   };
+}
+
+function createBlankPreviewRecord(fileClass: string, headers: string[], sourceRowRef: string): PreviewRecord {
+  const rawValues = Object.fromEntries(headers.map((header) => [header, '']));
+  if (fileClass === 'constituent') {
+    return {
+      id: `inserted:${sourceRowRef}`,
+      sourceRowRef,
+      displayName: '',
+      constituentType: '',
+      firstName: '',
+      lastName: '',
+      organizationName: '',
+      householdName: '',
+      email: '',
+      phone: '',
+      address: '',
+      city: '',
+      state: '',
+      postalCode: '',
+      country: '',
+      tags: [],
+      assignedStaff: '',
+      createdAt: '',
+      updatedAt: '',
+      rawValues,
+    } as PreviewRecord;
+  }
+  if (fileClass === 'donor') {
+    return {
+      id: `inserted:${sourceRowRef}`,
+      sourceRowRef,
+      donorName: '',
+      firstName: '',
+      lastName: '',
+      organizationName: '',
+      householdName: '',
+      date: '',
+      amount: '',
+      fund: '',
+      appeal: '',
+      email: '',
+      phone: '',
+      address: '',
+      city: '',
+      state: '',
+      postalCode: '',
+      tags: [],
+      assignedStaff: '',
+      memo: '',
+      currency: '',
+      rawValues,
+    } as PreviewRecord;
+  }
+  if (fileClass === 'campaign') {
+    return {
+      id: `inserted:${sourceRowRef}`,
+      sourceRowRef,
+      code: '',
+      campaignName: '',
+      startDate: '',
+      endDate: '',
+      status: '',
+      goalAmount: '',
+      rawValues,
+    } as PreviewRecord;
+  }
+  if (fileClass === 'coa') {
+    return {
+      id: `inserted:${sourceRowRef}`,
+      sourceRowRef,
+      accountCode: '',
+      accountName: '',
+      accountType: '',
+      balance: '',
+      rawValues,
+    } as PreviewRecord;
+  }
+  return {
+    id: `inserted:${sourceRowRef}`,
+    sourceRowRef,
+    preview: '',
+    values: rawValues,
+    rawValues,
+  } as PreviewRecord;
 }
 
 function getSourceOriginKey(sourceRef: string | null | undefined, fallbackContext?: string | null): string {
@@ -270,6 +380,53 @@ function buildUploadNamespace(fileName: string): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, 24) || 'upload';
   return `${stem}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function scoreSheetHeaderOverlap(left: string[], right: string[]): number {
+  const leftSet = new Set(left.map((header) => header.toLowerCase().trim()).filter(Boolean));
+  const rightSet = new Set(right.map((header) => header.toLowerCase().trim()).filter(Boolean));
+  if (leftSet.size === 0 || rightSet.size === 0) return 0;
+  const intersection = Array.from(leftSet).filter((header) => rightSet.has(header)).length;
+  return intersection / Math.max(leftSet.size, rightSet.size, 1);
+}
+
+function buildDefaultWorkbookSheetActions(workbookSheets: NonNullable<ParsedFile['workbookSheets']>): Record<string, WorkbookSheetAction> {
+  if (workbookSheets.length === 0) return {};
+  const baseSheet = workbookSheets[0];
+  return Object.fromEntries(
+    workbookSheets.map((sheet) => {
+      if (sheet.sheetName === baseSheet.sheetName) return [sheet.sheetName, 'append' as const];
+      const overlap = scoreSheetHeaderOverlap(baseSheet.headers, sheet.headers);
+      const isCompatible = sheet.fileClass === baseSheet.fileClass && overlap >= 0.45;
+      return [sheet.sheetName, isCompatible ? 'append' as const : 'separate' as const];
+    }),
+  );
+}
+
+function describeWorkbookSheetCompatibility(sheet: NonNullable<ParsedFile['workbookSheets']>[number], baseSheet: NonNullable<ParsedFile['workbookSheets']>[number]) {
+  if (sheet.sheetName === baseSheet.sheetName) {
+    return { tone: 'ready' as const, label: 'Base sheet', detail: 'Used as the comparison baseline for workbook combine review.' };
+  }
+  const overlap = scoreSheetHeaderOverlap(baseSheet.headers, sheet.headers);
+  if (sheet.fileClass !== baseSheet.fileClass) {
+    return {
+      tone: 'warning' as const,
+      label: 'Different class',
+      detail: `Detected as ${sheet.fileClass} instead of ${baseSheet.fileClass}. Keep separate unless you intentionally want one mixed table.`,
+    };
+  }
+  if (overlap < 0.45) {
+    return {
+      tone: 'warning' as const,
+      label: 'Low overlap',
+      detail: `Only ${Math.round(overlap * 100)}% header overlap with the base sheet. Separate review is recommended.`,
+    };
+  }
+  return {
+    tone: 'ready' as const,
+    label: 'Compatible',
+    detail: `About ${Math.round(overlap * 100)}% header overlap with the base sheet. Safe to append into the same table.`,
+  };
 }
 
 function summarizeAppendColumnDecisions(decisions: AppendColumnDecision[]) {
@@ -315,6 +472,8 @@ function buildAppendPreviewColumns(existingHeaders: string[], decisions: AppendC
 }
 
 type PeopleReviewFilter = 'pending' | 'merged' | 'separated' | 'all';
+type HouseholdReviewTab = 'needs_attribution' | 'all';
+type AttributionTableTab = 'needs_attribution' | 'all';
 
 function getPeopleReviewBucket(decision: ReturnType<typeof deriveReviewDecision>): Exclude<PeopleReviewFilter, 'all'> {
   if (decision === 'confirmed') return 'merged';
@@ -342,6 +501,12 @@ function countPeopleReviewBuckets(matches: PersonMatch[], mergeDecisions: Map<st
 function formatPersonName(person: Pick<CanonicalPerson, 'firstName' | 'lastName' | 'id'> | null | undefined): string {
   if (!person) return 'Unknown person';
   return [person.firstName, person.lastName].filter(Boolean).join(' ').trim() || person.id;
+}
+
+function getPersonInitials(person: Pick<CanonicalPerson, 'firstName' | 'lastName' | 'id'> | null | undefined): string {
+  if (!person) return '??';
+  const initials = [person.firstName?.[0], person.lastName?.[0]].filter(Boolean).join('');
+  return (initials || person.id.slice(0, 2)).toUpperCase();
 }
 
 function buildHouseholdLabel(members: CanonicalPerson[], fallbackLastName?: string | null) {
@@ -529,10 +694,63 @@ function buildInitialAttributionDraft(
     mode: hasOrgMatch ? 'org_match' : hasSoftCredit ? 'soft_credit' : hasJointGift ? 'joint_split' : 'person',
     primaryPersonId: matchedPerson?.id ?? members[0]?.id ?? null,
     secondaryPersonId: members.find((member) => member.id !== (matchedPerson?.id ?? members[0]?.id))?.id ?? null,
+    householdId: null,
+    creditAmount: parseCurrencyAmount(record.amount),
+    campaignFund: [record.campaignName, record.fund].filter(Boolean).join(' · '),
     organizationName: String(record.organizationName ?? ''),
     splitPercent: 50,
-    notes: '',
+    notes: String(record.memo ?? ''),
   };
+}
+
+function getAttributionModeLabel(mode: PreviewAttributionDraft['mode']): string {
+  if (mode === 'joint_split') return 'Joint split';
+  if (mode === 'soft_credit') return 'Soft credit';
+  if (mode === 'org_match') return 'Org match';
+  return 'Hard credit';
+}
+
+function getAttributionModeCreditLabel(mode: PreviewAttributionDraft['mode']): string {
+  if (mode === 'joint_split') return 'split';
+  if (mode === 'soft_credit') return 'soft';
+  if (mode === 'org_match') return 'pending';
+  return 'hard';
+}
+
+const ATTRIBUTION_MODE_SEQUENCE: PreviewAttributionDraft['mode'][] = ['person', 'soft_credit', 'joint_split', 'org_match'];
+const ROLE_SEQUENCE: Array<'primary' | 'secondary' | 'organization' | 'unassigned'> = ['primary', 'secondary', 'organization', 'unassigned'];
+
+function getRoleTone(role: 'primary' | 'secondary' | 'organization' | 'unassigned'): 'green' | 'amber' | 'blue' | 'slate' {
+  if (role === 'primary') return 'green';
+  if (role === 'secondary') return 'amber';
+  if (role === 'organization') return 'blue';
+  return 'slate';
+}
+
+function getAttributionReviewKey(record: PreviewRecord) {
+  const rawValues = record.rawValues ?? record.values ?? {};
+  const transactionId = rawValues.transaction_id || rawValues.transactionId || rawValues['transaction id'] || rawValues.id || '';
+  if (transactionId) return `tx:${String(transactionId).trim().toLowerCase()}`;
+  return [
+    String(record.date ?? '').trim().toLowerCase(),
+    String(record.amount ?? '').trim().toLowerCase(),
+    String(record.fund ?? '').trim().toLowerCase(),
+    String(record.appeal ?? '').trim().toLowerCase(),
+    String(record.campaignName ?? '').trim().toLowerCase(),
+  ].join('::');
+}
+
+function getBestPersonDisplayLabel(person: CanonicalPerson | null, record: PreviewRecord): string {
+  if (person && (person.firstName || person.lastName)) return formatPersonName(person);
+  return String(record.donorName || record.displayName || record.organizationName || record.householdName || record.preview || 'Unassigned');
+}
+
+function getAttributionTagLabel(mode: PreviewAttributionDraft['mode'], needsAttributionReview: boolean): string {
+  if (needsAttributionReview && mode === 'person') return 'Select attribution';
+  if (mode === 'soft_credit') return 'Soft credit';
+  if (mode === 'joint_split') return 'Joint gift';
+  if (mode === 'org_match') return 'Org match';
+  return 'Hard credit';
 }
 
 function summarizeMatchSignals(match: PersonMatch): string {
@@ -612,14 +830,17 @@ export default function TransformHubPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionStatus, setSessionStatus] = useState<TransformSessionStatus>('review');
   const [sessionUpdatedAt, setSessionUpdatedAt] = useState<string | null>(null);
-  const [message, setMessage] = useState<string>('Load a sample or upload CSV/XLSX to run the backend-backed pipeline.');
+  const [message, setMessage] = useState<string>('Upload CSV or XLSX to start the backend-backed pipeline.');
   const [fallbackFileName, setFallbackFileName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [activeUploadLabel, setActiveUploadLabel] = useState<string | null>(null);
+  const isUploadLoading = isLoading && activeUploadLabel !== null;
   const [blockingIssues, setBlockingIssues] = useState<BlockingIssue[]>([]);
   const [pendingIngestPayload, setPendingIngestPayload] = useState<UploadPayload | null>(null);
   const [isResolvingPendingMerge, setIsResolvingPendingMerge] = useState(false);
   const [pendingAppendReview, setPendingAppendReview] = useState<PendingAppendReview | null>(null);
+  const [pendingWorkbookSheetReview, setPendingWorkbookSheetReview] = useState<PendingWorkbookSheetReview | null>(null);
+  const [deferredWorkbookSheetReview, setDeferredWorkbookSheetReview] = useState<DeferredWorkbookSheetReview | null>(null);
 
   // Layer 03 state
   const [personResult, setPersonResult] = useState<PersonResolverResult | null>(null);
@@ -648,11 +869,15 @@ export default function TransformHubPage() {
   const [expandedPeopleReviewRef, setExpandedPeopleReviewRef] = useState<string | null>(null);
   const [previewSourceFocus, setPreviewSourceFocus] = useState<string>('all');
   const [hiddenPreviewHeaders, setHiddenPreviewHeaders] = useState<string[]>([]);
-  const [columnsPanelExpanded, setColumnsPanelExpanded] = useState(false);
   const [editingMergedRecordRef, setEditingMergedRecordRef] = useState<string | null>(null);
   const [editingMergedDraft, setEditingMergedDraft] = useState<Record<string, string>>({});
   const [peopleReviewFilter, setPeopleReviewFilter] = useState<PeopleReviewFilter>('pending');
   const [nonLedgerReviewPanel, setNonLedgerReviewPanel] = useState<'duplicate' | 'household' | 'taxonomy' | 'final'>('duplicate');
+  const [householdReviewTab, setHouseholdReviewTab] = useState<HouseholdReviewTab>('needs_attribution');
+  const [attributionTableTab, setAttributionTableTab] = useState<AttributionTableTab>('needs_attribution');
+  const [selectedAttributionGroupKey, setSelectedAttributionGroupKey] = useState<string | null>(null);
+  const [expandedHouseholdReviewId, setExpandedHouseholdReviewId] = useState<string | null>(null);
+  const [, setExpandedFinalHouseholdId] = useState<string | null>(null);
   const [taxonomyScanColumnsExpanded, setTaxonomyScanColumnsExpanded] = useState(false);
   const [pendingTaxonomyMergeCandidateId, setPendingTaxonomyMergeCandidateId] = useState<string | null>(null);
   const [pendingTaxonomyMergeLabel, setPendingTaxonomyMergeLabel] = useState('');
@@ -660,6 +885,20 @@ export default function TransformHubPage() {
   const [editingResolvedTaxonomyLabel, setEditingResolvedTaxonomyLabel] = useState('');
   const [nonLedgerColumnWidths, setNonLedgerColumnWidths] = useState<Record<string, number>>({ __source__: 172, __actions__: 156 });
   const [isRunningTaxonomyReview, setIsRunningTaxonomyReview] = useState(false);
+  const [selectedPreviewHeader, setSelectedPreviewHeader] = useState<string | null>(null);
+  const [selectedPreviewRowRef, setSelectedPreviewRowRef] = useState<string | null>(null);
+  const [selectedPreviewHeaders, setSelectedPreviewHeaders] = useState<string[]>([]);
+  const [selectedPreviewRowRefs, setSelectedPreviewRowRefs] = useState<string[]>([]);
+  const [activePreviewCell, setActivePreviewCell] = useState<PreviewCellRef | null>(null);
+  const [editingPreviewCell, setEditingPreviewCell] = useState<PreviewCellRef | null>(null);
+  const [editingPreviewCellDraft, setEditingPreviewCellDraft] = useState('');
+  const [editingPreviewHeader, setEditingPreviewHeader] = useState<string | null>(null);
+  const [editingPreviewHeaderDraft, setEditingPreviewHeaderDraft] = useState('');
+  const [previewTableContextMenu, setPreviewTableContextMenu] = useState<PreviewTableContextMenu | null>(null);
+  const [draggingPreviewRowRef, setDraggingPreviewRowRef] = useState<string | null>(null);
+  const [previewRowDropTarget, setPreviewRowDropTarget] = useState<PreviewRowDropTarget | null>(null);
+  const [draggingPreviewHeader, setDraggingPreviewHeader] = useState<string | null>(null);
+  const [previewHeaderDropTarget, setPreviewHeaderDropTarget] = useState<string | null>(null);
   const [finalHouseholdDrafts, setFinalHouseholdDrafts] = useState<Record<string, FinalHouseholdDraft>>({});
   const [finalAttributionDrafts, setFinalAttributionDrafts] = useState<FinalAttributionDraftMap>({});
   const [isRefreshingEntityModel, setIsRefreshingEntityModel] = useState(false);
@@ -777,17 +1016,6 @@ export default function TransformHubPage() {
     () => new Map((personResult?.matches ?? []).map((match) => [match.inputRef, match])),
     [personResult?.matches],
   );
-  const relatedPreviewRecordsByPersonId = useMemo(() => {
-    const recordsByPersonId = new Map<string, PreviewRecord[]>();
-    previewRecords.forEach((record) => {
-      const personId = previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId;
-      if (!personId) return;
-      const current = recordsByPersonId.get(personId) ?? [];
-      current.push(record);
-      recordsByPersonId.set(personId, current);
-    });
-    return recordsByPersonId;
-  }, [previewRecords, previewMatchByInputRef]);
   useTransformHubReviewDrafts({
     householdResult,
     peopleById,
@@ -799,20 +1027,86 @@ export default function TransformHubPage() {
     setFinalAttributionDrafts,
     setOrganizationGraphDrafts,
   });
+  const householdIdByPersonId = useMemo(() => {
+    const next = new Map<string, string>();
+    (householdResult?.households ?? []).forEach((household) => {
+      household.memberIds.forEach((memberId) => next.set(memberId, household.id));
+    });
+    return next;
+  }, [householdResult]);
+  const ambiguousAttributionGroups = useMemo(() => {
+    const groups = new Map<string, PreviewRecord[]>();
+    previewRecords.forEach((record) => {
+      const matchedPersonId = previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId ?? null;
+      const householdId = matchedPersonId ? householdIdByPersonId.get(matchedPersonId) ?? null : null;
+      if (!householdId) return;
+      const key = `${householdId}::${getAttributionReviewKey(record)}`;
+      const current = groups.get(key) ?? [];
+      current.push(record);
+      groups.set(key, current);
+    });
+    return Array.from(groups.entries())
+      .filter(([, records]) => records.length > 1)
+      .map(([key, records]) => {
+        const householdId = key.split('::')[0] ?? '';
+        const leadRecord = records[0];
+        const labelDate = leadRecord && typeof leadRecord.date === 'string' ? leadRecord.date : null;
+        const labelName = String(leadRecord?.fund ?? leadRecord?.campaignName ?? 'Gift');
+        const labelAmount = String(leadRecord?.amount ?? '—');
+        return {
+          key,
+          householdId,
+          records,
+          label: `${formatReviewDate(labelDate)} · ${labelName} · ${labelAmount}`,
+        };
+      });
+  }, [previewRecords, previewMatchByInputRef, householdIdByPersonId]);
+  const ambiguousAttributionRefs = useMemo(
+    () => new Set(ambiguousAttributionGroups.flatMap((group) => group.records.map((record) => record.sourceRowRef))),
+    [ambiguousAttributionGroups],
+  );
+  const ambiguousGroupKeyBySourceRef = useMemo(
+    () => new Map(ambiguousAttributionGroups.flatMap((group) => group.records.map((record) => [record.sourceRowRef, group.key] as const))),
+    [ambiguousAttributionGroups],
+  );
   const householdLayerViews = useTransformHubHouseholdReview({
     householdResult,
     peopleById,
     finalHouseholdDrafts,
     finalAttributionDrafts,
-    relatedPreviewRecordsByPersonId,
     previewMatchByInputRef,
     buildInitialHouseholdDraft,
     buildInitialAttributionDraft,
     summarizeAttributionDraft,
     previewRecordLabel,
     parseCurrencyAmount,
+    previewRecords,
+    ambiguousAttributionRefs,
   });
   const finalReviewReady = householdsStepReady && householdLayerViews.length > 0;
+  const householdLabelById = useMemo(
+    () => new Map(householdLayerViews.map((view) => [view.householdId, view.draft.label])),
+    [householdLayerViews],
+  );
+  const householdsNeedingAttribution = useMemo(
+    () => new Set(householdLayerViews.filter((view) => view.status.label === 'Needs attribution').map((view) => view.householdId)),
+    [householdLayerViews],
+  );
+  const visibleHouseholdLayerViews = useMemo(
+    () => (householdReviewTab === 'needs_attribution'
+      ? householdLayerViews.filter((view) => householdsNeedingAttribution.has(view.householdId))
+      : householdLayerViews),
+    [householdReviewTab, householdLayerViews, householdsNeedingAttribution],
+  );
+  useEffect(() => {
+    if (visibleHouseholdLayerViews.length === 0) {
+      setExpandedHouseholdReviewId(null);
+      setExpandedFinalHouseholdId(null);
+      return;
+    }
+    setExpandedHouseholdReviewId((current) => current && visibleHouseholdLayerViews.some((view) => view.householdId === current) ? current : visibleHouseholdLayerViews[0].householdId);
+    setExpandedFinalHouseholdId((current) => current && visibleHouseholdLayerViews.some((view) => view.householdId === current) ? current : visibleHouseholdLayerViews[0].householdId);
+  }, [visibleHouseholdLayerViews]);
   const {
     filteredEntityGraphRows,
     selectedEntityGraphDonationContext,
@@ -910,9 +1204,13 @@ export default function TransformHubPage() {
     () => nonLedgerTableHeaders.filter((header) => hiddenPreviewHeaders.includes(header)),
     [nonLedgerTableHeaders, hiddenPreviewHeaders],
   );
+  const reviewAugmentedColumns = useMemo(
+    () => (householdResult ? ['__role__', '__attribution_type__', '__credit_amount__', '__household__', '__notes__'] : []),
+    [householdResult],
+  );
   const nonLedgerTableColumnKeys = useMemo(
-    () => ['__source__', ...visibleNonLedgerTableHeaders, ...((fileClass === 'constituent' || fileClass === 'donor') ? ['__actions__'] : [])],
-    [visibleNonLedgerTableHeaders, fileClass],
+    () => ['__source__', ...visibleNonLedgerTableHeaders, ...reviewAugmentedColumns, ...((fileClass === 'constituent' || fileClass === 'donor') ? ['__actions__'] : [])],
+    [visibleNonLedgerTableHeaders, reviewAugmentedColumns, fileClass],
   );
 
   const nonLedgerTableWidth = useMemo(
@@ -922,11 +1220,63 @@ export default function TransformHubPage() {
     }, 0),
     [nonLedgerTableColumnKeys, nonLedgerColumnWidths],
   );
-
+  useEffect(() => {
+    setHiddenPreviewHeaders((current) => current.filter((header) => nonLedgerTableHeaders.includes(header)));
+    setSelectedPreviewHeader((current) => current && nonLedgerTableHeaders.includes(current) ? current : null);
+    setSelectedPreviewHeaders((current) => current.filter((header) => nonLedgerTableHeaders.includes(header)));
+    setEditingPreviewHeader((current) => current && nonLedgerTableHeaders.includes(current) ? current : null);
+    setActivePreviewCell((current) => current && nonLedgerTableHeaders.includes(current.header) ? current : null);
+    setEditingPreviewCell((current) => current && nonLedgerTableHeaders.includes(current.header) ? current : null);
+  }, [nonLedgerTableHeaders]);
+  useEffect(() => {
+    setSelectedPreviewRowRef((current) => current && previewBaseRecords.some((record) => record.sourceRowRef === current) ? current : null);
+    setSelectedPreviewRowRefs((current) => current.filter((rowRef) => previewBaseRecords.some((record) => record.sourceRowRef === rowRef)));
+    setActivePreviewCell((current) => current && previewBaseRecords.some((record) => record.sourceRowRef === current.rowRef) ? current : null);
+    setEditingPreviewCell((current) => current && previewBaseRecords.some((record) => record.sourceRowRef === current.rowRef) ? current : null);
+  }, [previewBaseRecords]);
+  useEffect(() => {
+    if (!previewTableContextMenu) return;
+    const handleCloseMenu = () => setPreviewTableContextMenu(null);
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPreviewTableContextMenu(null);
+    };
+    window.addEventListener('pointerdown', handleCloseMenu);
+    window.addEventListener('resize', handleCloseMenu);
+    window.addEventListener('scroll', handleCloseMenu, true);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      window.removeEventListener('pointerdown', handleCloseMenu);
+      window.removeEventListener('resize', handleCloseMenu);
+      window.removeEventListener('scroll', handleCloseMenu, true);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [previewTableContextMenu]);
+  useEffect(() => {
+    if (isLedgerFile || !parsedFile?.preview) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('#th-review-table')) return;
+      if (target?.closest('.th-context-menu')) return;
+      setSelectedPreviewHeader(null);
+      setSelectedPreviewRowRef(null);
+      setSelectedPreviewHeaders([]);
+      setSelectedPreviewRowRefs([]);
+      setActivePreviewCell(null);
+      setPreviewHeaderDropTarget(null);
+      setPreviewRowDropTarget(null);
+    };
+    window.addEventListener('pointerdown', handlePointerDown);
+    return () => window.removeEventListener('pointerdown', handlePointerDown);
+  }, [isLedgerFile, parsedFile]);
   function getNonLedgerColumnWidth(columnKey: string) {
     if (nonLedgerColumnWidths[columnKey]) return nonLedgerColumnWidths[columnKey];
     if (columnKey === '__source__') return 172;
     if (columnKey === '__actions__') return 156;
+    if (columnKey === '__attribution_type__') return 160;
+    if (columnKey === '__credit_amount__') return 140;
+    if (columnKey === '__role__') return 150;
+    if (columnKey === '__household__') return 180;
+    if (columnKey === '__notes__') return 220;
     return 148;
   }
 
@@ -975,6 +1325,100 @@ export default function TransformHubPage() {
       : displayedPreviewRecords.filter((record) => getRecordSourceOrigins(record).includes(previewSourceFocus))),
     [previewSourceFocus, displayedPreviewRecords, getRecordSourceOrigins],
   );
+  const visibleAttributionTableRecords = useMemo(
+    () => {
+      const scoped = selectedAttributionGroupKey
+        ? filteredDisplayedPreviewRecords.filter((record) => ambiguousGroupKeyBySourceRef.get(record.sourceRowRef) === selectedAttributionGroupKey)
+        : filteredDisplayedPreviewRecords;
+      if (attributionTableTab === 'needs_attribution' && ambiguousAttributionRefs.size > 0) {
+        return scoped.filter((record) => ambiguousAttributionRefs.has(record.sourceRowRef));
+      }
+      return scoped;
+    },
+    [selectedAttributionGroupKey, attributionTableTab, ambiguousAttributionRefs, filteredDisplayedPreviewRecords, ambiguousGroupKeyBySourceRef],
+  );
+  useEffect(() => {
+    if (isLedgerFile || !parsedFile?.preview) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isTypingTarget = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'c' && activePreviewCell && !isTypingTarget) {
+        event.preventDefault();
+        const headers = selectedPreviewHeaders.length > 0 ? visibleNonLedgerTableHeaders.filter((header) => selectedPreviewHeaders.includes(header)) : [activePreviewCell.header];
+        const rowRefs = selectedPreviewRowRefs.length > 0 ? visibleAttributionTableRecords.map((record) => record.sourceRowRef).filter((rowRef) => selectedPreviewRowRefs.includes(rowRef)) : [activePreviewCell.rowRef];
+        const text = rowRefs.map((rowRef) => {
+          const record = visibleAttributionTableRecords.find((candidate) => candidate.sourceRowRef === rowRef);
+          return headers.map((header) => getPreviewRecordRawCell(record, header).replace(/^—$/, '')).join('\t');
+        }).join('\n');
+        void navigator.clipboard?.writeText(text);
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'v' && activePreviewCell && !isTypingTarget) {
+        event.preventDefault();
+        void navigator.clipboard?.readText().then(async (text) => {
+          const rowsText = text.replace(/\r/g, '').split('\n').filter((line) => line.length > 0);
+          if (rowsText.length === 0) return;
+          const startRowIndex = visibleAttributionTableRecords.findIndex((record) => record.sourceRowRef === activePreviewCell.rowRef);
+          const startHeaderIndex = visibleNonLedgerTableHeaders.findIndex((header) => header === activePreviewCell.header);
+          if (startRowIndex < 0 || startHeaderIndex < 0) return;
+          const changes: Array<{ rowRef: string; header: string; value: string }> = [];
+          rowsText.forEach((line, rowOffset) => {
+            const rowRef = visibleAttributionTableRecords[startRowIndex + rowOffset]?.sourceRowRef;
+            if (!rowRef) return;
+            line.split('\t').forEach((value, columnOffset) => {
+              const header = visibleNonLedgerTableHeaders[startHeaderIndex + columnOffset];
+              if (!header) return;
+              changes.push({ rowRef, header, value });
+            });
+          });
+          await applyPreviewCellChanges(changes, `Pasted ${changes.length} cell${changes.length === 1 ? '' : 's'} into the table.`);
+        }).catch(() => setMessage('Paste failed.'));
+        return;
+      }
+      if (isTypingTarget) return;
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        if (selectedPreviewHeaders.length > 0) {
+          void handleDeletePreviewColumns(selectedPreviewHeaders);
+          return;
+        }
+        if (selectedPreviewRowRefs.length > 0) {
+          void handleDeletePreviewRows(selectedPreviewRowRefs);
+          return;
+        }
+        if (activePreviewCell) {
+          void applyPreviewCellChanges([{ rowRef: activePreviewCell.rowRef, header: activePreviewCell.header, value: '' }], 'Cleared cell value.');
+        }
+        return;
+      }
+      if (!activePreviewCell) return;
+      const rowIndex = visibleAttributionTableRecords.findIndex((record) => record.sourceRowRef === activePreviewCell.rowRef);
+      const headerIndex = visibleNonLedgerTableHeaders.findIndex((header) => header === activePreviewCell.header);
+      if (rowIndex < 0 || headerIndex < 0) return;
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const record = visibleAttributionTableRecords[rowIndex];
+        setEditingPreviewCell(activePreviewCell);
+        setEditingPreviewCellDraft(getPreviewRecordRawCell(record, activePreviewCell.header).replace(/^—$/, ''));
+        return;
+      }
+      const offsets: Record<string, [number, number]> = {
+        ArrowUp: [-1, 0],
+        ArrowDown: [1, 0],
+        ArrowLeft: [0, -1],
+        ArrowRight: [0, 1],
+      };
+      const offset = offsets[event.key];
+      if (!offset) return;
+      event.preventDefault();
+      const nextRow = visibleAttributionTableRecords[rowIndex + offset[0]];
+      const nextHeader = visibleNonLedgerTableHeaders[headerIndex + offset[1]];
+      if (!nextRow || !nextHeader) return;
+      selectPreviewCell(nextRow.sourceRowRef, nextHeader);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isLedgerFile, parsedFile, activePreviewCell, selectedPreviewHeaders, selectedPreviewRowRefs, visibleAttributionTableRecords, visibleNonLedgerTableHeaders]);
   const editablePreviewFieldToCanonicalKey: Record<string, string> = {
     firstName: 'first_name',
     lastName: 'last_name',
@@ -1058,6 +1502,649 @@ export default function TransformHubPage() {
       memo: String(record.memo ?? ''),
       ...Object.fromEntries(Object.entries(getPreviewRecordRawValues(record)).map(([header, value]) => [`raw:${header}`, String(value ?? '')])),
     });
+  }
+
+  function selectPreviewHeader(header: string, options?: { additive?: boolean }) {
+    setSelectedPreviewHeader(header);
+    setSelectedPreviewRowRef(null);
+    setActivePreviewCell(null);
+    setSelectedPreviewHeaders((current) => {
+      if (!options?.additive) return [header];
+      return current.includes(header) ? current.filter((item) => item !== header) : [...current, header];
+    });
+    setSelectedPreviewRowRefs([]);
+  }
+
+  function selectPreviewRow(rowRef: string, options?: { additive?: boolean }) {
+    setSelectedPreviewRowRef(rowRef);
+    setSelectedPreviewHeader(null);
+    setActivePreviewCell(null);
+    setSelectedPreviewRowRefs((current) => {
+      if (!options?.additive) return [rowRef];
+      return current.includes(rowRef) ? current.filter((item) => item !== rowRef) : [...current, rowRef];
+    });
+    setSelectedPreviewHeaders([]);
+  }
+
+  function selectPreviewCell(rowRef: string, header: string, options?: { additive?: boolean }) {
+    setSelectedPreviewRowRef(rowRef);
+    setSelectedPreviewHeader(header);
+    setActivePreviewCell({ rowRef, header });
+    setSelectedPreviewHeaders(options?.additive ? Array.from(new Set([...selectedPreviewHeaders, header])) : [header]);
+    setSelectedPreviewRowRefs(options?.additive ? Array.from(new Set([...selectedPreviewRowRefs, rowRef])) : [rowRef]);
+  }
+
+  function updateParsedRowCellValue(row: ParsedFile['rows'][number], header: string, value: string) {
+    return {
+      ...row,
+      values: {
+        ...row.values,
+        [header]: value,
+      },
+    };
+  }
+
+  function updatePreviewRecordCellValue(record: PreviewRecord, header: string, value: string) {
+    const nextRecord = {
+      ...record,
+      rawValues: {
+        ...getPreviewRecordRawValues(record),
+        [header]: value,
+      },
+    } as PreviewRecord;
+    if (record.values) {
+      nextRecord.values = {
+        ...record.values,
+        [header]: value,
+      };
+    }
+    return nextRecord;
+  }
+
+  function buildPreviewRecordWithRenamedHeader(record: PreviewRecord, previousHeader: string, nextHeader: string) {
+    const nextRawValues = { ...getPreviewRecordRawValues(record) };
+    const nextValues = record.values ? { ...record.values } : undefined;
+    if (Object.prototype.hasOwnProperty.call(nextRawValues, previousHeader)) {
+      nextRawValues[nextHeader] = nextRawValues[previousHeader];
+      delete nextRawValues[previousHeader];
+    }
+    if (nextValues && Object.prototype.hasOwnProperty.call(nextValues, previousHeader)) {
+      nextValues[nextHeader] = String(nextValues[previousHeader] ?? '');
+      delete nextValues[previousHeader];
+    }
+    return {
+      ...record,
+      rawValues: nextRawValues,
+      ...(nextValues ? { values: nextValues } : {}),
+    };
+  }
+
+  function buildPreviewRecordWithoutHeader(record: PreviewRecord, header: string) {
+    const nextRawValues = { ...getPreviewRecordRawValues(record) };
+    const nextValues = record.values ? { ...record.values } : undefined;
+    delete nextRawValues[header];
+    if (nextValues) delete nextValues[header];
+    return {
+      ...record,
+      rawValues: nextRawValues,
+      ...(nextValues ? { values: nextValues } : {}),
+    };
+  }
+
+  function buildParsedSourceRowWithRenamedHeader(row: ParsedFile['rows'][number], previousHeader: string, nextHeader: string) {
+    const nextValues = { ...row.values };
+    if (Object.prototype.hasOwnProperty.call(nextValues, previousHeader)) {
+      nextValues[nextHeader] = nextValues[previousHeader];
+      delete nextValues[previousHeader];
+    }
+    return { ...row, values: nextValues };
+  }
+
+  function buildParsedSourceRowWithoutHeader(row: ParsedFile['rows'][number], header: string) {
+    const nextValues = { ...row.values };
+    delete nextValues[header];
+    return { ...row, values: nextValues };
+  }
+
+  function normalizeStructureAfterRowRemoval(currentParsedFile: ParsedFile, nextRows: ParsedFile['rows']) {
+    const removedRowCount = Math.max(0, currentParsedFile.rows.length - nextRows.length);
+    return {
+      ...currentParsedFile.structureAnalysis,
+      rawRowCount: Math.max(nextRows.length, currentParsedFile.structureAnalysis.rawRowCount - removedRowCount),
+      dataRowCount: Math.max(nextRows.length, currentParsedFile.structureAnalysis.dataRowCount - removedRowCount),
+      rowRoleSummary: {
+        ...currentParsedFile.structureAnalysis.rowRoleSummary,
+        data: Math.max(nextRows.length, currentParsedFile.structureAnalysis.rowRoleSummary.data - removedRowCount),
+      },
+      removedRows: currentParsedFile.structureAnalysis.removedRows + removedRowCount,
+    };
+  }
+
+  function closePreviewHeaderRename() {
+    setEditingPreviewHeader(null);
+    setEditingPreviewHeaderDraft('');
+  }
+
+  function startPreviewHeaderRename(header: string) {
+    setSelectedPreviewHeader(header);
+    setSelectedPreviewRowRef(null);
+    setEditingPreviewHeader(header);
+    setEditingPreviewHeaderDraft(header);
+    setPreviewTableContextMenu(null);
+  }
+
+  function matchParsedRowToPreviewRow(rowRef: string, parsedRowRef: string) {
+    const compact = getCompactSourceRef(rowRef).primary;
+    return parsedRowRef === rowRef || parsedRowRef === compact;
+  }
+
+  function moveItemInList<T>(items: T[], fromIndex: number, toIndex: number) {
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return items;
+    const next = items.slice();
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    return next;
+  }
+
+  async function persistNonLedgerStructureChange(
+    nextParsedFile: ParsedFile,
+    nextSchema: ResolvedSchema | null,
+    nextMessage: string,
+    options: { resetReviewState?: boolean; nextTaxonomyState?: SessionTaxonomyState | null } = {},
+  ) {
+    const nextTaxonomyState = options.nextTaxonomyState ?? (
+      !isLedgerFile && nextParsedFile.preview
+        ? buildTaxonomyState(nextParsedFile, nextSchema, options.resetReviewState ? null : taxonomyState)
+        : null
+    );
+    const nextPersonResult = options.resetReviewState ? null : personResult;
+    const nextHouseholdResult = options.resetReviewState ? null : householdResult;
+
+    setParsedFile(nextParsedFile);
+    setSchema(nextSchema);
+    setTaxonomyState(nextTaxonomyState);
+    setPreviewTableContextMenu(null);
+    closePreviewHeaderRename();
+
+    if (options.resetReviewState) {
+      setPersonResult(null);
+      setHouseholdResult(null);
+      setEntityModelResult(null);
+      setMergeDecisions(new Map());
+      setFinalHouseholdDrafts({});
+      setFinalAttributionDrafts({});
+      setOrganizationGraphDrafts({});
+      setEditingMergedRecordRef(null);
+      setEditingMergedDraft({});
+      setNonLedgerReviewPanel('duplicate');
+    }
+    setDraggingPreviewRowRef(null);
+    setPreviewRowDropTarget(null);
+
+    if (!sessionId) {
+      setMessage(nextMessage);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const nextStatus = deriveSessionStatus(rows, preflight, receipts);
+      const session = await saveSession(sessionId, rows, nextStatus, preflight, nextPersonResult, nextHouseholdResult, nextParsedFile, nextSchema, nextTaxonomyState);
+      applySession(session, nextMessage, options.resetReviewState ? { nextNonLedgerReviewPanel: 'duplicate' } : undefined);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to save table structure changes.');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function persistNonLedgerValueChange(nextParsedFile: ParsedFile, nextMessage: string) {
+    setParsedFile(nextParsedFile);
+    setPreviewTableContextMenu(null);
+
+    if (!sessionId) {
+      setMessage(nextMessage);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const nextStatus = deriveSessionStatus(rows, preflight, receipts);
+      const session = await saveSession(sessionId, rows, nextStatus, preflight, personResult, householdResult, nextParsedFile, schema, taxonomyState);
+      applySession(session, nextMessage);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to save table cell changes.');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function applyPreviewCellChanges(changes: Array<{ rowRef: string; header: string; value: string }>, nextMessage: string) {
+    if (!parsedFile?.preview || changes.length === 0) return;
+    const changeMap = new Map(changes.map((change) => [`${change.rowRef}::${change.header}`, change.value]));
+    const nextPreviewRecords = (parsedFile.preview.records as PreviewRecord[]).map((record) => {
+      let nextRecord = record;
+      visibleNonLedgerTableHeaders.forEach((header) => {
+        const value = changeMap.get(`${record.sourceRowRef}::${header}`);
+        if (value == null) return;
+        nextRecord = updatePreviewRecordCellValue(nextRecord, header, value);
+      });
+      return nextRecord;
+    });
+    const nextParsedRows = parsedFile.rows.map((row) => {
+      let nextRow = row;
+      visibleNonLedgerTableHeaders.forEach((header) => {
+        const rowMatches = nextPreviewRecords.find((record) => matchParsedRowToPreviewRow(record.sourceRowRef, row.ref));
+        const rowRef = rowMatches?.sourceRowRef;
+        if (!rowRef) return;
+        const value = changeMap.get(`${rowRef}::${header}`);
+        if (value == null) return;
+        nextRow = updateParsedRowCellValue(nextRow, header, value);
+      });
+      return nextRow;
+    });
+    await persistNonLedgerValueChange(
+      {
+        ...parsedFile,
+        rows: nextParsedRows,
+        preview: {
+          ...parsedFile.preview,
+          records: nextPreviewRecords,
+        },
+      },
+      nextMessage,
+    );
+  }
+
+  async function commitPreviewHeaderRename(previousHeader: string) {
+    if (!parsedFile || editingPreviewHeader !== previousHeader) return;
+    const nextHeader = editingPreviewHeaderDraft.trim();
+    if (!nextHeader) {
+      setMessage('Column name cannot be empty.');
+      return;
+    }
+    if (nextHeader === previousHeader) {
+      closePreviewHeaderRename();
+      return;
+    }
+    if (parsedFile.headers.some((header) => header !== previousHeader && header.toLowerCase() === nextHeader.toLowerCase())) {
+      setMessage('Column name already exists in this table.');
+      return;
+    }
+
+    const nextParsedFile: ParsedFile = {
+      ...parsedFile,
+      headers: parsedFile.headers.map((header) => header === previousHeader ? nextHeader : header),
+      rows: parsedFile.rows.map((row) => buildParsedSourceRowWithRenamedHeader(row, previousHeader, nextHeader)),
+      preview: parsedFile.preview
+        ? {
+          ...parsedFile.preview,
+          records: parsedFile.preview.records.map((record) => buildPreviewRecordWithRenamedHeader(record as PreviewRecord, previousHeader, nextHeader)),
+        }
+        : parsedFile.preview,
+    };
+    const nextSchema = schema
+      ? {
+        ...schema,
+        fieldMap: Object.fromEntries(
+          Object.entries(schema.fieldMap ?? {}).map(([fieldKey, header]) => [fieldKey, header === previousHeader ? nextHeader : header]),
+        ),
+      }
+      : schema;
+
+    setHiddenPreviewHeaders((current) => current.map((header) => header === previousHeader ? nextHeader : header));
+    setNonLedgerColumnWidths((current) => {
+      if (!(previousHeader in current)) return current;
+      const nextWidths = { ...current, [nextHeader]: current[previousHeader] };
+      delete nextWidths[previousHeader];
+      return nextWidths;
+    });
+    setEditingMergedDraft((current) => {
+      if (!(`raw:${previousHeader}` in current)) return current;
+      const nextDraft = { ...current, [`raw:${nextHeader}`]: current[`raw:${previousHeader}`] };
+      delete nextDraft[`raw:${previousHeader}`];
+      return nextDraft;
+    });
+    setSelectedPreviewHeader(nextHeader);
+
+    await persistNonLedgerStructureChange(nextParsedFile, nextSchema, `Renamed column ${formatPreviewHeaderLabel(previousHeader)} to ${formatPreviewHeaderLabel(nextHeader)}.`);
+  }
+
+  async function handleDeletePreviewColumn(header: string) {
+    if (!parsedFile || parsedFile.headers.length <= 1) {
+      setMessage('The table must keep at least one column.');
+      return;
+    }
+
+    const removedMappedFieldKeys = Object.entries(schema?.fieldMap ?? {})
+      .filter(([, mappedHeader]) => mappedHeader === header)
+      .map(([fieldKey]) => fieldKey);
+    const nextParsedFile: ParsedFile = {
+      ...parsedFile,
+      headers: parsedFile.headers.filter((candidate) => candidate !== header),
+      rows: parsedFile.rows.map((row) => buildParsedSourceRowWithoutHeader(row, header)),
+      preview: parsedFile.preview
+        ? {
+          ...parsedFile.preview,
+          records: parsedFile.preview.records.map((record) => buildPreviewRecordWithoutHeader(record as PreviewRecord, header)),
+        }
+        : parsedFile.preview,
+    };
+    const nextSchema = schema
+      ? {
+        ...schema,
+        fieldMap: Object.fromEntries(Object.entries(schema.fieldMap ?? {}).filter(([, mappedHeader]) => mappedHeader !== header)),
+        unresolvedFields: Array.from(new Set([...schema.unresolvedFields, ...removedMappedFieldKeys])),
+      }
+      : schema;
+
+    setHiddenPreviewHeaders((current) => current.filter((candidate) => candidate !== header));
+    setNonLedgerColumnWidths((current) => {
+      if (!(header in current)) return current;
+      const nextWidths = { ...current };
+      delete nextWidths[header];
+      return nextWidths;
+    });
+    setSelectedPreviewHeader(null);
+
+    await persistNonLedgerStructureChange(
+      nextParsedFile,
+      nextSchema,
+      `Removed column ${formatPreviewHeaderLabel(header)}. Duplicate review and household state were cleared because the source structure changed.`,
+      { resetReviewState: true },
+    );
+  }
+
+  async function handleDeletePreviewColumns(headers: string[]) {
+    const uniqueHeaders = Array.from(new Set(headers)).filter((header) => nonLedgerTableHeaders.includes(header));
+    if (uniqueHeaders.length === 0) return;
+    if (uniqueHeaders.length === 1) {
+      await handleDeletePreviewColumn(uniqueHeaders[0]);
+      return;
+    }
+    if (!parsedFile || parsedFile.headers.length - uniqueHeaders.length <= 0) {
+      setMessage('The table must keep at least one column.');
+      return;
+    }
+    const removedMappedFieldKeys = Object.entries(schema?.fieldMap ?? {})
+      .filter(([, mappedHeader]) => uniqueHeaders.includes(String(mappedHeader)))
+      .map(([fieldKey]) => fieldKey);
+    const nextParsedFile: ParsedFile = {
+      ...parsedFile,
+      headers: parsedFile.headers.filter((candidate) => !uniqueHeaders.includes(candidate)),
+      rows: parsedFile.rows.map((row) => {
+        let nextRow = row;
+        uniqueHeaders.forEach((header) => {
+          nextRow = buildParsedSourceRowWithoutHeader(nextRow, header);
+        });
+        return nextRow;
+      }),
+      preview: parsedFile.preview
+        ? {
+          ...parsedFile.preview,
+          records: parsedFile.preview.records.map((record) => {
+            let nextRecord = record as PreviewRecord;
+            uniqueHeaders.forEach((header) => {
+              nextRecord = buildPreviewRecordWithoutHeader(nextRecord, header);
+            });
+            return nextRecord;
+          }),
+        }
+        : parsedFile.preview,
+    };
+    const nextSchema = schema
+      ? {
+        ...schema,
+        fieldMap: Object.fromEntries(Object.entries(schema.fieldMap ?? {}).filter(([, mappedHeader]) => !uniqueHeaders.includes(String(mappedHeader)))),
+        unresolvedFields: Array.from(new Set([...schema.unresolvedFields, ...removedMappedFieldKeys])),
+      }
+      : schema;
+    setSelectedPreviewHeader(null);
+    setSelectedPreviewHeaders([]);
+    await persistNonLedgerStructureChange(
+      nextParsedFile,
+      nextSchema,
+      `Removed ${uniqueHeaders.length} columns. Duplicate review and household state were cleared because the source structure changed.`,
+      { resetReviewState: true },
+    );
+  }
+
+  async function handleDeletePreviewRow(rowRef: string) {
+    if (!parsedFile?.preview) return;
+    const nextPreviewRecords = parsedFile.preview.records.filter((record) => (record as PreviewRecord).sourceRowRef !== rowRef) as PreviewRecord[];
+    const nextParsedRows = parsedFile.rows.filter((row) => !matchParsedRowToPreviewRow(rowRef, row.ref));
+    const nextParsedFile: ParsedFile = {
+      ...parsedFile,
+      rows: nextParsedRows,
+      structureAnalysis: normalizeStructureAfterRowRemoval(parsedFile, nextParsedRows),
+      preview: {
+        ...parsedFile.preview,
+        summary: {
+          ...parsedFile.preview.summary,
+          rowCount: nextPreviewRecords.length,
+        },
+        records: nextPreviewRecords,
+      },
+    };
+
+    setSelectedPreviewRowRef(null);
+
+    await persistNonLedgerStructureChange(
+      nextParsedFile,
+      schema,
+      `Removed row ${getCompactSourceRef(rowRef).primary}. Duplicate review and household state were cleared because the source rows changed.`,
+      { resetReviewState: true },
+    );
+  }
+
+  async function handleDeletePreviewRows(rowRefs: string[]) {
+    const uniqueRowRefs = Array.from(new Set(rowRefs)).filter((rowRef) => previewBaseRecords.some((record) => record.sourceRowRef === rowRef));
+    if (uniqueRowRefs.length === 0) return;
+    if (uniqueRowRefs.length === 1) {
+      await handleDeletePreviewRow(uniqueRowRefs[0]);
+      return;
+    }
+    if (!parsedFile?.preview) return;
+    const nextPreviewRecords = (parsedFile.preview.records as PreviewRecord[]).filter((record) => !uniqueRowRefs.includes(record.sourceRowRef));
+    const nextParsedRows = parsedFile.rows.filter((row) => !uniqueRowRefs.some((rowRef) => matchParsedRowToPreviewRow(rowRef, row.ref)));
+    const nextParsedFile: ParsedFile = {
+      ...parsedFile,
+      rows: nextParsedRows,
+      structureAnalysis: normalizeStructureAfterRowRemoval(parsedFile, nextParsedRows),
+      preview: {
+        ...parsedFile.preview,
+        summary: {
+          ...parsedFile.preview.summary,
+          rowCount: nextPreviewRecords.length,
+        },
+        records: nextPreviewRecords,
+      },
+    };
+    setSelectedPreviewRowRef(null);
+    setSelectedPreviewRowRefs([]);
+    await persistNonLedgerStructureChange(
+      nextParsedFile,
+      schema,
+      `Removed ${uniqueRowRefs.length} rows. Duplicate review and household state were cleared because the source rows changed.`,
+      { resetReviewState: true },
+    );
+  }
+
+  async function handleInsertPreviewColumn(targetHeader: string, position: 'left' | 'right') {
+    if (!parsedFile) return;
+    const targetIndex = parsedFile.headers.findIndex((header) => header === targetHeader);
+    if (targetIndex < 0) return;
+    let nextHeader = 'new_column';
+    let suffix = 2;
+    const existing = new Set(parsedFile.headers.map((header) => header.toLowerCase()));
+    while (existing.has(nextHeader.toLowerCase())) {
+      nextHeader = `new_column_${suffix}`;
+      suffix += 1;
+    }
+    const insertIndex = position === 'left' ? targetIndex : targetIndex + 1;
+    const nextHeaders = [...parsedFile.headers.slice(0, insertIndex), nextHeader, ...parsedFile.headers.slice(insertIndex)];
+    const nextParsedFile: ParsedFile = {
+      ...parsedFile,
+      headers: nextHeaders,
+      rows: parsedFile.rows.map((row) => {
+        const nextValues = { ...row.values };
+        nextValues[nextHeader] = '';
+        return { ...row, values: Object.fromEntries(nextHeaders.map((header) => [header, nextValues[header] ?? ''])) };
+      }),
+      preview: parsedFile.preview ? {
+        ...parsedFile.preview,
+        records: parsedFile.preview.records.map((record) => updatePreviewRecordCellValue(record as PreviewRecord, nextHeader, '')),
+      } : parsedFile.preview,
+    };
+    setSelectedPreviewHeader(nextHeader);
+    setSelectedPreviewHeaders([nextHeader]);
+    await persistNonLedgerStructureChange(
+      nextParsedFile,
+      schema,
+      `Inserted column ${formatPreviewHeaderLabel(nextHeader)} ${position} of ${formatPreviewHeaderLabel(targetHeader)}.`,
+    );
+  }
+
+  async function handleMovePreviewColumn(header: string, targetHeader: string) {
+    if (!parsedFile || header === targetHeader) return;
+    const fromIndex = parsedFile.headers.findIndex((item) => item === header);
+    const toIndex = parsedFile.headers.findIndex((item) => item === targetHeader);
+    if (fromIndex < 0 || toIndex < 0) return;
+    const nextHeaders = moveItemInList(parsedFile.headers, fromIndex, toIndex);
+    const nextParsedFile: ParsedFile = {
+      ...parsedFile,
+      headers: nextHeaders,
+      rows: parsedFile.rows.map((row) => ({ ...row, values: Object.fromEntries(nextHeaders.map((item) => [item, row.values[item] ?? ''])) })),
+      preview: parsedFile.preview ? {
+        ...parsedFile.preview,
+        records: parsedFile.preview.records.map((record) => {
+          const rawValues = getPreviewRecordRawValues(record as PreviewRecord);
+          return {
+            ...(record as PreviewRecord),
+            rawValues: Object.fromEntries(nextHeaders.map((item) => [item, rawValues[item] ?? ''])),
+          };
+        }),
+      } : parsedFile.preview,
+    };
+    setSelectedPreviewHeader(header);
+    await persistNonLedgerStructureChange(nextParsedFile, schema, `Moved column ${formatPreviewHeaderLabel(header)}.`);
+  }
+
+  async function handleInsertPreviewRow(targetRowRef: string, position: 'above' | 'below') {
+    if (!parsedFile?.preview) return;
+    const targetPreviewIndex = parsedFile.preview.records.findIndex((record) => (record as PreviewRecord).sourceRowRef === targetRowRef);
+    if (targetPreviewIndex < 0) return;
+
+    const sourceRowRefBase = getCompactSourceRef(targetRowRef).primary || 'row';
+    let nextSourceRowRef = `${sourceRowRefBase}:inserted`;
+    let suffix = 2;
+    const existingRowRefs = new Set((parsedFile.preview.records as PreviewRecord[]).map((record) => record.sourceRowRef));
+    while (existingRowRefs.has(nextSourceRowRef)) {
+      nextSourceRowRef = `${sourceRowRefBase}:inserted-${suffix}`;
+      suffix += 1;
+    }
+
+    const nextPreviewRecord = createBlankPreviewRecord(fileClass, parsedFile.headers, nextSourceRowRef);
+    const previewInsertIndex = position === 'above' ? targetPreviewIndex : targetPreviewIndex + 1;
+    const nextPreviewRecords = [
+      ...(parsedFile.preview.records.slice(0, previewInsertIndex) as PreviewRecord[]),
+      nextPreviewRecord,
+      ...(parsedFile.preview.records.slice(previewInsertIndex) as PreviewRecord[]),
+    ];
+
+    const targetParsedIndex = parsedFile.rows.findIndex((row) => matchParsedRowToPreviewRow(targetRowRef, row.ref));
+    const parsedInsertIndex = targetParsedIndex >= 0
+      ? (position === 'above' ? targetParsedIndex : targetParsedIndex + 1)
+      : parsedFile.rows.length;
+    const nextParsedRow = {
+      ref: nextSourceRowRef,
+      values: Object.fromEntries(parsedFile.headers.map((header) => [header, ''])),
+    };
+    const nextParsedRows = [
+      ...parsedFile.rows.slice(0, parsedInsertIndex),
+      nextParsedRow,
+      ...parsedFile.rows.slice(parsedInsertIndex),
+    ];
+
+    const nextParsedFile: ParsedFile = {
+      ...parsedFile,
+      rows: nextParsedRows,
+      structureAnalysis: {
+        ...parsedFile.structureAnalysis,
+        rawRowCount: parsedFile.structureAnalysis.rawRowCount + 1,
+        dataRowCount: parsedFile.structureAnalysis.dataRowCount + 1,
+        rowRoleSummary: {
+          ...parsedFile.structureAnalysis.rowRoleSummary,
+          data: parsedFile.structureAnalysis.rowRoleSummary.data + 1,
+        },
+      },
+      preview: {
+        ...parsedFile.preview,
+        summary: {
+          ...parsedFile.preview.summary,
+          rowCount: nextPreviewRecords.length,
+        },
+        records: nextPreviewRecords,
+      },
+    };
+
+    setSelectedPreviewRowRef(nextSourceRowRef);
+
+    await persistNonLedgerStructureChange(
+      nextParsedFile,
+      schema,
+      `Inserted a blank row ${position} ${getCompactSourceRef(targetRowRef).primary}. Duplicate review and household state were cleared because the source rows changed.`,
+      { resetReviewState: true },
+    );
+  }
+
+  function getPreviewRowDropPosition(event: ReactDragEvent<HTMLTableRowElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return event.clientY - bounds.top < bounds.height / 2 ? 'before' as const : 'after' as const;
+  }
+
+  async function handleMovePreviewRow(rowRef: string, targetRowRef: string, position: 'before' | 'after') {
+    if (!parsedFile?.preview || rowRef === targetRowRef) return;
+    const previewIndex = parsedFile.preview.records.findIndex((record) => (record as PreviewRecord).sourceRowRef === rowRef);
+    const targetPreviewIndex = parsedFile.preview.records.findIndex((record) => (record as PreviewRecord).sourceRowRef === targetRowRef);
+    if (previewIndex < 0 || targetPreviewIndex < 0) return;
+
+    let nextPreviewIndex = targetPreviewIndex;
+    if (position === 'after') nextPreviewIndex += 1;
+    if (previewIndex < nextPreviewIndex) nextPreviewIndex -= 1;
+    if (previewIndex === nextPreviewIndex) {
+      setDraggingPreviewRowRef(null);
+      setPreviewRowDropTarget(null);
+      return;
+    }
+
+    const parsedIndex = parsedFile.rows.findIndex((row) => matchParsedRowToPreviewRow(rowRef, row.ref));
+    const targetParsedIndex = parsedFile.rows.findIndex((row) => matchParsedRowToPreviewRow(targetRowRef, row.ref));
+    const nextPreviewRecords = moveItemInList(parsedFile.preview.records as PreviewRecord[], previewIndex, nextPreviewIndex);
+    let nextParsedRows = parsedFile.rows;
+    if (parsedIndex >= 0 && targetParsedIndex >= 0) {
+      let nextParsedInsertIndex = targetParsedIndex;
+      if (position === 'after') nextParsedInsertIndex += 1;
+      if (parsedIndex < nextParsedInsertIndex) nextParsedInsertIndex -= 1;
+      nextParsedRows = moveItemInList(parsedFile.rows, parsedIndex, nextParsedInsertIndex);
+    }
+
+    const nextParsedFile: ParsedFile = {
+      ...parsedFile,
+      rows: nextParsedRows,
+      preview: {
+        ...parsedFile.preview,
+        records: nextPreviewRecords,
+      },
+    };
+    setSelectedPreviewRowRef(rowRef);
+
+    await persistNonLedgerStructureChange(
+      nextParsedFile,
+      schema,
+      `Moved row ${getCompactSourceRef(rowRef).primary} ${position === 'before' ? 'above' : 'below'} ${getCompactSourceRef(targetRowRef).primary}. Duplicate review and household state were cleared because row order changed.`,
+      { resetReviewState: true },
+    );
   }
 
   async function handleSaveMergedRecordEdit() {
@@ -1399,6 +2486,131 @@ export default function TransformHubPage() {
     });
   }
 
+  function getAttributionDraftForRecord(record: PreviewRecord) {
+    const matchedPerson = peopleById.get(previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId ?? '') ?? null;
+    const defaultHouseholdId = matchedPerson ? householdIdByPersonId.get(matchedPerson.id) ?? null : null;
+    const members = defaultHouseholdId
+      ? ((householdResult?.households.find((household) => household.id === defaultHouseholdId)?.memberIds ?? [])
+        .map((memberId) => peopleById.get(memberId))
+        .filter((member): member is CanonicalPerson => Boolean(member)))
+      : [];
+    const draft = finalAttributionDrafts[record.sourceRowRef] ?? buildInitialAttributionDraft(record, members, matchedPerson);
+    return {
+      matchedPerson,
+      draft,
+      assignedHouseholdId: draft.householdId ?? defaultHouseholdId,
+    };
+  }
+
+  function getEditableDraftKeyForHeader(header: string): string | null {
+    const mappedEntry = Object.entries(editablePreviewFieldToCanonicalKey).find(([, canonicalKey]) => {
+      const mappedHeader = (schema?.fieldMap as Record<string, string> | undefined)?.[canonicalKey];
+      return mappedHeader === header;
+    });
+    return mappedEntry?.[0] ?? null;
+  }
+
+  function updateInlinePreviewCell(header: string, value: string) {
+    const draftKey = getEditableDraftKeyForHeader(header);
+    setEditingMergedDraft((current) => {
+      if (draftKey) return { ...current, [draftKey]: value };
+      return { ...current, [`raw:${header}`]: value };
+    });
+  }
+
+  function updateRecordCreditAmount(record: PreviewRecord, value: string) {
+    const normalized = value.trim();
+    updateFinalAttributionDraft(record.sourceRowRef, { creditAmount: normalized ? parseCurrencyAmount(normalized) : null });
+  }
+
+  function updateRecordRole(
+    record: PreviewRecord,
+    attributionDraft: PreviewAttributionDraft,
+    matchedPerson: CanonicalPerson | null,
+    assignedHouseholdId: string | null,
+    nextRole: 'primary' | 'secondary' | 'organization' | 'unassigned',
+  ) {
+    if (!matchedPerson) return;
+    const householdMembers = assignedHouseholdId
+      ? (householdResult?.households.find((household) => household.id === assignedHouseholdId)?.memberIds ?? [])
+      : [];
+    const otherMemberId = householdMembers.find((memberId) => memberId !== matchedPerson.id) ?? attributionDraft.secondaryPersonId ?? null;
+
+    if (nextRole === 'secondary') {
+      updateFinalAttributionDraft(record.sourceRowRef, {
+        primaryPersonId: otherMemberId,
+        secondaryPersonId: matchedPerson.id,
+      });
+      return;
+    }
+
+    if (nextRole === 'organization') {
+      updateFinalAttributionDraft(record.sourceRowRef, {
+        mode: 'org_match',
+        primaryPersonId: matchedPerson.id,
+        secondaryPersonId: otherMemberId,
+      });
+      return;
+    }
+
+    updateFinalAttributionDraft(record.sourceRowRef, {
+      primaryPersonId: matchedPerson.id,
+      secondaryPersonId: otherMemberId,
+      mode: attributionDraft.mode === 'org_match' && nextRole === 'primary' ? 'person' : attributionDraft.mode,
+    });
+  }
+
+  function cycleRecordRole(
+    record: PreviewRecord,
+    attributionDraft: PreviewAttributionDraft,
+    matchedPerson: CanonicalPerson | null,
+    assignedHouseholdId: string | null,
+  ) {
+    const currentRole = getRecordRole(record, attributionDraft, matchedPerson);
+    const currentIndex = ROLE_SEQUENCE.indexOf(currentRole);
+    const nextRole = ROLE_SEQUENCE[(currentIndex + 1) % ROLE_SEQUENCE.length];
+    updateRecordRole(record, attributionDraft, matchedPerson, assignedHouseholdId, nextRole);
+  }
+
+  function cycleAttributionMode(record: PreviewRecord, attributionDraft: PreviewAttributionDraft) {
+    const currentIndex = ATTRIBUTION_MODE_SEQUENCE.indexOf(attributionDraft.mode);
+    const nextMode = ATTRIBUTION_MODE_SEQUENCE[(currentIndex + 1) % ATTRIBUTION_MODE_SEQUENCE.length];
+    updateFinalAttributionDraft(record.sourceRowRef, { mode: nextMode });
+  }
+
+  function getRecordRole(
+    record: PreviewRecord,
+    attributionDraft: PreviewAttributionDraft,
+    matchedPerson: CanonicalPerson | null,
+  ): 'primary' | 'secondary' | 'organization' | 'unassigned' {
+    if (!matchedPerson) return attributionDraft.mode === 'org_match' ? 'organization' : 'unassigned';
+    if (attributionDraft.secondaryPersonId === matchedPerson.id) return 'secondary';
+    return 'primary';
+  }
+
+  function getRecordCreditPercent(
+    attributionDraft: PreviewAttributionDraft,
+    role: 'primary' | 'secondary' | 'organization' | 'unassigned',
+  ): number {
+    if (attributionDraft.mode !== 'joint_split') return role === 'secondary' ? 0 : 100;
+    if (role === 'secondary') return Math.max(0, 100 - attributionDraft.splitPercent);
+    return attributionDraft.splitPercent;
+  }
+
+  function getDisplayCreditAmount(
+    attributionDraft: PreviewAttributionDraft,
+    rawAmount: number | null,
+    role: 'primary' | 'secondary' | 'organization' | 'unassigned',
+  ) {
+    const baseAmount = attributionDraft.creditAmount ?? rawAmount ?? 0;
+    if (attributionDraft.mode === 'soft_credit') return 0;
+    if (attributionDraft.mode === 'joint_split') {
+      const pct = role === 'secondary' ? Math.max(0, 100 - attributionDraft.splitPercent) : attributionDraft.splitPercent;
+      return Math.round((baseAmount * (pct / 100)) * 100) / 100;
+    }
+    return baseAmount;
+  }
+
   function jumpToSection(id: string) {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -1460,7 +2672,167 @@ export default function TransformHubPage() {
     scrollToSelector('#th-mapping-layer .th-map-rule, #th-mapping-layer .th-map-row');
   }
 
-  async function hydrateUpload(payload: UploadPayload, forceIngest = false) {
+  async function applyWorkbookSheetReview(review: PendingWorkbookSheetReview) {
+    const appendSheets = review.workbookSheets.filter((sheet) => review.actionsBySheet[sheet.sheetName] === 'append');
+    const separateSheets = review.workbookSheets.filter((sheet) => review.actionsBySheet[sheet.sheetName] === 'separate');
+
+    if (appendSheets.length === 0 && separateSheets.length === 0) {
+      setMessage('Choose at least one workbook tab to append or keep separate.');
+      return;
+    }
+
+    if (appendSheets.length === 0) {
+      setPendingWorkbookSheetReview(null);
+      setDeferredWorkbookSheetReview(separateSheets.length > 0 ? { payload: review.payload, workbookSheets: separateSheets } : null);
+      setMessage(`${separateSheets.length} workbook tab${separateSheets.length === 1 ? '' : 's'} queued for standalone review.`);
+      return;
+    }
+    if (appendSheets.length === 1) {
+      setPendingWorkbookSheetReview(null);
+      setDeferredWorkbookSheetReview(separateSheets.length > 0 ? { payload: review.payload, workbookSheets: separateSheets } : null);
+      await hydrateUpload(
+        {
+          ...review.payload,
+          selectedWorkbookSheets: [appendSheets[0].sheetName],
+        },
+        false,
+        undefined,
+        separateSheets,
+      );
+      return;
+    }
+
+    setActiveUploadLabel(review.payload.fileName);
+    setIsLoading(true);
+    setMessage(`Preparing ${appendSheets.length} workbook tabs from ${review.payload.fileName}...`);
+
+    try {
+      const ingestedSheets = [];
+      for (const sheet of appendSheets) {
+        const result = await ingestFile({
+          platform,
+          fileName: review.payload.fileName,
+          kind: review.payload.kind,
+          contents: review.payload.contents,
+          contentsBase64: review.payload.contentsBase64,
+          selectedWorkbookSheets: [sheet.sheetName],
+        });
+        if (!result.schema) throw new Error(`Failed to ingest sheet ${sheet.sheetName}.`);
+        ingestedSheets.push({ sheet, result });
+      }
+
+      const baseIngest = ingestedSheets[0];
+      let combinedPrepared = prepareIncomingUpload(
+        baseIngest.result.parsedFile,
+        baseIngest.result.schema!,
+        baseIngest.result.rows,
+        `${review.payload.fileName} · ${baseIngest.sheet.sheetName}`,
+        buildUploadNamespace(`${review.payload.fileName}-${baseIngest.sheet.sheetName}`),
+      );
+
+      for (const entry of ingestedSheets.slice(1)) {
+        const preparedSheet = prepareIncomingUpload(
+          entry.result.parsedFile,
+          entry.result.schema!,
+          entry.result.rows,
+          `${review.payload.fileName} · ${entry.sheet.sheetName}`,
+          buildUploadNamespace(`${review.payload.fileName}-${entry.sheet.sheetName}`),
+        );
+        const decisions = buildAppendColumnDecisions(combinedPrepared.parsedFile.headers, preparedSheet.parsedFile.headers, `${review.payload.fileName} · ${entry.sheet.sheetName}`);
+        const merged = mergeUploadIntoExisting({
+          currentParsedFile: combinedPrepared.parsedFile,
+          currentSchema: combinedPrepared.schema,
+          currentRows: combinedPrepared.rows,
+          incomingParsedFile: preparedSheet.parsedFile,
+          incomingSchema: preparedSheet.schema,
+          incomingRows: preparedSheet.rows,
+          sourceFile: `${review.payload.fileName} · ${entry.sheet.sheetName}`,
+          columnDecisions: decisions,
+        });
+        combinedPrepared = {
+          parsedFile: merged.parsedFile,
+          schema: merged.schema,
+          rows: merged.rows,
+        };
+      }
+
+      const baseSessionId = sessionId ?? baseIngest.result.sessionId!;
+      const canAppend = Boolean(parsedFile && schema && parsedFile.platform === combinedPrepared.parsedFile.platform && ((schema.fileClass === 'ledger' && combinedPrepared.schema.fileClass === 'ledger') || (schema.fileClass !== 'ledger' && combinedPrepared.schema.fileClass !== 'ledger')));
+
+      if (canAppend && parsedFile && schema) {
+        const appendColumnDecisions = buildAppendColumnDecisions(parsedFile.headers, combinedPrepared.parsedFile.headers, `${review.payload.fileName} · workbook`);
+        const decisionSummary = summarizeAppendColumnDecisions(appendColumnDecisions);
+        setPendingWorkbookSheetReview(null);
+        setDeferredWorkbookSheetReview(separateSheets.length > 0 ? { payload: review.payload, workbookSheets: separateSheets } : null);
+        setPendingAppendReview({
+          sessionId: sessionId ?? baseSessionId,
+          currentParsedFile: parsedFile,
+          currentSchema: schema,
+          currentRows: rows,
+          incomingParsedFile: combinedPrepared.parsedFile,
+          incomingSchema: combinedPrepared.schema,
+          incomingRows: combinedPrepared.rows,
+          columnDecisions: appendColumnDecisions,
+          guardrails: ingestedSheets.flatMap((entry) => entry.result.guardrails),
+          blockingIssues: [],
+          summary: {
+            sourceFile: `${review.payload.fileName} · ${appendSheets.length} sheets`,
+            appendedRows: combinedPrepared.rows.length,
+            combinedColumns: decisionSummary.mergedColumns.length,
+            newColumns: decisionSummary.newColumns,
+            fuzzyMerges: decisionSummary.fuzzyMerges,
+          },
+        });
+        setMessage(`Review the merge plan for ${appendSheets.length} selected workbook tabs before applying them to the current table.`);
+        jumpToSection('th-ingest');
+        return;
+      }
+
+      const session = await saveSession(
+        baseSessionId,
+        combinedPrepared.rows,
+        'review',
+        null,
+        null,
+        null,
+        combinedPrepared.parsedFile,
+        combinedPrepared.schema,
+        taxonomyState,
+      );
+      setPendingWorkbookSheetReview(null);
+      setDeferredWorkbookSheetReview(separateSheets.length > 0 ? { payload: review.payload, workbookSheets: separateSheets } : null);
+      applySession(
+        session,
+        `Loaded ${appendSheets.length} selected workbook tabs from ${review.payload.fileName}${separateSheets.length ? ` · ${separateSheets.length} tab${separateSheets.length === 1 ? '' : 's'} left separate` : ''}.`,
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to process the selected workbook tabs.');
+    } finally {
+      setActiveUploadLabel(null);
+      setIsLoading(false);
+    }
+  }
+
+  async function handleOpenDeferredWorkbookSheet(sheetName: string) {
+    if (!deferredWorkbookSheetReview) return;
+    const targetSheet = deferredWorkbookSheetReview.workbookSheets.find((sheet) => sheet.sheetName === sheetName);
+    if (!targetSheet) return;
+    setDeferredWorkbookSheetReview((current) => current ? {
+      ...current,
+      workbookSheets: current.workbookSheets.filter((sheet) => sheet.sheetName !== sheetName),
+    } : current);
+    await hydrateUpload({
+      ...deferredWorkbookSheetReview.payload,
+      selectedWorkbookSheets: [sheetName],
+    });
+  }
+
+  async function hydrateUpload(
+    payload: UploadPayload & { selectedWorkbookSheets?: string[] },
+    forceIngest = false,
+    precombinedWorkbookUpload?: { parsedFile: ParsedFile; schema: ResolvedSchema; rows: CanonicalLedgerRow[] },
+    separateWorkbookSheets: NonNullable<ParsedFile['workbookSheets']> = [],
+  ) {
     setActiveUploadLabel(payload.fileName);
     setIsLoading(true);
     setMessage(forceIngest ? 'Continuing ' + payload.fileName + '...' : 'Loading ' + payload.fileName + '...');
@@ -1476,11 +2848,38 @@ export default function TransformHubPage() {
     setNonLedgerReviewPanel('duplicate');
 
     try {
-      const result = await ingestFile({ platform, fileName: payload.fileName, kind: payload.kind, contents: payload.contents, contentsBase64: payload.contentsBase64, sessionId: forceIngest ? sessionId ?? undefined : undefined, forceIngest });
+      const result = await ingestFile({
+        platform,
+        fileName: payload.fileName,
+        kind: payload.kind,
+        contents: payload.contents,
+        contentsBase64: payload.contentsBase64,
+        sessionId: forceIngest ? sessionId ?? undefined : undefined,
+        forceIngest,
+        selectedWorkbookSheets: payload.selectedWorkbookSheets,
+      });
+
+      if (result.parsedFile.workbookSelectionRequired && result.parsedFile.workbookSheets) {
+        setPendingWorkbookSheetReview({
+          payload,
+          workbookSheets: result.parsedFile.workbookSheets,
+          actionsBySheet: buildDefaultWorkbookSheetActions(result.parsedFile.workbookSheets),
+        });
+        setMessage(`Choose which workbook tabs to combine from ${payload.fileName}. Compatible sheets are preselected.`);
+        jumpToSection('th-ingest');
+        return;
+      }
+
       const nextTaxonomy = result.taxonomy ?? null;
       const nextAudit = result.audit ?? null;
       const uploadNamespace = buildUploadNamespace(payload.fileName);
-      const prepared = prepareIncomingUpload(result.parsedFile, result.schema, result.rows, payload.fileName, uploadNamespace);
+      const prepared = precombinedWorkbookUpload
+        ? {
+            parsedFile: precombinedWorkbookUpload.parsedFile as ParsedFile,
+            schema: precombinedWorkbookUpload.schema,
+            rows: precombinedWorkbookUpload.rows,
+          }
+        : prepareIncomingUpload(result.parsedFile, result.schema!, result.rows, payload.fileName, uploadNamespace);
       const canAppend = result.status !== 'blocked' && Boolean(parsedFile && schema && parsedFile.platform === prepared.parsedFile.platform && ((schema.fileClass === 'ledger' && prepared.schema.fileClass === 'ledger') || (schema.fileClass !== 'ledger' && prepared.schema.fileClass !== 'ledger')));
       const appendColumnDecisions = canAppend && parsedFile ? buildAppendColumnDecisions(parsedFile.headers, prepared.parsedFile.headers, payload.fileName) : [];
       const merged = canAppend && parsedFile && schema
@@ -1503,12 +2902,12 @@ export default function TransformHubPage() {
         ? `Blocked by ${result.blockingIssues.length} blocking issue${result.blockingIssues.length === 1 ? '' : 's'}. Review the report below, then force continue if intentional.`
         : canAppend
           ? `Appended ${prepared.rows.length} row${prepared.rows.length === 1 ? '' : 's'} from ${payload.fileName}. Combined table now has ${nextParsedFile.rows.length} source row${nextParsedFile.rows.length === 1 ? '' : 's'} · ${merged.pendingMergeCount} pending fuzzy column merge${merged.pendingMergeCount === 1 ? '' : 's'}.`
-          : `Loaded ${prepared.rows.length} row${prepared.rows.length === 1 ? '' : 's'} from ${payload.fileName} · ${nextAudit?.errorCount ?? 0} audit error(s) · ${nextTaxonomy?.unmappedCount ?? 0} taxonomy exception(s).`;
+          : `Loaded ${prepared.rows.length} row${prepared.rows.length === 1 ? '' : 's'} from ${payload.fileName}${payload.selectedWorkbookSheets?.length ? ` · ${payload.selectedWorkbookSheets.length} sheet${payload.selectedWorkbookSheets.length === 1 ? '' : 's'} combined` : ''}${separateWorkbookSheets.length ? ` · ${separateWorkbookSheets.length} sheet${separateWorkbookSheets.length === 1 ? '' : 's'} left separate` : ''} · ${nextAudit?.errorCount ?? 0} audit error(s) · ${nextTaxonomy?.unmappedCount ?? 0} taxonomy exception(s).`;
 
       if (canAppend) {
         const decisionSummary = summarizeAppendColumnDecisions(appendColumnDecisions);
         setPendingAppendReview({
-          sessionId: result.sessionId,
+          sessionId: result.sessionId!,
           currentParsedFile: parsedFile!,
           currentSchema: schema!,
           currentRows: rows,
@@ -1533,7 +2932,7 @@ export default function TransformHubPage() {
       }
 
       const session = await saveSession(
-        result.sessionId,
+        result.sessionId!,
         nextRows,
         nextStatus,
         null,
@@ -1691,20 +3090,6 @@ export default function TransformHubPage() {
       setMessage(error instanceof Error ? error.message : 'Failed to read the selected file.');
     } finally {
       event.target.value = '';
-    }
-  }
-
-  async function loadSample() {
-    setActiveUploadLabel(platform + ' sample');
-    setIsLoading(true);
-    setMessage('Loading ' + platform + ' sample...');
-    try {
-      const sample = await fetchSample(platform);
-      await hydrateUpload({ fileName: sample.name, kind: 'text', contents: sample.contents });
-    } catch (error) {
-      setActiveUploadLabel(null);
-      setMessage(error instanceof Error ? error.message : 'Failed to load the sample file.');
-      setIsLoading(false);
     }
   }
 
@@ -2600,39 +3985,108 @@ export default function TransformHubPage() {
           <div className="th-panel">
             <div className="th-ingest-header">
               <span className="th-ingest-title">Ingestion</span>
-              <span className="th-status-msg">{isLoading ? 'Processing…' : message}</span>
-            </div>
-            <div className="th-platform-groups">
-              {Object.entries(PLATFORM_GROUPS).map(([group, platforms]) => (
-                <div key={group} className="th-platform-group">
-                  <span className="th-platform-group-label">{group}</span>
-                  <div className="th-chip-row">
-                    {platforms.map((item) => (
-                      <button key={item} type="button" className={"th-chip" + (item === platform ? " is-active" : "")} onClick={() => setPlatform(item)}>
-                        {item}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
+              <span className="th-status-msg">{isUploadLoading ? 'Processing…' : message}</span>
             </div>
             <div className="th-upload-actions">
-              <label className="th-file-input" aria-disabled={isLoading}>
-                <Upload size={14} />
-                Upload CSV / XLSX
-                <input type="file" accept=".csv,.txt,.tsv,.xlsx" onChange={handleFileChange} disabled={isLoading} />
+              <label className="th-file-input th-file-input-primary" aria-disabled={isUploadLoading}>
+                <div className="th-file-input-icon"><Upload size={18} /></div>
+                <div className="th-file-input-copy">
+                  <strong>Upload source file</strong>
+                  <span>CSV or XLSX · start a new review table or combine sheets into the current one</span>
+                  {activeUploadLabel && <em>{activeUploadLabel}</em>}
+                </div>
+                <input type="file" accept=".csv,.txt,.tsv,.xlsx" onChange={handleFileChange} disabled={isUploadLoading} />
               </label>
-              <button type="button" className="th-button th-button-secondary" onClick={loadSample} disabled={isLoading}>
-                <PlayCircle size={14} />
-                Load {platform} sample
-              </button>
             </div>
-            {isLoading && (
-              <div className="th-review-loader" style={{ marginTop: 12 }}>
-                <div className="th-review-loader-spinner" aria-hidden="true" />
-                <div>
-                  <strong>Loading {activeUploadLabel ?? 'upload'}</strong>
-                  <p>Parsing the sheet, classifying the columns, and preparing the review workspace.</p>
+            {pendingWorkbookSheetReview && (
+              <div className="th-stack" style={{ marginTop: 12 }}>
+                <div className="th-panel-head"><span>Combine sheets</span><span>{pendingWorkbookSheetReview.workbookSheets.length} workbook tab{pendingWorkbookSheetReview.workbookSheets.length === 1 ? '' : 's'}</span></div>
+                <div className="th-mini-block">
+                  <strong>Select which workbook tabs to combine</strong>
+                  <p>Compatible tabs are preselected. Keep incompatible tabs separate or ignore them. Row refs will preserve the sheet name for audit tracing.</p>
+                </div>
+                <div className="th-workbook-sheet-list">
+                  {pendingWorkbookSheetReview.workbookSheets.map((sheet) => {
+                    const baseSheet = pendingWorkbookSheetReview.workbookSheets[0];
+                    const compatibility = describeWorkbookSheetCompatibility(sheet, baseSheet);
+                    const currentAction = pendingWorkbookSheetReview.actionsBySheet[sheet.sheetName] ?? 'ignore';
+                    return (
+                      <div key={sheet.sheetName} className="th-workbook-sheet-card">
+                        <div className="th-workbook-sheet-head">
+                          <div>
+                            <strong>{sheet.sheetName}</strong>
+                            <p>{sheet.structureAnalysis.dataRowCount} row{sheet.structureAnalysis.dataRowCount === 1 ? '' : 's'} · {sheet.fileClass}</p>
+                          </div>
+                          <select
+                            className="th-select"
+                            value={currentAction}
+                            onChange={(event) => {
+                              const nextAction = event.target.value as WorkbookSheetAction;
+                              setPendingWorkbookSheetReview((current) => current ? {
+                                ...current,
+                                actionsBySheet: { ...current.actionsBySheet, [sheet.sheetName]: nextAction },
+                              } : current);
+                            }}
+                          >
+                            <option value="append">Append into current table</option>
+                            <option value="separate">Keep separate</option>
+                            <option value="ignore">Ignore</option>
+                          </select>
+                        </div>
+                        <div className="th-cell-chip-row">
+                          <span className="th-cell-chip">{sheet.headers.length} columns</span>
+                          <span className={`th-cell-chip${compatibility.tone === 'warning' ? ' is-warning' : ''}`}>{compatibility.label}</span>
+                          {sheet.guardrails?.some((item) => item.triggered) && <span className="th-cell-chip">Has warnings</span>}
+                          {sheet.schema?.reportType && <span className="th-cell-chip">{sheet.schema.reportType}</span>}
+                        </div>
+                        <p className="th-helper">{compatibility.detail}</p>
+                        <p className="th-helper">{sheet.headers.slice(0, 6).join(' · ')}{sheet.headers.length > 6 ? ' …' : ''}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="th-review-match-actions">
+                  <button type="button" className="th-button th-button-primary" onClick={() => void applyWorkbookSheetReview(pendingWorkbookSheetReview)}>Apply sheet selection</button>
+                  <button type="button" className="th-button th-button-secondary" onClick={() => setPendingWorkbookSheetReview(null)}>Cancel</button>
+                </div>
+              </div>
+            )}
+            {deferredWorkbookSheetReview && deferredWorkbookSheetReview.workbookSheets.length > 0 && (
+              <div className="th-stack" style={{ marginTop: 12 }}>
+                <div className="th-panel-head"><span>Separate workbook tabs</span><span>{deferredWorkbookSheetReview.workbookSheets.length} waiting</span></div>
+                <div className="th-mini-block">
+                  <strong>Open these tabs as standalone reviews</strong>
+                  <p>Tabs marked separate were not merged into the current table. Open any one to start its own classified review workspace.</p>
+                </div>
+                <div className="th-workbook-sheet-list">
+                  {deferredWorkbookSheetReview.workbookSheets.map((sheet) => (
+                    <div key={`deferred-${sheet.sheetName}`} className="th-workbook-sheet-card">
+                      <div className="th-workbook-sheet-head">
+                        <div>
+                          <strong>{sheet.sheetName}</strong>
+                          <p>{sheet.structureAnalysis.dataRowCount} row{sheet.structureAnalysis.dataRowCount === 1 ? '' : 's'} · {sheet.fileClass}</p>
+                        </div>
+                        <div className="th-review-match-actions">
+                          <button type="button" className="th-button th-button-secondary" onClick={() => void handleOpenDeferredWorkbookSheet(sheet.sheetName)}>Open separately</button>
+                          <button
+                            type="button"
+                            className="th-button th-button-secondary"
+                            onClick={() => setDeferredWorkbookSheetReview((current) => current ? {
+                              ...current,
+                              workbookSheets: current.workbookSheets.filter((item) => item.sheetName !== sheet.sheetName),
+                            } : current)}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                      <div className="th-cell-chip-row">
+                        <span className="th-cell-chip">{sheet.headers.length} columns</span>
+                        {sheet.schema?.reportType && <span className="th-cell-chip">{sheet.schema.reportType}</span>}
+                      </div>
+                      <p className="th-helper">{sheet.headers.slice(0, 6).join(' · ')}{sheet.headers.length > 6 ? ' …' : ''}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -2884,24 +4338,6 @@ export default function TransformHubPage() {
                   )}
                 </article>
               </div>
-
-              {householdResult?.reviewSuggestions && householdResult.reviewSuggestions.length > 0 && (
-                <div style={{ marginTop: 14 }}>
-                  <div className="th-panel-head" style={{ marginBottom: 10 }}>
-                    <span>Household suggestions</span>
-                    <span>{householdResult.reviewSuggestions.length} AI suggestions</span>
-                  </div>
-                  <div className="th-stack">
-                    {householdResult.reviewSuggestions.map((suggestion) => (
-                      <div key={suggestion.id} className="th-guardrail is-warning">
-                        <strong>{suggestion.proposedMembers.map((member) => [member.firstName, member.lastName].filter(Boolean).join(' ') || member.id).join(' · ')}</strong>
-                        <p>Matched on: {suggestion.matchedEvidence.join(', ')}</p>
-                        {describeHouseholdAiSuggestion(suggestion) && <p className="th-helper">{describeHouseholdAiSuggestion(suggestion)}</p>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {ledgerReviewMatches.length > 0 && (
                 <div style={{ marginTop: 14 }}>
@@ -3402,6 +4838,15 @@ export default function TransformHubPage() {
                 <span>{preview.summary.rowCount} records · {preview.canonicalModel}</span>
               </div>
               <p className="th-helper">This file was classified as <strong>{fileClass}</strong>. It stays out of the ledger posting flow and is reviewed in its own canonical table.</p>
+              {isUploadLoading && (
+                <div className="th-review-loader" style={{ marginBottom: 14 }}>
+                  <div className="th-review-loader-spinner" aria-hidden="true" />
+                  <div>
+                    <strong>Loading {activeUploadLabel}</strong>
+                    <p>Parsing the sheet, classifying the columns, and preparing the review workspace.</p>
+                  </div>
+                </div>
+              )}
               <div className="th-review-tab-row" style={{ marginBottom: 14 }}>
                 {supportsDuplicateWorkflow && <button type="button" className={`th-chip th-review-tab${nonLedgerReviewPanel === 'duplicate' ? ' is-active' : ''}`} onClick={() => setNonLedgerReviewPanel('duplicate')}>Duplicate review</button>}
                 {supportsHouseholdWorkflow && <button type="button" className={`th-chip th-review-tab${nonLedgerReviewPanel === 'household' ? ' is-active' : ''}`} onClick={() => setNonLedgerReviewPanel('household')}>Household review</button>}
@@ -3493,7 +4938,7 @@ export default function TransformHubPage() {
                                   <p>{group.suggestedCanonicalLabel} · {Math.round(group.score * 100)}% match · {group.reasonSignals.join(' · ') || 'Similarity signals found'}</p>
                                   <div className="th-chip-row" style={{ marginTop: 10 }}>
                                     {group.members.map((member) => (
-                                      <span key={member.observedValueId} className="th-chip th-taxonomy-member-chip">{member.rawValue} · {member.rowCount}</span>
+                                      <span key={member.observedValueId} className="th-chip th-taxonomy-member-chip">{member.rawValue} ({member.rowCount} row{member.rowCount === 1 ? '' : 's'})</span>
                                     ))}
                                   </div>
                                 </div>
@@ -3619,35 +5064,28 @@ export default function TransformHubPage() {
                   )}
                   {supportsHouseholdWorkflow && nonLedgerReviewPanel === 'household' && (
                     <article className="th-panel th-inner-panel">
-                      <div className="th-panel-head"><span>Build households</span><span>{householdResult ? `${householdResult.households.length} formed` : "blocked"}</span></div>
+                      <div className="th-panel-head"><span>Build households</span><span>{isRunningHouseholdResolver ? 'running' : householdResult ? `${householdResult.households.length} formed` : "blocked"}</span></div>
                       <p className="th-helper">Households unlock only after all duplicate matches are resolved.</p>
                       <div className="th-action-row">
-                        <button type="button" className="th-button th-button-primary" onClick={handleRunHouseholdResolver} disabled={!peopleStepReady}>
-                          <Building2 size={14} /> Build households
+                        <button type="button" className="th-button th-button-primary" onClick={handleRunHouseholdResolver} disabled={!peopleStepReady || isRunningHouseholdResolver}>
+                          <Building2 size={14} /> {isRunningHouseholdResolver ? 'Building households…' : 'Build households'}
                         </button>
                       </div>
-                      {!peopleStepReady && (
+                      {isRunningHouseholdResolver ? (
+                        <div className="th-review-loader" style={{ marginTop: 12 }}>
+                          <div className="th-review-loader-spinner" aria-hidden="true" />
+                          <div>
+                            <strong>Building households</strong>
+                            <p>Grouping resolved records into households and preparing the relationship review.</p>
+                          </div>
+                        </div>
+                      ) : !peopleStepReady && (
                         <p className="th-helper">Resolve {pendingPeopleReviews} pending duplicate review{pendingPeopleReviews === 1 ? "" : "s"} to unlock households.</p>
                       )}
                     </article>
                   )}
                 </div>
-              )}
-              {supportsHouseholdWorkflow && householdResult?.reviewSuggestions && householdResult.reviewSuggestions.length > 0 && nonLedgerReviewPanel === 'household' && (
-                <div id="th-household-review-queue" className="th-stack" style={{ marginBottom: 14 }}>
-                  <div className="th-panel-head"><span>Household review queue</span><span>{householdResult.reviewSuggestions.length} AI suggestions</span></div>
-                  {householdResult.reviewSuggestions.map((suggestion) => (
-                    <div key={suggestion.id} className="th-guardrail is-warning" style={{ alignItems: "center", gap: 14 }}>
-                      <div style={{ flex: 1 }}>
-                        <strong>{suggestion.proposedMembers.map((member) => [member.firstName, member.lastName].filter(Boolean).join(' ') || member.id).join(' · ')}</strong>
-                        <p>Matched on: {suggestion.matchedEvidence.join(", ")}</p>
-                        {describeHouseholdAiSuggestion(suggestion) && <p className="th-helper">{describeHouseholdAiSuggestion(suggestion)}</p>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {supportsHouseholdWorkflow && nonLedgerReviewPanel === 'household' && (
+              )}              {supportsHouseholdWorkflow && nonLedgerReviewPanel === 'household' && (
                 <div className="th-stack" style={{ marginBottom: 14 }}>
                   {!peopleStepReady ? (
                     <div className="th-mini-block">
@@ -3660,68 +5098,201 @@ export default function TransformHubPage() {
                       <p>Run householding to create relationship objects without collapsing the person records.</p>
                     </div>
                   ) : (
-                    householdLayerViews.map((view) => (
-                      <article key={view.householdId} className="th-panel th-inner-panel th-household-layer-card">
-                        <div className="th-panel-head">
-                          <span>Relationship Layer · {view.householdId}</span>
-                          <span>{view.relatedRecords.length} linked record{view.relatedRecords.length === 1 ? '' : 's'}</span>
+                    <>
+                      <div className="th-review-tab-row" style={{ marginBottom: 14 }}>
+                        <button type="button" className={`th-chip th-review-tab${householdReviewTab === 'needs_attribution' ? ' is-active' : ''}`} onClick={() => setHouseholdReviewTab('needs_attribution')}>
+                          Needs attribution {householdsNeedingAttribution.size}
+                        </button>
+                        <button type="button" className={`th-chip th-review-tab${householdReviewTab === 'all' ? ' is-active' : ''}`} onClick={() => setHouseholdReviewTab('all')}>
+                          All households {householdLayerViews.length}
+                        </button>
+                      </div>
+                      {visibleHouseholdLayerViews.length === 0 ? (
+                        <div className="th-mini-block">
+                          <strong>No households need attribution review</strong>
+                          <p>All current households are either complete or only have non-attribution warnings.</p>
                         </div>
-                        <div className="th-household-layer-grid">
-                          <section className="th-mini-block">
-                            <strong>Person</strong>
-                            <p>People stay separate. Duplicate resolution stops here; householding adds a parent grouping object above these members.</p>
-                            <div className="th-stack" style={{ marginTop: 10 }}>
-                              {view.members.map((member) => (
-                                <div key={member.id} className="th-household-member-row">
-                                  <div>
-                                    <strong>{formatPersonName(member)}</strong>
-                                    <p>{[member.email, member.phone].filter(Boolean).join(' · ') || 'No direct contact fields'}</p>
-                                  </div>
-                                  <span className="th-person-id">{member.id}</span>
+                      ) : (
+                    <div className="th-household-review-list">
+                      <div className="th-household-summary-header" aria-hidden="true">
+                        <span />
+                        <span>Household / members</span>
+                        <span>Communication</span>
+                        <span>Individual</span>
+                        <span>HH total</span>
+                        <span>Status</span>
+                      </div>
+                      {visibleHouseholdLayerViews.map((view) => {
+                        const isExpanded = expandedHouseholdReviewId === view.householdId;
+                        return (
+                          <article key={view.householdId} className={`th-panel th-inner-panel th-household-summary-card${isExpanded ? ' is-expanded' : ''}`}>
+                            <button
+                              type="button"
+                              className="th-household-summary-row"
+                              aria-expanded={isExpanded}
+                              aria-controls={`th-household-detail-${view.householdId}`}
+                              onClick={() => setExpandedHouseholdReviewId(isExpanded ? null : view.householdId)}
+                            >
+                              <span className={`th-household-summary-toggle${isExpanded ? ' is-expanded' : ''}`} aria-hidden="true">
+                                <ArrowRight size={18} />
+                              </span>
+                              <div className="th-household-summary-main">
+                                <strong>{view.draft.label}</strong>
+                                <div className="th-chip-row" style={{ marginTop: 10 }}>
+                                  {view.members.map((member) => (
+                                    <span key={`${view.householdId}-${member.id}`} className="th-person-id">{formatPersonName(member)} {member.id}</span>
+                                  ))}
                                 </div>
-                              ))}
-                            </div>
-                          </section>
-                          <section className="th-mini-block">
-                            <strong>Household</strong>
-                            <p>Grouping object above the members.</p>
-                            <div className="th-household-proposed-card">
-                              <strong>{view.draft.label}</strong>
-                              <p>{view.draft.addressee}</p>
-                              <div className="th-chip-row" style={{ marginTop: 10 }}>
-                                <span className="th-chip">Primary: {view.members.find((member) => member.id === view.draft.primaryPersonId)?.firstName || 'unset'}</span>
-                                <span className="th-chip">Formal: {view.draft.formalSalutation}</span>
-                                <span className="th-chip">Informal: {view.draft.informalSalutation}</span>
                               </div>
-                            </div>
-                          </section>
-                          <section className="th-mini-block">
-                            <strong>Attribution</strong>
-                            <p>Credit remains separate from household grouping.</p>
-                            <div className="th-stack" style={{ marginTop: 10 }}>
-                              {view.attributionPreview.length === 0 ? (
-                                <p className="th-helper">No linked giving rows were detected for this household yet.</p>
-                              ) : (
-                                view.attributionPreview.map((item) => (
-                                  <div key={item.recordId} className="th-household-attribution-row">
-                                    <div>
-                                      <strong>{item.label}</strong>
-                                      <p>{item.summary}</p>
-                                    </div>
-                                    <span>{item.amount !== null ? formatCurrencyAmount(item.amount) : 'No amount'}</span>
+                              <div className="th-household-summary-communication">
+                                <strong>{view.communication.addressee}</strong>
+                                <p>{view.communication.formalSalutation}</p>
+                                <span>Primary: {view.communication.primaryLabel}</span>
+                              </div>
+                              <div className="th-household-summary-individual">
+                                <strong>{view.reporting.memberBreakdown.map((member) => member.total > 0 ? formatCurrencyAmount(member.total) : '—').join(' / ')}</strong>
+                                <p>{view.reporting.memberBreakdown.map((member) => member.name.split(' ')[0] || member.name).join(' / ')}</p>
+                                <span>Last gift {formatReviewDate(view.reporting.lastGift)}</span>
+                              </div>
+                              <div className="th-household-summary-total">
+                                <strong>{view.reporting.householdTotal > 0 ? formatCurrencyAmount(view.reporting.householdTotal) : 'No gifts'}</strong>
+                                <span>{view.reporting.giftCount} gift{view.reporting.giftCount === 1 ? '' : 's'} · {view.reporting.yearsGiving > 0 ? `${view.reporting.yearsGiving} yr` : '— yr'}</span>
+                              </div>
+                              <div className="th-household-summary-status">
+                                <span className={`th-status-pill is-${view.status.tone}`}>{view.status.label}</span>
+                                <span>{view.status.note}</span>
+                              </div>
+                            </button>
+                            {isExpanded && (
+                              <div id={`th-household-detail-${view.householdId}`} className="th-household-expanded-card">
+                                <div className="th-household-expanded-topline">
+                                  <div>
+                                    <strong>{view.communication.addressee}</strong>
+                                    <p>{view.draft.label} · {view.householdId}</p>
                                   </div>
-                                ))
-                              )}
-                            </div>
-                          </section>
-                        </div>
-                        <div className="th-grid th-grid-3" style={{ marginTop: 12 }}>
-                          <div className="th-stat-chip th-band-auto"><strong>{view.draft.eventSalutation}</strong><span>Communication</span></div>
-                          <div className="th-stat-chip th-band-review"><strong>{view.reporting.householdTotal > 0 ? formatCurrencyAmount(view.reporting.householdTotal) : 'No gifts'}</strong><span>Household total</span></div>
-                          <div className="th-stat-chip th-band-separate"><strong>{view.reporting.yearsGiving || 0}</strong><span>Years giving</span></div>
-                        </div>
-                      </article>
-                    ))
+                                  <span className={`th-status-pill is-${view.status.tone}`}>{view.status.label}</span>
+                                </div>
+                                {view.alerts.length > 0 && (
+                                  <div className="th-household-alert">
+                                    <AlertTriangle size={14} />
+                                    <span>{view.alerts[0]}</span>
+                                  </div>
+                                )}
+                                <div className="th-household-expanded-meta">
+                                  <div className="th-household-expanded-metric is-primary">
+                                    <strong>{view.communication.addressee}</strong>
+                                    <p>Household label</p>
+                                  </div>
+                                  <div className="th-household-expanded-metric">
+                                    <strong>{view.reporting.householdTotal > 0 ? formatCurrencyAmount(view.reporting.householdTotal) : 'No gifts'}</strong>
+                                    <span>Household total</span>
+                                  </div>
+                                  <div className="th-household-expanded-metric">
+                                    <strong>{view.reporting.giftCount}</strong>
+                                    <span>Gifts</span>
+                                  </div>
+                                  <div className="th-household-expanded-metric">
+                                    <strong>{view.reporting.yearsGiving || '—'}</strong>
+                                    <span>Years giving</span>
+                                  </div>
+                                  <div className="th-household-expanded-metric">
+                                    <strong>{view.communication.primaryLabel}</strong>
+                                    <span>Primary</span>
+                                  </div>
+                                  <div className="th-household-expanded-metric">
+                                    <strong>{view.communication.formalSalutation}</strong>
+                                    <span>Formal</span>
+                                  </div>
+                                </div>
+                                <div className="th-household-expanded-grid">
+                                  <section className="th-mini-block th-household-detail-section">
+                                    <strong>Members</strong>
+                                    <div className="th-stack" style={{ marginTop: 10 }}>
+                                      {view.members.map((member) => (
+                                        <div key={member.id} className="th-household-member-row">
+                                          <div className="th-household-member-ident">
+                                            <span className="th-household-member-avatar">{getPersonInitials(member)}</span>
+                                            <div>
+                                              <strong>{formatPersonName(member)}</strong>
+                                              <p>{member.id}</p>
+                                            </div>
+                                          </div>
+                                          <span>{member.id === view.draft.primaryPersonId ? 'primary' : 'member'}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </section>
+                                  <section className="th-mini-block th-household-detail-section">
+                                    <strong>Giving breakdown</strong>
+                                    <div className="th-stack" style={{ marginTop: 10 }}>
+                                      {view.reporting.memberBreakdown.map((member) => (
+                                        <div key={`${view.householdId}-giving-${member.personId}`} className="th-household-giving-row">
+                                          <div>
+                                            <strong>{member.name}</strong>
+                                            <p>{member.giftCount} gift{member.giftCount === 1 ? '' : 's'}</p>
+                                          </div>
+                                          <span>{member.total > 0 ? formatCurrencyAmount(member.total) : 'No gifts'}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </section>
+                                </div>
+                                {view.attributionPreview.length > 0 && (
+                                  <section className="th-mini-block th-household-detail-section">
+                                    <strong>Attribution</strong>
+                                    <div className="th-stack" style={{ marginTop: 10 }}>
+                                      {view.attributionPreview.map((item) => (
+                                        <div key={`${view.householdId}-${item.sourceRowRef}`} className="th-household-attribution-row">
+                                          <div>
+                                            <strong>{item.label}</strong>
+                                            <p>{item.summary}</p>
+                                          </div>
+                                          <span>{item.amount !== null ? formatCurrencyAmount(item.amount) : '—'}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </section>
+                                )}
+                                <div className="th-household-expanded-actions">
+                                  <button
+                                    type="button"
+                                    className="th-button th-button-secondary"
+                                    onClick={() => {
+                                      const firstGroup = ambiguousAttributionGroups.find((group) => group.householdId === view.householdId) ?? null;
+                                      setAttributionTableTab('needs_attribution');
+                                      setSelectedAttributionGroupKey(firstGroup?.key ?? null);
+                                      jumpToSection('th-review-table');
+                                    }}
+                                  >
+                                    Review attribution ↓
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="th-button th-button-secondary"
+                                    onClick={() => {
+                                      setNonLedgerReviewPanel('final');
+                                      setExpandedFinalHouseholdId(view.householdId);
+                                    }}
+                                  >
+                                    Edit salutation ↗
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="th-button th-button-secondary"
+                                    onClick={handleExportPreview}
+                                    disabled={!nonLedgerExportReady}
+                                  >
+                                    Export ↗
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </article>
+                        );
+                      })}
+                    </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -3749,93 +5320,7 @@ export default function TransformHubPage() {
                       <strong>Final review unlocks after householding</strong>
                       <p>Run duplicate review, build households, then edit the final relationship layer here before applying it.</p>
                     </div>
-                  ) : (
-                    householdLayerViews.map((view) => (
-                      <article key={`final-${view.householdId}`} className="th-panel th-inner-panel th-household-final-card">
-                        <div className="th-panel-head">
-                          <span>{view.householdId}</span>
-                          <span>{view.members.length} member{view.members.length === 1 ? '' : 's'}</span>
-                        </div>
-                        <HouseholdDraftFields
-                          householdId={view.householdId}
-                          draft={view.draft}
-                          members={view.members}
-                          formatPersonName={formatPersonName}
-                          updateFinalHouseholdDraft={updateFinalHouseholdDraft}
-                          primaryEmptyLabel="No primary contact"
-                        />
-                        <div className="th-household-preview-strip">
-                          <div className="th-mini-block">
-                            <strong>Members</strong>
-                            <p>{view.members.map((member) => formatPersonName(member)).join(' · ')}</p>
-                          </div>
-                          <div className="th-mini-block">
-                            <strong>Reporting</strong>
-                            <p>{view.reporting.householdTotal > 0 ? formatCurrencyAmount(view.reporting.householdTotal) : 'No gifts yet'} · Largest {view.reporting.largestGift > 0 ? formatCurrencyAmount(view.reporting.largestGift) : '—'} · Last gift {view.reporting.lastGift || '—'}</p>
-                          </div>
-                        </div>
-                        <div className="th-stack" style={{ marginTop: 10 }}>
-                          <div className="th-panel-head" style={{ marginBottom: 0 }}>
-                            <span>Editable attribution</span>
-                            <span>{view.attributionPreview.length} linked record{view.attributionPreview.length === 1 ? '' : 's'}</span>
-                          </div>
-                          {view.attributionPreview.length === 0 ? (
-                            <div className="th-mini-block">
-                              <strong>No attribution rows to edit</strong>
-                              <p>This household does not currently have linked donation preview rows.</p>
-                            </div>
-                          ) : (
-                            view.attributionPreview.map((item) => (
-                              <div key={`attrib-edit-${view.householdId}-${item.sourceRowRef}`} className="th-mini-block">
-                                <div className="th-panel-head" style={{ marginBottom: 10 }}>
-                                  <span>{item.label}</span>
-                                  <span>{item.amount !== null ? formatCurrencyAmount(item.amount) : 'No amount'}</span>
-                                </div>
-                                <AttributionDraftFields
-                                  rowRef={item.sourceRowRef}
-                                  draft={item.draft}
-                                  members={view.members}
-                                  formatPersonName={formatPersonName}
-                                  summarizeAttributionDraft={summarizeAttributionDraft}
-                                  updateFinalAttributionDraft={updateFinalAttributionDraft}
-                                />
-                              </div>
-                            ))
-                          )}
-                        </div>
-                        <div className="th-table-wrap" style={{ marginTop: 10 }}>
-                          <table className="th-table th-household-preview-table">
-                            <thead>
-                              <tr>
-                                <th>Source</th>
-                                <th>Record</th>
-                                <th>Current household field</th>
-                                <th>Applied label</th>
-                                <th>Applied attribution</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {view.relatedRecords.length === 0 ? (
-                                <tr>
-                                  <td colSpan={5}>No preview rows linked to this household yet.</td>
-                                </tr>
-                              ) : (
-                                view.relatedRecords.map((record) => (
-                                  <tr key={`final-record-${view.householdId}-${record.sourceRowRef}`}>
-                                    <td>{getCompactSourceRef(record.sourceRowRef).primary}</td>
-                                    <td>{previewRecordLabel(record)}</td>
-                                    <td>{String(record.householdName ?? '—')}</td>
-                                    <td>{view.draft.label || '—'}</td>
-                                    <td>{summarizeAttributionDraft(finalAttributionDrafts[record.sourceRowRef] ?? buildInitialAttributionDraft(record, view.members, peopleById.get(previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId ?? '') ?? null), view.members, peopleById.get(previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId ?? '') ?? null)}</td>
-                                  </tr>
-                                ))
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                      </article>
-                    ))
-                  )}
+                  ) : null}
                   {entityModelResult && (
                     <article className="th-panel th-inner-panel">
                       <div className="th-panel-head">
@@ -4092,64 +5577,22 @@ export default function TransformHubPage() {
                     </div>
                   </div>
                 )}
-                {nonLedgerTableHeaders.length > 0 && (
-                  <div className="th-column-visibility-panel">
-                    <div className="th-review-match-actions" style={{ marginBottom: columnsPanelExpanded ? 12 : 0 }}>
-                      <button
-                        type="button"
-                        className={`th-button ${columnsPanelExpanded ? 'th-button-primary' : 'th-button-secondary'}`}
-                        style={{ minHeight: 34 }}
-                        onClick={() => setColumnsPanelExpanded((current) => !current)}
-                        aria-expanded={columnsPanelExpanded}
-                      >
-                        {columnsPanelExpanded ? 'Hide column editor' : 'Edit columns'}
+                {householdResult && (
+                  <div className="th-review-tab-row" style={{ marginBottom: 14 }}>
+                    <button type="button" className={`th-chip th-review-tab${attributionTableTab === 'needs_attribution' ? ' is-active' : ''}`} onClick={() => setAttributionTableTab('needs_attribution')}>
+                      Needs attribution {ambiguousAttributionRefs.size}
+                    </button>
+                    <button type="button" className={`th-chip th-review-tab${attributionTableTab === 'all' ? ' is-active' : ''}`} onClick={() => setAttributionTableTab('all')}>
+                      All rows {filteredDisplayedPreviewRecords.length}
+                    </button>
+                    {selectedAttributionGroupKey && (
+                      <button type="button" className="th-chip is-active" onClick={() => setSelectedAttributionGroupKey(null)}>
+                        Clear transaction focus
                       </button>
-                      <span className="th-helper" style={{ padding: 0 }}>
-                        {visibleNonLedgerTableHeaders.length} visible{hiddenNonLedgerTableHeaders.length > 0 ? ' · ' + hiddenNonLedgerTableHeaders.length + ' hidden' : null}
-                      </span>
-                    </div>
-                    {columnsPanelExpanded && (
-                      <>
-                        <div className="th-column-visibility-group">
-                          <span className="th-helper">Visible columns</span>
-                          <div className="th-chip-row">
-                            {visibleNonLedgerTableHeaders.map((header) => (
-                              <button
-                                key={`visible-${header}`}
-                                type="button"
-                                className="th-chip th-column-chip"
-                                onClick={() => setHiddenPreviewHeaders((current) => Array.from(new Set([...current, header])))}
-                                title={`Hide ${formatPreviewHeaderLabel(header)}`}
-                              >
-                                {formatPreviewHeaderLabel(header)}
-                                <span className="th-column-chip-action">Hide</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        {hiddenNonLedgerTableHeaders.length > 0 && (
-                          <div className="th-column-visibility-group">
-                            <span className="th-helper">Hidden columns</span>
-                            <div className="th-chip-row">
-                              {hiddenNonLedgerTableHeaders.map((header) => (
-                                <button
-                                  key={`hidden-${header}`}
-                                  type="button"
-                                  className="th-chip th-column-chip is-hidden"
-                                  onClick={() => setHiddenPreviewHeaders((current) => current.filter((item) => item !== header))}
-                                  title={`Show ${formatPreviewHeaderLabel(header)}`}
-                                >
-                                  {formatPreviewHeaderLabel(header)}
-                                  <span className="th-column-chip-action">Show</span>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </>
                     )}
                   </div>
                 )}
+                <div id="th-review-table" className="th-table-wrap">
                 <table className="th-table th-resizable-table" style={{ width: nonLedgerTableWidth, minWidth: nonLedgerTableWidth }}>
                   <colgroup>
                     {nonLedgerTableColumnKeys.map((columnKey) => (
@@ -4165,13 +5608,99 @@ export default function TransformHubPage() {
                         </div>
                       </th>
                       {visibleNonLedgerTableHeaders.map((header) => (
-                        <th key={header} className="th-resizable-header">
+                        <th
+                          key={header}
+                          draggable
+                          className={`th-resizable-header${selectedPreviewHeaders.includes(header) ? ' is-selected' : ''}${previewHeaderDropTarget === header ? ' is-drop-target' : ''}`}
+                          onClick={(event) => selectPreviewHeader(header, { additive: event.metaKey || event.ctrlKey })}
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            selectPreviewHeader(header);
+                            setPreviewTableContextMenu({ kind: 'column', header, x: event.clientX, y: event.clientY });
+                          }}
+                          onDoubleClick={() => startPreviewHeaderRename(header)}
+                          onDragStart={(event) => {
+                            event.dataTransfer.effectAllowed = 'move';
+                            event.dataTransfer.setData('text/plain', header);
+                            setDraggingPreviewHeader(header);
+                            setPreviewHeaderDropTarget(null);
+                          }}
+                          onDragOver={(event) => {
+                            if (!draggingPreviewHeader || draggingPreviewHeader === header) return;
+                            event.preventDefault();
+                            setPreviewHeaderDropTarget(header);
+                          }}
+                          onDrop={(event) => {
+                            if (!draggingPreviewHeader || draggingPreviewHeader === header) return;
+                            event.preventDefault();
+                            void handleMovePreviewColumn(draggingPreviewHeader, header);
+                          }}
+                          onDragEnd={() => {
+                            setDraggingPreviewHeader(null);
+                            setPreviewHeaderDropTarget(null);
+                          }}
+                        >
                           <div className="th-resizable-header-inner">
-                            <span>{formatPreviewHeaderLabel(header)}</span>
+                            {editingPreviewHeader === header ? (
+                              <input
+                                autoFocus
+                                className="th-table-cell-input th-table-header-input"
+                                value={editingPreviewHeaderDraft}
+                                onChange={(event) => setEditingPreviewHeaderDraft(event.target.value)}
+                                onClick={(event) => event.stopPropagation()}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    void commitPreviewHeaderRename(header);
+                                  }
+                                  if (event.key === 'Escape') {
+                                    event.preventDefault();
+                                    closePreviewHeaderRename();
+                                  }
+                                }}
+                                onBlur={() => { void commitPreviewHeaderRename(header); }}
+                              />
+                            ) : (
+                              <span>{formatPreviewHeaderLabel(header)}</span>
+                            )}
                             <button type="button" className="th-column-resizer" aria-label={`Resize ${formatPreviewHeaderLabel(header)} column`} onPointerDown={(event) => startNonLedgerColumnResize(header, event)} />
                           </div>
                         </th>
                       ))}
+                      {householdResult && (
+                        <>
+                          <th className="th-resizable-header">
+                            <div className="th-resizable-header-inner">
+                              <span>Role</span>
+                              <button type="button" className="th-column-resizer" aria-label="Resize Role column" onPointerDown={(event) => startNonLedgerColumnResize('__role__', event)} />
+                            </div>
+                          </th>
+                          <th className="th-resizable-header">
+                            <div className="th-resizable-header-inner">
+                              <span>Attribution type</span>
+                              <button type="button" className="th-column-resizer" aria-label="Resize Attribution type column" onPointerDown={(event) => startNonLedgerColumnResize('__attribution_type__', event)} />
+                            </div>
+                          </th>
+                          <th className="th-resizable-header">
+                            <div className="th-resizable-header-inner">
+                              <span>Credit amount</span>
+                              <button type="button" className="th-column-resizer" aria-label="Resize Credit amount column" onPointerDown={(event) => startNonLedgerColumnResize('__credit_amount__', event)} />
+                            </div>
+                          </th>
+                          <th className="th-resizable-header">
+                            <div className="th-resizable-header-inner">
+                              <span>Household</span>
+                              <button type="button" className="th-column-resizer" aria-label="Resize Household column" onPointerDown={(event) => startNonLedgerColumnResize('__household__', event)} />
+                            </div>
+                          </th>
+                          <th className="th-resizable-header">
+                            <div className="th-resizable-header-inner">
+                              <span>Notes</span>
+                              <button type="button" className="th-column-resizer" aria-label="Resize Notes column" onPointerDown={(event) => startNonLedgerColumnResize('__notes__', event)} />
+                            </div>
+                          </th>
+                        </>
+                      )}
                       {(fileClass === 'constituent' || fileClass === 'donor') && (
                         <th className="th-resizable-header">
                           <div className="th-resizable-header-inner">
@@ -4183,13 +5712,78 @@ export default function TransformHubPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredDisplayedPreviewRecords.map((record) => {
+                    {selectedAttributionGroupKey && (
+                      <tr>
+                        <td colSpan={nonLedgerTableColumnKeys.length}>
+                          <div className="th-mini-block">
+                            <strong>Focused ambiguity group</strong>
+                            <p>{ambiguousAttributionGroups.find((group) => group.key === selectedAttributionGroupKey)?.label ?? 'Selected attribution review group'}</p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    {visibleAttributionTableRecords.map((record) => {
                       const recordOrigins = getRecordSourceOrigins(record);
                       const isSourceFocused = previewSourceFocus === 'all' || recordOrigins.includes(previewSourceFocus);
+                      const { matchedPerson, draft: attributionDraft, assignedHouseholdId } = getAttributionDraftForRecord(record);
+                      const assignedHouseholdLabel = assignedHouseholdId ? householdLabelById.get(assignedHouseholdId) ?? assignedHouseholdId : '—';
+                      const recordRole = getRecordRole(record, attributionDraft, matchedPerson);
+                      const rawAmount = parseCurrencyAmount(record.amount);
+                      const displayCreditAmount = getDisplayCreditAmount(attributionDraft, rawAmount, recordRole);
+                      const needsAttributionReview = ambiguousAttributionRefs.has(record.sourceRowRef) && attributionDraft.mode === 'person';
+                      const isEditingRow = editingMergedRecordRef === record.sourceRowRef;
+                      const dropBefore = previewRowDropTarget?.rowRef === record.sourceRowRef && previewRowDropTarget.position === 'before';
+                      const dropAfter = previewRowDropTarget?.rowRef === record.sourceRowRef && previewRowDropTarget.position === 'after';
                       return (
-                        <tr key={record.id} style={previewSourceFocus === 'all' ? undefined : isSourceFocused ? { background: `${previewSourceColorByOrigin.get(previewSourceFocus)}12` } : { opacity: 0.48 }}>
+                        <tr
+                          key={record.id}
+                          className={[
+                            selectedPreviewRowRefs.includes(record.sourceRowRef) ? 'is-selected' : '',
+                            draggingPreviewRowRef === record.sourceRowRef ? 'is-dragging' : '',
+                            dropBefore ? 'is-drop-before' : '',
+                            dropAfter ? 'is-drop-after' : '',
+                          ].filter(Boolean).join(' ') || undefined}
+                          style={previewSourceFocus === 'all' ? undefined : isSourceFocused ? { background: `${previewSourceColorByOrigin.get(previewSourceFocus)}12` } : { opacity: 0.48 }}
+                          onClick={(event) => selectPreviewRow(record.sourceRowRef, { additive: event.metaKey || event.ctrlKey })}
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            selectPreviewRow(record.sourceRowRef);
+                            setPreviewTableContextMenu({ kind: 'row', rowRef: record.sourceRowRef, x: event.clientX, y: event.clientY });
+                          }}
+                          onDragOver={(event) => {
+                            if (!draggingPreviewRowRef || draggingPreviewRowRef === record.sourceRowRef) return;
+                            event.preventDefault();
+                            setPreviewRowDropTarget({ rowRef: record.sourceRowRef, position: getPreviewRowDropPosition(event) });
+                          }}
+                          onDrop={(event) => {
+                            if (!draggingPreviewRowRef || draggingPreviewRowRef === record.sourceRowRef) return;
+                            event.preventDefault();
+                            const position = getPreviewRowDropPosition(event);
+                            void handleMovePreviewRow(draggingPreviewRowRef, record.sourceRowRef, position);
+                          }}
+                        >
                           <td>
-                            <strong>{supportsDuplicateWorkflow ? describeRepresentativeSource(record) : getCompactSourceRef(record.sourceRowRef).primary}</strong>
+                            <div className="th-row-source-cell">
+                              <button
+                                type="button"
+                                className="th-row-drag-handle"
+                                draggable
+                                aria-label={`Drag row ${getCompactSourceRef(record.sourceRowRef).primary}`}
+                                onDragStart={(event) => {
+                                  event.dataTransfer.effectAllowed = 'move';
+                                  event.dataTransfer.setData('text/plain', record.sourceRowRef);
+                                  setDraggingPreviewRowRef(record.sourceRowRef);
+                                  setPreviewRowDropTarget(null);
+                                }}
+                                onDragEnd={() => {
+                                  setDraggingPreviewRowRef(null);
+                                  setPreviewRowDropTarget(null);
+                                }}
+                              >
+                                <GripVertical size={14} />
+                              </button>
+                              <strong>{supportsDuplicateWorkflow ? describeRepresentativeSource(record) : getCompactSourceRef(record.sourceRowRef).primary}</strong>
+                            </div>
                             <div className="th-cell-chip-row" style={{ marginTop: 6 }}>
                               {recordOrigins.map((origin) => (
                                 <span
@@ -4209,11 +5803,174 @@ export default function TransformHubPage() {
                             {record.needs_person_resolve && <div className="th-inline-note">needs person resolve</div>}
                           </td>
                           {visibleNonLedgerTableHeaders.map((header) => (
-                            <td key={`${record.id}-${header}`}>{getPreviewRecordRawCell(record, header)}</td>
+                            <td
+                              key={`${record.id}-${header}`}
+                              className={[
+                                selectedPreviewHeaders.includes(header) ? 'is-selected' : '',
+                                activePreviewCell?.rowRef === record.sourceRowRef && activePreviewCell.header === header ? 'is-active-cell' : '',
+                              ].filter(Boolean).join(' ') || undefined}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                selectPreviewCell(record.sourceRowRef, header, { additive: event.metaKey || event.ctrlKey });
+                              }}
+                              onDoubleClick={() => {
+                                setEditingPreviewCell({ rowRef: record.sourceRowRef, header });
+                                setEditingPreviewCellDraft(getPreviewRecordRawCell(record, header).replace(/^—$/, ''));
+                              }}
+                            >
+                              {isEditingRow ? (
+                                <input
+                                  className="th-table-cell-input"
+                                  value={String((getEditableDraftKeyForHeader(header) ? editingMergedDraft[getEditableDraftKeyForHeader(header) as string] : editingMergedDraft[`raw:${header}`]) ?? getPreviewRecordRawCell(record, header)).replace(/^—$/, '')}
+                                  onChange={(event) => updateInlinePreviewCell(header, event.target.value)}
+                                />
+                              ) : editingPreviewCell?.rowRef === record.sourceRowRef && editingPreviewCell.header === header ? (
+                                <input
+                                  autoFocus
+                                  className="th-table-cell-input"
+                                  value={editingPreviewCellDraft}
+                                  onChange={(event) => setEditingPreviewCellDraft(event.target.value)}
+                                  onBlur={() => {
+                                    void applyPreviewCellChanges([{ rowRef: record.sourceRowRef, header, value: editingPreviewCellDraft }], 'Updated cell value.');
+                                    setEditingPreviewCell(null);
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter') {
+                                      event.preventDefault();
+                                      void applyPreviewCellChanges([{ rowRef: record.sourceRowRef, header, value: editingPreviewCellDraft }], 'Updated cell value.');
+                                      setEditingPreviewCell(null);
+                                    }
+                                    if (event.key === 'Escape') {
+                                      event.preventDefault();
+                                      setEditingPreviewCell(null);
+                                    }
+                                  }}
+                                />
+                              ) : (
+                                <span className="th-cell-ellipsis" title={getPreviewRecordRawCell(record, header)}>
+                                  {getPreviewRecordRawCell(record, header)}
+                                </span>
+                              )}
+                            </td>
                           ))}
+                          {householdResult && (
+                            <>
+                              <td>
+                                {isEditingRow ? (
+                                  <select
+                                    className="th-table-cell-input"
+                                    value={recordRole}
+                                    onChange={(event) => updateRecordRole(record, attributionDraft, matchedPerson, assignedHouseholdId, event.target.value as 'primary' | 'secondary' | 'organization' | 'unassigned')}
+                                  >
+                                    <option value="primary">Primary</option>
+                                    <option value="secondary">Secondary</option>
+                                    <option value="organization">Organization</option>
+                                    <option value="unassigned">Unassigned</option>
+                                  </select>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className={`th-role-pill is-${getRoleTone(recordRole)} th-role-pill-button`}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        cycleRecordRole(record, attributionDraft, matchedPerson, assignedHouseholdId);
+                                      }}
+                                      title="Click to change role"
+                                    >
+                                      {recordRole}
+                                    </button>
+                                    <div className="th-inline-note">{getBestPersonDisplayLabel(matchedPerson, record)}</div>
+                                  </>
+                                )}
+                              </td>
+                              <td>
+                                {isEditingRow ? (
+                                  <select
+                                    className="th-table-cell-input"
+                                    value={attributionDraft.mode}
+                                    onChange={(event) => updateFinalAttributionDraft(record.sourceRowRef, { mode: event.target.value as PreviewAttributionDraft['mode'] })}
+                                  >
+                                    <option value="person">Hard credit</option>
+                                    <option value="soft_credit">Soft credit</option>
+                                    <option value="joint_split">Joint gift</option>
+                                    <option value="org_match">Org match</option>
+                                  </select>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className={`th-attribution-chip${needsAttributionReview ? ' is-review' : ''} th-attribution-chip-button`}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      cycleAttributionMode(record, attributionDraft);
+                                    }}
+                                    title="Click to change attribution type"
+                                  >
+                                    {getAttributionTagLabel(attributionDraft.mode, needsAttributionReview)}
+                                  </button>
+                                )}
+                              </td>
+                              <td>
+                                {isEditingRow ? (
+                                  <input
+                                    className="th-table-cell-input"
+                                    value={String(attributionDraft.creditAmount ?? rawAmount ?? '')}
+                                    onChange={(event) => updateRecordCreditAmount(record, event.target.value)}
+                                  />
+                                ) : (
+                                  <>
+                                    <strong>{displayCreditAmount > 0 ? formatCurrencyAmount(displayCreditAmount) : '$0'}</strong>
+                                    <div className="th-inline-note">
+                                      {attributionDraft.mode === 'joint_split'
+                                        ? `${getRecordCreditPercent(attributionDraft, recordRole)}% split`
+                                        : `${getAttributionModeCreditLabel(attributionDraft.mode)} credit`}
+                                    </div>
+                                  </>
+                                )}
+                              </td>
+                              <td>
+                                {isEditingRow ? (
+                                  <select
+                                    className="th-table-cell-input"
+                                    value={assignedHouseholdId ?? ''}
+                                    onChange={(event) => updateFinalAttributionDraft(record.sourceRowRef, { householdId: event.target.value || null })}
+                                  >
+                                    <option value="">No household</option>
+                                    {householdLayerViews.map((view) => (
+                                      <option key={`${record.sourceRowRef}-${view.householdId}`} value={view.householdId}>{view.draft.label}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span className="th-cell-ellipsis" title={assignedHouseholdLabel}>
+                                    {assignedHouseholdLabel}
+                                  </span>
+                                )}
+                              </td>
+                              <td>
+                                {isEditingRow ? (
+                                  <textarea
+                                    className="th-table-cell-input th-table-cell-textarea"
+                                    value={attributionDraft.notes || ''}
+                                    onChange={(event) => updateFinalAttributionDraft(record.sourceRowRef, { notes: event.target.value })}
+                                  />
+                                ) : (
+                                  <span className="th-cell-ellipsis" title={attributionDraft.notes || String(record.memo ?? '—')}>
+                                    {attributionDraft.notes || String(record.memo ?? '—')}
+                                  </span>
+                                )}
+                              </td>
+                            </>
+                          )}
                           {(fileClass === 'constituent' || fileClass === 'donor') && (
                             <td>
-                              <button type="button" className="th-button th-button-secondary" style={{ minHeight: 32 }} onClick={() => startMergedRecordEdit(record)}>Edit result</button>
+                              {isEditingRow ? (
+                                <div className="th-review-match-actions">
+                                  <button type="button" className="th-button th-button-primary" style={{ minHeight: 32 }} onClick={() => void handleSaveMergedRecordEdit()}>Save</button>
+                                  <button type="button" className="th-button th-button-secondary" style={{ minHeight: 32 }} onClick={() => { setEditingMergedRecordRef(null); setEditingMergedDraft({}); }}>Cancel</button>
+                                </div>
+                              ) : (
+                                <button type="button" className="th-button th-button-secondary" style={{ minHeight: 32 }} onClick={() => startMergedRecordEdit(record)}>Edit row</button>
+                              )}
                               {(mergedSourceRefsByRepresentative.get(record.sourceRowRef)?.length ?? 0) > 0 && <div className="th-inline-note">Merged {mergedSourceRefsByRepresentative.get(record.sourceRowRef)?.join(', ')}</div>}
                             </td>
                           )}
@@ -4222,6 +5979,29 @@ export default function TransformHubPage() {
                     })}
                   </tbody>
                 </table>
+                {previewTableContextMenu && (
+                  <div
+                    className="th-context-menu"
+                    style={{ left: previewTableContextMenu.x, top: previewTableContextMenu.y }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    {previewTableContextMenu.kind === 'column' ? (
+                      <>
+                        <button type="button" className="th-context-menu-item" onClick={() => void handleInsertPreviewColumn(previewTableContextMenu.header, 'left')}>Insert column left</button>
+                        <button type="button" className="th-context-menu-item" onClick={() => void handleInsertPreviewColumn(previewTableContextMenu.header, 'right')}>Insert column right</button>
+                        <button type="button" className="th-context-menu-item" onClick={() => startPreviewHeaderRename(previewTableContextMenu.header)}>Rename column</button>
+                        <button type="button" className="th-context-menu-item is-danger" onClick={() => void handleDeletePreviewColumns(selectedPreviewHeaders.length > 0 ? selectedPreviewHeaders : [previewTableContextMenu.header])}>Delete column{selectedPreviewHeaders.length > 1 ? 's' : ''}</button>
+                      </>
+                    ) : (
+                      <>
+                        <button type="button" className="th-context-menu-item" onClick={() => void handleInsertPreviewRow(previewTableContextMenu.rowRef, 'above')}>Insert row above</button>
+                        <button type="button" className="th-context-menu-item" onClick={() => void handleInsertPreviewRow(previewTableContextMenu.rowRef, 'below')}>Insert row below</button>
+                        <button type="button" className="th-context-menu-item is-danger" onClick={() => void handleDeletePreviewRows(selectedPreviewRowRefs.length > 0 ? selectedPreviewRowRefs : [previewTableContextMenu.rowRef])}>Delete row{selectedPreviewRowRefs.length > 1 ? 's' : ''}</button>
+                      </>
+                    )}
+                  </div>
+                )}
+                </div>
               </div>
               )}
             </div>

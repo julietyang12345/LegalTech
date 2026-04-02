@@ -38,40 +38,58 @@ if 'xl/sharedStrings.xml' in zf.namelist():
 workbook = ET.fromstring(zf.read('xl/workbook.xml'))
 rels = ET.fromstring(zf.read('xl/_rels/workbook.xml.rels'))
 rel_map = {rel.attrib['Id']: rel.attrib['Target'] for rel in rels.findall('rel:Relationship', NS)}
-first_sheet = workbook.find('main:sheets/main:sheet', NS)
-if first_sheet is None:
+sheets = workbook.findall('main:sheets/main:sheet', NS)
+if not sheets:
     raise SystemExit('No worksheet found in workbook')
 
-sheet_target = rel_map[first_sheet.attrib['{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id']]
-if not sheet_target.startswith('worksheets/'):
-    sheet_target = f'worksheets/{sheet_target.split("worksheets/")[-1]}'
-sheet_xml = ET.fromstring(zf.read(f'xl/{sheet_target}'))
+parsed_sheets = []
 
-rows = []
-max_index = -1
-for row in sheet_xml.findall('main:sheetData/main:row', NS):
-    values = {}
-    for cell in row.findall('main:c', NS):
-        ref = cell.attrib.get('r', '')
-        idx = col_index(col_letters(ref))
-        max_index = max(max_index, idx)
-        cell_type = cell.attrib.get('t')
-        value_node = cell.find('main:v', NS)
-        inline_node = cell.find('main:is/main:t', NS)
-        value = ''
-        if cell_type == 's' and value_node is not None:
-            value = shared_strings[int(value_node.text or '0')] if shared_strings else ''
-        elif inline_node is not None:
-            value = inline_node.text or ''
-        elif value_node is not None:
-            value = value_node.text or ''
-        values[idx] = str(value).strip()
-    rows.append(values)
+for sheet_index, sheet in enumerate(sheets):
+    sheet_name = sheet.attrib.get('name', f'Sheet {sheet_index + 1}')
+    rel_id = sheet.attrib.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+    if not rel_id or rel_id not in rel_map:
+        continue
 
-raw_rows = []
-if rows:
-    width = max_index + 1
-    for row in rows:
-        raw_rows.append([str(row.get(index, '')).strip() for index in range(width)])
+    sheet_target = rel_map[rel_id]
+    if not sheet_target.startswith('worksheets/'):
+        sheet_target = f'worksheets/{sheet_target.split("worksheets/")[-1]}'
 
-print(json.dumps({'raw_rows': raw_rows}))
+    sheet_xml = ET.fromstring(zf.read(f'xl/{sheet_target}'))
+
+    rows = []
+    max_index = -1
+    for row in sheet_xml.findall('main:sheetData/main:row', NS):
+        values = {}
+        for cell in row.findall('main:c', NS):
+            ref = cell.attrib.get('r', '')
+            idx = col_index(col_letters(ref))
+            max_index = max(max_index, idx)
+            cell_type = cell.attrib.get('t')
+            value_node = cell.find('main:v', NS)
+            inline_node = cell.find('main:is/main:t', NS)
+            value = ''
+            if cell_type == 's' and value_node is not None:
+                value = shared_strings[int(value_node.text or '0')] if shared_strings else ''
+            elif inline_node is not None:
+                value = inline_node.text or ''
+            elif value_node is not None:
+                value = value_node.text or ''
+            values[idx] = str(value).strip()
+        rows.append(values)
+
+    raw_rows = []
+    if rows:
+        width = max_index + 1
+        for row in rows:
+            raw_rows.append([str(row.get(index, '')).strip() for index in range(width)])
+
+    parsed_sheets.append({
+        'sheet_name': sheet_name,
+        'sheet_index': sheet_index,
+        'raw_rows': raw_rows,
+    })
+
+print(json.dumps({
+    'raw_rows': parsed_sheets[0]['raw_rows'] if parsed_sheets else [],
+    'sheets': parsed_sheets,
+}))

@@ -38,12 +38,13 @@ type IngestPayload = {
   contentsBase64?: string;
   sessionId?: string;
   forceIngest?: boolean;
+  selectedWorkbookSheets?: string[];
 };
 
 type IngestResponse = {
-  sessionId: string;
+  sessionId: string | null;
   parsedFile: ParsedFile;
-  schema: ResolvedSchema;
+  schema: ResolvedSchema | null;
   status: TransformSessionStatus;
   guardrails: GuardrailFinding[];
   blockingIssues: BlockingIssue[];

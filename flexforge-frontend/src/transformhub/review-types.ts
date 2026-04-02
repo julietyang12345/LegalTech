@@ -16,12 +16,31 @@ export type HouseholdLayerView = {
   members: CanonicalPerson[];
   relatedRecords: PreviewRecord[];
   draft: FinalHouseholdDraft;
+  communication: {
+    addressee: string;
+    formalSalutation: string;
+    informalSalutation: string;
+    primaryLabel: string;
+  };
   reporting: {
     householdTotal: number;
     largestGift: number;
     lastGift: string | null;
     yearsGiving: number;
+    giftCount: number;
+    memberBreakdown: Array<{
+      personId: string;
+      name: string;
+      total: number;
+      giftCount: number;
+    }>;
   };
+  status: {
+    tone: 'ready' | 'warning' | 'info';
+    label: string;
+    note: string;
+  };
+  alerts: string[];
   attributionPreview: Array<{
     recordId: string;
     sourceRowRef: string;

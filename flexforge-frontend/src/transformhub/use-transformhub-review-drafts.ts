@@ -49,14 +49,23 @@ export function useTransformHubReviewDrafts({
       Object.fromEntries(
         previewRecords.map((record) => {
           const matchedPerson = peopleById.get(previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId ?? '') ?? null;
-          const members = householdResult.households
-            .find((household) => household.memberIds.includes(matchedPerson?.id ?? ''))
+          const matchedHousehold = householdResult.households
+            .find((household) => household.memberIds.includes(matchedPerson?.id ?? '')) ?? null;
+          const members = matchedHousehold
             ?.memberIds.map((memberId) => peopleById.get(memberId))
             .filter((member): member is CanonicalPerson => Boolean(member)) ?? [];
-          return [record.sourceRowRef, current[record.sourceRowRef] ?? buildInitialAttributionDraft(record, members, matchedPerson)];
+          const existing = current[record.sourceRowRef] ?? buildInitialAttributionDraft(record, members, matchedPerson);
+          return [record.sourceRowRef, {
+            ...existing,
+            householdId: existing.householdId ?? matchedHousehold?.id ?? null,
+            creditAmount: existing.creditAmount ?? null,
+            campaignFund: existing.campaignFund || [record.campaignName, record.fund].filter(Boolean).join(' · '),
+            notes: existing.notes ?? '',
+          }];
         }),
-      ),
+      ) as FinalAttributionDraftMap,
     );
+
   }, [
     householdResult,
     peopleById,

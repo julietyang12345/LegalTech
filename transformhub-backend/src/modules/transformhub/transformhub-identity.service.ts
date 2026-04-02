@@ -190,14 +190,6 @@ export class TransformHubIdentityService {
   }
 
 
-  private householdAddressKey(person: any): string | null {
-    const address = this.normStr(person.addressLine1 || person.address || '');
-    const zip = String(person.zip || '').trim();
-    if (address && zip) return `${address}|${zip}`;
-    if (address) return `${address}|${this.householdLocationKey(person)}`;
-    return null;
-  }
-
   private householdLocationKey(person: any): string {
     const zip = String(person.zip || '').trim();
     if (zip) return `zip:${zip}`;
@@ -207,15 +199,83 @@ export class TransformHubIdentityService {
     return 'unknown';
   }
 
+  private householdExactAddressZipKey(person: any): string | null {
+    const address = this.normStr(person.addressLine1 || person.address || '');
+    const zip = String(person.zip || '').trim();
+    if (!address || !zip) return null;
+    return `addrzip:${address}|${zip}`;
+  }
+
+  private householdSurnameZipKey(person: any): string | null {
+    const lastName = this.normStr(person.lastName || '');
+    const zip = String(person.zip || '').trim();
+    if (!lastName || !zip) return null;
+    return `surnamezip:${lastName}|${zip}`;
+  }
+
+  private normalizedHouseholdName(person: any): string {
+    return this.normStr(person.householdName || person.household_name || '');
+  }
+
+  private normalizedEmailDomain(email: string): string {
+    const normalizedEmail = this.normalizeEmail(email || '');
+    if (!normalizedEmail.includes('@')) return '';
+    return normalizedEmail.split('@')[1] || '';
+  }
+
+  private isConsumerEmailDomain(domain: string): boolean {
+    return new Set(['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'me.com', 'aol.com']).has(domain);
+  }
+
+  private sharedValueEvidence(values: string[], evidenceKey: string): string[] {
+    const counts = new Map<string, number>();
+    values.filter(Boolean).forEach((value) => counts.set(value, (counts.get(value) ?? 0) + 1));
+    return Array.from(counts.values()).some((count) => count >= 2) ? [evidenceKey] : [];
+  }
+
+  private getSurnameZipSupportEvidence(group: any[]): string[] {
+    const evidence = new Set<string>();
+    this.sharedValueEvidence(group.map((person) => this.normalizedHouseholdName(person)), 'same_household_name').forEach((item) => evidence.add(item));
+    this.sharedValueEvidence(group.map((person) => this.normalizePhone(person.phone || '')).filter((value) => value.length >= 7), 'same_phone').forEach((item) => evidence.add(item));
+    this.sharedValueEvidence(group.map((person) => this.normalizeEmail(person.email || '')).filter(Boolean), 'shared_email').forEach((item) => evidence.add(item));
+    this.sharedValueEvidence(
+      group
+        .map((person) => this.normalizedEmailDomain(person.email || ''))
+        .filter((domain) => domain && !this.isConsumerEmailDomain(domain)),
+      'shared_email_domain',
+    ).forEach((item) => evidence.add(item));
+    return Array.from(evidence);
+  }
+
+  private hasConflictingExactAddresses(group: any[]): boolean {
+    const exactAddresses = Array.from(new Set(group.map((person) => this.householdExactAddressZipKey(person)).filter(Boolean)));
+    return exactAddresses.length > 1;
+  }
+
   private householdKeyForPeople(people: any[]): string | null {
+    const exactAddressKey = people
+      .map((person) => this.householdExactAddressZipKey(person))
+      .find((key): key is string => Boolean(key));
+    if (exactAddressKey) return exactAddressKey;
+    const surnameZipKey = people
+      .map((person) => this.householdSurnameZipKey(person))
+      .find((key): key is string => Boolean(key));
+    if (surnameZipKey) return surnameZipKey;
     const primary = people.find((person) => person.lastName) ?? people[0];
     if (!primary?.lastName) return null;
     return `${this.normStr(primary.lastName)}|${this.householdLocationKey(primary)}`;
   }
 
   private householdKeyForHousehold(household: any): string | null {
-    if (!household?.lastName) return null;
     const locationKey = String(household.locationKey || '').trim() || 'unknown';
+    const primaryAddress = this.normStr(household?.primaryAddress || '');
+    if (primaryAddress && locationKey.startsWith('zip:')) {
+      return `addrzip:${primaryAddress}|${locationKey.slice(4)}`;
+    }
+    if (household?.lastName && locationKey.startsWith('zip:')) {
+      return `surnamezip:${this.normStr(household.lastName)}|${locationKey.slice(4)}`;
+    }
+    if (!household?.lastName) return null;
     return `${this.normStr(household.lastName)}|${locationKey}`;
   }
 
@@ -603,32 +663,18 @@ export class TransformHubIdentityService {
     };
   }
 
-  private async buildHouseholdReviewSuggestions(persons: any[], households: any[]) {
+  private async buildHouseholdReviewSuggestions(reviewCandidates: Array<{ key: string; members: any[]; evidence: string[] }>) {
     if (!this.ai.isEnabled) return [];
-
-    const householdMemberIds = new Set<string>();
-    households.forEach((household) => (household.memberIds || []).forEach((memberId: string) => householdMemberIds.add(memberId)));
-
-    const buckets = new Map<string, any[]>();
-    persons.forEach((person) => {
-      const addressKey = this.householdAddressKey(person);
-      if (!addressKey || householdMemberIds.has(person.id)) return;
-      const current = buckets.get(addressKey) ?? [];
-      current.push(person);
-      buckets.set(addressKey, current);
-    });
 
     const suggestions: any[] = [];
     let sequence = 0;
-    for (const [addressKey, members] of buckets.entries()) {
+    for (const candidate of reviewCandidates) {
+      const addressKey = candidate.key;
+      const members = candidate.members;
       if (members.length < 2) continue;
-      const uniqueLastNames = Array.from(new Set(members.map((member) => this.normStr(member.lastName || '')).filter(Boolean)));
-      const evidence = ['same_address'];
-      if (members.every((member) => member.zip) && new Set(members.map((member) => String(member.zip))).size === 1) evidence.push('same_zip');
-      if (uniqueLastNames.length > 1) evidence.push('distinct_last_names');
       const aiSuggestion = await this.ai.suggestHouseholdMatch({
         addressKey,
-        evidence,
+        evidence: candidate.evidence,
         members: members.map((member) => ({
           id: member.id,
           firstName: member.firstName,
@@ -651,7 +697,7 @@ export class TransformHubIdentityService {
           state: member.state,
           zip: member.zip,
         })),
-        matchedEvidence: evidence,
+        matchedEvidence: candidate.evidence,
         aiSuggestion,
       });
     }
@@ -661,24 +707,10 @@ export class TransformHubIdentityService {
 
   async resolveHouseholds(persons: any[], options?: { usePersistentHouseholdMemory?: boolean }): Promise<any> {
     const households: any[] = [];
-    const grouped = new Map<string, any[]>();
     const ungroupedPersonIds: string[] = [];
     const usePersistentHouseholdMemory = options?.usePersistentHouseholdMemory === true;
-
-    for (const person of persons) {
-      if (!person.lastName) {
-        ungroupedPersonIds.push(person.id);
-        continue;
-      }
-      const key = this.householdKeyForPeople([person]);
-      if (!key) {
-        ungroupedPersonIds.push(person.id);
-        continue;
-      }
-      const group = grouped.get(key) ?? [];
-      group.push(person);
-      grouped.set(key, group);
-    }
+    const assignedPersonIds = new Set<string>();
+    const reviewCandidateMap = new Map<string, { key: string; members: any[]; evidence: string[] }>();
 
     const existingHouseholds = usePersistentHouseholdMemory ? await this.householdRepo.find() : [];
     const existingByKey = new Map<string, ThHousehold>();
@@ -689,13 +721,7 @@ export class TransformHubIdentityService {
 
     let hhCount = existingHouseholds.length;
     const pendingHouseholdSaves: ThHousehold[] = [];
-
-    for (const [key, group] of grouped) {
-      if (group.length < 2) {
-        ungroupedPersonIds.push(group[0].id);
-        continue;
-      }
-
+    const addHouseholdGroup = (key: string, group: any[]) => {
       const existing = existingByKey.get(key);
       const payload = this.buildHouseholdPayload(group, existing);
       const household = {
@@ -705,13 +731,58 @@ export class TransformHubIdentityService {
       households.push(household);
       pendingHouseholdSaves.push(household);
       existingByKey.set(key, household);
+      group.forEach((person) => assignedPersonIds.add(person.id));
+    };
+
+    const exactAddressBuckets = new Map<string, any[]>();
+    persons.forEach((person) => {
+      const key = this.householdExactAddressZipKey(person);
+      if (!key) return;
+      const bucket = exactAddressBuckets.get(key) ?? [];
+      bucket.push(person);
+      exactAddressBuckets.set(key, bucket);
+    });
+
+    for (const [key, group] of exactAddressBuckets.entries()) {
+      const uniqueGroup = Array.from(new Map(group.map((person) => [person.id, person])).values());
+      if (uniqueGroup.length < 2) continue;
+      addHouseholdGroup(key, uniqueGroup);
+    }
+
+    const surnameZipBuckets = new Map<string, any[]>();
+    persons.forEach((person) => {
+      if (assignedPersonIds.has(person.id)) return;
+      const key = this.householdSurnameZipKey(person);
+      if (!key) return;
+      const bucket = surnameZipBuckets.get(key) ?? [];
+      bucket.push(person);
+      surnameZipBuckets.set(key, bucket);
+    });
+
+    for (const [key, group] of surnameZipBuckets.entries()) {
+      const uniqueGroup = Array.from(new Map(group.map((person) => [person.id, person])).values());
+      if (uniqueGroup.length < 2) continue;
+      const supportEvidence = this.getSurnameZipSupportEvidence(uniqueGroup);
+      if (!this.hasConflictingExactAddresses(uniqueGroup) && supportEvidence.length > 0) {
+        addHouseholdGroup(key, uniqueGroup);
+        continue;
+      }
+      reviewCandidateMap.set(key, {
+        key,
+        members: uniqueGroup,
+        evidence: ['same_surname', 'same_zip', ...supportEvidence],
+      });
     }
 
     if (pendingHouseholdSaves.length > 0 && usePersistentHouseholdMemory) {
       await this.householdRepo.save(pendingHouseholdSaves);
     }
 
-    const reviewSuggestions = await this.buildHouseholdReviewSuggestions(persons, households);
+    persons.forEach((person) => {
+      if (!assignedPersonIds.has(person.id)) ungroupedPersonIds.push(person.id);
+    });
+
+    const reviewSuggestions = await this.buildHouseholdReviewSuggestions(Array.from(reviewCandidateMap.values()));
 
     return { households, ungroupedPersonIds, reviewSuggestions };
   }

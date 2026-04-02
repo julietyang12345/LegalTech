@@ -171,6 +171,17 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
 
   async ingest(body: any) {
     const parsedFile = await this.pipeline.parseInboundFile(body);
+    if (parsedFile.workbookSelectionRequired) {
+      return {
+        sessionId: null,
+        status: TransformSessionStatus.REVIEW,
+        parsedFile,
+        schema: null,
+        guardrails: [],
+        blockingIssues: [],
+        rows: [],
+      };
+    }
     this.assertRowCount(parsedFile.rows, 'ingest');
     const schema = await this.pipeline.resolveSchema(parsedFile);
     await this.pipeline.persistResolvedTemplate(parsedFile.platform, schema);

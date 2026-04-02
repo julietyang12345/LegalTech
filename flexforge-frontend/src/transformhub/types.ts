@@ -143,6 +143,9 @@ export type PreviewAttributionDraft = {
   mode: PreviewAttributionMode;
   primaryPersonId: string | null;
   secondaryPersonId: string | null;
+  householdId: string | null;
+  creditAmount: number | null;
+  campaignFund: string;
   organizationName: string;
   splitPercent: number;
   notes: string;
@@ -177,6 +180,24 @@ export type ParsedFile = {
   rows: ParsedSourceRow[];
   platform: SourcePlatform;
   structureAnalysis: StructureAnalysis;
+  sourceSheetName?: string;
+  workbookSelectionRequired?: boolean;
+  selectedWorkbookSheets?: string[];
+  workbookSheets?: Array<{
+    sheetName: string;
+    sheetIndex: number;
+    fileName: string;
+    delimiter: string;
+    headers: string[];
+    rows: ParsedSourceRow[];
+    platform: SourcePlatform;
+    structureAnalysis: StructureAnalysis;
+    fileClass: FileClass;
+    schema?: ResolvedSchema;
+    guardrails?: GuardrailFinding[];
+    preview?: ClassifiedPreview;
+    canonicalRows?: CanonicalLedgerRow[];
+  }>;
   preview?: ClassifiedPreview;
 };
 

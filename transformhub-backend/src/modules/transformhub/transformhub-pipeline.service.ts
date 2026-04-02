@@ -509,7 +509,7 @@ export class TransformHubPipelineService implements OnModuleInit {
     return { fileName, delimiter, headers: s.headers, rows: s.rows, platform, structureAnalysis: s.structureAnalysis };
   }
 
-  async parseXlsxFile(fileName: string, contentsBase64: string, platform: string): Promise<any> {
+  async parseXlsxFile(fileName: string, contentsBase64: string, platform: string, selectedWorkbookSheets: string[] = []): Promise<any> {
     if (contentsBase64.length > TRANSFORMHUB_MAX_BASE64_CHARS) {
       throw new Error(`XLSX upload exceeds ${TRANSFORMHUB_MAX_BASE64_CHARS} base64 characters.`);
     }
@@ -556,21 +556,61 @@ export class TransformHubPipelineService implements OnModuleInit {
 
         try {
           const parsed = JSON.parse(stdout);
-          const s = this.analyzeStructure(platform, parsed.raw_rows || []);
-          resolve({ fileName, delimiter: 'xlsx', headers: s.headers, rows: s.rows, platform, structureAnalysis: s.structureAnalysis });
+          const rawSheets = Array.isArray(parsed.sheets) ? parsed.sheets : [{ sheet_name: 'Sheet 1', sheet_index: 0, raw_rows: parsed.raw_rows || [] }];
+          const workbookSheets = rawSheets.map((sheet: any, index: number) => {
+            const analyzed = this.analyzeStructure(platform, Array.isArray(sheet.raw_rows) ? sheet.raw_rows : []);
+            const parsedSheetFileName = `${fileName} · ${String(sheet.sheet_name || `Sheet ${index + 1}`)}`;
+            return {
+              sheetName: String(sheet.sheet_name || `Sheet ${index + 1}`),
+              sheetIndex: typeof sheet.sheet_index === 'number' ? sheet.sheet_index : index,
+              fileName: parsedSheetFileName,
+              delimiter: 'xlsx',
+              headers: analyzed.headers,
+              rows: analyzed.rows.map((row: any) => ({
+                ...row,
+                ref: `${String(sheet.sheet_name || `Sheet ${index + 1}`)}::${row.ref}`,
+              })),
+              platform,
+              structureAnalysis: analyzed.structureAnalysis,
+              fileClass: this.detectFileClass(platform, analyzed.headers),
+            };
+          });
+          const selectedNames = selectedWorkbookSheets.length > 0
+            ? new Set(selectedWorkbookSheets.map((name) => String(name)))
+            : null;
+          const selectedSheets = selectedNames && selectedNames.size > 0
+            ? workbookSheets.filter((sheet: any) => selectedNames.has(sheet.sheetName))
+            : workbookSheets;
+          const baseSheet = selectedSheets[0] ?? workbookSheets[0];
+          resolve({
+            fileName,
+            delimiter: 'xlsx',
+            headers: baseSheet.headers,
+            rows: baseSheet.rows,
+            platform,
+            structureAnalysis: baseSheet.structureAnalysis,
+            workbookSheets,
+            selectedWorkbookSheets: selectedSheets.map((sheet: any) => sheet.sheetName),
+            workbookSelectionRequired: workbookSheets.length > 1 && (!selectedNames || selectedNames.size === 0),
+            sourceSheetName: baseSheet.sheetName,
+            fileClass: baseSheet.fileClass,
+          });
         } catch (error) {
           reject(error instanceof Error ? error : new Error('Failed to parse XLSX file.'));
         }
       });
 
-      child.stdin.end(JSON.stringify({ contents_base64: contentsBase64 }));
+      child.stdin.end(JSON.stringify({
+        contents_base64: contentsBase64,
+        selected_workbook_sheets: selectedWorkbookSheets,
+      }));
     });
   }
 
   async parseInboundFile(body: any): Promise<any> {
     const platform = body.platform || 'AppFolio';
     const fileName = body.fileName || 'upload.csv';
-    if (body.kind === 'xlsx') return this.parseXlsxFile(fileName, body.contentsBase64 || '', platform);
+    if (body.kind === 'xlsx') return this.parseXlsxFile(fileName, body.contentsBase64 || '', platform, body.selectedWorkbookSheets || []);
 
     const contents = body.contents || '';
     if (contents.length > TRANSFORMHUB_MAX_TEXT_CHARS) {
