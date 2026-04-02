@@ -79,6 +79,7 @@ export type ConstituentPreviewRecord = {
   createdAt: string;
   updatedAt: string;
   rawValues?: Record<string, string>;
+  attribution?: PreviewAttributionDraft;
 };
 
 export type DonorPreviewRecord = {
@@ -104,6 +105,7 @@ export type DonorPreviewRecord = {
   memo: string;
   currency: string;
   rawValues?: Record<string, string>;
+  attribution?: PreviewAttributionDraft;
 };
 
 export type CampaignPreviewRecord = {
@@ -135,6 +137,17 @@ export type UnknownPreviewRecord = {
   values: Record<string, string>;
 };
 
+export type PreviewAttributionMode = 'person' | 'joint_split' | 'soft_credit' | 'org_match';
+
+export type PreviewAttributionDraft = {
+  mode: PreviewAttributionMode;
+  primaryPersonId: string | null;
+  secondaryPersonId: string | null;
+  organizationName: string;
+  splitPercent: number;
+  notes: string;
+};
+
 export type ClassifiedPreview = {
   fileClass: FileClass;
   canonicalModel: string;
@@ -146,6 +159,15 @@ export type ClassifiedPreview = {
   records: Array<
     ConstituentPreviewRecord | DonorPreviewRecord | CampaignPreviewRecord | CoaPreviewRecord | UnknownPreviewRecord
   >;
+};
+
+export type PreviewRecord = ClassifiedPreview['records'][number] & {
+  rawValues?: Record<string, string>;
+  values?: Record<string, string>;
+  sourceFile?: string;
+  source_file?: string;
+  needs_person_resolve?: boolean;
+  [key: string]: unknown;
 };
 
 export type ParsedFile = {
@@ -463,6 +485,12 @@ export type CanonicalHousehold = {
   primaryAddress: string;
   salutation: Salutation;
   salutationText: string;
+  label?: string;
+  primaryPersonId?: string | null;
+  formalSalutation?: string;
+  informalSalutation?: string;
+  eventSalutation?: string;
+  addressee?: string;
   jointGivingTotal: number;
   version: number;
   createdAt: string;
@@ -631,6 +659,16 @@ export type DonorReport = {
   totalCredit: number;
   persons: CanonicalPerson[];
   households: CanonicalHousehold[];
+  attributionRows: Array<{
+    source_row_ref: string;
+    amount: number;
+    household_id: string | null;
+    primary_person_id: string | null;
+    secondary_person_id: string | null;
+    organization_name: string | null;
+    attribution_mode: string;
+    credit_summary: string;
+  }>;
 };
 
 export type AuditDashboard = AuditRuleResult;
@@ -656,5 +694,54 @@ export type CrmSyncExport = {
     name: string;
     formatted_for: string;
     source_row_ref: string;
+    attribution_mode?: string | null;
+    organization_credit?: string | null;
+    addressee?: string | null;
   }>;
+};
+
+export type EntityModelResult = {
+  rows: CanonicalLedgerRow[];
+  persons: CanonicalPerson[];
+  households: CanonicalHousehold[];
+  organizations: Array<{ id: string; name: string; normalizedName?: string }>;
+  donations: Array<{
+    id: string;
+    rowId: string | null;
+    amount: number;
+    date: string | null;
+    fund: string | null;
+    appeal: string | null;
+    attribution_type: string;
+    canonical_person_id: string | null;
+    canonical_household_id: string | null;
+    canonical_org_id: string | null;
+    attribution_entry_id: string | null;
+  }>;
+  attributions: Array<{
+    id: string;
+    rowId: string | null;
+    donationId: string | null;
+    personId: string | null;
+    organizationId: string | null;
+    kind: string;
+    workplace: boolean;
+  }>;
+  relationships: Array<{
+    id: string;
+    type: string;
+    personId: string | null;
+    organizationId: string | null;
+    confidence: number;
+  }>;
+  campaigns: Array<Record<string, unknown>>;
+  appeals: Array<Record<string, unknown>>;
+  auditDecisions: Array<Record<string, unknown>>;
+  summary: {
+    personCount: number;
+    householdCount: number;
+    organizationCount: number;
+    donationCount: number;
+  };
+  persisted: boolean;
 };

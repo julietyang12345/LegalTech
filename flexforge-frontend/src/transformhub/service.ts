@@ -9,6 +9,7 @@ import type {
   CanonicalPerson,
   CrmSyncExport,
   DonorReport,
+  EntityModelResult,
   BlockingIssue,
   GuardrailFinding,
   HouseholdResolverResult,
@@ -18,6 +19,8 @@ import type {
   PersonResolverResult,
   PostingReceipt,
   PreflightResult,
+  PreviewRecord,
+  TaxonomyException,
   ResolvedSchema,
   SourcePlatform,
   TaxonomyCode,
@@ -212,8 +215,8 @@ export async function reviewTaxonomySuggestionBackend(
   exceptionId: string,
   action: 'approve' | 'reject',
   payload: { resolvedCode?: string; notes?: string; reviewedBy?: string } = {},
-): Promise<{ exception: any; updatedRows: CanonicalLedgerRow[]; audit?: AuditRuleResult | null }> {
-  const response = await api.post<{ exception: any; updatedRows: CanonicalLedgerRow[]; audit?: AuditRuleResult | null }>(
+): Promise<{ exception: TaxonomyException; updatedRows: CanonicalLedgerRow[]; audit?: AuditRuleResult | null }> {
+  const response = await api.post<{ exception: TaxonomyException; updatedRows: CanonicalLedgerRow[]; audit?: AuditRuleResult | null }>(
     "/transformhub/taxonomy-exceptions/" + exceptionId + "/review",
     {
       action,
@@ -244,8 +247,9 @@ export async function fetchDonorReport(
   rows: CanonicalLedgerRow[],
   persons: CanonicalPerson[] = [],
   households: CanonicalHousehold[] = [],
+  previewRecords: PreviewRecord[] = [],
 ): Promise<DonorReport> {
-  const response = await api.post<DonorReport>('/transformhub/donor-report', { rows, persons, households });
+  const response = await api.post<DonorReport>('/transformhub/donor-report', { rows, persons, households, previewRecords });
   return response.data;
 }
 
@@ -266,7 +270,27 @@ export async function fetchCrmSyncExport(
   rows: CanonicalLedgerRow[],
   persons: CanonicalPerson[] = [],
   households: CanonicalHousehold[] = [],
+  previewRecords: PreviewRecord[] = [],
 ): Promise<CrmSyncExport> {
-  const response = await api.post<CrmSyncExport>('/transformhub/crm-sync-export', { rows, persons, households });
+  const response = await api.post<CrmSyncExport>('/transformhub/crm-sync-export', { rows, persons, households, previewRecords });
+  return response.data;
+}
+
+export async function fetchEntityModel(
+  rows: CanonicalLedgerRow[],
+  persons: CanonicalPerson[] = [],
+  households: CanonicalHousehold[] = [],
+  previewRecords: PreviewRecord[] = [],
+  sessionId?: string,
+  persist = false,
+): Promise<EntityModelResult> {
+  const response = await api.post<EntityModelResult>('/transformhub/entity-model', {
+    rows,
+    existingPersons: persons,
+    households,
+    previewRecords,
+    sessionId,
+    persist,
+  });
   return response.data;
 }

@@ -1,5 +1,6 @@
 import type {
   ParsedFile,
+  PreviewRecord,
   ResolvedSchema,
   SessionTaxonomyGroup,
   SessionTaxonomyState,
@@ -258,7 +259,7 @@ export function deriveTaxonomyScanColumns(parsedFile: ParsedFile | null, schema:
 
 export function extractObservedTaxonomyValues(parsedFile: ParsedFile | null, scanColumns: TaxonomyScanColumn[]): TaxonomyObservedValue[] {
   if (!parsedFile?.preview?.records?.length || scanColumns.length === 0) return [];
-  const records = parsedFile.preview.records as Array<Record<string, any>>;
+  const records = parsedFile.preview.records as PreviewRecord[];
   const observed = new Map<string, TaxonomyObservedValue>();
   records.forEach((record) => {
     const rawValues = (record.rawValues ?? record.values ?? {}) as Record<string, string>;
@@ -632,8 +633,21 @@ export function updateTaxonomyScanColumn(state: SessionTaxonomyState, header: st
   return { ...state, scanColumns };
 }
 
+export function renameResolvedTaxonomyGroup(state: SessionTaxonomyState, groupId: string, canonicalLabel: string): SessionTaxonomyState {
+  const nextLabel = canonicalLabel.trim();
+  if (!nextLabel) return state;
+  return {
+    ...state,
+    resolvedGroups: state.resolvedGroups.map((group) => (
+      group.id === groupId
+        ? { ...group, canonicalLabel: nextLabel }
+        : group
+    )),
+  };
+}
+
 export function applyTaxonomyGroupsToPreviewRecords(
-  records: Array<Record<string, any>>,
+  records: PreviewRecord[],
   state: SessionTaxonomyState | null | undefined,
   schema: ResolvedSchema | null,
 ) {
@@ -660,7 +674,7 @@ export function applyTaxonomyGroupsToPreviewRecords(
       changed = true;
     });
     if (!changed) return record;
-    const nextRecord = { ...record, rawValues } as Record<string, any>;
+    const nextRecord: PreviewRecord = { ...record, rawValues };
     if (fieldMap.fund && rawValues[fieldMap.fund] !== undefined) nextRecord.fund = rawValues[fieldMap.fund];
     if (fieldMap.appeal && rawValues[fieldMap.appeal] !== undefined) nextRecord.appeal = rawValues[fieldMap.appeal];
     if (fieldMap.campaign_name && rawValues[fieldMap.campaign_name] !== undefined) nextRecord.campaignName = rawValues[fieldMap.campaign_name];

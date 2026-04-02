@@ -1,4 +1,4 @@
-import { startTransition, type ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { startTransition, type ChangeEvent, useCallback, useEffect, useMemo, type PointerEvent as ReactPointerEvent, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
@@ -20,7 +20,7 @@ import { addBalancingRow, updateCanonicalRow } from './engine';
 import {
   evaluateTaxonomyBackend,
   exportCsvFallback,
-  reviewFieldSuggestionBackend,
+  fetchEntityModel,
   reviewTaxonomySuggestionBackend,
   fetchAuditDashboard,
   fetchAuditRuleCatalog,
@@ -43,12 +43,14 @@ import {
 import type {
   AuditRuleCatalogEntry,
   AuditRuleResult,
+  BlockingIssue,
   CampaignPerformanceReport,
   CanonicalHousehold,
   CanonicalLedgerRow,
   CanonicalPerson,
   CrmSyncExport,
   DonorReport,
+  EntityModelResult,
   GuardrailFinding,
   HouseholdResolverResult,
   HouseholdReviewSuggestion,
@@ -58,6 +60,8 @@ import type {
   PersonResolverResult,
   PostingReceipt,
   PreflightResult,
+  PreviewRecord,
+  PreviewAttributionDraft,
   ResolvedSchema,
   SourcePlatform,
   SessionTaxonomyState,
@@ -67,8 +71,14 @@ import type {
   TransformSessionStatus,
 } from './types';
 import { TransformHubAuditModePanel, TransformHubMappingLayerPanel } from './product-panels';
-import { applyTaxonomyGroupsToPreviewRecords, buildTaxonomyState, dismissTaxonomyCandidate, mergeTaxonomyCandidate, summarizeTaxonomyState, updateTaxonomyScanColumn } from './taxonomy-session';
+import { applyTaxonomyGroupsToPreviewRecords, buildTaxonomyState, dismissTaxonomyCandidate, mergeTaxonomyCandidate, renameResolvedTaxonomyGroup, summarizeTaxonomyState, updateTaxonomyScanColumn } from './taxonomy-session';
 import { buildAppendColumnDecisions, getPendingColumnMerges, mergeUploadIntoExisting, prepareIncomingUpload, resolvePendingColumnMerge as resolvePendingColumnMergeInParsedFile, type AppendColumnDecision, type PendingColumnMerge } from './merge-table';
+import { AttributionDraftFields, EntityGraphEditors, HouseholdDraftFields } from './review-editors';
+import { EntityGraphTable, type EntityGraphSelection, type EntityGraphView } from './review-graph';
+import type { FinalAttributionDraftMap, FinalHouseholdDraft } from './review-types';
+import { useTransformHubReviewGraph } from './use-transformhub-review-graph';
+import { useTransformHubHouseholdReview } from './use-transformhub-household-review';
+import { useTransformHubReviewDrafts } from './use-transformhub-review-drafts';
 
 
 const PLATFORM_GROUPS: Record<string, SourcePlatform[]> = {
@@ -79,6 +89,45 @@ const PLATFORM_GROUPS: Record<string, SourcePlatform[]> = {
 };
 
 const CRM_PLATFORMS = new Set<SourcePlatform>(['Bloomerang', 'Salesforce', 'NeonOne', 'GiveButter']);
+const PREVIEW_SOURCE_PALETTE = ['#2563eb', '#16a34a', '#d97706', '#7c3aed', '#dc2626', '#0891b2'];
+
+type UploadPayload = {
+  fileName: string;
+  kind: 'text' | 'xlsx';
+  contents?: string;
+  contentsBase64?: string;
+};
+
+type AppendReviewSummary = {
+  sourceFile: string;
+  appendedRows: number;
+  combinedColumns: number;
+  newColumns: string[];
+  fuzzyMerges: AppendColumnDecision[];
+};
+
+type PendingAppendReview = {
+  sessionId: string;
+  currentParsedFile: ParsedFile;
+  currentSchema: ResolvedSchema;
+  currentRows: CanonicalLedgerRow[];
+  incomingParsedFile: ParsedFile;
+  incomingSchema: ResolvedSchema;
+  incomingRows: CanonicalLedgerRow[];
+  columnDecisions: AppendColumnDecision[];
+  guardrails: GuardrailFinding[];
+  blockingIssues: BlockingIssue[];
+  summary: AppendReviewSummary;
+};
+
+type EditablePreviewDraftValue = string | string[];
+type EditablePreviewDraft = Record<string, EditablePreviewDraftValue>;
+
+type ParsedFileWithOptionalMergeState = ParsedFile & {
+  mergeState?: {
+    uploadedFiles?: string[];
+  };
+};
 
 function readFileText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -161,16 +210,6 @@ function formatPersonLabel(person: CanonicalPerson | null): string {
   return name || person.id;
 }
 
-function describePersonContact(person: CanonicalPerson | null): string {
-  if (!person) return 'No candidate person payload was returned for this review item.';
-  return [
-    person.email ? `Email: ${person.email}` : null,
-    person.phone ? `Phone: ${person.phone}` : null,
-    person.addressLine1 ? `Address: ${person.addressLine1}` : null,
-    person.city || person.state || person.zip ? `Location: ${[person.city, person.state, person.zip].filter(Boolean).join(', ')}` : null,
-  ].filter(Boolean).join(' · ') || 'No direct contact fields are available for this candidate.';
-}
-
 function describeLedgerRow(row: CanonicalLedgerRow): string {
   return [
     row.memo ? `Memo: ${row.memo}` : null,
@@ -180,24 +219,40 @@ function describeLedgerRow(row: CanonicalLedgerRow): string {
   ].filter(Boolean).join(' · ') || 'No additional row details.';
 }
 
-function previewRecordLabel(record: any): string {
+function previewRecordLabel(record: PreviewRecord | null | undefined): string {
   if (!record) return 'Unknown preview record';
-  return record.displayName || record.donorName || record.campaignName || record.accountName || record.preview || record.sourceRowRef || record.id || 'Unknown preview record';
+  return String(record.displayName || record.donorName || record.campaignName || record.accountName || record.preview || record.sourceRowRef || record.id || 'Unknown preview record');
 }
 
 function formatPreviewHeaderLabel(header: string): string {
   return header.replace(/[_-]+/g, ' ').trim() || header;
 }
 
-function getPreviewRecordRawValues(record: any): Record<string, string> {
+function getPreviewRecordRawValues(record: PreviewRecord | null | undefined): Record<string, string> {
   return record?.rawValues ?? record?.values ?? {};
 }
 
-function getPreviewRecordRawCell(record: any, header: string): string {
+function getPreviewRecordRawCell(record: PreviewRecord | null | undefined, header: string): string {
   const rawValues = getPreviewRecordRawValues(record);
   const value = rawValues[header];
   if (value === undefined || value === null || value === '') return '—';
   return String(value);
+}
+
+function getPreviewRecordAttribution(record: PreviewRecord | null | undefined): PreviewAttributionDraft | null {
+  if (!record) return null;
+  const candidate = record.attribution;
+  if (!candidate || typeof candidate !== 'object') return null;
+  const attribution = candidate as Partial<PreviewAttributionDraft>;
+  if (!attribution.mode) return null;
+  return {
+    mode: attribution.mode,
+    primaryPersonId: attribution.primaryPersonId ?? null,
+    secondaryPersonId: attribution.secondaryPersonId ?? null,
+    organizationName: attribution.organizationName ?? '',
+    splitPercent: attribution.splitPercent ?? 50,
+    notes: attribution.notes ?? '',
+  };
 }
 
 function getSourceOriginKey(sourceRef: string | null | undefined, fallbackContext?: string | null): string {
@@ -222,13 +277,6 @@ function summarizeAppendColumnDecisions(decisions: AppendColumnDecision[]) {
   const newColumns = decisions.filter((decision) => decision.action !== 'merge' || !decision.targetHeader).map((decision) => decision.incomingHeader);
   const fuzzyMerges = decisions.filter((decision) => decision.matchType === 'fuzzy');
   return { mergedColumns, newColumns, fuzzyMerges };
-}
-
-function formatAppendDecisionLabel(matchType: AppendColumnDecision['matchType']): string {
-  if (matchType === 'exact') return 'Exact match';
-  if (matchType === 'alias') return 'Alias match';
-  if (matchType === 'fuzzy') return 'Fuzzy match';
-  return 'New column';
 }
 
 function buildAppendPreviewColumns(existingHeaders: string[], decisions: AppendColumnDecision[]) {
@@ -291,6 +339,202 @@ function countPeopleReviewBuckets(matches: PersonMatch[], mergeDecisions: Map<st
   );
 }
 
+function formatPersonName(person: Pick<CanonicalPerson, 'firstName' | 'lastName' | 'id'> | null | undefined): string {
+  if (!person) return 'Unknown person';
+  return [person.firstName, person.lastName].filter(Boolean).join(' ').trim() || person.id;
+}
+
+function buildHouseholdLabel(members: CanonicalPerson[], fallbackLastName?: string | null) {
+  const lastName = fallbackLastName || members.map((member) => member.lastName).find(Boolean) || 'Household';
+  return /\bhousehold\b/i.test(lastName) ? lastName : `${lastName} Household`;
+}
+
+function buildInformalSalutation(members: CanonicalPerson[]) {
+  const firstNames = members.map((member) => member.firstName).filter(Boolean);
+  if (firstNames.length === 0) return 'Friends';
+  if (firstNames.length === 1) return firstNames[0];
+  if (firstNames.length === 2) return `${firstNames[0]} and ${firstNames[1]}`;
+  return `${firstNames[0]} and family`;
+}
+
+function buildAddressee(members: CanonicalPerson[]) {
+  if (members.length === 0) return 'Household';
+  if (members.length === 1) return formatPersonName(members[0]);
+  const uniqueLastNames = Array.from(new Set(members.map((member) => member.lastName).filter(Boolean)));
+  const firstNames = members.map((member) => member.firstName).filter(Boolean);
+  if (members.length === 2 && uniqueLastNames.length === 1 && firstNames.length === 2) {
+    return `${firstNames[0]} and ${firstNames[1]} ${uniqueLastNames[0]}`;
+  }
+  return members.map((member) => formatPersonName(member)).join(' and ');
+}
+
+function buildFormalSalutation(members: CanonicalPerson[]) {
+  if (members.length === 0) return 'Household';
+  if (members.length === 1) return formatPersonName(members[0]);
+  const uniqueLastNames = Array.from(new Set(members.map((member) => member.lastName).filter(Boolean)));
+  if (members.length === 2 && uniqueLastNames.length === 1) {
+    return `${members.map((member) => member.firstName).filter(Boolean).join(' and ')} ${uniqueLastNames[0]}`.trim();
+  }
+  return buildAddressee(members);
+}
+
+function buildInitialHouseholdDraft(household: CanonicalHousehold, members: CanonicalPerson[]): FinalHouseholdDraft {
+  return {
+    label: household.label || buildHouseholdLabel(members, household.lastName),
+    primaryPersonId: household.primaryPersonId ?? household.memberIds[0] ?? null,
+    formalSalutation: household.formalSalutation || household.salutationText || buildFormalSalutation(members),
+    informalSalutation: household.informalSalutation || buildInformalSalutation(members),
+    eventSalutation: household.eventSalutation || buildFormalSalutation(members),
+    addressee: household.addressee || buildAddressee(members),
+  };
+}
+
+function parseCurrencyAmount(value: unknown): number | null {
+  const normalized = String(value ?? '').replace(/[^0-9.-]+/g, '');
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatCurrencyAmount(value: number): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value);
+}
+
+function matchesEntityGraphSearch(values: unknown[], query: string) {
+  if (!query.trim()) return true;
+  const normalized = query.trim().toLowerCase();
+  return values.some((value) => String(value ?? '').toLowerCase().includes(normalized));
+}
+
+function matchesEntityGraphSelection(
+  selection: EntityGraphSelection | null,
+  row: unknown,
+  entityModelResult: EntityModelResult | null,
+  view: EntityGraphView,
+) {
+  if (!selection || !entityModelResult) return true;
+  const attributionsForDonation = (donationId: string) => entityModelResult.attributions.filter((entry) => entry.donationId === donationId);
+  const householdsById = new Map(entityModelResult.households.map((household) => [household.id, household]));
+
+  if (selection.type === 'donations') {
+    const donation = entityModelResult.donations.find((item) => item.id === selection.id);
+    if (!donation) return true;
+    if (view === 'donations') return (row as EntityModelResult['donations'][number]).id === donation.id;
+    if (view === 'attributions') return (row as EntityModelResult['attributions'][number]).donationId === donation.id;
+    if (view === 'households') return (row as EntityModelResult['households'][number]).id === donation.canonical_household_id;
+    if (view === 'persons') {
+      const personIds = new Set([donation.canonical_person_id, ...attributionsForDonation(donation.id).map((entry) => entry.personId)].filter(Boolean));
+      return personIds.has((row as EntityModelResult['persons'][number]).id);
+    }
+    if (view === 'organizations') {
+      const orgIds = new Set([donation.canonical_org_id, ...attributionsForDonation(donation.id).map((entry) => entry.organizationId)].filter(Boolean));
+      return orgIds.has((row as EntityModelResult['organizations'][number]).id);
+    }
+  }
+
+  if (selection.type === 'attributions') {
+    const attribution = entityModelResult.attributions.find((item) => item.id === selection.id);
+    if (!attribution) return true;
+    if (view === 'attributions') return (row as EntityModelResult['attributions'][number]).id === attribution.id;
+    if (view === 'donations') return (row as EntityModelResult['donations'][number]).id === attribution.donationId;
+    if (view === 'persons') return (row as EntityModelResult['persons'][number]).id === attribution.personId;
+    if (view === 'organizations') return (row as EntityModelResult['organizations'][number]).id === attribution.organizationId;
+    if (view === 'households') {
+      const donation = entityModelResult.donations.find((item) => item.id === attribution.donationId);
+      return (row as EntityModelResult['households'][number]).id === donation?.canonical_household_id;
+    }
+  }
+
+  if (selection.type === 'households') {
+    const household = householdsById.get(selection.id);
+    if (!household) return true;
+    if (view === 'households') return (row as EntityModelResult['households'][number]).id === household.id;
+    if (view === 'persons') return household.memberIds.includes((row as EntityModelResult['persons'][number]).id);
+    if (view === 'donations') return (row as EntityModelResult['donations'][number]).canonical_household_id === household.id;
+    if (view === 'attributions') {
+      const donationIds = new Set(entityModelResult.donations.filter((item) => item.canonical_household_id === household.id).map((item) => item.id));
+      const donationId = (row as EntityModelResult['attributions'][number]).donationId;
+      return donationId ? donationIds.has(donationId) : false;
+    }
+    if (view === 'organizations') {
+      const donationIds = new Set(entityModelResult.donations.filter((item) => item.canonical_household_id === household.id).map((item) => item.id));
+      return entityModelResult.attributions.some((entry) => entry.donationId !== null && donationIds.has(entry.donationId) && entry.organizationId === (row as EntityModelResult['organizations'][number]).id);
+    }
+  }
+
+  if (selection.type === 'persons') {
+    if (view === 'persons') return (row as EntityModelResult['persons'][number]).id === selection.id;
+    if (view === 'donations') return (row as EntityModelResult['donations'][number]).canonical_person_id === selection.id;
+    if (view === 'attributions') return (row as EntityModelResult['attributions'][number]).personId === selection.id;
+    if (view === 'households') return (row as EntityModelResult['households'][number]).memberIds.includes(selection.id);
+    if (view === 'organizations') {
+      return entityModelResult.attributions.some((entry) => entry.personId === selection.id && entry.organizationId === (row as EntityModelResult['organizations'][number]).id);
+    }
+  }
+
+  if (selection.type === 'organizations') {
+    if (view === 'organizations') return (row as EntityModelResult['organizations'][number]).id === selection.id;
+    if (view === 'attributions') return (row as EntityModelResult['attributions'][number]).organizationId === selection.id;
+    if (view === 'donations') return (row as EntityModelResult['donations'][number]).canonical_org_id === selection.id;
+    if (view === 'persons') {
+      return entityModelResult.attributions.some((entry) => entry.organizationId === selection.id && entry.personId === (row as EntityModelResult['persons'][number]).id);
+    }
+    if (view === 'households') {
+      const householdIds = new Set(
+        entityModelResult.donations
+          .filter((donation) => donation.canonical_org_id === selection.id)
+          .map((donation) => donation.canonical_household_id)
+          .filter(Boolean),
+      );
+      return householdIds.has((row as EntityModelResult['households'][number]).id);
+    }
+  }
+
+  return true;
+}
+
+function summarizeAttributionDraft(
+  draft: PreviewAttributionDraft,
+  members: CanonicalPerson[],
+  matchedPerson: CanonicalPerson | null,
+) {
+  const memberById = new Map(members.map((member) => [member.id, member]));
+  const primary = (draft.primaryPersonId ? memberById.get(draft.primaryPersonId) : null) ?? matchedPerson;
+  const secondary = draft.secondaryPersonId ? memberById.get(draft.secondaryPersonId) ?? null : null;
+  if (draft.mode === 'joint_split') {
+    return `${primary ? formatPersonName(primary) : 'Primary donor'} ${draft.splitPercent}% · ${secondary ? formatPersonName(secondary) : 'Secondary donor'} ${Math.max(0, 100 - draft.splitPercent)}%`;
+  }
+  if (draft.mode === 'soft_credit') {
+    return `${primary ? formatPersonName(primary) : 'Primary donor'} hard credit · ${secondary ? formatPersonName(secondary) : 'Secondary donor'} soft credit`;
+  }
+  if (draft.mode === 'org_match') {
+    return `${primary ? formatPersonName(primary) : 'Primary donor'} hard credit · ${draft.organizationName || 'Employer'} matching gift`;
+  }
+  return `${primary ? formatPersonName(primary) : 'Primary donor'} hard credit`;
+}
+
+function buildInitialAttributionDraft(
+  record: PreviewRecord,
+  members: CanonicalPerson[],
+  matchedPerson: CanonicalPerson | null,
+): PreviewAttributionDraft {
+  const existing = record.attribution as PreviewAttributionDraft | undefined;
+  if (existing) return existing;
+  const lowerName = String(record.donorName || record.displayName || '').toLowerCase();
+  const lowerMemo = String(record.memo || '').toLowerCase();
+  const hasJointGift = /\s(&|and)\s/.test(lowerName) && members.length > 1;
+  const hasSoftCredit = /soft credit|tribute|in honor/i.test(lowerMemo);
+  const hasOrgMatch = /matching gift|employer match|workplace/i.test(lowerMemo);
+  return {
+    mode: hasOrgMatch ? 'org_match' : hasSoftCredit ? 'soft_credit' : hasJointGift ? 'joint_split' : 'person',
+    primaryPersonId: matchedPerson?.id ?? members[0]?.id ?? null,
+    secondaryPersonId: members.find((member) => member.id !== (matchedPerson?.id ?? members[0]?.id))?.id ?? null,
+    organizationName: String(record.organizationName ?? ''),
+    splitPercent: 50,
+    notes: '',
+  };
+}
+
 function summarizeMatchSignals(match: PersonMatch): string {
   const count = match.matchedFields.filter(Boolean).length;
   if (count === 0) return 'Name similarity';
@@ -319,7 +563,7 @@ function getPreviewCompareFields(headers: string[]): PreviewCompareField[] {
   ];
 }
 
-function getPreviewCompareValue(record: any, field: PreviewCompareField): string {
+function getPreviewCompareValue(record: PreviewRecord | null, field: PreviewCompareField): string {
   if (!record) return '—';
   if (field.kind === 'source') {
     return record.sourceRowRef ? String(record.sourceRowRef) : '—';
@@ -330,6 +574,7 @@ function getPreviewCompareValue(record: any, field: PreviewCompareField): string
 function buildMatchedPersonCompareRecord(person: CanonicalPerson | null) {
   if (!person) return null;
   return {
+    id: `db:${person.id}`,
     sourceRowRef: `db:${person.id}`,
     firstName: person.firstName,
     lastName: person.lastName,
@@ -351,31 +596,9 @@ function buildMatchedPersonCompareRecord(person: CanonicalPerson | null) {
     memo: '',
     donorName: [person.firstName, person.lastName].filter(Boolean).join(' ').trim(),
     displayName: [person.firstName, person.lastName].filter(Boolean).join(' ').trim() || person.id,
-  };
-}
-
-function describePreviewRecord(record: any, fileClass: string): string {
-  if (!record) return 'No preview record details.';
-  if (fileClass === 'constituent') {
-    return [
-      record.email ? `Email: ${record.email}` : null,
-      record.phone ? `Phone: ${record.phone}` : null,
-      record.address ? `Address: ${record.address}` : null,
-      record.city || record.state || record.postalCode ? `Location: ${[record.city, record.state, record.postalCode].filter(Boolean).join(', ')}` : null,
-      record.householdName ? `Household: ${record.householdName}` : null,
-    ].filter(Boolean).join(' · ') || 'No additional preview details.';
-  }
-  if (fileClass === 'donor') {
-    return [
-      record.email ? `Email: ${record.email}` : null,
-      record.phone ? `Phone: ${record.phone}` : null,
-      record.amount ? `Amount: ${record.amount}` : null,
-      record.fund ? `Fund: ${record.fund}` : null,
-      record.appeal ? `Appeal: ${record.appeal}` : null,
-      record.householdName ? `Household: ${record.householdName}` : null,
-    ].filter(Boolean).join(' · ') || 'No additional preview details.';
-  }
-  return [record.preview, record.code, record.campaignName, record.accountName].filter(Boolean).join(' · ') || 'No additional preview details.';
+    preview: [person.firstName, person.lastName].filter(Boolean).join(' ').trim() || person.id,
+    values: {},
+  } as unknown as PreviewRecord;
 }
 
 export default function TransformHubPage() {
@@ -392,10 +615,11 @@ export default function TransformHubPage() {
   const [message, setMessage] = useState<string>('Load a sample or upload CSV/XLSX to run the backend-backed pipeline.');
   const [fallbackFileName, setFallbackFileName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [blockingIssues, setBlockingIssues] = useState<any[]>([]);
-  const [pendingIngestPayload, setPendingIngestPayload] = useState<any | null>(null);
+  const [activeUploadLabel, setActiveUploadLabel] = useState<string | null>(null);
+  const [blockingIssues, setBlockingIssues] = useState<BlockingIssue[]>([]);
+  const [pendingIngestPayload, setPendingIngestPayload] = useState<UploadPayload | null>(null);
   const [isResolvingPendingMerge, setIsResolvingPendingMerge] = useState(false);
-  const [pendingAppendReview, setPendingAppendReview] = useState<any | null>(null);
+  const [pendingAppendReview, setPendingAppendReview] = useState<PendingAppendReview | null>(null);
 
   // Layer 03 state
   const [personResult, setPersonResult] = useState<PersonResolverResult | null>(null);
@@ -415,6 +639,7 @@ export default function TransformHubPage() {
 
   // Layer 08 state
   const [auditResult, setAuditResult] = useState<AuditRuleResult | null>(null);
+  const [entityModelResult, setEntityModelResult] = useState<EntityModelResult | null>(null);
   const [auditCatalog, setAuditCatalog] = useState<AuditRuleCatalogEntry[]>([]);
   const [auditEngineVersion, setAuditEngineVersion] = useState<string | null>(null);
   const [rowSpotlight, setRowSpotlight] = useState<'all' | 'donor-review' | 'identity-review' | 'mapping-review'>('all');
@@ -427,13 +652,21 @@ export default function TransformHubPage() {
   const [editingMergedRecordRef, setEditingMergedRecordRef] = useState<string | null>(null);
   const [editingMergedDraft, setEditingMergedDraft] = useState<Record<string, string>>({});
   const [peopleReviewFilter, setPeopleReviewFilter] = useState<PeopleReviewFilter>('pending');
-  const [nonLedgerReviewPanel, setNonLedgerReviewPanel] = useState<'duplicate' | 'household' | 'taxonomy'>('duplicate');
+  const [nonLedgerReviewPanel, setNonLedgerReviewPanel] = useState<'duplicate' | 'household' | 'taxonomy' | 'final'>('duplicate');
   const [taxonomyScanColumnsExpanded, setTaxonomyScanColumnsExpanded] = useState(false);
   const [pendingTaxonomyMergeCandidateId, setPendingTaxonomyMergeCandidateId] = useState<string | null>(null);
   const [pendingTaxonomyMergeLabel, setPendingTaxonomyMergeLabel] = useState('');
-  const [expandedTaxonomyCandidateId, setExpandedTaxonomyCandidateId] = useState<string | null>(null);
+  const [editingResolvedTaxonomyGroupId, setEditingResolvedTaxonomyGroupId] = useState<string | null>(null);
+  const [editingResolvedTaxonomyLabel, setEditingResolvedTaxonomyLabel] = useState('');
   const [nonLedgerColumnWidths, setNonLedgerColumnWidths] = useState<Record<string, number>>({ __source__: 172, __actions__: 156 });
   const [isRunningTaxonomyReview, setIsRunningTaxonomyReview] = useState(false);
+  const [finalHouseholdDrafts, setFinalHouseholdDrafts] = useState<Record<string, FinalHouseholdDraft>>({});
+  const [finalAttributionDrafts, setFinalAttributionDrafts] = useState<FinalAttributionDraftMap>({});
+  const [isRefreshingEntityModel, setIsRefreshingEntityModel] = useState(false);
+  const [entityGraphView, setEntityGraphView] = useState<EntityGraphView>('donations');
+  const [entityGraphSearch, setEntityGraphSearch] = useState('');
+  const [entityGraphSelection, setEntityGraphSelection] = useState<EntityGraphSelection | null>(null);
+  const [organizationGraphDrafts, setOrganizationGraphDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -473,26 +706,27 @@ export default function TransformHubPage() {
   const activeFixRowId = rowSpotlight === 'all' ? null : visibleRows[0]?.id ?? null;
   const preview = parsedFile?.preview ?? null;
   const pendingColumnMerges = getPendingColumnMerges(parsedFile);
-  const triggeredGuardrails = guardrails.filter((item) => item.triggered);
   const fileClass = schema?.fileClass ?? preview?.fileClass ?? 'ledger';
   const isLedgerFile = fileClass === 'ledger';
-  const previewBaseRecords = preview?.records ?? [];
+  const previewBaseRecords = useMemo<PreviewRecord[]>(
+    () => (preview?.records as PreviewRecord[] | undefined) ?? [],
+    [preview?.records],
+  );
   const reviewTableActive = true;
   const duplicateReviewActive = nonLedgerReviewPanel === 'duplicate';
   const householdReviewActive = nonLedgerReviewPanel === 'household';
-  const previewRecords = useMemo(
+  const previewRecords = useMemo<PreviewRecord[]>(
     () => (!isLedgerFile
-      ? applyTaxonomyGroupsToPreviewRecords(previewBaseRecords as Array<Record<string, any>>, taxonomyState, schema)
+      ? applyTaxonomyGroupsToPreviewRecords(previewBaseRecords, taxonomyState, schema) as PreviewRecord[]
       : previewBaseRecords),
     [isLedgerFile, previewBaseRecords, taxonomyState, schema],
   );
   const taxonomySummary = summarizeTaxonomyState(taxonomyState);
   const previewCount = preview?.summary.rowCount ?? parsedFile?.rows.length ?? 0;
-  const isConstituentFile = fileClass === "constituent";
   const isDonorFile = fileClass === "donor";
   const supportsDuplicateWorkflow = !isLedgerFile;
   const supportsHouseholdWorkflow = !isLedgerFile;
-  const canonicalPeople = personResult?.persons ?? [];
+  const canonicalPeople = useMemo(() => personResult?.persons ?? [], [personResult?.persons]);
   const previewCompareFields = useMemo(
     () => (supportsDuplicateWorkflow && duplicateReviewActive ? getPreviewCompareFields(parsedFile?.headers ?? []) : []),
     [supportsDuplicateWorkflow, duplicateReviewActive, parsedFile?.headers],
@@ -513,7 +747,7 @@ export default function TransformHubPage() {
       if (!duplicateReviewActive && !householdReviewActive) return [];
       return (personResult?.matches ?? []).filter((match) => {
         if (match.band !== 'review') return false;
-        return previewRecords.some((record: any) => record.sourceRowRef === match.inputRef);
+        return previewRecords.some((record) => record.sourceRowRef === match.inputRef);
       });
     },
     [duplicateReviewActive, householdReviewActive, personResult?.matches, previewRecords],
@@ -535,13 +769,79 @@ export default function TransformHubPage() {
   const peopleStepReady = !supportsDuplicateWorkflow || (!!personResult && pendingPeopleReviews === 0);
   const householdsStepReady = !supportsHouseholdWorkflow || (!!householdResult && peopleStepReady);
   const nonLedgerExportReady = (!supportsDuplicateWorkflow || peopleStepReady) && (!supportsHouseholdWorkflow || householdsStepReady);
+  const peopleById = useMemo(
+    () => new Map(canonicalPeople.map((person) => [person.id, person])),
+    [canonicalPeople],
+  );
+  const previewMatchByInputRef = useMemo(
+    () => new Map((personResult?.matches ?? []).map((match) => [match.inputRef, match])),
+    [personResult?.matches],
+  );
+  const relatedPreviewRecordsByPersonId = useMemo(() => {
+    const recordsByPersonId = new Map<string, PreviewRecord[]>();
+    previewRecords.forEach((record) => {
+      const personId = previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId;
+      if (!personId) return;
+      const current = recordsByPersonId.get(personId) ?? [];
+      current.push(record);
+      recordsByPersonId.set(personId, current);
+    });
+    return recordsByPersonId;
+  }, [previewRecords, previewMatchByInputRef]);
+  useTransformHubReviewDrafts({
+    householdResult,
+    peopleById,
+    previewRecords,
+    previewMatchByInputRef,
+    buildInitialHouseholdDraft,
+    buildInitialAttributionDraft,
+    setFinalHouseholdDrafts,
+    setFinalAttributionDrafts,
+    setOrganizationGraphDrafts,
+  });
+  const householdLayerViews = useTransformHubHouseholdReview({
+    householdResult,
+    peopleById,
+    finalHouseholdDrafts,
+    finalAttributionDrafts,
+    relatedPreviewRecordsByPersonId,
+    previewMatchByInputRef,
+    buildInitialHouseholdDraft,
+    buildInitialAttributionDraft,
+    summarizeAttributionDraft,
+    previewRecordLabel,
+    parseCurrencyAmount,
+  });
+  const finalReviewReady = householdsStepReady && householdLayerViews.length > 0;
+  const {
+    filteredEntityGraphRows,
+    selectedEntityGraphDonationContext,
+    selectedEntityGraphHouseholdContext,
+    selectedEntityGraphPersonContext,
+    selectedEntityGraphOrganizationContext,
+  } = useTransformHubReviewGraph({
+    entityModelResult,
+    entityGraphView,
+    entityGraphSearch,
+    entityGraphSelection,
+    parsedPreviewRecords: previewBaseRecords,
+    finalAttributionDrafts,
+    finalHouseholdDrafts,
+    householdResult,
+    organizationGraphDrafts,
+    matchesEntityGraphSearch,
+    matchesEntityGraphSelection,
+    buildInitialAttributionDraft,
+    buildInitialHouseholdDraft,
+  });
+  const entityGraphViews: EntityGraphView[] = ['donations', 'attributions', 'households', 'persons', 'organizations'];
   const heroTitle = isLedgerFile ? 'Canonical ledger in the center.' : 'Canonical records in the center.';
   const heroSummary = isLedgerFile
     ? 'Everything flows into one final ledger, and every export flows back out from the same reviewed rows.'
     : 'Each upload is classified first, normalized into its own canonical model, and reviewed in a file-specific table before export.';
 
   const previewMergeView = useMemo(() => {
-    const previewRecordOrder = new Map(previewRecords.map((record: any, index: number) => [record.sourceRowRef, index]));
+    const previewRecordOrder = new Map(previewRecords.map((record, index) => [record.sourceRowRef, index]));
     const confirmedPreviewMergePairs: Array<[string, string]> = [];
     if (supportsDuplicateWorkflow && personResult) {
       personResult.matches.forEach((match) => {
@@ -582,7 +882,7 @@ export default function TransformHubPage() {
     });
     const representativeByAbsorbedRef = new Map<string, string>();
     const mergedSourceRefsByRepresentative = new Map<string, string[]>();
-    previewRecords.forEach((record: any) => {
+    previewRecords.forEach((record) => {
       if (!mergeParent.has(record.sourceRowRef)) return;
       const representative = findMergedRepresentative(record.sourceRowRef);
       if (representative === record.sourceRowRef) return;
@@ -595,14 +895,13 @@ export default function TransformHubPage() {
       representativeByAbsorbedRef,
       mergedSourceRefsByRepresentative,
       displayedPreviewRecords: supportsDuplicateWorkflow
-        ? previewRecords.filter((record: any) => !representativeByAbsorbedRef.has(record.sourceRowRef))
+        ? previewRecords.filter((record) => !representativeByAbsorbedRef.has(record.sourceRowRef))
         : previewRecords,
     };
   }, [supportsDuplicateWorkflow, personResult, mergeDecisions, previewRecords]);
-  const representativeByAbsorbedRef = previewMergeView.representativeByAbsorbedRef;
   const mergedSourceRefsByRepresentative = previewMergeView.mergedSourceRefsByRepresentative;
   const displayedPreviewRecords = previewMergeView.displayedPreviewRecords;
-  const nonLedgerTableHeaders = parsedFile?.headers ?? [];
+  const nonLedgerTableHeaders = useMemo(() => parsedFile?.headers ?? [], [parsedFile?.headers]);
   const visibleNonLedgerTableHeaders = useMemo(
     () => nonLedgerTableHeaders.filter((header) => !hiddenPreviewHeaders.includes(header)),
     [nonLedgerTableHeaders, hiddenPreviewHeaders],
@@ -616,6 +915,14 @@ export default function TransformHubPage() {
     [visibleNonLedgerTableHeaders, fileClass],
   );
 
+  const nonLedgerTableWidth = useMemo(
+    () => nonLedgerTableColumnKeys.reduce((total, columnKey) => {
+      const width = nonLedgerColumnWidths[columnKey] ?? (columnKey === '__source__' ? 172 : columnKey === '__actions__' ? 156 : 148);
+      return total + width;
+    }, 0),
+    [nonLedgerTableColumnKeys, nonLedgerColumnWidths],
+  );
+
   function getNonLedgerColumnWidth(columnKey: string) {
     if (nonLedgerColumnWidths[columnKey]) return nonLedgerColumnWidths[columnKey];
     if (columnKey === '__source__') return 172;
@@ -623,49 +930,50 @@ export default function TransformHubPage() {
     return 148;
   }
 
-  function startNonLedgerColumnResize(columnKey: string, startClientX: number) {
+  function startNonLedgerColumnResize(columnKey: string, event: ReactPointerEvent<HTMLButtonElement>) {
+    event.preventDefault();
     const startWidth = getNonLedgerColumnWidth(columnKey);
     const minWidth = columnKey === '__source__' ? 156 : columnKey === '__actions__' ? 132 : 120;
-    const handleMouseMove = (event: MouseEvent) => {
-      const delta = event.clientX - startClientX;
+    const startClientX = event.clientX;
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const delta = moveEvent.clientX - startClientX;
       setNonLedgerColumnWidths((current) => ({
         ...current,
         [columnKey]: Math.max(minWidth, startWidth + delta),
       }));
     };
-    const handleMouseUp = () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+    const handlePointerUp = () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
   }
   const previewSourceOrigins = useMemo(
-    () => Array.from(new Set(previewRecords.map((record: any) => getSourceOriginKey(record.sourceRowRef, parsedFile?.fileName)))),
+    () => Array.from(new Set(previewRecords.map((record) => getSourceOriginKey(record.sourceRowRef, parsedFile?.fileName)))),
     [previewRecords, parsedFile?.fileName],
   );
-  const previewSourcePalette = ['#2563eb', '#16a34a', '#d97706', '#7c3aed', '#dc2626', '#0891b2'];
   const previewSourceBadgeByOrigin = useMemo(
     () => new Map(previewSourceOrigins.map((origin, index) => [origin, `S${index + 1}`])),
     [previewSourceOrigins],
   );
   const previewSourceColorByOrigin = useMemo(
-    () => new Map(previewSourceOrigins.map((origin, index) => [origin, previewSourcePalette[index % previewSourcePalette.length]])),
+    () => new Map(previewSourceOrigins.map((origin, index) => [origin, PREVIEW_SOURCE_PALETTE[index % PREVIEW_SOURCE_PALETTE.length]])),
     [previewSourceOrigins],
   );
-  function getRecordSourceOrigins(record: any) {
+  const getRecordSourceOrigins = useCallback((record: PreviewRecord) => {
     const refs = [record.sourceRowRef, ...(mergedSourceRefsByRepresentative.get(record.sourceRowRef) ?? [])];
     return Array.from(new Set(refs.map((ref) => getSourceOriginKey(ref, parsedFile?.fileName))));
-  }
+  }, [mergedSourceRefsByRepresentative, parsedFile?.fileName]);
   const filteredDisplayedPreviewRecords = useMemo(
     () => (previewSourceFocus === 'all'
       ? displayedPreviewRecords
-      : displayedPreviewRecords.filter((record: any) => getRecordSourceOrigins(record).includes(previewSourceFocus))),
-    [previewSourceFocus, displayedPreviewRecords, mergedSourceRefsByRepresentative, parsedFile?.fileName],
+      : displayedPreviewRecords.filter((record) => getRecordSourceOrigins(record).includes(previewSourceFocus))),
+    [previewSourceFocus, displayedPreviewRecords, getRecordSourceOrigins],
   );
   const editablePreviewFieldToCanonicalKey: Record<string, string> = {
     firstName: 'first_name',
@@ -686,7 +994,7 @@ export default function TransformHubPage() {
     memo: 'memo',
   };
 
-  function applyPreviewRecordEdits(record: any, draft: Record<string, any>) {
+  function applyPreviewRecordEdits(record: PreviewRecord, draft: EditablePreviewDraft): PreviewRecord {
     const nextRawValues = { ...getPreviewRecordRawValues(record) };
     Object.entries(editablePreviewFieldToCanonicalKey).forEach(([draftKey, canonicalKey]) => {
       if (!(draftKey in draft)) return;
@@ -701,7 +1009,7 @@ export default function TransformHubPage() {
       if (!header) return;
       nextRawValues[header] = Array.isArray(value) ? value.join('; ') : (value ?? '');
     });
-    const nextRecord = { ...record, ...draft, rawValues: nextRawValues };
+    const nextRecord: PreviewRecord = { ...record, ...draft, rawValues: nextRawValues };
     if (fileClass === 'constituent') {
       const displayName = nextRecord.organizationName || [nextRecord.firstName, nextRecord.lastName].filter(Boolean).join(' ');
       nextRecord.displayName = displayName || nextRecord.displayName || nextRecord.sourceRowRef;
@@ -721,48 +1029,48 @@ export default function TransformHubPage() {
     return { primary, context };
   }
 
-  function describeRepresentativeSource(record: any) {
+  function describeRepresentativeSource(record: PreviewRecord) {
     const primary = getCompactSourceRef(record.sourceRowRef).primary;
     const mergedRefs = (mergedSourceRefsByRepresentative.get(record.sourceRowRef) ?? []).map((ref) => getCompactSourceRef(ref).primary);
     if (mergedRefs.length === 0) return primary;
     return `${primary} (merged ${mergedRefs.join(', ')})`;
   }
 
-  function startMergedRecordEdit(record: any) {
+  function startMergedRecordEdit(record: PreviewRecord) {
     setEditingMergedRecordRef(record.sourceRowRef);
     setEditingMergedDraft({
-      firstName: record.firstName || '',
-      lastName: record.lastName || '',
-      organizationName: record.organizationName || '',
-      householdName: record.householdName || '',
-      email: record.email || '',
-      phone: record.phone || '',
-      address: record.address || '',
-      city: record.city || '',
-      state: record.state || '',
-      postalCode: record.postalCode || '',
-      country: record.country || '',
-      assignedStaff: record.assignedStaff || '',
-      tags: Array.isArray(record.tags) ? record.tags.join('; ') : (record.tags || ''),
-      amount: record.amount || '',
-      fund: record.fund || '',
-      appeal: record.appeal || '',
-      memo: record.memo || '',
+      firstName: String(record.firstName ?? ''),
+      lastName: String(record.lastName ?? ''),
+      organizationName: String(record.organizationName ?? ''),
+      householdName: String(record.householdName ?? ''),
+      email: String(record.email ?? ''),
+      phone: String(record.phone ?? ''),
+      address: String(record.address ?? ''),
+      city: String(record.city ?? ''),
+      state: String(record.state ?? ''),
+      postalCode: String(record.postalCode ?? ''),
+      country: String(record.country ?? ''),
+      assignedStaff: String(record.assignedStaff ?? ''),
+      tags: Array.isArray(record.tags) ? record.tags.join('; ') : String(record.tags ?? ''),
+      amount: String(record.amount ?? ''),
+      fund: String(record.fund ?? ''),
+      appeal: String(record.appeal ?? ''),
+      memo: String(record.memo ?? ''),
       ...Object.fromEntries(Object.entries(getPreviewRecordRawValues(record)).map(([header, value]) => [`raw:${header}`, String(value ?? '')])),
     });
   }
 
   async function handleSaveMergedRecordEdit() {
     if (!parsedFile?.preview || !editingMergedRecordRef) return;
-    const normalizedDraft = {
+    const normalizedDraft: EditablePreviewDraft = {
       ...editingMergedDraft,
       tags: editingMergedDraft.tags
         ? editingMergedDraft.tags.split(';').map((value) => value.trim()).filter(Boolean)
         : [],
-    } as Record<string, any>;
+    };
     const nextPreview = {
       ...parsedFile.preview,
-      records: parsedFile.preview.records.map((record: any) =>
+      records: parsedFile.preview.records.map((record) =>
         record.sourceRowRef === editingMergedRecordRef ? applyPreviewRecordEdits(record, normalizedDraft) : record,
       ),
     };
@@ -842,6 +1150,27 @@ export default function TransformHubPage() {
     closeTaxonomyMergeDialog();
   }
 
+  function startResolvedTaxonomyGroupEdit(groupId: string, canonicalLabel: string) {
+    setEditingResolvedTaxonomyGroupId(groupId);
+    setEditingResolvedTaxonomyLabel(canonicalLabel);
+  }
+
+  function cancelResolvedTaxonomyGroupEdit() {
+    setEditingResolvedTaxonomyGroupId(null);
+    setEditingResolvedTaxonomyLabel('');
+  }
+
+  async function saveResolvedTaxonomyGroupEdit() {
+    if (!taxonomyState || !editingResolvedTaxonomyGroupId) return;
+    const nextLabel = editingResolvedTaxonomyLabel.trim();
+    if (!nextLabel) return;
+    await persistTaxonomyState(
+      renameResolvedTaxonomyGroup(taxonomyState, editingResolvedTaxonomyGroupId, nextLabel),
+      'Updated taxonomy label to ' + nextLabel + '.',
+    );
+    cancelResolvedTaxonomyGroupEdit();
+  }
+
 
 
   async function handleDismissTaxonomyCandidate(candidateId: string) {
@@ -856,10 +1185,197 @@ export default function TransformHubPage() {
     await persistTaxonomyState(rebuilt, included ? 'Included ' + header + ' in taxonomy scan.' : 'Removed ' + header + ' from taxonomy scan.');
   }
 
+  function updateFinalHouseholdDraft(householdId: string, patch: Partial<FinalHouseholdDraft>) {
+    setFinalHouseholdDrafts((current) => {
+      const existing = current[householdId];
+      if (!existing) return current;
+      return {
+        ...current,
+        [householdId]: {
+          ...existing,
+          ...patch,
+        },
+      };
+    });
+  }
+
+  function updateFinalAttributionDraft(sourceRowRef: string, patch: Partial<PreviewAttributionDraft>) {
+    setFinalAttributionDrafts((current) => {
+      const existing = current[sourceRowRef];
+      if (!existing) return current;
+      return {
+        ...current,
+        [sourceRowRef]: {
+          ...existing,
+          ...patch,
+        },
+      };
+    });
+  }
+
+  function assignPersonToHouseholdDraft(personId: string, nextHouseholdId: string) {
+    if (!householdResult) return;
+    const nextHouseholds = householdResult.households.map((household) => {
+      const withoutPerson = household.memberIds.filter((memberId) => memberId !== personId);
+      if (household.id === nextHouseholdId) {
+        return {
+          ...household,
+          memberIds: Array.from(new Set([...withoutPerson, personId])),
+          primaryPersonId: household.primaryPersonId ?? personId,
+        };
+      }
+      return {
+        ...household,
+        memberIds: withoutPerson,
+        primaryPersonId: household.primaryPersonId === personId ? (withoutPerson[0] ?? null) : household.primaryPersonId,
+      };
+    }).filter((household) => household.memberIds.length > 0);
+    setHouseholdResult({ ...householdResult, households: nextHouseholds });
+    setFinalHouseholdDrafts((current) => {
+      const nextDrafts = { ...current };
+      Object.entries(nextDrafts).forEach(([householdId, draft]) => {
+        const nextHousehold = nextHouseholds.find((candidate) => candidate.id === householdId);
+        if (!nextHousehold) {
+          delete nextDrafts[householdId];
+          return;
+        }
+        if (draft.primaryPersonId === personId && !nextHousehold.memberIds.includes(personId)) {
+          nextDrafts[householdId] = { ...draft, primaryPersonId: nextHousehold.memberIds[0] ?? null };
+        }
+      });
+      const targetDraft = nextDrafts[nextHouseholdId];
+      if (targetDraft && !targetDraft.primaryPersonId) {
+        nextDrafts[nextHouseholdId] = { ...targetDraft, primaryPersonId: personId };
+      }
+      return nextDrafts;
+    });
+    setEntityModelResult(null);
+  }
+
+  function setPersonAsHouseholdPrimary(personId: string, householdId: string) {
+    if (!householdResult) return;
+    setHouseholdResult({
+      ...householdResult,
+      households: householdResult.households.map((household) => household.id === householdId ? { ...household, primaryPersonId: personId } : household),
+    });
+    updateFinalHouseholdDraft(householdId, { primaryPersonId: personId });
+    setEntityModelResult(null);
+  }
+
+  function updateOrganizationDrafts(organizationId: string, nextOrganizationName: string) {
+    if (!entityModelResult) return;
+    const linkedDonationRowIds = new Set(
+      entityModelResult.donations
+        .filter((donation) => donation.canonical_org_id === organizationId)
+        .map((donation) => donation.rowId)
+        .filter(Boolean),
+    );
+    entityModelResult.attributions
+      .filter((entry) => entry.organizationId === organizationId)
+      .forEach((entry) => {
+        const donation = entityModelResult.donations.find((candidate) => candidate.id === entry.donationId);
+        if (donation?.rowId) linkedDonationRowIds.add(donation.rowId);
+      });
+
+    setFinalAttributionDrafts((current) => {
+      const nextDrafts = { ...current };
+      linkedDonationRowIds.forEach((rowId) => {
+        if (!rowId) return;
+        const existing = nextDrafts[rowId];
+        if (!existing) return;
+        nextDrafts[rowId] = {
+          ...existing,
+          organizationName: nextOrganizationName,
+          mode: existing.mode === 'person' ? 'org_match' : existing.mode,
+        };
+      });
+      return nextDrafts;
+    });
+    setOrganizationGraphDrafts((current) => ({ ...current, [organizationId]: nextOrganizationName }));
+    setEntityModelResult(null);
+  }
+
+  async function handleApplyFinalHouseholdEdits() {
+    if (!parsedFile?.preview || !householdResult) return;
+    const householdDraftByPersonId = new Map<string, FinalHouseholdDraft>();
+    const nextHouseholds = householdResult.households.map((household) => {
+      const members = household.memberIds
+        .map((memberId) => peopleById.get(memberId))
+        .filter((member): member is CanonicalPerson => Boolean(member));
+      const draft = finalHouseholdDrafts[household.id] ?? buildInitialHouseholdDraft(household, members);
+      household.memberIds.forEach((memberId) => householdDraftByPersonId.set(memberId, draft));
+      return {
+        ...household,
+        label: draft.label.trim() || household.label || buildHouseholdLabel(members, household.lastName),
+        primaryPersonId: draft.primaryPersonId,
+        formalSalutation: draft.formalSalutation.trim() || household.formalSalutation || buildFormalSalutation(members),
+        informalSalutation: draft.informalSalutation.trim() || household.informalSalutation || buildInformalSalutation(members),
+        eventSalutation: draft.eventSalutation.trim() || household.eventSalutation || buildFormalSalutation(members),
+        addressee: draft.addressee.trim() || household.addressee || buildAddressee(members),
+        salutationText: draft.formalSalutation.trim() || household.salutationText || buildFormalSalutation(members),
+      };
+    });
+    const nextPreview = {
+      ...parsedFile.preview,
+      records: parsedFile.preview.records.map((record) => {
+        const personId = previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId;
+        const attribution = finalAttributionDrafts[record.sourceRowRef] ?? getPreviewRecordAttribution(record);
+        if (!personId) {
+          return attribution ? { ...record, attribution } : record;
+        }
+        const draft = householdDraftByPersonId.get(personId);
+        const nextRecord = draft
+          ? applyPreviewRecordEdits(record, { householdName: draft.label.trim() || draft.addressee.trim() })
+          : record;
+        return attribution ? { ...nextRecord, attribution } : nextRecord;
+      }),
+    };
+    const nextParsedFile = { ...parsedFile, preview: nextPreview };
+    const nextHouseholdResult = { ...householdResult, households: nextHouseholds };
+    setParsedFile(nextParsedFile);
+    setHouseholdResult(nextHouseholdResult);
+    setEntityModelResult(null);
+
+    if (!sessionId) {
+      setMessage('Applied final household edits locally.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const nextStatus = deriveSessionStatus(rows, preflight, receipts);
+      const session = await saveSession(sessionId, rows, nextStatus, preflight, personResult, nextHouseholdResult, nextParsedFile, schema, taxonomyState);
+      applySession(session, 'Applied final household edits to this session.', { nextNonLedgerReviewPanel: 'final' });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to apply final household edits.');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleRefreshEntityModel(persist = false) {
+    const persons = personResult?.persons ?? [];
+    const households = householdResult?.households ?? [];
+    if (!parsedFile?.preview?.records || persons.length === 0 || households.length === 0) {
+      setMessage('Run duplicate review and householding before loading the entity model.');
+      return;
+    }
+    setIsRefreshingEntityModel(true);
+    try {
+      const result = await fetchEntityModel(rows, persons, households, parsedFile.preview.records as PreviewRecord[], sessionId ?? undefined, persist);
+      setEntityModelResult(result);
+      setMessage(`Entity model loaded: ${result.summary.personCount} persons · ${result.summary.householdCount} households · ${result.summary.donationCount} donations.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to load the entity model.');
+    } finally {
+      setIsRefreshingEntityModel(false);
+    }
+  }
+
   function applySession(
     session: TransformSession,
     nextMessage?: string,
-    options?: { nextNonLedgerReviewPanel?: 'overview' | 'table' | 'duplicate' | 'household' | 'taxonomy' },
+    options?: { nextNonLedgerReviewPanel?: 'duplicate' | 'household' | 'taxonomy' | 'final' },
   ) {
     startTransition(() => {
       setSessionId(session.id);
@@ -877,7 +1393,7 @@ export default function TransformHubPage() {
       setPersonResult(session.personResult ?? null);
       setHouseholdResult(session.householdResult ?? null);
       setMergeDecisions(buildMergeDecisionMap(session.rows, session.auditDecisions));
-      setNonLedgerReviewPanel(options?.nextNonLedgerReviewPanel ?? 'overview');
+      setNonLedgerReviewPanel(options?.nextNonLedgerReviewPanel ?? 'duplicate');
       setActiveOperatorIntent(null);
       if (nextMessage) setMessage(nextMessage);
     });
@@ -944,8 +1460,10 @@ export default function TransformHubPage() {
     scrollToSelector('#th-mapping-layer .th-map-rule, #th-mapping-layer .th-map-row');
   }
 
-  async function hydrateUpload(payload: { fileName: string; kind: 'text' | 'xlsx'; contents?: string; contentsBase64?: string }, forceIngest = false) {
+  async function hydrateUpload(payload: UploadPayload, forceIngest = false) {
+    setActiveUploadLabel(payload.fileName);
     setIsLoading(true);
+    setMessage(forceIngest ? 'Continuing ' + payload.fileName + '...' : 'Loading ' + payload.fileName + '...');
     setBlockingIssues([]);
     setReceipts([]);
     setPreflight(null);
@@ -991,8 +1509,8 @@ export default function TransformHubPage() {
         const decisionSummary = summarizeAppendColumnDecisions(appendColumnDecisions);
         setPendingAppendReview({
           sessionId: result.sessionId,
-          currentParsedFile: parsedFile,
-          currentSchema: schema,
+          currentParsedFile: parsedFile!,
+          currentSchema: schema!,
           currentRows: rows,
           incomingParsedFile: prepared.parsedFile,
           incomingSchema: prepared.schema,
@@ -1028,7 +1546,7 @@ export default function TransformHubPage() {
         setPendingIngestPayload(payload);
       }
       applySession(session, nextMessage);
-    } catch (error: any) {
+    } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Failed to process the file.');
       setParsedFile(null);
       setSchema(null);
@@ -1042,6 +1560,7 @@ export default function TransformHubPage() {
       setSessionUpdatedAt(null);
       setPendingIngestPayload(null);
     } finally {
+      setActiveUploadLabel(null);
       setIsLoading(false);
     }
   }
@@ -1069,7 +1588,7 @@ export default function TransformHubPage() {
   }
 
   function updatePendingAppendDecision(decisionId: string, patch: Partial<AppendColumnDecision>) {
-    setPendingAppendReview((current: any | null) => {
+    setPendingAppendReview((current) => {
       if (!current) return current;
       const columnDecisions = current.columnDecisions.map((decision: AppendColumnDecision) => {
         if (decision.id !== decisionId) return decision;
@@ -1150,28 +1669,40 @@ export default function TransformHubPage() {
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+    setActiveUploadLabel(file.name);
+    setIsLoading(true);
+    setMessage('Loading ' + file.name + '...');
     try {
       const lowerName = file.name.toLowerCase();
       if (lowerName.endsWith('.xlsx')) {
         const contentsBase64 = await readFileBase64(file);
         await hydrateUpload({ fileName: file.name, kind: 'xlsx', contentsBase64 });
       } else if (lowerName.endsWith('.xls')) {
+        setActiveUploadLabel(null);
+        setIsLoading(false);
         setMessage('Legacy .xls files are not supported. Save as .xlsx or CSV first.');
       } else {
         const contents = await readFileText(file);
         await hydrateUpload({ fileName: file.name, kind: 'text', contents });
       }
+    } catch (error) {
+      setActiveUploadLabel(null);
+      setIsLoading(false);
+      setMessage(error instanceof Error ? error.message : 'Failed to read the selected file.');
     } finally {
       event.target.value = '';
     }
   }
 
   async function loadSample() {
+    setActiveUploadLabel(platform + ' sample');
     setIsLoading(true);
+    setMessage('Loading ' + platform + ' sample...');
     try {
       const sample = await fetchSample(platform);
       await hydrateUpload({ fileName: sample.name, kind: 'text', contents: sample.contents });
     } catch (error) {
+      setActiveUploadLabel(null);
       setMessage(error instanceof Error ? error.message : 'Failed to load the sample file.');
       setIsLoading(false);
     }
@@ -1312,25 +1843,6 @@ export default function TransformHubPage() {
       setIsLoading(false);
     }
   }
-  async function handleReviewFieldSuggestion(suggestionId: string, action: 'approve' | 'reject') {
-    if (!sessionId) return;
-    setIsLoading(true);
-    setMessage(action === 'approve' ? 'Applying AI field suggestion…' : 'Rejecting AI field suggestion…');
-    try {
-      const result = await reviewFieldSuggestionBackend(sessionId, suggestionId, action, { reviewedBy: 'user' });
-      setSchema(result.schema ?? result.session.schema);
-      setRows(result.updatedRows?.length ? result.updatedRows : result.session.rows ?? []);
-      if (result.taxonomy) setTaxonomyResult(result.taxonomy);
-      if (result.audit) setAuditResult(result.audit);
-      setSessionUpdatedAt(result.session.updatedAt ?? null);
-      setMessage(action === 'approve' ? 'AI field suggestion applied.' : 'AI field suggestion rejected.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Failed to review field suggestion.');
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
   async function handleRunPersonResolver() {
     const returnRowId = activeFixRowId;
     queueReturnToActiveRow();
@@ -1490,6 +2002,7 @@ export default function TransformHubPage() {
     try {
       const result = await resolveHouseholdsBackend(canonicalPeople, sessionId ?? undefined);
       setHouseholdResult(result);
+      setNonLedgerReviewPanel('household');
       if (result.updatedRows) setRows(result.updatedRows);
       if (result.audit) setAuditResult(result.audit);
       setSessionUpdatedAt(new Date().toISOString());
@@ -1628,7 +2141,7 @@ export default function TransformHubPage() {
     try {
       const persons = personResult?.persons ?? [];
       const households = householdResult?.households ?? [];
-      const report = await fetchDonorReport(rows, persons, households);
+      const report = await fetchDonorReport(rows, persons, households, previewRecords);
       downloadCsv(`donor-report-${new Date().toISOString().slice(0, 10)}.csv`, buildDonorReportCsv(report));
       setMessage(`Donor report exported: ${report.persons.length} persons, ${report.households.length} households.`);
     } catch (error) {
@@ -1671,7 +2184,7 @@ export default function TransformHubPage() {
     try {
       const persons = personResult?.persons ?? [];
       const households = householdResult?.households ?? [];
-      const report = await fetchCrmSyncExport(rows, persons, households);
+      const report = await fetchCrmSyncExport(rows, persons, households, previewRecords);
       downloadCsv(`crm-sync-export-${new Date().toISOString().slice(0, 10)}.csv`, buildCrmSyncCsv(report));
       setMessage(`CRM sync export created: ${report.rows.length} sync row${report.rows.length === 1 ? '' : 's'}.`);
     } catch (error) {
@@ -1691,6 +2204,11 @@ export default function TransformHubPage() {
       'HouseholdId,LastName,Members,Salutation,JointGivingTotal',
       ...report.households.map(
         (hh) => `${hh.id},${hh.lastName},${hh.memberIds.length},"${hh.salutationText}",${hh.jointGivingTotal.toFixed(2)}`,
+      ),
+      '',
+      'SourceRowRef,Amount,HouseholdId,PrimaryPersonId,SecondaryPersonId,OrganizationName,AttributionMode,CreditSummary',
+      ...report.attributionRows.map(
+        (row) => [row.source_row_ref, row.amount, row.household_id ?? '', row.primary_person_id ?? '', row.secondary_person_id ?? '', row.organization_name ?? '', row.attribution_mode, row.credit_summary].map(csvCell).join(','),
       ),
       '',
       `GeneratedAt,${report.generatedAt}`,
@@ -1730,9 +2248,9 @@ export default function TransformHubPage() {
 
   function buildCrmSyncCsv(report: CrmSyncExport) {
     return [
-      "CanonicalPersonId,CanonicalHouseholdId,CanonicalOrgId,Name,FormattedFor,SourceRowRef",
+      "CanonicalPersonId,CanonicalHouseholdId,CanonicalOrgId,Name,FormattedFor,Addressee,AttributionMode,OrganizationCredit,SourceRowRef",
       ...report.rows.map(
-        (row) => `${row.canonical_person_id ?? ""},${row.canonical_household_id ?? ""},${row.canonical_org_id ?? ""},"${row.name}",${row.formatted_for},${row.source_row_ref}`,
+        (row) => [row.canonical_person_id ?? '', row.canonical_household_id ?? '', row.canonical_org_id ?? '', row.name, row.formatted_for, row.addressee ?? '', row.attribution_mode ?? '', row.organization_credit ?? '', row.source_row_ref].map(csvCell).join(','),
       ),
       "",
       `GeneratedAt,${report.generatedAt}`,
@@ -1763,27 +2281,33 @@ export default function TransformHubPage() {
   function buildPreviewCsv() {
     if (!preview || previewRecords.length === 0) return "";
     if (fileClass === "constituent") return [
-      "SourceRowRef,DisplayName,ConstituentType,FirstName,LastName,OrganizationName,HouseholdName,Email,Phone,City,State,Country,AssignedStaff,CreatedAt,UpdatedAt",
-      ...displayedPreviewRecords.map((record: any) => [record.sourceRowRef, record.displayName, record.constituentType, record.firstName, record.lastName, record.organizationName, record.householdName, record.email, record.phone, record.city, record.state, record.country, record.assignedStaff, record.createdAt, record.updatedAt].map(csvCell).join(",")),
+      "SourceRowRef,DisplayName,ConstituentType,FirstName,LastName,OrganizationName,HouseholdName,AttributionMode,PrimaryPersonId,SecondaryPersonId,OrganizationCredit,SplitPercent,AttributionNotes,Email,Phone,City,State,Country,AssignedStaff,CreatedAt,UpdatedAt",
+      ...displayedPreviewRecords.map((record) => {
+        const attribution = getPreviewRecordAttribution(record);
+        return [record.sourceRowRef, record.displayName, record.constituentType, record.firstName, record.lastName, record.organizationName, record.householdName, attribution?.mode || '', attribution?.primaryPersonId || '', attribution?.secondaryPersonId || '', attribution?.organizationName || '', attribution?.splitPercent ?? '', attribution?.notes || '', record.email, record.phone, record.city, record.state, record.country, record.assignedStaff, record.createdAt, record.updatedAt].map(csvCell).join(",");
+      }),
     ].join("\n");
     if (fileClass === "donor") return [
-      "SourceRowRef,DonorName,Date,Amount,Fund,Appeal,Email,Memo,Currency",
-      ...displayedPreviewRecords.map((record: any) => [record.sourceRowRef, record.donorName, record.date, record.amount, record.fund, record.appeal, record.email, record.memo, record.currency].map(csvCell).join(",")),
+      "SourceRowRef,DonorName,Date,Amount,Fund,Appeal,AttributionMode,PrimaryPersonId,SecondaryPersonId,OrganizationCredit,SplitPercent,AttributionNotes,Email,Memo,Currency",
+      ...displayedPreviewRecords.map((record) => {
+        const attribution = getPreviewRecordAttribution(record);
+        return [record.sourceRowRef, record.donorName, record.date, record.amount, record.fund, record.appeal, attribution?.mode || '', attribution?.primaryPersonId || '', attribution?.secondaryPersonId || '', attribution?.organizationName || '', attribution?.splitPercent ?? '', attribution?.notes || '', record.email, record.memo, record.currency].map(csvCell).join(",");
+      }),
     ].join("\n");
     if (fileClass === "campaign") return [
       "SourceRowRef,Code,CampaignName,StartDate,EndDate,Status,GoalAmount",
-      ...displayedPreviewRecords.map((record: any) => [record.sourceRowRef, record.code, record.campaignName, record.startDate, record.endDate, record.status, record.goalAmount].map(csvCell).join(",")),
+      ...displayedPreviewRecords.map((record) => [record.sourceRowRef, record.code, record.campaignName, record.startDate, record.endDate, record.status, record.goalAmount].map(csvCell).join(",")),
     ].join("\n");
     if (fileClass === "coa") return [
       "SourceRowRef,AccountCode,AccountName,AccountType,Balance",
-      ...displayedPreviewRecords.map((record: any) => [record.sourceRowRef, record.accountCode, record.accountName, record.accountType, record.balance].map(csvCell).join(",")),
+      ...displayedPreviewRecords.map((record) => [record.sourceRowRef, record.accountCode, record.accountName, record.accountType, record.balance].map(csvCell).join(",")),
     ].join("\n");
-    return ["SourceRowRef,Preview", ...displayedPreviewRecords.map((record: any) => [record.sourceRowRef, record.preview ?? ""].map(csvCell).join(","))].join("\n");
+    return ["SourceRowRef,Preview", ...displayedPreviewRecords.map((record) => [record.sourceRowRef, record.preview ?? ""].map(csvCell).join(","))].join("\n");
   }
 
   function buildPreviewIdentityRows(): CanonicalLedgerRow[] {
     if (!supportsDuplicateWorkflow || previewRecords.length === 0) return [];
-    return previewRecords.map((record: any, index: number) => {
+    return previewRecords.map((record, index: number) => {
       const entityName = isDonorFile
         ? record.donorName || record.email || record.sourceRowRef
         : record.displayName || [record.firstName, record.lastName].filter(Boolean).join(" ") || record.organizationName || record.householdName || record.sourceRowRef;
@@ -1792,13 +2316,13 @@ export default function TransformHubPage() {
 
       return {
         id: `preview-person-${index + 1}`,
-        date: rowDate,
-        entity_name: entityName,
+        date: String(rowDate),
+        entity_name: String(entityName),
         account_code: "",
         account_name: "",
         debit: "",
         credit: "",
-        currency: record.currency || "",
+        currency: String(record.currency ?? ""),
         memo,
         source_platform: platform,
         source_row_ref: record.sourceRowRef,
@@ -1818,20 +2342,20 @@ export default function TransformHubPage() {
         attribution_entry_id: null,
         normalized_fund: null,
         normalized_appeal: null,
-        email: record.email || "",
-        phone: record.phone || "",
-        address: record.address || "",
-        postalCode: record.postalCode || "",
-        zip: record.postalCode || "",
-        householdName: record.householdName || "",
-        firstName: record.firstName || "",
-        lastName: record.lastName || "",
-        organizationName: record.organizationName || "",
-        city: record.city || "",
-        state: record.state || "",
-        tags: record.tags || [],
+        email: String(record.email ?? ""),
+        phone: String(record.phone ?? ""),
+        address: String(record.address ?? ""),
+        postalCode: String(record.postalCode ?? ""),
+        zip: String(record.postalCode ?? ""),
+        householdName: String(record.householdName ?? ""),
+        firstName: String(record.firstName ?? ""),
+        lastName: String(record.lastName ?? ""),
+        organizationName: String(record.organizationName ?? ""),
+        city: String(record.city ?? ""),
+        state: String(record.state ?? ""),
+        tags: Array.isArray(record.tags) ? record.tags : [],
         rawValues: record.rawValues || {},
-      } as CanonicalLedgerRow;
+      } as unknown as CanonicalLedgerRow;
     });
   }
 
@@ -1871,7 +2395,7 @@ export default function TransformHubPage() {
 
   type NodeStatus = 'idle' | 'ok' | 'warning' | 'error';
 
-  const uploadedFileCount = ((parsedFile as any)?.mergeState?.uploadedFiles?.length ?? (parsedFile ? 1 : 0));
+  const uploadedFileCount = ((parsedFile as ParsedFileWithOptionalMergeState | null)?.mergeState?.uploadedFiles?.length ?? (parsedFile ? 1 : 0));
   const combineStepComplete = Boolean(parsedFile) && !pendingAppendReview;
 
   const pipelineNodes: Array<{ id: string; label: string; status: NodeStatus; count: string | null; target: string }> = isLedgerFile
@@ -2084,7 +2608,7 @@ export default function TransformHubPage() {
                   <span className="th-platform-group-label">{group}</span>
                   <div className="th-chip-row">
                     {platforms.map((item) => (
-                      <button key={item} type="button" className={`th-chip${item === platform ? ' is-active' : ''}`} onClick={() => setPlatform(item)}>
+                      <button key={item} type="button" className={"th-chip" + (item === platform ? " is-active" : "")} onClick={() => setPlatform(item)}>
                         {item}
                       </button>
                     ))}
@@ -2093,16 +2617,25 @@ export default function TransformHubPage() {
               ))}
             </div>
             <div className="th-upload-actions">
-              <label className="th-file-input">
+              <label className="th-file-input" aria-disabled={isLoading}>
                 <Upload size={14} />
                 Upload CSV / XLSX
-                <input type="file" accept=".csv,.txt,.tsv,.xlsx" onChange={handleFileChange} />
+                <input type="file" accept=".csv,.txt,.tsv,.xlsx" onChange={handleFileChange} disabled={isLoading} />
               </label>
-              <button type="button" className="th-button th-button-secondary" onClick={loadSample}>
+              <button type="button" className="th-button th-button-secondary" onClick={loadSample} disabled={isLoading}>
                 <PlayCircle size={14} />
                 Load {platform} sample
               </button>
             </div>
+            {isLoading && (
+              <div className="th-review-loader" style={{ marginTop: 12 }}>
+                <div className="th-review-loader-spinner" aria-hidden="true" />
+                <div>
+                  <strong>Loading {activeUploadLabel ?? 'upload'}</strong>
+                  <p>Parsing the sheet, classifying the columns, and preparing the review workspace.</p>
+                </div>
+              </div>
+            )}
             {pendingAppendReview && (
               <div className="th-stack" style={{ marginTop: 12 }}>
                 <div className="th-panel-head"><span>Append review</span><span>{pendingAppendReview.summary.appendedRows} rows pending</span></div>
@@ -2219,11 +2752,11 @@ export default function TransformHubPage() {
                 </button>
               </div>
               <div className="th-stack">
-                {blockingIssues.map((stop: any) => (
+                {blockingIssues.map((stop) => (
                   <div key={stop.code} className="th-guardrail is-triggered">
                     <AlertTriangle size={15} />
                     <div>
-                      <strong>{stop.reason ?? stop.label ?? stop.code}</strong>
+                      <strong>{stop.reason ?? stop.code}</strong>
                       <p>{stop.detail}</p>
                     </div>
                   </div>
@@ -2873,6 +3406,16 @@ export default function TransformHubPage() {
                 {supportsDuplicateWorkflow && <button type="button" className={`th-chip th-review-tab${nonLedgerReviewPanel === 'duplicate' ? ' is-active' : ''}`} onClick={() => setNonLedgerReviewPanel('duplicate')}>Duplicate review</button>}
                 {supportsHouseholdWorkflow && <button type="button" className={`th-chip th-review-tab${nonLedgerReviewPanel === 'household' ? ' is-active' : ''}`} onClick={() => setNonLedgerReviewPanel('household')}>Household review</button>}
                 <button type="button" className={"th-chip th-review-tab" + (nonLedgerReviewPanel === "taxonomy" ? " is-active" : "")} onClick={() => setNonLedgerReviewPanel("taxonomy")}>Taxonomy review</button>
+                {supportsHouseholdWorkflow && (
+                  <button
+                    type="button"
+                    className={`th-chip th-review-tab${nonLedgerReviewPanel === 'final' ? ' is-active' : ''}`}
+                    onClick={() => setNonLedgerReviewPanel('final')}
+                    disabled={!finalReviewReady}
+                  >
+                    Final review
+                  </button>
+                )}
               </div>
               {nonLedgerReviewPanel === 'taxonomy' && (
                 <div className="th-panel th-inner-panel th-taxonomy-session-panel" style={{ marginBottom: 14 }}>
@@ -2962,6 +3505,79 @@ export default function TransformHubPage() {
                             ))
                         )}
                       </div>
+                      {taxonomyState.resolvedGroups.length > 0 && (
+                        <div className="th-stack" style={{ marginTop: 16 }}>
+                          <div className="th-panel-head" style={{ marginBottom: 0 }}>
+                            <span>Merged taxonomy labels</span>
+                            <span>{taxonomyState.resolvedGroups.length} saved</span>
+                          </div>
+                          <div className="th-table-wrap th-taxonomy-resolved-table-wrap">
+                            <table className="th-table th-taxonomy-resolved-table">
+                              <thead>
+                                <tr>
+                                  <th>Type</th>
+                                  <th>Merged name</th>
+                                  <th>Aliases</th>
+                                  <th>Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {taxonomyState.resolvedGroups.map((group) => {
+                                  const isEditing = editingResolvedTaxonomyGroupId === group.id;
+                                  return (
+                                    <tr key={group.id}>
+                                      <td>{group.objectType}</td>
+                                      <td>
+                                        {isEditing ? (
+                                          <input
+                                            className="th-input"
+                                            value={editingResolvedTaxonomyLabel}
+                                            onChange={(event) => setEditingResolvedTaxonomyLabel(event.target.value)}
+                                            onKeyDown={(event) => {
+                                              if (event.key === 'Enter') {
+                                                event.preventDefault();
+                                                void saveResolvedTaxonomyGroupEdit();
+                                              }
+                                              if (event.key === 'Escape') {
+                                                event.preventDefault();
+                                                cancelResolvedTaxonomyGroupEdit();
+                                              }
+                                            }}
+                                            autoFocus
+                                          />
+                                        ) : (
+                                          <strong>{group.canonicalLabel}</strong>
+                                        )}
+                                      </td>
+                                      <td>
+                                        <div className="th-chip-row">
+                                          {group.aliases.map((alias) => (
+                                            <span key={`${group.id}-${alias}`} className="th-chip th-taxonomy-member-chip">{alias}</span>
+                                          ))}
+                                        </div>
+                                      </td>
+                                      <td>
+                                        <div className="th-review-match-actions">
+                                          {isEditing ? (
+                                            <>
+                                              <button type="button" className="th-button th-button-secondary" onClick={cancelResolvedTaxonomyGroupEdit}>Cancel</button>
+                                              <button type="button" className="th-button th-button-primary" onClick={() => void saveResolvedTaxonomyGroupEdit()} disabled={!editingResolvedTaxonomyLabel.trim()}>
+                                                Save name
+                                              </button>
+                                            </>
+                                          ) : (
+                                            <button type="button" className="th-button th-button-secondary" onClick={() => startResolvedTaxonomyGroupEdit(group.id, group.canonicalLabel)}>Edit name</button>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
                     </>
                   ) : (
                     <div className="th-mini-block" style={{ marginBottom: 12 }}>
@@ -3031,6 +3647,261 @@ export default function TransformHubPage() {
                   ))}
                 </div>
               )}
+              {supportsHouseholdWorkflow && nonLedgerReviewPanel === 'household' && (
+                <div className="th-stack" style={{ marginBottom: 14 }}>
+                  {!peopleStepReady ? (
+                    <div className="th-mini-block">
+                      <strong>Relationship layer is locked</strong>
+                      <p>Resolve duplicate review first. Householding creates a grouping object above people, so the person layer has to be stable before relationship logic is safe.</p>
+                    </div>
+                  ) : householdLayerViews.length === 0 ? (
+                    <div className="th-mini-block">
+                      <strong>No households built yet</strong>
+                      <p>Run householding to create relationship objects without collapsing the person records.</p>
+                    </div>
+                  ) : (
+                    householdLayerViews.map((view) => (
+                      <article key={view.householdId} className="th-panel th-inner-panel th-household-layer-card">
+                        <div className="th-panel-head">
+                          <span>Relationship Layer · {view.householdId}</span>
+                          <span>{view.relatedRecords.length} linked record{view.relatedRecords.length === 1 ? '' : 's'}</span>
+                        </div>
+                        <div className="th-household-layer-grid">
+                          <section className="th-mini-block">
+                            <strong>Person</strong>
+                            <p>People stay separate. Duplicate resolution stops here; householding adds a parent grouping object above these members.</p>
+                            <div className="th-stack" style={{ marginTop: 10 }}>
+                              {view.members.map((member) => (
+                                <div key={member.id} className="th-household-member-row">
+                                  <div>
+                                    <strong>{formatPersonName(member)}</strong>
+                                    <p>{[member.email, member.phone].filter(Boolean).join(' · ') || 'No direct contact fields'}</p>
+                                  </div>
+                                  <span className="th-person-id">{member.id}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </section>
+                          <section className="th-mini-block">
+                            <strong>Household</strong>
+                            <p>Grouping object above the members.</p>
+                            <div className="th-household-proposed-card">
+                              <strong>{view.draft.label}</strong>
+                              <p>{view.draft.addressee}</p>
+                              <div className="th-chip-row" style={{ marginTop: 10 }}>
+                                <span className="th-chip">Primary: {view.members.find((member) => member.id === view.draft.primaryPersonId)?.firstName || 'unset'}</span>
+                                <span className="th-chip">Formal: {view.draft.formalSalutation}</span>
+                                <span className="th-chip">Informal: {view.draft.informalSalutation}</span>
+                              </div>
+                            </div>
+                          </section>
+                          <section className="th-mini-block">
+                            <strong>Attribution</strong>
+                            <p>Credit remains separate from household grouping.</p>
+                            <div className="th-stack" style={{ marginTop: 10 }}>
+                              {view.attributionPreview.length === 0 ? (
+                                <p className="th-helper">No linked giving rows were detected for this household yet.</p>
+                              ) : (
+                                view.attributionPreview.map((item) => (
+                                  <div key={item.recordId} className="th-household-attribution-row">
+                                    <div>
+                                      <strong>{item.label}</strong>
+                                      <p>{item.summary}</p>
+                                    </div>
+                                    <span>{item.amount !== null ? formatCurrencyAmount(item.amount) : 'No amount'}</span>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </section>
+                        </div>
+                        <div className="th-grid th-grid-3" style={{ marginTop: 12 }}>
+                          <div className="th-stat-chip th-band-auto"><strong>{view.draft.eventSalutation}</strong><span>Communication</span></div>
+                          <div className="th-stat-chip th-band-review"><strong>{view.reporting.householdTotal > 0 ? formatCurrencyAmount(view.reporting.householdTotal) : 'No gifts'}</strong><span>Household total</span></div>
+                          <div className="th-stat-chip th-band-separate"><strong>{view.reporting.yearsGiving || 0}</strong><span>Years giving</span></div>
+                        </div>
+                      </article>
+                    ))
+                  )}
+                </div>
+              )}
+              {supportsHouseholdWorkflow && nonLedgerReviewPanel === 'final' && (
+                <div className="th-stack" style={{ marginBottom: 14 }}>
+                  <div className="th-panel th-inner-panel">
+                    <div className="th-panel-head">
+                      <span>Final relationship review</span>
+                      <div className="th-review-match-actions">
+                        <span>{householdLayerViews.length} household draft{householdLayerViews.length === 1 ? '' : 's'}</span>
+                        <button type="button" className="th-button th-button-primary" onClick={() => void handleApplyFinalHouseholdEdits()} disabled={!finalReviewReady || isLoading}>
+                          <Save size={14} /> Apply final edits
+                        </button>
+                      </div>
+                    </div>
+                    <p className="th-helper">Edit the final household object before it updates the reviewed preview. Applying this step preserves person identity and writes the household-facing fields back into the saved session.</p>
+                    <div className="th-review-match-actions" style={{ marginTop: 10 }}>
+                      <button type="button" className="th-button th-button-secondary" onClick={() => void handleRefreshEntityModel(false)} disabled={isRefreshingEntityModel || !finalReviewReady}>
+                        <Database size={14} /> {isRefreshingEntityModel ? 'Loading entity model…' : 'Preview persisted model'}
+                      </button>
+                    </div>
+                  </div>
+                  {!finalReviewReady ? (
+                    <div className="th-mini-block">
+                      <strong>Final review unlocks after householding</strong>
+                      <p>Run duplicate review, build households, then edit the final relationship layer here before applying it.</p>
+                    </div>
+                  ) : (
+                    householdLayerViews.map((view) => (
+                      <article key={`final-${view.householdId}`} className="th-panel th-inner-panel th-household-final-card">
+                        <div className="th-panel-head">
+                          <span>{view.householdId}</span>
+                          <span>{view.members.length} member{view.members.length === 1 ? '' : 's'}</span>
+                        </div>
+                        <HouseholdDraftFields
+                          householdId={view.householdId}
+                          draft={view.draft}
+                          members={view.members}
+                          formatPersonName={formatPersonName}
+                          updateFinalHouseholdDraft={updateFinalHouseholdDraft}
+                          primaryEmptyLabel="No primary contact"
+                        />
+                        <div className="th-household-preview-strip">
+                          <div className="th-mini-block">
+                            <strong>Members</strong>
+                            <p>{view.members.map((member) => formatPersonName(member)).join(' · ')}</p>
+                          </div>
+                          <div className="th-mini-block">
+                            <strong>Reporting</strong>
+                            <p>{view.reporting.householdTotal > 0 ? formatCurrencyAmount(view.reporting.householdTotal) : 'No gifts yet'} · Largest {view.reporting.largestGift > 0 ? formatCurrencyAmount(view.reporting.largestGift) : '—'} · Last gift {view.reporting.lastGift || '—'}</p>
+                          </div>
+                        </div>
+                        <div className="th-stack" style={{ marginTop: 10 }}>
+                          <div className="th-panel-head" style={{ marginBottom: 0 }}>
+                            <span>Editable attribution</span>
+                            <span>{view.attributionPreview.length} linked record{view.attributionPreview.length === 1 ? '' : 's'}</span>
+                          </div>
+                          {view.attributionPreview.length === 0 ? (
+                            <div className="th-mini-block">
+                              <strong>No attribution rows to edit</strong>
+                              <p>This household does not currently have linked donation preview rows.</p>
+                            </div>
+                          ) : (
+                            view.attributionPreview.map((item) => (
+                              <div key={`attrib-edit-${view.householdId}-${item.sourceRowRef}`} className="th-mini-block">
+                                <div className="th-panel-head" style={{ marginBottom: 10 }}>
+                                  <span>{item.label}</span>
+                                  <span>{item.amount !== null ? formatCurrencyAmount(item.amount) : 'No amount'}</span>
+                                </div>
+                                <AttributionDraftFields
+                                  rowRef={item.sourceRowRef}
+                                  draft={item.draft}
+                                  members={view.members}
+                                  formatPersonName={formatPersonName}
+                                  summarizeAttributionDraft={summarizeAttributionDraft}
+                                  updateFinalAttributionDraft={updateFinalAttributionDraft}
+                                />
+                              </div>
+                            ))
+                          )}
+                        </div>
+                        <div className="th-table-wrap" style={{ marginTop: 10 }}>
+                          <table className="th-table th-household-preview-table">
+                            <thead>
+                              <tr>
+                                <th>Source</th>
+                                <th>Record</th>
+                                <th>Current household field</th>
+                                <th>Applied label</th>
+                                <th>Applied attribution</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {view.relatedRecords.length === 0 ? (
+                                <tr>
+                                  <td colSpan={5}>No preview rows linked to this household yet.</td>
+                                </tr>
+                              ) : (
+                                view.relatedRecords.map((record) => (
+                                  <tr key={`final-record-${view.householdId}-${record.sourceRowRef}`}>
+                                    <td>{getCompactSourceRef(record.sourceRowRef).primary}</td>
+                                    <td>{previewRecordLabel(record)}</td>
+                                    <td>{String(record.householdName ?? '—')}</td>
+                                    <td>{view.draft.label || '—'}</td>
+                                    <td>{summarizeAttributionDraft(finalAttributionDrafts[record.sourceRowRef] ?? buildInitialAttributionDraft(record, view.members, peopleById.get(previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId ?? '') ?? null), view.members, peopleById.get(previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId ?? '') ?? null)}</td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </article>
+                    ))
+                  )}
+                  {entityModelResult && (
+                    <article className="th-panel th-inner-panel">
+                      <div className="th-panel-head">
+                        <span>Persisted entity model</span>
+                        <span>{entityModelResult.persisted ? 'session-backed' : 'preview only'}</span>
+                      </div>
+                      <div className="th-grid th-grid-4" style={{ marginBottom: 12 }}>
+                        <div className="th-stat-chip th-band-auto"><strong>{entityModelResult.summary.personCount}</strong><span>Persons</span></div>
+                        <div className="th-stat-chip th-band-review"><strong>{entityModelResult.summary.householdCount}</strong><span>Households</span></div>
+                        <div className="th-stat-chip th-band-separate"><strong>{entityModelResult.summary.donationCount}</strong><span>Donations</span></div>
+                        <div className="th-stat-chip"><strong>{entityModelResult.summary.organizationCount}</strong><span>Organizations</span></div>
+                      </div>
+                      <div className="th-review-match-actions" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+                        {entityGraphViews.map((view) => (
+                          <button key={`entity-final-${view}`} type="button" className={`th-chip${entityGraphView === view ? ' is-active' : ''}`} onClick={() => setEntityGraphView(view)}>
+                            {view}
+                          </button>
+                        ))}
+                        <input
+                          className="th-input th-entity-search"
+                          placeholder="Filter entity graph…"
+                          value={entityGraphSearch}
+                          onChange={(event) => setEntityGraphSearch(event.target.value)}
+                        />
+                        {entityGraphSelection && (
+                          <button type="button" className="th-chip is-active" onClick={() => setEntityGraphSelection(null)}>
+                            Clear drill-down: {entityGraphSelection.type} {entityGraphSelection.id}
+                          </button>
+                        )}
+                      </div>
+                      <div className="th-table-wrap">
+                        <EntityGraphTable
+                          entityGraphView={entityGraphView}
+                          filteredEntityGraphRows={filteredEntityGraphRows}
+                          entityGraphSelection={entityGraphSelection}
+                          setEntityGraphSelection={setEntityGraphSelection}
+                          entityModelResult={entityModelResult}
+                          formatPersonName={formatPersonName}
+                          formatCurrencyAmount={formatCurrencyAmount}
+                        />
+                      </div>
+                      <EntityGraphEditors
+                        variant="final"
+                        selectedEntityGraphDonationContext={selectedEntityGraphDonationContext}
+                        selectedEntityGraphHouseholdContext={selectedEntityGraphHouseholdContext}
+                        selectedEntityGraphPersonContext={selectedEntityGraphPersonContext}
+                        selectedEntityGraphOrganizationContext={selectedEntityGraphOrganizationContext}
+                        finalReviewReady={finalReviewReady}
+                        isLoading={isLoading}
+                        formatPersonName={formatPersonName}
+                        formatCurrencyAmount={formatCurrencyAmount}
+                        previewRecordLabel={previewRecordLabel}
+                        summarizeAttributionDraft={summarizeAttributionDraft}
+                        getCompactSourceRef={getCompactSourceRef}
+                        updateFinalHouseholdDraft={updateFinalHouseholdDraft}
+                        updateFinalAttributionDraft={updateFinalAttributionDraft}
+                        handleApplyFinalHouseholdEdits={handleApplyFinalHouseholdEdits}
+                        assignPersonToHouseholdDraft={assignPersonToHouseholdDraft}
+                        setPersonAsHouseholdPrimary={setPersonAsHouseholdPrimary}
+                        organizationGraphDraftsSetter={setOrganizationGraphDrafts}
+                        updateOrganizationDrafts={updateOrganizationDrafts}
+                      />
+                    </article>
+                  )}
+                </div>
+              )}
               {supportsDuplicateWorkflow && previewReviewMatches.length > 0 && nonLedgerReviewPanel === 'duplicate' && (
                 <div id="th-identity-review-queue" className="th-stack" style={{ marginBottom: 14 }}>
                   <div className="th-panel-head">
@@ -3056,16 +3927,16 @@ export default function TransformHubPage() {
                   ) : (
                   filteredPreviewReviewMatches.map((match) => {
                     const decision = deriveReviewDecision(match, mergeDecisions);
-                    const incomingRecord = previewRecords.find((record: any) => record.sourceRowRef === match.inputRef) ?? null;
+                    const incomingRecord = previewRecords.find((record) => record.sourceRowRef === match.inputRef) ?? null;
                     const candidateEvidence = match.reviewPayload?.matchedEvidence?.filter(Boolean) ?? [];
                     const matchedRecordRef = match.reviewPayload?.matchedInputRef ?? null;
                     const siblingMatch = !matchedRecordRef && match.matchedPersonId
                       ? (personResult?.matches ?? []).find((candidate) => candidate.inputRef !== match.inputRef && candidate.matchedPersonId === match.matchedPersonId)
                       : null;
                     const matchedPreviewRecord = matchedRecordRef
-                      ? previewRecords.find((record: any) => record.sourceRowRef === matchedRecordRef) ?? null
+                      ? previewRecords.find((record) => record.sourceRowRef === matchedRecordRef) ?? null
                       : siblingMatch
-                        ? previewRecords.find((record: any) => record.sourceRowRef === siblingMatch.inputRef) ?? null
+                        ? previewRecords.find((record) => record.sourceRowRef === siblingMatch.inputRef) ?? null
                         : null;
                     const matchedPerson = !matchedPreviewRecord && match.matchedPersonId
                       ? canonicalPeople.find((person: CanonicalPerson) => person.id === match.matchedPersonId) ?? null
@@ -3279,10 +4150,10 @@ export default function TransformHubPage() {
                     )}
                   </div>
                 )}
-                <table className="th-table th-resizable-table">
+                <table className="th-table th-resizable-table" style={{ width: nonLedgerTableWidth, minWidth: nonLedgerTableWidth }}>
                   <colgroup>
                     {nonLedgerTableColumnKeys.map((columnKey) => (
-                      <col key={columnKey} style={{ width: getNonLedgerColumnWidth(columnKey) }} />
+                      <col key={columnKey} style={{ width: getNonLedgerColumnWidth(columnKey), minWidth: getNonLedgerColumnWidth(columnKey) }} />
                     ))}
                   </colgroup>
                   <thead>
@@ -3290,14 +4161,14 @@ export default function TransformHubPage() {
                       <th className="th-resizable-header">
                         <div className="th-resizable-header-inner">
                           <span>Source</span>
-                          <button type="button" className="th-column-resizer" aria-label="Resize Source column" onMouseDown={(event) => startNonLedgerColumnResize('__source__', event.clientX)} />
+                          <button type="button" className="th-column-resizer" aria-label="Resize Source column" onPointerDown={(event) => startNonLedgerColumnResize('__source__', event)} />
                         </div>
                       </th>
                       {visibleNonLedgerTableHeaders.map((header) => (
                         <th key={header} className="th-resizable-header">
                           <div className="th-resizable-header-inner">
                             <span>{formatPreviewHeaderLabel(header)}</span>
-                            <button type="button" className="th-column-resizer" aria-label={`Resize ${formatPreviewHeaderLabel(header)} column`} onMouseDown={(event) => startNonLedgerColumnResize(header, event.clientX)} />
+                            <button type="button" className="th-column-resizer" aria-label={`Resize ${formatPreviewHeaderLabel(header)} column`} onPointerDown={(event) => startNonLedgerColumnResize(header, event)} />
                           </div>
                         </th>
                       ))}
@@ -3305,14 +4176,14 @@ export default function TransformHubPage() {
                         <th className="th-resizable-header">
                           <div className="th-resizable-header-inner">
                             <span>Actions</span>
-                            <button type="button" className="th-column-resizer" aria-label="Resize Actions column" onMouseDown={(event) => startNonLedgerColumnResize('__actions__', event.clientX)} />
+                            <button type="button" className="th-column-resizer" aria-label="Resize Actions column" onPointerDown={(event) => startNonLedgerColumnResize('__actions__', event)} />
                           </div>
                         </th>
                       )}
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredDisplayedPreviewRecords.map((record: any) => {
+                    {filteredDisplayedPreviewRecords.map((record) => {
                       const recordOrigins = getRecordSourceOrigins(record);
                       const isSourceFocused = previewSourceFocus === 'all' || recordOrigins.includes(previewSourceFocus);
                       return (
@@ -3378,7 +4249,79 @@ export default function TransformHubPage() {
                   <div className="th-card-head"><Database size={16} /><strong>Classifier summary</strong></div>
                   <p>{preview.summary.primaryLabel} · {Object.keys(schema?.fieldMap ?? {}).length} mapped field{Object.keys(schema?.fieldMap ?? {}).length === 1 ? '' : 's'} · {Math.round((schema?.confidence ?? 0) * 100)}% confidence.</p>
                 </article>
+                <article className="th-output-card">
+                  <div className="th-card-head"><Database size={16} /><strong>Entity model</strong></div>
+                  <p>Inspect the persisted household, donation, attribution, and relationship graph built from Final review.</p>
+                  <button type="button" className="th-button th-button-primary" onClick={() => void handleRefreshEntityModel(false)} disabled={!finalReviewReady || isRefreshingEntityModel}>
+                    <Database size={14} /> {isRefreshingEntityModel ? 'Loading…' : 'Inspect'}
+                  </button>
+                </article>
               </div>
+              {entityModelResult && (
+                <div className="th-stack" style={{ marginTop: 16 }}>
+                  <div className="th-panel-head">
+                    <span>Entity model readout</span>
+                    <span>{entityModelResult.summary.donationCount} donation node{entityModelResult.summary.donationCount === 1 ? '' : 's'}</span>
+                  </div>
+                  <div className="th-grid th-grid-4">
+                    <div className="th-stat-chip th-band-auto"><strong>{entityModelResult.summary.personCount}</strong><span>Persons</span></div>
+                    <div className="th-stat-chip th-band-review"><strong>{entityModelResult.summary.householdCount}</strong><span>Households</span></div>
+                    <div className="th-stat-chip th-band-separate"><strong>{entityModelResult.summary.organizationCount}</strong><span>Organizations</span></div>
+                    <div className="th-stat-chip"><strong>{entityModelResult.attributions.length}</strong><span>Attributions</span></div>
+                  </div>
+                  <div className="th-review-match-actions" style={{ flexWrap: 'wrap' }}>
+                    {entityGraphViews.map((view) => (
+                      <button key={`entity-output-${view}`} type="button" className={`th-chip${entityGraphView === view ? ' is-active' : ''}`} onClick={() => setEntityGraphView(view)}>
+                        {view}
+                      </button>
+                    ))}
+                    <input
+                      className="th-input th-entity-search"
+                      placeholder="Filter entity graph…"
+                      value={entityGraphSearch}
+                      onChange={(event) => setEntityGraphSearch(event.target.value)}
+                    />
+                    {entityGraphSelection && (
+                      <button type="button" className="th-chip is-active" onClick={() => setEntityGraphSelection(null)}>
+                        Clear drill-down: {entityGraphSelection.type} {entityGraphSelection.id}
+                      </button>
+                    )}
+                  </div>
+                  <div className="th-table-wrap">
+                    <EntityGraphTable
+                      entityGraphView={entityGraphView}
+                      filteredEntityGraphRows={filteredEntityGraphRows}
+                      entityGraphSelection={entityGraphSelection}
+                      setEntityGraphSelection={setEntityGraphSelection}
+                      entityModelResult={entityModelResult}
+                      formatPersonName={formatPersonName}
+                      formatCurrencyAmount={formatCurrencyAmount}
+                      keyPrefix="output-"
+                    />
+                  </div>
+                  <EntityGraphEditors
+                    variant="output"
+                    selectedEntityGraphDonationContext={selectedEntityGraphDonationContext}
+                    selectedEntityGraphHouseholdContext={selectedEntityGraphHouseholdContext}
+                    selectedEntityGraphPersonContext={selectedEntityGraphPersonContext}
+                    selectedEntityGraphOrganizationContext={selectedEntityGraphOrganizationContext}
+                    finalReviewReady={finalReviewReady}
+                    isLoading={isLoading}
+                    formatPersonName={formatPersonName}
+                    formatCurrencyAmount={formatCurrencyAmount}
+                    previewRecordLabel={previewRecordLabel}
+                    summarizeAttributionDraft={summarizeAttributionDraft}
+                    getCompactSourceRef={getCompactSourceRef}
+                    updateFinalHouseholdDraft={updateFinalHouseholdDraft}
+                    updateFinalAttributionDraft={updateFinalAttributionDraft}
+                    handleApplyFinalHouseholdEdits={handleApplyFinalHouseholdEdits}
+                    assignPersonToHouseholdDraft={assignPersonToHouseholdDraft}
+                    setPersonAsHouseholdPrimary={setPersonAsHouseholdPrimary}
+                    organizationGraphDraftsSetter={setOrganizationGraphDrafts}
+                    updateOrganizationDrafts={updateOrganizationDrafts}
+                  />
+                </div>
+              )}
             </div>
           </section>
         )}

@@ -493,6 +493,13 @@ body:has(.th-shell) {
 .th-file-input input {
   display: none;
 }
+.th-file-input[aria-disabled="true"],
+.th-button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 
 .th-link-button {
   padding: 0;
@@ -1025,6 +1032,81 @@ body:has(.th-shell) {
   font-size: 0.68rem;
   font-family: 'IBM Plex Mono', monospace;
   font-weight: 600;
+}
+
+.th-household-layer-card,
+.th-household-final-card {
+  gap: 14px;
+}
+
+.th-household-layer-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.th-household-member-row,
+.th-household-attribution-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--th-line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.th-household-member-row p,
+.th-household-attribution-row p {
+  margin: 4px 0 0;
+}
+
+.th-household-attribution-row span {
+  white-space: nowrap;
+  font-weight: 700;
+  color: var(--th-ink);
+}
+
+.th-household-proposed-card {
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(20, 99, 255, 0.16);
+  background: linear-gradient(135deg, rgba(243, 248, 255, 0.96), rgba(255, 255, 255, 0.94));
+}
+
+.th-household-proposed-card p {
+  margin: 6px 0 0;
+}
+
+.th-household-final-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.th-household-preview-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.th-household-preview-table td,
+.th-household-preview-table th {
+  white-space: nowrap;
+}
+
+.th-entity-search {
+  width: min(280px, 100%);
+  min-width: 180px;
+}
+
+.th-entity-row {
+  cursor: pointer;
+}
+
+.th-entity-row.is-selected td {
+  background: rgba(20, 99, 255, 0.08);
 }
 
 /* ─── Taxonomy ────────────────────────────────────────────────── */
@@ -1576,6 +1658,19 @@ body:has(.th-shell) {
   background: rgba(245, 247, 252, 0.92);
 }
 
+.th-taxonomy-resolved-table-wrap {
+  margin-top: 6px;
+}
+
+.th-taxonomy-resolved-table td {
+  vertical-align: top;
+}
+
+.th-taxonomy-resolved-table td strong {
+  display: inline-block;
+  padding-top: 10px;
+}
+
 .th-review-loader {
   display: flex;
   align-items: center;
@@ -1678,6 +1773,7 @@ body:has(.th-shell) {
 
 .th-resizable-table {
   table-layout: fixed;
+  max-width: none;
 }
 
 .th-resizable-header {
@@ -1709,6 +1805,8 @@ body:has(.th-shell) {
   border: 0;
   background: transparent;
   cursor: col-resize;
+  touch-action: none;
+  user-select: none;
 }
 
 .th-column-resizer::before {
@@ -1726,4 +1824,12 @@ body:has(.th-shell) {
 .th-column-resizer:hover::before,
 .th-column-resizer:focus-visible::before {
   background: rgba(20, 99, 255, 0.58);
+}
+
+@media (max-width: 980px) {
+  .th-household-layer-grid,
+  .th-household-final-grid,
+  .th-household-preview-strip {
+    grid-template-columns: 1fr;
+  }
 }

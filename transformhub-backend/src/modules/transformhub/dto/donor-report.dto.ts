@@ -11,4 +11,5 @@ export class DonorReportDto {
   rows: CanonicalRowDto[];
   @IsArray() @IsOptional() persons?: any[];
   @IsArray() @IsOptional() households?: any[];
+  @IsArray() @IsOptional() previewRecords?: any[];
 }

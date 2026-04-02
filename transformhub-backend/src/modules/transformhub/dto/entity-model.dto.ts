@@ -11,5 +11,7 @@ export class EntityModelDto {
   @Type(() => CanonicalRowDto)
   rows: CanonicalRowDto[];
   @IsArray() @IsOptional() existingPersons?: any[];
+  @IsArray() @IsOptional() previewRecords?: any[];
+  @IsArray() @IsOptional() households?: any[];
   @IsBoolean() @IsOptional() persist?: boolean;
 }

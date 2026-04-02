@@ -1,4 +1,4 @@
-import type { CanonicalLedgerRow, ParsedFile, ResolvedSchema } from './types';
+import type { CanonicalLedgerRow, ParsedFile, PreviewRecord, ResolvedSchema } from './types';
 
 export type PendingColumnMerge = {
   id: string;
@@ -64,7 +64,7 @@ function scoreHeaderSimilarity(left: string, right: string): number {
   return intersection / union;
 }
 
-function getRawValues(record: any): Record<string, string> {
+function getRawValues(record: PreviewRecord): Record<string, string> {
   return record?.rawValues ?? record?.values ?? {};
 }
 
@@ -125,14 +125,14 @@ function markNeedsPersonResolveOnRows(inputRows: CanonicalLedgerRow[]): Canonica
 
 function markNeedsPersonResolveOnParsedFile(parsedFile: ParsedFileWithMerge, fileClass: string): ParsedFileWithMerge {
   if (!parsedFile.preview || (fileClass !== 'constituent' && fileClass !== 'donor')) return parsedFile;
-  const records = parsedFile.preview.records.map((record: any) => ({ ...record, needs_person_resolve: false }));
-  const grouped = new Map<string, any[]>();
+  const records: PreviewRecord[] = parsedFile.preview.records.map((record) => ({ ...record, needs_person_resolve: false }));
+  const grouped = new Map<string, PreviewRecord[]>();
 
-  records.forEach((record: any) => {
+  records.forEach((record) => {
     const label = fileClass === 'donor'
       ? record.donorName || [record.firstName, record.lastName].filter(Boolean).join(' ')
       : record.displayName || [record.firstName, record.lastName].filter(Boolean).join(' ');
-    const key = normalizeHeaderKey(label || '');
+    const key = normalizeHeaderKey(String(label ?? ''));
     if (!key) return;
     const current = grouped.get(key) ?? [];
     current.push(record);
@@ -141,16 +141,16 @@ function markNeedsPersonResolveOnParsedFile(parsedFile: ParsedFileWithMerge, fil
 
   const flagged = new Set<string>();
   grouped.forEach((group) => {
-    const files = new Set(group.map((record: any) => record.source_file).filter(Boolean));
-    const signatures = new Set(group.map((record: any) => [record.email, record.phone, record.address, record.city, record.state, record.postalCode].filter(Boolean).join('|').toLowerCase()));
-    if (files.size > 1 && signatures.size > 1) group.forEach((record: any) => flagged.add(record.id));
+    const files = new Set(group.map((record) => record.source_file).filter(Boolean));
+    const signatures = new Set(group.map((record) => [record.email, record.phone, record.address, record.city, record.state, record.postalCode].filter(Boolean).join('|').toLowerCase()));
+    if (files.size > 1 && signatures.size > 1) group.forEach((record) => flagged.add(record.id));
   });
 
   return {
     ...parsedFile,
     preview: {
       ...parsedFile.preview,
-      records: records.map((record: any) => ({ ...record, needs_person_resolve: flagged.has(record.id) })),
+      records: records.map((record) => ({ ...record, needs_person_resolve: flagged.has(record.id) })),
     },
   };
 }
@@ -271,11 +271,14 @@ function applyHeaderMergePlan(parsedFile: ParsedFileWithMerge, plan: ReturnType<
               ...parsedFile.preview.summary,
               populatedFields: plan.mergedHeaders.length,
             },
-            records: parsedFile.preview.records.map((record: any) => ({
-              ...record,
-              rawValues: rewriteValuesWithPlan(getRawValues(record), plan.headerMap, plan.droppedHeaders),
-              values: record.values ? rewriteValuesWithPlan(record.values, plan.headerMap, plan.droppedHeaders) : record.values,
-            })),
+            records: parsedFile.preview.records.map((record) => {
+              const previewRecord = record as PreviewRecord;
+              return {
+                ...previewRecord,
+                rawValues: rewriteValuesWithPlan(getRawValues(previewRecord), plan.headerMap, plan.droppedHeaders),
+                ...(previewRecord.values ? { values: rewriteValuesWithPlan(previewRecord.values, plan.headerMap, plan.droppedHeaders) } : {}),
+              };
+            }),
           }
         : parsedFile.preview,
     },
@@ -346,15 +349,18 @@ export function prepareIncomingUpload(
               rowCount: parsedFile.preview.records.length,
               populatedFields: remappedHeaders.length,
             },
-            records: parsedFile.preview.records.map((record: any) => ({
-              ...record,
-              id: `${namespace}::${record.id}`,
-              sourceRowRef: `${namespace}::${record.sourceRowRef}`,
-              source_file: fileName,
-              needs_person_resolve: false,
-              rawValues: remapRawValues(getRawValues(record), rawHeaderMap),
-              values: record.values ? remapRawValues(record.values, rawHeaderMap) : record.values,
-            })),
+            records: parsedFile.preview.records.map((record) => {
+              const previewRecord = record as PreviewRecord;
+              return {
+                ...previewRecord,
+                id: `${namespace}::${previewRecord.id}`,
+                sourceRowRef: `${namespace}::${previewRecord.sourceRowRef}`,
+                source_file: fileName,
+                needs_person_resolve: false,
+                rawValues: remapRawValues(getRawValues(previewRecord), rawHeaderMap),
+                ...(previewRecord.values ? { values: remapRawValues(previewRecord.values, rawHeaderMap) } : {}),
+              };
+            }),
           }
         : parsedFile.preview,
     },
@@ -467,11 +473,14 @@ export function resolvePendingColumnMerge(parsedFile: ParsedFile, merge: Pending
               ...current.preview.summary,
               populatedFields: nextHeaders.length,
             },
-            records: current.preview.records.map((record: any) => ({
-              ...record,
-              rawValues: rewrite(getRawValues(record)),
-              values: record.values ? rewrite(record.values) : record.values,
-            })),
+            records: current.preview.records.map((record) => {
+              const previewRecord = record as PreviewRecord;
+              return {
+                ...previewRecord,
+                rawValues: rewrite(getRawValues(previewRecord)),
+                ...(previewRecord.values ? { values: rewrite(previewRecord.values) } : {}),
+              };
+            }),
           }
         : current.preview,
     },

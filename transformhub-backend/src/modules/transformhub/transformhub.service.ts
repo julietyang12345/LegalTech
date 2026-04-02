@@ -400,6 +400,26 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     if (body.rows?.length > 0) {
       await this.updateSessionRows(sessionId, body.rows);
     }
+    const refreshedSession = await this.getSession(sessionId);
+    const parsedFile = refreshedSession.parsedFile as any;
+    const schema = refreshedSession.schema as any;
+    const personResult = refreshedSession.personResult as any;
+    const householdResult = refreshedSession.householdResult as any;
+    if (
+      schema?.fileClass &&
+      schema.fileClass !== 'ledger' &&
+      Array.isArray(parsedFile?.preview?.records) &&
+      personResult &&
+      householdResult
+    ) {
+      await this.entityModelService.buildEntityModelFromPreview(
+        parsedFile.preview.records,
+        personResult.persons || personResult.canonicalPersons || [],
+        householdResult.households || [],
+        sessionId,
+        true,
+      );
+    }
 
     return this.getSession(sessionId);
   }
@@ -563,6 +583,15 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
 
   async entityModel(body: any) {
     this.assertRowCount(body.rows, 'entity-model');
+    if (Array.isArray(body.previewRecords) && body.previewRecords.length > 0) {
+      return this.entityModelService.buildEntityModelFromPreview(
+        body.previewRecords,
+        body.existingPersons || [],
+        body.households || [],
+        body.sessionId,
+        body.persist !== false,
+      );
+    }
     return this.entityModelService.buildEntityModel(body.rows, body.existingPersons || [], body.sessionId, body.persist !== false);
   }
 
@@ -701,7 +730,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
   }
 
   donorReport(body: any) {
-    return this.output.buildDonorReport(body.rows, body.persons || [], body.households || []);
+    return this.output.buildDonorReport(body.rows, body.persons || [], body.households || [], body.previewRecords || []);
   }
 
   async auditDashboard(body: any) {
@@ -716,7 +745,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
   }
 
   crmSyncExport(body: any) {
-    return this.output.buildCrmSyncExport(body.rows, body.persons || [], body.households || []);
+    return this.output.buildCrmSyncExport(body.rows, body.persons || [], body.households || [], body.previewRecords || []);
   }
 
   private assertRowCount(rows: any[] | undefined, routeName: string) {

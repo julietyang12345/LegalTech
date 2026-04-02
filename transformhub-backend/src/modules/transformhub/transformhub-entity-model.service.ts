@@ -230,6 +230,139 @@ export class TransformHubEntityModelService {
     };
   }
 
+  async buildEntityModelFromPreview(previewRecords: any[] = [], persons: any[] = [], households: any[] = [], sessionId?: string, persist = true): Promise<any> {
+    const personById = new Map((persons || []).map((person: any) => [person.id, person]));
+    const householdByName = new Map(
+      (households || []).flatMap((household: any) => [
+        household.label ? [String(household.label).trim(), household] : null,
+        household.addressee ? [String(household.addressee).trim(), household] : null,
+        household.lastName ? [String(household.lastName).trim(), household] : null,
+      ].filter(Boolean) as Array<[string, any]>),
+    );
+    const organizations: any[] = [];
+    const organizationIds = new Map<string, string>();
+    const relationships: any[] = [];
+    const attributions: any[] = [];
+    const donations: any[] = [];
+
+    const normalizeKey = (value: string) =>
+      String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+
+    const ensureOrganization = (name: string) => {
+      const key = String(name || '').trim().toLowerCase();
+      if (!key) return null;
+      if (!organizationIds.has(key)) {
+        const id = `ORG-${String(organizationIds.size + 20000).padStart(5, '0')}`;
+        organizationIds.set(key, id);
+        organizations.push({ id, name, normalizedName: key, matchingGift: true, workplaceGivingLink: true });
+      }
+      return organizationIds.get(key) ?? null;
+    };
+
+    previewRecords.forEach((record: any, index: number) => {
+      const sourceRowRef = record.sourceRowRef ?? `preview-${index + 1}`;
+      const donationId = `PDON-${normalizeKey(sourceRowRef)}`;
+      const attribution = record.attribution ?? null;
+      const directHousehold = householdByName.get(String(record.householdName || '').trim()) ?? null;
+      const primaryPersonId = attribution?.primaryPersonId ?? null;
+      const secondaryPersonId = attribution?.secondaryPersonId ?? null;
+      const primaryHousehold = primaryPersonId
+        ? (households || []).find((household: any) => Array.isArray(household.memberIds) && household.memberIds.includes(primaryPersonId)) ?? null
+        : null;
+      const canonicalHouseholdId = directHousehold?.id ?? primaryHousehold?.id ?? null;
+      const amount = this.parsePreviewAmount(record.amount);
+      const organizationId = attribution?.organizationName ? ensureOrganization(attribution.organizationName) : null;
+      const normalizedMode = attribution?.mode || 'person';
+
+      const pushAttribution = (suffix: string, payload: { personId?: string | null; organizationId?: string | null; kind: string; workplace?: boolean }) => {
+        attributions.push({
+          id: `${donationId}-${suffix}`,
+          sessionId: sessionId ?? null,
+          rowId: sourceRowRef,
+          donationId,
+          personId: payload.personId ?? null,
+          organizationId: payload.organizationId ?? null,
+          kind: payload.kind,
+          workplace: payload.workplace === true,
+        });
+      };
+
+      if (normalizedMode === 'joint_split') {
+        pushAttribution('primary', { personId: primaryPersonId, kind: 'hard_credit' });
+        if (secondaryPersonId) pushAttribution('secondary', { personId: secondaryPersonId, kind: 'hard_credit' });
+      } else if (normalizedMode === 'soft_credit') {
+        pushAttribution('primary', { personId: primaryPersonId, kind: 'hard_credit' });
+        if (secondaryPersonId) pushAttribution('secondary', { personId: secondaryPersonId, kind: 'soft_credit' });
+      } else if (normalizedMode === 'org_match') {
+        pushAttribution('primary', { personId: primaryPersonId, kind: 'hard_credit' });
+        if (organizationId) pushAttribution('org', { organizationId, kind: 'hard_credit', workplace: true });
+      } else if (primaryPersonId || organizationId) {
+        pushAttribution('primary', { personId: primaryPersonId, organizationId, kind: 'hard_credit' });
+      }
+
+      if (organizationId && primaryPersonId) {
+        relationships.push({
+          id: `REL-${normalizeKey(`${primaryPersonId}-${organizationId}-${normalizedMode}`)}`,
+          sessionId: sessionId ?? null,
+          type: normalizedMode === 'org_match' ? 'employer' : 'advisor',
+          personId: primaryPersonId,
+          organizationId,
+          confidence: 1,
+        });
+      }
+
+      donations.push({
+        id: donationId,
+        sessionId: sessionId ?? null,
+        rowId: sourceRowRef,
+        amount,
+        date: record.date || record.createdAt || null,
+        fund: record.fund || null,
+        appeal: record.appeal || null,
+        attribution_type: attributions.some((entry) => entry.donationId === donationId) ? 'linked' : 'direct',
+        canonical_person_id: primaryPersonId,
+        canonical_household_id: canonicalHouseholdId,
+        canonical_org_id: organizationId,
+        attribution_entry_id: attributions.find((entry) => entry.donationId === donationId)?.id ?? null,
+      });
+    });
+
+    if (persist && sessionId) {
+      await this.persistEntityModel(sessionId, [], households, organizations, donations, attributions, relationships, [], [], []);
+    }
+
+    return {
+      rows: [],
+      persons,
+      households,
+      organizations,
+      donations,
+      attributions,
+      relationships,
+      campaigns: [],
+      appeals: [],
+      auditDecisions: [],
+      summary: {
+        personCount: persons.length,
+        householdCount: households.length,
+        organizationCount: organizations.length,
+        donationCount: donations.length,
+      },
+      persisted: Boolean(persist && sessionId),
+    };
+  }
+
+  private parsePreviewAmount(value: unknown): number {
+    const normalized = String(value ?? '').replace(/[^0-9.-]+/g, '');
+    if (!normalized) return 0;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
   private async persistEntityModel(
     sessionId: string,
     rows: any[],
@@ -246,7 +379,8 @@ export class TransformHubEntityModelService {
     await this.householdRepo.save(
       households.map((household) => ({
         ...household,
-        primaryMemberId: household.memberIds?.[0] ?? null,
+        primaryMemberId: household.primaryPersonId ?? household.primaryMemberId ?? household.memberIds?.[0] ?? null,
+        salutationText: household.formalSalutation ?? household.salutationText ?? null,
       })) as any,
     );
     await this.organizationRepo.save(organizations as any);
