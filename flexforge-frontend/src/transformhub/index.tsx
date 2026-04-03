@@ -89,17 +89,12 @@ type UploadPayload = {
   contentsBase64?: string;
 };
 
-type WorkbookSheetAction = 'append' | 'ignore' | 'separate';
+type WorkbookSheetAction = 'append' | 'ignore';
 
 type PendingWorkbookSheetReview = {
   payload: UploadPayload;
   workbookSheets: NonNullable<ParsedFile['workbookSheets']>;
   actionsBySheet: Record<string, WorkbookSheetAction>;
-};
-
-type DeferredWorkbookSheetReview = {
-  payload: UploadPayload;
-  workbookSheets: NonNullable<ParsedFile['workbookSheets']>;
 };
 
 type AppendReviewSummary = {
@@ -390,20 +385,78 @@ function scoreSheetHeaderOverlap(left: string[], right: string[]): number {
   return intersection / Math.max(leftSet.size, rightSet.size, 1);
 }
 
+function normalizeSheetHeader(header: string): string {
+  return header.toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function sheetHasAnyHeader(headers: string[], patterns: RegExp[]): boolean {
+  const normalized = headers.map(normalizeSheetHeader);
+  return normalized.some((header) => patterns.some((pattern) => pattern.test(header)));
+}
+
+function qualifiesForHouseholdAnalysis(sheet: NonNullable<ParsedFile['workbookSheets']>[number]): boolean {
+  if (sheet.structureAnalysis.dataRowCount < 2) return false;
+  if (sheet.fileClass !== 'donor' && sheet.fileClass !== 'constituent') return false;
+  const headers = sheet.headers ?? [];
+  const hasNameSignals = sheetHasAnyHeader(headers, [
+    /(^| )first name($| )/,
+    /(^| )last name($| )/,
+    /(^| )(donor|constituent|full) name($| )/,
+    /(^| )name($| )/,
+    /(^| )household name($| )/,
+  ]);
+  const hasHouseholdSignals = sheetHasAnyHeader(headers, [
+    /(^| )address($| )/,
+    /(^| )mailing address($| )/,
+    /(^| )postal code($| )/,
+    /(^| )zip($| )/,
+    /(^| )city($| )/,
+    /(^| )state($| )/,
+    /(^| )household name($| )/,
+  ]);
+  return hasNameSignals && hasHouseholdSignals;
+}
+
+function scoreWorkbookBaseSheet(sheet: NonNullable<ParsedFile['workbookSheets']>[number]): number {
+  const normalizedName = sheet.sheetName.toLowerCase().trim();
+  let score = sheet.structureAnalysis.dataRowCount * 100 + (sheet.headers?.length ?? 0);
+  if (qualifiesForHouseholdAnalysis(sheet)) score += 2000;
+  if (sheet.fileClass === 'donor' || sheet.fileClass === 'constituent') score += 400;
+  if (/^readme$|read me|instruction|instructions|notes?|summary|cover|about/.test(normalizedName)) score -= 2500;
+  if (/expected|sample output|review pairs?|pairs?|qa|test cases?/.test(normalizedName)) score -= 1200;
+  return score;
+}
+
+function pickWorkbookBaseSheet(workbookSheets: NonNullable<ParsedFile['workbookSheets']>) {
+  return workbookSheets.reduce((best, sheet) => (
+    !best || scoreWorkbookBaseSheet(sheet) > scoreWorkbookBaseSheet(best) ? sheet : best
+  ), workbookSheets[0]);
+}
+
 function buildDefaultWorkbookSheetActions(workbookSheets: NonNullable<ParsedFile['workbookSheets']>): Record<string, WorkbookSheetAction> {
   if (workbookSheets.length === 0) return {};
-  const baseSheet = workbookSheets[0];
+  const baseSheet = pickWorkbookBaseSheet(workbookSheets);
   return Object.fromEntries(
     workbookSheets.map((sheet) => {
+      if (!qualifiesForHouseholdAnalysis(sheet)) {
+        return [sheet.sheetName, 'ignore' as const];
+      }
       if (sheet.sheetName === baseSheet.sheetName) return [sheet.sheetName, 'append' as const];
       const overlap = scoreSheetHeaderOverlap(baseSheet.headers, sheet.headers);
       const isCompatible = sheet.fileClass === baseSheet.fileClass && overlap >= 0.45;
-      return [sheet.sheetName, isCompatible ? 'append' as const : 'separate' as const];
+      return [sheet.sheetName, isCompatible ? 'append' as const : 'ignore' as const];
     }),
   );
 }
 
 function describeWorkbookSheetCompatibility(sheet: NonNullable<ParsedFile['workbookSheets']>[number], baseSheet: NonNullable<ParsedFile['workbookSheets']>[number]) {
+  if (!qualifiesForHouseholdAnalysis(sheet)) {
+    return {
+      tone: 'warning' as const,
+      label: 'Skipped',
+      detail: 'This tab does not look like a donor/constituent sheet with usable household signals, so it is ignored by default.',
+    };
+  }
   if (sheet.sheetName === baseSheet.sheetName) {
     return { tone: 'ready' as const, label: 'Base sheet', detail: 'Used as the comparison baseline for workbook combine review.' };
   }
@@ -412,7 +465,7 @@ function describeWorkbookSheetCompatibility(sheet: NonNullable<ParsedFile['workb
     return {
       tone: 'warning' as const,
       label: 'Different class',
-      detail: `Detected as ${sheet.fileClass} instead of ${baseSheet.fileClass}. Keep separate unless you intentionally want one mixed table.`,
+      detail: `Detected as ${sheet.fileClass} instead of ${baseSheet.fileClass}. Ignore this tab unless you intentionally want one mixed table.`,
     };
   }
   if (overlap < 0.45) {
@@ -717,9 +770,6 @@ function getAttributionModeCreditLabel(mode: PreviewAttributionDraft['mode']): s
   return 'hard';
 }
 
-const ATTRIBUTION_MODE_SEQUENCE: PreviewAttributionDraft['mode'][] = ['person', 'soft_credit', 'joint_split', 'org_match'];
-const ROLE_SEQUENCE: Array<'primary' | 'secondary' | 'organization' | 'unassigned'> = ['primary', 'secondary', 'organization', 'unassigned'];
-
 function getRoleTone(role: 'primary' | 'secondary' | 'organization' | 'unassigned'): 'green' | 'amber' | 'blue' | 'slate' {
   if (role === 'primary') return 'green';
   if (role === 'secondary') return 'amber';
@@ -840,7 +890,6 @@ export default function TransformHubPage() {
   const [isResolvingPendingMerge, setIsResolvingPendingMerge] = useState(false);
   const [pendingAppendReview, setPendingAppendReview] = useState<PendingAppendReview | null>(null);
   const [pendingWorkbookSheetReview, setPendingWorkbookSheetReview] = useState<PendingWorkbookSheetReview | null>(null);
-  const [deferredWorkbookSheetReview, setDeferredWorkbookSheetReview] = useState<DeferredWorkbookSheetReview | null>(null);
 
   // Layer 03 state
   const [personResult, setPersonResult] = useState<PersonResolverResult | null>(null);
@@ -874,16 +923,17 @@ export default function TransformHubPage() {
   const [peopleReviewFilter, setPeopleReviewFilter] = useState<PeopleReviewFilter>('pending');
   const [nonLedgerReviewPanel, setNonLedgerReviewPanel] = useState<'duplicate' | 'household' | 'taxonomy' | 'final'>('duplicate');
   const [householdReviewTab, setHouseholdReviewTab] = useState<HouseholdReviewTab>('needs_attribution');
-  const [attributionTableTab, setAttributionTableTab] = useState<AttributionTableTab>('needs_attribution');
+  const [attributionTableTab, setAttributionTableTab] = useState<AttributionTableTab>('all');
   const [selectedAttributionGroupKey, setSelectedAttributionGroupKey] = useState<string | null>(null);
   const [expandedHouseholdReviewId, setExpandedHouseholdReviewId] = useState<string | null>(null);
+  const [embeddedHouseholdDrafts, setEmbeddedHouseholdDrafts] = useState<Record<string, Record<string, PreviewAttributionDraft>>>({});
   const [, setExpandedFinalHouseholdId] = useState<string | null>(null);
   const [taxonomyScanColumnsExpanded, setTaxonomyScanColumnsExpanded] = useState(false);
   const [pendingTaxonomyMergeCandidateId, setPendingTaxonomyMergeCandidateId] = useState<string | null>(null);
   const [pendingTaxonomyMergeLabel, setPendingTaxonomyMergeLabel] = useState('');
   const [editingResolvedTaxonomyGroupId, setEditingResolvedTaxonomyGroupId] = useState<string | null>(null);
   const [editingResolvedTaxonomyLabel, setEditingResolvedTaxonomyLabel] = useState('');
-  const [nonLedgerColumnWidths, setNonLedgerColumnWidths] = useState<Record<string, number>>({ __source__: 172, __actions__: 156 });
+  const [nonLedgerColumnWidths, setNonLedgerColumnWidths] = useState<Record<string, number>>({ __source__: 172 });
   const [isRunningTaxonomyReview, setIsRunningTaxonomyReview] = useState(false);
   const [selectedPreviewHeader, setSelectedPreviewHeader] = useState<string | null>(null);
   const [selectedPreviewRowRef, setSelectedPreviewRowRef] = useState<string | null>(null);
@@ -1034,106 +1084,6 @@ export default function TransformHubPage() {
     });
     return next;
   }, [householdResult]);
-  const ambiguousAttributionGroups = useMemo(() => {
-    const groups = new Map<string, PreviewRecord[]>();
-    previewRecords.forEach((record) => {
-      const matchedPersonId = previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId ?? null;
-      const householdId = matchedPersonId ? householdIdByPersonId.get(matchedPersonId) ?? null : null;
-      if (!householdId) return;
-      const key = `${householdId}::${getAttributionReviewKey(record)}`;
-      const current = groups.get(key) ?? [];
-      current.push(record);
-      groups.set(key, current);
-    });
-    return Array.from(groups.entries())
-      .filter(([, records]) => records.length > 1)
-      .map(([key, records]) => {
-        const householdId = key.split('::')[0] ?? '';
-        const leadRecord = records[0];
-        const labelDate = leadRecord && typeof leadRecord.date === 'string' ? leadRecord.date : null;
-        const labelName = String(leadRecord?.fund ?? leadRecord?.campaignName ?? 'Gift');
-        const labelAmount = String(leadRecord?.amount ?? '—');
-        return {
-          key,
-          householdId,
-          records,
-          label: `${formatReviewDate(labelDate)} · ${labelName} · ${labelAmount}`,
-        };
-      });
-  }, [previewRecords, previewMatchByInputRef, householdIdByPersonId]);
-  const ambiguousAttributionRefs = useMemo(
-    () => new Set(ambiguousAttributionGroups.flatMap((group) => group.records.map((record) => record.sourceRowRef))),
-    [ambiguousAttributionGroups],
-  );
-  const ambiguousGroupKeyBySourceRef = useMemo(
-    () => new Map(ambiguousAttributionGroups.flatMap((group) => group.records.map((record) => [record.sourceRowRef, group.key] as const))),
-    [ambiguousAttributionGroups],
-  );
-  const householdLayerViews = useTransformHubHouseholdReview({
-    householdResult,
-    peopleById,
-    finalHouseholdDrafts,
-    finalAttributionDrafts,
-    previewMatchByInputRef,
-    buildInitialHouseholdDraft,
-    buildInitialAttributionDraft,
-    summarizeAttributionDraft,
-    previewRecordLabel,
-    parseCurrencyAmount,
-    previewRecords,
-    ambiguousAttributionRefs,
-  });
-  const finalReviewReady = householdsStepReady && householdLayerViews.length > 0;
-  const householdLabelById = useMemo(
-    () => new Map(householdLayerViews.map((view) => [view.householdId, view.draft.label])),
-    [householdLayerViews],
-  );
-  const householdsNeedingAttribution = useMemo(
-    () => new Set(householdLayerViews.filter((view) => view.status.label === 'Needs attribution').map((view) => view.householdId)),
-    [householdLayerViews],
-  );
-  const visibleHouseholdLayerViews = useMemo(
-    () => (householdReviewTab === 'needs_attribution'
-      ? householdLayerViews.filter((view) => householdsNeedingAttribution.has(view.householdId))
-      : householdLayerViews),
-    [householdReviewTab, householdLayerViews, householdsNeedingAttribution],
-  );
-  useEffect(() => {
-    if (visibleHouseholdLayerViews.length === 0) {
-      setExpandedHouseholdReviewId(null);
-      setExpandedFinalHouseholdId(null);
-      return;
-    }
-    setExpandedHouseholdReviewId((current) => current && visibleHouseholdLayerViews.some((view) => view.householdId === current) ? current : visibleHouseholdLayerViews[0].householdId);
-    setExpandedFinalHouseholdId((current) => current && visibleHouseholdLayerViews.some((view) => view.householdId === current) ? current : visibleHouseholdLayerViews[0].householdId);
-  }, [visibleHouseholdLayerViews]);
-  const {
-    filteredEntityGraphRows,
-    selectedEntityGraphDonationContext,
-    selectedEntityGraphHouseholdContext,
-    selectedEntityGraphPersonContext,
-    selectedEntityGraphOrganizationContext,
-  } = useTransformHubReviewGraph({
-    entityModelResult,
-    entityGraphView,
-    entityGraphSearch,
-    entityGraphSelection,
-    parsedPreviewRecords: previewBaseRecords,
-    finalAttributionDrafts,
-    finalHouseholdDrafts,
-    householdResult,
-    organizationGraphDrafts,
-    matchesEntityGraphSearch,
-    matchesEntityGraphSelection,
-    buildInitialAttributionDraft,
-    buildInitialHouseholdDraft,
-  });
-  const entityGraphViews: EntityGraphView[] = ['donations', 'attributions', 'households', 'persons', 'organizations'];
-  const heroTitle = isLedgerFile ? 'Canonical ledger in the center.' : 'Canonical records in the center.';
-  const heroSummary = isLedgerFile
-    ? 'Everything flows into one final ledger, and every export flows back out from the same reviewed rows.'
-    : 'Each upload is classified first, normalized into its own canonical model, and reviewed in a file-specific table before export.';
-
   const previewMergeView = useMemo(() => {
     const previewRecordOrder = new Map(previewRecords.map((record, index) => [record.sourceRowRef, index]));
     const confirmedPreviewMergePairs: Array<[string, string]> = [];
@@ -1193,8 +1143,160 @@ export default function TransformHubPage() {
         : previewRecords,
     };
   }, [supportsDuplicateWorkflow, personResult, mergeDecisions, previewRecords]);
+  const representativeByAbsorbedRef = previewMergeView.representativeByAbsorbedRef;
   const mergedSourceRefsByRepresentative = previewMergeView.mergedSourceRefsByRepresentative;
   const displayedPreviewRecords = previewMergeView.displayedPreviewRecords;
+  const getPreviewRecordClusterRefs = useCallback((sourceRowRef: string) => {
+    const representativeRef = representativeByAbsorbedRef.get(sourceRowRef) ?? sourceRowRef;
+    return [representativeRef, ...(mergedSourceRefsByRepresentative.get(representativeRef) ?? [])];
+  }, [mergedSourceRefsByRepresentative, representativeByAbsorbedRef]);
+  const getResolvedPreviewPersonIds = useCallback((sourceRowRef: string) => (
+    Array.from(new Set(
+      getPreviewRecordClusterRefs(sourceRowRef)
+        .map((ref) => previewMatchByInputRef.get(ref)?.matchedPersonId ?? null)
+        .filter((personId): personId is string => Boolean(personId)),
+    ))
+  ), [getPreviewRecordClusterRefs, previewMatchByInputRef]);
+  const getResolvedPreviewHouseholdIds = useCallback((sourceRowRef: string) => (
+    Array.from(new Set(
+      getResolvedPreviewPersonIds(sourceRowRef)
+        .map((personId) => householdIdByPersonId.get(personId) ?? null)
+        .filter((householdId): householdId is string => Boolean(householdId)),
+    ))
+  ), [getResolvedPreviewPersonIds, householdIdByPersonId]);
+  const ambiguousAttributionGroups = useMemo(() => {
+    const forcedAmbiguousKeys = new Set<string>();
+    const groups = new Map<string, PreviewRecord[]>();
+    displayedPreviewRecords.forEach((record) => {
+      const householdIds = getResolvedPreviewHouseholdIds(record.sourceRowRef);
+      if (householdIds.length !== 1) return;
+      const householdId = householdIds[0];
+      const key = `${householdId}::${getAttributionReviewKey(record)}`;
+      const current = groups.get(key) ?? [];
+      current.push(record);
+      groups.set(key, current);
+      if (getResolvedPreviewPersonIds(record.sourceRowRef).length > 1) {
+        forcedAmbiguousKeys.add(key);
+      }
+    });
+    return Array.from(groups.entries())
+      .filter(([key, records]) => records.length > 1 || forcedAmbiguousKeys.has(key))
+      .map(([key, records]) => {
+        const householdId = key.split('::')[0] ?? '';
+        const leadRecord = records[0];
+        const labelDate = leadRecord && typeof leadRecord.date === 'string' ? leadRecord.date : null;
+        const labelName = String(leadRecord?.fund ?? leadRecord?.campaignName ?? 'Gift');
+        const labelAmount = String(leadRecord?.amount ?? '—');
+        return {
+          key,
+          householdId,
+          records,
+          label: `${formatReviewDate(labelDate)} · ${labelName} · ${labelAmount}`,
+        };
+      });
+  }, [displayedPreviewRecords, getResolvedPreviewHouseholdIds, getResolvedPreviewPersonIds]);
+  const ambiguousAttributionRefs = useMemo(
+    () => new Set(ambiguousAttributionGroups.flatMap((group) => group.records.map((record) => record.sourceRowRef))),
+    [ambiguousAttributionGroups],
+  );
+  const ambiguousGroupKeyBySourceRef = useMemo(
+    () => new Map(ambiguousAttributionGroups.flatMap((group) => group.records.map((record) => [record.sourceRowRef, group.key] as const))),
+    [ambiguousAttributionGroups],
+  );
+  useEffect(() => {
+    if (isLedgerFile || !householdResult) return;
+    console.debug('[TransformHub][household-debug] attribution-resolution', {
+      displayedRows: displayedPreviewRecords.map((record) => ({
+        sourceRowRef: record.sourceRowRef,
+        donorName: record.donorName || record.displayName || '',
+        reviewKey: getAttributionReviewKey(record),
+        personIds: getResolvedPreviewPersonIds(record.sourceRowRef),
+        householdIds: getResolvedPreviewHouseholdIds(record.sourceRowRef),
+        mergedRefs: mergedSourceRefsByRepresentative.get(record.sourceRowRef) ?? [],
+      })),
+      ambiguousGroups: ambiguousAttributionGroups.map((group) => ({
+        key: group.key,
+        householdId: group.householdId,
+        refs: group.records.map((record) => record.sourceRowRef),
+        label: group.label,
+      })),
+    });
+  }, [
+    isLedgerFile,
+    householdResult,
+    displayedPreviewRecords,
+    ambiguousAttributionGroups,
+    getResolvedPreviewPersonIds,
+    getResolvedPreviewHouseholdIds,
+    mergedSourceRefsByRepresentative,
+  ]);
+  const householdLayerViews = useTransformHubHouseholdReview({
+    householdResult,
+    peopleById,
+    finalHouseholdDrafts,
+    finalAttributionDrafts,
+    previewMatchByInputRef,
+    mergedSourceRefsByRepresentative,
+    representativeByAbsorbedRef,
+    buildInitialHouseholdDraft,
+    buildInitialAttributionDraft,
+    summarizeAttributionDraft,
+    previewRecordLabel,
+    parseCurrencyAmount,
+    previewRecords,
+    ambiguousAttributionRefs,
+  });
+  const finalReviewReady = householdsStepReady && householdLayerViews.length > 0;
+  const householdLabelById = useMemo(
+    () => new Map(householdLayerViews.map((view) => [view.householdId, view.draft.label])),
+    [householdLayerViews],
+  );
+  const householdsNeedingAttribution = useMemo(
+    () => new Set(householdLayerViews.filter((view) => view.status.label === 'Needs attribution').map((view) => view.householdId)),
+    [householdLayerViews],
+  );
+  const visibleHouseholdLayerViews = useMemo(
+    () => (householdReviewTab === 'needs_attribution'
+      ? householdLayerViews.filter((view) => householdsNeedingAttribution.has(view.householdId))
+      : householdLayerViews),
+    [householdReviewTab, householdLayerViews, householdsNeedingAttribution],
+  );
+  useEffect(() => {
+    if (visibleHouseholdLayerViews.length === 0) {
+      setExpandedHouseholdReviewId(null);
+      setExpandedFinalHouseholdId(null);
+      return;
+    }
+    setExpandedHouseholdReviewId((current) => current && visibleHouseholdLayerViews.some((view) => view.householdId === current) ? current : visibleHouseholdLayerViews[0].householdId);
+    setExpandedFinalHouseholdId((current) => current && visibleHouseholdLayerViews.some((view) => view.householdId === current) ? current : visibleHouseholdLayerViews[0].householdId);
+  }, [visibleHouseholdLayerViews]);
+  const {
+    filteredEntityGraphRows,
+    selectedEntityGraphDonationContext,
+    selectedEntityGraphHouseholdContext,
+    selectedEntityGraphPersonContext,
+    selectedEntityGraphOrganizationContext,
+  } = useTransformHubReviewGraph({
+    entityModelResult,
+    entityGraphView,
+    entityGraphSearch,
+    entityGraphSelection,
+    parsedPreviewRecords: previewBaseRecords,
+    finalAttributionDrafts,
+    finalHouseholdDrafts,
+    householdResult,
+    organizationGraphDrafts,
+    matchesEntityGraphSearch,
+    matchesEntityGraphSelection,
+    buildInitialAttributionDraft,
+    buildInitialHouseholdDraft,
+  });
+  const entityGraphViews: EntityGraphView[] = ['donations', 'attributions', 'households', 'persons', 'organizations'];
+  const heroTitle = isLedgerFile ? 'Canonical ledger in the center.' : 'Canonical records in the center.';
+  const heroSummary = isLedgerFile
+    ? 'Everything flows into one final ledger, and every export flows back out from the same reviewed rows.'
+    : 'Each upload is classified first, normalized into its own canonical model, and reviewed in a file-specific table before export.';
+
   const nonLedgerTableHeaders = useMemo(() => parsedFile?.headers ?? [], [parsedFile?.headers]);
   const visibleNonLedgerTableHeaders = useMemo(
     () => nonLedgerTableHeaders.filter((header) => !hiddenPreviewHeaders.includes(header)),
@@ -1209,13 +1311,13 @@ export default function TransformHubPage() {
     [householdResult],
   );
   const nonLedgerTableColumnKeys = useMemo(
-    () => ['__source__', ...visibleNonLedgerTableHeaders, ...reviewAugmentedColumns, ...((fileClass === 'constituent' || fileClass === 'donor') ? ['__actions__'] : [])],
-    [visibleNonLedgerTableHeaders, reviewAugmentedColumns, fileClass],
+    () => ['__source__', ...visibleNonLedgerTableHeaders, ...reviewAugmentedColumns],
+    [visibleNonLedgerTableHeaders, reviewAugmentedColumns],
   );
 
   const nonLedgerTableWidth = useMemo(
     () => nonLedgerTableColumnKeys.reduce((total, columnKey) => {
-      const width = nonLedgerColumnWidths[columnKey] ?? (columnKey === '__source__' ? 172 : columnKey === '__actions__' ? 156 : 148);
+      const width = nonLedgerColumnWidths[columnKey] ?? (columnKey === '__source__' ? 172 : 148);
       return total + width;
     }, 0),
     [nonLedgerTableColumnKeys, nonLedgerColumnWidths],
@@ -1271,7 +1373,6 @@ export default function TransformHubPage() {
   function getNonLedgerColumnWidth(columnKey: string) {
     if (nonLedgerColumnWidths[columnKey]) return nonLedgerColumnWidths[columnKey];
     if (columnKey === '__source__') return 172;
-    if (columnKey === '__actions__') return 156;
     if (columnKey === '__attribution_type__') return 160;
     if (columnKey === '__credit_amount__') return 140;
     if (columnKey === '__role__') return 150;
@@ -1283,7 +1384,7 @@ export default function TransformHubPage() {
   function startNonLedgerColumnResize(columnKey: string, event: ReactPointerEvent<HTMLButtonElement>) {
     event.preventDefault();
     const startWidth = getNonLedgerColumnWidth(columnKey);
-    const minWidth = columnKey === '__source__' ? 156 : columnKey === '__actions__' ? 132 : 120;
+    const minWidth = columnKey === '__source__' ? 156 : 120;
     const startClientX = event.clientX;
     const handlePointerMove = (moveEvent: PointerEvent) => {
       const delta = moveEvent.clientX - startClientX;
@@ -2300,6 +2401,43 @@ export default function TransformHubPage() {
     });
   }
 
+  function buildDraftForRoleSelection(
+    attributionDraft: PreviewAttributionDraft,
+    matchedPerson: CanonicalPerson | null,
+    assignedHouseholdId: string | null,
+    nextRole: 'primary' | 'secondary' | 'organization' | 'unassigned',
+  ): PreviewAttributionDraft {
+    if (!matchedPerson) return attributionDraft;
+    const householdMembers = assignedHouseholdId
+      ? (householdResult?.households.find((household) => household.id === assignedHouseholdId)?.memberIds ?? [])
+      : [];
+    const otherMemberId = householdMembers.find((memberId) => memberId !== matchedPerson.id) ?? attributionDraft.secondaryPersonId ?? null;
+
+    if (nextRole === 'secondary') {
+      return {
+        ...attributionDraft,
+        primaryPersonId: otherMemberId,
+        secondaryPersonId: matchedPerson.id,
+      };
+    }
+
+    if (nextRole === 'organization') {
+      return {
+        ...attributionDraft,
+        mode: 'org_match',
+        primaryPersonId: matchedPerson.id,
+        secondaryPersonId: otherMemberId,
+      };
+    }
+
+    return {
+      ...attributionDraft,
+      primaryPersonId: matchedPerson.id,
+      secondaryPersonId: otherMemberId,
+      mode: attributionDraft.mode === 'org_match' && nextRole === 'primary' ? 'person' : attributionDraft.mode,
+    };
+  }
+
   function assignPersonToHouseholdDraft(personId: string, nextHouseholdId: string) {
     if (!householdResult) return;
     const nextHouseholds = householdResult.households.map((household) => {
@@ -2405,7 +2543,8 @@ export default function TransformHubPage() {
     const nextPreview = {
       ...parsedFile.preview,
       records: parsedFile.preview.records.map((record) => {
-        const personId = previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId;
+        const resolvedPersonIds = getResolvedPreviewPersonIds(record.sourceRowRef);
+        const personId = resolvedPersonIds.length === 1 ? resolvedPersonIds[0] : null;
         const attribution = finalAttributionDrafts[record.sourceRowRef] ?? getPreviewRecordAttribution(record);
         if (!personId) {
           return attribution ? { ...record, attribution } : record;
@@ -2487,8 +2626,10 @@ export default function TransformHubPage() {
   }
 
   function getAttributionDraftForRecord(record: PreviewRecord) {
-    const matchedPerson = peopleById.get(previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId ?? '') ?? null;
-    const defaultHouseholdId = matchedPerson ? householdIdByPersonId.get(matchedPerson.id) ?? null : null;
+    const resolvedPersonIds = getResolvedPreviewPersonIds(record.sourceRowRef);
+    const matchedPerson = resolvedPersonIds.length === 1 ? peopleById.get(resolvedPersonIds[0]) ?? null : null;
+    const resolvedHouseholdIds = getResolvedPreviewHouseholdIds(record.sourceRowRef);
+    const defaultHouseholdId = resolvedHouseholdIds.length === 1 ? resolvedHouseholdIds[0] : (matchedPerson ? householdIdByPersonId.get(matchedPerson.id) ?? null : null);
     const members = defaultHouseholdId
       ? ((householdResult?.households.find((household) => household.id === defaultHouseholdId)?.memberIds ?? [])
         .map((memberId) => peopleById.get(memberId))
@@ -2530,52 +2671,7 @@ export default function TransformHubPage() {
     assignedHouseholdId: string | null,
     nextRole: 'primary' | 'secondary' | 'organization' | 'unassigned',
   ) {
-    if (!matchedPerson) return;
-    const householdMembers = assignedHouseholdId
-      ? (householdResult?.households.find((household) => household.id === assignedHouseholdId)?.memberIds ?? [])
-      : [];
-    const otherMemberId = householdMembers.find((memberId) => memberId !== matchedPerson.id) ?? attributionDraft.secondaryPersonId ?? null;
-
-    if (nextRole === 'secondary') {
-      updateFinalAttributionDraft(record.sourceRowRef, {
-        primaryPersonId: otherMemberId,
-        secondaryPersonId: matchedPerson.id,
-      });
-      return;
-    }
-
-    if (nextRole === 'organization') {
-      updateFinalAttributionDraft(record.sourceRowRef, {
-        mode: 'org_match',
-        primaryPersonId: matchedPerson.id,
-        secondaryPersonId: otherMemberId,
-      });
-      return;
-    }
-
-    updateFinalAttributionDraft(record.sourceRowRef, {
-      primaryPersonId: matchedPerson.id,
-      secondaryPersonId: otherMemberId,
-      mode: attributionDraft.mode === 'org_match' && nextRole === 'primary' ? 'person' : attributionDraft.mode,
-    });
-  }
-
-  function cycleRecordRole(
-    record: PreviewRecord,
-    attributionDraft: PreviewAttributionDraft,
-    matchedPerson: CanonicalPerson | null,
-    assignedHouseholdId: string | null,
-  ) {
-    const currentRole = getRecordRole(record, attributionDraft, matchedPerson);
-    const currentIndex = ROLE_SEQUENCE.indexOf(currentRole);
-    const nextRole = ROLE_SEQUENCE[(currentIndex + 1) % ROLE_SEQUENCE.length];
-    updateRecordRole(record, attributionDraft, matchedPerson, assignedHouseholdId, nextRole);
-  }
-
-  function cycleAttributionMode(record: PreviewRecord, attributionDraft: PreviewAttributionDraft) {
-    const currentIndex = ATTRIBUTION_MODE_SEQUENCE.indexOf(attributionDraft.mode);
-    const nextMode = ATTRIBUTION_MODE_SEQUENCE[(currentIndex + 1) % ATTRIBUTION_MODE_SEQUENCE.length];
-    updateFinalAttributionDraft(record.sourceRowRef, { mode: nextMode });
+    updateFinalAttributionDraft(record.sourceRowRef, buildDraftForRoleSelection(attributionDraft, matchedPerson, assignedHouseholdId, nextRole));
   }
 
   function getRecordRole(
@@ -2609,6 +2705,31 @@ export default function TransformHubPage() {
       return Math.round((baseAmount * (pct / 100)) * 100) / 100;
     }
     return baseAmount;
+  }
+
+  function updateEmbeddedHouseholdDraft(householdId: string, sourceRowRef: string, nextDraft: PreviewAttributionDraft) {
+    setEmbeddedHouseholdDrafts((current) => ({
+      ...current,
+      [householdId]: {
+        ...(current[householdId] ?? {}),
+        [sourceRowRef]: nextDraft,
+      },
+    }));
+  }
+
+  function applyEmbeddedHouseholdChanges(householdId: string) {
+    const staged = embeddedHouseholdDrafts[householdId];
+    if (!staged || Object.keys(staged).length === 0) return;
+    setFinalAttributionDrafts((current) => ({
+      ...current,
+      ...staged,
+    }));
+    setEmbeddedHouseholdDrafts((current) => {
+      const next = { ...current };
+      delete next[householdId];
+      return next;
+    });
+    setMessage('Applied household attribution changes to the full review table.');
   }
 
   function jumpToSection(id: string) {
@@ -2673,31 +2794,26 @@ export default function TransformHubPage() {
   }
 
   async function applyWorkbookSheetReview(review: PendingWorkbookSheetReview) {
-    const appendSheets = review.workbookSheets.filter((sheet) => review.actionsBySheet[sheet.sheetName] === 'append');
-    const separateSheets = review.workbookSheets.filter((sheet) => review.actionsBySheet[sheet.sheetName] === 'separate');
-
-    if (appendSheets.length === 0 && separateSheets.length === 0) {
-      setMessage('Choose at least one workbook tab to append or keep separate.');
-      return;
-    }
-
+    const baseSheet = pickWorkbookBaseSheet(review.workbookSheets);
+    const appendSheets = review.workbookSheets
+      .filter((sheet) => review.actionsBySheet[sheet.sheetName] === 'append')
+      .sort((left, right) => {
+        if (left.sheetName === baseSheet.sheetName) return -1;
+        if (right.sheetName === baseSheet.sheetName) return 1;
+        return scoreWorkbookBaseSheet(right) - scoreWorkbookBaseSheet(left);
+      });
     if (appendSheets.length === 0) {
-      setPendingWorkbookSheetReview(null);
-      setDeferredWorkbookSheetReview(separateSheets.length > 0 ? { payload: review.payload, workbookSheets: separateSheets } : null);
-      setMessage(`${separateSheets.length} workbook tab${separateSheets.length === 1 ? '' : 's'} queued for standalone review.`);
+      setMessage('Choose at least one workbook tab to append, or ignore the tabs you do not want.');
       return;
     }
     if (appendSheets.length === 1) {
       setPendingWorkbookSheetReview(null);
-      setDeferredWorkbookSheetReview(separateSheets.length > 0 ? { payload: review.payload, workbookSheets: separateSheets } : null);
       await hydrateUpload(
         {
           ...review.payload,
           selectedWorkbookSheets: [appendSheets[0].sheetName],
         },
         false,
-        undefined,
-        separateSheets,
       );
       return;
     }
@@ -2763,7 +2879,6 @@ export default function TransformHubPage() {
         const appendColumnDecisions = buildAppendColumnDecisions(parsedFile.headers, combinedPrepared.parsedFile.headers, `${review.payload.fileName} · workbook`);
         const decisionSummary = summarizeAppendColumnDecisions(appendColumnDecisions);
         setPendingWorkbookSheetReview(null);
-        setDeferredWorkbookSheetReview(separateSheets.length > 0 ? { payload: review.payload, workbookSheets: separateSheets } : null);
         setPendingAppendReview({
           sessionId: sessionId ?? baseSessionId,
           currentParsedFile: parsedFile,
@@ -2800,10 +2915,9 @@ export default function TransformHubPage() {
         taxonomyState,
       );
       setPendingWorkbookSheetReview(null);
-      setDeferredWorkbookSheetReview(separateSheets.length > 0 ? { payload: review.payload, workbookSheets: separateSheets } : null);
       applySession(
         session,
-        `Loaded ${appendSheets.length} selected workbook tabs from ${review.payload.fileName}${separateSheets.length ? ` · ${separateSheets.length} tab${separateSheets.length === 1 ? '' : 's'} left separate` : ''}.`,
+        `Loaded ${appendSheets.length} selected workbook tabs from ${review.payload.fileName}.`,
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Failed to process the selected workbook tabs.');
@@ -2813,25 +2927,10 @@ export default function TransformHubPage() {
     }
   }
 
-  async function handleOpenDeferredWorkbookSheet(sheetName: string) {
-    if (!deferredWorkbookSheetReview) return;
-    const targetSheet = deferredWorkbookSheetReview.workbookSheets.find((sheet) => sheet.sheetName === sheetName);
-    if (!targetSheet) return;
-    setDeferredWorkbookSheetReview((current) => current ? {
-      ...current,
-      workbookSheets: current.workbookSheets.filter((sheet) => sheet.sheetName !== sheetName),
-    } : current);
-    await hydrateUpload({
-      ...deferredWorkbookSheetReview.payload,
-      selectedWorkbookSheets: [sheetName],
-    });
-  }
-
   async function hydrateUpload(
     payload: UploadPayload & { selectedWorkbookSheets?: string[] },
     forceIngest = false,
     precombinedWorkbookUpload?: { parsedFile: ParsedFile; schema: ResolvedSchema; rows: CanonicalLedgerRow[] },
-    separateWorkbookSheets: NonNullable<ParsedFile['workbookSheets']> = [],
   ) {
     setActiveUploadLabel(payload.fileName);
     setIsLoading(true);
@@ -2902,7 +3001,7 @@ export default function TransformHubPage() {
         ? `Blocked by ${result.blockingIssues.length} blocking issue${result.blockingIssues.length === 1 ? '' : 's'}. Review the report below, then force continue if intentional.`
         : canAppend
           ? `Appended ${prepared.rows.length} row${prepared.rows.length === 1 ? '' : 's'} from ${payload.fileName}. Combined table now has ${nextParsedFile.rows.length} source row${nextParsedFile.rows.length === 1 ? '' : 's'} · ${merged.pendingMergeCount} pending fuzzy column merge${merged.pendingMergeCount === 1 ? '' : 's'}.`
-          : `Loaded ${prepared.rows.length} row${prepared.rows.length === 1 ? '' : 's'} from ${payload.fileName}${payload.selectedWorkbookSheets?.length ? ` · ${payload.selectedWorkbookSheets.length} sheet${payload.selectedWorkbookSheets.length === 1 ? '' : 's'} combined` : ''}${separateWorkbookSheets.length ? ` · ${separateWorkbookSheets.length} sheet${separateWorkbookSheets.length === 1 ? '' : 's'} left separate` : ''} · ${nextAudit?.errorCount ?? 0} audit error(s) · ${nextTaxonomy?.unmappedCount ?? 0} taxonomy exception(s).`;
+          : `Loaded ${prepared.rows.length} row${prepared.rows.length === 1 ? '' : 's'} from ${payload.fileName}${payload.selectedWorkbookSheets?.length ? ` · ${payload.selectedWorkbookSheets.length} sheet${payload.selectedWorkbookSheets.length === 1 ? '' : 's'} combined` : ''} · ${nextAudit?.errorCount ?? 0} audit error(s) · ${nextTaxonomy?.unmappedCount ?? 0} taxonomy exception(s).`;
 
       if (canAppend) {
         const decisionSummary = summarizeAppendColumnDecisions(appendColumnDecisions);
@@ -3255,7 +3354,7 @@ export default function TransformHubPage() {
 
       const result = await resolvePersonsBackend(rows, personResult ? canonicalPeople : undefined, sessionId ?? undefined, {
         usePersistentIdentityMemory: Boolean(sessionId),
-        forceReviewOnAutoMatches: false,
+        forceReviewOnAutoMatches: true,
         seedExistingPersonsFromDb: Boolean(sessionId) && !personResult,
         baselinePlatform: platform,
         baselineFileClass: fileClass,
@@ -3266,7 +3365,7 @@ export default function TransformHubPage() {
       if (result.updatedRows) setRows(result.updatedRows);
       if (result.audit) setAuditResult(result.audit);
       setSessionUpdatedAt(new Date().toISOString());
-      setMessage(`Duplicate check: ${result.autoMatched} auto-matched, ${result.needsReview} need review, ${result.separated} new.`);
+      setMessage(`Duplicate check: ${result.autoMatched} previously confirmed, ${result.needsReview} pending review, ${result.separated} new.`);
       restoreReturnRowFocus(returnRowId);
     } catch (error) {
       setPendingReturnRowId(null);
@@ -3998,16 +4097,26 @@ export default function TransformHubPage() {
                 <input type="file" accept=".csv,.txt,.tsv,.xlsx" onChange={handleFileChange} disabled={isUploadLoading} />
               </label>
             </div>
+            {isUploadLoading && (
+              <div className="th-mini-block th-upload-loading-block" style={{ marginTop: 12 }}>
+                <strong>{pendingWorkbookSheetReview ? 'Preparing selected sheets' : `Loading ${activeUploadLabel}`}</strong>
+                <p>
+                  {pendingWorkbookSheetReview
+                    ? 'Classifying the selected workbook tabs, checking compatibility, and preparing the append review.'
+                    : 'Parsing the file, classifying the columns, and preparing the review workspace.'}
+                </p>
+              </div>
+            )}
             {pendingWorkbookSheetReview && (
               <div className="th-stack" style={{ marginTop: 12 }}>
                 <div className="th-panel-head"><span>Combine sheets</span><span>{pendingWorkbookSheetReview.workbookSheets.length} workbook tab{pendingWorkbookSheetReview.workbookSheets.length === 1 ? '' : 's'}</span></div>
                 <div className="th-mini-block">
                   <strong>Select which workbook tabs to combine</strong>
-                  <p>Compatible tabs are preselected. Keep incompatible tabs separate or ignore them. Row refs will preserve the sheet name for audit tracing.</p>
+                  <p>Compatible tabs are preselected. Ignore tabs you do not want in the combined review table. Row refs will preserve the sheet name for audit tracing.</p>
                 </div>
                 <div className="th-workbook-sheet-list">
                   {pendingWorkbookSheetReview.workbookSheets.map((sheet) => {
-                    const baseSheet = pendingWorkbookSheetReview.workbookSheets[0];
+                    const baseSheet = pickWorkbookBaseSheet(pendingWorkbookSheetReview.workbookSheets);
                     const compatibility = describeWorkbookSheetCompatibility(sheet, baseSheet);
                     const currentAction = pendingWorkbookSheetReview.actionsBySheet[sheet.sheetName] ?? 'ignore';
                     return (
@@ -4017,21 +4126,27 @@ export default function TransformHubPage() {
                             <strong>{sheet.sheetName}</strong>
                             <p>{sheet.structureAnalysis.dataRowCount} row{sheet.structureAnalysis.dataRowCount === 1 ? '' : 's'} · {sheet.fileClass}</p>
                           </div>
-                          <select
-                            className="th-select"
-                            value={currentAction}
-                            onChange={(event) => {
-                              const nextAction = event.target.value as WorkbookSheetAction;
-                              setPendingWorkbookSheetReview((current) => current ? {
-                                ...current,
-                                actionsBySheet: { ...current.actionsBySheet, [sheet.sheetName]: nextAction },
-                              } : current);
-                            }}
-                          >
-                            <option value="append">Append into current table</option>
-                            <option value="separate">Keep separate</option>
-                            <option value="ignore">Ignore</option>
-                          </select>
+                          <div className="th-workbook-sheet-action-group" role="group" aria-label={`Workbook tab action for ${sheet.sheetName}`}>
+                            {(['append', 'ignore'] as WorkbookSheetAction[]).map((action) => {
+                              const label = action === 'append' ? 'Append' : 'Ignore';
+                              return (
+                                <button
+                                  key={action}
+                                  type="button"
+                                  className={`th-workbook-sheet-action-pill${currentAction === action ? ' is-active' : ''}`}
+                                  onClick={() => {
+                                    setPendingWorkbookSheetReview((current) => current ? {
+                                      ...current,
+                                      actionsBySheet: { ...current.actionsBySheet, [sheet.sheetName]: action },
+                                    } : current);
+                                  }}
+                                  aria-pressed={currentAction === action}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                         <div className="th-cell-chip-row">
                           <span className="th-cell-chip">{sheet.headers.length} columns</span>
@@ -4048,45 +4163,6 @@ export default function TransformHubPage() {
                 <div className="th-review-match-actions">
                   <button type="button" className="th-button th-button-primary" onClick={() => void applyWorkbookSheetReview(pendingWorkbookSheetReview)}>Apply sheet selection</button>
                   <button type="button" className="th-button th-button-secondary" onClick={() => setPendingWorkbookSheetReview(null)}>Cancel</button>
-                </div>
-              </div>
-            )}
-            {deferredWorkbookSheetReview && deferredWorkbookSheetReview.workbookSheets.length > 0 && (
-              <div className="th-stack" style={{ marginTop: 12 }}>
-                <div className="th-panel-head"><span>Separate workbook tabs</span><span>{deferredWorkbookSheetReview.workbookSheets.length} waiting</span></div>
-                <div className="th-mini-block">
-                  <strong>Open these tabs as standalone reviews</strong>
-                  <p>Tabs marked separate were not merged into the current table. Open any one to start its own classified review workspace.</p>
-                </div>
-                <div className="th-workbook-sheet-list">
-                  {deferredWorkbookSheetReview.workbookSheets.map((sheet) => (
-                    <div key={`deferred-${sheet.sheetName}`} className="th-workbook-sheet-card">
-                      <div className="th-workbook-sheet-head">
-                        <div>
-                          <strong>{sheet.sheetName}</strong>
-                          <p>{sheet.structureAnalysis.dataRowCount} row{sheet.structureAnalysis.dataRowCount === 1 ? '' : 's'} · {sheet.fileClass}</p>
-                        </div>
-                        <div className="th-review-match-actions">
-                          <button type="button" className="th-button th-button-secondary" onClick={() => void handleOpenDeferredWorkbookSheet(sheet.sheetName)}>Open separately</button>
-                          <button
-                            type="button"
-                            className="th-button th-button-secondary"
-                            onClick={() => setDeferredWorkbookSheetReview((current) => current ? {
-                              ...current,
-                              workbookSheets: current.workbookSheets.filter((item) => item.sheetName !== sheet.sheetName),
-                            } : current)}
-                          >
-                            Dismiss
-                          </button>
-                        </div>
-                      </div>
-                      <div className="th-cell-chip-row">
-                        <span className="th-cell-chip">{sheet.headers.length} columns</span>
-                        {sheet.schema?.reportType && <span className="th-cell-chip">{sheet.schema.reportType}</span>}
-                      </div>
-                      <p className="th-helper">{sheet.headers.slice(0, 6).join(' · ')}{sheet.headers.length > 6 ? ' …' : ''}</p>
-                    </div>
-                  ))}
                 </div>
               </div>
             )}
@@ -4287,7 +4363,7 @@ export default function TransformHubPage() {
                   ) : (
                     <>
                       <div className="th-grid th-grid-3" style={{ marginBottom: 10 }}>
-                        <div className="th-stat-chip th-band-auto"><strong>{personResult.autoMatched}</strong><span>Auto merged</span></div>
+                        <div className="th-stat-chip th-band-auto"><strong>{personResult.autoMatched}</strong><span>Previously confirmed</span></div>
                         <div className="th-stat-chip th-band-review"><strong>{personResult.needsReview}</strong><span>Pending review</span></div>
                         <div className="th-stat-chip th-band-separate"><strong>{personResult.separated}</strong><span>New records</span></div>
                       </div>
@@ -5039,7 +5115,7 @@ export default function TransformHubPage() {
                       <div className="th-panel-head"><span>Check duplicates</span><span>{personResult ? `${canonicalPeople.length} resolved` : "not run"}</span></div>
                       <p className="th-helper">Run duplicate check before review. Any pending duplicate review blocks the next step.</p>
                       <div className="th-grid th-grid-3" style={{ marginBottom: 10 }}>
-                        <div className="th-stat-chip th-band-auto"><strong>{personResult?.autoMergedCount ?? 0}</strong><span>Auto merged</span></div>
+                        <div className="th-stat-chip th-band-auto"><strong>{personResult?.autoMergedCount ?? 0}</strong><span>Previously confirmed</span></div>
                         <div className="th-stat-chip th-band-review"><strong>{pendingPeopleReviews}</strong><span>Pending review</span></div>
                         <div className="th-stat-chip th-band-separate"><strong>{personResult?.separated ?? 0}</strong><span>New records</span></div>
                       </div>
@@ -5237,19 +5313,119 @@ export default function TransformHubPage() {
                                     </div>
                                   </section>
                                 </div>
-                                {view.attributionPreview.length > 0 && (
+                                {view.relatedRecords.length > 0 && (
                                   <section className="th-mini-block th-household-detail-section">
-                                    <strong>Attribution</strong>
-                                    <div className="th-stack" style={{ marginTop: 10 }}>
-                                      {view.attributionPreview.map((item) => (
-                                        <div key={`${view.householdId}-${item.sourceRowRef}`} className="th-household-attribution-row">
-                                          <div>
-                                            <strong>{item.label}</strong>
-                                            <p>{item.summary}</p>
-                                          </div>
-                                          <span>{item.amount !== null ? formatCurrencyAmount(item.amount) : '—'}</span>
-                                        </div>
-                                      ))}
+                                    <div className="th-panel-head" style={{ marginBottom: 10 }}>
+                                      <span>Attribution rows</span>
+                                      <div className="th-review-match-actions">
+                                        <button
+                                          type="button"
+                                          className="th-button th-button-primary"
+                                          style={{ minHeight: 32 }}
+                                          onClick={() => applyEmbeddedHouseholdChanges(view.householdId)}
+                                          disabled={!embeddedHouseholdDrafts[view.householdId] || Object.keys(embeddedHouseholdDrafts[view.householdId]).length === 0}
+                                        >
+                                          Apply changes
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="th-button th-button-secondary"
+                                          style={{ minHeight: 32 }}
+                                          onClick={() => jumpToSection('th-review-table')}
+                                        >
+                                          Open full table ↓
+                                        </button>
+                                      </div>
+                                    </div>
+                                    <div className="th-household-embedded-table-wrap">
+                                      <table className="th-household-embedded-table">
+                                        <thead>
+                                          <tr>
+                                            <th>Source</th>
+                                            <th>Role</th>
+                                            <th>Attribution</th>
+                                            <th>Credit</th>
+                                            <th>Household</th>
+                                            <th>Notes</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {view.relatedRecords.map((record) => {
+                                            const { matchedPerson, draft: sharedDraft, assignedHouseholdId: sharedAssignedHouseholdId } = getAttributionDraftForRecord(record);
+                                            const stagedDraft = embeddedHouseholdDrafts[view.householdId]?.[record.sourceRowRef] ?? null;
+                                            const attributionDraft = stagedDraft ?? sharedDraft;
+                                            const assignedHouseholdId = attributionDraft.householdId ?? sharedAssignedHouseholdId;
+                                            const assignedHouseholdLabel = assignedHouseholdId ? householdLabelById.get(assignedHouseholdId) ?? assignedHouseholdId : 'No household';
+                                            const recordRole = getRecordRole(record, attributionDraft, matchedPerson);
+                                            const rawAmount = parseCurrencyAmount(record.amount);
+                                            const displayCreditAmount = getDisplayCreditAmount(attributionDraft, rawAmount, recordRole);
+                                            return (
+                                              <tr key={`${view.householdId}-${record.sourceRowRef}`}>
+                                                <td>
+                                                  <strong>{getBestPersonDisplayLabel(matchedPerson, record)}</strong>
+                                                  <div className="th-inline-note">{getCompactSourceRef(record.sourceRowRef).primary}</div>
+                                                </td>
+                                                <td>
+                                                  <select
+                                                    className="th-table-cell-input"
+                                                    value={recordRole}
+                                                    onChange={(event) => updateEmbeddedHouseholdDraft(view.householdId, record.sourceRowRef, buildDraftForRoleSelection(attributionDraft, matchedPerson, assignedHouseholdId, event.target.value as 'primary' | 'secondary' | 'organization' | 'unassigned'))}
+                                                    aria-label={`Role for ${getBestPersonDisplayLabel(matchedPerson, record)}`}
+                                                  >
+                                                    <option value="primary">Primary</option>
+                                                    <option value="secondary">Secondary</option>
+                                                    <option value="organization">Organization</option>
+                                                    <option value="unassigned">Unassigned</option>
+                                                  </select>
+                                                </td>
+                                                <td>
+                                                  <select
+                                                    className="th-table-cell-input"
+                                                    value={attributionDraft.mode}
+                                                    onChange={(event) => updateEmbeddedHouseholdDraft(view.householdId, record.sourceRowRef, { ...attributionDraft, mode: event.target.value as PreviewAttributionDraft['mode'] })}
+                                                    aria-label={`Attribution type for ${getBestPersonDisplayLabel(matchedPerson, record)}`}
+                                                  >
+                                                    <option value="person">Hard credit</option>
+                                                    <option value="soft_credit">Soft credit</option>
+                                                    <option value="joint_split">Joint gift</option>
+                                                    <option value="org_match">Org match</option>
+                                                  </select>
+                                                </td>
+                                                <td>
+                                                  <input
+                                                    className="th-table-cell-input"
+                                                    value={String(attributionDraft.creditAmount ?? rawAmount ?? '')}
+                                                    onChange={(event) => {
+                                                      const normalized = event.target.value.replace(/[^0-9.-]+/g, '');
+                                                      const parsed = normalized ? Number(normalized) : null;
+                                                      updateEmbeddedHouseholdDraft(view.householdId, record.sourceRowRef, {
+                                                        ...attributionDraft,
+                                                        creditAmount: parsed !== null && Number.isFinite(parsed) ? parsed : null,
+                                                      });
+                                                    }}
+                                                    aria-label={`Credit amount for ${getBestPersonDisplayLabel(matchedPerson, record)}`}
+                                                  />
+                                                  <div className="th-inline-note">
+                                                    {displayCreditAmount > 0 ? formatCurrencyAmount(displayCreditAmount) : '$0'} · {getAttributionModeCreditLabel(attributionDraft.mode)} credit
+                                                  </div>
+                                                </td>
+                                                <td>
+                                                  <strong>{assignedHouseholdLabel}</strong>
+                                                  <div className="th-inline-note">{assignedHouseholdId ?? 'No household assigned'}</div>
+                                                </td>
+                                                <td>
+                                                  <textarea
+                                                    className="th-table-cell-input th-table-cell-textarea"
+                                                    value={attributionDraft.notes || ''}
+                                                    onChange={(event) => updateEmbeddedHouseholdDraft(view.householdId, record.sourceRowRef, { ...attributionDraft, notes: event.target.value })}
+                                                    aria-label={`Notes for ${getBestPersonDisplayLabel(matchedPerson, record)}`}
+                                                  />
+                                                </td>
+                                              </tr>
+                                            );
+                                          })}
+                                        </tbody>
+                                      </table>
                                     </div>
                                   </section>
                                 )}
@@ -5701,14 +5877,6 @@ export default function TransformHubPage() {
                           </th>
                         </>
                       )}
-                      {(fileClass === 'constituent' || fileClass === 'donor') && (
-                        <th className="th-resizable-header">
-                          <div className="th-resizable-header-inner">
-                            <span>Actions</span>
-                            <button type="button" className="th-column-resizer" aria-label="Resize Actions column" onPointerDown={(event) => startNonLedgerColumnResize('__actions__', event)} />
-                          </div>
-                        </th>
-                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -5856,59 +6024,33 @@ export default function TransformHubPage() {
                           {householdResult && (
                             <>
                               <td>
-                                {isEditingRow ? (
-                                  <select
-                                    className="th-table-cell-input"
-                                    value={recordRole}
-                                    onChange={(event) => updateRecordRole(record, attributionDraft, matchedPerson, assignedHouseholdId, event.target.value as 'primary' | 'secondary' | 'organization' | 'unassigned')}
-                                  >
-                                    <option value="primary">Primary</option>
-                                    <option value="secondary">Secondary</option>
-                                    <option value="organization">Organization</option>
-                                    <option value="unassigned">Unassigned</option>
-                                  </select>
-                                ) : (
-                                  <>
-                                    <button
-                                      type="button"
-                                      className={`th-role-pill is-${getRoleTone(recordRole)} th-role-pill-button`}
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        cycleRecordRole(record, attributionDraft, matchedPerson, assignedHouseholdId);
-                                      }}
-                                      title="Click to change role"
-                                    >
-                                      {recordRole}
-                                    </button>
-                                    <div className="th-inline-note">{getBestPersonDisplayLabel(matchedPerson, record)}</div>
-                                  </>
-                                )}
+                                <select
+                                  className="th-table-cell-input"
+                                  value={recordRole}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onChange={(event) => updateRecordRole(record, attributionDraft, matchedPerson, assignedHouseholdId, event.target.value as 'primary' | 'secondary' | 'organization' | 'unassigned')}
+                                  aria-label={`Role for ${getBestPersonDisplayLabel(matchedPerson, record)}`}
+                                >
+                                  <option value="primary">Primary</option>
+                                  <option value="secondary">Secondary</option>
+                                  <option value="organization">Organization</option>
+                                  <option value="unassigned">Unassigned</option>
+                                </select>
+                                <div className="th-inline-note">{getBestPersonDisplayLabel(matchedPerson, record)}</div>
                               </td>
                               <td>
-                                {isEditingRow ? (
-                                  <select
-                                    className="th-table-cell-input"
-                                    value={attributionDraft.mode}
-                                    onChange={(event) => updateFinalAttributionDraft(record.sourceRowRef, { mode: event.target.value as PreviewAttributionDraft['mode'] })}
-                                  >
-                                    <option value="person">Hard credit</option>
-                                    <option value="soft_credit">Soft credit</option>
-                                    <option value="joint_split">Joint gift</option>
-                                    <option value="org_match">Org match</option>
-                                  </select>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className={`th-attribution-chip${needsAttributionReview ? ' is-review' : ''} th-attribution-chip-button`}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      cycleAttributionMode(record, attributionDraft);
-                                    }}
-                                    title="Click to change attribution type"
-                                  >
-                                    {getAttributionTagLabel(attributionDraft.mode, needsAttributionReview)}
-                                  </button>
-                                )}
+                                <select
+                                  className="th-table-cell-input"
+                                  value={attributionDraft.mode}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onChange={(event) => updateFinalAttributionDraft(record.sourceRowRef, { mode: event.target.value as PreviewAttributionDraft['mode'] })}
+                                  aria-label={`Attribution type for ${getBestPersonDisplayLabel(matchedPerson, record)}`}
+                                >
+                                  <option value="person">Hard credit</option>
+                                  <option value="soft_credit">Soft credit</option>
+                                  <option value="joint_split">Joint gift</option>
+                                  <option value="org_match">Org match</option>
+                                </select>
                               </td>
                               <td>
                                 {isEditingRow ? (
@@ -5960,19 +6102,6 @@ export default function TransformHubPage() {
                                 )}
                               </td>
                             </>
-                          )}
-                          {(fileClass === 'constituent' || fileClass === 'donor') && (
-                            <td>
-                              {isEditingRow ? (
-                                <div className="th-review-match-actions">
-                                  <button type="button" className="th-button th-button-primary" style={{ minHeight: 32 }} onClick={() => void handleSaveMergedRecordEdit()}>Save</button>
-                                  <button type="button" className="th-button th-button-secondary" style={{ minHeight: 32 }} onClick={() => { setEditingMergedRecordRef(null); setEditingMergedDraft({}); }}>Cancel</button>
-                                </div>
-                              ) : (
-                                <button type="button" className="th-button th-button-secondary" style={{ minHeight: 32 }} onClick={() => startMergedRecordEdit(record)}>Edit row</button>
-                              )}
-                              {(mergedSourceRefsByRepresentative.get(record.sourceRowRef)?.length ?? 0) > 0 && <div className="th-inline-note">Merged {mergedSourceRefsByRepresentative.get(record.sourceRowRef)?.join(', ')}</div>}
-                            </td>
                           )}
                         </tr>
                       );

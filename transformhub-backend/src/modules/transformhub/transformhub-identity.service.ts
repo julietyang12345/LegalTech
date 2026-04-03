@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { ThIdentityMemory } from '../../database/entities/th-identity-memory.entity';
@@ -9,6 +9,8 @@ import { TransformHubAiService } from './transformhub-ai.service';
 
 @Injectable()
 export class TransformHubIdentityService {
+  private readonly logger = new Logger(TransformHubIdentityService.name);
+
   constructor(
     @InjectRepository(ThIdentityMemory)
     private readonly personRepo: Repository<ThIdentityMemory>,
@@ -59,6 +61,14 @@ export class TransformHubIdentityService {
     const firstName = nameParts.slice(0, -1).join(' ') || nameParts[0] || '';
     const lastName = nameParts.slice(-1)[0] || '';
     return this.buildFingerprints(input, firstName, lastName);
+  }
+
+  private splitNormalizedName(name: string): { firstName: string; lastName: string } {
+    const parts = this.normStr(name).split(' ').filter(Boolean);
+    return {
+      firstName: parts.slice(0, -1).join(' ') || parts[0] || '',
+      lastName: parts.slice(-1)[0] || '',
+    };
   }
 
   private buildEntityName(row: any): string {
@@ -112,6 +122,19 @@ export class TransformHubIdentityService {
   ): { score: number; matchedFields: string[] } {
     let score = 0;
     const matchedFields: string[] = [];
+    const inputNameParts = this.splitNormalizedName(input.name);
+    const candidateNameParts = {
+      firstName: this.normStr(candidate.firstName || ''),
+      lastName: this.normStr(candidate.lastName || ''),
+    };
+    const hasConflictingNamedIndividuals = Boolean(
+      inputNameParts.firstName
+      && candidateNameParts.firstName
+      && inputNameParts.lastName
+      && candidateNameParts.lastName
+      && inputNameParts.firstName !== candidateNameParts.firstName
+      && inputNameParts.lastName === candidateNameParts.lastName,
+    );
 
     const inputEmail = this.normalizeEmail(input.email);
     const candidateEmail = this.normalizeEmail(candidate.email);
@@ -161,6 +184,13 @@ export class TransformHubIdentityService {
     if (input.householdName && candidate.lastName && this.normStr(input.householdName).includes(this.normStr(candidate.lastName))) {
       score += 10;
       matchedFields.push('household');
+    }
+
+    if (hasConflictingNamedIndividuals && !matchedFields.includes('full_name') && !matchedFields.includes('name_partial')) {
+      return {
+        score: 0,
+        matchedFields: [...matchedFields, 'conflicting_first_name_same_household'],
+      };
     }
 
     if (matchedFields.includes('full_name') && matchedFields.includes('phone') && matchedFields.includes('address_zip')) {
@@ -541,6 +571,7 @@ export class TransformHubIdentityService {
     let newPersonCount = 0;
     const seen = new Set<string>();
 
+
     const inputKeys = Array.from(new Set(rows.map((row) => this.normStr(this.buildEntityName(row))).filter(Boolean)));
     const permanentDecisions = usePersistentIdentityMemory && inputKeys.length > 0
       ? await this.auditDecisionRepo.find({ where: { permanent: true, inputKey: In(inputKeys) }, order: { updatedAt: 'DESC' } })
@@ -644,6 +675,9 @@ export class TransformHubIdentityService {
         matchedFields: bestMatchedFields,
         reviewPayload: this.buildMatchReviewPayload(row, rowRef, input, bestMatchedFields, bestMatch, aiSuggestion, matchedInputRef),
       });
+      this.logger.log(
+        `[identity] row=${rowRef} name="${input.name}" band=${band} decision=${decision} score=${bestScore} matchedPerson=${matchedPersonId ?? 'none'} matchedInput=${matchedInputRef ?? 'none'} fields=${bestMatchedFields.join('|') || 'none'} candidate="${bestMatch ? `${bestMatch.firstName || ''} ${bestMatch.lastName || ''}`.trim() : 'none'}"`,
+      );
     }
 
     if (persistIdentityMemory && pendingPersonSaves.length > 0) {
@@ -747,6 +781,7 @@ export class TransformHubIdentityService {
       const uniqueGroup = Array.from(new Map(group.map((person) => [person.id, person])).values());
       if (uniqueGroup.length < 2) continue;
       addHouseholdGroup(key, uniqueGroup);
+      this.logger.log(`[household] exact-address group key=${key} members=${uniqueGroup.map((person) => `${person.id}:${person.firstName || ''} ${person.lastName || ''}`.trim()).join(', ')}`);
     }
 
     const surnameZipBuckets = new Map<string, any[]>();
@@ -765,6 +800,7 @@ export class TransformHubIdentityService {
       const supportEvidence = this.getSurnameZipSupportEvidence(uniqueGroup);
       if (!this.hasConflictingExactAddresses(uniqueGroup) && supportEvidence.length > 0) {
         addHouseholdGroup(key, uniqueGroup);
+        this.logger.log(`[household] surname-zip group key=${key} evidence=${supportEvidence.join('|') || 'none'} members=${uniqueGroup.map((person) => `${person.id}:${person.firstName || ''} ${person.lastName || ''}`.trim()).join(', ')}`);
         continue;
       }
       reviewCandidateMap.set(key, {
@@ -772,6 +808,7 @@ export class TransformHubIdentityService {
         members: uniqueGroup,
         evidence: ['same_surname', 'same_zip', ...supportEvidence],
       });
+      this.logger.log(`[household] review-candidate key=${key} evidence=${['same_surname', 'same_zip', ...supportEvidence].join('|')} members=${uniqueGroup.map((person) => `${person.id}:${person.firstName || ''} ${person.lastName || ''}`.trim()).join(', ')}`);
     }
 
     if (pendingHouseholdSaves.length > 0 && usePersistentHouseholdMemory) {
@@ -783,6 +820,7 @@ export class TransformHubIdentityService {
     });
 
     const reviewSuggestions = await this.buildHouseholdReviewSuggestions(Array.from(reviewCandidateMap.values()));
+    this.logger.log(`[household] resolved households=${households.length} ungrouped=${ungroupedPersonIds.length} reviewSuggestions=${reviewSuggestions.length}`);
 
     return { households, ungroupedPersonIds, reviewSuggestions };
   }

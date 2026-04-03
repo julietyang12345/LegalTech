@@ -248,8 +248,8 @@ const KEY_SYNONYM_PROMOTION_THRESHOLD = 3;
 const CLASS_EXPECTATIONS: Record<FileClass, ClassExpectation> = {
   ledger: { reportType: 'general-ledger', canonicalModel: 'canonical-ledger-row', expectedFields: ['date', 'entity_name', 'memo', 'account_or_amount_shape'] },
   constituent: { reportType: 'constituent-export', canonicalModel: 'canonical-constituent', expectedFields: ['first_name_or_org', 'email_or_phone', 'created_at'] },
-  donor: { reportType: 'donor-export', canonicalModel: 'canonical-donor', expectedFields: ['date', 'donor_name', 'amount'] },
-  campaign: { reportType: 'campaign-export', canonicalModel: 'canonical-campaign', expectedFields: ['campaign_name_or_code'] },
+  donor: { reportType: 'donor-export', canonicalModel: 'canonical-donor', expectedFields: ['date', 'donor_identity', 'amount'] },
+  campaign: { reportType: 'campaign-export', canonicalModel: 'canonical-campaign', expectedFields: ['campaign_name_or_code', 'campaign_lifecycle_signal'] },
   coa: { reportType: 'chart-of-accounts', canonicalModel: 'canonical-account', expectedFields: ['account_code', 'account_name'] },
   unknown: { reportType: 'unknown', canonicalModel: 'raw-record', expectedFields: [] },
 };
@@ -581,7 +581,7 @@ export class TransformHubPipelineService implements OnModuleInit {
           const selectedSheets = selectedNames && selectedNames.size > 0
             ? workbookSheets.filter((sheet: any) => selectedNames.has(sheet.sheetName))
             : workbookSheets;
-          const baseSheet = selectedSheets[0] ?? workbookSheets[0];
+          const baseSheet = this.pickWorkbookBaseSheet(selectedSheets.length > 0 ? selectedSheets : workbookSheets);
           resolve({
             fileName,
             delimiter: 'xlsx',
@@ -628,6 +628,33 @@ export class TransformHubPipelineService implements OnModuleInit {
     return needles.some((needle) => normalized.some((value) => matchesNormalizedKey(value, [needle])));
   }
 
+  private qualifiesForWorkbookHouseholdAnalysis(sheet: { headers: string[]; structureAnalysis: { dataRowCount: number }; fileClass: FileClass }): boolean {
+    if (sheet.structureAnalysis.dataRowCount < 2) return false;
+    if (sheet.fileClass !== 'donor' && sheet.fileClass !== 'constituent') return false;
+    const normalized = sheet.headers.map((header) => this.sanitizeHeader(header));
+    const hasNameSignals = normalized.some((value) =>
+      matchesNormalizedKey(value, ['first name', 'last name', 'donor name', 'constituent name', 'full name', 'name', 'household name']),
+    );
+    const hasHouseholdSignals = normalized.some((value) =>
+      matchesNormalizedKey(value, ['address', 'mailing address', 'postal code', 'zip', 'city', 'state', 'household name']),
+    );
+    return hasNameSignals && hasHouseholdSignals;
+  }
+
+  private scoreWorkbookBaseSheet(sheet: { sheetName: string; headers: string[]; structureAnalysis: { dataRowCount: number }; fileClass: FileClass }): number {
+    const normalizedName = sheet.sheetName.toLowerCase().trim();
+    let score = sheet.structureAnalysis.dataRowCount * 100 + sheet.headers.length;
+    if (this.qualifiesForWorkbookHouseholdAnalysis(sheet)) score += 2000;
+    if (sheet.fileClass === 'donor' || sheet.fileClass === 'constituent') score += 400;
+    if (/^readme$|read me|instruction|instructions|notes?|summary|cover|about/.test(normalizedName)) score -= 2500;
+    if (/expected|sample output|review pairs?|pairs?|qa|test cases?/.test(normalizedName)) score -= 1200;
+    return score;
+  }
+
+  private pickWorkbookBaseSheet<T extends { sheetName: string; headers: string[]; rows: any[]; structureAnalysis: { dataRowCount: number }; fileClass: FileClass }>(sheets: T[]): T {
+    return sheets.reduce((best, sheet) => (this.scoreWorkbookBaseSheet(sheet) > this.scoreWorkbookBaseSheet(best) ? sheet : best), sheets[0]);
+  }
+
   private detectFileClass(platform: string, headers: string[]): FileClass {
     const normalized = headers.map((h) => this.sanitizeHeader(h));
     const hasDate = this.hasAny(normalized, ['date', 'transaction date', 'posting date', 'gift date', 'payment date', 'closedate', 'close date', 'created at']);
@@ -646,6 +673,37 @@ export class TransformHubPipelineService implements OnModuleInit {
     if (hasAmount && (hasDate || hasDonorSignals || platform === 'GiveButter')) return 'donor';
     if (platform === 'Bloomerang' || platform === 'Salesforce' || platform === 'NeonOne') return hasAmount ? 'donor' : 'constituent';
     return 'unknown';
+  }
+
+  private scoreClassAdjustment(headers: string[], fileClass: FileClass): number {
+    const normalized = headers.map((h) => this.sanitizeHeader(h));
+    const hasAmount = normalized.some((h) => /amount|total amount paid|gift amount|gross amount|net amount|spend/.test(normalizeKey(h).strippedKey));
+    const hasDate = this.hasAny(normalized, ['date', 'transaction date', 'posting date', 'gift date', 'payment date', 'closedate', 'close date', 'created at']);
+    const hasPersonName = this.hasAny(normalized, ['first name', 'last name', 'full name', 'donor name', 'constituent name', 'name']);
+    const hasContact = this.hasAny(normalized, ['email', 'email address', 'email 1', 'phone', 'phone number', 'mobile phone']);
+    const hasAddress = this.hasAny(normalized, ['address', 'mailing address', 'city', 'state', 'zip', 'zip code', 'postal code']);
+    const hasCampaignLifecycle = this.hasAny(normalized, ['status', 'start date', 'end date', 'goal', 'goal amount', 'campaign code', 'fund code']);
+
+    if (fileClass === 'donor') {
+      let score = 0;
+      if (hasAmount && hasDate) score += 0.28;
+      if (hasPersonName) score += 0.12;
+      if (hasContact) score += 0.1;
+      if (hasAddress) score += 0.1;
+      return score;
+    }
+
+    if (fileClass === 'campaign') {
+      let score = 0;
+      if (hasCampaignLifecycle) score += 0.18;
+      if (hasAmount) score -= 0.26;
+      if (hasContact) score -= 0.18;
+      if (hasAddress) score -= 0.18;
+      if (hasPersonName) score -= 0.12;
+      return score;
+    }
+
+    return 0;
   }
 
   private resolveClassFieldMap(platform: string, fileClass: FileClass, headers: string[], aliases: Record<string, string[]>): Record<string, string> {
@@ -914,11 +972,23 @@ export class TransformHubPipelineService implements OnModuleInit {
     if (field === 'first_name_or_org') {
       return Boolean(fieldMap.first_name || fieldMap.organization_name || fieldMap.household_name);
     }
+    if (field === 'donor_identity') {
+      return Boolean(
+        fieldMap.donor_name
+        || fieldMap.first_name
+        || fieldMap.last_name
+        || fieldMap.organization_name
+        || fieldMap.household_name,
+      );
+    }
     if (field === 'email_or_phone') {
       return Boolean(fieldMap.email || fieldMap.phone);
     }
     if (field === 'campaign_name_or_code') {
       return Boolean(fieldMap.campaign_name || fieldMap.code);
+    }
+    if (field === 'campaign_lifecycle_signal') {
+      return Boolean(fieldMap.status || fieldMap.start_date || fieldMap.end_date || fieldMap.goal_amount);
     }
     return Boolean(fieldMap[field]);
   }
@@ -985,9 +1055,10 @@ export class TransformHubPipelineService implements OnModuleInit {
       .map((fileClass) => {
         const candidate = this.buildSchemaCandidate(file, fileClass);
         const structuralBonus = fileClass === structuralClass ? 0.08 : 0;
+        const classAdjustment = this.scoreClassAdjustment(file.headers, fileClass);
         return {
           ...candidate,
-          score: candidate.aliasCoverage + structuralBonus,
+          score: candidate.aliasCoverage + structuralBonus + classAdjustment,
         };
       })
       .sort((a, b) => {
@@ -1206,10 +1277,16 @@ export class TransformHubPipelineService implements OnModuleInit {
         const lastName = this.valueFromRow(row, schema.fieldMap, 'last_name');
         const organizationName = this.valueFromRow(row, schema.fieldMap, 'organization_name');
         const householdName = this.valueFromRow(row, schema.fieldMap, 'household_name');
+        const donorDisplayName = this.valueFromRow(row, schema.fieldMap, 'donor_name')
+          || this.valueFromRow(row, schema.fieldMap, 'entity_name')
+          || this.buildDisplayName([firstName, lastName])
+          || organizationName
+          || householdName
+          || row.ref;
         return {
           id: `${fileClass}-${index + 1}`,
           sourceRowRef: row.ref,
-          donorName: this.valueFromRow(row, schema.fieldMap, 'donor_name') || this.valueFromRow(row, schema.fieldMap, 'entity_name') || row.ref,
+          donorName: donorDisplayName,
           firstName,
           lastName,
           organizationName,

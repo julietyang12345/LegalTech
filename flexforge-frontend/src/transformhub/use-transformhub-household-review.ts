@@ -8,6 +8,8 @@ type UseTransformHubHouseholdReviewArgs = {
   finalHouseholdDrafts: Record<string, FinalHouseholdDraft>;
   finalAttributionDrafts: FinalAttributionDraftMap;
   previewMatchByInputRef: Map<string, { matchedPersonId?: string | null }>;
+  mergedSourceRefsByRepresentative: Map<string, string[]>;
+  representativeByAbsorbedRef: Map<string, string>;
   buildInitialHouseholdDraft: (household: HouseholdResolverResult['households'][number], members: CanonicalPerson[]) => FinalHouseholdDraft;
   buildInitialAttributionDraft: (record: PreviewRecord, members: CanonicalPerson[], primaryPerson: CanonicalPerson | null) => PreviewAttributionDraft;
   summarizeAttributionDraft: (draft: PreviewAttributionDraft, members: CanonicalPerson[], primaryPerson: CanonicalPerson | null) => string;
@@ -23,6 +25,8 @@ export function useTransformHubHouseholdReview({
   finalHouseholdDrafts,
   finalAttributionDrafts,
   previewMatchByInputRef,
+  mergedSourceRefsByRepresentative,
+  representativeByAbsorbedRef,
   buildInitialHouseholdDraft,
   buildInitialAttributionDraft,
   summarizeAttributionDraft,
@@ -37,6 +41,27 @@ export function useTransformHubHouseholdReview({
     householdResult.households.forEach((household) => {
       household.memberIds.forEach((memberId) => householdByPersonId.set(memberId, household.id));
     });
+    const getRecordClusterRefs = (record: PreviewRecord) => {
+      const representativeRef = representativeByAbsorbedRef.get(record.sourceRowRef) ?? record.sourceRowRef;
+      return [representativeRef, ...(mergedSourceRefsByRepresentative.get(representativeRef) ?? [])];
+    };
+    const getRecordClusterContext = (record: PreviewRecord) => {
+      const personIds = Array.from(new Set(
+        getRecordClusterRefs(record)
+          .map((ref) => previewMatchByInputRef.get(ref)?.matchedPersonId ?? null)
+          .filter((personId): personId is string => Boolean(personId)),
+      ));
+      const householdIds = Array.from(new Set(
+        personIds
+          .map((personId) => householdByPersonId.get(personId) ?? null)
+          .filter((householdId): householdId is string => Boolean(householdId)),
+      ));
+      return {
+        personIds,
+        householdIds,
+        matchedPerson: personIds.length === 1 ? peopleById.get(personIds[0]) ?? null : null,
+      };
+    };
     return householdResult.households.map((household) => {
       const members = household.memberIds
         .map((memberId) => peopleById.get(memberId))
@@ -44,21 +69,21 @@ export function useTransformHubHouseholdReview({
       const draft = finalHouseholdDrafts[household.id] ?? buildInitialHouseholdDraft(household, members);
       const primaryMember = members.find((member) => member.id === draft.primaryPersonId) ?? members[0] ?? null;
       const relatedRecords = previewRecords.filter((record) => {
-        const matchedPersonId = previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId ?? null;
-        const defaultHouseholdId = matchedPersonId ? householdByPersonId.get(matchedPersonId) ?? null : null;
+        const clusterContext = getRecordClusterContext(record);
+        const defaultHouseholdId = clusterContext.householdIds.length === 1 ? clusterContext.householdIds[0] : null;
         const attributionDraft = finalAttributionDrafts[record.sourceRowRef];
         const assignedHouseholdId = attributionDraft?.householdId ?? defaultHouseholdId;
         return assignedHouseholdId === household.id;
       });
       const memberBreakdown = members.map((member) => {
         const memberRecords = relatedRecords.filter((record) => {
-          const matchedPerson = peopleById.get(previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId ?? '') ?? null;
+          const matchedPerson = getRecordClusterContext(record).matchedPerson;
           const attributionDraft = finalAttributionDrafts[record.sourceRowRef] ?? buildInitialAttributionDraft(record, members, matchedPerson);
           return (attributionDraft.primaryPersonId ?? matchedPerson?.id ?? null) === member.id;
         });
         const totals = memberRecords
           .map((record) => {
-            const matchedPerson = peopleById.get(previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId ?? '') ?? null;
+            const matchedPerson = getRecordClusterContext(record).matchedPerson;
             const attributionDraft = finalAttributionDrafts[record.sourceRowRef] ?? buildInitialAttributionDraft(record, members, matchedPerson);
             return attributionDraft.creditAmount ?? parseCurrencyAmount(record.amount);
           })
@@ -72,7 +97,7 @@ export function useTransformHubHouseholdReview({
       });
       const amounts = relatedRecords
         .map((record) => {
-          const matchedPerson = peopleById.get(previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId ?? '') ?? null;
+          const matchedPerson = getRecordClusterContext(record).matchedPerson;
           const attributionDraft = finalAttributionDrafts[record.sourceRowRef] ?? buildInitialAttributionDraft(record, members, matchedPerson);
           return attributionDraft.creditAmount ?? parseCurrencyAmount(record.amount);
         })
@@ -88,7 +113,7 @@ export function useTransformHubHouseholdReview({
         .sort();
       const lastGift = giftDates.length > 0 ? giftDates[giftDates.length - 1] : null;
       const attributionPreview = relatedRecords.map((record) => {
-        const matchedPerson = peopleById.get(previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId ?? '');
+        const matchedPerson = getRecordClusterContext(record).matchedPerson;
         const draft = finalAttributionDrafts[record.sourceRowRef] ?? buildInitialAttributionDraft(record, members, matchedPerson ?? null);
         const organization = draft.organizationName ? `${draft.organizationName} context` : null;
         const campaignFund = draft.campaignFund || [record.campaignName, record.fund].filter(Boolean).join(' · ');
@@ -155,5 +180,7 @@ export function useTransformHubHouseholdReview({
     parseCurrencyAmount,
     previewRecords,
     ambiguousAttributionRefs,
+    mergedSourceRefsByRepresentative,
+    representativeByAbsorbedRef,
   ]);
 }
