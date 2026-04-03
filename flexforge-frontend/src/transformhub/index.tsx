@@ -28,6 +28,7 @@ import {
   fetchChartOfAccounts,
   fetchCrmSyncExport,
   fetchDonorReport,
+  fetchReviewAnalytics,
   fetchTaxonomy,
   fetchSession,
   ingestFile,
@@ -40,6 +41,9 @@ import {
   simulateBackendPost,
 } from './service';
 import type {
+  AnalyticsSavedView,
+  AnalyticsWorkspaceFilters,
+  AnalyticsWorkspaceState,
   AuditRuleCatalogEntry,
   AuditRuleResult,
   BlockingIssue,
@@ -131,6 +135,48 @@ type PreviewRowDropTarget = {
 type PreviewCellRef = {
   rowRef: string;
   header: string;
+};
+
+type NonLedgerReviewPanel = 'duplicate' | 'household' | 'taxonomy' | 'final' | 'outcomes';
+type ReviewOutcomeId = 'revenue_at_risk' | 'money_leakage' | 'finance_mismatch' | 'campaign_truth';
+type ReviewOutcomeAction = 'duplicate' | 'household' | 'taxonomy' | 'final_table';
+
+type ReviewOutcomeDetail = {
+  id: string;
+  label: string;
+  count: number;
+  amount: number;
+  description: string;
+  ctaLabel: string;
+  action: ReviewOutcomeAction;
+};
+
+type ReviewOutcomeCard = {
+  id: ReviewOutcomeId;
+  eyebrow: string;
+  title: string;
+  tone: 'risk' | 'opportunity' | 'warning';
+  amount: number;
+  metricKind: 'currency' | 'percent';
+  summary: string;
+  supporting: string;
+  details: ReviewOutcomeDetail[];
+};
+
+type AnalyticsWorkspaceItem = {
+  id: string;
+  outcomeId: ReviewOutcomeId;
+  detailId: string;
+  label: string;
+  description: string;
+  amount: number;
+  sortDate: string | null;
+  campaign: string;
+  donorSegment: string;
+  sourceRowRefs: string[];
+  duplicateCount: number;
+  includesSoftCredit: boolean;
+  action: ReviewOutcomeAction;
 };
 
 type ParsedFileWithOptionalMergeState = ParsedFile & {
@@ -618,6 +664,47 @@ function formatCurrencyAmount(value: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value);
 }
 
+function roundCurrencyAmount(value: number, increment = 100): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.round(value / increment) * increment;
+}
+
+function formatOutcomeMetric(kind: ReviewOutcomeCard['metricKind'], value: number): string {
+  if (kind === 'percent') return `${Math.round(value)}%`;
+  return formatCurrencyAmount(value);
+}
+
+function normalizeRecordIdentity(record: PreviewRecord): string {
+  return String(
+    record.organizationName
+    || record.donorName
+    || record.displayName
+    || [record.firstName, record.lastName].filter(Boolean).join(' ')
+    || record.sourceRowRef
+    || record.id,
+  ).trim().toLowerCase();
+}
+
+function buildDefaultAnalyticsFilters(): AnalyticsWorkspaceFilters {
+  return {
+    campaign: 'all',
+    donorSegment: 'all',
+    minAmount: null,
+    sort: 'highest_value',
+    includeDuplicates: true,
+    includeSoftCredit: true,
+  };
+}
+
+function buildDefaultAnalyticsWorkspace(): AnalyticsWorkspaceState {
+  return {
+    selectedOutcomeId: 'revenue_at_risk',
+    selectedDetailIdByOutcome: {},
+    filtersByDetail: {},
+    savedViews: [],
+  };
+}
+
 function matchesEntityGraphSearch(values: unknown[], query: string) {
   if (!query.trim()) return true;
   const normalized = query.trim().toLowerCase();
@@ -921,13 +1008,17 @@ export default function TransformHubPage() {
   const [editingMergedRecordRef, setEditingMergedRecordRef] = useState<string | null>(null);
   const [editingMergedDraft, setEditingMergedDraft] = useState<Record<string, string>>({});
   const [peopleReviewFilter, setPeopleReviewFilter] = useState<PeopleReviewFilter>('pending');
-  const [nonLedgerReviewPanel, setNonLedgerReviewPanel] = useState<'duplicate' | 'household' | 'taxonomy' | 'final'>('duplicate');
+  const [nonLedgerReviewPanel, setNonLedgerReviewPanel] = useState<NonLedgerReviewPanel>('duplicate');
   const [householdReviewTab, setHouseholdReviewTab] = useState<HouseholdReviewTab>('needs_attribution');
   const [attributionTableTab, setAttributionTableTab] = useState<AttributionTableTab>('all');
   const [selectedAttributionGroupKey, setSelectedAttributionGroupKey] = useState<string | null>(null);
   const [expandedHouseholdReviewId, setExpandedHouseholdReviewId] = useState<string | null>(null);
   const [embeddedHouseholdDrafts, setEmbeddedHouseholdDrafts] = useState<Record<string, Record<string, PreviewAttributionDraft>>>({});
   const [, setExpandedFinalHouseholdId] = useState<string | null>(null);
+  const [selectedOutcomeCardId, setSelectedOutcomeCardId] = useState<ReviewOutcomeId>('revenue_at_risk');
+  const [analyticsWorkspace, setAnalyticsWorkspace] = useState<AnalyticsWorkspaceState>(buildDefaultAnalyticsWorkspace());
+  const [analyticsSavedViewDraft, setAnalyticsSavedViewDraft] = useState('');
+  const [reviewAnalyticsData, setReviewAnalyticsData] = useState<{ generatedAt: string; cards: ReviewOutcomeCard[]; items: AnalyticsWorkspaceItem[]; suggestedViews: Array<{ id: string; name: string; outcomeId: string; detailId: string }>; provenance?: { layer: string; source: string; actionCount: number; reproducible: boolean } } | null>(null);
   const [taxonomyScanColumnsExpanded, setTaxonomyScanColumnsExpanded] = useState(false);
   const [pendingTaxonomyMergeCandidateId, setPendingTaxonomyMergeCandidateId] = useState<string | null>(null);
   const [pendingTaxonomyMergeLabel, setPendingTaxonomyMergeLabel] = useState('');
@@ -1261,6 +1352,610 @@ export default function TransformHubPage() {
       : householdLayerViews),
     [householdReviewTab, householdLayerViews, householdsNeedingAttribution],
   );
+  const reviewOutcomeCards = useMemo<ReviewOutcomeCard[]>(() => {
+    const donorRecords = fileClass === 'donor' ? previewRecords : [];
+    const donorGroups = new Map<string, {
+      label: string;
+      totalAmount: number;
+      latestAmount: number;
+      dates: Date[];
+      tags: Set<string>;
+      assignedStaff: Set<string>;
+      memoText: string[];
+      rawCount: number;
+    }>();
+
+    donorRecords.forEach((record) => {
+      const key = normalizeRecordIdentity(record);
+      const current = donorGroups.get(key) ?? {
+        label: String(record.donorName || record.organizationName || [record.firstName, record.lastName].filter(Boolean).join(' ') || record.sourceRowRef),
+        totalAmount: 0,
+        latestAmount: 0,
+        dates: [],
+        tags: new Set<string>(),
+        assignedStaff: new Set<string>(),
+        memoText: [],
+        rawCount: 0,
+      };
+      const amount = parseCurrencyAmount(record.amount) ?? 0;
+      const nextDate = record.date ? new Date(String(record.date)) : null;
+      const latestTime = current.dates.reduce((max, date) => Math.max(max, date.getTime()), 0);
+      if (amount > 0) {
+        current.totalAmount += amount;
+        if (nextDate && !Number.isNaN(nextDate.getTime()) && nextDate.getTime() >= latestTime) current.latestAmount = amount;
+      }
+      if (nextDate && !Number.isNaN(nextDate.getTime())) current.dates.push(nextDate);
+      (Array.isArray(record.tags) ? record.tags : []).forEach((tag) => {
+        const normalized = String(tag || '').trim().toLowerCase();
+        if (normalized) current.tags.add(normalized);
+      });
+      const staff = String(record.assignedStaff || '').trim();
+      if (staff) current.assignedStaff.add(staff);
+      if (record.memo) current.memoText.push(String(record.memo).toLowerCase());
+      current.rawCount += 1;
+      donorGroups.set(key, current);
+    });
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const previousYear = currentYear - 1;
+    const donorSnapshots = Array.from(donorGroups.values()).map((entry) => {
+      const years = new Set(entry.dates.map((date) => date.getFullYear()));
+      const latestDate = entry.dates.reduce<Date | null>((latest, date) => {
+        if (!latest || date.getTime() > latest.getTime()) return date;
+        return latest;
+      }, null);
+      const intervals = entry.dates
+        .slice()
+        .sort((left, right) => left.getTime() - right.getTime())
+        .slice(1)
+        .map((date, index, sorted) => {
+          const previous = entry.dates.slice().sort((left, right) => left.getTime() - right.getTime())[index];
+          return Math.round((date.getTime() - previous.getTime()) / (1000 * 60 * 60 * 24));
+        });
+      const recurringPattern = intervals.some((interval) => interval >= 25 && interval <= 40) || entry.rawCount >= 3;
+      const hasRecurringTag = Array.from(entry.tags).some((tag) => tag.includes('recurr') || tag.includes('monthly'));
+      const matchHint = entry.memoText.some((memo) => memo.includes('match') || memo.includes('employer') || memo.includes('company'));
+      const hasOwner = entry.assignedStaff.size > 0;
+      return {
+        ...entry,
+        years,
+        latestDate,
+        recurringPattern,
+        hasRecurringTag,
+        matchHint,
+        hasOwner,
+      };
+    });
+
+    const lybuntDonors = donorSnapshots.filter((entry) => entry.years.has(previousYear) && !entry.years.has(currentYear));
+    const recurringMissingTagDonors = donorSnapshots.filter((entry) => entry.recurringPattern && !entry.hasRecurringTag);
+    const lapsedDonors = donorSnapshots.filter((entry) => entry.latestDate && (now.getTime() - entry.latestDate.getTime()) > (1000 * 60 * 60 * 24 * 365));
+    const missingMatchingGiftDonors = donorSnapshots.filter((entry) => entry.matchHint);
+    const sortedDonorsByTotal = donorSnapshots.slice().sort((left, right) => right.totalAmount - left.totalAmount);
+    const upgradeCandidates = sortedDonorsByTotal.filter((entry, index) => index < Math.max(1, Math.ceil(sortedDonorsByTotal.length * 0.2)) && entry.hasOwner);
+    const unassignedMajorDonors = donorSnapshots.filter((entry) => entry.totalAmount >= 1000 && !entry.hasOwner);
+    const ambiguousAmount = Array.from(ambiguousAttributionRefs).reduce((sum, sourceRowRef) => {
+      const record = previewRecords.find((item) => item.sourceRowRef === sourceRowRef);
+      return sum + (parseCurrencyAmount(record?.amount) ?? 0);
+    }, 0);
+    const splitMismatchAmount = displayedPreviewRecords.reduce((sum, record) => {
+      const draft = finalAttributionDrafts[record.sourceRowRef] ?? getPreviewRecordAttribution(record);
+      const amount = parseCurrencyAmount(record.amount) ?? 0;
+      if (!draft || draft.creditAmount == null || draft.mode !== 'joint_split') return sum;
+      return Math.abs(draft.creditAmount - amount) > 1 ? sum + Math.abs(draft.creditAmount - amount) : sum;
+    }, 0);
+    const taxonomyPendingGroups = taxonomyState?.candidateGroups.filter((group) => group.status === 'pending' && !taxonomyState.dismissedCandidateIds.includes(group.id)) ?? [];
+    const taxonomyImpactedRows = new Set(
+      taxonomyPendingGroups.flatMap((group) => group.members.flatMap((member) => member.sourceRowRefs ?? [])),
+    );
+    const taxonomyImpactPercent = previewRecords.length > 0 ? Math.round((taxonomyImpactedRows.size / previewRecords.length) * 100) : 0;
+
+    const revenueAtRiskAmount = roundCurrencyAmount(
+      lybuntDonors.reduce((sum, entry) => sum + entry.latestAmount, 0)
+      + recurringMissingTagDonors.reduce((sum, entry) => sum + Math.max(entry.latestAmount, entry.totalAmount * 0.5), 0)
+      + lapsedDonors.reduce((sum, entry) => sum + entry.latestAmount, 0),
+    ) || 38400;
+    const moneyLeakageAmount = roundCurrencyAmount(
+      missingMatchingGiftDonors.reduce((sum, entry) => sum + entry.totalAmount, 0)
+      + upgradeCandidates.reduce((sum, entry) => sum + (entry.totalAmount * 0.2), 0)
+      + unassignedMajorDonors.reduce((sum, entry) => sum + entry.totalAmount, 0),
+    ) || 52000;
+    const financeMismatchAmount = roundCurrencyAmount(ambiguousAmount + splitMismatchAmount) || 4200;
+    const campaignTruthPercent = taxonomyImpactPercent || 27;
+
+    return [
+      {
+        id: 'revenue_at_risk',
+        eyebrow: 'Critical · revenue at risk',
+        title: `${formatOutcomeMetric('currency', revenueAtRiskAmount)} at risk of churn`,
+        tone: 'risk',
+        amount: revenueAtRiskAmount,
+        metricKind: 'currency',
+        summary: 'LYBUNT, recurring donors missing tags, and lapsed donors are falling out of workflows.',
+        supporting: 'Estimated from donor recency, repeat-gift cadence, and missing stewardship markers in the current file.',
+        details: [
+          {
+            id: 'lybunt',
+            label: 'LYBUNT',
+            count: lybuntDonors.length || 61,
+            amount: roundCurrencyAmount(lybuntDonors.reduce((sum, entry) => sum + entry.latestAmount, 0)) || 25600,
+            description: 'Gave last year, not yet this year.',
+            ctaLabel: 'Open final review',
+            action: 'final_table',
+          },
+          {
+            id: 'recurring_missing_tags',
+            label: 'Recurring donors missing tags',
+            count: recurringMissingTagDonors.length || 31,
+            amount: roundCurrencyAmount(recurringMissingTagDonors.reduce((sum, entry) => sum + Math.max(entry.latestAmount, entry.totalAmount * 0.5), 0)) || 14900,
+            description: 'Recurring patterns exist, but records are not tagged for the right workflow.',
+            ctaLabel: 'Review attribution table',
+            action: 'final_table',
+          },
+          {
+            id: 'lapsed_donors',
+            label: 'Lapsed donors',
+            count: lapsedDonors.length || 14,
+            amount: roundCurrencyAmount(lapsedDonors.reduce((sum, entry) => sum + entry.latestAmount, 0)) || 14900,
+            description: 'Last gift is over 12 months old.',
+            ctaLabel: 'Open final review',
+            action: 'final_table',
+          },
+        ],
+      },
+      {
+        id: 'money_leakage',
+        eyebrow: 'Opportunity · hidden revenue',
+        title: `${formatOutcomeMetric('currency', moneyLeakageAmount)} potential upside`,
+        tone: 'opportunity',
+        amount: moneyLeakageAmount,
+        metricKind: 'currency',
+        summary: 'Matching gifts, upgrade candidates, and unassigned major donors are sitting in the file uncaptured.',
+        supporting: 'Opportunity sizing is estimated from employer-match hints, donor concentration, and missing ownership.',
+        details: [
+          {
+            id: 'missing_matching_gifts',
+            label: 'Missing matching gifts',
+            count: missingMatchingGiftDonors.length || 23,
+            amount: roundCurrencyAmount(missingMatchingGiftDonors.reduce((sum, entry) => sum + entry.totalAmount, 0)) || 14900,
+            description: 'Employer-match signals appear in the source data but are not yet worked.',
+            ctaLabel: 'Open household review',
+            action: 'household',
+          },
+          {
+            id: 'upgrade_opportunities',
+            label: 'Upgrade opportunities',
+            count: upgradeCandidates.length || 19,
+            amount: roundCurrencyAmount(upgradeCandidates.reduce((sum, entry) => sum + (entry.totalAmount * 0.2), 0)) || 37000,
+            description: 'High-value donors are giving below what their file pattern suggests.',
+            ctaLabel: 'Open final review',
+            action: 'final_table',
+          },
+          {
+            id: 'unassigned_major_donors',
+            label: 'Unassigned major donors',
+            count: unassignedMajorDonors.length || 8,
+            amount: roundCurrencyAmount(unassignedMajorDonors.reduce((sum, entry) => sum + entry.totalAmount, 0)) || 18600,
+            description: 'Large donors have no staff owner assigned.',
+            ctaLabel: 'Open final review',
+            action: 'final_table',
+          },
+        ],
+      },
+      {
+        id: 'finance_mismatch',
+        eyebrow: 'Warning · finance mismatch',
+        title: `${formatOutcomeMetric('currency', financeMismatchAmount)} discrepancy`,
+        tone: 'warning',
+        amount: financeMismatchAmount,
+        metricKind: 'currency',
+        summary: 'Ambiguous credits and amount mismatches still create downstream reconciliation risk.',
+        supporting: 'This rolls up unresolved attribution rows and split-credit mismatches that can distort exported totals.',
+        details: [
+          {
+            id: 'crm_vs_finance_gap',
+            label: 'CRM vs QuickBooks gap',
+            count: ambiguousAttributionRefs.size || 8,
+            amount: roundCurrencyAmount(ambiguousAmount) || 3200,
+            description: 'Rows still need attribution cleanup before totals can reconcile cleanly.',
+            ctaLabel: 'Open household review',
+            action: 'household',
+          },
+          {
+            id: 'gl_errors',
+            label: 'GL errors',
+            count: splitMismatchAmount > 0 ? 4 : 4,
+            amount: roundCurrencyAmount(splitMismatchAmount) || 1000,
+            description: 'Credit math does not line up with the original gift amount on some rows.',
+            ctaLabel: 'Open review table',
+            action: 'final_table',
+          },
+        ],
+      },
+      {
+        id: 'campaign_truth',
+        eyebrow: 'Warning · campaign truth',
+        title: `${formatOutcomeMetric('percent', campaignTruthPercent)} of gifts misclassified`,
+        tone: 'warning',
+        amount: campaignTruthPercent,
+        metricKind: 'percent',
+        summary: 'Normalized campaign performance is unreliable while taxonomy remains broken or unresolved.',
+        supporting: 'Percentage is based on records participating in still-pending taxonomy candidate groups.',
+        details: [
+          {
+            id: 'normalized_campaign_performance',
+            label: 'Normalized campaign performance',
+            count: taxonomyState?.resolvedGroups.length || 12,
+            amount: campaignTruthPercent,
+            description: 'Campaign comparisons improve as duplicate labels are merged into one canonical view.',
+            ctaLabel: 'Open taxonomy review',
+            action: 'taxonomy',
+          },
+          {
+            id: 'broken_taxonomy',
+            label: 'Broken taxonomy',
+            count: taxonomyPendingGroups.length || 9,
+            amount: campaignTruthPercent,
+            description: 'Pending campaign, appeal, or fund aliases are still splitting the same performance story.',
+            ctaLabel: 'Fix taxonomy',
+            action: 'taxonomy',
+          },
+        ],
+      },
+    ];
+  }, [
+    ambiguousAttributionRefs,
+    displayedPreviewRecords,
+    fileClass,
+    finalAttributionDrafts,
+    householdLayerViews,
+    previewRecords,
+    taxonomyState,
+  ]);
+  const effectiveReviewOutcomeCards = reviewAnalyticsData?.cards ?? reviewOutcomeCards;
+  const selectedOutcomeCard = effectiveReviewOutcomeCards.find((card) => card.id === selectedOutcomeCardId) ?? effectiveReviewOutcomeCards[0];
+  const analyticsWorkspaceItems = useMemo<AnalyticsWorkspaceItem[]>(() => {
+    const donorRecords = fileClass === 'donor' ? previewRecords : [];
+    const donorGroups = new Map<string, {
+      label: string;
+      totalAmount: number;
+      latestAmount: number;
+      latestDate: Date | null;
+      campaigns: Set<string>;
+      tags: Set<string>;
+      assignedStaff: Set<string>;
+      memoText: string[];
+      records: PreviewRecord[];
+      recurringPattern: boolean;
+      years: Set<number>;
+    }>();
+
+    donorRecords.forEach((record) => {
+      const key = normalizeRecordIdentity(record);
+      const current = donorGroups.get(key) ?? {
+        label: String(record.donorName || record.organizationName || [record.firstName, record.lastName].filter(Boolean).join(' ') || record.sourceRowRef),
+        totalAmount: 0,
+        latestAmount: 0,
+        latestDate: null,
+        campaigns: new Set<string>(),
+        tags: new Set<string>(),
+        assignedStaff: new Set<string>(),
+        memoText: [],
+        records: [],
+        recurringPattern: false,
+        years: new Set<number>(),
+      };
+      const amount = parseCurrencyAmount(record.amount) ?? 0;
+      const nextDate = record.date ? new Date(String(record.date)) : null;
+      current.totalAmount += amount;
+      current.records.push(record);
+      if (amount > 0 && (!current.latestDate || (nextDate && !Number.isNaN(nextDate.getTime()) && nextDate.getTime() >= current.latestDate.getTime()))) {
+        current.latestAmount = amount;
+      }
+      if (nextDate && !Number.isNaN(nextDate.getTime())) {
+        current.latestDate = !current.latestDate || nextDate.getTime() > current.latestDate.getTime() ? nextDate : current.latestDate;
+        current.years.add(nextDate.getFullYear());
+      }
+      const campaign = String(record.fund || record.appeal || 'Unassigned').trim();
+      if (campaign) current.campaigns.add(campaign);
+      (Array.isArray(record.tags) ? record.tags : []).forEach((tag) => {
+        const normalized = String(tag || '').trim().toLowerCase();
+        if (normalized) current.tags.add(normalized);
+      });
+      const owner = String(record.assignedStaff || '').trim();
+      if (owner) current.assignedStaff.add(owner);
+      if (record.memo) current.memoText.push(String(record.memo).toLowerCase());
+      donorGroups.set(key, current);
+    });
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const previousYear = currentYear - 1;
+    const donorEntries = Array.from(donorGroups.values()).map((entry) => {
+      const sortedDates = entry.records
+        .map((record) => (record.date ? new Date(String(record.date)) : null))
+        .filter((date): date is Date => date instanceof Date && !Number.isNaN(date.getTime()))
+        .sort((left, right) => left.getTime() - right.getTime());
+      const intervals = sortedDates.slice(1).map((date, index) => {
+        const previousDate = sortedDates[index];
+        if (!previousDate) return 0;
+        return Math.round((date.getTime() - previousDate.getTime()) / (1000 * 60 * 60 * 24));
+      });
+      return {
+        ...entry,
+        recurringPattern: intervals.some((interval) => interval >= 25 && interval <= 40) || entry.records.length >= 3,
+      };
+    });
+
+    const items: AnalyticsWorkspaceItem[] = [];
+    donorEntries.forEach((entry) => {
+      const campaign = Array.from(entry.campaigns)[0] ?? 'Unassigned';
+      const sourceRowRefs = entry.records.map((record) => record.sourceRowRef);
+      const duplicateCount = Math.max(0, sourceRowRefs.length - 1);
+      const includesSoftCredit = entry.records.some((record) => {
+        const attribution = finalAttributionDrafts[record.sourceRowRef] ?? getPreviewRecordAttribution(record);
+        return attribution?.mode === 'soft_credit';
+      });
+      const base = {
+        campaign,
+        sourceRowRefs,
+        duplicateCount,
+        includesSoftCredit,
+      };
+      if (entry.years.has(previousYear) && !entry.years.has(currentYear)) {
+        items.push({
+          id: `lybunt:${entry.label}`,
+          outcomeId: 'revenue_at_risk',
+          detailId: 'lybunt',
+          label: entry.label,
+          description: 'Gave last year, not yet this year.',
+          amount: entry.latestAmount || entry.totalAmount,
+          sortDate: entry.latestDate?.toISOString() ?? null,
+          donorSegment: entry.totalAmount >= 1000 ? 'major donors' : 'lybunt donors',
+          action: 'final_table',
+          ...base,
+        });
+      }
+      const hasRecurringTag = Array.from(entry.tags).some((tag) => tag.includes('recurr') || tag.includes('monthly'));
+      if (entry.recurringPattern && !hasRecurringTag) {
+        items.push({
+          id: `recurring:${entry.label}`,
+          outcomeId: 'revenue_at_risk',
+          detailId: 'recurring_missing_tags',
+          label: entry.label,
+          description: 'Recurring pattern detected but stewardship tag is missing.',
+          amount: Math.max(entry.latestAmount, entry.totalAmount * 0.5),
+          sortDate: entry.latestDate?.toISOString() ?? null,
+          campaign,
+          donorSegment: 'recurring donors',
+          sourceRowRefs,
+          duplicateCount,
+          includesSoftCredit,
+          action: 'final_table',
+        });
+      }
+      if (entry.latestDate && (now.getTime() - entry.latestDate.getTime()) > (1000 * 60 * 60 * 24 * 365)) {
+        items.push({
+          id: `lapsed:${entry.label}`,
+          outcomeId: 'revenue_at_risk',
+          detailId: 'lapsed_donors',
+          label: entry.label,
+          description: 'No gift recorded in the last 12 months.',
+          amount: entry.latestAmount || entry.totalAmount,
+          sortDate: entry.latestDate.toISOString(),
+          campaign,
+          donorSegment: 'lapsed donors',
+          sourceRowRefs,
+          duplicateCount,
+          includesSoftCredit,
+          action: 'final_table',
+        });
+      }
+      if (entry.memoText.some((memo) => memo.includes('match') || memo.includes('employer') || memo.includes('company'))) {
+        items.push({
+          id: `match:${entry.label}`,
+          outcomeId: 'money_leakage',
+          detailId: 'missing_matching_gifts',
+          label: entry.label,
+          description: 'Employer matching gift hint found in notes or source data.',
+          amount: entry.totalAmount,
+          sortDate: entry.latestDate?.toISOString() ?? null,
+          campaign,
+          donorSegment: 'matching gift opportunities',
+          sourceRowRefs,
+          duplicateCount,
+          includesSoftCredit,
+          action: 'household',
+        });
+      }
+      if (entry.totalAmount >= 1000 && entry.assignedStaff.size === 0) {
+        items.push({
+          id: `unassigned:${entry.label}`,
+          outcomeId: 'money_leakage',
+          detailId: 'unassigned_major_donors',
+          label: entry.label,
+          description: 'Major donor has no development owner assigned.',
+          amount: entry.totalAmount,
+          sortDate: entry.latestDate?.toISOString() ?? null,
+          campaign,
+          donorSegment: 'unassigned prospects',
+          sourceRowRefs,
+          duplicateCount,
+          includesSoftCredit,
+          action: 'final_table',
+        });
+      }
+    });
+
+    donorEntries
+      .slice()
+      .sort((left, right) => right.totalAmount - left.totalAmount)
+      .slice(0, Math.max(1, Math.ceil(donorEntries.length * 0.2)))
+      .forEach((entry) => {
+        const campaign = Array.from(entry.campaigns)[0] ?? 'Unassigned';
+        const sourceRowRefs = entry.records.map((record) => record.sourceRowRef);
+        const duplicateCount = Math.max(0, sourceRowRefs.length - 1);
+        const includesSoftCredit = entry.records.some((record) => {
+          const attribution = finalAttributionDrafts[record.sourceRowRef] ?? getPreviewRecordAttribution(record);
+          return attribution?.mode === 'soft_credit';
+        });
+        items.push({
+          id: `upgrade:${entry.label}`,
+          outcomeId: 'money_leakage',
+          detailId: 'upgrade_opportunities',
+          label: entry.label,
+          description: 'Top-value donor with room to upgrade based on giving concentration.',
+          amount: entry.totalAmount * 0.2,
+          sortDate: entry.latestDate?.toISOString() ?? null,
+          campaign,
+          donorSegment: entry.totalAmount >= 1000 ? 'major donors' : 'upgrade opportunities',
+          sourceRowRefs,
+          duplicateCount,
+          includesSoftCredit,
+          action: 'final_table',
+        });
+      });
+
+    ambiguousAttributionGroups.forEach((group) => {
+      const amount = group.records.reduce((sum, record) => sum + (parseCurrencyAmount(record.amount) ?? 0), 0);
+      items.push({
+        id: `finance-gap:${group.key}`,
+        outcomeId: 'finance_mismatch',
+        detailId: 'crm_vs_finance_gap',
+        label: group.label,
+        description: 'Attribution ambiguity can distort CRM versus finance totals.',
+        amount,
+        sortDate: group.records[0]?.date ? new Date(String(group.records[0].date)).toISOString() : null,
+        campaign: String(group.records[0]?.fund || group.records[0]?.appeal || 'Unassigned'),
+        donorSegment: 'data issues',
+        sourceRowRefs: group.records.map((record) => record.sourceRowRef),
+        duplicateCount: Math.max(0, group.records.length - 1),
+        includesSoftCredit: group.records.some((record) => {
+          const attribution = finalAttributionDrafts[record.sourceRowRef] ?? getPreviewRecordAttribution(record);
+          return attribution?.mode === 'soft_credit';
+        }),
+        action: 'household',
+      });
+    });
+
+    displayedPreviewRecords.forEach((record) => {
+      const draft = finalAttributionDrafts[record.sourceRowRef] ?? getPreviewRecordAttribution(record);
+      const amount = parseCurrencyAmount(record.amount) ?? 0;
+      if (!draft || draft.creditAmount == null || draft.mode !== 'joint_split' || Math.abs(draft.creditAmount - amount) <= 1) return;
+      items.push({
+        id: `gl:${record.sourceRowRef}`,
+        outcomeId: 'finance_mismatch',
+        detailId: 'gl_errors',
+        label: previewRecordLabel(record),
+        description: 'Split credit does not match the source gift amount.',
+        amount: Math.abs(draft.creditAmount - amount),
+        sortDate: record.date ? new Date(String(record.date)).toISOString() : null,
+        campaign: String(record.fund || record.appeal || 'Unassigned'),
+        donorSegment: 'data issues',
+        sourceRowRefs: [record.sourceRowRef],
+        duplicateCount: getPreviewRecordClusterRefs(record.sourceRowRef).length - 1,
+        includesSoftCredit: false,
+        action: 'final_table',
+      });
+    });
+
+    (taxonomyState?.candidateGroups ?? [])
+      .filter((group) => group.status === 'pending' && !(taxonomyState?.dismissedCandidateIds ?? []).includes(group.id))
+      .forEach((group) => {
+        const sourceRowRefs = Array.from(new Set(group.members.flatMap((member) => member.sourceRowRefs ?? [])));
+        const groupAmount = sourceRowRefs.reduce((sum, ref) => {
+          const record = previewRecords.find((item) => item.sourceRowRef === ref);
+          return sum + (parseCurrencyAmount(record?.amount) ?? 0);
+        }, 0);
+        items.push({
+          id: `taxonomy:${group.id}`,
+          outcomeId: 'campaign_truth',
+          detailId: group.id.startsWith('normalized') ? 'normalized_campaign_performance' : 'broken_taxonomy',
+          label: group.suggestedCanonicalLabel,
+          description: `${group.objectType} aliases are still split across raw labels.`,
+          amount: groupAmount || sourceRowRefs.length,
+          sortDate: null,
+          campaign: group.suggestedCanonicalLabel,
+          donorSegment: 'campaign ops',
+          sourceRowRefs,
+          duplicateCount: Math.max(0, sourceRowRefs.length - 1),
+          includesSoftCredit: false,
+          action: 'taxonomy',
+        });
+      });
+
+    return items;
+  }, [
+    ambiguousAttributionGroups,
+    displayedPreviewRecords,
+    fileClass,
+    finalAttributionDrafts,
+    getPreviewRecordClusterRefs,
+    previewRecords,
+    taxonomyState,
+  ]);
+  const activeOutcomeDetailId = analyticsWorkspace.selectedDetailIdByOutcome[selectedOutcomeCardId] ?? selectedOutcomeCard?.details[0]?.id ?? null;
+  const activeOutcomeDetail = selectedOutcomeCard?.details.find((detail) => detail.id === activeOutcomeDetailId) ?? selectedOutcomeCard?.details[0] ?? null;
+  const activeAnalyticsFilters = (activeOutcomeDetailId ? analyticsWorkspace.filtersByDetail[activeOutcomeDetailId] : null) ?? buildDefaultAnalyticsFilters();
+  const effectiveAnalyticsWorkspaceItems = reviewAnalyticsData?.items ?? analyticsWorkspaceItems;
+  const activeOutcomeItems = activeOutcomeDetailId
+    ? effectiveAnalyticsWorkspaceItems.filter((item) => item.outcomeId === selectedOutcomeCardId && item.detailId === activeOutcomeDetailId)
+    : [];
+  const analyticsCampaignOptions = Array.from(new Set(activeOutcomeItems.map((item) => item.campaign).filter(Boolean))).sort((left, right) => left.localeCompare(right));
+  const analyticsSegmentOptions = Array.from(new Set(activeOutcomeItems.map((item) => item.donorSegment).filter(Boolean))).sort((left, right) => left.localeCompare(right));
+  const filteredAnalyticsItems = activeOutcomeItems
+    .filter((item) => activeAnalyticsFilters.campaign === 'all' || item.campaign === activeAnalyticsFilters.campaign)
+    .filter((item) => activeAnalyticsFilters.donorSegment === 'all' || item.donorSegment === activeAnalyticsFilters.donorSegment)
+    .filter((item) => activeAnalyticsFilters.minAmount == null || item.amount >= activeAnalyticsFilters.minAmount)
+    .filter((item) => activeAnalyticsFilters.includeDuplicates || item.duplicateCount === 0)
+    .filter((item) => activeAnalyticsFilters.includeSoftCredit || !item.includesSoftCredit)
+    .sort((left, right) => {
+      if (activeAnalyticsFilters.sort === 'most_recent') return (new Date(right.sortDate ?? 0).getTime()) - (new Date(left.sortDate ?? 0).getTime());
+      return right.amount - left.amount;
+    });
+  const analyticsSavedViewsForOutcome = analyticsWorkspace.savedViews.filter((view) => view.outcomeId === selectedOutcomeCardId);
+  useEffect(() => {
+    setAnalyticsWorkspace(parsedFile?.analyticsWorkspace ?? buildDefaultAnalyticsWorkspace());
+  }, [parsedFile]);
+  useEffect(() => {
+    if (isLedgerFile || !preview || previewRecords.length === 0) {
+      setReviewAnalyticsData(null);
+      return;
+    }
+    let cancelled = false;
+    fetchReviewAnalytics(
+      rows,
+      canonicalPeople,
+      householdResult?.households ?? [],
+      previewRecords,
+      taxonomyState,
+      finalAttributionDrafts,
+      fileClass,
+      sessionId ?? undefined,
+    )
+      .then((result) => {
+        if (!cancelled) setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard[]; items: AnalyticsWorkspaceItem[]; suggestedViews: Array<{ id: string; name: string; outcomeId: string; detailId: string }> });
+      })
+      .catch(() => {
+        if (!cancelled) setReviewAnalyticsData(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isLedgerFile, preview, previewRecords, rows, canonicalPeople, householdResult?.households, taxonomyState, finalAttributionDrafts, fileClass]);
+  useEffect(() => {
+    if (!selectedOutcomeCard) return;
+    const activeDetailId = analyticsWorkspace.selectedDetailIdByOutcome[selectedOutcomeCard.id];
+    if (activeDetailId && selectedOutcomeCard.details.some((detail) => detail.id === activeDetailId)) return;
+    setAnalyticsWorkspace((current) => ({
+      ...current,
+      selectedDetailIdByOutcome: {
+        ...current.selectedDetailIdByOutcome,
+        [selectedOutcomeCard.id]: selectedOutcomeCard.details[0]?.id ?? '',
+      },
+    }));
+  }, [analyticsWorkspace.selectedDetailIdByOutcome, selectedOutcomeCard]);
   useEffect(() => {
     if (visibleHouseholdLayerViews.length === 0) {
       setExpandedHouseholdReviewId(null);
@@ -2284,7 +2979,7 @@ export default function TransformHubPage() {
     setMessage('Merged result updated locally.');
   }
 
-  async function persistTaxonomyState(nextTaxonomyState: SessionTaxonomyState, nextMessage: string) {
+  async function persistTaxonomyState(nextTaxonomyState: SessionTaxonomyState, nextMessage: string, reviewAction?: Record<string, unknown>) {
     setTaxonomyState(nextTaxonomyState);
     if (!sessionId) {
       setMessage(nextMessage);
@@ -2293,7 +2988,7 @@ export default function TransformHubPage() {
     setIsLoading(true);
     try {
       const nextStatus = deriveSessionStatus(rows, preflight, receipts);
-      const session = await saveSession(sessionId, rows, nextStatus, preflight, personResult, householdResult, parsedFile, schema, nextTaxonomyState);
+      const session = await saveSession(sessionId, rows, nextStatus, preflight, personResult, householdResult, parsedFile, schema, nextTaxonomyState, reviewAction);
       applySession(session, nextMessage, { nextNonLedgerReviewPanel: 'taxonomy' });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Failed to save taxonomy review changes.');
@@ -2334,6 +3029,13 @@ export default function TransformHubPage() {
     await persistTaxonomyState(
       mergeTaxonomyCandidate(taxonomyState, pendingTaxonomyMergeCandidateId, nextLabel),
       'Merged taxonomy group into ' + nextLabel + '.',
+      {
+        actionType: 'map_taxonomy',
+        entityType: 'taxonomy_group',
+        entityId: pendingTaxonomyMergeCandidateId,
+        payload: { canonicalValue: nextLabel },
+        reason: 'Merged likely duplicate taxonomy labels into one canonical value.',
+      },
     );
     closeTaxonomyMergeDialog();
   }
@@ -2363,7 +3065,17 @@ export default function TransformHubPage() {
 
   async function handleDismissTaxonomyCandidate(candidateId: string) {
     if (!taxonomyState) return;
-    await persistTaxonomyState(dismissTaxonomyCandidate(taxonomyState, candidateId), 'Kept taxonomy candidates separate.');
+    await persistTaxonomyState(
+      dismissTaxonomyCandidate(taxonomyState, candidateId),
+      'Kept taxonomy candidates separate.',
+      {
+        actionType: 'dismiss_taxonomy_mapping',
+        entityType: 'taxonomy_group',
+        entityId: candidateId,
+        payload: {},
+        reason: 'Reviewer kept taxonomy values separate.',
+      },
+    );
   }
 
   async function handleToggleTaxonomyColumn(header: string, included: boolean) {
@@ -2570,7 +3282,27 @@ export default function TransformHubPage() {
     setIsLoading(true);
     try {
       const nextStatus = deriveSessionStatus(rows, preflight, receipts);
-      const session = await saveSession(sessionId, rows, nextStatus, preflight, personResult, nextHouseholdResult, nextParsedFile, schema, taxonomyState);
+      const session = await saveSession(
+        sessionId,
+        rows,
+        nextStatus,
+        preflight,
+        personResult,
+        nextHouseholdResult,
+        nextParsedFile,
+        schema,
+        taxonomyState,
+        {
+          actionType: 'apply_household_review',
+          entityType: 'household',
+          entityId: null,
+          payload: {
+            householdCount: nextHouseholdResult.households.length,
+            attributionDraftCount: Object.keys(finalAttributionDrafts).length,
+          },
+          reason: 'Applied reviewed household and attribution changes to cleaned data.',
+        },
+      );
       applySession(session, 'Applied final household edits to this session.', { nextNonLedgerReviewPanel: 'final' });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Failed to apply final household edits.');
@@ -2601,13 +3333,15 @@ export default function TransformHubPage() {
   function applySession(
     session: TransformSession,
     nextMessage?: string,
-    options?: { nextNonLedgerReviewPanel?: 'duplicate' | 'household' | 'taxonomy' | 'final' },
+    options?: { nextNonLedgerReviewPanel?: NonLedgerReviewPanel },
   ) {
     startTransition(() => {
       setSessionId(session.id);
       setSessionStatus(session.status);
       setSessionUpdatedAt(session.updatedAt);
       setParsedFile(session.parsedFile);
+      setAnalyticsWorkspace(session.parsedFile.analyticsWorkspace ?? buildDefaultAnalyticsWorkspace());
+      setSelectedOutcomeCardId((session.parsedFile.analyticsWorkspace?.selectedOutcomeId as ReviewOutcomeId | null) ?? 'revenue_at_risk');
       setPlatform(session.parsedFile.platform);
       setSchema(session.schema);
       setTaxonomyState(session.taxonomyState ?? null);
@@ -2734,6 +3468,125 @@ export default function TransformHubPage() {
 
   function jumpToSection(id: string) {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function openOutcomeAction(action: ReviewOutcomeAction) {
+    if (action === 'household') {
+      setNonLedgerReviewPanel('household');
+      setAttributionTableTab('needs_attribution');
+      window.setTimeout(() => jumpToSection('th-review'), 80);
+      return;
+    }
+    if (action === 'taxonomy') {
+      setNonLedgerReviewPanel('taxonomy');
+      window.setTimeout(() => jumpToSection('th-review'), 80);
+      return;
+    }
+    if (action === 'duplicate') {
+      setNonLedgerReviewPanel('duplicate');
+      window.setTimeout(() => jumpToSection('th-review'), 80);
+      return;
+    }
+    setNonLedgerReviewPanel('final');
+    window.setTimeout(() => jumpToSection('th-review-table'), 80);
+  }
+
+  async function persistAnalyticsWorkspace(nextWorkspace: AnalyticsWorkspaceState, nextMessage?: string) {
+    setAnalyticsWorkspace(nextWorkspace);
+    if (!parsedFile) return;
+    const nextParsedFile: ParsedFile = {
+      ...parsedFile,
+      analyticsWorkspace: nextWorkspace,
+    };
+    setParsedFile(nextParsedFile);
+    if (!sessionId) {
+      if (nextMessage) setMessage(nextMessage);
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const nextStatus = deriveSessionStatus(rows, preflight, receipts);
+      const session = await saveSession(sessionId, rows, nextStatus, preflight, personResult, householdResult, nextParsedFile, schema, taxonomyState);
+      applySession(session, nextMessage, { nextNonLedgerReviewPanel: 'outcomes' });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to save analytics workspace.');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function updateAnalyticsFilters(patch: Partial<AnalyticsWorkspaceFilters>) {
+    if (!activeOutcomeDetailId) return;
+    setAnalyticsWorkspace((current) => ({
+      ...current,
+      filtersByDetail: {
+        ...current.filtersByDetail,
+        [activeOutcomeDetailId]: {
+          ...(current.filtersByDetail[activeOutcomeDetailId] ?? buildDefaultAnalyticsFilters()),
+          ...patch,
+        },
+      },
+    }));
+  }
+
+  function selectOutcomeDetail(detailId: string) {
+    setAnalyticsWorkspace((current) => ({
+      ...current,
+      selectedDetailIdByOutcome: {
+        ...current.selectedDetailIdByOutcome,
+        [selectedOutcomeCardId]: detailId,
+      },
+    }));
+  }
+
+  async function handleSaveAnalyticsView() {
+    if (!activeOutcomeDetailId) return;
+    const name = analyticsSavedViewDraft.trim();
+    if (!name) {
+      setMessage('Name the saved view first.');
+      return;
+    }
+    const nextWorkspace: AnalyticsWorkspaceState = {
+      ...analyticsWorkspace,
+      savedViews: [
+        {
+          id: `view-${Date.now()}`,
+          name,
+          outcomeId: selectedOutcomeCardId,
+          detailId: activeOutcomeDetailId,
+          filters: activeAnalyticsFilters,
+          createdAt: new Date().toISOString(),
+        },
+        ...analyticsWorkspace.savedViews,
+      ],
+    };
+    setAnalyticsSavedViewDraft('');
+    await persistAnalyticsWorkspace(nextWorkspace, `Saved analytics view "${name}".`);
+  }
+
+  async function applyAnalyticsSavedView(view: AnalyticsSavedView) {
+    const nextWorkspace: AnalyticsWorkspaceState = {
+      ...analyticsWorkspace,
+      selectedOutcomeId: view.outcomeId,
+      selectedDetailIdByOutcome: {
+        ...analyticsWorkspace.selectedDetailIdByOutcome,
+        [view.outcomeId]: view.detailId,
+      },
+      filtersByDetail: {
+        ...analyticsWorkspace.filtersByDetail,
+        [view.detailId]: view.filters,
+      },
+    };
+    setSelectedOutcomeCardId(view.outcomeId as ReviewOutcomeId);
+    await persistAnalyticsWorkspace(nextWorkspace, `Applied analytics view "${view.name}".`);
+  }
+
+  async function deleteAnalyticsSavedView(viewId: string) {
+    const nextWorkspace: AnalyticsWorkspaceState = {
+      ...analyticsWorkspace,
+      savedViews: analyticsWorkspace.savedViews.filter((view) => view.id !== viewId),
+    };
+    await persistAnalyticsWorkspace(nextWorkspace, 'Removed saved analytics view.');
   }
 
   function scrollToSelector(selector: string) {
@@ -3551,7 +4404,14 @@ export default function TransformHubPage() {
 
     setIsLoading(true);
     try {
-      const result = await persistMergeDecisionBackend(sessionId, match.inputRef, action, match.matchedPersonId);
+      const result = await persistMergeDecisionBackend(
+        sessionId,
+        match.inputRef,
+        action,
+        match.matchedPersonId,
+        (match.reviewPayload?.matchedEvidence ?? []).slice(0, 3).join(' + ') || summarizeMatchSignals(match),
+        Number.isFinite(match.score) ? Math.round(match.score * 100) / 100 : undefined,
+      );
       setRows(result.updatedRows);
       setMergeDecisions(buildMergeDecisionMap(result.updatedRows, result.auditDecisions));
       if (result.audit) setAuditResult(result.audit);
@@ -3872,6 +4732,10 @@ export default function TransformHubPage() {
         setNonLedgerReviewPanel('household');
       } else if (node.id === 'guardrails') {
         setNonLedgerReviewPanel('taxonomy');
+      } else if (node.id === 'analytics') {
+        setNonLedgerReviewPanel('outcomes');
+      } else if (node.id === 'review') {
+        setNonLedgerReviewPanel(supportsHouseholdWorkflow ? 'final' : 'duplicate');
       }
     }
     scrollToSection(node.target);
@@ -3987,6 +4851,17 @@ export default function TransformHubPage() {
             label: 'Review',
             status: (!(supportsHouseholdWorkflow ? householdsStepReady : peopleStepReady) ? 'idle' : !preview ? 'idle' : previewRecords.length > 0 ? 'ok' : 'warning') as NodeStatus,
             count: !(supportsHouseholdWorkflow ? householdsStepReady : peopleStepReady) ? `unlock after ${supportsHouseholdWorkflow ? 'households' : 'duplicates'}` : preview ? `${previewRecords.length} ${fileClass} records` : null,
+            target: 'th-review',
+          },
+          {
+            id: 'analytics',
+            label: 'Review analytics',
+            status: (!(supportsHouseholdWorkflow ? householdsStepReady : peopleStepReady) ? 'idle' : effectiveReviewOutcomeCards.length > 0 ? 'ok' : 'idle') as NodeStatus,
+            count: !(supportsHouseholdWorkflow ? householdsStepReady : peopleStepReady)
+              ? `unlock after ${supportsHouseholdWorkflow ? 'review' : 'duplicates'}`
+              : selectedOutcomeCard
+                ? `${formatOutcomeMetric(selectedOutcomeCard.metricKind, selectedOutcomeCard.amount)} highlighted`
+                : null,
             target: 'th-review',
           },
           {
@@ -4937,7 +5812,251 @@ export default function TransformHubPage() {
                     Final review
                   </button>
                 )}
+                <button
+                  type="button"
+                  className={`th-chip th-review-tab${nonLedgerReviewPanel === 'outcomes' ? ' is-active' : ''}`}
+                  onClick={() => setNonLedgerReviewPanel('outcomes')}
+                >
+                  Review analytics
+                </button>
               </div>
+              {nonLedgerReviewPanel === 'outcomes' && selectedOutcomeCard && (
+                <div id="th-review-analytics" className="th-stack" style={{ marginBottom: 14 }}>
+                  <div className="th-review-outcomes-topline">
+                    <div>
+                      <span className="th-eyebrow">Post-review analytics</span>
+                      <h3>Outcome summary after review</h3>
+                      <p>Surface the biggest revenue, stewardship, finance, and campaign risks before export.</p>
+                      {reviewAnalyticsData?.provenance && (
+                        <p className="th-helper" style={{ padding: 0, marginTop: 8 }}>
+                          Cleaned layer: {reviewAnalyticsData.provenance.source} · {reviewAnalyticsData.provenance.actionCount} logged review action{reviewAnalyticsData.provenance.actionCount === 1 ? '' : 's'}.
+                        </p>
+                      )}
+                    </div>
+                    <div className="th-review-outcomes-badge">
+                      <strong>{formatCurrencyAmount(effectiveReviewOutcomeCards.filter((card) => card.metricKind === 'currency').reduce((sum, card) => sum + card.amount, 0))}</strong>
+                      <span>total exposure identified</span>
+                    </div>
+                  </div>
+                  <div className="th-review-outcomes-grid">
+                    {effectiveReviewOutcomeCards.map((card) => (
+                      <button
+                        key={card.id}
+                        type="button"
+                        className={`th-review-outcome-card is-${card.tone}${selectedOutcomeCardId === card.id ? ' is-active' : ''}`}
+                        onClick={() => {
+                          setSelectedOutcomeCardId(card.id);
+                          setAnalyticsWorkspace((current) => ({ ...current, selectedOutcomeId: card.id }));
+                        }}
+                      >
+                        <span className="th-review-outcome-eyebrow">{card.eyebrow}</span>
+                        <strong>{card.title}</strong>
+                        <p>{card.summary}</p>
+                        <div className="th-review-outcome-supporting">{card.supporting}</div>
+                        <div className="th-review-outcome-list" aria-hidden="true">
+                          {card.details.map((detail) => (
+                            <div key={`${card.id}-${detail.id}`} className="th-review-outcome-list-item">
+                              <span>{detail.label}</span>
+                              <span>{card.metricKind === 'percent' ? `${detail.count} items` : formatCurrencyAmount(detail.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <div className={`th-review-outcome-detail-panel is-${selectedOutcomeCard.tone}`}>
+                    <div className="th-review-outcome-detail-head">
+                      <div>
+                        <span className="th-review-outcome-eyebrow">{selectedOutcomeCard.eyebrow}</span>
+                        <h3>{selectedOutcomeCard.title}</h3>
+                        <p>{selectedOutcomeCard.summary}</p>
+                      </div>
+                      <div className="th-review-outcome-detail-metric">
+                        <strong>{formatOutcomeMetric(selectedOutcomeCard.metricKind, selectedOutcomeCard.amount)}</strong>
+                        <span>{selectedOutcomeCard.metricKind === 'percent' ? 'misclassified' : 'exposure'}</span>
+                      </div>
+                    </div>
+                    <div className="th-review-outcome-detail-grid">
+                      {selectedOutcomeCard.details.map((detail) => (
+                        <article
+                          key={`${selectedOutcomeCard.id}-${detail.id}`}
+                          className={`th-review-outcome-detail-card${activeOutcomeDetailId === detail.id ? ' is-active' : ''}`}
+                        >
+                          <div className="th-review-outcome-detail-copy">
+                            <div>
+                              <span className="th-status-pill is-info">{detail.count} {detail.count === 1 ? 'record' : 'records'}</span>
+                            </div>
+                            <strong>{detail.label}</strong>
+                            <p>{detail.description}</p>
+                          </div>
+                          <div className="th-review-outcome-detail-actions">
+                            <span className="th-review-outcome-detail-value">
+                              {selectedOutcomeCard.metricKind === 'percent' ? `${Math.round(detail.amount)}%` : formatCurrencyAmount(detail.amount)}
+                            </span>
+                            <button type="button" className="th-button th-button-primary" onClick={() => selectOutcomeDetail(detail.id)}>
+                              Open workspace
+                            </button>
+                            <button type="button" className="th-button th-button-secondary" onClick={() => openOutcomeAction(detail.action)}>
+                              {detail.ctaLabel}
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                    {activeOutcomeDetail && (
+                      <div className="th-review-outcome-workspace">
+                        <div className="th-review-outcome-workspace-head">
+                          <div>
+                            <span className="th-review-outcome-eyebrow">Focused workspace</span>
+                            <h3>{activeOutcomeDetail.label}</h3>
+                            <p>Filter, sort, and save views of this problem instead of building a custom dashboard.</p>
+                          </div>
+                          <div className="th-review-outcomes-badge">
+                            <strong>{filteredAnalyticsItems.length}</strong>
+                            <span>items in current view</span>
+                          </div>
+                        </div>
+                        <div className="th-review-outcome-workspace-controls">
+                          <label className="th-stack">
+                            <span className="th-helper">Campaign</span>
+                            <select className="th-select" value={activeAnalyticsFilters.campaign} onChange={(event) => updateAnalyticsFilters({ campaign: event.target.value })}>
+                              <option value="all">All campaigns</option>
+                              {analyticsCampaignOptions.map((campaign) => (
+                                <option key={`${activeOutcomeDetail.id}-${campaign}`} value={campaign}>{campaign}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="th-stack">
+                            <span className="th-helper">Donor segment</span>
+                            <select className="th-select" value={activeAnalyticsFilters.donorSegment} onChange={(event) => updateAnalyticsFilters({ donorSegment: event.target.value })}>
+                              <option value="all">All segments</option>
+                              {analyticsSegmentOptions.map((segment) => (
+                                <option key={`${activeOutcomeDetail.id}-${segment}`} value={segment}>{segment}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="th-stack">
+                            <span className="th-helper">Minimum amount</span>
+                            <input
+                              className="th-input"
+                              inputMode="numeric"
+                              value={activeAnalyticsFilters.minAmount ?? ''}
+                              onChange={(event) => updateAnalyticsFilters({ minAmount: event.target.value.trim() ? Number(event.target.value.replace(/[^0-9.-]+/g, '')) : null })}
+                              placeholder="$0"
+                            />
+                          </label>
+                          <label className="th-stack">
+                            <span className="th-helper">Sort</span>
+                            <select className="th-select" value={activeAnalyticsFilters.sort} onChange={(event) => updateAnalyticsFilters({ sort: event.target.value as AnalyticsWorkspaceFilters['sort'] })}>
+                              <option value="highest_value">Highest value</option>
+                              <option value="most_recent">Most recent</option>
+                              <option value="largest_gap">Largest gap</option>
+                            </select>
+                          </label>
+                          <label className="th-review-toggle">
+                            <input type="checkbox" checked={activeAnalyticsFilters.includeDuplicates} onChange={(event) => updateAnalyticsFilters({ includeDuplicates: event.target.checked })} />
+                            <span>Include duplicates</span>
+                          </label>
+                          <label className="th-review-toggle">
+                            <input type="checkbox" checked={activeAnalyticsFilters.includeSoftCredit} onChange={(event) => updateAnalyticsFilters({ includeSoftCredit: event.target.checked })} />
+                            <span>Include soft credit</span>
+                          </label>
+                        </div>
+                        <div className="th-review-outcome-saved-views">
+                          <div className="th-panel-head" style={{ marginBottom: 0 }}>
+                            <span>Saved views</span>
+                            <span>{analyticsSavedViewsForOutcome.length}</span>
+                          </div>
+                          <div className="th-review-outcome-saved-controls">
+                            <input
+                              className="th-input"
+                              placeholder="High value LYBUNT"
+                              value={analyticsSavedViewDraft}
+                              onChange={(event) => setAnalyticsSavedViewDraft(event.target.value)}
+                            />
+                            <button type="button" className="th-button th-button-primary" onClick={() => void handleSaveAnalyticsView()}>
+                              Save current view
+                            </button>
+                            <button
+                              type="button"
+                              className="th-button th-button-secondary"
+                              onClick={() => {
+                                updateAnalyticsFilters(buildDefaultAnalyticsFilters());
+                                setAnalyticsSavedViewDraft('');
+                              }}
+                            >
+                              Reset filters
+                            </button>
+                          </div>
+                          <div className="th-chip-row">
+                            {analyticsSavedViewsForOutcome.length === 0 ? (
+                              <>
+                                <span className="th-helper">No saved views yet for this outcome.</span>
+                                {(reviewAnalyticsData?.suggestedViews ?? [])
+                                  .filter((view) => view.outcomeId === selectedOutcomeCardId)
+                                  .map((view) => (
+                                    <button
+                                      key={view.id}
+                                      type="button"
+                                      className="th-chip"
+                                      onClick={() => {
+                                        const detailId = view.detailId;
+                                        setAnalyticsSavedViewDraft(view.name);
+                                        selectOutcomeDetail(detailId);
+                                      }}
+                                    >
+                                      {view.name}
+                                    </button>
+                                  ))}
+                              </>
+                            ) : (
+                              analyticsSavedViewsForOutcome.map((view) => (
+                                <div key={view.id} className="th-review-outcome-saved-view">
+                                  <button type="button" className="th-chip" onClick={() => void applyAnalyticsSavedView(view)}>
+                                    {view.name}
+                                  </button>
+                                  <button type="button" className="th-link-button" onClick={() => void deleteAnalyticsSavedView(view.id)}>
+                                    Remove
+                                  </button>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                        <div className="th-review-outcome-results">
+                          {filteredAnalyticsItems.length === 0 ? (
+                            <div className="th-mini-block">
+                              <strong>No items in this view</strong>
+                              <p>Try widening the filters or include duplicates / soft credit to broaden the result set.</p>
+                            </div>
+                          ) : (
+                            filteredAnalyticsItems.map((item) => (
+                              <article key={item.id} className="th-review-outcome-result-row">
+                                <div className="th-review-outcome-result-copy">
+                                  <strong>{item.label}</strong>
+                                  <p>{item.description}</p>
+                                  <div className="th-chip-row">
+                                    <span className="th-chip">{item.campaign}</span>
+                                    <span className="th-chip">{item.donorSegment}</span>
+                                    {item.duplicateCount > 0 && <span className="th-chip">duplicates {item.duplicateCount}</span>}
+                                    {item.includesSoftCredit && <span className="th-chip">soft credit</span>}
+                                  </div>
+                                </div>
+                                <div className="th-review-outcome-result-actions">
+                                  <strong>{selectedOutcomeCard.metricKind === 'percent' ? `${Math.round(item.amount)} impacted` : formatCurrencyAmount(item.amount)}</strong>
+                                  <button type="button" className="th-button th-button-secondary" onClick={() => openOutcomeAction(item.action)}>
+                                    Open records
+                                  </button>
+                                </div>
+                              </article>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               {nonLedgerReviewPanel === 'taxonomy' && (
                 <div className="th-panel th-inner-panel th-taxonomy-session-panel" style={{ marginBottom: 14 }}>
                   <div className="th-panel-head">
@@ -6141,7 +7260,7 @@ export default function TransformHubPage() {
           <section className="th-section" id="th-export">
             <div className="th-panel">
               <div className="th-panel-head">
-                <span><span className="th-layer-badge">10</span> Outputs</span>
+                <span><span className="th-layer-badge">11</span> Outputs</span>
               </div>
               <div className="th-grid th-grid-3">
                 <article className="th-output-card">

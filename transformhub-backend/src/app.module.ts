@@ -16,6 +16,8 @@ import { ThCampaign } from './database/entities/th-campaign.entity';
 import { ThAppeal } from './database/entities/th-appeal.entity';
 import { ThAuditDecision } from './database/entities/th-audit-decision.entity';
 import { ThAuditRun } from './database/entities/th-audit-run.entity';
+import { ThReviewAction } from './database/entities/th-review-action.entity';
+import { ThReviewDataset } from './database/entities/th-review-dataset.entity';
 import { ThSchemaTemplate } from './database/entities/th-schema-template.entity';
 import { ThKeySynonym } from './database/entities/th-key-synonym.entity';
 
@@ -45,7 +47,7 @@ import { TransformHubModule } from './modules/transformhub/transformhub.module';
         return {
           type: 'postgres',
           ...base,
-          entities: [ThTransformSession, ThCanonicalRow, ThIdentityMemory, ThTaxonomyException, ThHousehold, ThOrganization, ThDonation, ThAttribution, ThRelationship, ThCampaign, ThAppeal, ThAuditDecision, ThAuditRun, ThSchemaTemplate, ThKeySynonym],
+          entities: [ThTransformSession, ThCanonicalRow, ThIdentityMemory, ThTaxonomyException, ThHousehold, ThOrganization, ThDonation, ThAttribution, ThRelationship, ThCampaign, ThAppeal, ThAuditDecision, ThAuditRun, ThReviewAction, ThReviewDataset, ThSchemaTemplate, ThKeySynonym],
           synchronize: configService.get('nodeEnv') === 'development',
           logging: configService.get('nodeEnv') === 'development',
           ssl: configService.get('database.ssl') ? { rejectUnauthorized: false } : false,

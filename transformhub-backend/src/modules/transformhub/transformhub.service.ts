@@ -1,10 +1,13 @@
 import { Injectable, NotFoundException, BadRequestException, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, LessThan, Repository } from 'typeorm';
+import { createHash } from 'crypto';
 import { ThTransformSession, TransformSessionStatus } from '../../database/entities/th-transform-session.entity';
 import { ThCanonicalRow } from '../../database/entities/th-canonical-row.entity';
 import { ThAuditRun } from '../../database/entities/th-audit-run.entity';
 import { ThAuditDecision } from '../../database/entities/th-audit-decision.entity';
+import { ThReviewAction } from '../../database/entities/th-review-action.entity';
+import { ThReviewDataset } from '../../database/entities/th-review-dataset.entity';
 import { TransformHubPipelineService } from './transformhub-pipeline.service';
 import { TransformHubIdentityService } from './transformhub-identity.service';
 import { TransformHubTaxonomyService } from './transformhub-taxonomy.service';
@@ -37,6 +40,10 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     private readonly auditRunRepo: Repository<ThAuditRun>,
     @InjectRepository(ThAuditDecision)
     private readonly auditDecisionRepo: Repository<ThAuditDecision>,
+    @InjectRepository(ThReviewAction)
+    private readonly reviewActionRepo: Repository<ThReviewAction>,
+    @InjectRepository(ThReviewDataset)
+    private readonly reviewDatasetRepo: Repository<ThReviewDataset>,
     private readonly pipeline: TransformHubPipelineService,
     private readonly identity: TransformHubIdentityService,
     private readonly taxonomy: TransformHubTaxonomyService,
@@ -46,6 +53,52 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     private readonly auditEngine: TransformHubAuditRuleEngineService,
     private readonly ai: TransformHubAiService,
   ) {}
+
+  private async logReviewAction(sessionId: string | null, action: {
+    actionType: string;
+    entityType: string;
+    entityId?: string | null;
+    payload?: Record<string, unknown>;
+    reason?: string | null;
+    confidence?: number | null;
+    userId?: string;
+  }) {
+    const session = sessionId ? await this.sessionRepo.findOne({ where: { id: sessionId }, select: ['id', 'datasetId'] }) : null;
+    const reviewAction = this.reviewActionRepo.create({
+      id: `REV-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      sessionId,
+      datasetId: session?.datasetId ?? null,
+      actionType: action.actionType,
+      entityType: action.entityType,
+      entityId: action.entityId ?? null,
+      payload: action.payload ?? {},
+      reason: action.reason ?? null,
+      confidence: action.confidence ?? null,
+      userId: action.userId ?? 'user',
+    });
+    await this.reviewActionRepo.save(reviewAction);
+  }
+
+  private buildReviewDatasetFingerprint(parsedFile: any, schema: any) {
+    const payload = {
+      platform: parsedFile?.platform ?? null,
+      fileClass: schema?.fileClass ?? parsedFile?.preview?.fileClass ?? null,
+      headers: parsedFile?.headers ?? [],
+      refs: (parsedFile?.preview?.records ?? []).map((record: any) => ({
+        sourceRowRef: record?.sourceRowRef ?? null,
+        rawValues: record?.rawValues ?? record?.values ?? {},
+      })),
+    };
+    return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+  }
+
+  private async syncDatasetCleanedLayer(datasetId: string | null | undefined, parsedFile: any, sessionId: string) {
+    if (!datasetId || !parsedFile) return;
+    await this.reviewDatasetRepo.update(datasetId, {
+      cleanedParsedFile: parsedFile,
+      latestSessionId: sessionId,
+    });
+  }
 
   onModuleInit() {
     this.cleanupTimer = setInterval(() => {
@@ -187,6 +240,31 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     await this.pipeline.persistResolvedTemplate(parsedFile.platform, schema);
     const guardrails = this.pipeline.evaluateGuardrails(parsedFile, schema);
     parsedFile.preview = this.pipeline.buildStructuredPreview(parsedFile, schema);
+    let dataset: ThReviewDataset | null = null;
+    let effectiveParsedFile = parsedFile;
+    if (schema.fileClass !== 'ledger') {
+      const datasetFingerprint = this.buildReviewDatasetFingerprint(parsedFile, schema);
+      const existingDataset = await this.reviewDatasetRepo.findOne({ where: { fingerprint: datasetFingerprint } });
+      if (existingDataset) {
+        dataset = existingDataset;
+        effectiveParsedFile = {
+          ...(existingDataset.cleanedParsedFile as any),
+          datasetId: existingDataset.id,
+        };
+      } else {
+        dataset = await this.reviewDatasetRepo.save(this.reviewDatasetRepo.create({
+          fingerprint: datasetFingerprint,
+          platform: parsedFile.platform,
+          fileClass: schema.fileClass,
+          fileName: parsedFile.fileName,
+          rawParsedFile: parsedFile,
+          cleanedParsedFile: { ...parsedFile, datasetId: null },
+          latestSessionId: null,
+        }));
+        effectiveParsedFile = { ...parsedFile, datasetId: dataset.id };
+        await this.reviewDatasetRepo.update(dataset.id, { cleanedParsedFile: effectiveParsedFile });
+      }
+    }
     const hardStops = guardrails.filter((guardrail: any) => guardrail.triggered && HARD_STOP_GUARDRAILS.has(guardrail.code));
     const blockingIssues = this.buildBlockingIssues(hardStops);
     const existingSession = body.forceIngest ? await this.findExistingSessionForForceIngest(body.sessionId) : null;
@@ -194,9 +272,10 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     if (hardStops.length > 0 && !body.forceIngest) {
       const blockedSession = this.sessionRepo.create({
         status: TransformSessionStatus.BLOCKED,
-        fileName: parsedFile.fileName,
-        platform: parsedFile.platform,
-        parsedFile,
+        fileName: effectiveParsedFile.fileName,
+        platform: effectiveParsedFile.platform,
+        datasetId: dataset?.id ?? null,
+        parsedFile: effectiveParsedFile,
         schema,
         guardrails,
         blockingIssues,
@@ -226,9 +305,10 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     const session = existingSession
       ? Object.assign(existingSession, {
           status: TransformSessionStatus.REVIEW,
-          fileName: parsedFile.fileName,
-          platform: parsedFile.platform,
-          parsedFile,
+          fileName: effectiveParsedFile.fileName,
+          platform: effectiveParsedFile.platform,
+          datasetId: dataset?.id ?? existingSession.datasetId ?? null,
+          parsedFile: effectiveParsedFile,
           schema,
           guardrails,
           blockingIssues,
@@ -244,9 +324,10 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
         })
       : this.sessionRepo.create({
           status: TransformSessionStatus.REVIEW,
-          fileName: parsedFile.fileName,
-          platform: parsedFile.platform,
-          parsedFile,
+          fileName: effectiveParsedFile.fileName,
+          platform: effectiveParsedFile.platform,
+          datasetId: dataset?.id ?? null,
+          parsedFile: effectiveParsedFile,
           schema,
           guardrails,
           blockingIssues,
@@ -261,6 +342,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
           forcedAt: null,
         });
     await this.sessionRepo.save(session);
+    await this.syncDatasetCleanedLayer(session.datasetId, effectiveParsedFile, session.id);
 
     if (existingSession) {
       await this.rowRepo.delete({ sessionId: session.id });
@@ -270,7 +352,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
       return {
         sessionId: session.id,
         status: session.status,
-        parsedFile,
+        parsedFile: effectiveParsedFile,
         schema,
         guardrails,
         blockingIssues,
@@ -288,8 +370,8 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     return {
       sessionId: session.id,
       status: session.status,
-      parsedFile,
-      schema,
+        parsedFile: effectiveParsedFile,
+        schema,
       guardrails,
       blockingIssues,
       rows,
@@ -386,6 +468,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
   async updateSession(sessionId: string, body: any) {
     const session = await this.sessionRepo.findOne({ where: { id: sessionId } });
     if (!session) throw new NotFoundException('Session ' + sessionId + ' not found.');
+    let nextDatasetId = session.datasetId;
 
     if (body.status) {
       await this.sessionRepo.update(sessionId, { status: body.status });
@@ -394,7 +477,25 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
       await this.sessionRepo.update(sessionId, { preflight: body.preflight });
     }
     if (body.parsedFile !== undefined) {
-      await this.sessionRepo.update(sessionId, { parsedFile: body.parsedFile });
+      const effectiveSchema = body.schema ?? session.schema;
+      if (!nextDatasetId && effectiveSchema?.fileClass && effectiveSchema.fileClass !== 'ledger') {
+        const datasetFingerprint = this.buildReviewDatasetFingerprint(body.parsedFile, effectiveSchema);
+        let dataset = await this.reviewDatasetRepo.findOne({ where: { fingerprint: datasetFingerprint } });
+        if (!dataset) {
+          dataset = await this.reviewDatasetRepo.save(this.reviewDatasetRepo.create({
+            fingerprint: datasetFingerprint,
+            platform: body.parsedFile.platform,
+            fileClass: effectiveSchema.fileClass,
+            fileName: body.parsedFile.fileName,
+            rawParsedFile: body.parsedFile,
+            cleanedParsedFile: body.parsedFile,
+            latestSessionId: sessionId,
+          }));
+        }
+        nextDatasetId = dataset.id;
+      }
+      await this.sessionRepo.update(sessionId, { parsedFile: body.parsedFile, datasetId: nextDatasetId ?? null });
+      await this.syncDatasetCleanedLayer(nextDatasetId, body.parsedFile, sessionId);
     }
     if (body.schema !== undefined) {
       await this.sessionRepo.update(sessionId, { schema: body.schema });
@@ -407,6 +508,9 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     }
     if (body.taxonomyState !== undefined) {
       await this.sessionRepo.update(sessionId, { taxonomyState: body.taxonomyState });
+    }
+    if (body.reviewAction) {
+      await this.logReviewAction(sessionId, body.reviewAction);
     }
     if (body.rows?.length > 0) {
       await this.updateSessionRows(sessionId, body.rows);
@@ -589,6 +693,19 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     const sessionRows = await this.rowRepo.find({ where: { sessionId: body.sessionId } });
     const audit = await this.previewAuditForSession(body.sessionId, sessionRows);
     const auditDecisions = await this.auditDecisionRepo.find({ where: { sessionId: body.sessionId }, order: { createdAt: 'ASC' } });
+    await this.logReviewAction(body.sessionId, {
+      actionType: body.action === 'confirmed' ? 'merge_duplicate' : 'separate_duplicate',
+      entityType: 'person',
+      entityId: body.matchedPersonId ?? body.inputRef,
+      payload: {
+        fromIds: [body.inputRef],
+        toId: body.action === 'confirmed' ? (body.matchedPersonId ?? body.inputRef) : null,
+        matchedPersonId: body.matchedPersonId ?? null,
+      },
+      reason: body.reason ?? 'Human duplicate review decision.',
+      confidence: typeof body.confidence === 'number' ? body.confidence : null,
+      userId: 'user',
+    });
     return { updatedRows: sessionRows, audit, auditDecisions };
   }
 
@@ -728,6 +845,19 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     const audit = result.exception.sessionId
       ? await this.previewAuditForSession(result.exception.sessionId, updatedRows)
       : null;
+    if (result.exception.sessionId) {
+      await this.logReviewAction(result.exception.sessionId, {
+        actionType: 'map_taxonomy',
+        entityType: result.exception.type || 'taxonomy',
+        entityId: result.exception.id,
+        payload: {
+          sourceValue: result.exception.rawValue,
+          canonicalValue: result.exception.resolvedCode,
+        },
+        reason: body.notes ?? result.exception.aiSuggestion?.reasoning ?? 'Approved taxonomy mapping.',
+        userId: body.reviewedBy ?? 'user',
+      });
+    }
     return { ...result, updatedRows, audit };
   }
 
@@ -757,6 +887,48 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
 
   crmSyncExport(body: any) {
     return this.output.buildCrmSyncExport(body.rows, body.persons || [], body.households || [], body.previewRecords || []);
+  }
+
+  async reviewAnalytics(body: any) {
+    let rows = body.rows || [];
+    let persons = body.persons || [];
+    let households = body.households || [];
+    let previewRecords = body.previewRecords || [];
+    let taxonomyState = body.taxonomyState || null;
+    let fileClass = body.fileClass || 'donor';
+    let actionCount = 0;
+    let reproducible = false;
+    if (body.sessionId) {
+      const session = await this.sessionRepo.findOne({ where: { id: body.sessionId } });
+      if (session?.datasetId) {
+        const dataset = await this.reviewDatasetRepo.findOne({ where: { id: session.datasetId } });
+        previewRecords = ((dataset?.cleanedParsedFile as any)?.preview?.records ?? previewRecords);
+        fileClass = ((session.schema as any)?.fileClass ?? fileClass);
+        taxonomyState = session.taxonomyState ?? taxonomyState;
+        actionCount = await this.reviewActionRepo.count({ where: { datasetId: session.datasetId } });
+        reproducible = true;
+      } else {
+        actionCount = await this.reviewActionRepo.count({ where: { sessionId: body.sessionId } });
+      }
+    }
+    const analytics = this.output.buildReviewAnalytics(
+      rows,
+      persons,
+      households,
+      previewRecords,
+      taxonomyState,
+      body.finalAttributionDrafts || {},
+      fileClass,
+    );
+    return {
+      ...analytics,
+      provenance: {
+        layer: 'cleaned',
+        source: reproducible ? 'persistent raw dataset + review actions + cleaned snapshot' : 'session review state',
+        actionCount,
+        reproducible,
+      },
+    };
   }
 
   private assertRowCount(rows: any[] | undefined, routeName: string) {

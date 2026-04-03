@@ -127,6 +127,7 @@ export async function saveSession(
   parsedFile?: ParsedFile | null,
   schema?: ResolvedSchema | null,
   taxonomyState?: SessionTaxonomyState | null,
+  reviewAction?: Record<string, unknown> | null,
 ): Promise<TransformSession> {
   const response = await api.put<TransformSession>(`/transformhub/session/${sessionId}`, {
     rows,
@@ -137,6 +138,7 @@ export async function saveSession(
     parsedFile,
     schema,
     taxonomyState,
+    reviewAction,
   });
   return response.data;
 }
@@ -176,12 +178,16 @@ export async function persistMergeDecisionBackend(
   inputRef: string,
   action: 'confirmed' | 'separated',
   matchedPersonId?: string | null,
+  reason?: string,
+  confidence?: number,
 ): Promise<{ updatedRows: CanonicalLedgerRow[]; audit?: AuditRuleResult; auditDecisions: PersistedMergeDecision[] }> {
   const response = await api.post<{ updatedRows: CanonicalLedgerRow[]; audit?: AuditRuleResult; auditDecisions: PersistedMergeDecision[] }>('/transformhub/merge-decision', {
     sessionId,
     inputRef,
     action,
     matchedPersonId: matchedPersonId ?? undefined,
+    reason,
+    confidence,
   });
   return response.data;
 }
@@ -274,6 +280,29 @@ export async function fetchCrmSyncExport(
   previewRecords: PreviewRecord[] = [],
 ): Promise<CrmSyncExport> {
   const response = await api.post<CrmSyncExport>('/transformhub/crm-sync-export', { rows, persons, households, previewRecords });
+  return response.data;
+}
+
+export async function fetchReviewAnalytics(
+  rows: CanonicalLedgerRow[],
+  persons: CanonicalPerson[] = [],
+  households: CanonicalHousehold[] = [],
+  previewRecords: PreviewRecord[] = [],
+  taxonomyState?: SessionTaxonomyState | null,
+  finalAttributionDrafts?: Record<string, unknown>,
+  fileClass?: string,
+  sessionId?: string,
+): Promise<{ generatedAt: string; cards: any[]; items: any[]; suggestedViews: any[]; provenance?: any }> {
+  const response = await api.post<{ generatedAt: string; cards: any[]; items: any[]; suggestedViews: any[]; provenance?: any }>('/transformhub/review-analytics', {
+    rows,
+    persons,
+    households,
+    previewRecords,
+    taxonomyState,
+    finalAttributionDrafts,
+    fileClass,
+    sessionId,
+  });
   return response.data;
 }
 

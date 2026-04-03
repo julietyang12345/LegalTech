@@ -5,4 +5,6 @@ export class MergeDecisionDto {
   @IsString() inputRef: string;
   @IsIn(['confirmed', 'separated']) action: 'confirmed' | 'separated';
   @IsString() @IsOptional() matchedPersonId?: string;
+  @IsString() @IsOptional() reason?: string;
+  @IsOptional() confidence?: number;
 }

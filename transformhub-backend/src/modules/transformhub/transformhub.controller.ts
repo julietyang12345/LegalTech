@@ -15,6 +15,7 @@ import { DonorReportDto } from './dto/donor-report.dto';
 import { AuditDashboardDto } from './dto/audit-dashboard.dto';
 import { CampaignPerformanceReportDto } from './dto/campaign-performance-report.dto';
 import { CrmSyncExportDto } from './dto/crm-sync-export.dto';
+import { ReviewAnalyticsDto } from './dto/review-analytics.dto';
 import { ResolveTaxonomyExceptionDto } from './dto/resolve-taxonomy-exception.dto';
 import { ReviewTaxonomySuggestionDto } from './dto/review-taxonomy-suggestion.dto';
 import { ReviewFieldSuggestionDto } from './dto/review-field-suggestion.dto';
@@ -165,5 +166,10 @@ export class TransformHubController {
   @Post('crm-sync-export')
   crmSyncExport(@Body() dto: CrmSyncExportDto) {
     return this.service.crmSyncExport(dto);
+  }
+
+  @Post('review-analytics')
+  reviewAnalytics(@Body() dto: ReviewAnalyticsDto) {
+    return this.service.reviewAnalytics(dto);
   }
 }

@@ -13,6 +13,8 @@ import { ThCampaign } from '../../database/entities/th-campaign.entity';
 import { ThAppeal } from '../../database/entities/th-appeal.entity';
 import { ThAuditDecision } from '../../database/entities/th-audit-decision.entity';
 import { ThAuditRun } from '../../database/entities/th-audit-run.entity';
+import { ThReviewAction } from '../../database/entities/th-review-action.entity';
+import { ThReviewDataset } from '../../database/entities/th-review-dataset.entity';
 import { ThSchemaTemplate } from '../../database/entities/th-schema-template.entity';
 import { ThKeySynonym } from '../../database/entities/th-key-synonym.entity';
 import { TransformHubController } from './transformhub.controller';
@@ -43,6 +45,8 @@ import { TransformHubApiKeyGuard } from './guards/transformhub-api-key.guard';
       ThAppeal,
       ThAuditDecision,
       ThAuditRun,
+      ThReviewAction,
+      ThReviewDataset,
       ThSchemaTemplate,
       ThKeySynonym,
     ]),

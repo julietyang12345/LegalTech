@@ -33,6 +33,9 @@ export class ThTransformSession {
   @Column()
   platform: string;
 
+  @Column({ nullable: true })
+  datasetId: string | null;
+
   @Column({ type: 'jsonb' })
   parsedFile: object;
 

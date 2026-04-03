@@ -16,6 +16,8 @@ import { ThAuditDecision } from './entities/th-audit-decision.entity';
 import { ThAuditRun } from './entities/th-audit-run.entity';
 import { ThSchemaTemplate } from './entities/th-schema-template.entity';
 import { ThKeySynonym } from './entities/th-key-synonym.entity';
+import { ThReviewAction } from './entities/th-review-action.entity';
+import { ThReviewDataset } from './entities/th-review-dataset.entity';
 
 dotenv.config();
 
@@ -36,7 +38,7 @@ function parseDbConfig() {
 export const AppDataSource = new DataSource({
   type: 'postgres',
   ...parseDbConfig(),
-  entities: [ThTransformSession, ThCanonicalRow, ThIdentityMemory, ThTaxonomyException, ThHousehold, ThOrganization, ThDonation, ThAttribution, ThRelationship, ThCampaign, ThAppeal, ThAuditDecision, ThAuditRun, ThSchemaTemplate, ThKeySynonym],
+  entities: [ThTransformSession, ThCanonicalRow, ThIdentityMemory, ThTaxonomyException, ThHousehold, ThOrganization, ThDonation, ThAttribution, ThRelationship, ThCampaign, ThAppeal, ThAuditDecision, ThAuditRun, ThSchemaTemplate, ThKeySynonym, ThReviewAction, ThReviewDataset],
   migrations: [join(__dirname, 'migrations', '*.{js,ts}')],
   synchronize: false,
   logging: process.env.NODE_ENV === 'development',

@@ -151,6 +151,33 @@ export type PreviewAttributionDraft = {
   notes: string;
 };
 
+export type AnalyticsWorkspaceSort = 'highest_value' | 'most_recent' | 'largest_gap';
+
+export type AnalyticsWorkspaceFilters = {
+  campaign: string;
+  donorSegment: string;
+  minAmount: number | null;
+  sort: AnalyticsWorkspaceSort;
+  includeDuplicates: boolean;
+  includeSoftCredit: boolean;
+};
+
+export type AnalyticsSavedView = {
+  id: string;
+  name: string;
+  outcomeId: string;
+  detailId: string;
+  filters: AnalyticsWorkspaceFilters;
+  createdAt: string;
+};
+
+export type AnalyticsWorkspaceState = {
+  selectedOutcomeId: string | null;
+  selectedDetailIdByOutcome: Record<string, string>;
+  filtersByDetail: Record<string, AnalyticsWorkspaceFilters>;
+  savedViews: AnalyticsSavedView[];
+};
+
 export type ClassifiedPreview = {
   fileClass: FileClass;
   canonicalModel: string;
@@ -174,6 +201,7 @@ export type PreviewRecord = ClassifiedPreview['records'][number] & {
 };
 
 export type ParsedFile = {
+  datasetId?: string;
   fileName: string;
   delimiter: string;
   headers: string[];
@@ -199,6 +227,7 @@ export type ParsedFile = {
     canonicalRows?: CanonicalLedgerRow[];
   }>;
   preview?: ClassifiedPreview;
+  analyticsWorkspace?: AnalyticsWorkspaceState | null;
 };
 
 export type TaxonomyObjectType = 'Campaign' | 'Appeal' | 'Fund';

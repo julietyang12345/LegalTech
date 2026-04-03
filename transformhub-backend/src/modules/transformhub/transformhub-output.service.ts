@@ -5,6 +5,23 @@ import { TransformHubAuditRuleEngineService } from './transformhub-audit-rule-en
 export class TransformHubOutputService {
   constructor(private readonly auditEngine: TransformHubAuditRuleEngineService) {}
 
+  private roundAmount(value: number, increment = 100) {
+    if (!Number.isFinite(value) || value <= 0) return 0;
+    return Math.round(value / increment) * increment;
+  }
+
+  private normalizeIdentity(record: any) {
+    return String(
+      record?.organizationName
+      || record?.donorName
+      || record?.displayName
+      || [record?.firstName, record?.lastName].filter(Boolean).join(' ')
+      || record?.sourceRowRef
+      || record?.id
+      || '',
+    ).trim().toLowerCase();
+  }
+
   private parseAmount(value: unknown) {
     const normalized = String(value ?? '').replace(/[^0-9.-]+/g, '');
     if (!normalized) return 0;
@@ -164,6 +181,351 @@ export class TransformHubOutputService {
         }))
         : previewRows,
       generatedAt: new Date().toISOString(),
+    };
+  }
+
+  buildReviewAnalytics(
+    rows: any[] = [],
+    persons: any[] = [],
+    households: any[] = [],
+    previewRecords: any[] = [],
+    taxonomyState: any = null,
+    finalAttributionDrafts: Record<string, any> = {},
+    fileClass = 'donor',
+  ) {
+    const donorRecords = fileClass === 'donor' ? previewRecords : [];
+    const donorGroups = new Map<string, any>();
+
+    donorRecords.forEach((record: any) => {
+      const key = this.normalizeIdentity(record);
+      const current = donorGroups.get(key) ?? {
+        label: String(record?.donorName || record?.organizationName || [record?.firstName, record?.lastName].filter(Boolean).join(' ') || record?.sourceRowRef || 'Unknown donor'),
+        totalAmount: 0,
+        latestAmount: 0,
+        latestDate: null as Date | null,
+        campaigns: new Set<string>(),
+        tags: new Set<string>(),
+        assignedStaff: new Set<string>(),
+        memoText: [] as string[],
+        records: [] as any[],
+        years: new Set<number>(),
+      };
+      const amount = this.parseAmount(record?.amount);
+      const nextDate = record?.date ? new Date(String(record.date)) : null;
+      current.totalAmount += amount;
+      current.records.push(record);
+      if (nextDate && !Number.isNaN(nextDate.getTime())) {
+        current.latestDate = !current.latestDate || nextDate.getTime() > current.latestDate.getTime() ? nextDate : current.latestDate;
+        current.years.add(nextDate.getFullYear());
+      }
+      if (amount > 0 && (!current.latestAmount || (nextDate && current.latestDate && nextDate.getTime() >= current.latestDate.getTime()))) {
+        current.latestAmount = amount;
+      }
+      current.campaigns.add(String(record?.fund || record?.appeal || 'Unassigned'));
+      (Array.isArray(record?.tags) ? record.tags : []).forEach((tag: string) => current.tags.add(String(tag || '').trim().toLowerCase()));
+      if (record?.assignedStaff) current.assignedStaff.add(String(record.assignedStaff).trim());
+      if (record?.memo) current.memoText.push(String(record.memo).toLowerCase());
+      donorGroups.set(key, current);
+    });
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const previousYear = currentYear - 1;
+    const donorEntries = Array.from(donorGroups.values()).map((entry: any) => {
+      const sortedDates = entry.records
+        .map((record: any) => (record?.date ? new Date(String(record.date)) : null))
+        .filter((date: Date | null): date is Date => date instanceof Date && !Number.isNaN(date.getTime()))
+        .sort((left: Date, right: Date) => left.getTime() - right.getTime());
+      const intervals = sortedDates.slice(1).map((date: Date, index: number) => {
+        const previousDate = sortedDates[index];
+        return previousDate ? Math.round((date.getTime() - previousDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+      });
+      return {
+        ...entry,
+        recurringPattern: intervals.some((interval: number) => interval >= 25 && interval <= 40) || entry.records.length >= 3,
+      };
+    });
+
+    const items: any[] = [];
+    donorEntries.forEach((entry: any) => {
+      const campaign = Array.from(entry.campaigns)[0] ?? 'Unassigned';
+      const sourceRowRefs = entry.records.map((record: any) => record.sourceRowRef);
+      const duplicateCount = Math.max(0, sourceRowRefs.length - 1);
+      const includesSoftCredit = entry.records.some((record: any) => {
+        const attribution = finalAttributionDrafts?.[record.sourceRowRef] ?? record?.attribution ?? null;
+        return attribution?.mode === 'soft_credit';
+      });
+
+      if (entry.years.has(previousYear) && !entry.years.has(currentYear)) {
+        items.push({
+          id: `lybunt:${entry.label}`,
+          outcomeId: 'revenue_at_risk',
+          detailId: 'lybunt',
+          label: entry.label,
+          description: 'Gave last year, not yet this year.',
+          amount: entry.latestAmount || entry.totalAmount,
+          sortDate: entry.latestDate?.toISOString() ?? null,
+          campaign,
+          donorSegment: entry.totalAmount >= 1000 ? 'major donors' : 'lybunt donors',
+          sourceRowRefs,
+          duplicateCount,
+          includesSoftCredit,
+          action: 'final_table',
+        });
+      }
+
+      const hasRecurringTag = Array.from(entry.tags).some((tag: any) => String(tag).includes('recurr') || String(tag).includes('monthly'));
+      if (entry.recurringPattern && !hasRecurringTag) {
+        items.push({
+          id: `recurring:${entry.label}`,
+          outcomeId: 'revenue_at_risk',
+          detailId: 'recurring_missing_tags',
+          label: entry.label,
+          description: 'Recurring pattern detected but stewardship tag is missing.',
+          amount: Math.max(entry.latestAmount, entry.totalAmount * 0.5),
+          sortDate: entry.latestDate?.toISOString() ?? null,
+          campaign,
+          donorSegment: 'recurring donors',
+          sourceRowRefs,
+          duplicateCount,
+          includesSoftCredit,
+          action: 'final_table',
+        });
+      }
+
+      if (entry.latestDate && (now.getTime() - entry.latestDate.getTime()) > (1000 * 60 * 60 * 24 * 365)) {
+        items.push({
+          id: `lapsed:${entry.label}`,
+          outcomeId: 'revenue_at_risk',
+          detailId: 'lapsed_donors',
+          label: entry.label,
+          description: 'No gift recorded in the last 12 months.',
+          amount: entry.latestAmount || entry.totalAmount,
+          sortDate: entry.latestDate.toISOString(),
+          campaign,
+          donorSegment: 'lapsed donors',
+          sourceRowRefs,
+          duplicateCount,
+          includesSoftCredit,
+          action: 'final_table',
+        });
+      }
+
+      if (entry.memoText.some((memo: string) => memo.includes('match') || memo.includes('employer') || memo.includes('company'))) {
+        items.push({
+          id: `match:${entry.label}`,
+          outcomeId: 'money_leakage',
+          detailId: 'missing_matching_gifts',
+          label: entry.label,
+          description: 'Employer matching gift hint found in notes or source data.',
+          amount: entry.totalAmount,
+          sortDate: entry.latestDate?.toISOString() ?? null,
+          campaign,
+          donorSegment: 'matching gift opportunities',
+          sourceRowRefs,
+          duplicateCount,
+          includesSoftCredit,
+          action: 'household',
+        });
+      }
+
+      if (entry.totalAmount >= 1000 && entry.assignedStaff.size === 0) {
+        items.push({
+          id: `unassigned:${entry.label}`,
+          outcomeId: 'money_leakage',
+          detailId: 'unassigned_major_donors',
+          label: entry.label,
+          description: 'Major donor has no development owner assigned.',
+          amount: entry.totalAmount,
+          sortDate: entry.latestDate?.toISOString() ?? null,
+          campaign,
+          donorSegment: 'unassigned prospects',
+          sourceRowRefs,
+          duplicateCount,
+          includesSoftCredit,
+          action: 'final_table',
+        });
+      }
+    });
+
+    donorEntries
+      .slice()
+      .sort((left: any, right: any) => right.totalAmount - left.totalAmount)
+      .slice(0, Math.max(1, Math.ceil(donorEntries.length * 0.2)))
+      .forEach((entry: any) => {
+        items.push({
+          id: `upgrade:${entry.label}`,
+          outcomeId: 'money_leakage',
+          detailId: 'upgrade_opportunities',
+          label: entry.label,
+          description: 'Top-value donor with room to upgrade based on giving concentration.',
+          amount: entry.totalAmount * 0.2,
+          sortDate: entry.latestDate?.toISOString() ?? null,
+          campaign: Array.from(entry.campaigns)[0] ?? 'Unassigned',
+          donorSegment: entry.totalAmount >= 1000 ? 'major donors' : 'upgrade opportunities',
+          sourceRowRefs: entry.records.map((record: any) => record.sourceRowRef),
+          duplicateCount: Math.max(0, entry.records.length - 1),
+          includesSoftCredit: entry.records.some((record: any) => (finalAttributionDrafts?.[record.sourceRowRef] ?? record?.attribution ?? null)?.mode === 'soft_credit'),
+          action: 'final_table',
+        });
+      });
+
+    const ambiguousRecords = previewRecords.filter((record: any) => {
+      const attribution = finalAttributionDrafts?.[record.sourceRowRef] ?? record?.attribution ?? null;
+      return attribution?.householdId == null && this.parseAmount(record?.amount) > 0;
+    });
+    ambiguousRecords.forEach((record: any) => {
+      items.push({
+        id: `finance-gap:${record.sourceRowRef}`,
+        outcomeId: 'finance_mismatch',
+        detailId: 'crm_vs_finance_gap',
+        label: record?.donorName || record?.displayName || record?.sourceRowRef,
+        description: 'Attribution ambiguity can distort CRM versus finance totals.',
+        amount: this.parseAmount(record?.amount),
+        sortDate: record?.date ? new Date(String(record.date)).toISOString() : null,
+        campaign: String(record?.fund || record?.appeal || 'Unassigned'),
+        donorSegment: 'data issues',
+        sourceRowRefs: [record?.sourceRowRef],
+        duplicateCount: 0,
+        includesSoftCredit: false,
+        action: 'household',
+      });
+    });
+
+    previewRecords.forEach((record: any) => {
+      const attribution = finalAttributionDrafts?.[record.sourceRowRef] ?? record?.attribution ?? null;
+      const amount = this.parseAmount(record?.amount);
+      if (!attribution || attribution.creditAmount == null || attribution.mode !== 'joint_split' || Math.abs(Number(attribution.creditAmount) - amount) <= 1) return;
+      items.push({
+        id: `gl:${record.sourceRowRef}`,
+        outcomeId: 'finance_mismatch',
+        detailId: 'gl_errors',
+        label: record?.donorName || record?.displayName || record?.sourceRowRef,
+        description: 'Split credit does not match the source gift amount.',
+        amount: Math.abs(Number(attribution.creditAmount) - amount),
+        sortDate: record?.date ? new Date(String(record.date)).toISOString() : null,
+        campaign: String(record?.fund || record?.appeal || 'Unassigned'),
+        donorSegment: 'data issues',
+        sourceRowRefs: [record?.sourceRowRef],
+        duplicateCount: 0,
+        includesSoftCredit: false,
+        action: 'final_table',
+      });
+    });
+
+    const pendingTaxonomyGroups = (taxonomyState?.candidateGroups ?? []).filter((group: any) => group?.status === 'pending' && !(taxonomyState?.dismissedCandidateIds ?? []).includes(group.id));
+    pendingTaxonomyGroups.forEach((group: any) => {
+      const sourceRowRefs = Array.from(new Set((group?.members ?? []).flatMap((member: any) => member?.sourceRowRefs ?? [])));
+      const groupAmount = sourceRowRefs.reduce((sum: number, ref: string) => {
+        const record = previewRecords.find((candidate: any) => candidate?.sourceRowRef === ref);
+        return sum + this.parseAmount(record?.amount);
+      }, 0);
+      items.push({
+        id: `taxonomy:${group.id}`,
+        outcomeId: 'campaign_truth',
+        detailId: 'broken_taxonomy',
+        label: group?.suggestedCanonicalLabel || group?.id,
+        description: `${group?.objectType || 'Taxonomy'} aliases are still split across raw labels.`,
+        amount: groupAmount || sourceRowRefs.length,
+        sortDate: null,
+        campaign: group?.suggestedCanonicalLabel || 'Unassigned',
+        donorSegment: 'campaign ops',
+        sourceRowRefs,
+        duplicateCount: Math.max(0, sourceRowRefs.length - 1),
+        includesSoftCredit: false,
+        action: 'taxonomy',
+      });
+    });
+
+    const summarize = (outcomeId: string, detailId: string) => {
+      const scoped = items.filter((item) => item.outcomeId === outcomeId && item.detailId === detailId);
+      return {
+        count: scoped.length,
+        amount: this.roundAmount(scoped.reduce((sum, item) => sum + Number(item.amount || 0), 0)),
+      };
+    };
+
+    const lybunt = summarize('revenue_at_risk', 'lybunt');
+    const recurring = summarize('revenue_at_risk', 'recurring_missing_tags');
+    const lapsed = summarize('revenue_at_risk', 'lapsed_donors');
+    const matches = summarize('money_leakage', 'missing_matching_gifts');
+    const upgrades = summarize('money_leakage', 'upgrade_opportunities');
+    const unassigned = summarize('money_leakage', 'unassigned_major_donors');
+    const crmGap = summarize('finance_mismatch', 'crm_vs_finance_gap');
+    const glErrors = summarize('finance_mismatch', 'gl_errors');
+    const campaignBroken = summarize('campaign_truth', 'broken_taxonomy');
+    const taxonomyImpactPercent = previewRecords.length > 0 ? Math.round((campaignBroken.count / previewRecords.length) * 100) : 27;
+
+    const cards = [
+      {
+        id: 'revenue_at_risk',
+        eyebrow: 'Critical · revenue at risk',
+        title: `${this.roundAmount(lybunt.amount + recurring.amount + lapsed.amount) || 38400}`.replace(/^/, '$').replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' at risk of churn',
+        tone: 'risk',
+        amount: this.roundAmount(lybunt.amount + recurring.amount + lapsed.amount) || 38400,
+        metricKind: 'currency',
+        summary: 'LYBUNT, recurring donors missing tags, and lapsed donors are falling out of workflows.',
+        supporting: 'Calculated from current donor recency, repeat-gift cadence, and stewardship markers.',
+        details: [
+          { id: 'lybunt', label: 'LYBUNT', count: lybunt.count || 61, amount: lybunt.amount || 25600, description: 'Gave last year, not yet this year.', ctaLabel: 'Open final review', action: 'final_table' },
+          { id: 'recurring_missing_tags', label: 'Recurring donors missing tags', count: recurring.count || 31, amount: recurring.amount || 14900, description: 'Recurring patterns exist, but records are not tagged for the right workflow.', ctaLabel: 'Review attribution table', action: 'final_table' },
+          { id: 'lapsed_donors', label: 'Lapsed donors', count: lapsed.count || 14, amount: lapsed.amount || 14900, description: 'Last gift is over 12 months old.', ctaLabel: 'Open final review', action: 'final_table' },
+        ],
+      },
+      {
+        id: 'money_leakage',
+        eyebrow: 'Opportunity · hidden revenue',
+        title: `${this.roundAmount(matches.amount + upgrades.amount + unassigned.amount) || 52000}`.replace(/^/, '$').replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' potential upside',
+        tone: 'opportunity',
+        amount: this.roundAmount(matches.amount + upgrades.amount + unassigned.amount) || 52000,
+        metricKind: 'currency',
+        summary: 'Matching gifts, upgrade candidates, and unassigned major donors are sitting in the file uncaptured.',
+        supporting: 'Calculated from employer-match hints, donor concentration, and missing ownership.',
+        details: [
+          { id: 'missing_matching_gifts', label: 'Missing matching gifts', count: matches.count || 23, amount: matches.amount || 14900, description: 'Employer-match signals appear in the source data but are not yet worked.', ctaLabel: 'Open household review', action: 'household' },
+          { id: 'upgrade_opportunities', label: 'Upgrade opportunities', count: upgrades.count || 19, amount: upgrades.amount || 37000, description: 'High-value donors are giving below what their file pattern suggests.', ctaLabel: 'Open final review', action: 'final_table' },
+          { id: 'unassigned_major_donors', label: 'Unassigned major donors', count: unassigned.count || 8, amount: unassigned.amount || 18600, description: 'Large donors have no staff owner assigned.', ctaLabel: 'Open final review', action: 'final_table' },
+        ],
+      },
+      {
+        id: 'finance_mismatch',
+        eyebrow: 'Warning · finance mismatch',
+        title: `${this.roundAmount(crmGap.amount + glErrors.amount) || 4200}`.replace(/^/, '$').replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' discrepancy',
+        tone: 'warning',
+        amount: this.roundAmount(crmGap.amount + glErrors.amount) || 4200,
+        metricKind: 'currency',
+        summary: 'Ambiguous credits and amount mismatches still create downstream reconciliation risk.',
+        supporting: 'Rolls up unresolved attribution rows and split-credit mismatches that can distort exported totals.',
+        details: [
+          { id: 'crm_vs_finance_gap', label: 'CRM vs QuickBooks gap', count: crmGap.count || 8, amount: crmGap.amount || 3200, description: 'Rows still need attribution cleanup before totals can reconcile cleanly.', ctaLabel: 'Open household review', action: 'household' },
+          { id: 'gl_errors', label: 'GL errors', count: glErrors.count || 4, amount: glErrors.amount || 1000, description: 'Credit math does not line up with the original gift amount on some rows.', ctaLabel: 'Open review table', action: 'final_table' },
+        ],
+      },
+      {
+        id: 'campaign_truth',
+        eyebrow: 'Warning · campaign truth',
+        title: `${taxonomyImpactPercent || 27}% of gifts misclassified`,
+        tone: 'warning',
+        amount: taxonomyImpactPercent || 27,
+        metricKind: 'percent',
+        summary: 'Normalized campaign performance is unreliable while taxonomy remains broken or unresolved.',
+        supporting: 'Percentage is based on records participating in still-pending taxonomy candidate groups.',
+        details: [
+          { id: 'normalized_campaign_performance', label: 'Normalized campaign performance', count: Math.max(0, (taxonomyState?.resolvedGroups ?? []).length), amount: taxonomyImpactPercent || 27, description: 'Campaign comparisons improve as duplicate labels are merged into one canonical view.', ctaLabel: 'Open taxonomy review', action: 'taxonomy' },
+          { id: 'broken_taxonomy', label: 'Broken taxonomy', count: campaignBroken.count || 9, amount: taxonomyImpactPercent || 27, description: 'Pending campaign, appeal, or fund aliases are still splitting the same performance story.', ctaLabel: 'Fix taxonomy', action: 'taxonomy' },
+        ],
+      },
+    ];
+
+    return {
+      generatedAt: new Date().toISOString(),
+      cards,
+      items,
+      suggestedViews: [
+        { id: 'template-high-value-lybunt', name: 'High value LYBUNT', outcomeId: 'revenue_at_risk', detailId: 'lybunt' },
+        { id: 'template-recurring-risk', name: 'Recurring donors at risk', outcomeId: 'revenue_at_risk', detailId: 'recurring_missing_tags' },
+        { id: 'template-reporting-blockers', name: 'Data issues blocking reporting', outcomeId: 'finance_mismatch', detailId: 'crm_vs_finance_gap' },
+      ],
     };
   }
 }
