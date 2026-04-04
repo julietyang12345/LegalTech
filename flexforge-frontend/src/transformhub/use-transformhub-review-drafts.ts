@@ -57,7 +57,8 @@ export function useTransformHubReviewDrafts({
           const existing = current[record.sourceRowRef] ?? buildInitialAttributionDraft(record, members, matchedPerson);
           return [record.sourceRowRef, {
             ...existing,
-            householdId: existing.householdId ?? matchedHousehold?.id ?? null,
+            householdId: existing.householdRemoved ? null : (existing.householdId ?? matchedHousehold?.id ?? null),
+            householdRemoved: existing.householdRemoved === true,
             creditAmount: existing.creditAmount ?? null,
             campaignFund: existing.campaignFund || [record.campaignName, record.fund].filter(Boolean).join(' · '),
             notes: existing.notes ?? '',

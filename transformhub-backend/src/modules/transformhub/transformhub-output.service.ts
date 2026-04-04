@@ -29,6 +29,26 @@ export class TransformHubOutputService {
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
+  private buildAnalyticsEvidenceRows(records: any[] = []) {
+    return records
+      .map((record: any) => {
+        const recurring = String(record?.recurring ?? record?.frequency ?? '').toLowerCase();
+        return {
+          sourceRowRef: String(record?.sourceRowRef ?? record?.id ?? ''),
+          date: record?.date ? String(record.date) : null,
+          amount: this.parseAmount(record?.amount),
+          source: String(record?.sourceFile || record?.source_file || 'Current file'),
+          type: String(record?.type || record?.frequency || record?.method || record?.fund || 'Gift'),
+          recurring: recurring.includes('true') || recurring.includes('monthly') || recurring.includes('quarterly') || recurring.includes('yearly'),
+        };
+      })
+      .sort((left: any, right: any) => {
+        const leftTime = left.date ? new Date(left.date).getTime() : 0;
+        const rightTime = right.date ? new Date(right.date).getTime() : 0;
+        return rightTime - leftTime;
+      });
+  }
+
   private summarizeAttribution(record: any, personById: Map<string, any>) {
     const attribution = record?.attribution ?? null;
     if (!attribution) {
@@ -229,8 +249,6 @@ export class TransformHubOutputService {
     });
 
     const now = new Date();
-    const currentYear = now.getFullYear();
-    const previousYear = currentYear - 1;
     const donorEntries = Array.from(donorGroups.values()).map((entry: any) => {
       const sortedDates = entry.records
         .map((record: any) => (record?.date ? new Date(String(record.date)) : null))
@@ -256,32 +274,13 @@ export class TransformHubOutputService {
         return attribution?.mode === 'soft_credit';
       });
 
-      if (entry.years.has(previousYear) && !entry.years.has(currentYear)) {
-        items.push({
-          id: `lybunt:${entry.label}`,
-          outcomeId: 'revenue_at_risk',
-          detailId: 'lybunt',
-          label: entry.label,
-          description: 'Gave last year, not yet this year.',
-          amount: entry.latestAmount || entry.totalAmount,
-          sortDate: entry.latestDate?.toISOString() ?? null,
-          campaign,
-          donorSegment: entry.totalAmount >= 1000 ? 'major donors' : 'lybunt donors',
-          sourceRowRefs,
-          duplicateCount,
-          includesSoftCredit,
-          action: 'final_table',
-        });
-      }
-
-      const hasRecurringTag = Array.from(entry.tags).some((tag: any) => String(tag).includes('recurr') || String(tag).includes('monthly'));
-      if (entry.recurringPattern && !hasRecurringTag) {
+      if (entry.recurringPattern) {
         items.push({
           id: `recurring:${entry.label}`,
           outcomeId: 'revenue_at_risk',
-          detailId: 'recurring_missing_tags',
+          detailId: 'recurring_donors',
           label: entry.label,
-          description: 'Recurring pattern detected but stewardship tag is missing.',
+          description: 'Multiple gifts suggest a recurring giving pattern.',
           amount: Math.max(entry.latestAmount, entry.totalAmount * 0.5),
           sortDate: entry.latestDate?.toISOString() ?? null,
           campaign,
@@ -289,6 +288,7 @@ export class TransformHubOutputService {
           sourceRowRefs,
           duplicateCount,
           includesSoftCredit,
+          evidenceRows: this.buildAnalyticsEvidenceRows(entry.records),
           action: 'final_table',
         });
       }
@@ -445,8 +445,7 @@ export class TransformHubOutputService {
       };
     };
 
-    const lybunt = summarize('revenue_at_risk', 'lybunt');
-    const recurring = summarize('revenue_at_risk', 'recurring_missing_tags');
+    const recurring = summarize('revenue_at_risk', 'recurring_donors');
     const lapsed = summarize('revenue_at_risk', 'lapsed_donors');
     const matches = summarize('money_leakage', 'missing_matching_gifts');
     const upgrades = summarize('money_leakage', 'upgrade_opportunities');
@@ -460,15 +459,14 @@ export class TransformHubOutputService {
       {
         id: 'revenue_at_risk',
         eyebrow: 'Critical · revenue at risk',
-        title: `${this.roundAmount(lybunt.amount + recurring.amount + lapsed.amount) || 38400}`.replace(/^/, '$').replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' at risk of churn',
+        title: `${this.roundAmount(recurring.amount + lapsed.amount) || 38400}`.replace(/^/, '$').replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' at risk of churn',
         tone: 'risk',
-        amount: this.roundAmount(lybunt.amount + recurring.amount + lapsed.amount) || 38400,
+        amount: this.roundAmount(recurring.amount + lapsed.amount) || 38400,
         metricKind: 'currency',
-        summary: 'LYBUNT, recurring donors missing tags, and lapsed donors are falling out of workflows.',
-        supporting: 'Calculated from current donor recency, repeat-gift cadence, and stewardship markers.',
+        summary: 'Recurring donors and lapsed donors surface churn risk after duplicate, household, and taxonomy review.',
+        supporting: 'Calculated from the cleaned donor layer using reviewed recency, repeat-gift cadence, and attribution updates.',
         details: [
-          { id: 'lybunt', label: 'LYBUNT', count: lybunt.count || 61, amount: lybunt.amount || 25600, description: 'Gave last year, not yet this year.', ctaLabel: 'Open final review', action: 'final_table' },
-          { id: 'recurring_missing_tags', label: 'Recurring donors missing tags', count: recurring.count || 31, amount: recurring.amount || 14900, description: 'Recurring patterns exist, but records are not tagged for the right workflow.', ctaLabel: 'Review attribution table', action: 'final_table' },
+          { id: 'recurring_donors', label: 'Recurring donors', count: recurring.count || 31, amount: recurring.amount || 14900, description: 'Multiple gifts suggest a recurring giving pattern.', ctaLabel: 'Review attribution table', action: 'final_table' },
           { id: 'lapsed_donors', label: 'Lapsed donors', count: lapsed.count || 14, amount: lapsed.amount || 14900, description: 'Last gift is over 12 months old.', ctaLabel: 'Open final review', action: 'final_table' },
         ],
       },
@@ -522,8 +520,7 @@ export class TransformHubOutputService {
       cards,
       items,
       suggestedViews: [
-        { id: 'template-high-value-lybunt', name: 'High value LYBUNT', outcomeId: 'revenue_at_risk', detailId: 'lybunt' },
-        { id: 'template-recurring-risk', name: 'Recurring donors at risk', outcomeId: 'revenue_at_risk', detailId: 'recurring_missing_tags' },
+        { id: 'template-recurring-risk', name: 'Recurring donors', outcomeId: 'revenue_at_risk', detailId: 'recurring_donors' },
         { id: 'template-reporting-blockers', name: 'Data issues blocking reporting', outcomeId: 'finance_mismatch', detailId: 'crm_vs_finance_gap' },
       ],
     };

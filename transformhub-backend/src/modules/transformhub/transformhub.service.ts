@@ -79,6 +79,20 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     await this.reviewActionRepo.save(reviewAction);
   }
 
+  private async getSafeReviewActionCount(where: { datasetId?: string; sessionId?: string }) {
+    try {
+      return await this.reviewActionRepo.count({ where });
+    } catch (error) {
+      const code = (error as { code?: string } | null)?.code;
+      const message = error instanceof Error ? error.message : String(error);
+      if (code === '42P01' || /relation ["']?th_review_actions["']? does not exist/i.test(message)) {
+        this.logger.warn('th_review_actions table is missing; review analytics provenance will omit persisted action counts.');
+        return 0;
+      }
+      throw error;
+    }
+  }
+
   private buildReviewDatasetFingerprint(parsedFile: any, schema: any) {
     const payload = {
       platform: parsedFile?.platform ?? null,
@@ -247,10 +261,12 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
       const existingDataset = await this.reviewDatasetRepo.findOne({ where: { fingerprint: datasetFingerprint } });
       if (existingDataset) {
         dataset = existingDataset;
-        effectiveParsedFile = {
-          ...(existingDataset.cleanedParsedFile as any),
-          datasetId: existingDataset.id,
-        };
+        effectiveParsedFile = { ...parsedFile, datasetId: existingDataset.id };
+        await this.reviewDatasetRepo.update(existingDataset.id, {
+          rawParsedFile: parsedFile,
+          cleanedParsedFile: effectiveParsedFile,
+          latestSessionId: null,
+        });
       } else {
         dataset = await this.reviewDatasetRepo.save(this.reviewDatasetRepo.create({
           fingerprint: datasetFingerprint,
@@ -896,20 +912,38 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     let previewRecords = body.previewRecords || [];
     let taxonomyState = body.taxonomyState || null;
     let fileClass = body.fileClass || 'donor';
+    const postReviewReady = body.postReviewReady === true;
     let actionCount = 0;
     let reproducible = false;
     if (body.sessionId) {
       const session = await this.sessionRepo.findOne({ where: { id: body.sessionId } });
       if (session?.datasetId) {
         const dataset = await this.reviewDatasetRepo.findOne({ where: { id: session.datasetId } });
-        previewRecords = ((dataset?.cleanedParsedFile as any)?.preview?.records ?? previewRecords);
+        if (!Array.isArray(previewRecords) || previewRecords.length === 0) {
+          previewRecords = ((dataset?.cleanedParsedFile as any)?.preview?.records ?? previewRecords);
+        }
         fileClass = ((session.schema as any)?.fileClass ?? fileClass);
         taxonomyState = session.taxonomyState ?? taxonomyState;
-        actionCount = await this.reviewActionRepo.count({ where: { datasetId: session.datasetId } });
+        actionCount = await this.getSafeReviewActionCount({ datasetId: session.datasetId });
         reproducible = true;
       } else {
-        actionCount = await this.reviewActionRepo.count({ where: { sessionId: body.sessionId } });
+        actionCount = await this.getSafeReviewActionCount({ sessionId: body.sessionId });
       }
+    }
+    if (!postReviewReady) {
+      return {
+        generatedAt: new Date().toISOString(),
+        cards: [],
+        items: [],
+        suggestedViews: [],
+        provenance: {
+          layer: 'cleaned',
+          source: reproducible ? 'persistent raw dataset awaiting completed review state' : 'session review state awaiting completion',
+          actionCount,
+          reproducible,
+          postReviewReady: false,
+        },
+      };
     }
     const analytics = this.output.buildReviewAnalytics(
       rows,
@@ -927,6 +961,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
         source: reproducible ? 'persistent raw dataset + review actions + cleaned snapshot' : 'session review state',
         actionCount,
         reproducible,
+        postReviewReady: true,
       },
     };
   }

@@ -6,6 +6,7 @@ import { ThHousehold } from '../../database/entities/th-household.entity';
 import { ThAuditDecision } from '../../database/entities/th-audit-decision.entity';
 import { matchesNormalizedKey } from './transformhub-key-normalization';
 import { TransformHubAiService } from './transformhub-ai.service';
+import { extractDonorDuplicateSignalFromRow, scoreDonorDuplicateSignalPair } from './transformhub-duplicate-rules';
 
 @Injectable()
 export class TransformHubIdentityService {
@@ -94,7 +95,48 @@ export class TransformHubIdentityService {
     return '';
   }
 
-  private extractPersonInput(row: any): { name: string; email: string; phone: string; address: string; zip: string; householdName: string; city: string; state: string } {
+  private extractDonorSignal(row: any) {
+    return extractDonorDuplicateSignalFromRow(row, {
+      normStr: (value) => this.normStr(value),
+      fallbackRawValue: (rawValues, aliases, validator) => this.fallbackRawValue(rawValues, aliases, validator),
+    });
+  }
+
+  private getDonorSignals(person: any): Array<ReturnType<TransformHubIdentityService['extractDonorSignal']>> {
+    return Array.isArray(person?.__thDonorSignals) ? person.__thDonorSignals : [];
+  }
+
+  private setDonorSignals(person: any, signals: Array<ReturnType<TransformHubIdentityService['extractDonorSignal']>>) {
+    (person as any).__thDonorSignals = signals;
+  }
+
+  private formatDonorSignal(signal: ReturnType<TransformHubIdentityService['extractDonorSignal']> | null | undefined): string {
+    if (!signal) return 'signal=none';
+    return [
+      `txRef=${signal.transactionRef || 'none'}`,
+      `amount=${signal.amount ?? 'none'}`,
+      `date=${signal.date || 'none'}`,
+      `fund=${signal.fund || 'none'}`,
+      `appeal=${signal.appeal || 'none'}`,
+      `source=${signal.source || 'none'}`,
+    ].join(' ');
+  }
+
+  private buildDecisionKey(
+    row: any,
+    input: { name: string; donorSignal: ReturnType<TransformHubIdentityService['extractDonorSignal']> | null },
+    fileClass?: string | null,
+  ): string {
+    if (fileClass === 'donor' && input.donorSignal) {
+      if (input.donorSignal.transactionRef) return `donor:txref:${input.donorSignal.transactionRef}`;
+      if (input.donorSignal.amount !== null && input.donorSignal.date) {
+        return `donor:${this.normStr(input.name)}|${input.donorSignal.amount}|${input.donorSignal.date}`;
+      }
+    }
+    return this.normStr(input.name || this.buildEntityName(row));
+  }
+
+  private extractPersonInput(row: any): { name: string; email: string; phone: string; address: string; zip: string; householdName: string; city: string; state: string; donorSignal: ReturnType<TransformHubIdentityService['extractDonorSignal']> | null } {
     const rawValues = row.rawValues as Record<string, string> | undefined;
     const email = String(row.email || '').trim() || this.fallbackRawValue(rawValues, ['email', 'email address', 'e-mail', 'mail address'], (value) => value.includes('@'));
     const phone = String(row.phone || '').trim() || this.fallbackRawValue(rawValues, ['phone', 'phone number', 'telephone', 'mobile', 'cell'], (value) => this.normalizePhone(value).length >= 10);
@@ -113,13 +155,64 @@ export class TransformHubIdentityService {
       householdName,
       city,
       state,
+      donorSignal: this.extractDonorSignal(row),
     };
   }
 
-  private scorePersonPair(
+  private async enrichDonorSignalWithAiFallback(
+    row: any,
+    rowRef: string,
+    donorSignal: ReturnType<TransformHubIdentityService['extractDonorSignal']> | null,
+  ): Promise<ReturnType<TransformHubIdentityService['extractDonorSignal']> | null> {
+    if (!donorSignal || !this.ai.isEnabled) return donorSignal;
+    const rawValues = row.rawValues as Record<string, string> | undefined;
+    if (!rawValues || Object.keys(rawValues).length === 0) return donorSignal;
+
+    const missingFields: Array<'amount' | 'date' | 'transactionRef'> = [];
+    if (donorSignal.amount === null) missingFields.push('amount');
+    if (!donorSignal.date) missingFields.push('date');
+    if (!donorSignal.transactionRef) missingFields.push('transactionRef');
+    if (missingFields.length === 0) return donorSignal;
+
+    const aiResult = await this.ai.suggestDonorSignalFallback({
+      rowRef,
+      platform: String(row.source_platform || row.sourcePlatform || ''),
+      rawValues,
+      missingFields,
+    });
+    if (!aiResult) return donorSignal;
+
+    const aiPatchedRow = {
+      ...row,
+      amount: donorSignal.amount !== null
+        ? row.amount
+        : aiResult.amountHeader
+          ? rawValues[aiResult.amountHeader]
+          : row.amount,
+      date: donorSignal.date
+        ? row.date
+        : aiResult.dateHeader
+          ? rawValues[aiResult.dateHeader]
+          : row.date,
+      transaction_id: donorSignal.transactionRef
+        ? row.transaction_id
+        : aiResult.transactionRefHeader
+          ? rawValues[aiResult.transactionRefHeader]
+          : row.transaction_id,
+    };
+    const enrichedSignal = this.extractDonorSignal(aiPatchedRow);
+
+    this.logger.log(
+      `[identity:donor-debug] ai-fallback row=${rowRef} missing=${missingFields.join('|')} amountHeader=${aiResult.amountHeader || 'none'} dateHeader=${aiResult.dateHeader || 'none'} txRefHeader=${aiResult.transactionRefHeader || 'none'} confidence=${aiResult.confidence}`,
+    );
+
+    return enrichedSignal;
+  }
+
+  private scoreProfilePair(
     candidate: any,
     input: { name: string; email: string; phone: string; address: string; zip: string; householdName: string },
-  ): { score: number; matchedFields: string[] } {
+  ): { score: number; matchedFields: string[]; matchedInputRef?: string | null } {
     let score = 0;
     const matchedFields: string[] = [];
     const inputNameParts = this.splitNormalizedName(input.name);
@@ -198,7 +291,42 @@ export class TransformHubIdentityService {
       matchedFields.push('strong_multisignal');
     }
 
-    return { score, matchedFields };
+    return { score, matchedFields, matchedInputRef: null };
+  }
+
+  private scoreDonorPair(
+    candidate: any,
+    input: { name: string; email: string; phone: string; address: string; zip: string; householdName: string; donorSignal: ReturnType<TransformHubIdentityService['extractDonorSignal']> | null },
+  ): { score: number; matchedFields: string[]; matchedInputRef?: string | null } {
+    const inputSignal = input.donorSignal;
+    if (!inputSignal) return { score: 0, matchedFields: [], matchedInputRef: null };
+    const candidateSignals = this.getDonorSignals(candidate);
+    if (candidateSignals.length === 0) return { score: 0, matchedFields: [], matchedInputRef: null };
+
+    let best = { score: 0, matchedFields: [] as string[], matchedInputRef: null as string | null };
+    candidateSignals.forEach((signal: ReturnType<TransformHubIdentityService['extractDonorSignal']>) => {
+      const result = scoreDonorDuplicateSignalPair(
+        inputSignal,
+        signal,
+        input.name,
+        `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
+        input.email,
+        candidate.email || '',
+        (value) => this.normStr(value),
+      );
+      if (result.score > best.score) best = result;
+    });
+
+    return best;
+  }
+
+  private scorePersonPair(
+    candidate: any,
+    input: { name: string; email: string; phone: string; address: string; zip: string; householdName: string; donorSignal: ReturnType<TransformHubIdentityService['extractDonorSignal']> | null },
+    fileClass?: string | null,
+  ): { score: number; matchedFields: string[]; matchedInputRef?: string | null } {
+    if (fileClass === 'donor') return this.scoreDonorPair(candidate, input);
+    return this.scoreProfilePair(candidate, input);
   }
 
   private getConfidenceBand(score: number): string {
@@ -347,12 +475,19 @@ export class TransformHubIdentityService {
     const email = new Map<string, Set<any>>();
     const phone = new Map<string, Set<any>>();
     const fingerprint = new Map<string, Set<any>>();
+    const donorTransactionRef = new Map<string, Set<any>>();
+    const donorAmountDate = new Map<string, Set<any>>();
 
     const add = (map: Map<string, Set<any>>, key: string, person: any) => {
       if (!key) return;
       const bucket = map.get(key) ?? new Set<any>();
       bucket.add(person);
       map.set(key, bucket);
+    };
+
+    const donorAmountDateKey = (signal: ReturnType<TransformHubIdentityService['extractDonorSignal']>) => {
+      if (signal.amount === null || !signal.date) return '';
+      return `${signal.amount}|${signal.date}`;
     };
 
     const addPerson = (person: any) => {
@@ -362,15 +497,20 @@ export class TransformHubIdentityService {
       add(phone, this.normalizePhone(person.phone || ''), person);
       (Array.isArray(person.fingerprints) ? person.fingerprints : []).forEach((fingerprintValue: string) => add(fingerprint, fingerprintValue, person));
       this.personNameTokens(person).forEach((tokenValue) => add(token, tokenValue, person));
+      this.getDonorSignals(person).forEach((signal) => {
+        add(donorTransactionRef, signal.transactionRef, person);
+        add(donorAmountDate, donorAmountDateKey(signal), person);
+      });
     };
 
     persons.forEach(addPerson);
-    return { exactName, lastName, token, email, phone, fingerprint, addPerson };
+    return { exactName, lastName, token, email, phone, fingerprint, donorTransactionRef, donorAmountDate, addPerson };
   }
 
   private candidatePersonsForInput(
     index: ReturnType<TransformHubIdentityService['createPersonIndex']>,
-    input: { name: string; email: string; phone: string; address: string; zip: string; city?: string; state?: string },
+    input: { name: string; email: string; phone: string; address: string; zip: string; city?: string; state?: string; donorSignal?: ReturnType<TransformHubIdentityService['extractDonorSignal']> | null },
+    fileClass?: string | null,
   ): any[] {
     const candidates = new Set<any>();
     const normalizedName = this.normStr(input.name);
@@ -390,6 +530,12 @@ export class TransformHubIdentityService {
     addAll(index.phone.get(normalizedPhone));
     inputFingerprints.forEach((fingerprint) => addAll(index.fingerprint.get(fingerprint)));
     parts.forEach((part) => addAll(index.token.get(part)));
+    if (fileClass === 'donor' && input.donorSignal) {
+      if (input.donorSignal.transactionRef) addAll(index.donorTransactionRef.get(input.donorSignal.transactionRef));
+      if (input.donorSignal.amount !== null && input.donorSignal.date) {
+        addAll(index.donorAmountDate.get(`${input.donorSignal.amount}|${input.donorSignal.date}`));
+      }
+    }
 
     return Array.from(candidates);
   }
@@ -444,11 +590,13 @@ export class TransformHubIdentityService {
       decisionState: 'confirmed',
       lastConfirmedAt: new Date(),
     });
+    const donorSignal = input.donorSignal;
+    if (donorSignal) this.setDonorSignals(newPerson, [donorSignal]);
     persons.push(newPerson);
     return newPerson;
   }
 
-  private mergePersonSignals(person: any, input: { email: string; phone: string; address: string; zip: string; city: string; state: string }, rowRef: string, scope: { platform?: string | null; fileClass?: string | null } = {}) {
+  private mergePersonSignals(person: any, input: { email: string; phone: string; address: string; zip: string; city: string; state: string; donorSignal?: ReturnType<TransformHubIdentityService['extractDonorSignal']> | null }, rowRef: string, scope: { platform?: string | null; fileClass?: string | null } = {}) {
     person.updatedAt = new Date();
     if (!person.email && input.email) person.email = input.email;
     if (!person.phone && input.phone) person.phone = input.phone;
@@ -469,6 +617,12 @@ export class TransformHubIdentityService {
     }, person.firstName, person.lastName);
     person.lastConfirmedAt = new Date();
     if (!person.decisionState) person.decisionState = 'confirmed';
+    if (input.donorSignal) {
+      const currentSignals = this.getDonorSignals(person);
+      if (!currentSignals.some((signal: ReturnType<TransformHubIdentityService['extractDonorSignal']>) => signal.rowRef === input.donorSignal?.rowRef)) {
+        this.setDonorSignals(person, [...currentSignals, input.donorSignal]);
+      }
+    }
   }
 
   private buildMatchReviewPayload(
@@ -572,7 +726,14 @@ export class TransformHubIdentityService {
     const seen = new Set<string>();
 
 
-    const inputKeys = Array.from(new Set(rows.map((row) => this.normStr(this.buildEntityName(row))).filter(Boolean)));
+    const inputKeys = Array.from(new Set(
+      rows
+        .map((row) => {
+          const input = this.extractPersonInput(row);
+          return this.buildDecisionKey(row, input, personScope.fileClass);
+        })
+        .filter(Boolean),
+    ));
     const permanentDecisions = usePersistentIdentityMemory && inputKeys.length > 0
       ? await this.auditDecisionRepo.find({ where: { permanent: true, inputKey: In(inputKeys) }, order: { updatedAt: 'DESC' } })
       : [];
@@ -584,17 +745,25 @@ export class TransformHubIdentityService {
       decisionsByInputKey.set(key, current);
     });
 
+    this.logger.log(
+      `[identity] resolvePersons start fileClass=${personScope.fileClass || 'unknown'} rows=${rows.length} seededPersons=${persons.length} persistentMemory=${usePersistentIdentityMemory} forceReviewOnAuto=${forceReviewOnAutoMatches}`,
+    );
+
     for (const [index, row] of rows.entries()) {
-      const input = this.extractPersonInput(row);
-      if (!input.name) continue;
       const rowRef = row.source_row_ref || row.sourceRowRef || String(index);
+      const input = this.extractPersonInput(row);
+      if (personScope.fileClass === 'donor' && input.donorSignal) {
+        input.donorSignal = await this.enrichDonorSignalWithAiFallback(row, rowRef, input.donorSignal);
+      }
+      if (!input.name) continue;
       const seenKey = `${this.normStr(input.name)}|${rowRef}`;
       if (seen.has(seenKey)) continue;
       seen.add(seenKey);
 
-      const inputKey = this.normStr(input.name);
+      const inputKey = this.buildDecisionKey(row, input, personScope.fileClass);
       const storedDecisions = decisionsByInputKey.get(inputKey) ?? [];
-      const decisionPolicy = this.applyDecisionPolicy(storedDecisions, this.candidatePersonsForInput(personIndex, input));
+      const rawCandidates = this.candidatePersonsForInput(personIndex, input, personScope.fileClass);
+      const decisionPolicy = this.applyDecisionPolicy(storedDecisions, rawCandidates);
       const storedMergeDecision = decisionPolicy.storedMergeDecision;
 
       if (storedMergeDecision?.matchedPersonId) {
@@ -621,13 +790,15 @@ export class TransformHubIdentityService {
       let bestScore = 0;
       let bestMatch: any = null;
       let bestMatchedFields: string[] = [];
+      let bestMatchedInputRef: string | null = null;
 
       for (const person of candidates) {
-        const { score, matchedFields } = this.scorePersonPair(person, input);
+        const { score, matchedFields, matchedInputRef } = this.scorePersonPair(person, input, personScope.fileClass);
         if (score > bestScore) {
           bestScore = score;
           bestMatch = person;
           bestMatchedFields = matchedFields;
+          bestMatchedInputRef = matchedInputRef ?? null;
         }
       }
 
@@ -640,11 +811,12 @@ export class TransformHubIdentityService {
       let decision = 'new';
 
       let aiSuggestion = null;
-      const matchedInputRef = bestMatch ? (personInputRefs.get(bestMatch.id) ?? null) : null;
+      const matchedInputRef = bestMatchedInputRef ?? (bestMatch ? (personInputRefs.get(bestMatch.id) ?? null) : null);
 
       if (band === 'auto' && bestMatch) {
         this.mergePersonSignals(bestMatch, input, rowRef, personScope);
         pendingPersonSaves.push(bestMatch);
+        personIndex.addPerson(bestMatch);
         matchedPersonId = bestMatch.id;
         decision = 'auto';
         autoMatched++;
@@ -676,7 +848,7 @@ export class TransformHubIdentityService {
         reviewPayload: this.buildMatchReviewPayload(row, rowRef, input, bestMatchedFields, bestMatch, aiSuggestion, matchedInputRef),
       });
       this.logger.log(
-        `[identity] row=${rowRef} name="${input.name}" band=${band} decision=${decision} score=${bestScore} matchedPerson=${matchedPersonId ?? 'none'} matchedInput=${matchedInputRef ?? 'none'} fields=${bestMatchedFields.join('|') || 'none'} candidate="${bestMatch ? `${bestMatch.firstName || ''} ${bestMatch.lastName || ''}`.trim() : 'none'}"`,
+        `[identity] row=${rowRef} name="${input.name}" rawCandidates=${rawCandidates.length} eligibleCandidates=${candidates.length} band=${band} decision=${decision} score=${bestScore} matchedPerson=${matchedPersonId ?? 'none'} matchedInput=${matchedInputRef ?? 'none'} fields=${bestMatchedFields.join('|') || 'none'} candidate="${bestMatch ? `${bestMatch.firstName || ''} ${bestMatch.lastName || ''}`.trim() : 'none'}"`,
       );
     }
 
@@ -698,27 +870,27 @@ export class TransformHubIdentityService {
   }
 
   private async buildHouseholdReviewSuggestions(reviewCandidates: Array<{ key: string; members: any[]; evidence: string[] }>) {
-    if (!this.ai.isEnabled) return [];
-
     const suggestions: any[] = [];
     let sequence = 0;
     for (const candidate of reviewCandidates) {
       const addressKey = candidate.key;
       const members = candidate.members;
       if (members.length < 2) continue;
-      const aiSuggestion = await this.ai.suggestHouseholdMatch({
-        addressKey,
-        evidence: candidate.evidence,
-        members: members.map((member) => ({
-          id: member.id,
-          firstName: member.firstName,
-          lastName: member.lastName,
-          addressLine1: member.addressLine1,
-          city: member.city,
-          state: member.state,
-          zip: member.zip,
-        })),
-      });
+      const aiSuggestion = this.ai.isEnabled
+        ? await this.ai.suggestHouseholdMatch({
+          addressKey,
+          evidence: candidate.evidence,
+          members: members.map((member) => ({
+            id: member.id,
+            firstName: member.firstName,
+            lastName: member.lastName,
+            addressLine1: member.addressLine1,
+            city: member.city,
+            state: member.state,
+            zip: member.zip,
+          })),
+        })
+        : null;
       suggestions.push({
         id: `hs-review-${++sequence}`,
         proposedMemberIds: members.map((member) => member.id),
@@ -798,7 +970,7 @@ export class TransformHubIdentityService {
       const uniqueGroup = Array.from(new Map(group.map((person) => [person.id, person])).values());
       if (uniqueGroup.length < 2) continue;
       const supportEvidence = this.getSurnameZipSupportEvidence(uniqueGroup);
-      if (!this.hasConflictingExactAddresses(uniqueGroup) && supportEvidence.length > 0) {
+      if (this.ai.isEnabled && !this.hasConflictingExactAddresses(uniqueGroup) && supportEvidence.length > 0) {
         addHouseholdGroup(key, uniqueGroup);
         this.logger.log(`[household] surname-zip group key=${key} evidence=${supportEvidence.join('|') || 'none'} members=${uniqueGroup.map((person) => `${person.id}:${person.firstName || ''} ${person.lastName || ''}`.trim()).join(', ')}`);
         continue;

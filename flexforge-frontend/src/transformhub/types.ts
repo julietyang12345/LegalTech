@@ -144,6 +144,7 @@ export type PreviewAttributionDraft = {
   primaryPersonId: string | null;
   secondaryPersonId: string | null;
   householdId: string | null;
+  householdRemoved?: boolean;
   creditAmount: number | null;
   campaignFund: string;
   organizationName: string;
@@ -196,6 +197,8 @@ export type PreviewRecord = ClassifiedPreview['records'][number] & {
   values?: Record<string, string>;
   sourceFile?: string;
   source_file?: string;
+  sourceFileClass?: FileClass;
+  source_file_class?: FileClass;
   needs_person_resolve?: boolean;
   [key: string]: unknown;
 };

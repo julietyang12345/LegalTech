@@ -292,6 +292,7 @@ export async function fetchReviewAnalytics(
   finalAttributionDrafts?: Record<string, unknown>,
   fileClass?: string,
   sessionId?: string,
+  postReviewReady?: boolean,
 ): Promise<{ generatedAt: string; cards: any[]; items: any[]; suggestedViews: any[]; provenance?: any }> {
   const response = await api.post<{ generatedAt: string; cards: any[]; items: any[]; suggestedViews: any[]; provenance?: any }>('/transformhub/review-analytics', {
     rows,
@@ -302,6 +303,7 @@ export async function fetchReviewAnalytics(
     finalAttributionDrafts,
     fileClass,
     sessionId,
+    postReviewReady,
   });
   return response.data;
 }

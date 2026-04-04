@@ -356,6 +356,8 @@ export function prepareIncomingUpload(
                 id: `${namespace}::${previewRecord.id}`,
                 sourceRowRef: `${namespace}::${previewRecord.sourceRowRef}`,
                 source_file: fileName,
+                source_file_class: schema.fileClass,
+                sourceFileClass: schema.fileClass,
                 needs_person_resolve: false,
                 rawValues: remapRawValues(getRawValues(previewRecord), rawHeaderMap),
                 ...(previewRecord.values ? { values: remapRawValues(previewRecord.values, rawHeaderMap) } : {}),
@@ -488,4 +490,332 @@ export function resolvePendingColumnMerge(parsedFile: ParsedFile, merge: Pending
     nextHeaders,
     (current.mergeState?.pendingMerges ?? []).filter((item) => item.id !== merge.id),
   );
+}
+
+// ─── Merge strategy detection ────────────────────────────────────────────────
+
+function isTxFileClass(fc: string): boolean {
+  return fc === 'ledger' || fc === 'donor';
+}
+
+function isProfileFileClass(fc: string): boolean {
+  return fc === 'constituent';
+}
+
+export type MergeStrategy = 'tx_tx' | 'tx_profile' | 'profile_profile';
+
+export function getMergeStrategy(currentFileClass: string, incomingFileClass: string): MergeStrategy | null {
+  if (isTxFileClass(currentFileClass) && isTxFileClass(incomingFileClass)) return 'tx_tx';
+  if ((isTxFileClass(currentFileClass) && isProfileFileClass(incomingFileClass)) || (isProfileFileClass(currentFileClass) && isTxFileClass(incomingFileClass))) return 'tx_profile';
+  if (isProfileFileClass(currentFileClass) && isProfileFileClass(incomingFileClass)) return 'profile_profile';
+  return null;
+}
+
+// ─── tx + profile lookup enrichment ──────────────────────────────────────────
+
+type ProfileLookupEntry = {
+  sourceRowRef: string;
+  canonicalPersonId: string;
+  record: PreviewRecord;
+  email: string;
+  phone: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  postalCode: string;
+};
+
+function normLookupStr(s: string): string {
+  return String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '');
+}
+function normLookupPhone(s: string): string {
+  return String(s || '').replace(/\D/g, '').slice(-10);
+}
+function normLookupEmail(s: string): string {
+  const raw = String(s || '').toLowerCase().trim();
+  if (!raw.includes('@')) return raw;
+  const [local, domain] = raw.split('@');
+  return `${local.split('+')[0]}@${domain}`;
+}
+
+function buildProfileLookupIndex(profileRecords: PreviewRecord[]): {
+  byEmail: Map<string, ProfileLookupEntry[]>;
+  byPhone: Map<string, ProfileLookupEntry[]>;
+  byName: Map<string, ProfileLookupEntry[]>;
+} {
+  const byEmail = new Map<string, ProfileLookupEntry[]>();
+  const byPhone = new Map<string, ProfileLookupEntry[]>();
+  const byName = new Map<string, ProfileLookupEntry[]>();
+
+  for (const record of profileRecords) {
+    const r = record as Record<string, unknown>;
+    const email = normLookupEmail(String(r['email'] || ''));
+    const phone = normLookupPhone(String(r['phone'] || ''));
+    const rawName = String(r['displayName'] || r['donorName'] || [r['firstName'], r['lastName']].filter(Boolean).join(' ') || '');
+    const name = normLookupStr(rawName);
+    const entry: ProfileLookupEntry = {
+      sourceRowRef: String(r['sourceRowRef'] || r['id'] || ''),
+      canonicalPersonId: String(r['canonical_person_id'] || r['canonicalPersonId'] || r['sourceRowRef'] || r['id'] || ''),
+      record,
+      email,
+      phone,
+      name,
+      address: String(r['address'] || ''),
+      city: String(r['city'] || ''),
+      state: String(r['state'] || ''),
+      postalCode: String(r['postalCode'] || ''),
+    };
+
+    if (email) { if (!byEmail.has(email)) byEmail.set(email, []); byEmail.get(email)!.push(entry); }
+    if (phone) { if (!byPhone.has(phone)) byPhone.set(phone, []); byPhone.get(phone)!.push(entry); }
+    if (name) { if (!byName.has(name)) byName.set(name, []); byName.get(name)!.push(entry); }
+  }
+
+  return { byEmail, byPhone, byName };
+}
+
+function findBestProfileMatch(txRecord: PreviewRecord, index: ReturnType<typeof buildProfileLookupIndex>): {
+  entry: ProfileLookupEntry | null;
+  matchStatus: 'matched' | 'unmatched' | 'ambiguous';
+} {
+  const r = txRecord as Record<string, unknown>;
+  const email = normLookupEmail(String(r['email'] || getRawValues(txRecord)['email'] || ''));
+  const phone = normLookupPhone(String(r['phone'] || getRawValues(txRecord)['phone'] || ''));
+  const rawName = String(r['donorName'] || r['displayName'] || [r['firstName'], r['lastName']].filter(Boolean).join(' ') || r['entity_name'] || '');
+  const name = normLookupStr(rawName);
+
+  const scores = new Map<string, { entry: ProfileLookupEntry; score: number }>();
+  const add = (entry: ProfileLookupEntry, score: number) => {
+    const existing = scores.get(entry.sourceRowRef);
+    if (!existing || existing.score < score) scores.set(entry.sourceRowRef, { entry, score });
+  };
+
+  if (email) (index.byEmail.get(email) ?? []).forEach((e) => add(e, 3));
+  if (phone) (index.byPhone.get(phone) ?? []).forEach((e) => add(e, 2));
+  if (name) (index.byName.get(name) ?? []).forEach((e) => add(e, 1));
+
+  if (scores.size === 0) return { entry: null, matchStatus: 'unmatched' };
+
+  const sorted = Array.from(scores.values()).sort((a, b) => b.score - a.score);
+  if (sorted.length > 1 && sorted[0].score === sorted[1].score) {
+    return { entry: sorted[0].entry, matchStatus: 'ambiguous' };
+  }
+  return { entry: sorted[0].entry, matchStatus: 'matched' };
+}
+
+export function mergeTxWithProfileLookup(input: {
+  txParsedFile: ParsedFile;
+  txSchema: ResolvedSchema;
+  txRows: CanonicalLedgerRow[];
+  profileParsedFile: ParsedFile;
+  profileFileName: string;
+}): { parsedFile: ParsedFileWithMerge; schema: ResolvedSchema; rows: CanonicalLedgerRow[] } {
+  const profileRecords = (input.profileParsedFile.preview?.records ?? []) as PreviewRecord[];
+  const index = buildProfileLookupIndex(profileRecords);
+  const profileHeaders = input.profileParsedFile.headers ?? [];
+  const profileHeaderTargets = new Map<string, string>(
+    profileHeaders.map((header) => [
+      header,
+      input.txParsedFile.headers.includes(header) ? `profile_${header}` : header,
+    ]),
+  );
+
+  // Build match map: tx preview record sourceRowRef → { entry, matchStatus }
+  const txRecords = (input.txParsedFile.preview?.records ?? []) as PreviewRecord[];
+  const matchMap = new Map<string, { entry: ProfileLookupEntry | null; matchStatus: 'matched' | 'unmatched' | 'ambiguous' }>();
+  for (const record of txRecords) {
+    const ref = String((record as Record<string, unknown>)['sourceRowRef'] || (record as Record<string, unknown>)['id'] || '');
+    matchMap.set(ref, findBestProfileMatch(record, index));
+  }
+
+  const extraHeaders = profileHeaders
+    .map((header) => profileHeaderTargets.get(header) ?? header)
+    .filter((header) => !input.txParsedFile.headers.includes(header));
+  const nextHeaders = [...input.txParsedFile.headers, ...extraHeaders];
+
+  // Enrich parsed source rows with profile lookup results
+  const enrichedRows = input.txParsedFile.rows.map((row) => {
+    const match = matchMap.get(row.ref);
+    if (!match || match.matchStatus !== 'matched' || !match.entry) return row;
+    const profileValues = getRawValues(match.entry.record);
+    return {
+      ...row,
+      values: {
+        ...row.values,
+        ...Object.fromEntries(profileHeaders.map((header) => [
+          profileHeaderTargets.get(header) ?? header,
+          profileValues[header] || '',
+        ])),
+      },
+    };
+  });
+
+  const enrichedCanonicalRows = input.txRows.map((row) => {
+    const match = matchMap.get(row.source_row_ref);
+    if (!match || match.matchStatus !== 'matched' || !match.entry) return row;
+    const profileValues = getRawValues(match.entry.record);
+    return {
+      ...row,
+      canonical_person_id: match.entry.canonicalPersonId ?? row.canonical_person_id,
+      entity_name: row.entity_name || String((match.entry.record as Record<string, unknown>)['displayName'] || (match.entry.record as Record<string, unknown>)['donorName'] || ''),
+      source_file: row.source_file || String((match.entry.record as Record<string, unknown>)['source_file'] || (match.entry.record as Record<string, unknown>)['sourceFile'] || ''),
+      memo: row.memo || String(profileValues.memo || ''),
+    };
+  });
+
+  // Enrich tx preview records with matched profile data
+  const enrichedRecords = txRecords.map((record) => {
+    const ref = String((record as Record<string, unknown>)['sourceRowRef'] || (record as Record<string, unknown>)['id'] || '');
+    const match = matchMap.get(ref);
+    if (!match || match.matchStatus !== 'matched' || !match.entry) return record;
+    const entry = match.entry;
+    const currentRawValues = getRawValues(record);
+    const profileValues = getRawValues(entry.record);
+    return {
+      ...record,
+      rawValues: {
+        ...currentRawValues,
+        ...Object.fromEntries(profileHeaders.map((header) => [
+          profileHeaderTargets.get(header) ?? header,
+          String(profileValues[header] ?? ''),
+        ])),
+      },
+      values: {
+        ...(record.values ?? {}),
+        ...Object.fromEntries(profileHeaders.map((header) => [
+          profileHeaderTargets.get(header) ?? header,
+          String(profileValues[header] ?? ''),
+        ])),
+      },
+      canonical_person_id: entry.canonicalPersonId ?? (record as Record<string, unknown>)['canonical_person_id'] ?? null,
+      ...Object.fromEntries(profileHeaders.map((header) => [
+        profileHeaderTargets.get(header) ?? header,
+        String(profileValues[header] ?? ''),
+      ])),
+    };
+  });
+
+  const matchedProfileRefs = new Set(
+    Array.from(matchMap.values())
+      .filter((match) => match.matchStatus === 'matched' && match.entry)
+      .map((match) => match.entry!.sourceRowRef),
+  );
+  const profileOnlyRecords = profileRecords.filter((record) => !matchedProfileRefs.has(String(record.sourceRowRef ?? record.id ?? '')));
+  const profileOnlyParsedRows = profileOnlyRecords.map((record, index) => ({
+    ref: `profile-only::${String(record.sourceRowRef ?? record.id ?? index)}`,
+    values: Object.fromEntries(nextHeaders.map((header) => [
+      header,
+      String(
+        (() => {
+          const originalProfileHeader = Array.from(profileHeaderTargets.entries()).find(([, target]) => target === header)?.[0];
+          return originalProfileHeader
+            ? (getRawValues(record)[originalProfileHeader] ?? (record as Record<string, unknown>)[originalProfileHeader] ?? '')
+            : '';
+        })(),
+      ),
+    ])),
+  }));
+  const profileOnlyCanonicalRows = profileOnlyRecords.map((record, index) => {
+    const label = String((record as Record<string, unknown>)['displayName'] || (record as Record<string, unknown>)['donorName'] || [record.firstName, record.lastName].filter(Boolean).join(' ') || record.sourceRowRef || record.id || `profile-only-${index + 1}`);
+    return {
+      id: `profile-only::${String(record.sourceRowRef ?? record.id ?? index)}`,
+      date: '',
+      entity_name: label,
+      account_code: '',
+      account_name: '',
+      debit: '',
+      credit: '',
+      currency: '',
+      memo: '',
+      source_platform: input.txRows[0]?.source_platform ?? input.txParsedFile.platform,
+      source_row_ref: `profile-only::${String(record.sourceRowRef ?? record.id ?? index)}`,
+      source_file: String((record as Record<string, unknown>)['source_file'] || (record as Record<string, unknown>)['sourceFile'] || input.profileFileName),
+      journal_id: '',
+      mapping_confidence: 0,
+      review_status: 'pending' as const,
+      needs_review: false,
+      suggested_fix: null,
+      qbo_account_id: null,
+      qbo_txn_id: null,
+      canonical_person_id: String(record.sourceRowRef ?? record.id ?? ''),
+      canonical_household_id: null,
+      raw_fund: null,
+      raw_appeal: null,
+      taxonomy_exception_id: null,
+      canonical_org_id: null,
+      attribution_entry_id: null,
+      normalized_fund: null,
+      normalized_appeal: null,
+      needs_person_resolve: false,
+    };
+  });
+  const profileOnlyPreviewRecords = profileOnlyRecords.map((record, index) => ({
+    ...record,
+    id: `profile-only::${String(record.sourceRowRef ?? record.id ?? index)}`,
+    sourceRowRef: `profile-only::${String(record.sourceRowRef ?? record.id ?? index)}`,
+    rawValues: Object.fromEntries(nextHeaders.map((header) => [
+      header,
+      String(
+        (() => {
+          const originalProfileHeader = Array.from(profileHeaderTargets.entries()).find(([, target]) => target === header)?.[0];
+          return originalProfileHeader
+            ? (getRawValues(record)[originalProfileHeader] ?? (record as Record<string, unknown>)[originalProfileHeader] ?? '')
+            : '';
+        })(),
+      ),
+    ])),
+    values: Object.fromEntries(nextHeaders.map((header) => [
+      header,
+      String(
+        (() => {
+          const originalProfileHeader = Array.from(profileHeaderTargets.entries()).find(([, target]) => target === header)?.[0];
+          return originalProfileHeader
+            ? ((record.values as Record<string, string> | undefined)?.[originalProfileHeader] ?? getRawValues(record)[originalProfileHeader] ?? (record as Record<string, unknown>)[originalProfileHeader] ?? '')
+            : '';
+        })(),
+      ),
+    ])),
+    sourceFileClass: (record.sourceFileClass ?? record.source_file_class ?? 'constituent'),
+    source_file_class: (record.sourceFileClass ?? record.source_file_class ?? 'constituent'),
+    link_profile_only: true,
+  }));
+
+  const uploadedFiles = Array.from(new Set([
+    ...((input.txParsedFile as ParsedFileWithMerge).mergeState?.uploadedFiles ?? [input.txParsedFile.fileName]),
+    input.profileFileName,
+  ]));
+
+  const matchedCount = Array.from(matchMap.values()).filter((m) => m.matchStatus === 'matched').length;
+  const ambiguousCount = Array.from(matchMap.values()).filter((m) => m.matchStatus === 'ambiguous').length;
+  const unmatchedCount = Array.from(matchMap.values()).filter((m) => m.matchStatus === 'unmatched').length;
+
+  const nextParsedFile = ensureMergeState(
+    {
+      ...input.txParsedFile,
+      fileName: `${input.txParsedFile.fileName} + ${input.profileFileName}`,
+      headers: nextHeaders,
+      rows: [...enrichedRows, ...profileOnlyParsedRows],
+      preview: input.txParsedFile.preview
+        ? {
+            ...input.txParsedFile.preview,
+            summary: {
+              ...input.txParsedFile.preview.summary,
+              rowCount: enrichedRecords.length + profileOnlyPreviewRecords.length,
+              populatedFields: nextHeaders.length,
+            },
+            records: [...enrichedRecords, ...profileOnlyPreviewRecords],
+          }
+        : input.txParsedFile.preview,
+    },
+    uploadedFiles,
+    nextHeaders,
+    [],
+  );
+
+  return {
+    parsedFile: nextParsedFile,
+    schema: { ...input.txSchema, _txProfileMatchSummary: { matched: matchedCount, ambiguous: ambiguousCount, unmatched: unmatchedCount, profileOnly: profileOnlyRecords.length } } as ResolvedSchema,
+    rows: [...enrichedCanonicalRows, ...profileOnlyCanonicalRows],
+  };
 }

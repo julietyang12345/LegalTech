@@ -28,33 +28,43 @@ export function EntityGraphTable({
   keyPrefix = '',
 }: EntityGraphTableProps) {
   const columnCount = entityGraphView === 'organizations' ? 3 : entityGraphView === 'persons' ? 5 : 6;
+  const viewLabel = entityGraphView === 'donations'
+    ? 'Canonical transaction'
+    : entityGraphView === 'attributions'
+      ? 'Transaction link'
+      : entityGraphView === 'households'
+        ? 'Household group'
+        : entityGraphView === 'persons'
+          ? 'Canonical profile'
+          : 'Organization';
 
   return (
     <table className="th-table th-household-preview-table">
       <thead>
         {entityGraphView === 'donations' && (
           <tr>
-            <th>Donation</th>
+            <th>{viewLabel}</th>
+            <th>Source row</th>
             <th>Amount</th>
-            <th>Person</th>
+            <th>Matched profile</th>
             <th>Household</th>
             <th>Org</th>
-            <th>Attribution</th>
+            <th>Links</th>
           </tr>
         )}
         {entityGraphView === 'attributions' && (
           <tr>
-            <th>Attribution</th>
-            <th>Donation</th>
-            <th>Kind</th>
-            <th>Person</th>
+            <th>{viewLabel}</th>
+            <th>Canonical tx</th>
+            <th>Link type</th>
+            <th>Matched profile</th>
             <th>Org</th>
             <th>Workplace</th>
           </tr>
         )}
         {entityGraphView === 'households' && (
           <tr>
-            <th>Household</th>
+            <th>{viewLabel}</th>
             <th>Label</th>
             <th>Primary</th>
             <th>Addressee</th>
@@ -64,7 +74,7 @@ export function EntityGraphTable({
         )}
         {entityGraphView === 'persons' && (
           <tr>
-            <th>Person</th>
+            <th>{viewLabel}</th>
             <th>Name</th>
             <th>Email</th>
             <th>Phone</th>
@@ -73,7 +83,7 @@ export function EntityGraphTable({
         )}
         {entityGraphView === 'organizations' && (
           <tr>
-            <th>Organization</th>
+            <th>{viewLabel}</th>
             <th>Name</th>
             <th>Normalized</th>
           </tr>
@@ -87,7 +97,8 @@ export function EntityGraphTable({
         ) : entityGraphView === 'donations' ? (
           (filteredEntityGraphRows as EntityModelResult['donations']).slice(0, 24).map((donation) => (
             <tr key={`${keyPrefix}${donation.id}`} className={entityGraphSelection?.type === 'donations' && entityGraphSelection.id === donation.id ? 'th-entity-row is-selected' : 'th-entity-row'} onClick={() => setEntityGraphSelection({ type: 'donations', id: donation.id })}>
-              <td>{donation.rowId || donation.id}</td>
+              <td>{donation.id}</td>
+              <td>{donation.rowId || '—'}</td>
               <td>{formatCurrencyAmount(donation.amount || 0)}</td>
               <td>{donation.canonical_person_id || '—'}</td>
               <td>{donation.canonical_household_id || '—'}</td>

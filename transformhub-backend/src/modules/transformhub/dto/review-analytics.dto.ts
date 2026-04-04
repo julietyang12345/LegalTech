@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { TRANSFORMHUB_MAX_ROWS_PER_REQUEST } from '../transformhub.constants';
 import { CanonicalRowDto } from './canonical-row.dto';
 
@@ -17,4 +17,5 @@ export class ReviewAnalyticsDto {
   @IsObject() @IsOptional() finalAttributionDrafts?: Record<string, any>;
   @IsString() @IsOptional() fileClass?: string;
   @IsString() @IsOptional() sessionId?: string;
+  @IsBoolean() @IsOptional() postReviewReady?: boolean;
 }

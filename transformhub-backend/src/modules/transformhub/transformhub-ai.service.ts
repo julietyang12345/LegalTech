@@ -385,6 +385,83 @@ Respond ONLY with valid JSON: {"suggestedAction":"confirm_merge|keep_separate","
     }
   }
 
+  async suggestDonorSignalFallback(input: {
+    rowRef: string;
+    platform: string;
+    rawValues: Record<string, string>;
+    missingFields: Array<'amount' | 'date' | 'transactionRef'>;
+  }): Promise<{
+    amountHeader: string | null;
+    dateHeader: string | null;
+    transactionRefHeader: string | null;
+    reason: string;
+    confidence: 'high' | 'medium' | 'low';
+    evidence: string[];
+    model: string;
+  } | null> {
+    if (!this.client || input.missingFields.length === 0) return null;
+
+    const headers = Object.keys(input.rawValues || {});
+    const sampleEntries = headers.slice(0, 40).map((header) => ({
+      header,
+      value: input.rawValues[header],
+    }));
+
+    const prompt = `You are identifying donor duplicate-signal fields in a TransformHub imported row.
+
+Rules:
+- This is an AI fallback only. Rule-based matching already ran first.
+- Only choose exact header strings from the provided row.
+- Only fill the fields listed in missingFields.
+- If a field cannot be identified confidently, return null for that field.
+- transactionRef means a stable transaction/payment/gateway/processor/reference identifier, not donor name or campaign name.
+- confidence must be one of: high, medium, low.
+- evidence must be a short list of the most important facts you used.
+
+Row ref: ${input.rowRef}
+Platform: ${input.platform}
+Missing fields: ${JSON.stringify(input.missingFields)}
+Available headers and sample values: ${JSON.stringify(sampleEntries)}
+
+Respond ONLY with valid JSON: {"amountHeader":"exact header"|null,"dateHeader":"exact header"|null,"transactionRefHeader":"exact header"|null,"reason":"one short sentence","confidence":"high|medium|low","evidence":["short fact"]}`;
+
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.schemaModel,
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        max_completion_tokens: 220,
+        temperature: 0,
+      });
+
+      const parsed = JSON.parse(response.choices[0].message.content ?? '{}');
+      const pickHeader = (value: unknown) => {
+        if (typeof value !== 'string') return null;
+        const trimmed = value.trim();
+        return trimmed && headers.includes(trimmed) ? trimmed : null;
+      };
+      const confidence = parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low'
+        ? parsed.confidence
+        : 'low';
+      const evidence = Array.isArray(parsed.evidence)
+        ? parsed.evidence.filter((value: unknown) => typeof value === 'string').slice(0, 5)
+        : [];
+
+      return {
+        amountHeader: input.missingFields.includes('amount') ? pickHeader(parsed.amountHeader) : null,
+        dateHeader: input.missingFields.includes('date') ? pickHeader(parsed.dateHeader) : null,
+        transactionRefHeader: input.missingFields.includes('transactionRef') ? pickHeader(parsed.transactionRefHeader) : null,
+        reason: String(parsed.reason ?? ''),
+        confidence,
+        evidence,
+        model: this.schemaModel,
+      };
+    } catch (err) {
+      this.logger.warn(`AI donor-signal fallback failed for row "${input.rowRef}": ${String(err)}`);
+      return null;
+    }
+  }
+
   async suggestHouseholdMatch(input: {
     addressKey: string;
     evidence: string[];
