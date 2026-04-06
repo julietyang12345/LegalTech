@@ -143,8 +143,8 @@ type PreviewCellRef = {
 
 type PreviewColumnFilters = Record<string, string>;
 
-type NonLedgerReviewPanel = 'duplicate' | 'matching' | 'household' | 'taxonomy' | 'outcomes';
-type ReviewOutcomeId = 'revenue_at_risk' | 'money_leakage' | 'finance_mismatch' | 'campaign_truth';
+type NonLedgerReviewPanel = 'duplicate' | 'matching' | 'household' | 'taxonomy' | 'tx' | 'outcomes';
+type ReviewOutcomeId = 'revenue_at_risk' | 'money_leakage' | 'finance_mismatch' | 'campaign_truth' | 'donor_health';
 type ReviewOutcomeAction = 'duplicate' | 'household' | 'taxonomy' | 'final_table';
 
 type ReviewOutcomeDetail = {
@@ -161,7 +161,7 @@ type ReviewOutcomeCard = {
   id: ReviewOutcomeId;
   eyebrow: string;
   title: string;
-  tone: 'risk' | 'opportunity' | 'warning';
+  tone: 'risk' | 'opportunity' | 'warning' | 'neutral';
   amount: number;
   metricKind: 'currency' | 'percent';
   summary: string;
@@ -1050,6 +1050,73 @@ function getPreviewCompareFields(headers: string[]): PreviewCompareField[] {
   ];
 }
 
+// The semantics that identify a PERSON, not a transaction.
+const DONOR_IDENTITY_SEMANTICS = new Set([
+  'entity_name', 'donor_name', 'first_name', 'last_name', 'organization_name',
+  'email', 'phone', 'address', 'city', 'state', 'postal_code', 'zip', 'country',
+]);
+
+// The semantics that describe a TRANSACTION, not a person.
+const TX_DUPLICATE_SEMANTICS = new Set([
+  'date', 'amount', 'debit', 'credit', 'account_code', 'account_name',
+  'fund', 'appeal', 'campaign', 'memo', 'currency',
+]);
+
+function getDonorIdentityCompareFields(headers: string[], fieldMap: Record<string, string> | null | undefined): PreviewCompareField[] {
+  // Build a set of raw headers that map to identity semantics.
+  const identityHeaders = new Set<string>();
+  if (fieldMap) {
+    for (const [semantic, rawHeader] of Object.entries(fieldMap)) {
+      if (DONOR_IDENTITY_SEMANTICS.has(semantic) && rawHeader) identityHeaders.add(rawHeader);
+    }
+  }
+  // Fall back to heuristic if no fieldMap or no matches.
+  const useAll = identityHeaders.size === 0;
+  const filtered = headers.filter((header) => {
+    if (useAll) return true;
+    if (identityHeaders.has(header)) return true;
+    // Also include by header name heuristic as a safety net.
+    const probe = header.toLowerCase().replace(/[^a-z]/g, '');
+    return /^(name|donor|first|last|org|org|email|phone|address|street|city|state|zip|postal|country)/.test(probe);
+  });
+  return [
+    { key: 'sourceRowRef', label: 'Source', editable: false, kind: 'source' },
+    ...filtered.map((header) => ({
+      key: `raw:${header}`,
+      label: formatPreviewHeaderLabel(header),
+      editable: true,
+      kind: 'raw' as const,
+      header,
+    })),
+  ];
+}
+
+function getTxDuplicateCompareFields(headers: string[], fieldMap: Record<string, string> | null | undefined): PreviewCompareField[] {
+  const txHeaders = new Set<string>();
+  // Always include identity fields too so reviewer knows WHO the transaction belongs to.
+  const wantedSemantics = new Set([...DONOR_IDENTITY_SEMANTICS, ...TX_DUPLICATE_SEMANTICS]);
+  if (fieldMap) {
+    for (const [semantic, rawHeader] of Object.entries(fieldMap)) {
+      if (wantedSemantics.has(semantic) && rawHeader) txHeaders.add(rawHeader);
+    }
+  }
+  const useAll = txHeaders.size === 0;
+  const filtered = headers.filter((header) => {
+    if (useAll) return true;
+    return txHeaders.has(header);
+  });
+  return [
+    { key: 'sourceRowRef', label: 'Source', editable: false, kind: 'source' },
+    ...filtered.map((header) => ({
+      key: `raw:${header}`,
+      label: formatPreviewHeaderLabel(header),
+      editable: true,
+      kind: 'raw' as const,
+      header,
+    })),
+  ];
+}
+
 function getPreviewCompareValue(record: PreviewRecord | null, field: PreviewCompareField): string {
   if (!record) return '—';
   if (field.kind === 'source') {
@@ -1256,9 +1323,9 @@ export default function TransformHubPage() {
   const isDonorFile = fileClass === "donor";
   const isConstituentFile = fileClass === 'constituent';
   const supportsDuplicateWorkflow = !isLedgerFile;
-  const primaryMergeStepLabel = isDonorFile ? 'Clean Transactions' : 'Clean Profiles';
+  const primaryMergeStepLabel = isDonorFile ? 'Clean Donors' : 'Clean Profiles';
   const primaryMergeStepDescription = isDonorFile
-    ? 'We look for the same gift imported twice, keep every raw row visible, and only ask you to confirm likely duplicate transactions.'
+    ? 'We resolve likely duplicate donor records first so household, taxonomy, and transaction checks run against cleaner canonical people.'
     : 'For non-transaction tables, we treat rows as profile-like records and look for the same person or entity using email, phone, address, and name.';
   const matchingStepLabel = hasTransactionLinkFlow ? 'Link Transactions' : 'Merge Tables';
   const matchingStepDescription = hasTransactionLinkFlow
@@ -1272,9 +1339,12 @@ export default function TransformHubPage() {
     : 'Review household grouping and communication rules after the relationship layer is built.';
   const taxonomyCleanupStepLabel = 'Taxonomy Cleanup';
   const taxonomyCleanupStepDescription = 'Review possible same fund, appeal, and campaign labels before export.';
+  const txCleanupStepLabel = 'Check Transaction Duplicates';
+  const txCleanupStepDescription = 'Review likely duplicate transactions (same donor, same amount, close dates) before export.';
   const householdStepNumber = hasTransactionLinkFlow ? 3 : 2;
   const taxonomyStepNumber = hasTransactionLinkFlow ? 4 : 3;
-  const analyticsStepNumber = hasTransactionLinkFlow ? 5 : 4;
+  const txCleanupStepNumber = hasTransactionLinkFlow ? 5 : 4;
+  const analyticsStepNumber = hasTransactionLinkFlow ? 6 : (isDonorFile ? 5 : 4);
   const reviewTableLabel = 'Review Table';
   const reviewTableDescription = hasTransactionLinkFlow
     ? 'This review table is transaction-anchored full outer style: all tx rows remain, matched profile fields are attached, and unmatched profile records appear as separate rows.'
@@ -1283,26 +1353,47 @@ export default function TransformHubPage() {
     : 'This is the final review table after profile cleanup and record linking.';
   const analyticsStepLabel = 'Analytics Review';
   const analyticsStepDescription = 'Review post-cleanup metrics, exceptions, and outcome summaries before export.';
-  const duplicateQueueLabel = isDonorFile ? 'Transaction merge queue' : isConstituentFile ? 'Profile merge queue' : 'Duplicate review queue';
-  const duplicateRunLabel = isDonorFile ? 'Check transaction duplicates' : isConstituentFile ? 'Run profile cleanup' : 'Run duplicate check';
-  const duplicateRerunLabel = isDonorFile ? 'Check transaction duplicates' : isConstituentFile ? 'Rerun profile cleanup' : 'Rerun duplicate check';
-  const duplicateRunningLabel = isDonorFile ? 'Cleaning transactions…' : isConstituentFile ? 'Cleaning profiles…' : 'Running duplicate check…';
-  const duplicateResetLabel = isDonorFile ? 'Reset transaction duplicate check' : isConstituentFile ? 'Reset profile cleanup' : 'Reset duplicate check';
-  const duplicateResettingLabel = isDonorFile ? 'Resetting transaction cleanup…' : isConstituentFile ? 'Resetting profile cleanup…' : 'Resetting duplicate check…';
-  const confirmMergeLabel = isDonorFile ? 'Keep one transaction' : isConstituentFile ? 'Merge profiles' : 'Confirm merge';
-  const keepSeparateLabel = isDonorFile ? 'Keep both transactions' : isConstituentFile ? 'Keep separate' : 'Keep separate';
-  const mergeAllLabel = isDonorFile ? 'Keep one per shown transaction group' : isConstituentFile ? 'Merge all shown profiles' : 'Merge all shown';
+  const duplicateQueueLabel = isDonorFile ? 'Donor merge queue' : isConstituentFile ? 'Profile merge queue' : 'Duplicate review queue';
+  const duplicateRunLabel = isDonorFile ? 'Check donor duplicates' : isConstituentFile ? 'Run profile cleanup' : 'Run duplicate check';
+  const duplicateRerunLabel = isDonorFile ? 'Check donor duplicates' : isConstituentFile ? 'Rerun profile cleanup' : 'Rerun duplicate check';
+  const duplicateRunningLabel = isDonorFile ? 'Cleaning donors…' : isConstituentFile ? 'Cleaning profiles…' : 'Running duplicate check…';
+  const duplicateResetLabel = isDonorFile ? 'Reset donor duplicate check' : isConstituentFile ? 'Reset profile cleanup' : 'Reset duplicate check';
+  const duplicateResettingLabel = isDonorFile ? 'Resetting donor cleanup…' : isConstituentFile ? 'Resetting profile cleanup…' : 'Resetting duplicate check…';
+  const confirmMergeLabel = isDonorFile ? 'Merge donors' : isConstituentFile ? 'Merge profiles' : 'Confirm merge';
+  const keepSeparateLabel = isDonorFile ? 'Keep separate' : isConstituentFile ? 'Keep separate' : 'Keep separate';
+  const mergeAllLabel = isDonorFile ? 'Merge all shown donors' : isConstituentFile ? 'Merge all shown profiles' : 'Merge all shown';
   const supportsHouseholdWorkflow = !isLedgerFile;
   const canonicalPeople = useMemo(() => personResult?.persons ?? [], [personResult?.persons]);
-  const previewCompareFields = useMemo(
-    () => (supportsDuplicateWorkflow && duplicateReviewActive ? getPreviewCompareFields(parsedFile?.headers ?? []) : []),
-    [supportsDuplicateWorkflow, duplicateReviewActive, parsedFile?.headers],
-  );
+  const previewCompareFields = useMemo(() => {
+    if (!supportsDuplicateWorkflow || !duplicateReviewActive) return [];
+    const headers = parsedFile?.headers ?? [];
+    const fieldMap = schema?.fieldMap as Record<string, string> | null | undefined;
+    // Donor identity panel: only show name/email/phone/address columns so it's clear
+    // this step is matching PEOPLE not transactions.
+    if (isDonorFile) return getDonorIdentityCompareFields(headers, fieldMap);
+    return getPreviewCompareFields(headers);
+  }, [supportsDuplicateWorkflow, duplicateReviewActive, isDonorFile, parsedFile?.headers, schema?.fieldMap]);
   useEffect(() => {
     if (isLedgerFile || !parsedFile?.preview) {
       setTaxonomyState((current) => (current ? null : current));
     }
   }, [isLedgerFile, parsedFile]);
+
+  // txDuplicateResult is returned by the backend when baselineFileClass='donor' and matchMode=combined.
+  const txDuplicateResult = (personResult as any)?.txDuplicateResult as PersonResolverResult | null | undefined;
+  const txCompareFields = useMemo(() => {
+    const headers = parsedFile?.headers ?? [];
+    const fieldMap = schema?.fieldMap as Record<string, string> | null | undefined;
+    return getTxDuplicateCompareFields(headers, fieldMap);
+  }, [parsedFile?.headers, schema?.fieldMap]);
+  const txReviewMatches = useMemo(
+    () => (txDuplicateResult?.matches ?? []).filter(
+      (match) => match.band !== 'separate' && previewRecords.some((r) => r.sourceRowRef === match.inputRef),
+    ),
+    [txDuplicateResult?.matches, previewRecords],
+  );
+  const [txMergeDecisions, setTxMergeDecisions] = useState<Map<string, 'confirmed' | 'separated'>>(new Map());
+  const [expandedTxReviewRef, setExpandedTxReviewRef] = useState<string | null>(null);
 
   const ledgerReviewMatches = (personResult?.matches ?? []).filter((match) => {
     const matchedRowRef = match.reviewPayload?.matchedInputRef ?? null;
@@ -1367,6 +1458,33 @@ export default function TransformHubPage() {
   );
   const mergeableLedgerReviewMatches = filteredLedgerReviewMatches.filter((match) => !deriveReviewDecision(match, mergeDecisions));
   const mergeablePreviewReviewMatches = filteredPreviewReviewMatches.filter((match) => !deriveReviewDecision(match, mergeDecisions));
+  // Donor files: group matches by unique donor pair (same input name + same matchedPersonId) so each pair shows ONE card
+  const groupedFilteredPreviewReviewMatches = useMemo(() => {
+    if (!isDonorFile) {
+      return filteredPreviewReviewMatches.map((m) => ({ key: m.inputRef, representative: m, allMatches: [m] as PersonMatch[] }));
+    }
+    const groups = new Map<string, { key: string; representative: PersonMatch; allMatches: PersonMatch[] }>();
+    for (const match of filteredPreviewReviewMatches) {
+      const inputName = (match.reviewPayload?.input?.name ?? '').trim().toLowerCase();
+      // Group by input name + candidate display name so that rows matched to the same
+      // person (even via different canonical person IDs) collapse into one card
+      const candidate = match.reviewPayload?.candidate;
+      const candidateName = candidate
+        ? `${candidate.firstName ?? ''} ${candidate.lastName ?? ''}`.trim().toLowerCase()
+        : (match.matchedPersonId ?? '');
+      const groupKey = `${inputName}|${candidateName}`;
+      const existing = groups.get(groupKey);
+      if (existing) {
+        existing.allMatches.push(match);
+      } else {
+        groups.set(groupKey, { key: groupKey, representative: match, allMatches: [match] });
+      }
+    }
+    return Array.from(groups.values());
+  }, [isDonorFile, filteredPreviewReviewMatches]);
+  const mergeablePreviewGroupCount = groupedFilteredPreviewReviewMatches.filter(
+    ({ representative }) => !deriveReviewDecision(representative, mergeDecisions),
+  ).length;
   const resolvedReviewDecisions = personResult?.matches.filter((match) => deriveReviewDecision(match, mergeDecisions)).length ?? 0;
   const pendingPeopleReviews = Math.max(0, (personResult?.pendingReviewCount ?? personResult?.needsReview ?? 0) - resolvedReviewDecisions);
   const peopleStepReady = !supportsDuplicateWorkflow || (!!personResult && pendingPeopleReviews === 0);
@@ -1979,7 +2097,33 @@ export default function TransformHubPage() {
     taxonomyState,
   ]);
   const effectiveReviewOutcomeCards = reviewAnalyticsData?.cards ?? [];
-  const selectedOutcomeCard = effectiveReviewOutcomeCards.find((card) => card.id === selectedOutcomeCardId) ?? effectiveReviewOutcomeCards[0];
+  const donorHealthOutcomeCard = useMemo<ReviewOutcomeCard | null>(() => {
+    if (donorHealthCards.length === 0 || fileClass !== 'donor') return null;
+    return {
+      id: 'donor_health',
+      eyebrow: 'Health · Structure',
+      title: 'Donor Health + Structure',
+      tone: 'neutral',
+      amount: 0,
+      metricKind: 'percent',
+      summary: 'Retention, composition, and revenue quality signals from the reviewed donor layer.',
+      supporting: `${donorHealthCards.length} metric${donorHealthCards.length !== 1 ? 's' : ''} computed`,
+      details: donorHealthCards.map((card) => ({
+        id: card.id,
+        label: card.title,
+        count: 0,
+        amount: 0,
+        description: card.note ?? '',
+        ctaLabel: card.metric,
+        action: 'final_table' as ReviewOutcomeAction,
+      })),
+    };
+  }, [donorHealthCards, fileClass]);
+  const displayedOutcomeCards = useMemo(
+    () => (donorHealthOutcomeCard ? [...effectiveReviewOutcomeCards, donorHealthOutcomeCard] : effectiveReviewOutcomeCards),
+    [effectiveReviewOutcomeCards, donorHealthOutcomeCard],
+  );
+  const selectedOutcomeCard = displayedOutcomeCards.find((card) => card.id === selectedOutcomeCardId) ?? displayedOutcomeCards[0];
   const analyticsWorkspaceItems = useMemo<AnalyticsWorkspaceItem[]>(() => {
     const donorRecords = fileClass === 'donor' ? reviewedPreviewRecords : [];
     const donorGroups = new Map<string, {
@@ -4720,8 +4864,18 @@ export default function TransformHubPage() {
     setIsLoading(true);
     setIsRunningPersonResolver(true);
     try {
+      const identityRows = buildPreviewIdentityRows();
+      console.log('[donor-dedup] handleRunPersonResolver', {
+        isLedgerFile,
+        supportsDuplicateWorkflow,
+        fileClass,
+        isDonorFile,
+        previewRecordCount: previewRecords.length,
+        identityRowCount: identityRows.length,
+        sampleEntityNames: identityRows.slice(0, 5).map((r) => ({ ref: r.source_row_ref, entity_name: r.entity_name, email: (r as any).email })),
+      });
       if (!isLedgerFile && supportsDuplicateWorkflow) {
-        const result = await resolvePersonsBackend(buildPreviewIdentityRows(), undefined, sessionId ?? undefined, {
+        const result = await resolvePersonsBackend(identityRows, undefined, sessionId ?? undefined, {
           usePersistentIdentityMemory: true,
           forceReviewOnAutoMatches: true,
           seedExistingPersonsFromDb: true,
@@ -4964,6 +5118,156 @@ export default function TransformHubPage() {
       setRows(result.updatedRows);
       setMergeDecisions(buildMergeDecisionMap(result.updatedRows, result.auditDecisions));
       if (result.audit) setAuditResult(result.audit);
+      setSessionUpdatedAt(new Date().toISOString());
+      setMessage(action === 'confirmed' ? 'Merge decision saved to the backend session.' : 'Separate decision saved to the backend session.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to save the merge decision.');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleGroupMergeDecision(allMatches: PersonMatch[], action: "confirmed" | "separated") {
+    const representativeMatch = allMatches[0];
+    if (!representativeMatch) return;
+    const inputRefSet = new Set(allMatches.map((m) => m.inputRef));
+
+    if (!sessionId || !isLedgerFile) {
+      const nextMergeDecisions = new Map(mergeDecisions);
+      for (const m of allMatches) nextMergeDecisions.set(m.inputRef, action);
+
+      const nextPersonResult: PersonResolverResult | null = personResult
+        ? {
+            ...personResult,
+            matches: personResult.matches.map((candidate) =>
+              inputRefSet.has(candidate.inputRef)
+                ? {
+                    ...candidate,
+                    decision: action === "confirmed" ? 'auto' as const : 'new' as const,
+                    matchedPersonId: action === "confirmed" ? representativeMatch.matchedPersonId : null,
+                  }
+                : candidate,
+            ),
+          }
+        : personResult;
+
+      setMergeDecisions(nextMergeDecisions);
+      setPersonResult(nextPersonResult);
+      setHouseholdResult(null);
+
+      // Patch parsedFile with canonical name for ALL rows with the same donor name
+      let nextParsedFile: ParsedFile | null = parsedFile;
+      if (action === 'confirmed' && parsedFile?.preview) {
+        const candidate = representativeMatch.reviewPayload?.candidate;
+        const canonicalName = candidate ? [candidate.firstName, candidate.lastName].filter(Boolean).join(' ') : null;
+        const inputName = (representativeMatch.reviewPayload?.input?.name ?? '').trim().toLowerCase();
+        const fieldMap = (schema?.fieldMap ?? {}) as Record<string, string>;
+        const entityNameHeader = fieldMap.entity_name ?? fieldMap.donor_name ?? null;
+        const nameHeaderKeys = Object.entries(fieldMap).filter(([sem]) => /entity_name|donor_name|full_name/.test(sem)).map(([, h]) => h);
+        const sampleRecord = (parsedFile.preview.records as PreviewRecord[])[0];
+        console.log('[donor-merge] handleGroupMergeDecision patch start', {
+          sessionId: !!sessionId,
+          isLedgerFile,
+          canonicalName,
+          inputName,
+          entityNameHeader,
+          nameHeaderKeys,
+          fieldMap,
+          recordCount: parsedFile.preview.records.length,
+          sampleRecord: sampleRecord ? {
+            sourceRowRef: sampleRecord.sourceRowRef,
+            donorName: (sampleRecord as any).donorName,
+            displayName: (sampleRecord as any).displayName,
+            hasRawValues: !!sampleRecord.rawValues,
+            rawValuesKeys: sampleRecord.rawValues ? Object.keys(sampleRecord.rawValues).slice(0, 8) : null,
+            hasValues: !!(sampleRecord as any).values,
+          } : null,
+        });
+        if (canonicalName && inputName) {
+          const nextRecords = (parsedFile.preview.records as PreviewRecord[]).map((record) => {
+            const isInGroup = inputRefSet.has(record.sourceRowRef);
+            const recName = ((record as any).donorName ?? (record as any).displayName ?? '').trim().toLowerCase();
+            const isSameDonor = recName === inputName;
+            if (!isInGroup && !isSameDonor) return record;
+            const existingRawValues = record.rawValues ?? (record as any).values ?? {};
+            const patchedRawValues = {
+              ...existingRawValues,
+              ...(entityNameHeader ? { [entityNameHeader]: canonicalName } : {}),
+              ...Object.fromEntries(nameHeaderKeys.map((h) => [h, canonicalName])),
+            };
+            console.log('[donor-merge] patching record', {
+              sourceRowRef: record.sourceRowRef,
+              isInGroup,
+              isSameDonor,
+              recName,
+              hadRawValues: !!record.rawValues,
+              entityNameHeader,
+              patchedKeys: Object.keys(patchedRawValues).slice(0, 5),
+            });
+            return {
+              ...record,
+              donorName: canonicalName,
+              displayName: canonicalName,
+              rawValues: patchedRawValues,
+              values: patchedRawValues,
+            };
+          });
+          nextParsedFile = { ...parsedFile, preview: { ...parsedFile.preview, records: nextRecords } };
+          console.log('[donor-merge] nextParsedFile built', { changed: nextParsedFile !== parsedFile, updatedCount: nextRecords.filter((r, i) => r !== (parsedFile.preview!.records as PreviewRecord[])[i]).length });
+        } else {
+          console.warn('[donor-merge] skipping patch: missing canonicalName or inputName', { canonicalName, inputName });
+        }
+      }
+
+      if (sessionId) {
+        setIsLoading(true);
+        try {
+          const nextStatus = deriveSessionStatus(rows, preflight, receipts);
+          // Apply name changes locally immediately so the table updates even before server round-trip
+          if (nextParsedFile !== parsedFile) setParsedFile(nextParsedFile);
+          const session = await saveSession(sessionId, rows, nextStatus, preflight, nextPersonResult, null, nextParsedFile);
+          console.log('[donor-merge] saveSession response parsedFile sample', {
+            firstRecord: (session.parsedFile?.preview?.records as PreviewRecord[] | undefined)?.[0] ? {
+              sourceRowRef: (session.parsedFile.preview!.records as PreviewRecord[])[0].sourceRowRef,
+              donorName: ((session.parsedFile.preview!.records as PreviewRecord[])[0] as any).donorName,
+              rawValuesKeys: (session.parsedFile.preview!.records as PreviewRecord[])[0].rawValues ? Object.keys((session.parsedFile.preview!.records as PreviewRecord[])[0].rawValues!).slice(0, 5) : null,
+            } : null,
+          });
+          applySession(session, action === "confirmed" ? "Merge decision saved to the backend session." : "Separate decision saved to the backend session.");
+          // Re-apply local parsedFile after applySession in case server returned stale data
+          if (nextParsedFile !== parsedFile) setParsedFile(nextParsedFile);
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : "Failed to save the merge decision.");
+        } finally {
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      if (nextParsedFile !== parsedFile) setParsedFile(nextParsedFile);
+      setMessage(action === "confirmed" ? "Merge confirmed. Continue after all pending people reviews are resolved." : "Records marked separate. Continue after all pending people reviews are resolved.");
+      return;
+    }
+
+    // Session / ledger path: call backend for each match in the group
+    setIsLoading(true);
+    try {
+      let lastResult: Awaited<ReturnType<typeof persistMergeDecisionBackend>> | null = null;
+      for (const match of allMatches) {
+        lastResult = await persistMergeDecisionBackend(
+          sessionId,
+          match.inputRef,
+          action,
+          match.matchedPersonId,
+          (match.reviewPayload?.matchedEvidence ?? []).slice(0, 3).join(' + ') || summarizeMatchSignals(match),
+          Number.isFinite(match.score) ? Math.round(match.score * 100) / 100 : undefined,
+        );
+      }
+      if (lastResult) {
+        setRows(lastResult.updatedRows);
+        setMergeDecisions(buildMergeDecisionMap(lastResult.updatedRows, lastResult.auditDecisions));
+        if (lastResult.audit) setAuditResult(lastResult.audit);
+      }
       setSessionUpdatedAt(new Date().toISOString());
       setMessage(action === 'confirmed' ? 'Merge decision saved to the backend session.' : 'Separate decision saved to the backend session.');
     } catch (error) {
@@ -5406,7 +5710,7 @@ export default function TransformHubPage() {
           {
             id: 'analytics',
             label: 'Review analytics',
-            status: (!(supportsHouseholdWorkflow ? householdsStepReady : peopleStepReady) ? 'idle' : effectiveReviewOutcomeCards.length > 0 ? 'ok' : 'idle') as NodeStatus,
+            status: (!(supportsHouseholdWorkflow ? householdsStepReady : peopleStepReady) ? 'idle' : displayedOutcomeCards.length > 0 ? 'ok' : 'idle') as NodeStatus,
             count: !(supportsHouseholdWorkflow ? householdsStepReady : peopleStepReady)
               ? `unlock after ${supportsHouseholdWorkflow ? 'review' : 'duplicates'}`
               : selectedOutcomeCard
@@ -6271,7 +6575,6 @@ export default function TransformHubPage() {
                 <span><span className="th-layer-badge">09</span> Review {fileClass}</span>
                 <span>{preview.summary.rowCount} records · {preview.canonicalModel}</span>
               </div>
-              <p className="th-helper">This file was classified as <strong>{fileClass}</strong>. We keep raw source rows intact, clean the right layer first, then build one matched review view instead of flattening unrelated tables together.</p>
               {isUploadLoading && (
                 <div className="th-review-loader" style={{ marginBottom: 14 }}>
                   <div className="th-review-loader-spinner" aria-hidden="true" />
@@ -6286,6 +6589,7 @@ export default function TransformHubPage() {
                 {supportsHouseholdWorkflow && hasTransactionLinkFlow && <button type="button" className={`th-chip th-review-tab${nonLedgerReviewPanel === 'matching' ? ' is-active' : ''}`} onClick={() => setNonLedgerReviewPanel('matching')}><span>Step 2 · {matchingStepLabel}</span><span className="th-step-info-icon" title={matchingStepDescription} aria-label={`Step 2 info. ${matchingStepDescription}`} onClick={(event) => event.stopPropagation()}><CircleHelp size={14} /></span></button>}
                 {supportsHouseholdWorkflow && <button type="button" className={`th-chip th-review-tab${nonLedgerReviewPanel === 'household' ? ' is-active' : ''}`} onClick={() => setNonLedgerReviewPanel('household')}><span>{`Step ${householdStepNumber} · ${householdCleanupStepLabel}`}</span><span className="th-step-info-icon" title={householdCleanupStepDescription} aria-label={`Step ${householdStepNumber} info. ${householdCleanupStepDescription}`} onClick={(event) => event.stopPropagation()}><CircleHelp size={14} /></span></button>}
                 <button type="button" className={"th-chip th-review-tab" + (nonLedgerReviewPanel === "taxonomy" ? " is-active" : "")} onClick={() => setNonLedgerReviewPanel("taxonomy")}><span>{`Step ${taxonomyStepNumber} · ${taxonomyCleanupStepLabel}`}</span><span className="th-step-info-icon" title={taxonomyCleanupStepDescription} aria-label={`Step ${taxonomyStepNumber} info. ${taxonomyCleanupStepDescription}`} onClick={(event) => event.stopPropagation()}><CircleHelp size={14} /></span></button>
+                {isDonorFile && <button type="button" className={`th-chip th-review-tab${nonLedgerReviewPanel === 'tx' ? ' is-active' : ''}`} onClick={() => setNonLedgerReviewPanel('tx')}><span>{`Step ${txCleanupStepNumber} · ${txCleanupStepLabel}`}</span><span className="th-step-info-icon" title={txCleanupStepDescription} aria-label={`Step ${txCleanupStepNumber} info. ${txCleanupStepDescription}`} onClick={(event) => event.stopPropagation()}><CircleHelp size={14} /></span></button>}
                 <button
                   type="button"
                   className={`th-chip th-review-tab${nonLedgerReviewPanel === 'outcomes' ? ' is-active' : ''}`}
@@ -6299,6 +6603,118 @@ export default function TransformHubPage() {
                 <p className="th-helper" style={{ padding: 0, marginTop: -4, marginBottom: 12 }}>
                   Source sheets: {previewSourceLegendEntries.map((entry) => `${entry.badge} = ${entry.label}`).join(' · ')}
                 </p>
+              )}
+              {nonLedgerReviewPanel === 'tx' && (
+                <div className="th-stack" style={{ marginBottom: 14 }}>
+                  <div className="th-panel th-inner-panel">
+                    <div className="th-panel-head">
+                      <span>Transaction duplicate queue</span>
+                      <span>{txReviewMatches.length} pair{txReviewMatches.length === 1 ? '' : 's'} to review</span>
+                    </div>
+                    <p className="th-helper">These rows share the same donor, amount, and close date — they may be the same gift entered twice. Review each pair and keep one or keep both.</p>
+                  </div>
+                  {!txDuplicateResult && (
+                    <div className="th-mini-block">
+                      <strong>Run donor duplicate check first</strong>
+                      <p>Transaction duplicate analysis runs automatically after the donor check (Step 1). Run Step 1 to populate this queue.</p>
+                      <button type="button" className="th-button th-button-secondary" style={{ marginTop: 8 }} onClick={() => setNonLedgerReviewPanel('duplicate')}>Go to Step 1 · {primaryMergeStepLabel}</button>
+                    </div>
+                  )}
+                  {txDuplicateResult && txReviewMatches.length === 0 && (
+                    <div className="th-mini-block">
+                      <strong>No transaction duplicates found</strong>
+                      <p>No rows matched on donor + amount + close date. You can proceed to Analytics Review.</p>
+                    </div>
+                  )}
+                  {txReviewMatches.map((match) => {
+                    const incomingRecord = previewRecords.find((r) => r.sourceRowRef === match.inputRef) ?? null;
+                    const matchedRecordRef = match.reviewPayload?.matchedInputRef ?? null;
+                    const matchedRecord = matchedRecordRef ? previewRecords.find((r) => r.sourceRowRef === matchedRecordRef) ?? null : null;
+                    const decision = txMergeDecisions.get(match.inputRef);
+                    const isExpanded = expandedTxReviewRef === match.inputRef;
+                    const candidateEvidence = match.reviewPayload?.matchedEvidence?.filter(Boolean) ?? [];
+                    return (
+                      <div key={match.inputRef} className="th-guardrail is-warning th-review-match-card" style={{ gap: 14 }}>
+                        <div className="th-review-match-head">
+                          <div style={{ flex: 1 }}>
+                            <strong>{getCompactSourceRef(match.inputRef).primary} ↔ {matchedRecord ? getCompactSourceRef(matchedRecord.sourceRowRef).primary : match.inputRef}</strong>
+                            <p>{incomingRecord ? previewRecordLabel(incomingRecord) : match.inputRef} → {matchedRecord ? previewRecordLabel(matchedRecord) : match.inputRef}</p>
+                            <p>{candidateEvidence.join(' · ') || 'Matched on donor + amount + date'}</p>
+                          </div>
+                          <div className="th-review-match-actions">
+                            <button
+                              type="button"
+                              className={`th-button ${isExpanded ? 'th-button-primary' : 'th-button-secondary'}`}
+                              style={{ minHeight: 34 }}
+                              onClick={() => setExpandedTxReviewRef(isExpanded ? null : match.inputRef)}
+                            >
+                              {isExpanded ? 'Hide compare' : 'Show compare'}
+                            </button>
+                            {decision ? (
+                              <span className={`th-status ${decision === 'confirmed' ? 'is-ready' : 'is-rejected'}`}>
+                                {decision === 'confirmed' ? 'Kept one' : 'Kept both'}
+                              </span>
+                            ) : (
+                              <div className="th-review-match-actions">
+                                <button type="button" className="th-button th-button-primary" style={{ minHeight: 34 }} onClick={() => setTxMergeDecisions((prev) => new Map(prev).set(match.inputRef, 'confirmed'))}>Keep one (deduplicate)</button>
+                                <button type="button" className="th-button th-button-secondary" style={{ minHeight: 34 }} onClick={() => setTxMergeDecisions((prev) => new Map(prev).set(match.inputRef, 'separated'))}>Keep both</button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className={`th-review-summary ${isExpanded ? 'is-open' : ''}`}
+                          onClick={() => setExpandedTxReviewRef(isExpanded ? null : match.inputRef)}
+                        >
+                          <span><strong>Incoming</strong> {incomingRecord ? previewRecordLabel(incomingRecord) : match.inputRef}</span>
+                          <span><strong>Matched row</strong> {matchedRecord ? previewRecordLabel(matchedRecord) : match.inputRef}</span>
+                        </button>
+                        {isExpanded && (
+                          <div className="th-stack" style={{ width: '100%' }}>
+                            <div className="th-mini-block">
+                              <strong>Row compare</strong>
+                              <div className="th-table-wrap" style={{ marginTop: 10 }}>
+                                <table className="th-table th-review-compare-table">
+                                  <thead>
+                                    <tr>
+                                      <th>Row</th>
+                                      {txCompareFields.map((field) => (
+                                        <th key={field.key}>{field.label}</th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    <tr>
+                                      <td><strong>Incoming</strong></td>
+                                      {txCompareFields.map((field) => (
+                                        <td key={`incoming-${field.key}`}>{getPreviewCompareValue(incomingRecord, field)}</td>
+                                      ))}
+                                    </tr>
+                                    <tr>
+                                      <td><strong>Matched</strong></td>
+                                      {txCompareFields.map((field) => (
+                                        <td key={`matched-${field.key}`}>{getPreviewCompareValue(matchedRecord, field)}</td>
+                                      ))}
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                            <div className="th-mini-block">
+                              <strong>Why this was flagged</strong>
+                              <p className="th-helper" style={{ padding: 0, marginTop: 8 }}>
+                                {candidateEvidence.length > 0
+                                  ? candidateEvidence.join(' · ')
+                                  : 'Matched on same donor + amount + close date.'}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               )}
               {nonLedgerReviewPanel === 'outcomes' && (
                 <div id="th-review-analytics" className="th-stack" style={{ marginBottom: 14 }}>
@@ -6318,14 +6734,14 @@ export default function TransformHubPage() {
                         type="button"
                         className="th-button th-button-primary"
                         onClick={() => void handleGenerateReviewAnalytics()}
-                        disabled={!postReviewAnalyticsReady || isGeneratingReviewAnalytics}
+                        disabled={isGeneratingReviewAnalytics || !postReviewAnalyticsReady}
                       >
                         <Database size={14} />
                         {isGeneratingReviewAnalytics ? 'Generating…' : 'Generate data analytics'}
                       </button>
                       {reviewAnalyticsData && (
                         <div className="th-review-outcomes-badge">
-                          <strong>{formatCurrencyAmount(effectiveReviewOutcomeCards.filter((card) => card.metricKind === 'currency').reduce((sum, card) => sum + card.amount, 0))}</strong>
+                          <strong>{formatCurrencyAmount(displayedOutcomeCards.filter((card) => card.metricKind === 'currency').reduce((sum, card) => sum + card.amount, 0))}</strong>
                           <span>total exposure identified</span>
                         </div>
                       )}
@@ -6365,7 +6781,7 @@ export default function TransformHubPage() {
                     return (
                       <>
                         <div className="th-review-outcomes-grid">
-                          {effectiveReviewOutcomeCards.map((card) => (
+                          {displayedOutcomeCards.map((card) => (
                             <button
                               key={card.id}
                               type="button"
@@ -6383,7 +6799,7 @@ export default function TransformHubPage() {
                                 {card.details.map((detail) => (
                                   <div key={`${card.id}-${detail.id}`} className="th-review-outcome-list-item">
                                     <span>{detail.label}</span>
-                                    <span>{card.metricKind === 'percent' ? `${detail.count} items` : formatCurrencyAmount(detail.amount)}</span>
+                                    <span>{card.id === 'donor_health' ? detail.ctaLabel : card.metricKind === 'percent' ? `${detail.count} items` : formatCurrencyAmount(detail.amount)}</span>
                                   </div>
                                 ))}
                               </div>
@@ -6397,11 +6813,14 @@ export default function TransformHubPage() {
                               <h3>{selectedOutcomeCard.title}</h3>
                               <p>{selectedOutcomeCard.summary}</p>
                             </div>
-                            <div className="th-review-outcome-detail-metric">
-                              <strong>{formatOutcomeMetric(selectedOutcomeCard.metricKind, selectedOutcomeCard.amount)}</strong>
-                              <span>{selectedOutcomeCard.metricKind === 'percent' ? 'misclassified' : 'exposure'}</span>
-                            </div>
+                            {selectedOutcomeCardId !== 'donor_health' && (
+                              <div className="th-review-outcome-detail-metric">
+                                <strong>{formatOutcomeMetric(selectedOutcomeCard.metricKind, selectedOutcomeCard.amount)}</strong>
+                                <span>{selectedOutcomeCard.metricKind === 'percent' ? 'misclassified' : 'exposure'}</span>
+                              </div>
+                            )}
                           </div>
+                          {selectedOutcomeCardId !== 'donor_health' && (
                           <div className="th-review-outcome-detail-grid">
                             {selectedOutcomeCard.details.map((detail) => (
                               <article
@@ -6429,7 +6848,44 @@ export default function TransformHubPage() {
                               </article>
                             ))}
                           </div>
-                          {activeOutcomeDetail && (
+                          )}
+                          {selectedOutcomeCardId === 'donor_health' && donorHealthCards.length > 0 && (
+                            <div className="th-review-health-grid">
+                              {donorHealthCards.map((card) => (
+                                <article key={card.id} className="th-review-health-card">
+                                  <div className="th-review-health-head">
+                                    <div className="th-stack" style={{ gap: 4 }}>
+                                      <strong>{card.title}</strong>
+                                      <span className="th-helper">{card.note}</span>
+                                    </div>
+                                    <span className={`th-chip${card.trend ? ` is-${card.trend}` : ''}`}>{card.metric}</span>
+                                  </div>
+                                  <div className="th-review-health-meta">
+                                    <span>{card.valueLabel}</span>
+                                    {card.secondaryLabel && <span>{card.secondaryLabel}</span>}
+                                  </div>
+                                  {card.bars && card.bars.length > 0 && (
+                                    <div className="th-review-health-bars">
+                                      {card.bars.map((bar) => (
+                                        <div key={`${card.id}-${bar.label}`} className="th-review-health-bar-row">
+                                          <span className="th-helper">{bar.label}</span>
+                                          <div className="th-review-health-bar-track">
+                                            <div
+                                              className={`th-review-health-bar${bar.tone === 'secondary' ? ' is-secondary' : ''}`}
+                                              style={{
+                                                width: `${Math.max(8, Math.min(100, (bar.value / Math.max(...card.bars!.map((item) => item.value), 1)) * 100))}%`,
+                                              }}
+                                            />
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </article>
+                              ))}
+                            </div>
+                          )}
+                          {selectedOutcomeCardId !== 'donor_health' && activeOutcomeDetail && (
                             <div className="th-review-outcome-workspace">
                               <div className="th-review-outcome-workspace-head">
                                 <div>
@@ -6549,43 +7005,7 @@ export default function TransformHubPage() {
                                   )}
                                 </div>
                               </div>
-                              {selectedOutcomeCardId === 'revenue_at_risk' && donorHealthCards.length > 0 && (
-                                <div className="th-review-health-grid">
-                                  {donorHealthCards.map((card) => (
-                                    <article key={card.id} className="th-review-health-card">
-                                      <div className="th-review-health-head">
-                                        <div className="th-stack" style={{ gap: 4 }}>
-                                          <strong>{card.title}</strong>
-                                          <span className="th-helper">{card.note}</span>
-                                        </div>
-                                        <span className={`th-chip${card.trend ? ` is-${card.trend}` : ''}`}>{card.metric}</span>
-                                      </div>
-                                      <div className="th-review-health-meta">
-                                        <span>{card.valueLabel}</span>
-                                        {card.secondaryLabel && <span>{card.secondaryLabel}</span>}
-                                      </div>
-                                      {card.bars && card.bars.length > 0 && (
-                                        <div className="th-review-health-bars">
-                                          {card.bars.map((bar) => (
-                                            <div key={`${card.id}-${bar.label}`} className="th-review-health-bar-row">
-                                              <span className="th-helper">{bar.label}</span>
-                                              <div className="th-review-health-bar-track">
-                                                <div
-                                                  className={`th-review-health-bar${bar.tone === 'secondary' ? ' is-secondary' : ''}`}
-                                                  style={{
-                                                    width: `${Math.max(8, Math.min(100, (bar.value / Math.max(...card.bars!.map((item) => item.value), 1)) * 100))}%`,
-                                                  }}
-                                                />
-                                              </div>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </article>
-                                  ))}
-                                </div>
-                              )}
-                              <div className="th-review-outcome-results">
+                                              <div className="th-review-outcome-results">
                                 {filteredAnalyticsItems.length === 0 ? (
                                   <div className="th-mini-block">
                                     <strong>No items in this view</strong>
@@ -7257,10 +7677,10 @@ export default function TransformHubPage() {
                   <div className="th-panel-head">
                     <span>{duplicateQueueLabel}</span>
                     <div className="th-review-match-actions">
-                      {mergeablePreviewReviewMatches.length > 0 && (
-                        <button type="button" className="th-button th-button-primary" style={{ minHeight: 34 }} onClick={() => void handleMergeAllPeopleReviews(filteredPreviewReviewMatches)} disabled={isLoading}>{mergeAllLabel} ({mergeablePreviewReviewMatches.length})</button>
+                      {mergeablePreviewGroupCount > 0 && (
+                        <button type="button" className="th-button th-button-primary" style={{ minHeight: 34 }} onClick={() => void handleMergeAllPeopleReviews(filteredPreviewReviewMatches)} disabled={isLoading}>{mergeAllLabel} ({mergeablePreviewGroupCount})</button>
                       )}
-                      <span>{filteredPreviewReviewMatches.length} shown</span>
+                      <span>{groupedFilteredPreviewReviewMatches.length} shown</span>
                     </div>
                   </div>
                   <div className="th-review-filter-row">
@@ -7269,13 +7689,13 @@ export default function TransformHubPage() {
                     <button type="button" className={`th-chip${peopleReviewFilter === 'separated' ? ' is-active' : ''}`} onClick={() => setPeopleReviewFilter('separated')}>Separated {previewReviewCounts.separated}</button>
                     <button type="button" className={`th-chip${peopleReviewFilter === 'all' ? ' is-active' : ''}`} onClick={() => setPeopleReviewFilter('all')}>All {previewReviewCounts.all}</button>
                   </div>
-                  {filteredPreviewReviewMatches.length === 0 ? (
+                  {groupedFilteredPreviewReviewMatches.length === 0 ? (
                     <div className="th-mini-block">
                       <strong>No items in this view</strong>
                       <p>{peopleReviewFilter === 'pending' ? 'All pending review items are cleared.' : `No ${peopleReviewFilter} review items are visible right now.`}</p>
                     </div>
                   ) : (
-                  filteredPreviewReviewMatches.map((match) => {
+                  groupedFilteredPreviewReviewMatches.map(({ key, representative: match, allMatches }) => {
                     const decision = deriveReviewDecision(match, mergeDecisions);
                     const incomingRecord = previewRecords.find((record) => record.sourceRowRef === match.inputRef) ?? null;
                     const candidateEvidence = match.reviewPayload?.matchedEvidence?.filter(Boolean) ?? [];
@@ -7297,11 +7717,14 @@ export default function TransformHubPage() {
                       : formatPersonLabel(matchedPerson);
                     const isExpanded = expandedPeopleReviewRef === match.inputRef;
                     if (!matchedRecord) return null;
+                    const groupRowRefs = allMatches.map((m) => getCompactSourceRef(m.inputRef).primary).join(', ');
+                    const matchedRowRef = matchedPreviewRecord ? getCompactSourceRef(matchedRecord.sourceRowRef).primary : 'existing record';
                     return (
-                      <div key={match.inputRef} className="th-guardrail is-warning th-review-match-card" style={{ gap: 14 }}>
+                      <div key={key} className="th-guardrail is-warning th-review-match-card" style={{ gap: 14 }}>
                         <div className="th-review-match-head">
                           <div style={{ flex: 1 }}>
-                            <strong>{getCompactSourceRef(match.inputRef).primary} ↔ {matchedPreviewRecord ? getCompactSourceRef(matchedRecord.sourceRowRef).primary : 'existing record'}</strong>
+                            <strong>{groupRowRefs} ↔ {matchedRowRef}</strong>
+                            {allMatches.length > 1 && <p className="th-helper">{allMatches.length} transaction rows for same donor</p>}
                             <p>{incomingRecord ? previewRecordLabel(incomingRecord) : match.inputRef} → {matchedLabel}</p>
                             <p>{summarizeMatchSignals(match)}</p>
                             {describeAiSuggestion(match) && <p className="th-helper">{describeAiSuggestion(match)}</p>}
@@ -7321,8 +7744,8 @@ export default function TransformHubPage() {
                               </span>
                             ) : (
                               <div className="th-review-match-actions">
-                                <button type="button" className="th-button th-button-primary" style={{ minHeight: 34 }} onClick={() => handleMergeDecision(match, "confirmed")}>{confirmMergeLabel}</button>
-                                <button type="button" className="th-button th-button-secondary" style={{ minHeight: 34 }} onClick={() => handleMergeDecision(match, "separated")}>{keepSeparateLabel}</button>
+                                <button type="button" className="th-button th-button-primary" style={{ minHeight: 34 }} onClick={() => void handleGroupMergeDecision(allMatches, "confirmed")}>{confirmMergeLabel}</button>
+                                <button type="button" className="th-button th-button-secondary" style={{ minHeight: 34 }} onClick={() => void handleGroupMergeDecision(allMatches, "separated")}>{keepSeparateLabel}</button>
                               </div>
                             )}
                           </div>
@@ -7412,17 +7835,6 @@ export default function TransformHubPage() {
               )}
               {reviewTableActive && (
                 <div className="th-table-wrap">
-                <div className="th-panel th-inner-panel" style={{ marginBottom: 14 }}>
-                  <div className="th-panel-head">
-                    <span>{reviewTableLabel}</span>
-                    <span>{filteredDisplayedPreviewRecords.length} visible row{filteredDisplayedPreviewRecords.length === 1 ? '' : 's'}</span>
-                  </div>
-                  <p className="th-helper">{reviewTableDescription}</p>
-                  <p className="th-helper">Column filters support plain text by default. Numeric and date columns also accept <code>&gt;</code>, <code>&gt;=</code>, <code>&lt;</code>, <code>&lt;=</code>, and <code>=</code>, for example <code>&gt;100</code> or <code>&gt;=2025-01-01</code>.</p>
-                  {hasTransactionLinkFlow && (
-                    <p className="th-helper">Matched profile columns are added directly to transaction rows. Unmatched profile records appear as separate rows with blank transaction fields.</p>
-                  )}
-                </div>
                 {(fileClass === 'constituent' || fileClass === 'donor') && editingMergedRecordRef && (
                   <div className="th-mini-block" style={{ marginBottom: 14 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>

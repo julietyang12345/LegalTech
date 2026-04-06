@@ -370,49 +370,6 @@ export class TransformHubOutputService {
         });
       });
 
-    const ambiguousRecords = previewRecords.filter((record: any) => {
-      const attribution = finalAttributionDrafts?.[record.sourceRowRef] ?? record?.attribution ?? null;
-      return attribution?.householdId == null && this.parseAmount(record?.amount) > 0;
-    });
-    ambiguousRecords.forEach((record: any) => {
-      items.push({
-        id: `finance-gap:${record.sourceRowRef}`,
-        outcomeId: 'finance_mismatch',
-        detailId: 'crm_vs_finance_gap',
-        label: record?.donorName || record?.displayName || record?.sourceRowRef,
-        description: 'Attribution ambiguity can distort CRM versus finance totals.',
-        amount: this.parseAmount(record?.amount),
-        sortDate: record?.date ? new Date(String(record.date)).toISOString() : null,
-        campaign: String(record?.fund || record?.appeal || 'Unassigned'),
-        donorSegment: 'data issues',
-        sourceRowRefs: [record?.sourceRowRef],
-        duplicateCount: 0,
-        includesSoftCredit: false,
-        action: 'household',
-      });
-    });
-
-    previewRecords.forEach((record: any) => {
-      const attribution = finalAttributionDrafts?.[record.sourceRowRef] ?? record?.attribution ?? null;
-      const amount = this.parseAmount(record?.amount);
-      if (!attribution || attribution.creditAmount == null || attribution.mode !== 'joint_split' || Math.abs(Number(attribution.creditAmount) - amount) <= 1) return;
-      items.push({
-        id: `gl:${record.sourceRowRef}`,
-        outcomeId: 'finance_mismatch',
-        detailId: 'gl_errors',
-        label: record?.donorName || record?.displayName || record?.sourceRowRef,
-        description: 'Split credit does not match the source gift amount.',
-        amount: Math.abs(Number(attribution.creditAmount) - amount),
-        sortDate: record?.date ? new Date(String(record.date)).toISOString() : null,
-        campaign: String(record?.fund || record?.appeal || 'Unassigned'),
-        donorSegment: 'data issues',
-        sourceRowRefs: [record?.sourceRowRef],
-        duplicateCount: 0,
-        includesSoftCredit: false,
-        action: 'final_table',
-      });
-    });
-
     const pendingTaxonomyGroups = (taxonomyState?.candidateGroups ?? []).filter((group: any) => group?.status === 'pending' && !(taxonomyState?.dismissedCandidateIds ?? []).includes(group.id));
     pendingTaxonomyGroups.forEach((group: any) => {
       const sourceRowRefs = Array.from(new Set((group?.members ?? []).flatMap((member: any) => member?.sourceRowRefs ?? [])));
@@ -450,8 +407,6 @@ export class TransformHubOutputService {
     const matches = summarize('money_leakage', 'missing_matching_gifts');
     const upgrades = summarize('money_leakage', 'upgrade_opportunities');
     const unassigned = summarize('money_leakage', 'unassigned_major_donors');
-    const crmGap = summarize('finance_mismatch', 'crm_vs_finance_gap');
-    const glErrors = summarize('finance_mismatch', 'gl_errors');
     const campaignBroken = summarize('campaign_truth', 'broken_taxonomy');
     const taxonomyImpactPercent = previewRecords.length > 0 ? Math.round((campaignBroken.count / previewRecords.length) * 100) : 27;
 
@@ -486,20 +441,6 @@ export class TransformHubOutputService {
         ],
       },
       {
-        id: 'finance_mismatch',
-        eyebrow: 'Warning · finance mismatch',
-        title: `${this.roundAmount(crmGap.amount + glErrors.amount) || 4200}`.replace(/^/, '$').replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' discrepancy',
-        tone: 'warning',
-        amount: this.roundAmount(crmGap.amount + glErrors.amount) || 4200,
-        metricKind: 'currency',
-        summary: 'Ambiguous credits and amount mismatches still create downstream reconciliation risk.',
-        supporting: 'Rolls up unresolved attribution rows and split-credit mismatches that can distort exported totals.',
-        details: [
-          { id: 'crm_vs_finance_gap', label: 'CRM vs QuickBooks gap', count: crmGap.count || 8, amount: crmGap.amount || 3200, description: 'Rows still need attribution cleanup before totals can reconcile cleanly.', ctaLabel: 'Open household review', action: 'household' },
-          { id: 'gl_errors', label: 'GL errors', count: glErrors.count || 4, amount: glErrors.amount || 1000, description: 'Credit math does not line up with the original gift amount on some rows.', ctaLabel: 'Open review table', action: 'final_table' },
-        ],
-      },
-      {
         id: 'campaign_truth',
         eyebrow: 'Warning · campaign truth',
         title: `${taxonomyImpactPercent || 27}% of gifts misclassified`,
@@ -521,7 +462,6 @@ export class TransformHubOutputService {
       items,
       suggestedViews: [
         { id: 'template-recurring-risk', name: 'Recurring donors', outcomeId: 'revenue_at_risk', detailId: 'recurring_donors' },
-        { id: 'template-reporting-blockers', name: 'Data issues blocking reporting', outcomeId: 'finance_mismatch', detailId: 'crm_vs_finance_gap' },
       ],
     };
   }

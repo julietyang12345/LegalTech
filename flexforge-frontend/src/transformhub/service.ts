@@ -154,7 +154,7 @@ export async function resolvePersonsBackend(
   rows: CanonicalLedgerRow[],
   existingPersons?: CanonicalPerson[],
   sessionId?: string,
-  options: { usePersistentIdentityMemory?: boolean; forceReviewOnAutoMatches?: boolean; seedExistingPersonsFromDb?: boolean; baselinePlatform?: string; baselineFileClass?: string; persistIdentityMemory?: boolean; includeAiSuggestions?: boolean } = {},
+  options: { usePersistentIdentityMemory?: boolean; forceReviewOnAutoMatches?: boolean; seedExistingPersonsFromDb?: boolean; baselinePlatform?: string; baselineFileClass?: string; matchMode?: string; persistIdentityMemory?: boolean; includeAiSuggestions?: boolean } = {},
 ): Promise<PersonResolverResult> {
   const response = await api.post<PersonResolverResult>('/transformhub/person-resolve', {
     rows,

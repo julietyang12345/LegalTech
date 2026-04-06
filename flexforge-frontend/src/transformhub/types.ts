@@ -582,6 +582,8 @@ export type PersonResolverResult = {
   needsReview: number;
   pendingReviewCount: number;
   separated: number;
+  matchMode?: string;
+  txDuplicateResult?: PersonResolverResult | null;
   updatedRows?: CanonicalLedgerRow[];
   audit?: AuditRuleResult;
 };

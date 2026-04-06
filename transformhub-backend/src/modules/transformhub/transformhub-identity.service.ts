@@ -11,6 +11,9 @@ import { extractDonorDuplicateSignalFromRow, scoreDonorDuplicateSignalPair } fro
 @Injectable()
 export class TransformHubIdentityService {
   private readonly logger = new Logger(TransformHubIdentityService.name);
+  private static readonly MATCH_MODE_IDENTITY = 'identity';
+  private static readonly MATCH_MODE_TRANSACTION = 'transaction';
+  private static readonly MATCH_MODE_COMBINED = 'combined';
 
   constructor(
     @InjectRepository(ThIdentityMemory)
@@ -72,6 +75,41 @@ export class TransformHubIdentityService {
     };
   }
 
+  private buildCharacterBigrams(value: string): string[] {
+    const normalized = this.normStr(value).replace(/ /g, '');
+    if (!normalized) return [];
+    if (normalized.length === 1) return [normalized];
+    const bigrams: string[] = [];
+    for (let index = 0; index < normalized.length - 1; index += 1) {
+      bigrams.push(normalized.slice(index, index + 2));
+    }
+    return bigrams;
+  }
+
+  private computeNameSimilarity(left: string, right: string): number {
+    const normalizedLeft = this.normStr(left);
+    const normalizedRight = this.normStr(right);
+    if (!normalizedLeft || !normalizedRight) return 0;
+    if (normalizedLeft === normalizedRight) return 1;
+
+    const leftBigrams = this.buildCharacterBigrams(normalizedLeft);
+    const rightBigrams = this.buildCharacterBigrams(normalizedRight);
+    if (leftBigrams.length === 0 || rightBigrams.length === 0) return 0;
+
+    const counts = new Map<string, number>();
+    leftBigrams.forEach((bigram) => counts.set(bigram, (counts.get(bigram) ?? 0) + 1));
+
+    let overlap = 0;
+    rightBigrams.forEach((bigram) => {
+      const current = counts.get(bigram) ?? 0;
+      if (current <= 0) return;
+      overlap += 1;
+      counts.set(bigram, current - 1);
+    });
+
+    return (2 * overlap) / (leftBigrams.length + rightBigrams.length);
+  }
+
   private buildEntityName(row: any): string {
     return String(
       row.entity_name
@@ -126,8 +164,9 @@ export class TransformHubIdentityService {
     row: any,
     input: { name: string; donorSignal: ReturnType<TransformHubIdentityService['extractDonorSignal']> | null },
     fileClass?: string | null,
+    matchMode: string = TransformHubIdentityService.MATCH_MODE_IDENTITY,
   ): string {
-    if (fileClass === 'donor' && input.donorSignal) {
+    if (fileClass === 'donor' && matchMode === TransformHubIdentityService.MATCH_MODE_TRANSACTION && input.donorSignal) {
       if (input.donorSignal.transactionRef) return `donor:txref:${input.donorSignal.transactionRef}`;
       if (input.donorSignal.amount !== null && input.donorSignal.date) {
         return `donor:${this.normStr(input.name)}|${input.donorSignal.amount}|${input.donorSignal.date}`;
@@ -294,6 +333,66 @@ export class TransformHubIdentityService {
     return { score, matchedFields, matchedInputRef: null };
   }
 
+  private scoreDonorIdentityPair(
+    candidate: any,
+    input: { name: string; email: string; phone: string; address: string; zip: string; householdName: string },
+  ): { score: number; matchedFields: string[]; matchedInputRef?: string | null } {
+    let score = 0;
+    const matchedFields: string[] = [];
+    const inputName = this.normStr(input.name);
+    const candidateName = this.normStr(`${candidate.firstName || ''} ${candidate.lastName || ''}`);
+    const inputEmail = this.normalizeEmail(input.email);
+    const candidateEmail = this.normalizeEmail(candidate.email || '');
+    const inputPhone = this.normalizePhone(input.phone);
+    const candidatePhone = this.normalizePhone(candidate.phone || '');
+    const inputAddress = this.normStr(input.address);
+    const candidateAddress = this.normStr(candidate.addressLine1 || '');
+    const namesDiffer = Boolean(inputName && candidateName && inputName !== candidateName);
+    const nameSimilarity = this.computeNameSimilarity(inputName, candidateName);
+
+    // Step 1 donor cleanup is for alias/name normalization, not same-name donor rows.
+    if (!namesDiffer) {
+      return { score: 0, matchedFields: [], matchedInputRef: null };
+    }
+
+    if (inputEmail && candidateEmail && inputEmail === candidateEmail) {
+      score += 60;
+      matchedFields.push('email');
+    }
+
+    if (inputPhone && candidatePhone && inputPhone.length >= 7 && inputPhone === candidatePhone) {
+      score += 30;
+      matchedFields.push('phone');
+    }
+
+    if (input.zip && candidate.zip && input.zip.trim() === candidate.zip.trim() && inputAddress && inputAddress === candidateAddress) {
+      score += 25;
+      matchedFields.push('address_zip');
+    }
+
+    if (input.householdName && candidate.lastName && this.normStr(input.householdName).includes(this.normStr(candidate.lastName))) {
+      score += 10;
+      matchedFields.push('household');
+    }
+
+    const hasStrongIdentitySignal = matchedFields.includes('email') || matchedFields.includes('phone') || matchedFields.includes('address_zip');
+    const hasEnoughNameSimilarity = nameSimilarity >= 0.65;
+    if (!hasStrongIdentitySignal || !hasEnoughNameSimilarity) {
+      return { score: 0, matchedFields: [], matchedInputRef: null };
+    }
+
+    score += Math.round(nameSimilarity * 20);
+    matchedFields.push(`name_similarity_${Math.round(nameSimilarity * 100)}`);
+    matchedFields.push('name_variant');
+
+    if (hasStrongIdentitySignal && nameSimilarity >= 0.78) {
+      score += 15;
+      matchedFields.push('alias_multisignal');
+    }
+
+    return { score, matchedFields, matchedInputRef: null };
+  }
+
   private scoreDonorPair(
     candidate: any,
     input: { name: string; email: string; phone: string; address: string; zip: string; householdName: string; donorSignal: ReturnType<TransformHubIdentityService['extractDonorSignal']> | null },
@@ -324,8 +423,12 @@ export class TransformHubIdentityService {
     candidate: any,
     input: { name: string; email: string; phone: string; address: string; zip: string; householdName: string; donorSignal: ReturnType<TransformHubIdentityService['extractDonorSignal']> | null },
     fileClass?: string | null,
+    matchMode: string = TransformHubIdentityService.MATCH_MODE_IDENTITY,
   ): { score: number; matchedFields: string[]; matchedInputRef?: string | null } {
-    if (fileClass === 'donor') return this.scoreDonorPair(candidate, input);
+    if (fileClass === 'donor') {
+      if (matchMode === TransformHubIdentityService.MATCH_MODE_TRANSACTION) return this.scoreDonorPair(candidate, input);
+      return this.scoreDonorIdentityPair(candidate, input);
+    }
     return this.scoreProfilePair(candidate, input);
   }
 
@@ -700,7 +803,7 @@ export class TransformHubIdentityService {
     });
   }
 
-  async resolvePersons(rows: any[], existingPersons?: any[], options?: { usePersistentIdentityMemory?: boolean; forceReviewOnAutoMatches?: boolean; seedExistingPersonsFromDb?: boolean; baselinePlatform?: string; baselineFileClass?: string; persistIdentityMemory?: boolean; includeAiSuggestions?: boolean }): Promise<any> {
+  private async resolvePersonsCore(rows: any[], existingPersons?: any[], options?: { usePersistentIdentityMemory?: boolean; forceReviewOnAutoMatches?: boolean; seedExistingPersonsFromDb?: boolean; baselinePlatform?: string; baselineFileClass?: string; persistIdentityMemory?: boolean; includeAiSuggestions?: boolean; matchMode?: string }): Promise<any> {
     const usePersistentIdentityMemory = options?.usePersistentIdentityMemory === true;
     const forceReviewOnAutoMatches = options?.forceReviewOnAutoMatches === true;
     const seedExistingPersonsFromDb = options?.seedExistingPersonsFromDb === true;
@@ -708,6 +811,7 @@ export class TransformHubIdentityService {
     const baselineFileClass = options?.baselineFileClass || null;
     const persistIdentityMemory = options?.persistIdentityMemory !== false;
     const includeAiSuggestions = options?.includeAiSuggestions !== false;
+    const matchMode = options?.matchMode || TransformHubIdentityService.MATCH_MODE_IDENTITY;
     const personScope = { platform: baselinePlatform, fileClass: baselineFileClass };
     const seedPersons = Array.isArray(existingPersons)
       ? existingPersons
@@ -730,7 +834,7 @@ export class TransformHubIdentityService {
       rows
         .map((row) => {
           const input = this.extractPersonInput(row);
-          return this.buildDecisionKey(row, input, personScope.fileClass);
+          return this.buildDecisionKey(row, input, personScope.fileClass, matchMode);
         })
         .filter(Boolean),
     ));
@@ -760,7 +864,7 @@ export class TransformHubIdentityService {
       if (seen.has(seenKey)) continue;
       seen.add(seenKey);
 
-      const inputKey = this.buildDecisionKey(row, input, personScope.fileClass);
+      const inputKey = this.buildDecisionKey(row, input, personScope.fileClass, matchMode);
       const storedDecisions = decisionsByInputKey.get(inputKey) ?? [];
       const rawCandidates = this.candidatePersonsForInput(personIndex, input, personScope.fileClass);
       const decisionPolicy = this.applyDecisionPolicy(storedDecisions, rawCandidates);
@@ -793,7 +897,7 @@ export class TransformHubIdentityService {
       let bestMatchedInputRef: string | null = null;
 
       for (const person of candidates) {
-        const { score, matchedFields, matchedInputRef } = this.scorePersonPair(person, input, personScope.fileClass);
+        const { score, matchedFields, matchedInputRef } = this.scorePersonPair(person, input, personScope.fileClass, matchMode);
         if (score > bestScore) {
           bestScore = score;
           bestMatch = person;
@@ -866,7 +970,174 @@ export class TransformHubIdentityService {
       needsReview: needsReviewCount,
       pendingReviewCount: needsReviewCount,
       separated,
+      matchMode,
     };
+  }
+
+  private async resolveTransactionDuplicates(
+    rows: any[],
+    persons: any[],
+    identityMatches: any[],
+    options?: { includeAiSuggestions?: boolean },
+  ) {
+    const includeAiSuggestions = options?.includeAiSuggestions !== false;
+    const personById = new Map(persons.map((person) => [person.id, person]));
+    const personIdByInputRef = new Map(identityMatches.map((match: any) => [match.inputRef, match.matchedPersonId]));
+    const matches: any[] = [];
+    let autoMatched = 0;
+    let needsReviewCount = 0;
+    let separated = 0;
+
+    // Build a name-keyed index of all input row signals. The identity step (step 1)
+    // intentionally does NOT merge same-name rows (it only merges name aliases with
+    // different names), so candidateSignals from canonicalPerson.__thDonorSignals
+    // will be empty for same-name tx duplicates. This index fills that gap.
+    type RowSignalEntry = { rowRef: string; inputName: string; inputEmail: string; signal: ReturnType<TransformHubIdentityService['extractDonorSignal']> };
+    const signalsByNormName = new Map<string, RowSignalEntry[]>();
+    for (const [index, row] of rows.entries()) {
+      const rowRef = row.source_row_ref || row.sourceRowRef || String(index);
+      const input = this.extractPersonInput(row);
+      if (!input.name || !input.donorSignal) continue;
+      const key = this.normStr(input.name);
+      if (!key) continue;
+      const bucket = signalsByNormName.get(key) ?? [];
+      bucket.push({ rowRef, inputName: input.name, inputEmail: input.email, signal: input.donorSignal });
+      signalsByNormName.set(key, bucket);
+    }
+
+    // Track reported pairs so each duplicate pair appears only once in the queue.
+    const reportedPairs = new Set<string>();
+
+    for (const [index, row] of rows.entries()) {
+      const rowRef = row.source_row_ref || row.sourceRowRef || String(index);
+      const input = this.extractPersonInput(row);
+      if (!input.name || !input.donorSignal) continue;
+
+      const canonicalPersonId = personIdByInputRef.get(rowRef) ?? null;
+      const canonicalPerson = canonicalPersonId ? personById.get(canonicalPersonId) : null;
+
+      // Same-name candidates from the full input set (catches same-name tx duplicates
+      // that identity step keeps separate).
+      const normKey = this.normStr(input.name);
+      const sameNameEntries = (signalsByNormName.get(normKey) ?? []).filter((e) => e.rowRef !== rowRef);
+
+      // Additional candidates from identity-merged person (cross-name alias matches).
+      const identitySignals = canonicalPerson
+        ? this.getDonorSignals(canonicalPerson).filter(
+            (sig) => sig.rowRef && sig.rowRef !== rowRef && !sameNameEntries.some((e) => e.rowRef === sig.rowRef),
+          )
+        : [];
+      const identityEntries: RowSignalEntry[] = identitySignals.map((sig) => ({
+        rowRef: sig.rowRef || '',
+        inputName: canonicalPerson ? `${canonicalPerson.firstName || ''} ${canonicalPerson.lastName || ''}`.trim() : input.name,
+        inputEmail: canonicalPerson?.email || '',
+        signal: sig,
+      }));
+
+      const candidateEntries = [...sameNameEntries, ...identityEntries];
+
+      let bestScore = 0;
+      let bestMatchedFields: string[] = [];
+      let bestMatchedInputRef: string | null = null;
+      let bestCandidateName = input.name;
+      let bestCandidateEmail = input.email;
+
+      candidateEntries.forEach((entry) => {
+        const result = scoreDonorDuplicateSignalPair(
+          input.donorSignal as ReturnType<TransformHubIdentityService['extractDonorSignal']>,
+          entry.signal,
+          input.name,
+          entry.inputName,
+          input.email,
+          entry.inputEmail,
+          (value) => this.normStr(value),
+        );
+        if (result.score > bestScore) {
+          bestScore = result.score;
+          bestMatchedFields = result.matchedFields;
+          bestMatchedInputRef = entry.rowRef || result.matchedInputRef || null;
+          bestCandidateName = entry.inputName;
+          bestCandidateEmail = entry.inputEmail;
+        }
+      });
+
+      const band = this.getConfidenceBand(bestScore);
+
+      // No real tx duplicate found — count as separated and skip (don't add to review queue).
+      if (band === 'separate') {
+        separated++;
+        continue;
+      }
+
+      // Avoid showing the same pair twice (A↔B and B↔A).
+      const pairKey = [rowRef, bestMatchedInputRef ?? ''].sort().join('::');
+      if (reportedPairs.has(pairKey)) continue;
+      reportedPairs.add(pairKey);
+
+      let decision = 'new';
+      let aiSuggestion = null;
+
+      if (band === 'auto') {
+        decision = 'auto';
+        autoMatched++;
+      } else if (band === 'review') {
+        decision = 'review';
+        needsReviewCount++;
+        if (includeAiSuggestions) {
+          aiSuggestion = await this.buildAiReviewSuggestion(rowRef, input, bestMatchedFields, bestScore, canonicalPerson);
+        }
+      }
+
+      matches.push({
+        inputRef: rowRef,
+        score: bestScore,
+        band,
+        decision,
+        matchedPersonId: canonicalPersonId,
+        matchedFields: bestMatchedFields,
+        reviewPayload: this.buildMatchReviewPayload(row, rowRef, input, bestMatchedFields, canonicalPerson, aiSuggestion, bestMatchedInputRef),
+      });
+    }
+
+    return {
+      persons,
+      canonicalPersons: persons,
+      matches,
+      autoMatched,
+      autoMergedCount: autoMatched,
+      needsReview: needsReviewCount,
+      pendingReviewCount: needsReviewCount,
+      separated,
+      matchMode: TransformHubIdentityService.MATCH_MODE_TRANSACTION,
+    };
+  }
+
+  async resolvePersons(rows: any[], existingPersons?: any[], options?: { usePersistentIdentityMemory?: boolean; forceReviewOnAutoMatches?: boolean; seedExistingPersonsFromDb?: boolean; baselinePlatform?: string; baselineFileClass?: string; persistIdentityMemory?: boolean; includeAiSuggestions?: boolean; matchMode?: string }): Promise<any> {
+    const requestedMatchMode = options?.matchMode
+      || (options?.baselineFileClass === 'donor'
+        ? TransformHubIdentityService.MATCH_MODE_COMBINED
+        : TransformHubIdentityService.MATCH_MODE_IDENTITY);
+
+    if (options?.baselineFileClass === 'donor' && requestedMatchMode === TransformHubIdentityService.MATCH_MODE_COMBINED) {
+      const identityResult = await this.resolvePersonsCore(rows, existingPersons, {
+        ...options,
+        matchMode: TransformHubIdentityService.MATCH_MODE_IDENTITY,
+      });
+      const txDuplicateResult = await this.resolveTransactionDuplicates(rows, identityResult.persons, identityResult.matches, {
+        includeAiSuggestions: options?.includeAiSuggestions,
+      });
+      return {
+        ...identityResult,
+        txDuplicateResult,
+      };
+    }
+
+    return this.resolvePersonsCore(rows, existingPersons, {
+      ...options,
+      matchMode: requestedMatchMode === TransformHubIdentityService.MATCH_MODE_COMBINED
+        ? TransformHubIdentityService.MATCH_MODE_IDENTITY
+        : requestedMatchMode,
+    });
   }
 
   private async buildHouseholdReviewSuggestions(reviewCandidates: Array<{ key: string; members: any[]; evidence: string[] }>) {
