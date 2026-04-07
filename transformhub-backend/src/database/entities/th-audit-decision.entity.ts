@@ -35,6 +35,12 @@ export class ThAuditDecision {
   @Column({ default: false })
   disabled: boolean;
 
+  @Column({ default: 1 })
+  confirmationCount: number;
+
+  @Column({ default: 0 })
+  splitConfirmationCount: number;
+
   @CreateDateColumn()
   createdAt: Date;
 

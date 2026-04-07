@@ -7,12 +7,12 @@ docker logs -f transformhub-backend-prod
 
 
 1. Check pending review decisions (after migrations run):
-  docker exec flexforge-db-prod psql -U flexforge -d transformhub_prod -c 'SELECT id, "inputKey", "candidatePersonId", score, "isHighConfidence",
+  docker exec flexforge-db-prod psql -U flexforge -d transformhub_prod -c 'SELECT id, "inputKey", "candidatePersonId", score, "isHighConfidence","confirmationCount",
   "isDriftAlert", status, "createdAt", "resolvedAt" FROM public.th_review_queue_items ORDER BY "createdAt" DESC LIMIT 20;'
 
   2. Check permanent merge/split decisions (exist now):
-  docker exec flexforge-db-prod psql -U flexforge -d transformhub_prod -c 'SELECT id, "inputKey", "matchedPersonId", merge, split, permanent, "createdAt"
-  FROM public.th_audit_decisions WHERE permanent = true ORDER BY "createdAt" DESC LIMIT 20;'
+  docker exec flexforge-db-prod psql -U flexforge -d transformhub_prod -c 'SELECT id, "inputKey", "matchedPersonId", merge, split, permanent, 
+  "confirmationCount", "createdAt" FROM public.th_audit_decisions WHERE permanent = true ORDER BY "createdAt" DESC LIMIT 20;' 
 
   3. Check session-scoped decisions (expire with session):
   docker exec flexforge-db-prod psql -U flexforge -d transformhub_prod -c 'SELECT id, "sessionId", "inputKey", merge, split, permanent, "createdAt" FROM

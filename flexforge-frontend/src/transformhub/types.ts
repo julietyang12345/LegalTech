@@ -370,7 +370,7 @@ export type CanonicalFieldKey =
 
 export type ReviewStatus = 'pending' | 'approved' | 'rejected';
 
-export type ConfidenceBand = 'auto' | 'review' | 'separate';
+export type ConfidenceBand = 'auto' | 'review' | 'separate' | 'org_rule';
 
 export type CanonicalLedgerRow = {
   id: string;
@@ -469,7 +469,7 @@ export type TransformSession = {
   auditDecisions?: PersistedMergeDecision[];
 };
 
-export type PersonMatchDecision = 'auto' | 'review' | 'new';
+export type PersonMatchDecision = 'auto' | 'review' | 'new' | 'org_rule';
 
 export type PersonMatch = {
   inputRef: string;

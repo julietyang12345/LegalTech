@@ -268,7 +268,7 @@ function buildMergeDecisionMap(rows: CanonicalLedgerRow[], auditDecisions: Trans
 function deriveReviewDecision(match: PersonMatch, mergeDecisions: Map<string, 'confirmed' | 'separated'>) {
   const persistedDecision = mergeDecisions.get(match.inputRef);
   if (persistedDecision) return persistedDecision;
-  if (match.decision === 'auto') return 'confirmed' as const;
+  if (match.decision === 'org_rule') return 'confirmed' as const;
   if (match.decision === 'new' || match.band === 'separate') return 'separated' as const;
   return null;
 }
@@ -4381,21 +4381,10 @@ export default function TransformHubPage() {
       setMessage('Choose at least one workbook tab to append, or ignore the tabs you do not want.');
       return;
     }
-    if (appendSheets.length === 1) {
-      setPendingWorkbookSheetReview(null);
-      await hydrateUpload(
-        {
-          ...review.payload,
-          selectedWorkbookSheets: [appendSheets[0].sheetName],
-        },
-        false,
-      );
-      return;
-    }
 
     setActiveUploadLabel(review.payload.fileName);
     setIsLoading(true);
-    setMessage(`Preparing ${appendSheets.length} workbook tabs from ${review.payload.fileName}...`);
+    setMessage(appendSheets.length === 1 ? `Loading ${appendSheets[0].sheetName} from ${review.payload.fileName}...` : `Preparing ${appendSheets.length} workbook tabs from ${review.payload.fileName}...`);
 
     try {
       const ingestedSheets = [];
@@ -4409,6 +4398,10 @@ export default function TransformHubPage() {
           selectedWorkbookSheets: [sheet.sheetName],
         });
         if (!result.schema) throw new Error(`Failed to ingest sheet ${sheet.sheetName}.`);
+        const returnedSheet = result.parsedFile.sourceSheetName;
+        if (returnedSheet && returnedSheet.trim().toLowerCase() !== sheet.sheetName.trim().toLowerCase()) {
+          throw new Error(`Sheet mismatch: requested "${sheet.sheetName}" but server returned "${returnedSheet}". Please try again.`);
+        }
         ingestedSheets.push({ sheet, result });
       }
 

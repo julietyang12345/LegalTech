@@ -576,12 +576,19 @@ export class TransformHubPipelineService implements OnModuleInit {
             };
           });
           const selectedNames = selectedWorkbookSheets.length > 0
-            ? new Set(selectedWorkbookSheets.map((name) => String(name)))
+            ? new Set(selectedWorkbookSheets.map((name) => String(name).trim()))
             : null;
-          const selectedSheets = selectedNames && selectedNames.size > 0
-            ? workbookSheets.filter((sheet: any) => selectedNames.has(sheet.sheetName))
+          let selectedSheets = selectedNames && selectedNames.size > 0
+            ? workbookSheets.filter((sheet: any) => selectedNames.has(String(sheet.sheetName).trim()))
             : workbookSheets;
-          const baseSheet = this.pickWorkbookBaseSheet(selectedSheets.length > 0 ? selectedSheets : workbookSheets);
+          if (selectedNames && selectedNames.size > 0 && selectedSheets.length === 0) {
+            // Fallback: case-insensitive match
+            const selectedNamesLower = new Set([...selectedNames].map((n) => n.toLowerCase()));
+            selectedSheets = workbookSheets.filter((sheet: any) => selectedNamesLower.has(String(sheet.sheetName).trim().toLowerCase()));
+          }
+          const baseSheet = selectedSheets.length > 0
+            ? this.pickWorkbookBaseSheet(selectedSheets)
+            : this.pickWorkbookBaseSheet(workbookSheets);
           resolve({
             fileName,
             delimiter: 'xlsx',

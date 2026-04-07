@@ -732,11 +732,14 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     // Write the permanent cross-session decision directly — core business fact,
     // must not be gated on queue infrastructure.
     if (inputKey) {
-      if (body.action === 'confirmed') {
-        await this.auditDecisionRepo.delete({ permanent: true, inputKey } as any);
-      } else {
-        await this.auditDecisionRepo.delete({ permanent: true, inputKey, merge: true } as any);
-      }
+      // Read existing permanent record (any direction) to carry over both counts.
+      const existingPermanent = await this.auditDecisionRepo.findOne({ where: { permanent: true, inputKey } as any });
+      const prevMergeCount = existingPermanent?.confirmationCount ?? 0;
+      const prevSplitCount = existingPermanent?.splitConfirmationCount ?? 0;
+      const confirmationCount = body.action === 'confirmed' ? prevMergeCount + 1 : prevMergeCount;
+      const splitConfirmationCount = body.action === 'separated' ? prevSplitCount + 1 : prevSplitCount;
+
+      await this.auditDecisionRepo.delete({ permanent: true, inputKey } as any);
       await this.auditDecisionRepo.save(
         this.auditDecisionRepo.create({
           id: `AUD-GLOBAL-${inputKey}-${body.matchedPersonId ?? 'new'}`,
@@ -749,6 +752,8 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
           taxonomy_map: null,
           made_by: 'user',
           permanent: true,
+          confirmationCount,
+          splitConfirmationCount,
         }),
       );
     }
@@ -824,11 +829,14 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     const matchedPersonId = action === 'approved' ? item.candidatePersonId : null;
 
     if (inputKey) {
-      if (action === 'approved') {
-        await this.auditDecisionRepo.delete({ permanent: true, inputKey } as any);
-      } else {
-        await this.auditDecisionRepo.delete({ permanent: true, inputKey, merge: true } as any);
-      }
+      // Read existing permanent record (any direction) to carry over both counts.
+      const existingPermanent = await this.auditDecisionRepo.findOne({ where: { permanent: true, inputKey } as any });
+      const prevMergeCount = existingPermanent?.confirmationCount ?? 0;
+      const prevSplitCount = existingPermanent?.splitConfirmationCount ?? 0;
+      const confirmationCount = action === 'approved' ? prevMergeCount + 1 : prevMergeCount;
+      const splitConfirmationCount = action === 'kept_separate' ? prevSplitCount + 1 : prevSplitCount;
+
+      await this.auditDecisionRepo.delete({ permanent: true, inputKey } as any);
       await this.auditDecisionRepo.save(
         this.auditDecisionRepo.create({
           id: `AUD-GLOBAL-${inputKey}-${matchedPersonId ?? 'new'}`,
@@ -841,6 +849,8 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
           taxonomy_map: null,
           made_by: 'user',
           permanent: true,
+          confirmationCount,
+          splitConfirmationCount,
         }),
       );
     }
@@ -1219,6 +1229,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
 
   private async updateSessionRows(sessionId: string, rows: any[]) {
     if (!rows.length) return;
+    await this.rowRepo.delete({ sessionId });
     await this.rowRepo.save(rows.map((row) => ({ ...row, sessionId })));
   }
 

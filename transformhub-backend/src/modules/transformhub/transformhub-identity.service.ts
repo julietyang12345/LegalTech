@@ -86,6 +86,39 @@ export class TransformHubIdentityService {
     return bigrams;
   }
 
+  private isInitialCompatible(a: string, b: string): boolean {
+    const tokensA = a.split(' ').filter(Boolean);
+    const tokensB = b.split(' ').filter(Boolean);
+    if (tokensA.length === 0 || tokensB.length === 0) return false;
+
+    const [longer, shorter] = tokensA.length >= tokensB.length
+      ? [tokensA, tokensB]
+      : [tokensB, tokensA];
+
+    // Align tokens from the end (last name is the stable anchor).
+    // Use a separate pointer into longer so we can skip single-char initials in the
+    // longer name that sit between real tokens (e.g. "r a smith" vs "rachel smith":
+    // align smith↔smith, then skip "a" and match r↔rachel).
+    let matched = 0;
+    let li = longer.length - 1;
+    for (let i = 0; i < shorter.length; i++) {
+      const s = shorter[shorter.length - 1 - i];
+      let foundMatch = false;
+      while (li >= 0) {
+        const l = longer[li];
+        li--;
+        if (s === l) { matched++; foundMatch = true; break; }
+        if (s.length === 1 && l.startsWith(s)) { matched++; foundMatch = true; break; }
+        if (l.length === 1 && s.startsWith(l)) { matched++; foundMatch = true; break; }
+        // Multi-char token that doesn't match — hard stop, not initial-compatible
+        if (l.length > 1) break;
+        // Single-char initial in longer that doesn't match s — skip it and try next
+      }
+      if (!foundMatch) break;
+    }
+    return matched >= Math.min(shorter.length, 2);
+  }
+
   private computeNameSimilarity(left: string, right: string): number {
     const normalizedLeft = this.normStr(left);
     const normalizedRight = this.normStr(right);
@@ -289,9 +322,21 @@ export class TransformHubIdentityService {
       if (overlap / total >= 0.75) {
         score += 20;
         matchedFields.push('name_partial');
-      } else if (overlap > 0 && this.normStr(input.name).includes(this.normStr(candidate.lastName))) {
-        score += 10;
-        matchedFields.push('last_name');
+      } else {
+        // Check spelling variants and initial abbreviations not caught by token overlap.
+        // e.g. "Rachael Smith" vs "Rachel Smith" (similarity), "R. A. Smith" vs "Rachel Smith" (initials).
+        const nameSimilarity = this.computeNameSimilarity(inputName, candidateName);
+        if (nameSimilarity >= 0.65) {
+          score += Math.round(nameSimilarity * 20);
+          matchedFields.push(`name_similarity_${Math.round(nameSimilarity * 100)}`);
+          matchedFields.push('name_variant');
+        } else if (this.isInitialCompatible(inputName, candidateName)) {
+          score += 12;
+          matchedFields.push('name_initial_variant');
+        } else if (overlap > 0 && this.normStr(input.name).includes(this.normStr(candidate.lastName))) {
+          score += 10;
+          matchedFields.push('last_name');
+        }
       }
     }
 
@@ -318,7 +363,27 @@ export class TransformHubIdentityService {
       matchedFields.push('household');
     }
 
-    if (hasConflictingNamedIndividuals && !matchedFields.includes('full_name') && !matchedFields.includes('name_partial')) {
+    // Multi-signal bonus: email + any name match lifts score to the review band.
+    // "Rachel A. Smith" (email_alias+name_partial=55) would otherwise fall just below the 60 threshold.
+    const hasNameMatch = matchedFields.some((f) => ['full_name', 'name_partial', 'name_variant', 'name_initial_variant'].includes(f));
+    if (matchedFields.includes('email_alias') && hasNameMatch) {
+      score += 15;
+      matchedFields.push('email_name_multisignal');
+    }
+
+    // Conflict guard: different first name + same last name → likely different household members.
+    // Exempt when a name variant/initial match was already found, since those represent the same
+    // person with an abbreviated or misspelled name rather than a distinct household member.
+    if (
+      hasConflictingNamedIndividuals
+      && !matchedFields.includes('full_name')
+      && !matchedFields.includes('name_partial')
+      && !matchedFields.includes('name_variant')
+      && !matchedFields.includes('name_initial_variant')
+    ) {
+      this.logger.debug(
+        `[profile-conflict] input="${inputName}" candidate="${candidateName}" matchedFields=${matchedFields.join('|') || 'none'}`,
+      );
       return {
         score: 0,
         matchedFields: [...matchedFields, 'conflicting_first_name_same_household'],
@@ -377,8 +442,20 @@ export class TransformHubIdentityService {
 
     const hasStrongIdentitySignal = matchedFields.includes('email') || matchedFields.includes('phone') || matchedFields.includes('address_zip');
     const hasEnoughNameSimilarity = nameSimilarity >= 0.65;
-    if (!hasStrongIdentitySignal || !hasEnoughNameSimilarity) {
+    const isInitialVariant = hasStrongIdentitySignal && !hasEnoughNameSimilarity
+      && this.isInitialCompatible(inputName, candidateName);
+
+    if (!hasStrongIdentitySignal || (!hasEnoughNameSimilarity && !isInitialVariant)) {
+      this.logger.debug(
+        `[identity-score0] input="${inputName}" candidate="${candidateName}" nameSimilarity=${nameSimilarity.toFixed(2)} hasStrongIdentitySignal=${hasStrongIdentitySignal} hasEnoughNameSimilarity=${hasEnoughNameSimilarity} isInitialVariant=${isInitialVariant} matchedFields=${matchedFields.join('|') || 'none'}`,
+      );
       return { score: 0, matchedFields: [], matchedInputRef: null };
+    }
+
+    if (isInitialVariant) {
+      // Initial-abbreviated names (e.g. "R. A. Smith" vs "Rachael Smith") — always review, never auto
+      matchedFields.push('name_initial_variant');
+      return { score: Math.min(score + 12, 72), matchedFields, matchedInputRef: null };
     }
 
     score += Math.round(nameSimilarity * 20);
@@ -877,11 +954,14 @@ export class TransformHubIdentityService {
           this.mergePersonSignals(storedPerson, input, rowRef, personScope);
           pendingPersonSaves.push(storedPerson);
           const matchedInputRef = personInputRefs.get(storedPerson.id) ?? null;
+          const mergeCount = storedMergeDecision.confirmationCount ?? 1;
+          const splitCount = (storedMergeDecision as any).splitConfirmationCount ?? 0;
+          const isOrgRule = (mergeCount - splitCount) >= 2;
           matches.push({
             inputRef: rowRef,
             score: 100,
-            band: 'auto',
-            decision: 'auto',
+            band: isOrgRule ? 'org_rule' : 'auto',
+            decision: isOrgRule ? 'org_rule' : 'auto',
             matchedPersonId: storedPerson.id,
             matchedFields: ['stored_decision'],
             reviewPayload: this.buildMatchReviewPayload(row, rowRef, input, ['stored_decision'], storedPerson, null, matchedInputRef),

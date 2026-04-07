@@ -45,11 +45,14 @@ function QueueItemCard({ item, onResolved }: QueueItemCardProps) {
   }, [item.id, loading, onResolved]);
 
   const evidence = item.evidenceFields ?? [];
+  const isPreviouslyConfirmed = item.isHighConfidence && (item.evidenceFields ?? []).includes('stored_decision');
   const confidenceLabel = item.isDriftAlert
     ? 'Previously separated — re-appeared'
-    : item.isHighConfidence
-      ? 'High confidence'
-      : `${Math.round(item.score)}% match`;
+    : isPreviouslyConfirmed
+      ? 'High confidence · Previously confirmed'
+      : item.isHighConfidence
+        ? 'High confidence'
+        : `${Math.round(item.score)}% match`;
 
   return (
     <div
