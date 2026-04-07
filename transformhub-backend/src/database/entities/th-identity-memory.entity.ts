@@ -56,6 +56,15 @@ export class ThIdentityMemory {
   @Column({ type: 'timestamptz', nullable: true })
   lastConfirmedAt: Date | null;
 
+  @Column({ default: false })
+  isSuspicious: boolean;
+
+  @Column({ type: 'jsonb', nullable: true })
+  suspiciousReasons: string[] | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  suspiciousLastEvaluatedAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -18,6 +18,8 @@ import { ThSchemaTemplate } from './entities/th-schema-template.entity';
 import { ThKeySynonym } from './entities/th-key-synonym.entity';
 import { ThReviewAction } from './entities/th-review-action.entity';
 import { ThReviewDataset } from './entities/th-review-dataset.entity';
+import { ThReviewQueueItem } from './entities/th-review-queue-item.entity';
+import { ThSourceCrosswalk } from './entities/th-source-crosswalk.entity';
 
 dotenv.config();
 
@@ -38,7 +40,7 @@ function parseDbConfig() {
 export const AppDataSource = new DataSource({
   type: 'postgres',
   ...parseDbConfig(),
-  entities: [ThTransformSession, ThCanonicalRow, ThIdentityMemory, ThTaxonomyException, ThHousehold, ThOrganization, ThDonation, ThAttribution, ThRelationship, ThCampaign, ThAppeal, ThAuditDecision, ThAuditRun, ThSchemaTemplate, ThKeySynonym, ThReviewAction, ThReviewDataset],
+  entities: [ThTransformSession, ThCanonicalRow, ThIdentityMemory, ThTaxonomyException, ThHousehold, ThOrganization, ThDonation, ThAttribution, ThRelationship, ThCampaign, ThAppeal, ThAuditDecision, ThAuditRun, ThSchemaTemplate, ThKeySynonym, ThReviewAction, ThReviewDataset, ThReviewQueueItem, ThSourceCrosswalk],
   migrations: [join(__dirname, 'migrations', '*.{js,ts}')],
   synchronize: false,
   logging: process.env.NODE_ENV === 'development',

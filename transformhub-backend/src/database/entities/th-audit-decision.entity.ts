@@ -32,6 +32,9 @@ export class ThAuditDecision {
   @Column({ default: false })
   permanent: boolean;
 
+  @Column({ default: false })
+  disabled: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

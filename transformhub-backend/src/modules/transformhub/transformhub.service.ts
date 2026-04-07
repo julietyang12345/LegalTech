@@ -8,6 +8,11 @@ import { ThAuditRun } from '../../database/entities/th-audit-run.entity';
 import { ThAuditDecision } from '../../database/entities/th-audit-decision.entity';
 import { ThReviewAction } from '../../database/entities/th-review-action.entity';
 import { ThReviewDataset } from '../../database/entities/th-review-dataset.entity';
+import { ThReviewQueueItem } from '../../database/entities/th-review-queue-item.entity';
+import { ThIdentityMemory } from '../../database/entities/th-identity-memory.entity';
+import { ThDonation } from '../../database/entities/th-donation.entity';
+import { ThHousehold } from '../../database/entities/th-household.entity';
+import { ThSourceCrosswalk } from '../../database/entities/th-source-crosswalk.entity';
 import { TransformHubPipelineService } from './transformhub-pipeline.service';
 import { TransformHubIdentityService } from './transformhub-identity.service';
 import { TransformHubTaxonomyService } from './transformhub-taxonomy.service';
@@ -44,6 +49,16 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     private readonly reviewActionRepo: Repository<ThReviewAction>,
     @InjectRepository(ThReviewDataset)
     private readonly reviewDatasetRepo: Repository<ThReviewDataset>,
+    @InjectRepository(ThReviewQueueItem)
+    private readonly reviewQueueRepo: Repository<ThReviewQueueItem>,
+    @InjectRepository(ThIdentityMemory)
+    private readonly identityMemoryRepo: Repository<ThIdentityMemory>,
+    @InjectRepository(ThDonation)
+    private readonly donationRepo: Repository<ThDonation>,
+    @InjectRepository(ThHousehold)
+    private readonly householdRepo: Repository<ThHousehold>,
+    @InjectRepository(ThSourceCrosswalk)
+    private readonly sourceCrosswalkRepo: Repository<ThSourceCrosswalk>,
     private readonly pipeline: TransformHubPipelineService,
     private readonly identity: TransformHubIdentityService,
     private readonly taxonomy: TransformHubTaxonomyService,
@@ -600,6 +615,19 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     });
 
     await this.rowRepo.save(updatedRows);
+    await this.enqueueReviewMatches(result.matches);
+    await this.syncSourceCrosswalkForSession(body.sessionId, body.baselinePlatform ?? null, body.baselineFileClass ?? null);
+
+    // Evaluate suspicious patterns on persons touched by this session
+    const touchedPersonIds = [...new Set(
+      updatedRows.map((r) => r.canonical_person_id).filter((id): id is string => Boolean(id)),
+    )];
+    if (touchedPersonIds.length > 0) {
+      await this.evaluateSuspiciousProfiles(touchedPersonIds).catch((err) => {
+        this.logger.warn('evaluateSuspiciousProfiles failed (non-fatal): ' + err?.message);
+      });
+    }
+
     await this.sessionRepo.update(body.sessionId, {
       personResult: {
         ...result,
@@ -655,48 +683,67 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     }
 
     const matchingRows = await this.rowRepo.find({ where: { sessionId: body.sessionId, source_row_ref: body.inputRef } });
-    if (matchingRows.length === 0) {
-      throw new NotFoundException(`No session rows found for source reference ${body.inputRef}.`);
+
+    // Resolve inputKey — priority: DB row > session personResult > frontend-supplied inputKey > entityName fallback.
+    let inputKey: string;
+    if (matchingRows.length > 0) {
+      inputKey = this.buildIdentityDecisionKey(matchingRows[0]?.entity_name);
+    } else if (body.inputKey) {
+      inputKey = String(body.inputKey);
+    } else {
+      // Look up inputKey from the session's stored personResult — most reliable for non-ledger sessions.
+      const session = await this.sessionRepo.findOne({ where: { id: body.sessionId }, select: ['id', 'personResult'] });
+      const storedMatch = (session?.personResult as any)?.matches?.find((m: any) => m.inputRef === body.inputRef);
+      if (storedMatch?.inputKey) {
+        inputKey = String(storedMatch.inputKey);
+      } else if (storedMatch?.reviewPayload?.input?.name) {
+        inputKey = this.buildIdentityDecisionKey(storedMatch.reviewPayload.input.name);
+      } else {
+        inputKey = this.buildIdentityDecisionKey(body.entityName ?? null);
+      }
     }
 
-    const inputKey = this.buildIdentityDecisionKey(matchingRows[0]?.entity_name);
-    const updatedRows = matchingRows.map((row) => ({
-      ...row,
-      canonical_person_id: body.action === 'confirmed' ? body.matchedPersonId : null,
-    }));
-    await this.rowRepo.save(updatedRows as any);
+    // Update session rows with the canonical person assignment (ledger sessions only — donor rows are client-side).
+    if (matchingRows.length > 0) {
+      const updatedRows = matchingRows.map((row) => ({
+        ...row,
+        canonical_person_id: body.action === 'confirmed' ? body.matchedPersonId : null,
+      }));
+      await this.rowRepo.save(updatedRows as any);
 
-    await this.auditDecisionRepo.save(
-      updatedRows.map((row) =>
-        this.auditDecisionRepo.create({
-          id: `AUD-${body.sessionId}-${row.id}-merge`,
-          sessionId: body.sessionId,
-          rowId: row.id,
-          inputKey,
-          matchedPersonId: body.matchedPersonId ?? null,
-          merge: body.action === 'confirmed',
-          split: body.action === 'separated',
-          taxonomy_map: null,
-          made_by: 'user',
-          permanent: false,
-        }),
-      ),
-    );
+      await this.auditDecisionRepo.save(
+        updatedRows.map((row) =>
+          this.auditDecisionRepo.create({
+            id: `AUD-${body.sessionId}-${row.id}-merge`,
+            sessionId: body.sessionId,
+            rowId: row.id,
+            inputKey,
+            matchedPersonId: body.matchedPersonId ?? null,
+            merge: body.action === 'confirmed',
+            split: body.action === 'separated',
+            taxonomy_map: null,
+            made_by: 'user',
+            permanent: false,
+          }),
+        ),
+      );
+    }
 
+    // Write the permanent cross-session decision directly — core business fact,
+    // must not be gated on queue infrastructure.
     if (inputKey) {
       if (body.action === 'confirmed') {
         await this.auditDecisionRepo.delete({ permanent: true, inputKey } as any);
       } else {
         await this.auditDecisionRepo.delete({ permanent: true, inputKey, merge: true } as any);
       }
-
       await this.auditDecisionRepo.save(
         this.auditDecisionRepo.create({
           id: `AUD-GLOBAL-${inputKey}-${body.matchedPersonId ?? 'new'}`,
           sessionId: null,
           rowId: null,
           inputKey,
-          matchedPersonId: body.matchedPersonId ?? null,
+          matchedPersonId: body.action === 'confirmed' ? (body.matchedPersonId ?? null) : null,
           merge: body.action === 'confirmed',
           split: body.action === 'separated',
           taxonomy_map: null,
@@ -706,23 +753,216 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
+    // Update queue state as a side effect — non-blocking, queue failure must not affect the decision above.
+    const queueAction = body.action === 'confirmed' ? 'approved' : 'kept_separate';
+    this.findOrCreateQueueItem(inputKey, body.matchedPersonId ?? null)
+      .then((queueItem) => this.resolveQueueItemState(queueItem.id, queueAction, body.sessionId, {
+        entityId: body.matchedPersonId ?? body.inputRef,
+        confidence: typeof body.confidence === 'number' ? body.confidence : null,
+        reason: body.reason ?? 'Human duplicate review decision.',
+      }))
+      .catch((err) => this.logger.warn(`[submitIdentityDecision] queue sync failed (non-fatal): ${err?.message}`));
+
+    if (matchingRows.length === 0) {
+      // Non-ledger session — rows are client-side only. Return empty so the frontend ignores the response.
+      return { updatedRows: [], audit: null, auditDecisions: [] };
+    }
+
     const sessionRows = await this.rowRepo.find({ where: { sessionId: body.sessionId } });
     const audit = await this.previewAuditForSession(body.sessionId, sessionRows);
     const auditDecisions = await this.auditDecisionRepo.find({ where: { sessionId: body.sessionId }, order: { createdAt: 'ASC' } });
-    await this.logReviewAction(body.sessionId, {
-      actionType: body.action === 'confirmed' ? 'merge_duplicate' : 'separate_duplicate',
+    return { updatedRows: sessionRows, audit, auditDecisions };
+  }
+
+  // ─── Review Queue ────────────────────────────────────────────────────────────
+
+  async getReviewQueue() {
+    const DISPLAY_CAP = 20;
+    const BATCH_THRESHOLD = 65;
+
+    const [allPending, totalPending] = await this.reviewQueueRepo.findAndCount({
+      where: { status: 'pending' },
+      order: { isHighConfidence: 'DESC', score: 'DESC' },
+      take: DISPLAY_CAP,
+    });
+
+    const batchedCount = await this.reviewQueueRepo.count({
+      where: { status: 'pending' },
+    }).then(async (total) => {
+      if (total <= DISPLAY_CAP) return 0;
+      // Count items below threshold that didn't make it into the display window.
+      const aboveThreshold = await this.reviewQueueRepo.count({
+        where: { status: 'pending' },
+      });
+      return Math.max(0, aboveThreshold - DISPLAY_CAP);
+    });
+
+    return { items: allPending, totalPending, batchedCount };
+  }
+
+  async getReviewQueueSummary() {
+    const [pendingCount, highConfidenceCount, driftAlertCount] = await Promise.all([
+      this.reviewQueueRepo.count({ where: { status: 'pending' } }),
+      this.reviewQueueRepo.count({ where: { status: 'pending', isHighConfidence: true } }),
+      this.reviewQueueRepo.count({ where: { status: 'pending', isDriftAlert: true } }),
+    ]);
+    return { pendingCount, highConfidenceCount, driftAlertCount };
+  }
+
+  // Called from the HTTP endpoint (POST /review-queue/:id/resolve) — writes permanent decision + updates queue state.
+  async resolveQueueItem(
+    itemId: string,
+    action: 'approved' | 'kept_separate',
+    sessionId?: string | null,
+    meta?: { entityId?: string; confidence?: number | null; reason?: string },
+  ) {
+    const item = await this.reviewQueueRepo.findOne({ where: { id: itemId } });
+    if (!item) throw new NotFoundException(`Review queue item ${itemId} not found.`);
+
+    // Write the permanent decision first — this is the core fact.
+    const inputKey = item.inputKey;
+    const matchedPersonId = action === 'approved' ? item.candidatePersonId : null;
+
+    if (inputKey) {
+      if (action === 'approved') {
+        await this.auditDecisionRepo.delete({ permanent: true, inputKey } as any);
+      } else {
+        await this.auditDecisionRepo.delete({ permanent: true, inputKey, merge: true } as any);
+      }
+      await this.auditDecisionRepo.save(
+        this.auditDecisionRepo.create({
+          id: `AUD-GLOBAL-${inputKey}-${matchedPersonId ?? 'new'}`,
+          sessionId: null,
+          rowId: null,
+          inputKey,
+          matchedPersonId: matchedPersonId ?? null,
+          merge: action === 'approved',
+          split: action === 'kept_separate',
+          taxonomy_map: null,
+          made_by: 'user',
+          permanent: true,
+        }),
+      );
+    }
+
+    // Then update queue state.
+    await this.resolveQueueItemState(itemId, action, sessionId, meta);
+
+    return item;
+  }
+
+  // Updates queue item status + writes audit log. Does NOT write permanent decisions.
+  private async resolveQueueItemState(
+    itemId: string,
+    action: 'approved' | 'kept_separate',
+    sessionId?: string | null,
+    meta?: { entityId?: string; confidence?: number | null; reason?: string },
+  ) {
+    const item = await this.reviewQueueRepo.findOne({ where: { id: itemId } });
+    if (!item) return;
+    if (item.status !== 'pending') return;
+
+    item.status = action;
+    item.resolvedAt = new Date();
+    await this.reviewQueueRepo.save(item);
+
+    await this.logReviewAction(sessionId ?? null, {
+      actionType: action === 'approved' ? 'merge_duplicate' : 'separate_duplicate',
       entityType: 'person',
-      entityId: body.matchedPersonId ?? body.inputRef,
-      payload: {
-        fromIds: [body.inputRef],
-        toId: body.action === 'confirmed' ? (body.matchedPersonId ?? body.inputRef) : null,
-        matchedPersonId: body.matchedPersonId ?? null,
-      },
-      reason: body.reason ?? 'Human duplicate review decision.',
-      confidence: typeof body.confidence === 'number' ? body.confidence : null,
+      entityId: meta?.entityId ?? item.candidatePersonId ?? itemId,
+      payload: { queueItemId: itemId, matchedPersonId: action === 'approved' ? item.candidatePersonId : null },
+      reason: meta?.reason ?? 'Human duplicate review decision.',
+      confidence: meta?.confidence ?? item.score ?? null,
       userId: 'user',
     });
-    return { updatedRows: sessionRows, audit, auditDecisions };
+  }
+
+  private async findOrCreateQueueItem(inputKey: string | null, candidatePersonId: string | null): Promise<ThReviewQueueItem> {
+    if (inputKey) {
+      const existing = await this.reviewQueueRepo.findOne({
+        where: { inputKey, candidatePersonId: candidatePersonId ?? undefined } as any,
+        order: { createdAt: 'DESC' },
+      });
+      if (existing) return existing;
+    }
+
+    const item = this.reviewQueueRepo.create({
+      inputKey: inputKey ?? null,
+      candidatePersonId: candidatePersonId ?? null,
+      score: 0,
+      isHighConfidence: false,
+      status: 'pending',
+    });
+    return this.reviewQueueRepo.save(item);
+  }
+
+  private async enqueueReviewMatches(matches: any[]) {
+    const QUEUE_CAP = 20;
+    const BATCH_THRESHOLD = 65;
+
+    const reviewMatches = matches.filter(
+      (m: any) => (m.decision === 'review' || m.decision === 'auto') && m.matchedPersonId,
+    );
+    if (reviewMatches.length === 0) return;
+
+    // Check current pending count for anti-flood logic.
+    const currentPendingCount = await this.reviewQueueRepo.count({ where: { status: 'pending' } });
+
+    // Batch lookup existing pending items for these candidates to avoid duplicates.
+    const candidateIds = [...new Set(reviewMatches.map((m: any) => m.matchedPersonId as string))];
+    const existing = await this.reviewQueueRepo.find({
+      where: { candidatePersonId: In(candidateIds), status: 'pending' } as any,
+    });
+    const existingKeys = new Set(
+      existing.map((item) => `${item.inputKey ?? ''}::${item.candidatePersonId ?? ''}`),
+    );
+
+    // Drift detection: load permanent split decisions for all input keys so we
+    // can flag when a previously-separated pair re-appears as high confidence.
+    const inputKeys = reviewMatches.map((m: any) => m.inputKey).filter(Boolean) as string[];
+    const permanentSplits = inputKeys.length > 0
+      ? await this.auditDecisionRepo.find({
+          where: { permanent: true, split: true, inputKey: In(inputKeys) } as any,
+        })
+      : [];
+    const splitInputKeys = new Set(permanentSplits.map((d) => d.inputKey ?? '').filter(Boolean));
+
+    const toInsert: Partial<ThReviewQueueItem>[] = [];
+    let projectedCount = currentPendingCount;
+
+    for (const match of reviewMatches) {
+      const key = `${match.inputKey ?? ''}::${match.matchedPersonId ?? ''}`;
+      if (existingKeys.has(key)) continue;
+
+      // Anti-flood: skip low-confidence items when the queue is full, unless
+      // it's a drift alert (those always get through).
+      const isDrift = match.decision === 'auto' && splitInputKeys.has(match.inputKey ?? '');
+      if (!isDrift && projectedCount >= QUEUE_CAP && match.score < BATCH_THRESHOLD) continue;
+
+      const displayNameA = match.reviewPayload?.input?.name ?? null;
+      const candidatePerson = match.reviewPayload?.candidate;
+      const displayNameB = candidatePerson
+        ? [candidatePerson.firstName, candidatePerson.lastName].filter(Boolean).join(' ') || null
+        : null;
+
+      toInsert.push({
+        inputKey: match.inputKey ?? null,
+        candidatePersonId: match.matchedPersonId,
+        score: match.score ?? 0,
+        isHighConfidence: match.decision === 'auto',
+        isDriftAlert: isDrift,
+        displayNameA,
+        displayNameB,
+        evidenceFields: match.matchedFields ?? [],
+        status: 'pending',
+      });
+      existingKeys.add(key);
+      projectedCount++;
+    }
+
+    if (toInsert.length > 0) {
+      await this.reviewQueueRepo.save(toInsert.map((item) => this.reviewQueueRepo.create(item)));
+    }
   }
 
   async entityModel(body: any) {
@@ -1069,5 +1309,254 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
       .trim()
       .replace(/[^\w\s]/g, '')
       .replace(/\s+/g, ' ');
+  }
+
+  // ─── Applied automatically (permanent merge decisions) ───────────────────────
+
+  async listAppliedDecisions(query: { page?: number; pageSize?: number }) {
+    const page = Math.max(1, query.page ?? 1);
+    const pageSize = Math.min(100, Math.max(1, query.pageSize ?? 30));
+    const [decisions, total] = await this.auditDecisionRepo.findAndCount({
+      where: { permanent: true, merge: true },
+      order: { updatedAt: 'DESC' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+    return { decisions, total, page, pageSize };
+  }
+
+  async toggleAppliedDecision(decisionId: string) {
+    const decision = await this.auditDecisionRepo.findOne({ where: { id: decisionId } });
+    if (!decision) throw new NotFoundException(`Decision ${decisionId} not found.`);
+    if (!decision.permanent || !decision.merge) {
+      throw new BadRequestException('Only permanent merge decisions can be toggled.');
+    }
+    decision.disabled = !decision.disabled;
+    await this.auditDecisionRepo.save(decision);
+    return decision;
+  }
+
+  // ─── Source Crosswalk ────────────────────────────────────────────────────────
+
+  private async upsertSourceCrosswalk(
+    personId: string,
+    platform: string,
+    fileClass: string | null,
+    rawKey: string | null,
+    donationAmount: number,
+    seenAt: Date,
+  ): Promise<void> {
+    const id = `${personId}::${platform}::${fileClass ?? 'unknown'}`;
+    const existing = await this.sourceCrosswalkRepo.findOne({ where: { id } });
+    if (existing) {
+      existing.totalGiving = Number(existing.totalGiving) + donationAmount;
+      existing.donationCount += donationAmount > 0 ? 1 : 0;
+      existing.lastSeenAt = seenAt;
+      if (!existing.rawKey && rawKey) existing.rawKey = rawKey;
+      await this.sourceCrosswalkRepo.save(existing);
+    } else {
+      await this.sourceCrosswalkRepo.save(
+        this.sourceCrosswalkRepo.create({
+          id,
+          personId,
+          platform,
+          fileClass,
+          rawKey,
+          totalGiving: donationAmount,
+          donationCount: donationAmount > 0 ? 1 : 0,
+          firstSeenAt: seenAt,
+          lastSeenAt: seenAt,
+        }),
+      );
+    }
+  }
+
+  async syncSourceCrosswalkForSession(
+    sessionId: string,
+    platform: string | null,
+    fileClass: string | null,
+  ): Promise<void> {
+    if (!platform) return;
+    const rows = await this.rowRepo.find({ where: { sessionId } });
+    const seenAt = new Date();
+    const batchMap = new Map<string, { personId: string; rawKey: string | null; amount: number }>();
+
+    for (const row of rows) {
+      if (!row.canonical_person_id) continue;
+      const key = `${row.canonical_person_id}::${platform}::${fileClass ?? 'unknown'}`;
+      const existing = batchMap.get(key);
+      const amount = parseFloat(row.debit ?? '0') || 0;
+      const rawKey = row.entity_name ?? null;
+      if (existing) {
+        existing.amount += amount;
+      } else {
+        batchMap.set(key, { personId: row.canonical_person_id, rawKey, amount });
+      }
+    }
+
+    for (const [, { personId, rawKey, amount }] of batchMap) {
+      await this.upsertSourceCrosswalk(personId, platform, fileClass, rawKey, amount, seenAt);
+    }
+  }
+
+  // ─── Suspicious Profile ───────────────────────────────────────────────────────
+
+  /**
+   * Evaluates a set of persons for suspicious patterns and persists flags.
+   * Also enqueues a `suspicious_profile` queue item so it surfaces in the review queue.
+   *
+   * Suspicious heuristics:
+   *  - Multiple email domains (≥2 distinct domains on fingerprints containing "@")
+   *  - Excessive source platforms (≥3 distinct platforms across crosswalk entries)
+   *  - Contradictory split+merge decisions (both merge=true and split=true decisions exist)
+   */
+  async evaluateSuspiciousProfiles(personIds: string[]): Promise<void> {
+    if (personIds.length === 0) return;
+
+    for (const personId of personIds) {
+      const [person, decisions, crosswalk] = await Promise.all([
+        this.identityMemoryRepo.findOne({ where: { id: personId } }),
+        this.auditDecisionRepo.find({ where: { matchedPersonId: personId, permanent: true } }),
+        this.sourceCrosswalkRepo.find({ where: { personId } }),
+      ]);
+      if (!person) continue;
+
+      const reasons: string[] = [];
+
+      // Heuristic 1: multiple email domains
+      const emailFingerprints = person.fingerprints.filter((fp) => fp.includes('@'));
+      const domains = new Set(emailFingerprints.map((fp) => fp.split('@')[1]?.toLowerCase()).filter(Boolean));
+      if (domains.size >= 2) {
+        reasons.push(`Multiple email domains: ${[...domains].join(', ')}`);
+      }
+
+      // Heuristic 2: excessive source platforms
+      const platformSet = new Set(crosswalk.map((cw) => cw.platform));
+      if (platformSet.size >= 3) {
+        reasons.push(`Seen across ${platformSet.size} source platforms`);
+      }
+
+      // Heuristic 3: contradictory decisions
+      const hasMerge = decisions.some((d) => d.merge);
+      const hasSplit = decisions.some((d) => d.split);
+      if (hasMerge && hasSplit) {
+        reasons.push('Both merge and split decisions exist for this identity');
+      }
+
+      const isSuspicious = reasons.length > 0;
+      const wasAlreadySuspicious = person.isSuspicious;
+
+      person.isSuspicious = isSuspicious;
+      person.suspiciousReasons = isSuspicious ? reasons : null;
+      person.suspiciousLastEvaluatedAt = new Date();
+      await this.identityMemoryRepo.save(person);
+
+      // Enqueue a suspicious_profile item if newly flagged
+      if (isSuspicious && !wasAlreadySuspicious) {
+        const existingItem = await this.reviewQueueRepo.findOne({
+          where: {
+            candidatePersonId: personId,
+            inputKey: `suspicious:${personId}`,
+            status: 'pending',
+          } as any,
+        });
+        if (!existingItem) {
+          const displayName = [person.firstName, person.lastName].filter(Boolean).join(' ') || person.email || personId;
+          await this.reviewQueueRepo.save(
+            this.reviewQueueRepo.create({
+              id: `SUS-${personId}-${Date.now()}`,
+              inputKey: `suspicious:${personId}`,
+              candidatePersonId: personId,
+              score: 0,
+              isHighConfidence: false,
+              isDriftAlert: false,
+              displayNameA: displayName,
+              displayNameB: 'Suspicious profile',
+              evidenceFields: reasons,
+              status: 'pending',
+            }),
+          );
+        }
+      }
+    }
+  }
+
+  // ─── Identity Hub ────────────────────────────────────────────────────────────
+
+  async listIdentityHubPersons(query: { q?: string; page?: number; pageSize?: number }) {
+    const page = Math.max(1, query.page ?? 1);
+    const pageSize = Math.min(50, Math.max(1, query.pageSize ?? 20));
+    const skip = (page - 1) * pageSize;
+
+    const qb = this.identityMemoryRepo.createQueryBuilder('p')
+      .orderBy('p.updatedAt', 'DESC')
+      .skip(skip)
+      .take(pageSize);
+
+    if (query.q) {
+      const term = `%${query.q.toLowerCase()}%`;
+      qb.where(
+        `LOWER(p."firstName") LIKE :term OR LOWER(p."lastName") LIKE :term OR LOWER(p.email) LIKE :term`,
+        { term },
+      );
+    }
+
+    const [persons, total] = await qb.getManyAndCount();
+    return { persons, total, page, pageSize };
+  }
+
+  async getIdentityHubProfile(personId: string) {
+    const person = await this.identityMemoryRepo.findOne({ where: { id: personId } });
+    if (!person) throw new NotFoundException(`Person ${personId} not found.`);
+
+    const [decisions, donations, openQueueItems, crosswalk] = await Promise.all([
+      this.auditDecisionRepo.find({
+        where: { matchedPersonId: personId, permanent: true },
+        order: { updatedAt: 'DESC' },
+        take: 50,
+      }),
+      this.donationRepo.find({
+        where: { canonical_person_id: personId },
+        order: { date: 'DESC' },
+        take: 100,
+      }),
+      this.reviewQueueRepo.find({
+        where: { candidatePersonId: personId, status: 'pending' } as any,
+        order: { score: 'DESC' },
+      }),
+      this.sourceCrosswalkRepo.find({
+        where: { personId },
+        order: { totalGiving: 'DESC' },
+      }),
+    ]);
+
+    // Find household membership.
+    const allHouseholds = await this.householdRepo
+      .createQueryBuilder('h')
+      .where(`h."memberIds" @> :ids`, { ids: JSON.stringify([personId]) })
+      .getMany();
+
+    const totalGiving = donations.reduce((sum, d) => sum + (d.amount ?? 0), 0);
+
+    // Extract source platforms from fingerprints for a lightweight crosswalk view.
+    const sourcePlatforms = [
+      ...(person.sourcePlatform ? [person.sourcePlatform] : []),
+      ...decisions.map((d) => d.sessionId).filter(Boolean),
+    ];
+    const uniquePlatforms = [...new Set(sourcePlatforms)];
+
+    return {
+      person,
+      decisions,
+      donations,
+      households: allHouseholds,
+      openQueueItems,
+      crosswalk,
+      totalGiving,
+      sourcePlatforms: uniquePlatforms,
+      donationCount: donations.length,
+      isSuspicious: person.isSuspicious,
+      suspiciousReasons: person.suspiciousReasons ?? [],
+    };
   }
 }

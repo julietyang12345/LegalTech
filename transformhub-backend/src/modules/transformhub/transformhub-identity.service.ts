@@ -839,7 +839,8 @@ export class TransformHubIdentityService {
         .filter(Boolean),
     ));
     const permanentDecisions = usePersistentIdentityMemory && inputKeys.length > 0
-      ? await this.auditDecisionRepo.find({ where: { permanent: true, inputKey: In(inputKeys) }, order: { updatedAt: 'DESC' } })
+      ? (await this.auditDecisionRepo.find({ where: { permanent: true, inputKey: In(inputKeys) }, order: { updatedAt: 'DESC' } }))
+          .filter((d) => !(d as any).disabled)
       : [];
     const decisionsByInputKey = new Map<string, ThAuditDecision[]>();
     permanentDecisions.forEach((decision) => {
@@ -917,16 +918,12 @@ export class TransformHubIdentityService {
       let aiSuggestion = null;
       const matchedInputRef = bestMatchedInputRef ?? (bestMatch ? (personInputRefs.get(bestMatch.id) ?? null) : null);
 
-      if (band === 'auto' && bestMatch) {
-        this.mergePersonSignals(bestMatch, input, rowRef, personScope);
-        pendingPersonSaves.push(bestMatch);
-        personIndex.addPerson(bestMatch);
+      if ((band === 'auto' || band === 'review') && bestMatch) {
+        // Both high-confidence (auto) and normal-confidence (review) matches go to the
+        // review queue — band indicates confidence level only, not execution action.
+        // Auto-merge is intentionally suspended until org-level rules are in place.
         matchedPersonId = bestMatch.id;
-        decision = 'auto';
-        autoMatched++;
-      } else if (band === 'review' && bestMatch) {
-        matchedPersonId = bestMatch.id;
-        decision = 'review';
+        decision = band; // preserve 'auto' vs 'review' for queue priority
         needsReviewCount++;
         if (includeAiSuggestions) {
           aiSuggestion = await this.buildAiReviewSuggestion(rowRef, input, bestMatchedFields, bestScore, bestMatch);
@@ -947,6 +944,7 @@ export class TransformHubIdentityService {
         score: bestScore,
         band,
         decision,
+        inputKey,
         matchedPersonId,
         matchedFields: bestMatchedFields,
         reviewPayload: this.buildMatchReviewPayload(row, rowRef, input, bestMatchedFields, bestMatch, aiSuggestion, matchedInputRef),

@@ -180,6 +180,8 @@ export async function persistMergeDecisionBackend(
   matchedPersonId?: string | null,
   reason?: string,
   confidence?: number,
+  entityName?: string,
+  inputKey?: string | null,
 ): Promise<{ updatedRows: CanonicalLedgerRow[]; audit?: AuditRuleResult; auditDecisions: PersistedMergeDecision[] }> {
   const response = await api.post<{ updatedRows: CanonicalLedgerRow[]; audit?: AuditRuleResult; auditDecisions: PersistedMergeDecision[] }>('/transformhub/merge-decision', {
     sessionId,
@@ -188,6 +190,8 @@ export async function persistMergeDecisionBackend(
     matchedPersonId: matchedPersonId ?? undefined,
     reason,
     confidence,
+    entityName,
+    inputKey,
   });
   return response.data;
 }
@@ -305,6 +309,171 @@ export async function fetchReviewAnalytics(
     sessionId,
     postReviewReady,
   });
+  return response.data;
+}
+
+// ─── Applied automatically ────────────────────────────────────────────────────
+
+export type AppliedDecision = {
+  id: string;
+  inputKey: string | null;
+  matchedPersonId: string | null;
+  merge: boolean;
+  split: boolean;
+  permanent: boolean;
+  disabled: boolean;
+  made_by: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AppliedDecisionsResponse = {
+  decisions: AppliedDecision[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+export async function fetchAppliedDecisions(params?: { page?: number; pageSize?: number }): Promise<AppliedDecisionsResponse> {
+  const response = await api.get<AppliedDecisionsResponse>('/transformhub/applied-decisions', { params });
+  return response.data;
+}
+
+export async function toggleAppliedDecision(id: string): Promise<AppliedDecision> {
+  const response = await api.put<AppliedDecision>(`/transformhub/applied-decisions/${id}/toggle`);
+  return response.data;
+}
+
+// ─── Identity Hub ────────────────────────────────────────────────────────────
+
+export type IdentityPerson = {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  phone: string | null;
+  addressLine1: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  tags: string[];
+  lifecycle: string;
+  sourcePlatform: string | null;
+  sourceFileClass: string | null;
+  fingerprints: string[];
+  isSuspicious: boolean;
+  suspiciousReasons: string[] | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type IdentityProfile = {
+  person: IdentityPerson;
+  decisions: Array<{
+    id: string;
+    inputKey: string | null;
+    matchedPersonId: string | null;
+    merge: boolean;
+    split: boolean;
+    made_by: string;
+    permanent: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  donations: Array<{
+    id: string;
+    amount: number;
+    date: string | null;
+    fund: string | null;
+    appeal: string | null;
+    attribution_type: string;
+  }>;
+  households: Array<{
+    id: string;
+    lastName: string | null;
+    memberIds: string[];
+    jointGivingTotal: number;
+  }>;
+  isSuspicious: boolean;
+  suspiciousReasons: string[];
+  openQueueItems: import('./service').ReviewQueueItem[];
+  crosswalk: Array<{
+    id: string;
+    platform: string;
+    fileClass: string | null;
+    rawKey: string | null;
+    totalGiving: number;
+    donationCount: number;
+    firstSeenAt: string | null;
+    lastSeenAt: string | null;
+  }>;
+  totalGiving: number;
+  sourcePlatforms: string[];
+  donationCount: number;
+};
+
+export type IdentityListResponse = {
+  persons: IdentityPerson[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+export async function fetchIdentityHubPersons(params?: { q?: string; page?: number; pageSize?: number }): Promise<IdentityListResponse> {
+  const response = await api.get<IdentityListResponse>('/transformhub/identity-hub/persons', { params });
+  return response.data;
+}
+
+export async function fetchIdentityHubProfile(personId: string): Promise<IdentityProfile> {
+  const response = await api.get<IdentityProfile>(`/transformhub/identity-hub/persons/${personId}`);
+  return response.data;
+}
+
+// ─── Review Queue ────────────────────────────────────────────────────────────
+
+export type ReviewQueueItem = {
+  id: string;
+  inputKey: string | null;
+  candidatePersonId: string | null;
+  score: number;
+  isHighConfidence: boolean;
+  isDriftAlert: boolean;
+  displayNameA: string | null;
+  displayNameB: string | null;
+  evidenceFields: string[] | null;
+  status: 'pending' | 'approved' | 'kept_separate';
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ReviewQueueResponse = {
+  items: ReviewQueueItem[];
+  totalPending: number;
+  batchedCount: number;
+};
+
+export type ReviewQueueSummary = {
+  pendingCount: number;
+  highConfidenceCount: number;
+  driftAlertCount: number;
+};
+
+export async function fetchReviewQueue(): Promise<ReviewQueueResponse> {
+  const response = await api.get<ReviewQueueResponse>('/transformhub/review-queue');
+  return response.data;
+}
+
+export async function fetchReviewQueueSummary(): Promise<ReviewQueueSummary> {
+  const response = await api.get<ReviewQueueSummary>('/transformhub/review-queue/summary');
+  return response.data;
+}
+
+export async function resolveReviewQueueItem(
+  id: string,
+  action: 'approved' | 'kept_separate',
+): Promise<ReviewQueueItem> {
+  const response = await api.post<ReviewQueueItem>(`/transformhub/review-queue/${id}/resolve`, { action });
   return response.data;
 }
 

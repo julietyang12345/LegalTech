@@ -473,6 +473,7 @@ export type PersonMatchDecision = 'auto' | 'review' | 'new';
 
 export type PersonMatch = {
   inputRef: string;
+  inputKey?: string | null;
   score: number;
   band: ConfidenceBand;
   decision: PersonMatchDecision;
@@ -692,6 +693,12 @@ export type AuditRuleFinding = {
   message: string;
   detail?: string;
   rowIds: string[];
+  rootCause?: {
+    causalPattern: string;
+    explanation: string;
+    suggestedFix: string;
+    suggestedFixType: string;
+  } | null;
 };
 
 export type AuditRuleResult = {

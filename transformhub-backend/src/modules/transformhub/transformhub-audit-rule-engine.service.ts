@@ -4,6 +4,86 @@ import { TransformHubTaxonomyService } from './transformhub-taxonomy.service';
 
 const AUDIT_ENGINE_VERSION = '2026.03.25';
 
+// ─── Root Cause Lookup ────────────────────────────────────────────────────────
+// Deterministic explanations for every audit rule. Surfaces to users as
+// "Why did this happen?" + "How to fix it" without requiring AI.
+
+type RootCause = {
+  causalPattern: string;
+  explanation: string;
+  suggestedFix: string;
+  suggestedFixType: 'resolve_taxonomy' | 'add_field_mapping' | 'run_person_resolve' | 'crm_config' | 'contact_donor' | 'manual_review' | 'reporting_only';
+};
+
+const ROOT_CAUSE_MAP: Record<string, RootCause> = {
+  UNKNOWN_APPEAL_CODE: {
+    causalPattern: 'fund_taxonomy_gap',
+    explanation: 'This appeal code was created in your CRM but has no matching entry in the taxonomy registry. This usually happens when a new campaign is launched and the code is not added to the canonical list.',
+    suggestedFix: 'Open Taxonomy Review and map the unknown appeal code to a canonical entry.',
+    suggestedFixType: 'resolve_taxonomy',
+  },
+  WRONG_GL_ACCOUNT: {
+    causalPattern: 'crm_data_entry_error',
+    explanation: 'The GL account assigned to this donation does not fall within the expected range for its fund type. This typically comes from a manual override or copy-paste error in the source CRM.',
+    suggestedFix: 'Correct the GL account mapping in the field mapping layer, or fix the source record in your CRM and re-import.',
+    suggestedFixType: 'add_field_mapping',
+  },
+  MAJOR_GIFT_NO_DD: {
+    causalPattern: 'missing_person_link',
+    explanation: 'A large gift has no canonical donor attached. This happens when the donor check step was skipped or the person record could not be matched during import.',
+    suggestedFix: 'Run the duplicate check on this session to link these gifts to canonical donor records.',
+    suggestedFixType: 'run_person_resolve',
+  },
+  MONTHLY_DONOR_TAG_GAP: {
+    causalPattern: 'missing_person_link',
+    explanation: 'Recurring transactions are present but no donor tag is linked. The recurring donor likely exists in your CRM but was not matched during import.',
+    suggestedFix: 'Run the duplicate check and confirm matches for recurring donors.',
+    suggestedFixType: 'run_person_resolve',
+  },
+  LYBUNT_SYBUNT: {
+    causalPattern: 'reporting_signal',
+    explanation: 'Prior-year transactions were detected. These rows identify donors who gave in a previous year and should feed your LYBUNT/SYBUNT retention reports.',
+    suggestedFix: 'No action needed — use these rows in your retention dashboard to identify re-engagement opportunities.',
+    suggestedFixType: 'reporting_only',
+  },
+  CAMPAIGN_VS_GOAL: {
+    causalPattern: 'reporting_signal',
+    explanation: 'Campaign totals were computed. This is an informational signal to compare actual raised amounts against campaign goals.',
+    suggestedFix: 'Review the campaign performance report and compare against your goal targets.',
+    suggestedFixType: 'reporting_only',
+  },
+  LAPSED_MONTHLY_DONOR: {
+    causalPattern: 'donor_churn_risk',
+    explanation: 'A recurring donor has had no transaction in over 90 days. This may indicate a failed payment, a cancelled pledge, or churn.',
+    suggestedFix: 'Contact these donors to confirm their giving status and update their record in the CRM.',
+    suggestedFixType: 'contact_donor',
+  },
+  DOWNGRADE_RISK: {
+    causalPattern: 'donor_churn_risk',
+    explanation: 'This donor\'s gift amounts have declined across three or more consecutive transactions. This is an early indicator of disengagement.',
+    suggestedFix: 'Flag these donors for stewardship outreach before their next gift cycle.',
+    suggestedFixType: 'contact_donor',
+  },
+  SPLIT_DD_ACROSS_HOUSEHOLD: {
+    causalPattern: 'data_quality_signal',
+    explanation: 'Donors from the same household are giving to different fund designations. This may be intentional or may indicate a missing joint gift setup.',
+    suggestedFix: 'Review household attribution and confirm whether these gifts should be treated as joint or individual.',
+    suggestedFixType: 'manual_review',
+  },
+  WORKPLACE_GIFT_NO_EMPLOYER: {
+    causalPattern: 'missing_org_entity',
+    explanation: 'A row contains workplace or matching-gift language in the memo, but no employer entity is linked. The employer record may not have been imported or matched.',
+    suggestedFix: 'Import your employer/organization records and re-run the duplicate check to link matching gift rows.',
+    suggestedFixType: 'crm_config',
+  },
+  UNMATCHED_MATCHING_GIFT: {
+    causalPattern: 'missing_org_entity',
+    explanation: 'A donor memo references a matching gift but no corresponding employer contribution was found in the same dataset. The employer row may be missing from the export.',
+    suggestedFix: 'Export and import the employer matching gift row from your CRM and add it to this session.',
+    suggestedFixType: 'crm_config',
+  },
+};
+
 const AUDIT_RULE_CATALOG = [
   { code: 'UNKNOWN_APPEAL_CODE', label: 'Unknown appeal code', severity: 'error', version: 1, description: 'Appeal value is not present in the taxonomy registry or legacy mappings.' },
   { code: 'WRONG_GL_ACCOUNT', label: 'Wrong GL account', severity: 'error', version: 1, description: 'GL account range conflicts with the normalized fund type.' },
@@ -39,11 +119,13 @@ export class TransformHubAuditRuleEngineService {
 
     const pushFinding = (finding: any) => {
       const meta = AUDIT_RULE_CATALOG.find((rule) => rule.code === finding.ruleCode);
+      const rootCause = ROOT_CAUSE_MAP[finding.ruleCode] ?? null;
       findings.push({
         ...finding,
         ruleVersion: meta?.version ?? 1,
         label: finding.label ?? meta?.label,
         severity: finding.severity ?? meta?.severity,
+        rootCause,
       });
     };
 

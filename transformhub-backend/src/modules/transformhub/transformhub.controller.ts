@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, UseGuards, BadRequestException } from '@nestjs/common';
 import { TransformHubService } from './transformhub.service';
 import { IngestDto } from './dto/ingest.dto';
 import { PreflightDto } from './dto/preflight.dto';
@@ -171,5 +171,66 @@ export class TransformHubController {
   @Post('review-analytics')
   reviewAnalytics(@Body() dto: ReviewAnalyticsDto) {
     return this.service.reviewAnalytics(dto);
+  }
+
+  // ─── Applied automatically ──────────────────────────────────────────────────
+
+  @Get('applied-decisions')
+  listAppliedDecisions(
+    @Query('page') page: string,
+    @Query('pageSize') pageSize: string,
+  ) {
+    return this.service.listAppliedDecisions({
+      page: page ? parseInt(page, 10) : undefined,
+      pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
+    });
+  }
+
+  @Put('applied-decisions/:id/toggle')
+  toggleAppliedDecision(@Param('id') id: string) {
+    return this.service.toggleAppliedDecision(id);
+  }
+
+  // ─── Identity Hub ───────────────────────────────────────────────────────────
+
+  @Get('identity-hub/persons')
+  listIdentityHubPersons(
+    @Query('q') q: string,
+    @Query('page') page: string,
+    @Query('pageSize') pageSize: string,
+  ) {
+    return this.service.listIdentityHubPersons({
+      q,
+      page: page ? parseInt(page, 10) : undefined,
+      pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
+    });
+  }
+
+  @Get('identity-hub/persons/:id')
+  getIdentityHubProfile(@Param('id') id: string) {
+    return this.service.getIdentityHubProfile(id);
+  }
+
+  // ─── Review Queue ───────────────────────────────────────────────────────────
+
+  @Get('review-queue/summary')
+  getReviewQueueSummary() {
+    return this.service.getReviewQueueSummary();
+  }
+
+  @Get('review-queue')
+  getReviewQueue() {
+    return this.service.getReviewQueue();
+  }
+
+  @Post('review-queue/:id/resolve')
+  resolveReviewQueueItem(
+    @Param('id') id: string,
+    @Body() body: { action: 'approved' | 'kept_separate' },
+  ) {
+    if (!['approved', 'kept_separate'].includes(body?.action)) {
+      throw new BadRequestException('action must be "approved" or "kept_separate"');
+    }
+    return this.service.resolveQueueItem(id, body.action);
   }
 }

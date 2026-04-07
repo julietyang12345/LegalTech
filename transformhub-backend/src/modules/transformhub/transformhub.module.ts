@@ -17,6 +17,8 @@ import { ThReviewAction } from '../../database/entities/th-review-action.entity'
 import { ThReviewDataset } from '../../database/entities/th-review-dataset.entity';
 import { ThSchemaTemplate } from '../../database/entities/th-schema-template.entity';
 import { ThKeySynonym } from '../../database/entities/th-key-synonym.entity';
+import { ThReviewQueueItem } from '../../database/entities/th-review-queue-item.entity';
+import { ThSourceCrosswalk } from '../../database/entities/th-source-crosswalk.entity';
 import { TransformHubController } from './transformhub.controller';
 import { TransformHubService } from './transformhub.service';
 import { TransformHubPipelineService } from './transformhub-pipeline.service';
@@ -49,6 +51,8 @@ import { TransformHubApiKeyGuard } from './guards/transformhub-api-key.guard';
       ThReviewDataset,
       ThSchemaTemplate,
       ThKeySynonym,
+      ThReviewQueueItem,
+      ThSourceCrosswalk,
     ]),
   ],
   controllers: [TransformHubController],

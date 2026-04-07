@@ -78,6 +78,9 @@ import type {
   TransformSessionStatus,
 } from './types';
 import { TransformHubAuditModePanel, TransformHubMappingLayerPanel } from './product-panels';
+import { ReviewQueuePanel, useReviewQueueSummary } from './review-queue';
+import { IdentityHubPanel } from './identity-hub';
+import { AppliedDecisionsPanel } from './applied-decisions';
 import { applyTaxonomyGroupsToPreviewRecords, buildTaxonomyState, dismissTaxonomyCandidate, mergeTaxonomyCandidate, renameResolvedTaxonomyGroup, summarizeTaxonomyState, updateTaxonomyScanColumn } from './taxonomy-session';
 import { buildAppendColumnDecisions, getMergeStrategy, getPendingColumnMerges, mergeTxWithProfileLookup, mergeUploadIntoExisting, prepareIncomingUpload, resolvePendingColumnMerge as resolvePendingColumnMergeInParsedFile, type AppendColumnDecision, type PendingColumnMerge } from './merge-table';
 import { EntityGraphEditors } from './review-editors';
@@ -1221,6 +1224,11 @@ export default function TransformHubPage() {
   const [isGeneratingReviewAnalytics, setIsGeneratingReviewAnalytics] = useState(false);
   const [expandedAnalyticsItemId, setExpandedAnalyticsItemId] = useState<string | null>(null);
   const [taxonomyScanColumnsExpanded, setTaxonomyScanColumnsExpanded] = useState(false);
+  const [showReviewQueue, setShowReviewQueue] = useState(false);
+  const [showIdentityHub, setShowIdentityHub] = useState(false);
+  const [showAppliedDecisions, setShowAppliedDecisions] = useState(false);
+  const [expandedRootCauses, setExpandedRootCauses] = useState<Set<string>>(new Set());
+  const reviewQueueSummary = useReviewQueueSummary();
   const [pendingTaxonomyMergeCandidateId, setPendingTaxonomyMergeCandidateId] = useState<string | null>(null);
   const [pendingTaxonomyMergeLabel, setPendingTaxonomyMergeLabel] = useState('');
   const [editingResolvedTaxonomyGroupId, setEditingResolvedTaxonomyGroupId] = useState<string | null>(null);
@@ -1424,32 +1432,6 @@ export default function TransformHubPage() {
       counts[match.decision] = (counts[match.decision] ?? 0) + 1;
       return counts;
     }, {});
-    console.log('[transformhub][duplicate-ui] review queue', {
-      sessionId,
-      totalMatches: personResult?.matches?.length ?? 0,
-      previewReviewMatchCount: previewReviewMatches.length,
-      previewReviewCounts: livePreviewReviewCounts,
-      matchBandCounts,
-      matchDecisionCounts,
-      previewReviewSamples: previewReviewMatches.slice(0, 8).map((match) => ({
-        inputRef: match.inputRef,
-        matchedPersonId: match.matchedPersonId,
-        matchedInputRef: match.reviewPayload?.matchedInputRef ?? null,
-        score: match.score,
-        band: match.band,
-        decision: match.decision,
-        matchedFields: match.matchedFields,
-      })),
-      filteredReviewMatches: filteredPreviewReviewMatches.map((match) => ({
-        inputRef: match.inputRef,
-        matchedPersonId: match.matchedPersonId,
-        matchedInputRef: match.reviewPayload?.matchedInputRef ?? null,
-        score: match.score,
-        band: match.band,
-        decision: match.decision,
-        matchedFields: match.matchedFields,
-      })),
-    });
   }, [supportsDuplicateWorkflow, duplicateReviewActive, sessionId, personResult?.matches, previewReviewMatches, filteredPreviewReviewMatches, mergeDecisions]);
   const ledgerReviewCounts = countPeopleReviewBuckets(ledgerReviewMatches, mergeDecisions);
   const previewReviewCounts = useMemo(
@@ -1777,22 +1759,6 @@ export default function TransformHubPage() {
   );
   useEffect(() => {
     if (isLedgerFile || !householdResult) return;
-    console.debug('[TransformHub][household-debug] attribution-resolution', {
-      displayedRows: displayedPreviewRecords.map((record) => ({
-        sourceRowRef: record.sourceRowRef,
-        donorName: record.donorName || record.displayName || '',
-        reviewKey: getAttributionReviewKey(record),
-        personIds: getResolvedPreviewPersonIds(record.sourceRowRef),
-        householdIds: getResolvedPreviewHouseholdIds(record.sourceRowRef),
-        mergedRefs: mergedSourceRefsByRepresentative.get(record.sourceRowRef) ?? [],
-      })),
-      ambiguousGroups: ambiguousAttributionGroups.map((group) => ({
-        key: group.key,
-        householdId: group.householdId,
-        refs: group.records.map((record) => record.sourceRowRef),
-        label: group.label,
-      })),
-    });
   }, [
     isLedgerFile,
     householdResult,
@@ -4081,12 +4047,6 @@ export default function TransformHubPage() {
     nextMessage?: string,
     options?: { nextNonLedgerReviewPanel?: NonLedgerReviewPanel },
   ) {
-    console.log('[transformhub][session] applySession', {
-      sessionId: session.id,
-      rowCount: session.rows?.length ?? 0,
-      personMatchCount: session.personResult?.matches?.length ?? 0,
-      nextPanel: options?.nextNonLedgerReviewPanel ?? 'duplicate',
-    });
     startTransition(() => {
       setSessionId(session.id);
       setSessionStatus(session.status);
@@ -4865,15 +4825,6 @@ export default function TransformHubPage() {
     setIsRunningPersonResolver(true);
     try {
       const identityRows = buildPreviewIdentityRows();
-      console.log('[donor-dedup] handleRunPersonResolver', {
-        isLedgerFile,
-        supportsDuplicateWorkflow,
-        fileClass,
-        isDonorFile,
-        previewRecordCount: previewRecords.length,
-        identityRowCount: identityRows.length,
-        sampleEntityNames: identityRows.slice(0, 5).map((r) => ({ ref: r.source_row_ref, entity_name: r.entity_name, email: (r as any).email })),
-      });
       if (!isLedgerFile && supportsDuplicateWorkflow) {
         const result = await resolvePersonsBackend(identityRows, undefined, sessionId ?? undefined, {
           usePersistentIdentityMemory: true,
@@ -4883,21 +4834,6 @@ export default function TransformHubPage() {
           baselineFileClass: fileClass,
           persistIdentityMemory: false,
           includeAiSuggestions: false,
-        });
-        console.log('[transformhub][duplicate-api] resolvePersons result', {
-          sessionId,
-          autoMergedCount: result.autoMergedCount,
-          pendingReviewCount: result.pendingReviewCount,
-          separated: result.separated,
-          matches: (result.matches ?? []).map((match) => ({
-            inputRef: match.inputRef,
-            matchedPersonId: match.matchedPersonId,
-            matchedInputRef: match.reviewPayload?.matchedInputRef ?? null,
-            score: match.score,
-            band: match.band,
-            decision: match.decision,
-            matchedFields: match.matchedFields,
-          })),
         });
         setPersonResult(result);
         setHouseholdResult(null);
@@ -5016,6 +4952,10 @@ export default function TransformHubPage() {
       setExpandedPeopleReviewRef(null);
 
       if (sessionId) {
+        // Persist permanent decisions regardless of file class — fire-and-forget so UI isn't blocked.
+        for (const match of pendingMatches) {
+          persistMergeDecisionBackend(sessionId, match.inputRef, 'confirmed', match.matchedPersonId, undefined, undefined, match.reviewPayload?.input?.name, match.inputKey).catch(() => {});
+        }
         const nextStatus = deriveSessionStatus(nextRows, preflight, receipts);
         const session = await saveSession(sessionId, nextRows, nextStatus, preflight, nextPersonResult, null);
         applySession(session, `Merged ${pendingMatches.length} review item${pendingMatches.length === 1 ? '' : 's'}.`);
@@ -5091,6 +5031,8 @@ export default function TransformHubPage() {
         setIsLoading(true);
         try {
           const nextStatus = deriveSessionStatus(nextRows, preflight, receipts);
+          // Persist permanent decision regardless of file class — fire-and-forget so UI isn't blocked.
+          persistMergeDecisionBackend(sessionId, match.inputRef, action, match.matchedPersonId, undefined, undefined, match.reviewPayload?.input?.name, match.inputKey).catch(() => {});
           const session = await saveSession(sessionId, nextRows, nextStatus, preflight, nextPersonResult, null);
           applySession(session, action === "confirmed" ? "Merge decision saved to the backend session." : "Separate decision saved to the backend session.");
         } catch (error) {
@@ -5165,24 +5107,6 @@ export default function TransformHubPage() {
         const entityNameHeader = fieldMap.entity_name ?? fieldMap.donor_name ?? null;
         const nameHeaderKeys = Object.entries(fieldMap).filter(([sem]) => /entity_name|donor_name|full_name/.test(sem)).map(([, h]) => h);
         const sampleRecord = (parsedFile.preview.records as PreviewRecord[])[0];
-        console.log('[donor-merge] handleGroupMergeDecision patch start', {
-          sessionId: !!sessionId,
-          isLedgerFile,
-          canonicalName,
-          inputName,
-          entityNameHeader,
-          nameHeaderKeys,
-          fieldMap,
-          recordCount: parsedFile.preview.records.length,
-          sampleRecord: sampleRecord ? {
-            sourceRowRef: sampleRecord.sourceRowRef,
-            donorName: (sampleRecord as any).donorName,
-            displayName: (sampleRecord as any).displayName,
-            hasRawValues: !!sampleRecord.rawValues,
-            rawValuesKeys: sampleRecord.rawValues ? Object.keys(sampleRecord.rawValues).slice(0, 8) : null,
-            hasValues: !!(sampleRecord as any).values,
-          } : null,
-        });
         if (canonicalName && inputName) {
           const nextRecords = (parsedFile.preview.records as PreviewRecord[]).map((record) => {
             const isInGroup = inputRefSet.has(record.sourceRowRef);
@@ -5195,15 +5119,6 @@ export default function TransformHubPage() {
               ...(entityNameHeader ? { [entityNameHeader]: canonicalName } : {}),
               ...Object.fromEntries(nameHeaderKeys.map((h) => [h, canonicalName])),
             };
-            console.log('[donor-merge] patching record', {
-              sourceRowRef: record.sourceRowRef,
-              isInGroup,
-              isSameDonor,
-              recName,
-              hadRawValues: !!record.rawValues,
-              entityNameHeader,
-              patchedKeys: Object.keys(patchedRawValues).slice(0, 5),
-            });
             return {
               ...record,
               donorName: canonicalName,
@@ -5213,9 +5128,7 @@ export default function TransformHubPage() {
             };
           });
           nextParsedFile = { ...parsedFile, preview: { ...parsedFile.preview, records: nextRecords } };
-          console.log('[donor-merge] nextParsedFile built', { changed: nextParsedFile !== parsedFile, updatedCount: nextRecords.filter((r, i) => r !== (parsedFile.preview!.records as PreviewRecord[])[i]).length });
         } else {
-          console.warn('[donor-merge] skipping patch: missing canonicalName or inputName', { canonicalName, inputName });
         }
       }
 
@@ -5223,6 +5136,10 @@ export default function TransformHubPage() {
         setIsLoading(true);
         try {
           const nextStatus = deriveSessionStatus(rows, preflight, receipts);
+          // Persist permanent decisions regardless of file class — fire-and-forget so UI isn't blocked.
+          for (const m of allMatches) {
+            persistMergeDecisionBackend(sessionId, m.inputRef, action, m.matchedPersonId, undefined, undefined, m.reviewPayload?.input?.name, m.inputKey).catch(() => {});
+          }
           // Apply name changes locally immediately so the table updates even before server round-trip
           if (nextParsedFile !== parsedFile) setParsedFile(nextParsedFile);
           const session = await saveSession(sessionId, rows, nextStatus, preflight, nextPersonResult, null, nextParsedFile);
@@ -5778,6 +5695,51 @@ export default function TransformHubPage() {
             </button>
             <button type="button" className="th-button th-button-secondary" onClick={handleReloadSession} disabled={!sessionId} style={{ minHeight: 34, fontSize: '0.82rem' }}>
               <RefreshCcw size={14} /> Reload
+            </button>
+            <button
+              type="button"
+              className="th-button th-button-secondary"
+              onClick={() => setShowAppliedDecisions(true)}
+              style={{ minHeight: 34, fontSize: '0.82rem' }}
+            >
+              Auto-rules
+            </button>
+            <button
+              type="button"
+              className="th-button th-button-secondary"
+              onClick={() => setShowIdentityHub(true)}
+              style={{ minHeight: 34, fontSize: '0.82rem' }}
+            >
+              Profiles
+            </button>
+            <button
+              type="button"
+              className="th-button th-button-secondary"
+              onClick={() => setShowReviewQueue(true)}
+              style={{ minHeight: 34, fontSize: '0.82rem', position: 'relative' }}
+            >
+              Things to review
+              {(reviewQueueSummary?.pendingCount ?? 0) > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: -6,
+                  right: -6,
+                  minWidth: 18,
+                  height: 18,
+                  borderRadius: 9,
+                  background: reviewQueueSummary?.driftAlertCount ? 'var(--th-red)' : reviewQueueSummary?.highConfidenceCount ? 'var(--th-blue)' : 'var(--th-muted)',
+                  color: '#fff',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 4px',
+                  lineHeight: 1,
+                }}>
+                  {reviewQueueSummary?.pendingCount}
+                </span>
+              )}
             </button>
             <button type="button" className="th-button th-button-secondary" onClick={handleStartFresh} disabled={!sessionId && !parsedFile} style={{ minHeight: 34, fontSize: '0.82rem' }}>
               Start fresh
@@ -8402,6 +8364,34 @@ export default function TransformHubPage() {
                             </div>
                             <p>{finding.message}</p>
                             <p className="th-inline-note">{catalogEntry?.description ?? finding.detail}</p>
+                            {finding.rootCause && (
+                              <div style={{ marginTop: 6 }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedRootCauses((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(finding.ruleCode)) next.delete(finding.ruleCode);
+                                    else next.add(finding.ruleCode);
+                                    return next;
+                                  })}
+                                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, color: 'var(--th-muted)', display: 'flex', alignItems: 'center', gap: 4 }}
+                                >
+                                  {expandedRootCauses.has(finding.ruleCode) ? '▾' : '▸'} Why did this happen?
+                                </button>
+                                {expandedRootCauses.has(finding.ruleCode) && (
+                                  <div style={{ marginTop: 6, padding: '8px 10px', background: 'rgba(0,0,0,0.03)', borderRadius: 6, fontSize: 12, color: 'var(--th-ink)' }}>
+                                    <p style={{ margin: '0 0 4px', fontWeight: 600 }}>Root cause</p>
+                                    <p style={{ margin: '0 0 6px' }}>{finding.rootCause.explanation}</p>
+                                    {finding.rootCause.suggestedFix && (
+                                      <>
+                                        <p style={{ margin: '0 0 2px', fontWeight: 600 }}>How to fix</p>
+                                        <p style={{ margin: 0 }}>{finding.rootCause.suggestedFix}</p>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -8537,6 +8527,135 @@ export default function TransformHubPage() {
         </div>
       )}
       </div>
+
+      {/* ── Applied Decisions slide-over ───────────────────────────────────── */}
+      {showAppliedDecisions && (
+        <>
+          <div
+            onClick={() => setShowAppliedDecisions(false)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,35,0.4)', zIndex: 200 }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: 520,
+              maxWidth: '92vw',
+              background: 'var(--th-bg)',
+              borderLeft: '1px solid var(--th-line)',
+              zIndex: 201,
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '-8px 0 32px rgba(15,23,35,0.12)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: '1px solid var(--th-line)' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--th-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Auto-rules
+              </span>
+              <button type="button" onClick={() => setShowAppliedDecisions(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--th-muted)', display: 'flex', alignItems: 'center' }}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              <AppliedDecisionsPanel />
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Identity Hub slide-over ────────────────────────────────────────── */}
+      {showIdentityHub && (
+        <>
+          <div
+            onClick={() => setShowIdentityHub(false)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,35,0.4)', zIndex: 200 }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: 560,
+              maxWidth: '92vw',
+              background: 'var(--th-bg)',
+              borderLeft: '1px solid var(--th-line)',
+              zIndex: 201,
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '-8px 0 32px rgba(15,23,35,0.12)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: '1px solid var(--th-line)' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--th-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Profiles
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowIdentityHub(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--th-muted)', display: 'flex', alignItems: 'center' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              <IdentityHubPanel />
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Review Queue slide-over ─────────────────────────────────────────── */}
+      {showReviewQueue && (
+        <>
+          {/* Backdrop */}
+          <div
+            onClick={() => setShowReviewQueue(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15,23,35,0.4)',
+              zIndex: 200,
+            }}
+          />
+          {/* Drawer */}
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: 480,
+              maxWidth: '92vw',
+              background: 'var(--th-bg)',
+              borderLeft: '1px solid var(--th-line)',
+              zIndex: 201,
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '-8px 0 32px rgba(15,23,35,0.12)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: '1px solid var(--th-line)' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--th-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Review Queue
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowReviewQueue(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--th-muted)', display: 'flex', alignItems: 'center' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              <ReviewQueuePanel />
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
