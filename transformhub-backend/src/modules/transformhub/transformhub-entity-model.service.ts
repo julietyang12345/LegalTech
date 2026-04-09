@@ -12,6 +12,7 @@ import { ThRelationship } from '../../database/entities/th-relationship.entity';
 import { ThCampaign } from '../../database/entities/th-campaign.entity';
 import { ThAppeal } from '../../database/entities/th-appeal.entity';
 import { ThAuditDecision } from '../../database/entities/th-audit-decision.entity';
+import { TransformHubStructureService } from './transformhub-structure.service';
 
 @Injectable()
 export class TransformHubEntityModelService {
@@ -36,6 +37,7 @@ export class TransformHubEntityModelService {
     private readonly appealRepo: Repository<ThAppeal>,
     @InjectRepository(ThAuditDecision)
     private readonly auditDecisionRepo: Repository<ThAuditDecision>,
+    private readonly structure: TransformHubStructureService,
   ) {}
 
   async buildEntityModel(rows: any[], existingPersons: any[] = [], sessionId?: string, persist = true): Promise<any> {
@@ -390,5 +392,10 @@ export class TransformHubEntityModelService {
     await this.campaignRepo.save(campaigns as any);
     await this.appealRepo.save(appeals as any);
     await this.auditDecisionRepo.save(auditDecisions as any);
+    await this.structure.persistCanonicalEvidence(sessionId, {
+      rows,
+      donations,
+      households,
+    });
   }
 }

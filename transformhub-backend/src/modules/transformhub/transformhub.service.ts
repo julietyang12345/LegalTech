@@ -22,6 +22,7 @@ import { TransformHubOutputService } from './transformhub-output.service';
 import { TransformHubAuditRuleEngineService } from './transformhub-audit-rule-engine.service';
 import { TransformHubAiService } from './transformhub-ai.service';
 import { TRANSFORMHUB_MAX_ROWS_PER_REQUEST } from './transformhub.constants';
+import { TransformHubStructureService } from './transformhub-structure.service';
 
 // LOW_REPORT_CONFIDENCE is a schema-quality warning, not a data-correctness blocker.
 // It is intentionally excluded so constituent exports, contact lists, and low-confidence
@@ -67,6 +68,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     private readonly output: TransformHubOutputService,
     private readonly auditEngine: TransformHubAuditRuleEngineService,
     private readonly ai: TransformHubAiService,
+    private readonly structure: TransformHubStructureService,
   ) {}
 
   private async logReviewAction(sessionId: string | null, action: {
@@ -218,6 +220,9 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
       await this.rowRepo.delete({ sessionId: In(expiredIds) });
       await this.auditRunRepo.delete({ sessionId: In(expiredIds) });
       await this.auditDecisionRepo.delete({ sessionId: In(expiredIds) });
+      for (const expiredId of expiredIds) {
+        await this.structure.resetSessionStructure(expiredId);
+      }
       await this.sessionRepo.delete(expiredIds);
       this.logger.log(`Deleted ${expiredSessions.length} expired TransformHub session(s).`);
     }
@@ -380,6 +385,14 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (schema.fileClass !== 'ledger') {
+      await this.structure.persistSessionStructure({
+        sessionId: session.id,
+        datasetId: session.datasetId,
+        parsedFile: effectiveParsedFile,
+        schema,
+        guardrails,
+        canonicalRows: [],
+      });
       return {
         sessionId: session.id,
         status: session.status,
@@ -396,6 +409,15 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     const rows = await this.enrichSuggestedFixes(taxonomyQueue.rows);
     const rowEntities = this.rowRepo.create(rows.map((row: any) => ({ ...row, sessionId: session.id })));
     await this.rowRepo.save(rowEntities);
+    await this.structure.persistSessionStructure({
+      sessionId: session.id,
+      datasetId: session.datasetId,
+      parsedFile: effectiveParsedFile,
+      schema,
+      guardrails,
+      canonicalRows: rows,
+    });
+    await this.appendPendingTaxonomyDecisionLogs(session.id, taxonomyQueue);
     const audit = await this.auditRules({ rows, sessionId: session.id });
 
     return {
@@ -489,11 +511,47 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  private mapTaxonomyConfidence(value: unknown): number | null {
+    if (typeof value === 'number') return value;
+    if (value === 'high') return 0.9;
+    if (value === 'medium') return 0.7;
+    if (value === 'low') return 0.5;
+    return null;
+  }
+
+  private async appendPendingTaxonomyDecisionLogs(sessionId: string, taxonomyQueue: any) {
+    const exceptions = Array.isArray(taxonomyQueue?.exceptions) ? taxonomyQueue.exceptions : [];
+    for (const exception of exceptions) {
+      if (!exception?.id) continue;
+      await this.structure.appendDecisionLog({
+        id: `taxonomy-review-${exception.id}`,
+        sessionId,
+        decisionType: 'taxonomy_review',
+        decisionLevel: 'review',
+        decisionMode: 'needs_review',
+        status: 'pending_review',
+        actorType: exception.aiSuggested ? 'ai' : 'system',
+        actorId: null,
+        targetType: exception.type ?? 'taxonomy',
+        targetId: exception.id,
+        confidence: this.mapTaxonomyConfidence(exception.aiSuggestion?.confidence ?? null),
+        summary: exception.rawValue ?? exception.id,
+        rationale: {
+          aiReasoning: exception.aiReasoning ?? exception.aiSuggestion?.reasoning ?? null,
+          aiReviewStatus: exception.aiReviewStatus ?? null,
+          sourceRowRef: exception.sourceRowRef ?? null,
+        },
+        payload: exception,
+      });
+    }
+  }
+
   async getSession(sessionId: string) {
     const session = await this.sessionRepo.findOne({ where: { id: sessionId }, relations: ['rows'] });
     if (!session) throw new NotFoundException('Session ' + sessionId + ' not found.');
     const auditDecisions = await this.auditDecisionRepo.find({ where: { sessionId }, order: { createdAt: 'ASC' } });
-    return { ...session, schema: this.normalizeSchemaFieldSuggestions(session.schema), auditDecisions };
+    const structure = await this.structure.getSessionStructure(sessionId);
+    return { ...session, schema: this.normalizeSchemaFieldSuggestions(session.schema), auditDecisions, structure };
   }
 
   async updateSession(sessionId: string, body: any) {
@@ -551,6 +609,14 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     const schema = refreshedSession.schema as any;
     const personResult = refreshedSession.personResult as any;
     const householdResult = refreshedSession.householdResult as any;
+    await this.structure.persistSessionStructure({
+      sessionId,
+      datasetId: refreshedSession.datasetId,
+      parsedFile,
+      schema,
+      guardrails: refreshedSession.guardrails as any[],
+      canonicalRows: refreshedSession.rows ?? [],
+    });
     if (
       schema?.fileClass &&
       schema.fileClass !== 'ledger' &&
@@ -617,6 +683,10 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     await this.rowRepo.save(updatedRows);
     await this.enqueueReviewMatches(result.matches);
     await this.syncSourceCrosswalkForSession(body.sessionId, body.baselinePlatform ?? null, body.baselineFileClass ?? null);
+    await this.structure.recordResolutionDecisions(body.sessionId, {
+      resolutionType: 'person_match',
+      matches: result.matches,
+    });
 
     // Evaluate suspicious patterns on persons touched by this session
     const touchedPersonIds = [...new Set(
@@ -663,6 +733,15 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     });
 
     await this.rowRepo.save(updatedRows);
+    await this.structure.recordResolutionDecisions(body.sessionId, {
+      resolutionType: 'household_resolution',
+      matches: result.households.map((household: any) => ({
+        inputRef: household.id,
+        householdId: household.id,
+        memberIds: household.memberIds,
+        score: 1,
+      })),
+    });
     await this.sessionRepo.update(body.sessionId, {
       householdResult: {
         ...result,
@@ -756,6 +835,28 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
           splitConfirmationCount,
         }),
       );
+      await this.structure.appendDecisionLog({
+        sessionId: body.sessionId ?? null,
+        decisionType: 'merge_resolution',
+        decisionLevel: 'review',
+        decisionMode: 'needs_review',
+        status: 'applied',
+        actorType: 'user',
+        actorId: 'user',
+        targetType: 'person',
+        targetId: body.action === 'confirmed' ? (body.matchedPersonId ?? null) : null,
+        confidence: typeof body.confidence === 'number' ? body.confidence : null,
+        summary: inputKey,
+        rationale: {
+          action: body.action,
+          reason: body.reason ?? null,
+        },
+        payload: {
+          inputRef: body.inputRef,
+          inputKey,
+          matchedPersonId: body.matchedPersonId ?? null,
+        },
+      });
     }
 
     // Update queue state as a side effect — non-blocking, queue failure must not affect the decision above.
@@ -783,35 +884,193 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
 
   async getReviewQueue() {
     const DISPLAY_CAP = 20;
-    const BATCH_THRESHOLD = 65;
 
-    const [allPending, totalPending] = await this.reviewQueueRepo.findAndCount({
+    const [allPending] = await this.reviewQueueRepo.findAndCount({
       where: { status: 'pending' },
       order: { isHighConfidence: 'DESC', score: 'DESC' },
       take: DISPLAY_CAP,
     });
+    const decisionItems = await this.structure.getDecisionReviewQueue(DISPLAY_CAP);
+    const merged = [...decisionItems, ...allPending]
+      .sort((a: any, b: any) => Number(b.isHighConfidence) - Number(a.isHighConfidence) || (b.score ?? 0) - (a.score ?? 0))
+      .slice(0, DISPLAY_CAP);
 
-    const batchedCount = await this.reviewQueueRepo.count({
+    const pendingLegacy = await this.reviewQueueRepo.count({
       where: { status: 'pending' },
-    }).then(async (total) => {
-      if (total <= DISPLAY_CAP) return 0;
-      // Count items below threshold that didn't make it into the display window.
-      const aboveThreshold = await this.reviewQueueRepo.count({
-        where: { status: 'pending' },
-      });
-      return Math.max(0, aboveThreshold - DISPLAY_CAP);
     });
+    const pendingDecision = (await this.structure.getDecisionReviewSummary()).pendingCount;
+    const totalPending = pendingLegacy + pendingDecision;
+    const batchedCount = Math.max(0, totalPending - merged.length);
 
-    return { items: allPending, totalPending, batchedCount };
+    return { items: merged, totalPending, batchedCount };
   }
 
   async getReviewQueueSummary() {
-    const [pendingCount, highConfidenceCount, driftAlertCount] = await Promise.all([
+    const [pendingCountLegacy, highConfidenceCountLegacy, driftAlertCountLegacy, decisionSummary] = await Promise.all([
       this.reviewQueueRepo.count({ where: { status: 'pending' } }),
       this.reviewQueueRepo.count({ where: { status: 'pending', isHighConfidence: true } }),
       this.reviewQueueRepo.count({ where: { status: 'pending', isDriftAlert: true } }),
+      this.structure.getDecisionReviewSummary(),
     ]);
-    return { pendingCount, highConfidenceCount, driftAlertCount };
+    return {
+      pendingCount: pendingCountLegacy + decisionSummary.pendingCount,
+      highConfidenceCount: highConfidenceCountLegacy + decisionSummary.highConfidenceCount,
+      driftAlertCount: driftAlertCountLegacy + decisionSummary.driftAlertCount,
+    };
+  }
+
+  private async rebuildSessionFromSchema(sessionId: string, nextSchema: any) {
+    const session = await this.sessionRepo.findOne({ where: { id: sessionId } });
+    if (!session) throw new NotFoundException('Session ' + sessionId + ' not found.');
+
+    let updatedRows: any[] = [];
+    let taxonomy: any = null;
+    let audit: any = null;
+
+    if (nextSchema.fileClass === 'ledger') {
+      await this.rowRepo.delete({ sessionId });
+      const canonicalRows = this.pipeline.mapToCanonicalRows(session.parsedFile, nextSchema, session.guardrails || []);
+      const rowsWithSession = canonicalRows.map((row: any) => ({ ...row, sessionId }));
+      const taxonomyQueue = await this.taxonomy.queueTaxonomyExceptions(rowsWithSession);
+      updatedRows = await this.enrichSuggestedFixes(taxonomyQueue.rows);
+      await this.rowRepo.save(this.rowRepo.create(updatedRows.map((row: any) => ({ ...row, sessionId }))));
+      audit = await this.previewAuditForSession(sessionId, updatedRows);
+      taxonomy = {
+        violations: taxonomyQueue.violations,
+        exceptions: taxonomyQueue.exceptions,
+        resolvedCount: taxonomyQueue.resolvedCount,
+        unmappedCount: taxonomyQueue.unmappedCount,
+      };
+    }
+
+    await this.sessionRepo.update(sessionId, { schema: nextSchema });
+    await this.structure.persistSessionStructure({
+      sessionId,
+      datasetId: session.datasetId,
+      parsedFile: session.parsedFile,
+      schema: nextSchema,
+      guardrails: session.guardrails as any[],
+      canonicalRows: updatedRows,
+    });
+    if (taxonomy) {
+      await this.appendPendingTaxonomyDecisionLogs(sessionId, taxonomy);
+    }
+
+    return { updatedRows, taxonomy, audit };
+  }
+
+  private async resolveFieldMappingDecisionLogItem(
+    itemId: string,
+    action: 'approved' | 'kept_separate',
+    actorId = 'user',
+    reason?: string | null,
+  ) {
+    const entry = await this.structure.getDecisionLogEntry(itemId);
+    if (!entry?.sessionId || entry.targetType !== 'mapping_rule' || !entry.targetId) {
+      return null;
+    }
+
+    const mappingRule = await this.structure.getMappingRule(entry.targetId);
+    if (!mappingRule) return null;
+
+    const session = await this.sessionRepo.findOne({ where: { id: entry.sessionId } });
+    if (!session) return null;
+
+    const schema = this.normalizeSchemaFieldSuggestions(session.schema as any);
+    const nextFieldMap = { ...(schema.fieldMap ?? {}) } as Record<string, string>;
+    const nextFieldSuggestions = Array.isArray(schema.fieldSuggestions) ? [...schema.fieldSuggestions] : [];
+
+    if (action === 'approved') {
+      nextFieldMap[mappingRule.targetField] = mappingRule.sourceKey;
+    } else if (nextFieldMap[mappingRule.targetField] === mappingRule.sourceKey) {
+      delete nextFieldMap[mappingRule.targetField];
+    }
+
+    const suggestionIndex = nextFieldSuggestions.findIndex((item: any) =>
+      item?.rawKey === mappingRule.sourceKey && item?.suggestedTarget === mappingRule.targetField,
+    );
+    if (suggestionIndex >= 0) {
+      nextFieldSuggestions[suggestionIndex] = {
+        ...nextFieldSuggestions[suggestionIndex],
+        status: action === 'approved' ? 'approved' : 'rejected',
+        reviewedAt: new Date().toISOString(),
+        reviewedBy: actorId,
+        notes: reason ?? nextFieldSuggestions[suggestionIndex]?.notes ?? null,
+      };
+    }
+
+    if (action === 'approved') {
+      await this.pipeline.recordApprovedFieldSuggestion({
+        platform: session.platform,
+        fileClass: schema.fileClass,
+        suggestedTarget: mappingRule.targetField as any,
+        rawKey: mappingRule.sourceKey,
+        reviewedBy: actorId,
+      });
+    }
+
+    const nextSchema = await this.pipeline.refreshSchema(
+      session.parsedFile,
+      schema,
+      nextFieldMap,
+      nextFieldSuggestions,
+    );
+
+    await this.structure.updateMappingRule(mappingRule.id, {
+      approvalStatus: action === 'approved' ? 'approved' : 'rejected',
+      active: action === 'approved',
+      origin: action === 'approved' ? mappingRule.origin : 'rejected_review',
+      metadata: {
+        ...(mappingRule.metadata ?? {}),
+        reviewedAt: new Date().toISOString(),
+        reviewedBy: actorId,
+        reviewAction: action,
+        reviewReason: reason ?? null,
+      },
+    });
+
+    await this.rebuildSessionFromSchema(entry.sessionId, nextSchema);
+    return this.structure.resolveDecisionLogItem(itemId, action, actorId, reason ?? null);
+  }
+
+  private async resolveTaxonomyDecisionLogItem(
+    itemId: string,
+    action: 'approved' | 'kept_separate',
+    actorId = 'user',
+    reason?: string | null,
+  ) {
+    const entry = await this.structure.getDecisionLogEntry(itemId);
+    const payload = (entry?.payload ?? {}) as Record<string, any>;
+    const exceptionId = String(entry?.targetId ?? payload.id ?? '');
+    if (!entry?.sessionId || !exceptionId) return null;
+
+    if (action === 'approved') {
+      const resolvedCode = payload.resolvedCode ?? payload.aiSuggestion?.code ?? payload.suggestedCode ?? null;
+      const result = await this.taxonomy.reviewSuggestion(exceptionId, {
+        action: 'approve',
+        resolvedCode: resolvedCode ?? undefined,
+        notes: reason ?? undefined,
+        reviewedBy: actorId,
+      });
+      const rows = await this.rowRepo.find({ where: { taxonomy_exception_id: exceptionId } });
+      if (rows.length > 0) {
+        const updatedRows = rows.map((row) => {
+          const next = { ...row, taxonomy_exception_id: null };
+          if (result.exception.type === 'fund') return { ...next, normalized_fund: result.exception.resolvedCode };
+          if (result.exception.type === 'appeal') return { ...next, normalized_appeal: result.exception.resolvedCode };
+          return next;
+        });
+        await this.rowRepo.save(updatedRows);
+      }
+    } else {
+      await this.taxonomy.reviewSuggestion(exceptionId, {
+        action: 'reject',
+        notes: reason ?? undefined,
+        reviewedBy: actorId,
+      });
+    }
+
+    return this.structure.resolveDecisionLogItem(itemId, action, actorId, reason ?? null);
   }
 
   // Called from the HTTP endpoint (POST /review-queue/:id/resolve) — writes permanent decision + updates queue state.
@@ -822,7 +1081,19 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     meta?: { entityId?: string; confidence?: number | null; reason?: string },
   ) {
     const item = await this.reviewQueueRepo.findOne({ where: { id: itemId } });
-    if (!item) throw new NotFoundException(`Review queue item ${itemId} not found.`);
+    if (!item) {
+      const decisionEntry = await this.structure.getDecisionLogEntry(itemId);
+      let resolvedDecisionItem = null;
+      if (decisionEntry?.decisionType === 'field_mapping') {
+        resolvedDecisionItem = await this.resolveFieldMappingDecisionLogItem(itemId, action, 'user', meta?.reason ?? null);
+      } else if (decisionEntry?.decisionType === 'taxonomy_review') {
+        resolvedDecisionItem = await this.resolveTaxonomyDecisionLogItem(itemId, action, 'user', meta?.reason ?? null);
+      } else {
+        resolvedDecisionItem = await this.structure.resolveDecisionLogItem(itemId, action, 'user', meta?.reason ?? null);
+      }
+      if (!resolvedDecisionItem) throw new NotFoundException(`Review queue item ${itemId} not found.`);
+      return resolvedDecisionItem;
+    }
 
     // Write the permanent decision first — this is the core fact.
     const inputKey = item.inputKey;
@@ -1013,6 +1284,9 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
       const audit = result.exception.sessionId
         ? await this.previewAuditForSession(result.exception.sessionId, updatedRows)
         : null;
+      if (result.exception.sessionId) {
+        await this.structure.resolveDecisionLogItem(`taxonomy-review-${exceptionId}`, 'approved', body.reviewedBy ?? 'user', body.notes ?? null).catch(() => null);
+      }
       return { ...result, updatedRows, audit };
     }
 
@@ -1081,12 +1355,39 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     }
 
     await this.sessionRepo.update(sessionId, { schema: nextSchema });
+    await this.structure.appendDecisionLog({
+      sessionId,
+      decisionType: 'field_suggestion_review',
+      decisionLevel: 'review',
+      decisionMode: body.action === 'approve' ? 'high_confidence' : 'needs_review',
+      status: body.action === 'approve' ? 'applied' : 'rejected',
+      actorType: 'user',
+      actorId: body.reviewedBy ?? 'user',
+      targetType: 'mapping_rule',
+      targetId: updatedSuggestion.suggestedTarget ?? updatedSuggestion.id,
+      confidence: updatedSuggestion.confidence === 'high' ? 0.9 : updatedSuggestion.confidence === 'medium' ? 0.7 : 0.5,
+      summary: `${updatedSuggestion.rawKey} -> ${updatedSuggestion.suggestedTarget ?? 'rejected'}`,
+      rationale: {
+        notes: body.notes ?? null,
+        reasoning: updatedSuggestion.reasoning ?? null,
+      },
+      payload: updatedSuggestion,
+    });
     const refreshedSession = await this.getSession(sessionId);
     return { session: refreshedSession, schema: nextSchema, updatedRows, taxonomy, audit };
   }
 
   async reviewTaxonomySuggestion(exceptionId: string, body: any) {
     const result = await this.taxonomy.reviewSuggestion(exceptionId, body);
+
+    if (result.exception.sessionId) {
+      await this.structure.resolveDecisionLogItem(
+        `taxonomy-review-${exceptionId}`,
+        body.action === 'approve' ? 'approved' : 'kept_separate',
+        body.reviewedBy ?? 'user',
+        body.notes ?? null,
+      ).catch(() => null);
+    }
 
     if (body.action !== 'approve') {
       return { ...result, updatedRows: [], audit: null };
@@ -1122,6 +1423,24 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
         },
         reason: body.notes ?? result.exception.aiSuggestion?.reasoning ?? 'Approved taxonomy mapping.',
         userId: body.reviewedBy ?? 'user',
+      });
+      await this.structure.appendDecisionLog({
+        sessionId: result.exception.sessionId,
+        decisionType: 'taxonomy_review',
+        decisionLevel: 'review',
+        decisionMode: body.action === 'approve' ? 'high_confidence' : 'needs_review',
+        status: body.action === 'approve' ? 'applied' : 'rejected',
+        actorType: 'user',
+        actorId: body.reviewedBy ?? 'user',
+        targetType: result.exception.type || 'taxonomy',
+        targetId: result.exception.id,
+        confidence: null,
+        summary: result.exception.rawValue ?? result.exception.id,
+        rationale: {
+          notes: body.notes ?? null,
+          resolvedCode: result.exception.resolvedCode ?? null,
+        },
+        payload: result.exception,
       });
     }
     return { ...result, updatedRows, audit };

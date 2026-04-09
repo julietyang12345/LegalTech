@@ -265,6 +265,27 @@ function buildMergeDecisionMap(rows: CanonicalLedgerRow[], auditDecisions: Trans
   return decisions;
 }
 
+function buildMergeDecisionMapFromStructure(session: TransformSession): Map<string, 'confirmed' | 'separated'> {
+  const fallback = buildMergeDecisionMap(session.rows, session.auditDecisions);
+  if (fallback.size > 0) return fallback;
+
+  const decisions = new Map<string, 'confirmed' | 'separated'>();
+  const rowBySourceRef = new Map(session.rows.map((row) => [row.source_row_ref, row]));
+  const decisionLog = session.structure?.decisionLog ?? [];
+
+  decisionLog.forEach((entry) => {
+    const decisionType = String(entry.decisionType ?? '');
+    const payload = (entry.payload ?? {}) as Record<string, unknown>;
+    const sourceRef = String(payload.inputRef ?? '');
+    if (decisionType !== 'merge_resolution' || !sourceRef || !rowBySourceRef.has(sourceRef)) return;
+    const action = String((entry.rationale as Record<string, unknown> | undefined)?.action ?? '');
+    if (action === 'confirmed') decisions.set(sourceRef, 'confirmed');
+    if (action === 'separated') decisions.set(sourceRef, 'separated');
+  });
+
+  return decisions;
+}
+
 function deriveReviewDecision(match: PersonMatch, mergeDecisions: Map<string, 'confirmed' | 'separated'>) {
   const persistedDecision = mergeDecisions.get(match.inputRef);
   if (persistedDecision) return persistedDecision;
@@ -1229,6 +1250,7 @@ export default function TransformHubPage() {
   const [showAppliedDecisions, setShowAppliedDecisions] = useState(false);
   const [expandedRootCauses, setExpandedRootCauses] = useState<Set<string>>(new Set());
   const reviewQueueSummary = useReviewQueueSummary();
+  const [sessionStructure, setSessionStructure] = useState<TransformSession['structure'] | null>(null);
   const [pendingTaxonomyMergeCandidateId, setPendingTaxonomyMergeCandidateId] = useState<string | null>(null);
   const [pendingTaxonomyMergeLabel, setPendingTaxonomyMergeLabel] = useState('');
   const [editingResolvedTaxonomyGroupId, setEditingResolvedTaxonomyGroupId] = useState<string | null>(null);
@@ -1283,6 +1305,13 @@ export default function TransformHubPage() {
   const readyRows = rows.filter((row) => row.review_status === 'approved').length;
   const reviewRows = rows.filter((row) => row.review_status === 'pending').length;
   const rejectedRows = rows.filter((row) => row.review_status === 'rejected').length;
+  const effectiveReviewQueueSummary = sessionStructure?.reviewBuckets
+    ? {
+        pendingCount: sessionStructure.reviewBuckets.needsReview,
+        highConfidenceCount: sessionStructure.reviewBuckets.highConfidence,
+        driftAlertCount: (sessionStructure.decisionLog ?? []).filter((entry) => entry.decisionType === 'guardrail').length,
+      }
+    : reviewQueueSummary;
   const structureAnalysis = parsedFile?.structureAnalysis ?? null;
   const isCrmPlatform = CRM_PLATFORMS.has(platform);
   const activeRows = rows.filter((row) => row.review_status !== 'rejected');
@@ -4056,6 +4085,7 @@ export default function TransformHubPage() {
       setSelectedOutcomeCardId((session.parsedFile.analyticsWorkspace?.selectedOutcomeId as ReviewOutcomeId | null) ?? 'revenue_at_risk');
       setPlatform(session.parsedFile.platform);
       setSchema(session.schema);
+      setSessionStructure(session.structure ?? null);
       setTaxonomyState(session.taxonomyState ?? null);
       setGuardrails(session.guardrails);
       setBlockingIssues(session.blockingIssues ?? []);
@@ -4064,7 +4094,7 @@ export default function TransformHubPage() {
       setReceipts(session.receipts);
       setPersonResult(session.personResult ?? null);
       setHouseholdResult(session.householdResult ?? null);
-      setMergeDecisions(buildMergeDecisionMap(session.rows, session.auditDecisions));
+      setMergeDecisions(buildMergeDecisionMapFromStructure(session));
       setNonLedgerReviewPanel(options?.nextNonLedgerReviewPanel ?? 'duplicate');
       setActiveOperatorIntent(null);
       if (nextMessage) setMessage(nextMessage);
@@ -5712,7 +5742,7 @@ export default function TransformHubPage() {
               style={{ minHeight: 34, fontSize: '0.82rem', position: 'relative' }}
             >
               Things to review
-              {(reviewQueueSummary?.pendingCount ?? 0) > 0 && (
+              {(effectiveReviewQueueSummary?.pendingCount ?? 0) > 0 && (
                 <span style={{
                   position: 'absolute',
                   top: -6,
@@ -5720,7 +5750,7 @@ export default function TransformHubPage() {
                   minWidth: 18,
                   height: 18,
                   borderRadius: 9,
-                  background: reviewQueueSummary?.driftAlertCount ? 'var(--th-red)' : reviewQueueSummary?.highConfidenceCount ? 'var(--th-blue)' : 'var(--th-muted)',
+                  background: effectiveReviewQueueSummary?.driftAlertCount ? 'var(--th-red)' : effectiveReviewQueueSummary?.highConfidenceCount ? 'var(--th-blue)' : 'var(--th-muted)',
                   color: '#fff',
                   fontSize: 10,
                   fontWeight: 700,
@@ -5730,7 +5760,7 @@ export default function TransformHubPage() {
                   padding: '0 4px',
                   lineHeight: 1,
                 }}>
-                  {reviewQueueSummary?.pendingCount}
+                  {effectiveReviewQueueSummary?.pendingCount}
                 </span>
               )}
             </button>
@@ -6190,6 +6220,7 @@ export default function TransformHubPage() {
             schema={schema}
             rows={rows}
             legacyMap={legacyMap}
+            structure={sessionStructure}
           />
         )}
 
@@ -8323,7 +8354,7 @@ export default function TransformHubPage() {
                   <ShieldAlert size={14} /> Run audit
                 </button>
               </div>
-              <TransformHubAuditModePanel rows={rows} taxonomyResult={taxonomyResult} auditResult={auditResult} activeAction={activeOperatorIntent} onAction={handleOperatorAction} />
+              <TransformHubAuditModePanel rows={rows} taxonomyResult={taxonomyResult} auditResult={auditResult} activeAction={activeOperatorIntent} onAction={handleOperatorAction} structure={sessionStructure} />
               {!auditResult ? (
                 <p className="th-helper">
                   Check for donor tag gaps, wrong GL accounts, lapsed giving, and more.

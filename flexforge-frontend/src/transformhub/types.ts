@@ -467,6 +467,20 @@ export type TransformSession = {
   personResult?: PersonResolverResult | null;
   householdResult?: HouseholdResolverResult | null;
   auditDecisions?: PersistedMergeDecision[];
+  structure?: {
+    rawImports: Array<Record<string, unknown>>;
+    rawTables: Array<Record<string, unknown>>;
+    rawColumns: Array<Record<string, unknown>>;
+    mappingRules: Array<Record<string, unknown>>;
+    normalizedRows: Array<Record<string, unknown>>;
+    sourceEvidence: Array<Record<string, unknown>>;
+    decisionLog: Array<Record<string, unknown>>;
+    reviewBuckets: {
+      autoApplied: number;
+      highConfidence: number;
+      needsReview: number;
+    };
+  };
 };
 
 export type PersonMatchDecision = 'auto' | 'review' | 'new' | 'org_rule';

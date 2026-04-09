@@ -20,6 +20,13 @@ import { ThReviewAction } from './entities/th-review-action.entity';
 import { ThReviewDataset } from './entities/th-review-dataset.entity';
 import { ThReviewQueueItem } from './entities/th-review-queue-item.entity';
 import { ThSourceCrosswalk } from './entities/th-source-crosswalk.entity';
+import { ThRawImport } from './entities/th-raw-import.entity';
+import { ThRawTable } from './entities/th-raw-table.entity';
+import { ThRawColumn } from './entities/th-raw-column.entity';
+import { ThMappingRule } from './entities/th-mapping-rule.entity';
+import { ThNormalizedSourceRow } from './entities/th-normalized-source-row.entity';
+import { ThSourceEvidence } from './entities/th-source-evidence.entity';
+import { ThDecisionLog } from './entities/th-decision-log.entity';
 
 dotenv.config();
 
@@ -40,7 +47,7 @@ function parseDbConfig() {
 export const AppDataSource = new DataSource({
   type: 'postgres',
   ...parseDbConfig(),
-  entities: [ThTransformSession, ThCanonicalRow, ThIdentityMemory, ThTaxonomyException, ThHousehold, ThOrganization, ThDonation, ThAttribution, ThRelationship, ThCampaign, ThAppeal, ThAuditDecision, ThAuditRun, ThSchemaTemplate, ThKeySynonym, ThReviewAction, ThReviewDataset, ThReviewQueueItem, ThSourceCrosswalk],
+  entities: [ThTransformSession, ThCanonicalRow, ThIdentityMemory, ThTaxonomyException, ThHousehold, ThOrganization, ThDonation, ThAttribution, ThRelationship, ThCampaign, ThAppeal, ThAuditDecision, ThAuditRun, ThSchemaTemplate, ThKeySynonym, ThReviewAction, ThReviewDataset, ThReviewQueueItem, ThSourceCrosswalk, ThRawImport, ThRawTable, ThRawColumn, ThMappingRule, ThNormalizedSourceRow, ThSourceEvidence, ThDecisionLog],
   migrations: [join(__dirname, 'migrations', '*.{js,ts}')],
   synchronize: false,
   logging: process.env.NODE_ENV === 'development',

@@ -15,6 +15,10 @@ type MappingLayerPanelProps = {
   schema: ResolvedSchema | null;
   rows: CanonicalLedgerRow[];
   legacyMap: LegacyMapping[];
+  structure?: {
+    mappingRules?: Array<Record<string, unknown>>;
+    sourceEvidence?: Array<Record<string, unknown>>;
+  } | null;
 };
 
 type AuditModePanelProps = {
@@ -23,9 +27,17 @@ type AuditModePanelProps = {
   auditResult: AuditRuleResult | null;
   activeAction: OperatorAction | null;
   onAction: (action: OperatorAction) => void;
+  structure?: {
+    reviewBuckets?: {
+      autoApplied: number;
+      highConfidence: number;
+      needsReview: number;
+    };
+    decisionLog?: Array<Record<string, unknown>>;
+  } | null;
 };
 
-export function TransformHubMappingLayerPanel({ platform, schema, rows, legacyMap }: MappingLayerPanelProps) {
+export function TransformHubMappingLayerPanel({ platform, schema, rows, legacyMap, structure }: MappingLayerPanelProps) {
   const sourceFieldPreview = Object.entries(schema?.fieldMap ?? {}).filter(([, value]) => Boolean(value)).slice(0, 6);
   const canonicalFieldPreview = [
     { label: 'Transaction date', key: 'date' },
@@ -35,7 +47,15 @@ export function TransformHubMappingLayerPanel({ platform, schema, rows, legacyMa
     { label: 'Fund', key: 'fund' },
     { label: 'Appeal / campaign', key: 'appeal' },
   ] as const;
-  const mappingRulePreview = rows
+  const structuredMappingRules = (structure?.mappingRules ?? [])
+    .filter((rule) => String(rule.active ?? '') === 'true' || rule.active === true || String(rule.approvalStatus ?? '') !== 'rejected')
+    .slice(0, 4)
+    .map((rule, index) => ({
+      source: String(rule.sourceKey ?? `rule-${index + 1}`),
+      destination: String(rule.targetField ?? 'pending'),
+      note: `${String(rule.origin ?? 'system')} · ${String(rule.approvalStatus ?? 'approved')}`,
+    }));
+  const mappingRulePreview = structuredMappingRules.length > 0 ? structuredMappingRules : rows
     .filter((row) => row.raw_fund || row.raw_appeal || row.normalized_fund || row.normalized_appeal)
     .slice(0, 4)
     .map((row) => ({
@@ -47,12 +67,24 @@ export function TransformHubMappingLayerPanel({ platform, schema, rows, legacyMa
           ? `If campaign contains ${row.raw_appeal} -> ${row.normalized_appeal || 'review canonical appeal'}`
           : 'Default mapped to ledger account',
     }));
-  const traceabilityPreview = rows.slice(0, 4).map((row) => ({
+  const structuredTraceability = (structure?.sourceEvidence ?? [])
+    .slice(0, 4)
+    .map((evidence, index) => ({
+      id: String(evidence.id ?? `evidence-${index + 1}`),
+      source: `${String(evidence.sourceRowRef ?? 'row')} / ${String(evidence.fieldName ?? evidence.evidenceType ?? 'evidence')}`,
+      destination: `${String(evidence.canonicalEntityType ?? 'entity')} / ${String(evidence.canonicalEntityId ?? 'pending')}`,
+      status: 'Linked',
+    }));
+  const traceabilityPreview = structuredTraceability.length > 0 ? structuredTraceability : rows.slice(0, 4).map((row) => ({
     id: row.id,
     source: `${row.source_platform} / ${row.source_row_ref}`,
     destination: row.journal_id || row.account_code || row.account_name || 'Awaiting ledger destination',
     status: row.review_status === 'approved' ? 'Approved' : row.review_status === 'rejected' ? 'Rejected' : 'Pending',
   }));
+  const mappingTargets = new Set((structure?.mappingRules ?? [])
+    .filter((rule) => String(rule.approvalStatus ?? 'approved') !== 'rejected')
+    .map((rule) => String(rule.targetField ?? ''))
+    .filter(Boolean));
 
   return (
     <section className="th-section" id="th-mapping-layer">
@@ -87,9 +119,9 @@ export function TransformHubMappingLayerPanel({ platform, schema, rows, legacyMa
                 <div key={field.key} className="th-map-row th-map-row-ledger">
                   <div>
                     <strong>{field.label}</strong>
-                    <span>{schema?.fieldMap?.[field.key as keyof typeof schema.fieldMap] ? 'Mapped from source' : 'Awaiting source rule'}</span>
+                    <span>{mappingTargets.has(field.key) || schema?.fieldMap?.[field.key as keyof typeof schema.fieldMap] ? 'Mapped from source' : 'Awaiting source rule'}</span>
                   </div>
-                  <span className="th-map-pill">{schema?.fieldMap?.[field.key as keyof typeof schema.fieldMap] ? 'Final field' : 'Pending'}</span>
+                  <span className="th-map-pill">{mappingTargets.has(field.key) || schema?.fieldMap?.[field.key as keyof typeof schema.fieldMap] ? 'Final field' : 'Pending'}</span>
                 </div>
               ))}
               {mappingRulePreview.length > 0 ? (
@@ -145,7 +177,10 @@ export function TransformHubMappingLayerPanel({ platform, schema, rows, legacyMa
   );
 }
 
-export function TransformHubAuditModePanel({ rows, taxonomyResult, auditResult, activeAction, onAction }: AuditModePanelProps) {
+export function TransformHubAuditModePanel({ rows, taxonomyResult, auditResult, activeAction, onAction, structure }: AuditModePanelProps) {
+  const structuredNeedsReview = structure?.reviewBuckets?.needsReview ?? 0;
+  const structuredGuardrails = (structure?.decisionLog ?? []).filter((entry) => entry.decisionType === 'guardrail').length;
+  const structuredTaxonomy = (structure?.decisionLog ?? []).filter((entry) => entry.decisionType === 'taxonomy_review' && entry.status !== 'applied').length;
   const checks: Array<{ label: string; status: 'pending' | 'review' | 'pass'; detail: string; action: OperatorAction; actionLabel: string }> = [
     {
       label: 'All monthly donors tagged?',
@@ -158,18 +193,24 @@ export function TransformHubAuditModePanel({ rows, taxonomyResult, auditResult, 
     },
     {
       label: 'Missing development owner?',
-      status: rows.some((row) => row.needs_review && !row.canonical_person_id) ? 'review' : 'pass',
-      detail: rows.some((row) => row.needs_review && !row.canonical_person_id)
-        ? 'Rows still need ownership or person resolution before handoff.'
+      status: structuredNeedsReview > 0 || rows.some((row) => row.needs_review && !row.canonical_person_id) ? 'review' : 'pass',
+      detail: structuredNeedsReview > 0
+        ? `${structuredNeedsReview} structured review decision(s) are still open before handoff.`
+        : rows.some((row) => row.needs_review && !row.canonical_person_id)
+          ? 'Rows still need ownership or person resolution before handoff.'
         : 'No unresolved ownership gaps in the current row set.',
       action: 'resolve-identities',
       actionLabel: 'Resolve identities',
     },
     {
       label: 'Mismatch between CRM and finance?',
-      status: taxonomyResult?.unmappedCount || auditResult?.warningCount ? 'review' : 'pass',
-      detail: taxonomyResult?.unmappedCount
-        ? `${taxonomyResult.unmappedCount} taxonomy exceptions still need mapping.`
+      status: structuredTaxonomy || structuredGuardrails || taxonomyResult?.unmappedCount || auditResult?.warningCount ? 'review' : 'pass',
+      detail: structuredTaxonomy
+        ? `${structuredTaxonomy} taxonomy decision(s) still need review.`
+        : structuredGuardrails
+          ? `${structuredGuardrails} guardrail acknowledgement(s) are still surfaced.`
+        : taxonomyResult?.unmappedCount
+          ? `${taxonomyResult.unmappedCount} taxonomy exceptions still need mapping.`
         : auditResult?.warningCount
           ? `${auditResult.warningCount} audit warning(s) still need reconciliation.`
           : 'CRM and ledger mappings currently reconcile cleanly.',

@@ -22,6 +22,13 @@ import { ThSchemaTemplate } from './database/entities/th-schema-template.entity'
 import { ThKeySynonym } from './database/entities/th-key-synonym.entity';
 import { ThReviewQueueItem } from './database/entities/th-review-queue-item.entity';
 import { ThSourceCrosswalk } from './database/entities/th-source-crosswalk.entity';
+import { ThRawImport } from './database/entities/th-raw-import.entity';
+import { ThRawTable } from './database/entities/th-raw-table.entity';
+import { ThRawColumn } from './database/entities/th-raw-column.entity';
+import { ThMappingRule } from './database/entities/th-mapping-rule.entity';
+import { ThNormalizedSourceRow } from './database/entities/th-normalized-source-row.entity';
+import { ThSourceEvidence } from './database/entities/th-source-evidence.entity';
+import { ThDecisionLog } from './database/entities/th-decision-log.entity';
 
 import { TransformHubModule } from './modules/transformhub/transformhub.module';
 
@@ -49,7 +56,7 @@ import { TransformHubModule } from './modules/transformhub/transformhub.module';
         return {
           type: 'postgres',
           ...base,
-          entities: [ThTransformSession, ThCanonicalRow, ThIdentityMemory, ThTaxonomyException, ThHousehold, ThOrganization, ThDonation, ThAttribution, ThRelationship, ThCampaign, ThAppeal, ThAuditDecision, ThAuditRun, ThReviewAction, ThReviewDataset, ThSchemaTemplate, ThKeySynonym, ThReviewQueueItem, ThSourceCrosswalk],
+          entities: [ThTransformSession, ThCanonicalRow, ThIdentityMemory, ThTaxonomyException, ThHousehold, ThOrganization, ThDonation, ThAttribution, ThRelationship, ThCampaign, ThAppeal, ThAuditDecision, ThAuditRun, ThReviewAction, ThReviewDataset, ThSchemaTemplate, ThKeySynonym, ThReviewQueueItem, ThSourceCrosswalk, ThRawImport, ThRawTable, ThRawColumn, ThMappingRule, ThNormalizedSourceRow, ThSourceEvidence, ThDecisionLog],
           synchronize: configService.get('nodeEnv') === 'development',
           logging: configService.get('nodeEnv') === 'development',
           ssl: configService.get('database.ssl') ? { rejectUnauthorized: false } : false,

@@ -23,6 +23,48 @@ function evidenceLabel(field: string): string {
   return EVIDENCE_LABELS[field] ?? field;
 }
 
+function getQueueItemLabels(item: ReviewQueueItem) {
+  if (item.source === 'decision_log') {
+    if (item.decisionType === 'field_mapping' || item.decisionType === 'field_suggestion_review') {
+      return {
+        titleA: 'Incoming column',
+        titleB: 'Suggested mapping',
+        approveLabel: 'Approve mapping',
+        rejectLabel: 'Keep separate',
+      };
+    }
+    if (item.decisionType === 'taxonomy_review') {
+      return {
+        titleA: 'Observed value',
+        titleB: 'Canonical target',
+        approveLabel: 'Approve taxonomy',
+        rejectLabel: 'Keep separate',
+      };
+    }
+    if (item.decisionType === 'guardrail') {
+      return {
+        titleA: 'Guardrail',
+        titleB: 'Impact',
+        approveLabel: 'Acknowledge',
+        rejectLabel: 'Keep flagged',
+      };
+    }
+    return {
+      titleA: 'Incoming decision',
+      titleB: 'Target',
+      approveLabel: 'Approve',
+      rejectLabel: 'Reject',
+    };
+  }
+
+  return {
+    titleA: 'Incoming record',
+    titleB: 'Existing record',
+    approveLabel: 'Yes, same person',
+    rejectLabel: 'Different people',
+  };
+}
+
 // ─── Single queue item card ──────────────────────────────────────────────────
 
 type QueueItemCardProps = {
@@ -32,6 +74,7 @@ type QueueItemCardProps = {
 
 function QueueItemCard({ item, onResolved }: QueueItemCardProps) {
   const [loading, setLoading] = useState(false);
+  const labels = getQueueItemLabels(item);
 
   const handleAction = useCallback(async (action: 'approved' | 'kept_separate') => {
     if (loading) return;
@@ -52,7 +95,9 @@ function QueueItemCard({ item, onResolved }: QueueItemCardProps) {
       ? 'High confidence · Previously confirmed'
       : item.isHighConfidence
         ? 'High confidence'
-        : `${Math.round(item.score)}% match`;
+        : item.source === 'decision_log'
+          ? item.decisionType?.replace(/_/g, ' ') ?? `${Math.round(item.score)}% confidence`
+          : `${Math.round(item.score)}% match`;
 
   return (
     <div
@@ -95,7 +140,7 @@ function QueueItemCard({ item, onResolved }: QueueItemCardProps) {
           }}
         >
           <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--th-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
-            Incoming record
+            {labels.titleA}
           </div>
           <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--th-ink)' }}>
             {item.displayNameA ?? '—'}
@@ -113,7 +158,7 @@ function QueueItemCard({ item, onResolved }: QueueItemCardProps) {
           }}
         >
           <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--th-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
-            Existing record
+            {labels.titleB}
           </div>
           <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--th-ink)' }}>
             {item.displayNameB ?? '—'}
@@ -161,7 +206,7 @@ function QueueItemCard({ item, onResolved }: QueueItemCardProps) {
             transition: 'opacity 0.15s',
           }}
         >
-          Yes, same person
+          {labels.approveLabel}
         </button>
         <button
           onClick={() => handleAction('kept_separate')}
@@ -180,7 +225,7 @@ function QueueItemCard({ item, onResolved }: QueueItemCardProps) {
             transition: 'opacity 0.15s',
           }}
         >
-          Different people
+          {labels.rejectLabel}
         </button>
       </div>
     </div>
@@ -315,7 +360,7 @@ export function ReviewQueuePanel({ onSummaryChange }: ReviewQueuePanelProps) {
             <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--th-ink)', marginBottom: 4 }}>
               You're all caught up.
             </div>
-            <div style={{ fontSize: 13 }}>No pending identity matches.</div>
+            <div style={{ fontSize: 13 }}>No pending structured reviews.</div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -338,7 +383,7 @@ export function ReviewQueuePanel({ onSummaryChange }: ReviewQueuePanelProps) {
                   marginTop: 4,
                 }}
               >
-                {batchedCount} more possible match{batchedCount !== 1 ? 'es' : ''} are below the confidence threshold and will appear as you clear these.
+                {batchedCount} more review item{batchedCount !== 1 ? 's' : ''} will appear as you clear these.
               </div>
             )}
           </div>

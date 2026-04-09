@@ -445,6 +445,13 @@ export type ReviewQueueItem = {
   resolvedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  source?: 'decision_log' | 'legacy_queue';
+  decisionType?: string;
+  decisionMode?: string;
+  actorType?: string;
+  targetType?: string | null;
+  targetId?: string | null;
+  confidence?: number | null;
 };
 
 export type ReviewQueueResponse = {

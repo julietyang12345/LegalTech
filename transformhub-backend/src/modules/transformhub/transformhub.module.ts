@@ -19,6 +19,13 @@ import { ThSchemaTemplate } from '../../database/entities/th-schema-template.ent
 import { ThKeySynonym } from '../../database/entities/th-key-synonym.entity';
 import { ThReviewQueueItem } from '../../database/entities/th-review-queue-item.entity';
 import { ThSourceCrosswalk } from '../../database/entities/th-source-crosswalk.entity';
+import { ThRawImport } from '../../database/entities/th-raw-import.entity';
+import { ThRawTable } from '../../database/entities/th-raw-table.entity';
+import { ThRawColumn } from '../../database/entities/th-raw-column.entity';
+import { ThMappingRule } from '../../database/entities/th-mapping-rule.entity';
+import { ThNormalizedSourceRow } from '../../database/entities/th-normalized-source-row.entity';
+import { ThSourceEvidence } from '../../database/entities/th-source-evidence.entity';
+import { ThDecisionLog } from '../../database/entities/th-decision-log.entity';
 import { TransformHubController } from './transformhub.controller';
 import { TransformHubService } from './transformhub.service';
 import { TransformHubPipelineService } from './transformhub-pipeline.service';
@@ -30,6 +37,7 @@ import { TransformHubOutputService } from './transformhub-output.service';
 import { TransformHubAuditRuleEngineService } from './transformhub-audit-rule-engine.service';
 import { TransformHubAiService } from './transformhub-ai.service';
 import { TransformHubApiKeyGuard } from './guards/transformhub-api-key.guard';
+import { TransformHubStructureService } from './transformhub-structure.service';
 
 @Module({
   imports: [
@@ -53,6 +61,13 @@ import { TransformHubApiKeyGuard } from './guards/transformhub-api-key.guard';
       ThKeySynonym,
       ThReviewQueueItem,
       ThSourceCrosswalk,
+      ThRawImport,
+      ThRawTable,
+      ThRawColumn,
+      ThMappingRule,
+      ThNormalizedSourceRow,
+      ThSourceEvidence,
+      ThDecisionLog,
     ]),
   ],
   controllers: [TransformHubController],
@@ -66,6 +81,7 @@ import { TransformHubApiKeyGuard } from './guards/transformhub-api-key.guard';
     TransformHubOutputService,
     TransformHubAuditRuleEngineService,
     TransformHubAiService,
+    TransformHubStructureService,
     TransformHubApiKeyGuard,
   ],
 })
