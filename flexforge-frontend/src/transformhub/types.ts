@@ -484,6 +484,8 @@ export type TransformSession = {
 };
 
 export type PersonMatchDecision = 'auto' | 'review' | 'new' | 'org_rule';
+export type DuplicateCandidateClass = 'exact_match' | 'likely_match' | 'possible_match' | 'no_match';
+export type DuplicateClassCounts = Record<DuplicateCandidateClass, number>;
 
 export type PersonMatch = {
   inputRef: string;
@@ -491,6 +493,7 @@ export type PersonMatch = {
   score: number;
   band: ConfidenceBand;
   decision: PersonMatchDecision;
+  duplicateClass?: DuplicateCandidateClass;
   matchedPersonId: string | null;
   matchedFields: string[];
   reviewPayload?: {
@@ -592,6 +595,7 @@ export type PersonResolverResult = {
   persons: CanonicalPerson[];
   canonicalPersons: CanonicalPerson[];
   matches: PersonMatch[];
+  duplicateClassCounts?: DuplicateClassCounts;
   autoMatched: number;
   autoMergedCount: number;
   needsReview: number;

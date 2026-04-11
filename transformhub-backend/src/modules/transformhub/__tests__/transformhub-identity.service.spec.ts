@@ -135,6 +135,7 @@ test('flags donor alias cleanup only for different names with strong identity si
 
   assert.equal(result.matchMode, 'identity');
   assert.equal(result.needsReview, 1);
+  assert.equal(result.duplicateClassCounts.likely_match, 1);
   assert.ok(result.matches.some((match: any) => match.matchedFields.includes('name_variant')));
 });
 
@@ -172,4 +173,5 @@ test('does not flag household members with different first names as donor aliase
   });
 
   assert.equal(result.needsReview, 0);
+  assert.equal(result.duplicateClassCounts.likely_match, 0);
 });

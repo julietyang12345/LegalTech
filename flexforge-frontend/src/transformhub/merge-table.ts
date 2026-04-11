@@ -5,8 +5,16 @@ export type PendingColumnMerge = {
   sourceFile: string;
   incomingHeader: string;
   suggestedHeader: string;
-  matchType: 'fuzzy';
-  score: number;
+  splitHeader: string;
+  matchType: 'exact' | 'alias' | 'fuzzy';
+  score: number | null;
+  reason: 'fuzzy_candidate' | 'value_review';
+  sampleConflicts?: Array<{
+    rowRef: string;
+    existingValue: string;
+    incomingValue: string;
+    reason: string;
+  }>;
 };
 
 export type AppendColumnDecision = {
@@ -17,7 +25,13 @@ export type AppendColumnDecision = {
   targetHeader: string | null;
   matchType: 'exact' | 'alias' | 'fuzzy' | 'new';
   score: number | null;
-  action: 'merge' | 'keep_separate' | 'drop';
+  action: 'merge' | 'keep_separate' | 'drop' | 'review';
+  sampleConflicts?: PendingColumnMerge['sampleConflicts'];
+};
+
+type AppendColumnDecisionOptions = {
+  existingSchema?: ResolvedSchema | null;
+  incomingSchema?: ResolvedSchema | null;
 };
 
 type ParsedFileMergeState = {
@@ -36,19 +50,50 @@ const HEADER_ALIAS_GROUPS = [
   ['phone', 'phonenumber', 'mobile', 'telephone'],
   ['address', 'address1', 'street', 'streetaddress'],
   ['postalcode', 'zipcode', 'zip'],
+  ['date', 'giftdate', 'receiveddate', 'transactiondate'],
   ['fund', 'fundname'],
-  ['appeal', 'campaign', 'appealname', 'campaignname'],
+  ['appeal', 'appealname'],
+  ['campaign', 'campaignname'],
   ['amount', 'giftamount', 'donationamount'],
+] as const;
+
+const SEMANTIC_REVIEW_HEADER_GROUPS = [
+  ['fund', 'fundname', 'campaign', 'campaignname'],
+  ['paymentmethod', 'tendertype'],
+  ['channel', 'sourcechannel'],
+  ['receiptstatus', 'receiptflag'],
+  ['constituentid', 'externalid'],
 ] as const;
 
 function normalizeHeaderKey(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
+function buildIncomingSplitHeader(existingHeaders: string[], suggestedHeader: string): string {
+  const base = `${normalizeHeaderKey(suggestedHeader) || 'column'}__incoming`;
+  if (!existingHeaders.includes(base)) return base;
+  let suffix = 2;
+  while (existingHeaders.includes(`${base}_${suffix}`)) suffix += 1;
+  return `${base}_${suffix}`;
+}
+
 function resolveHeaderAlias(value: string): string {
   const normalized = normalizeHeaderKey(value);
   const group = HEADER_ALIAS_GROUPS.find((items) => (items as readonly string[]).includes(normalized));
   return group?.[0] ?? normalized;
+}
+
+function resolveSemanticReviewGroup(value: string): readonly string[] | null {
+  const normalized = normalizeHeaderKey(value);
+  return SEMANTIC_REVIEW_HEADER_GROUPS.find((items) => (items as readonly string[]).includes(normalized)) ?? null;
+}
+
+function isSemanticReviewPair(left: string, right: string): boolean {
+  const leftKey = normalizeHeaderKey(left);
+  const rightKey = normalizeHeaderKey(right);
+  if (!leftKey || !rightKey || leftKey === rightKey) return false;
+  const group = resolveSemanticReviewGroup(left);
+  return Boolean(group && group.includes(rightKey));
 }
 
 function scoreHeaderSimilarity(left: string, right: string): number {
@@ -62,6 +107,78 @@ function scoreHeaderSimilarity(left: string, right: string): number {
   const intersection = [...aTokens].filter((token) => bTokens.has(token)).length;
   const union = new Set([...aTokens, ...bTokens]).size || 1;
   return intersection / union;
+}
+
+type ColumnValueShape = 'email' | 'phone' | 'date' | 'numeric' | 'text' | 'empty';
+
+function detectValueShape(value: string): ColumnValueShape {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed) return 'empty';
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return 'email';
+  if (/^\+?[\d()\-\s.]{7,}$/.test(trimmed) && trimmed.replace(/\D/g, '').length >= 7) return 'phone';
+  if (!Number.isNaN(Date.parse(trimmed)) && /[\d/-]/.test(trimmed)) return 'date';
+  if (/^[\d\s,$.%()-]+$/.test(trimmed) && /\d/.test(trimmed)) return 'numeric';
+  return 'text';
+}
+
+function collectColumnSamples(source: string[] | ParsedFile, header: string): string[] {
+  if (Array.isArray(source)) return [];
+  return source.rows
+    .map((row) => String(row.values?.[header] ?? '').trim())
+    .filter(Boolean)
+    .slice(0, 24);
+}
+
+function dominantShape(samples: string[]): ColumnValueShape {
+  if (samples.length === 0) return 'empty';
+  const counts = samples.reduce<Record<ColumnValueShape, number>>((acc, sample) => {
+    const shape = detectValueShape(sample);
+    acc[shape] = (acc[shape] ?? 0) + 1;
+    return acc;
+  }, { email: 0, phone: 0, date: 0, numeric: 0, text: 0, empty: 0 });
+  return (Object.entries(counts).sort((left, right) => right[1] - left[1])[0]?.[0] as ColumnValueShape) ?? 'empty';
+}
+
+function shouldReviewColumnMerge(existingSource: string[] | ParsedFile, incomingSource: string[] | ParsedFile, existingHeader: string, incomingHeader: string): boolean {
+  const existingSamples = collectColumnSamples(existingSource, existingHeader);
+  const incomingSamples = collectColumnSamples(incomingSource, incomingHeader);
+  if (existingSamples.length === 0 || incomingSamples.length === 0) return false;
+  const existingShape = dominantShape(existingSamples);
+  const incomingShape = dominantShape(incomingSamples);
+  if (existingShape === 'empty' || incomingShape === 'empty') return false;
+  if (existingShape === incomingShape) return false;
+  if (existingShape === 'text' || incomingShape === 'text') return false;
+  return true;
+}
+
+function collectColumnConflictSamples(
+  existingSource: string[] | ParsedFile,
+  incomingSource: string[] | ParsedFile,
+  existingHeader: string,
+  incomingHeader: string,
+): PendingColumnMerge['sampleConflicts'] {
+  if (Array.isArray(existingSource) || Array.isArray(incomingSource)) return [];
+  const samples: NonNullable<PendingColumnMerge['sampleConflicts']> = [];
+  const maxRows = Math.max(existingSource.rows.length, incomingSource.rows.length);
+  for (let index = 0; index < maxRows && samples.length < 8; index += 1) {
+    const existingRow = existingSource.rows[index];
+    const incomingRow = incomingSource.rows[index];
+    const existingValue = String(existingRow?.values?.[existingHeader] ?? '').trim();
+    const incomingValue = String(incomingRow?.values?.[incomingHeader] ?? '').trim();
+    if (!existingValue || !incomingValue) continue;
+    const existingShape = detectValueShape(existingValue);
+    const incomingShape = detectValueShape(incomingValue);
+    if (existingShape === incomingShape && existingValue === incomingValue) continue;
+    samples.push({
+      rowRef: incomingRow?.ref ?? existingRow?.ref ?? `row-${index + 1}`,
+      existingValue,
+      incomingValue,
+      reason: existingShape === incomingShape
+        ? 'same_shape_different_value'
+        : `${existingShape}_vs_${incomingShape}`,
+    });
+  }
+  return samples;
 }
 
 function getRawValues(record: PreviewRecord): Record<string, string> {
@@ -170,10 +287,35 @@ function mergeSchemas(current: ResolvedSchema, incoming: ResolvedSchema): Resolv
   };
 }
 
-export function buildAppendColumnDecisions(existingHeaders: string[], incomingHeaders: string[], sourceFile: string): AppendColumnDecision[] {
+function buildSchemaTargetMap(schema: ResolvedSchema | null | undefined): Map<string, string> {
+  const targetMap = new Map<string, string>();
+  Object.entries(schema?.fieldMap ?? {}).forEach(([canonicalTarget, rawHeader]) => {
+    if (!canonicalTarget) return;
+    targetMap.set(normalizeHeaderKey(canonicalTarget), canonicalTarget);
+    if (rawHeader) targetMap.set(normalizeHeaderKey(rawHeader), canonicalTarget);
+  });
+  return targetMap;
+}
+
+function resolveSchemaTarget(header: string, targetMap: Map<string, string>): string | null {
+  return targetMap.get(normalizeHeaderKey(header)) ?? null;
+}
+
+export function buildAppendColumnDecisions(
+  existingSource: string[] | ParsedFile,
+  incomingSource: string[] | ParsedFile,
+  sourceFile: string,
+  options: AppendColumnDecisionOptions = {},
+): AppendColumnDecision[] {
+  const existingHeaders = Array.isArray(existingSource) ? existingSource : existingSource.headers;
+  const incomingHeaders = Array.isArray(incomingSource) ? incomingSource : incomingSource.headers;
+  const existingSchemaTargets = buildSchemaTargetMap(options.existingSchema);
+  const incomingSchemaTargets = buildSchemaTargetMap(options.incomingSchema);
   return incomingHeaders.map((incomingHeader) => {
     const exact = existingHeaders.find((header) => normalizeHeaderKey(header) === normalizeHeaderKey(incomingHeader));
     if (exact) {
+      const needsReview = shouldReviewColumnMerge(existingSource, incomingSource, exact, incomingHeader);
+      const sampleConflicts = needsReview ? collectColumnConflictSamples(existingSource, incomingSource, exact, incomingHeader) : undefined;
       return {
         id: `${sourceFile}::${incomingHeader}::${exact}`,
         sourceFile,
@@ -182,12 +324,35 @@ export function buildAppendColumnDecisions(existingHeaders: string[], incomingHe
         targetHeader: exact,
         matchType: 'exact',
         score: 1,
-        action: 'merge',
+        action: needsReview ? 'review' : 'merge',
+        sampleConflicts,
+      } satisfies AppendColumnDecision;
+    }
+
+    const incomingSchemaTarget = resolveSchemaTarget(incomingHeader, incomingSchemaTargets);
+    const schemaAlias = incomingSchemaTarget
+      ? existingHeaders.find((header) => resolveSchemaTarget(header, existingSchemaTargets) === incomingSchemaTarget)
+      : null;
+    if (schemaAlias) {
+      const needsReview = shouldReviewColumnMerge(existingSource, incomingSource, schemaAlias, incomingHeader);
+      const sampleConflicts = needsReview ? collectColumnConflictSamples(existingSource, incomingSource, schemaAlias, incomingHeader) : undefined;
+      return {
+        id: `${sourceFile}::${incomingHeader}::${schemaAlias}`,
+        sourceFile,
+        incomingHeader,
+        suggestedHeader: schemaAlias,
+        targetHeader: schemaAlias,
+        matchType: 'alias',
+        score: null,
+        action: needsReview ? 'review' : 'merge',
+        sampleConflicts,
       } satisfies AppendColumnDecision;
     }
 
     const alias = existingHeaders.find((header) => resolveHeaderAlias(header) === resolveHeaderAlias(incomingHeader));
     if (alias) {
+      const needsReview = shouldReviewColumnMerge(existingSource, incomingSource, alias, incomingHeader);
+      const sampleConflicts = needsReview ? collectColumnConflictSamples(existingSource, incomingSource, alias, incomingHeader) : undefined;
       return {
         id: `${sourceFile}::${incomingHeader}::${alias}`,
         sourceFile,
@@ -196,7 +361,23 @@ export function buildAppendColumnDecisions(existingHeaders: string[], incomingHe
         targetHeader: alias,
         matchType: 'alias',
         score: null,
-        action: 'merge',
+        action: needsReview ? 'review' : 'merge',
+        sampleConflicts,
+      } satisfies AppendColumnDecision;
+    }
+
+    const semanticReview = existingHeaders.find((header) => isSemanticReviewPair(header, incomingHeader));
+    if (semanticReview) {
+      return {
+        id: `${sourceFile}::${incomingHeader}::${semanticReview}`,
+        sourceFile,
+        incomingHeader,
+        suggestedHeader: semanticReview,
+        targetHeader: semanticReview,
+        matchType: 'alias',
+        score: null,
+        action: 'review',
+        sampleConflicts: collectColumnConflictSamples(existingSource, incomingSource, semanticReview, incomingHeader),
       } satisfies AppendColumnDecision;
     }
 
@@ -214,6 +395,7 @@ export function buildAppendColumnDecisions(existingHeaders: string[], incomingHe
         matchType: 'fuzzy',
         score: scored.score,
         action: 'keep_separate',
+        sampleConflicts: collectColumnConflictSamples(existingSource, incomingSource, scored.header, incomingHeader),
       } satisfies AppendColumnDecision;
     }
 
@@ -234,11 +416,24 @@ function buildHeaderPlanFromDecisions(existingHeaders: string[], decisions: Appe
   const mergedHeaders = [...existingHeaders];
   const headerMap = new Map<string, string>();
   const droppedHeaders = new Set<string>();
+  const pendingMerges: PendingColumnMerge[] = [];
 
   decisions.forEach((decision) => {
     if (decision.action === 'drop') {
       droppedHeaders.add(decision.incomingHeader);
       return;
+    }
+    if (decision.action === 'review' && decision.suggestedHeader) {
+      pendingMerges.push({
+        id: decision.id,
+        sourceFile: decision.sourceFile,
+        incomingHeader: decision.incomingHeader,
+        suggestedHeader: decision.suggestedHeader,
+        splitHeader: buildIncomingSplitHeader([...mergedHeaders, decision.incomingHeader], decision.suggestedHeader),
+        matchType: decision.matchType === 'new' ? 'fuzzy' : decision.matchType,
+        score: decision.score,
+        reason: decision.matchType === 'fuzzy' ? 'fuzzy_candidate' : 'value_review',
+      });
     }
     const canMerge = decision.action === 'merge' && decision.targetHeader && existingHeaders.includes(decision.targetHeader);
     const target = canMerge ? decision.targetHeader! : decision.incomingHeader;
@@ -246,7 +441,7 @@ function buildHeaderPlanFromDecisions(existingHeaders: string[], decisions: Appe
     if (!mergedHeaders.includes(target)) mergedHeaders.push(target);
   });
 
-  return { headerMap, droppedHeaders, mergedHeaders, pendingMerges: [] as PendingColumnMerge[] };
+  return { headerMap, droppedHeaders, mergedHeaders, pendingMerges };
 }
 
 function rewriteValuesWithPlan(values: Record<string, string>, headerMap: Map<string, string>, droppedHeaders: Set<string>): Record<string, string> {
@@ -397,7 +592,10 @@ export function mergeUploadIntoExisting(input: {
   sourceFile: string;
   columnDecisions?: AppendColumnDecision[];
 }) {
-  const decisions = input.columnDecisions ?? buildAppendColumnDecisions(input.currentParsedFile.headers, input.incomingParsedFile.headers, input.sourceFile);
+  const decisions = input.columnDecisions ?? buildAppendColumnDecisions(input.currentParsedFile, input.incomingParsedFile, input.sourceFile, {
+    existingSchema: input.currentSchema,
+    incomingSchema: input.incomingSchema,
+  });
   const plan = buildHeaderPlanFromDecisions(input.currentParsedFile.headers, decisions);
   const plannedIncoming = applyHeaderMergePlan(input.incomingParsedFile, plan);
   const nextSchema = mergeSchemas(input.currentSchema, input.incomingSchema);
@@ -438,16 +636,57 @@ export function mergeUploadIntoExisting(input: {
 }
 
 export function getPendingColumnMerges(parsedFile: ParsedFile | null): PendingColumnMerge[] {
-  return ((parsedFile as ParsedFileWithMerge | null)?.mergeState?.pendingMerges ?? []);
+  return ((parsedFile as ParsedFileWithMerge | null)?.mergeState?.pendingMerges ?? [])
+    .filter((merge) => !isLegacyTextValueColumnReview(merge));
 }
 
-export function resolvePendingColumnMerge(parsedFile: ParsedFile, merge: PendingColumnMerge, action: 'merge' | 'keep_separate' | 'drop'): ParsedFile {
+function isLegacyTextValueColumnReview(merge: PendingColumnMerge): boolean {
+  const conflicts = merge.sampleConflicts ?? [];
+  return (
+    merge.reason === 'value_review' &&
+    conflicts.length > 0 &&
+    conflicts.every((conflict) => conflict.reason === 'same_shape_different_value') &&
+    !isSemanticReviewPair(merge.suggestedHeader, merge.incomingHeader)
+  );
+}
+
+export function resolvePendingColumnMerge(parsedFile: ParsedFile, merge: PendingColumnMerge, action: 'combine' | 'keep_separate' | 'keep_s1' | 'keep_s2'): ParsedFile {
   const current = parsedFile as ParsedFileWithMerge;
   if (action === 'keep_separate') {
+    const nextHeaders = current.headers.map((header) => (header === merge.incomingHeader ? merge.splitHeader : header));
+    const rewriteSeparate = (values: Record<string, string>) => {
+      const next = { ...(values ?? {}) };
+      if (merge.incomingHeader in next) {
+        next[merge.splitHeader] = next[merge.incomingHeader];
+        delete next[merge.incomingHeader];
+      }
+      return next;
+    };
     return ensureMergeState(
-      current,
+      {
+        ...current,
+        headers: nextHeaders,
+        rows: current.rows.map((row) => ({ ...row, values: rewriteSeparate(row.values) })),
+        preview: current.preview
+          ? {
+              ...current.preview,
+              summary: {
+                ...current.preview.summary,
+                populatedFields: nextHeaders.length,
+              },
+              records: current.preview.records.map((record) => {
+                const previewRecord = record as PreviewRecord;
+                return {
+                  ...previewRecord,
+                  rawValues: rewriteSeparate(getRawValues(previewRecord)),
+                  ...(previewRecord.values ? { values: rewriteSeparate(previewRecord.values) } : {}),
+                };
+              }),
+            }
+          : current.preview,
+      },
       current.mergeState?.uploadedFiles ?? [],
-      current.mergeState?.canonicalHeaders ?? current.headers,
+      nextHeaders,
       (current.mergeState?.pendingMerges ?? []).filter((item) => item.id !== merge.id),
     );
   }
@@ -455,7 +694,16 @@ export function resolvePendingColumnMerge(parsedFile: ParsedFile, merge: Pending
   const rewrite = (values: Record<string, string>) => {
     const next = { ...(values ?? {}) };
     const fromValue = next[merge.incomingHeader];
-    if (action === 'merge' && (next[merge.suggestedHeader] === undefined || next[merge.suggestedHeader] === null || next[merge.suggestedHeader] === '') && fromValue !== undefined) {
+    const existingValue = String(next[merge.suggestedHeader] ?? '').trim();
+    const incomingValue = String(fromValue ?? '').trim();
+    if (action === 'combine' && incomingValue) {
+      if (!existingValue) {
+        next[merge.suggestedHeader] = fromValue;
+      } else if (existingValue !== incomingValue) {
+        next[merge.suggestedHeader] = `${existingValue} | ${incomingValue}`;
+      }
+    }
+    if (action === 'keep_s2') {
       next[merge.suggestedHeader] = fromValue;
     }
     delete next[merge.incomingHeader];
@@ -539,6 +787,65 @@ function normLookupEmail(s: string): string {
   return `${local.split('+')[0]}@${domain}`;
 }
 
+function splitLookupName(name: string): { firstName: string; lastName: string } {
+  const parts = String(name || '').toLowerCase().trim().replace(/[^a-z0-9 ]+/g, ' ').replace(/ +/g, ' ').split(' ').filter(Boolean);
+  return {
+    firstName: parts.slice(0, -1).join(' ') || parts[0] || '',
+    lastName: parts.slice(-1)[0] || '',
+  };
+}
+
+function buildLookupBigrams(value: string): string[] {
+  const normalized = normLookupStr(value);
+  if (!normalized) return [];
+  if (normalized.length === 1) return [normalized];
+  const bigrams: string[] = [];
+  for (let index = 0; index < normalized.length - 1; index += 1) {
+    bigrams.push(normalized.slice(index, index + 2));
+  }
+  return bigrams;
+}
+
+function computeLookupNameSimilarity(left: string, right: string): number {
+  const normalizedLeft = normLookupStr(left);
+  const normalizedRight = normLookupStr(right);
+  if (!normalizedLeft || !normalizedRight) return 0;
+  if (normalizedLeft === normalizedRight) return 1;
+
+  const leftBigrams = buildLookupBigrams(normalizedLeft);
+  const rightBigrams = buildLookupBigrams(normalizedRight);
+  if (leftBigrams.length === 0 || rightBigrams.length === 0) return 0;
+
+  const counts = new Map<string, number>();
+  leftBigrams.forEach((bigram) => counts.set(bigram, (counts.get(bigram) ?? 0) + 1));
+
+  let overlap = 0;
+  rightBigrams.forEach((bigram) => {
+    const current = counts.get(bigram) ?? 0;
+    if (current <= 0) return;
+    overlap += 1;
+    counts.set(bigram, current - 1);
+  });
+
+  return (2 * overlap) / (leftBigrams.length + rightBigrams.length);
+}
+
+function hasConflictingLookupName(txName: string, profileName: string): boolean {
+  const txParts = splitLookupName(txName);
+  const profileParts = splitLookupName(profileName);
+  if (!txParts.firstName || !txParts.lastName || !profileParts.firstName || !profileParts.lastName) return false;
+  return txParts.lastName === profileParts.lastName && txParts.firstName !== profileParts.firstName;
+}
+
+function hasCompatibleLookupName(txName: string, profileName: string): boolean {
+  const normalizedTx = normLookupStr(txName);
+  const normalizedProfile = normLookupStr(profileName);
+  if (!normalizedTx || !normalizedProfile) return false;
+  if (normalizedTx === normalizedProfile) return true;
+  if (hasConflictingLookupName(txName, profileName)) return false;
+  return computeLookupNameSimilarity(txName, profileName) >= 0.78;
+}
+
 function buildProfileLookupIndex(profileRecords: PreviewRecord[]): {
   byEmail: Map<string, ProfileLookupEntry[]>;
   byPhone: Map<string, ProfileLookupEntry[]>;
@@ -584,6 +891,7 @@ function findBestProfileMatch(txRecord: PreviewRecord, index: ReturnType<typeof 
   const phone = normLookupPhone(String(r['phone'] || getRawValues(txRecord)['phone'] || ''));
   const rawName = String(r['donorName'] || r['displayName'] || [r['firstName'], r['lastName']].filter(Boolean).join(' ') || r['entity_name'] || '');
   const name = normLookupStr(rawName);
+  const txName = rawName;
 
   const scores = new Map<string, { entry: ProfileLookupEntry; score: number }>();
   const add = (entry: ProfileLookupEntry, score: number) => {
@@ -591,8 +899,18 @@ function findBestProfileMatch(txRecord: PreviewRecord, index: ReturnType<typeof 
     if (!existing || existing.score < score) scores.set(entry.sourceRowRef, { entry, score });
   };
 
-  if (email) (index.byEmail.get(email) ?? []).forEach((e) => add(e, 3));
-  if (phone) (index.byPhone.get(phone) ?? []).forEach((e) => add(e, 2));
+  if (email) {
+    (index.byEmail.get(email) ?? []).forEach((entry) => {
+      if (hasConflictingLookupName(txName, entry.name)) return;
+      if (hasCompatibleLookupName(txName, entry.name)) add(entry, 3);
+    });
+  }
+  if (phone) {
+    (index.byPhone.get(phone) ?? []).forEach((entry) => {
+      if (hasConflictingLookupName(txName, entry.name)) return;
+      if (hasCompatibleLookupName(txName, entry.name)) add(entry, 2);
+    });
+  }
   if (name) (index.byName.get(name) ?? []).forEach((e) => add(e, 1));
 
   if (scores.size === 0) return { entry: null, matchStatus: 'unmatched' };

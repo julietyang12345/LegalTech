@@ -670,7 +670,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     const sessionRows = await this.rowRepo.find({ where: { sessionId: body.sessionId } });
     const matchByRef = new Map<string, string>();
     result.matches.forEach((match: any) => {
-      if (match.matchedPersonId) {
+      if (this.shouldApplyPersonMatch(match)) {
         matchByRef.set(match.inputRef, match.matchedPersonId);
       }
     });
@@ -856,6 +856,20 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
           inputKey,
           matchedPersonId: body.matchedPersonId ?? null,
         },
+      });
+      await this.logReviewAction(body.sessionId, {
+        actionType: 'duplicate_review_decision',
+        entityType: 'person_match',
+        entityId: body.action === 'confirmed' ? (body.matchedPersonId ?? null) : body.inputRef,
+        payload: {
+          action: body.action,
+          inputRef: body.inputRef,
+          inputKey,
+          matchedPersonId: body.matchedPersonId ?? null,
+        },
+        reason: body.reason ?? 'Human duplicate review decision.',
+        confidence: typeof body.confidence === 'number' ? body.confidence : null,
+        userId: 'user',
       });
     }
 
@@ -1182,7 +1196,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     const BATCH_THRESHOLD = 65;
 
     const reviewMatches = matches.filter(
-      (m: any) => (m.decision === 'review' || m.decision === 'auto') && m.matchedPersonId,
+      (m: any) => m.decision === 'review' && m.duplicateClass === 'likely_match' && m.matchedPersonId,
     );
     if (reviewMatches.length === 0) return;
 
@@ -1499,21 +1513,6 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
         actionCount = await this.getSafeReviewActionCount({ sessionId: body.sessionId });
       }
     }
-    if (!postReviewReady) {
-      return {
-        generatedAt: new Date().toISOString(),
-        cards: [],
-        items: [],
-        suggestedViews: [],
-        provenance: {
-          layer: 'cleaned',
-          source: reproducible ? 'persistent raw dataset awaiting completed review state' : 'session review state awaiting completion',
-          actionCount,
-          reproducible,
-          postReviewReady: false,
-        },
-      };
-    }
     const analytics = this.output.buildReviewAnalytics(
       rows,
       persons,
@@ -1527,10 +1526,12 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
       ...analytics,
       provenance: {
         layer: 'cleaned',
-        source: reproducible ? 'persistent raw dataset + review actions + cleaned snapshot' : 'session review state',
+        source: postReviewReady
+          ? (reproducible ? 'persistent raw dataset + review actions + cleaned snapshot' : 'session review state')
+          : (reproducible ? 'persistent raw dataset + in-progress review state' : 'session review state in progress'),
         actionCount,
         reproducible,
-        postReviewReady: true,
+        postReviewReady,
       },
     };
   }
@@ -1639,6 +1640,13 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
       .trim()
       .replace(/[^\w\s]/g, '')
       .replace(/\s+/g, ' ');
+  }
+
+  private shouldApplyPersonMatch(match: any): boolean {
+    return Boolean(
+      match?.matchedPersonId
+      && (match.duplicateClass === 'exact_match' || match.decision === 'org_rule'),
+    );
   }
 
   // ─── Applied automatically (permanent merge decisions) ───────────────────────

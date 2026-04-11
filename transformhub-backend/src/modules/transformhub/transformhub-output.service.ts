@@ -408,50 +408,50 @@ export class TransformHubOutputService {
     const upgrades = summarize('money_leakage', 'upgrade_opportunities');
     const unassigned = summarize('money_leakage', 'unassigned_major_donors');
     const campaignBroken = summarize('campaign_truth', 'broken_taxonomy');
-    const taxonomyImpactPercent = previewRecords.length > 0 ? Math.round((campaignBroken.count / previewRecords.length) * 100) : 27;
+    const taxonomyImpactPercent = previewRecords.length > 0 ? Math.round((campaignBroken.count / previewRecords.length) * 100) : 0;
 
     const cards = [
       {
         id: 'revenue_at_risk',
         eyebrow: 'Critical · revenue at risk',
-        title: `${this.roundAmount(recurring.amount + lapsed.amount) || 38400}`.replace(/^/, '$').replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' at risk of churn',
+        title: `${this.roundAmount(recurring.amount + lapsed.amount)}`.replace(/^/, '$').replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' at risk of churn',
         tone: 'risk',
-        amount: this.roundAmount(recurring.amount + lapsed.amount) || 38400,
+        amount: this.roundAmount(recurring.amount + lapsed.amount),
         metricKind: 'currency',
         summary: 'Recurring donors and lapsed donors surface churn risk after duplicate, household, and taxonomy review.',
         supporting: 'Calculated from the cleaned donor layer using reviewed recency, repeat-gift cadence, and attribution updates.',
         details: [
-          { id: 'recurring_donors', label: 'Recurring donors', count: recurring.count || 31, amount: recurring.amount || 14900, description: 'Multiple gifts suggest a recurring giving pattern.', ctaLabel: 'Review attribution table', action: 'final_table' },
-          { id: 'lapsed_donors', label: 'Lapsed donors', count: lapsed.count || 14, amount: lapsed.amount || 14900, description: 'Last gift is over 12 months old.', ctaLabel: 'Open final review', action: 'final_table' },
+          { id: 'recurring_donors', label: 'Recurring donors', count: recurring.count, amount: recurring.amount, description: 'Multiple gifts suggest a recurring giving pattern.', ctaLabel: 'Review attribution table', action: 'final_table' },
+          { id: 'lapsed_donors', label: 'Lapsed donors', count: lapsed.count, amount: lapsed.amount, description: 'Last gift is over 12 months old.', ctaLabel: 'Open final review', action: 'final_table' },
         ],
       },
       {
         id: 'money_leakage',
         eyebrow: 'Opportunity · hidden revenue',
-        title: `${this.roundAmount(matches.amount + upgrades.amount + unassigned.amount) || 52000}`.replace(/^/, '$').replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' potential upside',
+        title: `${this.roundAmount(matches.amount + upgrades.amount + unassigned.amount)}`.replace(/^/, '$').replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' potential upside',
         tone: 'opportunity',
-        amount: this.roundAmount(matches.amount + upgrades.amount + unassigned.amount) || 52000,
+        amount: this.roundAmount(matches.amount + upgrades.amount + unassigned.amount),
         metricKind: 'currency',
         summary: 'Matching gifts, upgrade candidates, and unassigned major donors are sitting in the file uncaptured.',
         supporting: 'Calculated from employer-match hints, donor concentration, and missing ownership.',
         details: [
-          { id: 'missing_matching_gifts', label: 'Missing matching gifts', count: matches.count || 23, amount: matches.amount || 14900, description: 'Employer-match signals appear in the source data but are not yet worked.', ctaLabel: 'Open household review', action: 'household' },
-          { id: 'upgrade_opportunities', label: 'Upgrade opportunities', count: upgrades.count || 19, amount: upgrades.amount || 37000, description: 'High-value donors are giving below what their file pattern suggests.', ctaLabel: 'Open final review', action: 'final_table' },
-          { id: 'unassigned_major_donors', label: 'Unassigned major donors', count: unassigned.count || 8, amount: unassigned.amount || 18600, description: 'Large donors have no staff owner assigned.', ctaLabel: 'Open final review', action: 'final_table' },
+          { id: 'missing_matching_gifts', label: 'Missing matching gifts', count: matches.count, amount: matches.amount, description: 'Employer-match signals appear in the source data but are not yet worked.', ctaLabel: 'Open household review', action: 'household' },
+          { id: 'upgrade_opportunities', label: 'Upgrade opportunities', count: upgrades.count, amount: upgrades.amount, description: 'High-value donors are giving below what their file pattern suggests.', ctaLabel: 'Open final review', action: 'final_table' },
+          { id: 'unassigned_major_donors', label: 'Unassigned major donors', count: unassigned.count, amount: unassigned.amount, description: 'Large donors have no staff owner assigned.', ctaLabel: 'Open final review', action: 'final_table' },
         ],
       },
       {
         id: 'campaign_truth',
         eyebrow: 'Warning · campaign truth',
-        title: `${taxonomyImpactPercent || 27}% of gifts misclassified`,
+        title: `${taxonomyImpactPercent}% of gifts misclassified`,
         tone: 'warning',
-        amount: taxonomyImpactPercent || 27,
+        amount: taxonomyImpactPercent,
         metricKind: 'percent',
         summary: 'Normalized campaign performance is unreliable while taxonomy remains broken or unresolved.',
         supporting: 'Percentage is based on records participating in still-pending taxonomy candidate groups.',
         details: [
-          { id: 'normalized_campaign_performance', label: 'Normalized campaign performance', count: Math.max(0, (taxonomyState?.resolvedGroups ?? []).length), amount: taxonomyImpactPercent || 27, description: 'Campaign comparisons improve as duplicate labels are merged into one canonical view.', ctaLabel: 'Open taxonomy review', action: 'taxonomy' },
-          { id: 'broken_taxonomy', label: 'Broken taxonomy', count: campaignBroken.count || 9, amount: taxonomyImpactPercent || 27, description: 'Pending campaign, appeal, or fund aliases are still splitting the same performance story.', ctaLabel: 'Fix taxonomy', action: 'taxonomy' },
+          { id: 'normalized_campaign_performance', label: 'Normalized campaign performance', count: Math.max(0, (taxonomyState?.resolvedGroups ?? []).length), amount: taxonomyImpactPercent, description: 'Campaign comparisons improve as duplicate labels are merged into one canonical view.', ctaLabel: 'Open taxonomy review', action: 'taxonomy' },
+          { id: 'broken_taxonomy', label: 'Broken taxonomy', count: campaignBroken.count, amount: taxonomyImpactPercent, description: 'Pending campaign, appeal, or fund aliases are still splitting the same performance story.', ctaLabel: 'Fix taxonomy', action: 'taxonomy' },
         ],
       },
     ];

@@ -515,6 +515,31 @@ export class TransformHubIdentityService {
     return 'separate';
   }
 
+  private classifyDuplicateScore(score: number, matchedPersonId?: string | null, matchedFields: string[] = []): 'exact_match' | 'likely_match' | 'possible_match' | 'no_match' {
+    if (!matchedPersonId) return 'no_match';
+    const isNameVariant = matchedFields.some((field) => field === 'name_variant' || field === 'name_initial_variant' || field.startsWith('name_similarity_'));
+    const hasExactIdentityAnchor = matchedFields.includes('transaction_id')
+      || matchedFields.includes('external_id')
+      || matchedFields.includes('full_name');
+    if (score >= 98 && hasExactIdentityAnchor && !isNameVariant) return 'exact_match';
+    if (score >= 85) return 'likely_match';
+    if (score >= 60) return 'possible_match';
+    return 'no_match';
+  }
+
+  private countDuplicateClasses(matches: any[]): Record<'exact_match' | 'likely_match' | 'possible_match' | 'no_match', number> {
+    return matches.reduce(
+      (counts, match) => {
+        const duplicateClass = match?.duplicateClass;
+        if (duplicateClass === 'exact_match' || duplicateClass === 'likely_match' || duplicateClass === 'possible_match' || duplicateClass === 'no_match') {
+          counts[duplicateClass] += 1;
+        }
+        return counts;
+      },
+      { exact_match: 0, likely_match: 0, possible_match: 0, no_match: 0 },
+    );
+  }
+
   private nextPersonId(count: number): string {
     return `P-${String(10000 + count).padStart(5, '0')}`;
   }
@@ -951,22 +976,28 @@ export class TransformHubIdentityService {
       if (storedMergeDecision?.matchedPersonId) {
         const storedPerson = await this.ensureStoredMatchPerson(persons, storedMergeDecision.matchedPersonId);
         if (storedPerson) {
-          this.mergePersonSignals(storedPerson, input, rowRef, personScope);
-          pendingPersonSaves.push(storedPerson);
           const matchedInputRef = personInputRefs.get(storedPerson.id) ?? null;
           const mergeCount = storedMergeDecision.confirmationCount ?? 1;
           const splitCount = (storedMergeDecision as any).splitConfirmationCount ?? 0;
           const isOrgRule = (mergeCount - splitCount) >= 2;
+          const decision = isOrgRule ? 'org_rule' : 'review';
+          if (isOrgRule) {
+            this.mergePersonSignals(storedPerson, input, rowRef, personScope);
+            pendingPersonSaves.push(storedPerson);
+            autoMatched++;
+          } else {
+            needsReviewCount++;
+          }
           matches.push({
             inputRef: rowRef,
             score: 100,
             band: isOrgRule ? 'org_rule' : 'auto',
-            decision: isOrgRule ? 'org_rule' : 'auto',
+            decision,
+            duplicateClass: isOrgRule ? 'exact_match' : 'likely_match',
             matchedPersonId: storedPerson.id,
             matchedFields: ['stored_decision'],
             reviewPayload: this.buildMatchReviewPayload(row, rowRef, input, ['stored_decision'], storedPerson, null, matchedInputRef),
           });
-          autoMatched++;
           continue;
         }
       }
@@ -991,23 +1022,39 @@ export class TransformHubIdentityService {
         (decision) => decision.split && (!decision.matchedPersonId || decision.matchedPersonId === bestMatch?.id),
       );
       const baseBand = decisionPolicy.hasGlobalSplitDecision ? 'separate' : this.getConfidenceBand(bestScore);
-      const band = forceReviewOnAutoMatches && baseBand === 'auto' && bestMatch ? 'review' : baseBand;
+      const duplicateClass = decisionPolicy.hasGlobalSplitDecision
+        ? 'no_match'
+        : this.classifyDuplicateScore(bestScore, bestMatch?.id ?? null, bestMatchedFields);
+      const band = duplicateClass === 'exact_match'
+        ? 'auto'
+        : duplicateClass === 'likely_match' || duplicateClass === 'possible_match'
+          ? 'review'
+          : baseBand;
       let matchedPersonId: string | null = null;
       let decision = 'new';
 
       let aiSuggestion = null;
       const matchedInputRef = bestMatchedInputRef ?? (bestMatch ? (personInputRefs.get(bestMatch.id) ?? null) : null);
 
-      if ((band === 'auto' || band === 'review') && bestMatch) {
-        // Both high-confidence (auto) and normal-confidence (review) matches go to the
-        // review queue — band indicates confidence level only, not execution action.
-        // Auto-merge is intentionally suspended until org-level rules are in place.
+      if (duplicateClass === 'exact_match' && bestMatch) {
         matchedPersonId = bestMatch.id;
-        decision = band; // preserve 'auto' vs 'review' for queue priority
+        decision = 'auto';
+        autoMatched++;
+      } else if (duplicateClass === 'likely_match' && bestMatch) {
+        matchedPersonId = bestMatch.id;
+        decision = 'review';
         needsReviewCount++;
         if (includeAiSuggestions) {
           aiSuggestion = await this.buildAiReviewSuggestion(rowRef, input, bestMatchedFields, bestScore, bestMatch);
         }
+      } else if (duplicateClass === 'possible_match' && bestMatch) {
+        const newPerson = this.createNewPerson(row, persons, ++newPersonCount, personScope, rowRef);
+        pendingPersonSaves.push(newPerson);
+        personIndex.addPerson(newPerson);
+        matchedPersonId = newPerson.id;
+        personInputRefs.set(newPerson.id, rowRef);
+        decision = 'new';
+        separated++;
       } else {
         const newPerson = this.createNewPerson(row, persons, ++newPersonCount, personScope, rowRef);
         pendingPersonSaves.push(newPerson);
@@ -1025,6 +1072,7 @@ export class TransformHubIdentityService {
         band,
         decision,
         inputKey,
+        duplicateClass,
         matchedPersonId,
         matchedFields: bestMatchedFields,
         reviewPayload: this.buildMatchReviewPayload(row, rowRef, input, bestMatchedFields, bestMatch, aiSuggestion, matchedInputRef),
@@ -1043,6 +1091,7 @@ export class TransformHubIdentityService {
       persons,
       canonicalPersons: persons,
       matches,
+      duplicateClassCounts: this.countDuplicateClasses(matches),
       autoMatched,
       autoMergedCount: autoMatched,
       needsReview: needsReviewCount,
@@ -1139,10 +1188,15 @@ export class TransformHubIdentityService {
         }
       });
 
-      const band = this.getConfidenceBand(bestScore);
+      const duplicateClass = this.classifyDuplicateScore(bestScore, canonicalPersonId, bestMatchedFields);
+      const band = duplicateClass === 'exact_match'
+        ? 'auto'
+        : duplicateClass === 'likely_match' || duplicateClass === 'possible_match'
+          ? 'review'
+          : this.getConfidenceBand(bestScore);
 
       // No real tx duplicate found — count as separated and skip (don't add to review queue).
-      if (band === 'separate') {
+      if (duplicateClass === 'no_match') {
         separated++;
         continue;
       }
@@ -1155,15 +1209,18 @@ export class TransformHubIdentityService {
       let decision = 'new';
       let aiSuggestion = null;
 
-      if (band === 'auto') {
+      if (duplicateClass === 'exact_match') {
         decision = 'auto';
         autoMatched++;
-      } else if (band === 'review') {
+      } else if (duplicateClass === 'likely_match') {
         decision = 'review';
         needsReviewCount++;
         if (includeAiSuggestions) {
           aiSuggestion = await this.buildAiReviewSuggestion(rowRef, input, bestMatchedFields, bestScore, canonicalPerson);
         }
+      } else if (duplicateClass === 'possible_match') {
+        decision = 'new';
+        separated++;
       }
 
       matches.push({
@@ -1171,6 +1228,7 @@ export class TransformHubIdentityService {
         score: bestScore,
         band,
         decision,
+        duplicateClass,
         matchedPersonId: canonicalPersonId,
         matchedFields: bestMatchedFields,
         reviewPayload: this.buildMatchReviewPayload(row, rowRef, input, bestMatchedFields, canonicalPerson, aiSuggestion, bestMatchedInputRef),
@@ -1181,6 +1239,7 @@ export class TransformHubIdentityService {
       persons,
       canonicalPersons: persons,
       matches,
+      duplicateClassCounts: this.countDuplicateClasses(matches),
       autoMatched,
       autoMergedCount: autoMatched,
       needsReview: needsReviewCount,
