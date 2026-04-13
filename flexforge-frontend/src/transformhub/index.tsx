@@ -226,8 +226,38 @@ type DonorHealthCard = {
 type ParsedFileWithOptionalMergeState = ParsedFile & {
   mergeState?: {
     uploadedFiles?: string[];
+    canonicalHeaders?: string[];
+    pendingMerges?: PendingColumnMerge[];
   };
 };
+
+function normalizeManualMergeHeaderKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function buildManualMergeSplitHeader(existingHeaders: string[], suggestedHeader: string): string {
+  const base = `${normalizeManualMergeHeaderKey(suggestedHeader) || 'column'}__incoming`;
+  if (!existingHeaders.includes(base)) return base;
+  let suffix = 2;
+  while (existingHeaders.includes(`${base}_${suffix}`)) suffix += 1;
+  return `${base}_${suffix}`;
+}
+
+function collectManualMergeConflictSamples(parsedFile: ParsedFile, suggestedHeader: string, incomingHeader: string) {
+  return parsedFile.rows.reduce<Array<{ rowRef: string; existingValue: string; incomingValue: string; reason: string }>>((acc, row, index) => {
+    if (acc.length >= 6) return acc;
+    const existingValue = String(row.values?.[suggestedHeader] ?? '').trim();
+    const incomingValue = String(row.values?.[incomingHeader] ?? '').trim();
+    if (!existingValue || !incomingValue || existingValue === incomingValue) return acc;
+    acc.push({
+      rowRef: row.ref ?? `row-${index + 1}`,
+      existingValue,
+      incomingValue,
+      reason: 'manual_review',
+    });
+    return acc;
+  }, []);
+}
 
 function readFileText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -1466,12 +1496,14 @@ type TransactionDuplicateReviewCardProps = {
   compareFields: PreviewCompareField[];
   decision: 'confirmed' | 'separated' | undefined;
   isExpanded: boolean;
+  isSwapped: boolean;
   editingRecordRef: string | null;
   editingDraft: Record<string, string>;
   previewRecordLabel: (record: PreviewRecord | null | undefined) => string;
   getCompactSourceRef: (sourceRef: string | null | undefined) => { primary: string; context: string | null };
   onToggleExpanded: () => void;
   onSetDecision: (decision: 'confirmed' | 'separated') => void;
+  onSwapRows: () => void;
   onStartEdit: (record: PreviewRecord) => void;
   onEditDraftChange: (key: string, value: string) => void;
   onSaveEdit: () => void;
@@ -1485,29 +1517,34 @@ function TransactionDuplicateReviewCard({
   compareFields,
   decision,
   isExpanded,
+  isSwapped,
   editingRecordRef,
   editingDraft,
   previewRecordLabel: getPreviewRecordLabel,
   getCompactSourceRef,
   onToggleExpanded,
   onSetDecision,
+  onSwapRows,
   onStartEdit,
   onEditDraftChange,
   onSaveEdit,
   onCancelEdit,
 }: TransactionDuplicateReviewCardProps) {
   const candidateEvidence = match.reviewPayload?.matchedEvidence?.filter(Boolean) ?? [];
-  const incomingSourceLabel = getCompactSourceRef(match.inputRef).primary;
-  const matchedSourceLabel = matchedRecord
-    ? getCompactSourceRef(matchedRecord.sourceRowRef).primary
+  const displayIncomingRecord = isSwapped ? matchedRecord : incomingRecord;
+  const displayMatchedRecord = isSwapped ? incomingRecord : matchedRecord;
+  const incomingSourceLabel = displayIncomingRecord
+    ? getCompactSourceRef(displayIncomingRecord.sourceRowRef).primary
+    : getCompactSourceRef(match.inputRef).primary;
+  const matchedSourceLabel = displayMatchedRecord
+    ? getCompactSourceRef(displayMatchedRecord.sourceRowRef).primary
     : (match.reviewPayload?.matchedInputRef ?? match.inputRef);
-  const isEditingIncoming = incomingRecord ? editingRecordRef === incomingRecord.sourceRowRef : false;
-  const isEditingMatched = matchedRecord ? editingRecordRef === matchedRecord.sourceRowRef : false;
-  const activeEditLabel = isEditingIncoming
-    ? 'incoming row'
-    : isEditingMatched
-      ? 'final row'
-      : null;
+  const editableFinalRecord = isSwapped ? incomingRecord : matchedRecord;
+  const isEditingDisplayIncoming = displayIncomingRecord ? editingRecordRef === displayIncomingRecord.sourceRowRef : false;
+  const isEditingDisplayMatched = displayMatchedRecord ? editingRecordRef === displayMatchedRecord.sourceRowRef : false;
+  const activeEditLabel = editingRecordRef && editableFinalRecord && editingRecordRef === editableFinalRecord.sourceRowRef
+    ? 'final row'
+    : 'row';
 
   return (
     <article className="th-guardrail is-warning th-review-match-card" style={{ gap: 14 }}>
@@ -1526,6 +1563,16 @@ function TransactionDuplicateReviewCard({
           >
             {isExpanded ? 'Hide compare' : 'Show compare'}
           </button>
+          {matchedRecord && incomingRecord && matchedRecord.sourceRowRef !== incomingRecord.sourceRowRef && (
+            <button
+              type="button"
+              className="th-button th-button-secondary"
+              style={{ minHeight: 34 }}
+              onClick={onSwapRows}
+            >
+              Swap rows
+            </button>
+          )}
           {decision ? (
             <span className={`th-status ${decision === 'confirmed' ? 'is-ready' : 'is-rejected'}`}>
               {decision === 'confirmed' ? 'Kept one' : 'Kept both'}
@@ -1543,8 +1590,8 @@ function TransactionDuplicateReviewCard({
         className={`th-review-summary ${isExpanded ? 'is-open' : ''}`}
         onClick={onToggleExpanded}
       >
-        <span><strong>Incoming</strong> {getPreviewRecordLabel(incomingRecord)}</span>
-        <span><strong>Matched row</strong> {getPreviewRecordLabel(matchedRecord)}</span>
+        <span><strong>{isSwapped ? 'Matched row' : 'Incoming'}</strong> {getPreviewRecordLabel(displayIncomingRecord)}</span>
+        <span><strong>{isSwapped ? 'Incoming' : 'Matched row'}</strong> {getPreviewRecordLabel(displayMatchedRecord)}</span>
       </button>
       {isExpanded && (
         <div className="th-stack" style={{ width: '100%' }}>
@@ -1552,7 +1599,7 @@ function TransactionDuplicateReviewCard({
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               <strong>Transaction compare</strong>
               <div className="th-review-match-actions">
-                {(isEditingIncoming || isEditingMatched) ? (
+                {(isEditingDisplayIncoming || isEditingDisplayMatched) ? (
                   <>
                     <button type="button" className="th-button th-button-primary" style={{ minHeight: 34 }} onClick={onSaveEdit}>
                       {activeEditLabel ? `Save ${activeEditLabel}` : 'Save row'}
@@ -1561,15 +1608,11 @@ function TransactionDuplicateReviewCard({
                   </>
                 ) : (
                   <>
-                    {incomingRecord && (
-                      <button type="button" className="th-button th-button-secondary" style={{ minHeight: 34 }} onClick={() => onStartEdit(incomingRecord)}>Edit incoming row</button>
-                    )}
-                    {matchedRecord && (
-                      <button type="button" className="th-button th-button-secondary" style={{ minHeight: 34 }} onClick={() => onStartEdit(matchedRecord)}>Edit final row</button>
+                    {editableFinalRecord && (
+                      <button type="button" className="th-button th-review-emphasis-button" style={{ minHeight: 34 }} onClick={() => onStartEdit(editableFinalRecord)}>Edit final row</button>
                     )}
                   </>
                 )}
-                <span className="th-helper">Full uploaded row view for duplicate gift review</span>
               </div>
             </div>
             <div className="th-table-wrap" style={{ marginTop: 10 }}>
@@ -1584,42 +1627,42 @@ function TransactionDuplicateReviewCard({
                 </thead>
                 <tbody>
                   <tr>
-                    <td><strong>Incoming</strong></td>
+                    <td><strong>{isSwapped ? 'Matched row' : 'Incoming'}</strong></td>
                     {compareFields.map((field) => {
                       const draftValue = field.kind === 'source'
-                        ? incomingRecord?.sourceRowRef ?? '—'
-                        : String(editingDraft[field.key] ?? (field.header ? getPreviewRecordRawCell(incomingRecord, field.header) : '') ?? '');
+                        ? displayIncomingRecord?.sourceRowRef ?? '—'
+                        : String(editingDraft[field.key] ?? (field.header ? getPreviewRecordRawCell(displayIncomingRecord, field.header) : '') ?? '');
                       return (
                         <td key={`incoming-${field.key}`}>
-                          {isEditingIncoming && field.editable ? (
+                          {isEditingDisplayIncoming && field.editable ? (
                             <input
                               className="th-review-compare-input"
                               value={draftValue}
                               onChange={(event) => onEditDraftChange(field.key, event.target.value)}
                             />
                           ) : (
-                            getPreviewCompareValue(incomingRecord, field)
+                            getPreviewCompareValue(displayIncomingRecord, field)
                           )}
                         </td>
                       );
                     })}
                   </tr>
                   <tr>
-                    <td><strong>Matched</strong></td>
+                    <td><strong>{isSwapped ? 'Incoming' : 'Matched'}</strong></td>
                     {compareFields.map((field) => {
                       const draftValue = field.kind === 'source'
-                        ? matchedRecord?.sourceRowRef ?? '—'
-                        : String(editingDraft[field.key] ?? (field.header ? getPreviewRecordRawCell(matchedRecord, field.header) : '') ?? '');
+                        ? displayMatchedRecord?.sourceRowRef ?? '—'
+                        : String(editingDraft[field.key] ?? (field.header ? getPreviewRecordRawCell(displayMatchedRecord, field.header) : '') ?? '');
                       return (
                         <td key={`matched-${field.key}`}>
-                          {isEditingMatched && field.editable ? (
+                          {isEditingDisplayMatched && field.editable ? (
                             <input
                               className="th-review-compare-input"
                               value={draftValue}
                               onChange={(event) => onEditDraftChange(field.key, event.target.value)}
                             />
                           ) : (
-                            getPreviewCompareValue(matchedRecord, field)
+                            getPreviewCompareValue(displayMatchedRecord, field)
                           )}
                         </td>
                       );
@@ -1646,19 +1689,31 @@ function TransactionDuplicateReviewCard({
 type SchemaUnionReviewPanelProps = {
   pendingColumnMerges: PendingColumnMerge[];
   pendingColumnMergeSourceFiles: string[];
+  availableHeaders: string[];
   isResolvingPendingMerge: boolean;
   onResolve: (merge: PendingColumnMerge, action: 'combine' | 'keep_separate' | 'keep_s1' | 'keep_s2') => void | Promise<void>;
+  manualSuggestedHeader: string;
+  manualIncomingHeader: string;
+  onManualSuggestedHeaderChange: (value: string) => void;
+  onManualIncomingHeaderChange: (value: string) => void;
+  onAddManualMerge: () => void | Promise<void>;
   variant?: 'compact' | 'detailed';
 };
 
 function SchemaUnionReviewPanel({
   pendingColumnMerges,
   pendingColumnMergeSourceFiles,
+  availableHeaders,
   isResolvingPendingMerge,
   onResolve,
+  manualSuggestedHeader,
+  manualIncomingHeader,
+  onManualSuggestedHeaderChange,
+  onManualIncomingHeaderChange,
+  onAddManualMerge,
   variant = 'detailed',
 }: SchemaUnionReviewPanelProps) {
-  if (pendingColumnMerges.length === 0) return null;
+  if (pendingColumnMerges.length === 0 && variant === 'compact') return null;
 
   return (
     <div className="th-stack" style={variant === 'compact' ? { marginTop: 12 } : { marginBottom: 14 }}>
@@ -1674,6 +1729,37 @@ function SchemaUnionReviewPanel({
               S1 current table · S2 {pendingColumnMergeSourceFiles.join(' + ')}
             </p>
           )}
+          <div className="th-manual-merge-card">
+            <div className="th-manual-merge-copy">
+              <strong>Add manual column merge</strong>
+              <p>Choose the current column to keep, then pick the incoming column you want to fold into it.</p>
+            </div>
+            <div className="th-manual-merge-controls">
+              <label className="th-stack">
+                <span className="th-helper">Keep as S1</span>
+                <select className="th-select" value={manualSuggestedHeader} onChange={(event) => onManualSuggestedHeaderChange(event.target.value)}>
+                  <option value="">Select current column</option>
+                  {availableHeaders.map((header) => (
+                    <option key={`manual-s1-${header}`} value={header}>{formatPreviewHeaderLabel(header)}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="th-stack">
+                <span className="th-helper">Merge S2 into it</span>
+                <select className="th-select" value={manualIncomingHeader} onChange={(event) => onManualIncomingHeaderChange(event.target.value)}>
+                  <option value="">Select incoming column</option>
+                  {availableHeaders
+                    .filter((header) => header !== manualSuggestedHeader)
+                    .map((header) => (
+                      <option key={`manual-s2-${header}`} value={header}>{formatPreviewHeaderLabel(header)}</option>
+                    ))}
+                </select>
+              </label>
+              <button type="button" className="th-button th-review-emphasis-button" onClick={() => void onAddManualMerge()}>
+                Add merge review
+              </button>
+            </div>
+          </div>
         </div>
       ) : (
         <>
@@ -1918,6 +2004,7 @@ export default function TransformHubPage() {
   const pendingColumnMerges = getPendingColumnMerges(parsedFile);
   const pendingColumnMergeSourceFiles = Array.from(new Set(pendingColumnMerges.map((merge) => merge.sourceFile).filter(Boolean)));
   const hasPendingColumnMergeReview = pendingColumnMerges.length > 0;
+  const canManualColumnMergeReview = (((parsedFile as ParsedFileWithOptionalMergeState | null)?.mergeState?.uploadedFiles?.length ?? 0) > 1);
   const previewBaseRecords = useMemo<PreviewRecord[]>(
     () => (preview?.records as PreviewRecord[] | undefined) ?? [],
     [preview?.records],
@@ -2025,8 +2112,11 @@ export default function TransformHubPage() {
     [txDuplicateResult?.matches, previewRecords],
   );
   const [txMergeDecisions, setTxMergeDecisions] = useState<Map<string, 'confirmed' | 'separated'>>(new Map());
+  const [txSwapDecisions, setTxSwapDecisions] = useState<Map<string, boolean>>(new Map());
   const [expandedTxReviewRef, setExpandedTxReviewRef] = useState<string | null>(null);
   const [txReviewFilter, setTxReviewFilter] = useState<PeopleReviewFilter>('pending');
+  const [manualMergeSuggestedHeader, setManualMergeSuggestedHeader] = useState('');
+  const [manualMergeIncomingHeader, setManualMergeIncomingHeader] = useState('');
   const txReviewCounts = useMemo(
     () => countTransactionReviewBuckets(txReviewMatches, txMergeDecisions),
     [txReviewMatches, txMergeDecisions],
@@ -2047,6 +2137,7 @@ export default function TransformHubPage() {
     setTxDuplicateResult(null);
     setHasRunTransactionDuplicateCheck(false);
     setTxMergeDecisions(new Map());
+    setTxSwapDecisions(new Map());
     setExpandedTxReviewRef(null);
     setTxReviewFilter('pending');
   }, [parsedFile, householdResult, taxonomyState]);
@@ -2185,7 +2276,10 @@ export default function TransformHubPage() {
       const incomingRef = match.inputRef;
       const matchedInputRef = match.reviewPayload?.matchedInputRef ?? null;
       if (!matchedInputRef || matchedInputRef === incomingRef) return;
-      representativeByAbsorbedRef.set(incomingRef, resolveRepresentativeRef(matchedInputRef));
+      const isSwapped = txSwapDecisions.get(match.inputRef) === true;
+      const absorbedRef = isSwapped ? matchedInputRef : incomingRef;
+      const representativeRef = isSwapped ? incomingRef : matchedInputRef;
+      representativeByAbsorbedRef.set(absorbedRef, resolveRepresentativeRef(representativeRef));
     });
     Array.from(representativeByAbsorbedRef.entries()).forEach(([absorbedRef, representativeRef]) => {
       const finalRepresentativeRef = resolveRepresentativeRef(representativeRef);
@@ -2202,7 +2296,7 @@ export default function TransformHubPage() {
       mergedSourceRefsByRepresentative,
       displayedPreviewRecords,
     };
-  }, [confirmedTxDuplicateMatches, hasTransactionLinkFlow, previewRecords]);
+  }, [confirmedTxDuplicateMatches, hasTransactionLinkFlow, previewRecords, txSwapDecisions]);
   const representativeByAbsorbedRef = previewMergeView.representativeByAbsorbedRef;
   const mergedSourceRefsByRepresentative = previewMergeView.mergedSourceRefsByRepresentative;
   const displayedPreviewRecords = previewMergeView.displayedPreviewRecords;
@@ -4204,6 +4298,7 @@ export default function TransformHubPage() {
       setTxDuplicateResult(null);
       setHasRunTransactionDuplicateCheck(false);
       setTxMergeDecisions(new Map());
+      setTxSwapDecisions(new Map());
       setExpandedTxReviewRef(null);
       setEntityModelResult(null);
       setMergeDecisions(new Map());
@@ -4270,6 +4365,7 @@ export default function TransformHubPage() {
     setTxDuplicateResult(null);
     setHasRunTransactionDuplicateCheck(false);
     setTxMergeDecisions(new Map());
+    setTxSwapDecisions(new Map());
     setExpandedTxReviewRef(null);
     setTaxonomyResult(null);
     setTaxonomyState(null);
@@ -4744,7 +4840,15 @@ export default function TransformHubPage() {
       try {
         const nextStatus = deriveSessionStatus(rows, preflight, receipts);
         const session = await saveSession(sessionId, rows, nextStatus, preflight, personResult, householdResult, nextParsedFile, schema, taxonomyState);
-        applySession(session, 'Merged result updated in this session.');
+        applySession(session, 'Merged result updated in this session.', {
+          parsedFileOverride: nextParsedFile,
+          nextNonLedgerReviewPanel: nonLedgerReviewPanel === 'tx' ? 'tx' : nonLedgerReviewPanel,
+          txDuplicateResultOverride: nonLedgerReviewPanel === 'tx' ? txDuplicateResult : null,
+          preserveTxReviewState: nonLedgerReviewPanel === 'tx',
+          txMergeDecisionsOverride: nonLedgerReviewPanel === 'tx' ? txMergeDecisions : undefined,
+          txSwapDecisionsOverride: nonLedgerReviewPanel === 'tx' ? txSwapDecisions : undefined,
+          expandedTxReviewRefOverride: nonLedgerReviewPanel === 'tx' ? expandedTxReviewRef : undefined,
+        });
       } catch (error) {
         setMessage(error instanceof Error ? error.message : 'Failed to save merged result edits.');
       } finally {
@@ -5068,12 +5172,19 @@ export default function TransformHubPage() {
       parsedFileOverride?: ParsedFile | null;
       personResultOverride?: PersonResolverResult | null;
       mergeDecisionsOverride?: Map<string, 'confirmed' | 'separated'>;
+      txDuplicateResultOverride?: PersonResolverResult | null;
+      preserveTxReviewState?: boolean;
+      txMergeDecisionsOverride?: Map<string, 'confirmed' | 'separated'>;
+      txSwapDecisionsOverride?: Map<string, boolean>;
+      expandedTxReviewRefOverride?: string | null;
     },
   ) {
     startTransition(() => {
       const nextParsedFile = options?.parsedFileOverride ?? session.parsedFile;
       const nextPersonResult = options?.personResultOverride ?? (session.personResult ?? null);
       const nextMergeDecisions = options?.mergeDecisionsOverride ?? buildMergeDecisionMapFromStructure(session);
+      const nextTxDuplicateResult = options?.txDuplicateResultOverride ?? null;
+      const preserveTxReviewState = options?.preserveTxReviewState ?? false;
       const nextPendingColumnMerges = getPendingColumnMerges(nextParsedFile);
       const nextDefaultPanel = options?.nextNonLedgerReviewPanel ?? (nextPendingColumnMerges.length > 0 ? 'schema_union' : 'duplicate');
       setSessionId(session.id);
@@ -5093,10 +5204,11 @@ export default function TransformHubPage() {
       setReceipts(session.receipts);
       setPersonResult(nextPersonResult);
       setHouseholdResult(session.householdResult ?? null);
-      setTxDuplicateResult(null);
-      setHasRunTransactionDuplicateCheck(false);
-      setTxMergeDecisions(new Map());
-      setExpandedTxReviewRef(null);
+      setTxDuplicateResult(nextTxDuplicateResult);
+      setHasRunTransactionDuplicateCheck(preserveTxReviewState && Boolean(nextTxDuplicateResult));
+      setTxMergeDecisions(preserveTxReviewState ? (options?.txMergeDecisionsOverride ?? new Map()) : new Map());
+      setTxSwapDecisions(preserveTxReviewState ? (options?.txSwapDecisionsOverride ?? new Map()) : new Map());
+      setExpandedTxReviewRef(preserveTxReviewState ? (options?.expandedTxReviewRefOverride ?? null) : null);
       setReviewAnalyticsData(null);
       setHasGeneratedReviewAnalytics(false);
       setMergeDecisions(nextMergeDecisions);
@@ -5495,6 +5607,7 @@ export default function TransformHubPage() {
     setTxDuplicateResult(null);
     setHasRunTransactionDuplicateCheck(false);
     setTxMergeDecisions(new Map());
+    setTxSwapDecisions(new Map());
     setExpandedTxReviewRef(null);
     setTaxonomyResult(null);
     setAuditResult(null);
@@ -5624,6 +5737,74 @@ export default function TransformHubPage() {
       applySession(session, actionMessage);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Failed to update the pending column merge.');
+    } finally {
+      setIsResolvingPendingMerge(false);
+    }
+  }
+
+  async function handleAddManualColumnMerge() {
+    if (!parsedFile) return;
+    const suggestedHeader = manualMergeSuggestedHeader.trim();
+    const incomingHeader = manualMergeIncomingHeader.trim();
+    if (!suggestedHeader || !incomingHeader) {
+      setMessage('Choose both columns before adding a manual merge review item.');
+      return;
+    }
+    if (suggestedHeader === incomingHeader) {
+      setMessage('Choose two different columns for a manual merge review item.');
+      return;
+    }
+
+    const existingPending = getPendingColumnMerges(parsedFile).some((merge) => (
+      (merge.suggestedHeader === suggestedHeader && merge.incomingHeader === incomingHeader)
+      || (merge.suggestedHeader === incomingHeader && merge.incomingHeader === suggestedHeader)
+    ));
+    if (existingPending) {
+      setMessage('That column pair is already queued for schema union review.');
+      return;
+    }
+
+    const current = parsedFile as ParsedFileWithOptionalMergeState;
+    const nextParsedFile = {
+      ...current,
+      mergeState: {
+        uploadedFiles: current.mergeState?.uploadedFiles ?? [parsedFile.fileName],
+        canonicalHeaders: current.mergeState?.canonicalHeaders ?? parsedFile.headers,
+        pendingMerges: [
+          ...(current.mergeState?.pendingMerges ?? []),
+          {
+            id: `manual-${normalizeManualMergeHeaderKey(suggestedHeader)}-${normalizeManualMergeHeaderKey(incomingHeader)}`,
+            sourceFile: (current.mergeState?.uploadedFiles ?? [parsedFile.fileName]).slice(1).join(' + ') || 'manual review',
+            incomingHeader,
+            suggestedHeader,
+            splitHeader: buildManualMergeSplitHeader(parsedFile.headers, suggestedHeader),
+            matchType: 'fuzzy' as const,
+            score: null,
+            reason: 'fuzzy_candidate' as const,
+            sampleConflicts: collectManualMergeConflictSamples(parsedFile, suggestedHeader, incomingHeader),
+          },
+        ],
+      },
+    } as ParsedFile;
+
+    setManualMergeSuggestedHeader('');
+    setManualMergeIncomingHeader('');
+
+    if (!sessionId) {
+      setParsedFile(nextParsedFile);
+      setMessage(`Added manual merge review for ${formatPreviewHeaderLabel(incomingHeader)} into ${formatPreviewHeaderLabel(suggestedHeader)}.`);
+      return;
+    }
+
+    setIsResolvingPendingMerge(true);
+    try {
+      const nextStatus = deriveSessionStatus(rows, preflight, receipts);
+      const session = await saveSession(sessionId, rows, nextStatus, preflight, personResult, householdResult, nextParsedFile, schema, taxonomyState);
+      applySession(session, `Added manual merge review for ${formatPreviewHeaderLabel(incomingHeader)} into ${formatPreviewHeaderLabel(suggestedHeader)}.`, {
+        nextNonLedgerReviewPanel: 'schema_union',
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to add the manual column merge.');
     } finally {
       setIsResolvingPendingMerge(false);
     }
@@ -5809,6 +5990,7 @@ export default function TransformHubPage() {
     setTxDuplicateResult(null);
     setHasRunTransactionDuplicateCheck(false);
     setTxMergeDecisions(new Map());
+    setTxSwapDecisions(new Map());
     setExpandedTxReviewRef(null);
     try {
       const identityRows = buildPreviewIdentityRows({ includeTransactionSignals: false });
@@ -5828,6 +6010,7 @@ export default function TransformHubPage() {
         setHouseholdResult(null);
         setMergeDecisions(new Map());
         setTxMergeDecisions(new Map());
+        setTxSwapDecisions(new Map());
         setSessionUpdatedAt(new Date().toISOString());
         setMessage(`Identity check: ${result.autoMergedCount} auto-merged, ${result.pendingReviewCount} pending review, ${result.separated} new.`);
         restoreReturnRowFocus(returnRowId);
@@ -5877,6 +6060,7 @@ export default function TransformHubPage() {
       setTxDuplicateResult(null);
       setHasRunTransactionDuplicateCheck(false);
       setTxMergeDecisions(new Map());
+      setTxSwapDecisions(new Map());
       setExpandedTxReviewRef(null);
       const identityRows = buildPreviewIdentityRows({ includeTransactionSignals: true });
       const result = await resolvePersonsBackend(identityRows, undefined, sessionId ?? undefined, {
@@ -5916,6 +6100,7 @@ export default function TransformHubPage() {
     setTxDuplicateResult(null);
     setHasRunTransactionDuplicateCheck(false);
     setTxMergeDecisions(new Map());
+    setTxSwapDecisions(new Map());
     setSessionStatus(nextStatus);
     setSessionUpdatedAt(new Date().toISOString());
 
@@ -6080,6 +6265,7 @@ export default function TransformHubPage() {
       setTxDuplicateResult(null);
       setHasRunTransactionDuplicateCheck(false);
       setTxMergeDecisions(new Map());
+      setTxSwapDecisions(new Map());
       setExpandedTxReviewRef(null);
       if (action === "confirmed" && match.matchedPersonId) {
         setRows(nextRows);
@@ -6165,6 +6351,7 @@ export default function TransformHubPage() {
       setTxDuplicateResult(null);
       setHasRunTransactionDuplicateCheck(false);
       setTxMergeDecisions(new Map());
+      setTxSwapDecisions(new Map());
       setExpandedTxReviewRef(null);
 
       const nextParsedFile = action === 'confirmed'
@@ -6234,6 +6421,23 @@ export default function TransformHubPage() {
       action === 'confirmed'
         ? `Transaction duplicate confirmed for ${getCompactSourceRef(match.inputRef).primary}. Review rows should collapse into ${matchedInputRef ? getCompactSourceRef(matchedInputRef).primary : 'the kept row'}.`
         : `Transaction duplicate marked keep both for ${getCompactSourceRef(match.inputRef).primary}.`,
+    );
+  }
+
+  function handleToggleTxRowSwap(match: PersonMatch) {
+    const matchedInputRef = match.reviewPayload?.matchedInputRef ?? null;
+    if (!matchedInputRef || matchedInputRef === match.inputRef) return;
+    const nextIsSwapped = !(txSwapDecisions.get(match.inputRef) ?? false);
+    setTxSwapDecisions((current) => {
+      const next = new Map(current);
+      if (nextIsSwapped) next.set(match.inputRef, true);
+      else next.delete(match.inputRef);
+      return next;
+    });
+    setMessage(
+      nextIsSwapped
+        ? `Keeping ${getCompactSourceRef(match.inputRef).primary} as the final row when you deduplicate this pair.`
+        : `Keeping ${getCompactSourceRef(matchedInputRef).primary} as the final row when you deduplicate this pair.`,
     );
   }
 
@@ -6998,8 +7202,14 @@ export default function TransformHubPage() {
               <SchemaUnionReviewPanel
                 pendingColumnMerges={pendingColumnMerges}
                 pendingColumnMergeSourceFiles={pendingColumnMergeSourceFiles}
+                availableHeaders={parsedFile?.headers ?? []}
                 isResolvingPendingMerge={isResolvingPendingMerge}
                 onResolve={handleResolvePendingColumnMerge}
+                manualSuggestedHeader={manualMergeSuggestedHeader}
+                manualIncomingHeader={manualMergeIncomingHeader}
+                onManualSuggestedHeaderChange={setManualMergeSuggestedHeader}
+                onManualIncomingHeaderChange={setManualMergeIncomingHeader}
+                onAddManualMerge={handleAddManualColumnMerge}
                 variant="compact"
               />
             )}
@@ -7673,7 +7883,7 @@ export default function TransformHubPage() {
                 </div>
               )}
               <div className="th-review-tab-row" style={{ marginBottom: 14 }}>
-                {hasPendingColumnMergeReview && (
+                {(hasPendingColumnMergeReview || canManualColumnMergeReview) && (
                   <button
                     type="button"
                     className={`th-chip th-review-tab${nonLedgerReviewPanel === 'schema_union' ? ' is-active' : ''}`}
@@ -7701,12 +7911,18 @@ export default function TransformHubPage() {
                   Source sheets: {previewSourceLegendEntries.map((entry) => `${entry.badge} = ${entry.label}`).join(' · ')}
                 </p>
               )}
-              {nonLedgerReviewPanel === 'schema_union' && hasPendingColumnMergeReview && (
+              {nonLedgerReviewPanel === 'schema_union' && (hasPendingColumnMergeReview || canManualColumnMergeReview) && (
                 <SchemaUnionReviewPanel
                   pendingColumnMerges={pendingColumnMerges}
                   pendingColumnMergeSourceFiles={pendingColumnMergeSourceFiles}
+                  availableHeaders={parsedFile?.headers ?? []}
                   isResolvingPendingMerge={isResolvingPendingMerge}
                   onResolve={handleResolvePendingColumnMerge}
+                  manualSuggestedHeader={manualMergeSuggestedHeader}
+                  manualIncomingHeader={manualMergeIncomingHeader}
+                  onManualSuggestedHeaderChange={setManualMergeSuggestedHeader}
+                  onManualIncomingHeaderChange={setManualMergeIncomingHeader}
+                  onAddManualMerge={handleAddManualColumnMerge}
                 />
               )}
               {nonLedgerReviewPanel === 'tx' && (
@@ -7811,6 +8027,7 @@ export default function TransformHubPage() {
                     const matchedRecordRef = match.reviewPayload?.matchedInputRef ?? null;
                     const matchedRecord = matchedRecordRef ? previewRecords.find((r) => r.sourceRowRef === matchedRecordRef) ?? null : null;
                     const decision = txMergeDecisions.get(match.inputRef);
+                    const isSwapped = txSwapDecisions.get(match.inputRef) === true;
                     const isExpanded = expandedTxReviewRef === match.inputRef;
                     return (
                       <TransactionDuplicateReviewCard
@@ -7821,12 +8038,14 @@ export default function TransformHubPage() {
                         compareFields={txCompareFields}
                         decision={decision}
                         isExpanded={isExpanded}
+                        isSwapped={isSwapped}
                         editingRecordRef={editingMergedRecordRef}
                         editingDraft={editingMergedDraft}
                         previewRecordLabel={previewRecordLabel}
                         getCompactSourceRef={getCompactSourceRef}
                         onToggleExpanded={() => setExpandedTxReviewRef(isExpanded ? null : match.inputRef)}
                         onSetDecision={(nextDecision) => handleTxMergeDecision(match, nextDecision)}
+                        onSwapRows={() => handleToggleTxRowSwap(match)}
                         onStartEdit={startMergedRecordEdit}
                         onEditDraftChange={(key, value) => setEditingMergedDraft((current) => ({ ...current, [key]: value }))}
                         onSaveEdit={() => void handleSaveMergedRecordEdit()}
@@ -9105,11 +9324,11 @@ export default function TransformHubPage() {
                                 <div className="th-review-match-actions">
                                   {incomingRecord && editingMergedRecordRef === incomingRecord.sourceRowRef ? (
                                     <>
-                                      <button type="button" className="th-button th-button-primary" style={{ minHeight: 34 }} onClick={() => void handleSaveMergedRecordEdit()}>Save incoming row</button>
+                                      <button type="button" className="th-button th-button-primary" style={{ minHeight: 34 }} onClick={() => void handleSaveMergedRecordEdit()}>Save final row</button>
                                       <button type="button" className="th-button th-button-secondary" style={{ minHeight: 34 }} onClick={() => { setEditingMergedRecordRef(null); setEditingMergedDraft({}); }}>Cancel</button>
                                     </>
                                   ) : incomingRecord ? (
-                                    <button type="button" className="th-button th-button-secondary" style={{ minHeight: 34 }} onClick={() => startMergedRecordEdit(incomingRecord)}>Edit incoming row</button>
+                                    <button type="button" className="th-button th-button-secondary" style={{ minHeight: 34 }} onClick={() => startMergedRecordEdit(incomingRecord)}>Edit final row</button>
                                   ) : null}
                                 </div>
                               </div>
