@@ -396,7 +396,7 @@ export type IdentityProfile = {
   }>;
   isSuspicious: boolean;
   suspiciousReasons: string[];
-  openQueueItems: import('./service').ReviewQueueItem[];
+  openQueueItems: ReviewQueueItem[];
   crosswalk: Array<{
     id: string;
     platform: string;

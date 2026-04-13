@@ -653,15 +653,22 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
 
   async personResolve(body: any) {
     this.assertRowCount(body.rows, 'person-resolve');
+    this.logger.log(
+      `[person-resolve] session=${body.sessionId ?? 'none'} fileClass=${body.baselineFileClass ?? 'unknown'} matchMode=${body.matchMode ?? 'default'} rows=${Array.isArray(body.rows) ? body.rows.length : 0} existingPersons=${Array.isArray(body.existingPersons) ? body.existingPersons.length : 0}`,
+    );
     const result = await this.identity.resolvePersons(body.rows, body.existingPersons, {
       usePersistentIdentityMemory: body.usePersistentIdentityMemory === true,
       forceReviewOnAutoMatches: body.forceReviewOnAutoMatches === true,
       seedExistingPersonsFromDb: body.seedExistingPersonsFromDb === true,
       baselinePlatform: body.baselinePlatform,
       baselineFileClass: body.baselineFileClass,
+      matchMode: body.matchMode,
       persistIdentityMemory: body.persistIdentityMemory,
       includeAiSuggestions: body.includeAiSuggestions !== false,
     });
+    this.logger.log(
+      `[person-resolve] result matchMode=${result.matchMode ?? 'unknown'} matches=${Array.isArray(result.matches) ? result.matches.length : 0} review=${result.pendingReviewCount ?? result.needsReview ?? 0} auto=${result.autoMergedCount ?? result.autoMatched ?? 0} separated=${result.separated ?? 0} txMatches=${Array.isArray(result.txDuplicateResult?.matches) ? result.txDuplicateResult.matches.length : 0} txReview=${result.txDuplicateResult?.pendingReviewCount ?? result.txDuplicateResult?.needsReview ?? 0}`,
+    );
 
     if (!body.sessionId) {
       return result;
@@ -1495,6 +1502,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     let previewRecords = body.previewRecords || [];
     let taxonomyState = body.taxonomyState || null;
     let fileClass = body.fileClass || 'donor';
+    let schema = body.schema || null;
     const postReviewReady = body.postReviewReady === true;
     let actionCount = 0;
     let reproducible = false;
@@ -1505,11 +1513,13 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
         if (!Array.isArray(previewRecords) || previewRecords.length === 0) {
           previewRecords = ((dataset?.cleanedParsedFile as any)?.preview?.records ?? previewRecords);
         }
+        schema = session.schema ?? schema;
         fileClass = ((session.schema as any)?.fileClass ?? fileClass);
         taxonomyState = session.taxonomyState ?? taxonomyState;
         actionCount = await this.getSafeReviewActionCount({ datasetId: session.datasetId });
         reproducible = true;
       } else {
+        schema = session?.schema ?? schema;
         actionCount = await this.getSafeReviewActionCount({ sessionId: body.sessionId });
       }
     }
@@ -1521,6 +1531,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
       taxonomyState,
       body.finalAttributionDrafts || {},
       fileClass,
+      schema,
     );
     return {
       ...analytics,

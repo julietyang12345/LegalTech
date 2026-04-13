@@ -54,7 +54,7 @@ test('creates household review suggestions when AI is disabled for surname+zip m
   assert.equal(result.reviewSuggestions[0].aiSuggestion, null);
 });
 
-test('does not flag same-name donor rows during donor identity cleanup', async () => {
+test('matches same-name donor rows during donor identity cleanup', async () => {
   const service = createService(false);
   const rows = [
     {
@@ -91,6 +91,8 @@ test('does not flag same-name donor rows during donor identity cleanup', async (
 
   assert.equal(result.matchMode, 'identity');
   assert.equal(result.needsReview, 0);
+  assert.equal(result.duplicateClassCounts.exact_match, 1);
+  assert.ok(result.matches.some((match: any) => match.matchedFields.includes('full_name')));
   assert.ok(result.txDuplicateResult);
   assert.equal(result.txDuplicateResult.matchMode, 'transaction');
   assert.equal(result.txDuplicateResult.separated, 2);

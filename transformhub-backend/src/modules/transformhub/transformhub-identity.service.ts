@@ -14,6 +14,32 @@ export class TransformHubIdentityService {
   private static readonly MATCH_MODE_IDENTITY = 'identity';
   private static readonly MATCH_MODE_TRANSACTION = 'transaction';
   private static readonly MATCH_MODE_COMBINED = 'combined';
+  private static readonly GIVEN_NAME_EQUIVALENTS: string[][] = [
+    ['alex', 'alexander', 'alexandra'],
+    ['andy', 'andrew'],
+    ['ben', 'benjamin'],
+    ['bob', 'bobby', 'robert', 'rob', 'robbie'],
+    ['cathy', 'catherine', 'katherine', 'kathryn', 'kate', 'katie'],
+    ['chris', 'christian', 'christina', 'christine', 'christopher'],
+    ['dan', 'daniel'],
+    ['dave', 'david'],
+    ['jen', 'jennifer', 'jenny'],
+    ['joe', 'joey', 'joseph'],
+    ['jon', 'jonathan', 'john'],
+    ['kate', 'katherine', 'kathryn', 'katie'],
+    ['liz', 'beth', 'elizabeth', 'lizzie'],
+    ['maggie', 'margaret', 'meg', 'megan'],
+    ['matt', 'matthew'],
+    ['mike', 'michael'],
+    ['nick', 'nicholas'],
+    ['pat', 'patrick', 'patricia'],
+    ['rick', 'richard', 'ricky', 'rich'],
+    ['rob', 'robert', 'robbie', 'bob', 'bobby'],
+    ['sam', 'samuel', 'samantha'],
+    ['steve', 'steven', 'stephen'],
+    ['tom', 'thomas', 'tommy'],
+    ['will', 'william', 'bill', 'billy'],
+  ];
 
   constructor(
     @InjectRepository(ThIdentityMemory)
@@ -29,6 +55,47 @@ export class TransformHubIdentityService {
     return String(s || "").toLowerCase().trim().replace(/[^a-z0-9 ]/g, "").replace(/ +/g, " ");
   }
 
+  private normalizeAddressComparable(s: string): string {
+    const normalized = this.normStr(s);
+    if (!normalized) return '';
+    const tokenMap = new Map<string, string>([
+      ['st', 'street'],
+      ['street', 'street'],
+      ['rd', 'road'],
+      ['road', 'road'],
+      ['ave', 'avenue'],
+      ['av', 'avenue'],
+      ['avenue', 'avenue'],
+      ['blvd', 'boulevard'],
+      ['boulevard', 'boulevard'],
+      ['dr', 'drive'],
+      ['drive', 'drive'],
+      ['ln', 'lane'],
+      ['lane', 'lane'],
+      ['ct', 'court'],
+      ['court', 'court'],
+      ['pl', 'place'],
+      ['place', 'place'],
+      ['pkwy', 'parkway'],
+      ['parkway', 'parkway'],
+      ['cir', 'circle'],
+      ['circle', 'circle'],
+      ['ter', 'terrace'],
+      ['terrace', 'terrace'],
+      ['hwy', 'highway'],
+      ['highway', 'highway'],
+      ['n', 'north'],
+      ['s', 'south'],
+      ['e', 'east'],
+      ['w', 'west'],
+    ]);
+    return normalized
+      .split(' ')
+      .filter(Boolean)
+      .map((token) => tokenMap.get(token) ?? token)
+      .join(' ');
+  }
+
   private normalizePhone(s: string): string {
     return String(s || '').replace(/\D/g, '').slice(-10);
   }
@@ -41,12 +108,18 @@ export class TransformHubIdentityService {
     return `${normalizedLocal}@${domain}`;
   }
 
+  private normalizedEmailLocalPart(email: string): string {
+    const normalizedEmail = this.normalizeEmail(email || '');
+    if (!normalizedEmail.includes('@')) return '';
+    return normalizedEmail.split('@')[0] || '';
+  }
+
   private buildFingerprints(input: { name?: string; email?: string; phone?: string; address?: string; zip?: string; city?: string; state?: string }, firstName?: string, lastName?: string): string[] {
     const fingerprints = new Set<string>();
     const normalizedName = this.normStr(input.name || [firstName, lastName].filter(Boolean).join(' '));
     const normalizedEmail = this.normalizeEmail(input.email || '');
     const normalizedPhone = this.normalizePhone(input.phone || '');
-    const normalizedAddress = this.normStr(input.address || '');
+    const normalizedAddress = this.normalizeAddressComparable(input.address || '');
     const normalizedZip = this.normStr(input.zip || '');
     const normalizedCity = this.normStr(input.city || '');
     const normalizedState = this.normStr(input.state || '');
@@ -73,6 +146,40 @@ export class TransformHubIdentityService {
       firstName: parts.slice(0, -1).join(' ') || parts[0] || '',
       lastName: parts.slice(-1)[0] || '',
     };
+  }
+
+  private areNameTokensCompatible(left: string, right: string): boolean {
+    const normalizedLeft = this.normStr(left);
+    const normalizedRight = this.normStr(right);
+    if (!normalizedLeft || !normalizedRight) return false;
+    if (normalizedLeft === normalizedRight) return true;
+    if (normalizedLeft.startsWith(normalizedRight) || normalizedRight.startsWith(normalizedLeft)) return true;
+    if (this.areNicknameVariants(normalizedLeft, normalizedRight)) return true;
+    return this.isInitialCompatible(normalizedLeft, normalizedRight);
+  }
+
+  private areNicknameVariants(left: string, right: string): boolean {
+    const normalizedLeft = this.normStr(left).replace(/ /g, '');
+    const normalizedRight = this.normStr(right).replace(/ /g, '');
+    if (!normalizedLeft || !normalizedRight) return false;
+    if (normalizedLeft === normalizedRight) return true;
+    return TransformHubIdentityService.GIVEN_NAME_EQUIVALENTS.some((group) => (
+      group.includes(normalizedLeft) && group.includes(normalizedRight)
+    ));
+  }
+
+  private isEmailAliasCompatible(email: string, fullName: string): boolean {
+    const localPart = this.normalizedEmailLocalPart(email);
+    const nameParts = this.splitNormalizedName(fullName || '');
+    const compactLocal = localPart.replace(/[^a-z0-9]/g, '');
+    if (!compactLocal || !nameParts.lastName) return false;
+    const compactFirst = nameParts.firstName.replace(/[^a-z0-9]/g, '');
+    const compactLast = nameParts.lastName.replace(/[^a-z0-9]/g, '');
+    if (!compactLast || !compactLocal.includes(compactLast)) return false;
+    if (!compactFirst) return false;
+    return this.areNameTokensCompatible(compactFirst, compactLocal.replace(compactLast, ''))
+      || compactLocal.includes(compactFirst)
+      || compactLocal.startsWith(compactFirst.slice(0, 1));
   }
 
   private buildCharacterBigrams(value: string): string[] {
@@ -141,6 +248,59 @@ export class TransformHubIdentityService {
     });
 
     return (2 * overlap) / (leftBigrams.length + rightBigrams.length);
+  }
+
+  private tokenizeComparableValue(value: string): string[] {
+    return this.normStr(value)
+      .split(' ')
+      .filter(Boolean);
+  }
+
+  private computeTokenOverlap(left: string, right: string): number {
+    const leftTokens = new Set(this.tokenizeComparableValue(left));
+    const rightTokens = new Set(this.tokenizeComparableValue(right));
+    if (leftTokens.size === 0 || rightTokens.size === 0) return 0;
+    const overlap = [...leftTokens].filter((token) => rightTokens.has(token)).length;
+    return overlap / Math.max(leftTokens.size, rightTokens.size, 1);
+  }
+
+  private scoreDonorIdentityContext(
+    candidate: any,
+    input: { donorSignal?: ReturnType<TransformHubIdentityService['extractDonorSignal']> | null },
+  ): { score: number; matchedFields: string[] } {
+    const inputSignal = input.donorSignal;
+    if (!inputSignal) return { score: 0, matchedFields: [] };
+    const candidateSignals = this.getDonorSignals(candidate);
+    if (candidateSignals.length === 0) return { score: 0, matchedFields: [] };
+
+    let best = { score: 0, matchedFields: [] as string[] };
+    candidateSignals.forEach((candidateSignal) => {
+      let score = 0;
+      const matchedFields: string[] = [];
+      const sameAmount = inputSignal.amount !== null && candidateSignal.amount !== null && inputSignal.amount === candidateSignal.amount;
+      const sameDate = Boolean(inputSignal.date && candidateSignal.date && inputSignal.date === candidateSignal.date);
+      const sameFundish = this.computeTokenOverlap(inputSignal.fund, candidateSignal.fund) >= 0.5;
+      const sameAppealish = this.computeTokenOverlap(inputSignal.appeal, candidateSignal.appeal) >= 0.5;
+
+      if (sameAmount && sameDate) {
+        score += 18;
+        matchedFields.push('transaction_amount_date');
+      }
+      if (sameFundish) {
+        score += 8;
+        matchedFields.push('fund_context');
+      }
+      if (sameAppealish) {
+        score += 8;
+        matchedFields.push('appeal_context');
+      }
+      if (sameAmount && sameDate && (sameFundish || sameAppealish)) {
+        score += 8;
+        matchedFields.push('transaction_context_multisignal');
+      }
+      if (score > best.score) best = { score, matchedFields };
+    });
+    return best;
   }
 
   private buildEntityName(row: any): string {
@@ -400,24 +560,30 @@ export class TransformHubIdentityService {
 
   private scoreDonorIdentityPair(
     candidate: any,
-    input: { name: string; email: string; phone: string; address: string; zip: string; householdName: string },
+    input: { name: string; email: string; phone: string; address: string; zip: string; householdName: string; donorSignal?: ReturnType<TransformHubIdentityService['extractDonorSignal']> | null },
   ): { score: number; matchedFields: string[]; matchedInputRef?: string | null } {
     let score = 0;
     const matchedFields: string[] = [];
     const inputName = this.normStr(input.name);
     const candidateName = this.normStr(`${candidate.firstName || ''} ${candidate.lastName || ''}`);
+    const inputNameParts = this.splitNormalizedName(input.name || '');
+    const candidateNameParts = this.splitNormalizedName(`${candidate.firstName || ''} ${candidate.lastName || ''}`);
     const inputEmail = this.normalizeEmail(input.email);
     const candidateEmail = this.normalizeEmail(candidate.email || '');
     const inputPhone = this.normalizePhone(input.phone);
     const candidatePhone = this.normalizePhone(candidate.phone || '');
-    const inputAddress = this.normStr(input.address);
-    const candidateAddress = this.normStr(candidate.addressLine1 || '');
+    const inputAddress = this.normalizeAddressComparable(input.address);
+    const candidateAddress = this.normalizeAddressComparable(candidate.addressLine1 || '');
     const namesDiffer = Boolean(inputName && candidateName && inputName !== candidateName);
     const nameSimilarity = this.computeNameSimilarity(inputName, candidateName);
+    const hasExactNameMatch = Boolean(inputName && candidateName && inputName === candidateName);
 
-    // Step 1 donor cleanup is for alias/name normalization, not same-name donor rows.
-    if (!namesDiffer) {
-      return { score: 0, matchedFields: [], matchedInputRef: null };
+    // Exact same donor names should still be surfaced during identity review.
+    // Keep them in the review band by default, then let stronger signals
+    // promote them into auto-merge territory.
+    if (hasExactNameMatch) {
+      score += 85;
+      matchedFields.push('full_name');
     }
 
     if (inputEmail && candidateEmail && inputEmail === candidateEmail) {
@@ -434,14 +600,75 @@ export class TransformHubIdentityService {
       score += 25;
       matchedFields.push('address_zip');
     }
+    const hasSameZip = Boolean(input.zip && candidate.zip && input.zip.trim() === candidate.zip.trim());
+    if (hasSameZip && inputAddress && candidateAddress && this.computeTokenOverlap(inputAddress, candidateAddress) >= 0.75) {
+      score += 10;
+      matchedFields.push('address_close');
+    }
+
+    const inputEmailDomain = this.normalizedEmailDomain(input.email);
+    const candidateEmailDomain = this.normalizedEmailDomain(candidate.email || '');
+    const hasSharedNonConsumerDomain = Boolean(
+      inputEmailDomain
+      && candidateEmailDomain
+      && inputEmailDomain === candidateEmailDomain
+      && !this.isConsumerEmailDomain(inputEmailDomain),
+    );
+    if (
+      hasSharedNonConsumerDomain
+      && this.isEmailAliasCompatible(input.email, input.name)
+      && this.isEmailAliasCompatible(candidate.email || '', `${candidate.firstName || ''} ${candidate.lastName || ''}`)
+      && inputNameParts.lastName
+      && candidateNameParts.lastName
+      && inputNameParts.lastName === candidateNameParts.lastName
+      && this.areNameTokensCompatible(inputNameParts.firstName, candidateNameParts.firstName)
+    ) {
+      score += 20;
+      matchedFields.push('email_domain_alias');
+    }
+
+    if (
+      inputNameParts.lastName
+      && candidateNameParts.lastName
+      && inputNameParts.lastName === candidateNameParts.lastName
+      && this.areNameTokensCompatible(inputNameParts.firstName, candidateNameParts.firstName)
+    ) {
+      score += 18;
+      matchedFields.push('name_alias');
+    }
 
     if (input.householdName && candidate.lastName && this.normStr(input.householdName).includes(this.normStr(candidate.lastName))) {
       score += 10;
       matchedFields.push('household');
     }
 
-    const hasStrongIdentitySignal = matchedFields.includes('email') || matchedFields.includes('phone') || matchedFields.includes('address_zip');
-    const hasEnoughNameSimilarity = nameSimilarity >= 0.65;
+    if (matchedFields.includes('name_alias') && hasSameZip && (matchedFields.includes('address_zip') || matchedFields.includes('address_close'))) {
+      score += 18;
+      matchedFields.push('name_address_zip_multisignal');
+    }
+
+    const transactionContext = this.scoreDonorIdentityContext(candidate, input);
+    score += transactionContext.score;
+    matchedFields.push(...transactionContext.matchedFields);
+
+    if (hasExactNameMatch) {
+      if (matchedFields.includes('email') && matchedFields.includes('phone')) {
+        score += 10;
+        matchedFields.push('strong_multisignal');
+      } else if (matchedFields.includes('email') || matchedFields.includes('phone') || matchedFields.includes('address_zip')) {
+        score += 5;
+        matchedFields.push('identity_anchor');
+      }
+      return { score, matchedFields, matchedInputRef: null };
+    }
+
+    const hasStrongIdentitySignal = matchedFields.includes('email')
+      || matchedFields.includes('phone')
+      || matchedFields.includes('address_zip')
+      || matchedFields.includes('email_domain_alias')
+      || matchedFields.includes('name_address_zip_multisignal')
+      || matchedFields.includes('transaction_context_multisignal');
+    const hasEnoughNameSimilarity = nameSimilarity >= 0.65 || matchedFields.includes('name_alias');
     const isInitialVariant = hasStrongIdentitySignal && !hasEnoughNameSimilarity
       && this.isInitialCompatible(inputName, candidateName);
 

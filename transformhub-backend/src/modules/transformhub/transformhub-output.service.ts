@@ -29,6 +29,10 @@ export class TransformHubOutputService {
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
+  private hasAssignedStaffField(schema: any) {
+    return Boolean(String(schema?.fieldMap?.assigned_staff ?? '').trim());
+  }
+
   private buildAnalyticsEvidenceRows(records: any[] = []) {
     return records
       .map((record: any) => {
@@ -212,8 +216,10 @@ export class TransformHubOutputService {
     taxonomyState: any = null,
     finalAttributionDrafts: Record<string, any> = {},
     fileClass = 'donor',
+    schema: any = null,
   ) {
     const donorRecords = fileClass === 'donor' ? previewRecords : [];
+    const hasAssignedStaffField = this.hasAssignedStaffField(schema);
     const donorGroups = new Map<string, any>();
 
     donorRecords.forEach((record: any) => {
@@ -329,7 +335,7 @@ export class TransformHubOutputService {
         });
       }
 
-      if (entry.totalAmount >= 1000 && entry.assignedStaff.size === 0) {
+      if (hasAssignedStaffField && entry.totalAmount >= 1000 && entry.assignedStaff.size === 0) {
         items.push({
           id: `unassigned:${entry.label}`,
           outcomeId: 'money_leakage',
@@ -432,12 +438,18 @@ export class TransformHubOutputService {
         tone: 'opportunity',
         amount: this.roundAmount(matches.amount + upgrades.amount + unassigned.amount),
         metricKind: 'currency',
-        summary: 'Matching gifts, upgrade candidates, and unassigned major donors are sitting in the file uncaptured.',
-        supporting: 'Calculated from employer-match hints, donor concentration, and missing ownership.',
+        summary: hasAssignedStaffField
+          ? 'Matching gifts, upgrade candidates, and unassigned major donors are sitting in the file uncaptured.'
+          : 'Matching gifts and upgrade candidates are sitting in the file uncaptured.',
+        supporting: hasAssignedStaffField
+          ? 'Calculated from employer-match hints, donor concentration, and missing ownership.'
+          : 'Calculated from employer-match hints and donor concentration.',
         details: [
           { id: 'missing_matching_gifts', label: 'Missing matching gifts', count: matches.count, amount: matches.amount, description: 'Employer-match signals appear in the source data but are not yet worked.', ctaLabel: 'Open household review', action: 'household' },
           { id: 'upgrade_opportunities', label: 'Upgrade opportunities', count: upgrades.count, amount: upgrades.amount, description: 'High-value donors are giving below what their file pattern suggests.', ctaLabel: 'Open final review', action: 'final_table' },
-          { id: 'unassigned_major_donors', label: 'Unassigned major donors', count: unassigned.count, amount: unassigned.amount, description: 'Large donors have no staff owner assigned.', ctaLabel: 'Open final review', action: 'final_table' },
+          ...(hasAssignedStaffField
+            ? [{ id: 'unassigned_major_donors', label: 'Unassigned major donors', count: unassigned.count, amount: unassigned.amount, description: 'Large donors have no staff owner assigned.', ctaLabel: 'Open final review', action: 'final_table' }]
+            : []),
         ],
       },
       {

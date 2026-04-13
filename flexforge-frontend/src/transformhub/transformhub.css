@@ -670,6 +670,85 @@ body:has(.th-shell) {
   font-size: 0.92rem;
 }
 
+.th-duplicate-check-builder {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.th-duplicate-check-main {
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px;
+  border: 1px solid var(--th-line);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at top right, rgba(20, 99, 255, 0.08), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(246, 249, 253, 0.92));
+}
+
+.th-duplicate-check-intro {
+  display: grid;
+  gap: 6px;
+}
+
+.th-duplicate-check-intro strong {
+  font-size: 1rem;
+}
+
+.th-duplicate-check-intro p {
+  margin: 0;
+  color: var(--th-muted);
+}
+
+.th-duplicate-check-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px);
+  gap: 12px;
+  align-items: center;
+}
+
+.th-duplicate-check-signals {
+  display: grid;
+  gap: 6px;
+}
+
+.th-duplicate-signal-chip {
+  padding: 7px 12px;
+  background: rgba(244, 247, 251, 0.94);
+  border-color: rgba(28, 52, 84, 0.12);
+  color: rgba(55, 72, 96, 0.94);
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.th-duplicate-signal-chip.is-active {
+  background: rgba(230, 237, 246, 0.96);
+  border-color: rgba(95, 118, 149, 0.32);
+  color: rgba(32, 48, 70, 0.96);
+}
+
+.th-identity-signal-chip {
+  padding: 7px 12px;
+  background: rgba(244, 247, 251, 0.94);
+  border-color: rgba(28, 52, 84, 0.12);
+  color: rgba(55, 72, 96, 0.94);
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.th-identity-signal-chip.is-active {
+  background: rgba(230, 237, 246, 0.96);
+  border-color: rgba(95, 118, 149, 0.32);
+  color: rgba(32, 48, 70, 0.96);
+}
+
+@media (max-width: 900px) {
+  .th-duplicate-check-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .th-review-pill-row {
   display: flex;
   flex-wrap: wrap;
@@ -850,6 +929,159 @@ body:has(.th-shell) {
   line-height: 1.55;
 }
 
+.th-review-outcome-chart {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.th-review-outcome-chart-donut {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(23, 33, 43, 0.06);
+}
+
+.th-review-outcome-chart-center {
+  position: absolute;
+  inset: 18px;
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+  text-align: center;
+}
+
+.th-review-outcome-chart-center span {
+  display: block;
+  max-width: 68px;
+  font-size: 0.72rem;
+  line-height: 1.15;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(71, 85, 105, 0.78);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.th-review-outcome-chart-center strong {
+  font-size: 1rem;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.th-review-outcome-chart-legend {
+  display: grid;
+  gap: 8px;
+}
+
+.th-review-outcome-chart-legend-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.82rem;
+}
+
+.th-review-outcome-chart-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.th-review-financial-summary-panel {
+  display: grid;
+  grid-template-columns: 280px minmax(260px, 360px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.th-review-financial-summary-chart {
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(23, 33, 43, 0.08);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.th-review-financial-summary-donut {
+  position: relative;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(23, 33, 43, 0.06);
+}
+
+.th-review-financial-summary-center {
+  position: absolute;
+  inset: 28px;
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.96);
+  text-align: center;
+}
+
+.th-review-financial-summary-center span {
+  display: block;
+  max-width: 110px;
+  font-size: 0.74rem;
+  line-height: 1.15;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(71, 85, 105, 0.8);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.th-review-financial-summary-center strong {
+  font-size: 1.35rem;
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
+
+.th-review-financial-summary-breakdown {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.th-review-financial-summary-line {
+  min-width: 0;
+}
+
+.th-review-financial-summary-item {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(23, 33, 43, 0.08);
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.th-review-financial-summary-item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.th-review-financial-summary-item > span {
+  color: var(--th-muted);
+  font-size: 0.88rem;
+}
+
+.th-review-financial-summary-item > strong {
+  font-size: 1.05rem;
+  line-height: 1.1;
+}
+
 .th-review-outcome-list {
   display: grid;
   gap: 8px;
@@ -981,20 +1213,74 @@ body:has(.th-shell) {
 .th-review-outcome-workspace-controls {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px 12px;
   align-items: end;
+  padding-top: 6px;
+  padding: 14px 16px 0;
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid rgba(23, 33, 43, 0.06);
+}
+
+.th-review-filter-field {
+  gap: 6px;
+}
+
+.th-review-filter-label {
+  padding: 0 0 2px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.th-review-filter-control {
+  min-height: 40px;
+  border-radius: 12px;
+  border-color: rgba(23, 33, 43, 0.08);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: none;
+  font-size: 0.84rem;
+}
+
+.th-review-filter-control.th-select,
+.th-review-filter-control.th-input {
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+
+.th-review-filter-control.th-input {
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+.th-review-toggle-row {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.th-review-workspace-summary {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0 12px;
+  color: var(--th-muted);
+  font-size: 0.8rem;
 }
 
 .th-review-toggle {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 0 10px;
-  border: 1px solid var(--th-line);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.7);
-  font-size: 0.88rem;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid rgba(23, 33, 43, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.48);
+  font-size: 0.8rem;
+  color: var(--th-muted);
 }
 
 .th-review-toggle input {
@@ -1028,7 +1314,57 @@ body:has(.th-shell) {
 
 .th-review-outcome-results {
   display: grid;
+  gap: 10px;
+}
+
+.th-review-outcome-result-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: start;
+  padding: 16px 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(23, 33, 43, 0.07);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.th-review-outcome-result-main {
+  display: grid;
   gap: 12px;
+  min-width: 0;
+}
+
+.th-review-outcome-result-topline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+}
+
+.th-review-outcome-result-amount {
+  text-align: right;
+}
+
+.th-review-outcome-result-amount strong {
+  font-size: 1.05rem;
+  letter-spacing: -0.03em;
+}
+
+.th-review-outcome-result-chips {
+  gap: 6px;
+}
+
+.th-review-outcome-result-chips .th-chip {
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.th-review-outcome-result-side {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  min-width: 164px;
 }
 
 .th-review-health-grid {
@@ -1038,12 +1374,16 @@ body:has(.th-shell) {
 }
 
 .th-review-health-card {
-  display: grid;
-  gap: 12px;
-  padding: 18px;
-  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px;
+  border-radius: 24px;
   border: 1px solid rgba(23, 33, 43, 0.08);
-  background: rgba(255, 255, 255, 0.74);
+  background:
+    radial-gradient(circle at top right, rgba(19, 120, 95, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 248, 244, 0.92));
+  box-shadow: 0 14px 32px rgba(18, 30, 22, 0.06);
 }
 
 .th-review-health-head {
@@ -1053,45 +1393,377 @@ body:has(.th-shell) {
   gap: 12px;
 }
 
-.th-review-health-head strong {
-  font-size: 1rem;
+.th-review-health-intro {
+  display: grid;
+  gap: 6px;
 }
 
-.th-review-health-meta {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  color: var(--th-muted);
-  font-size: 0.84rem;
+.th-review-health-kicker {
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(24, 78, 63, 0.72);
+  font-weight: 700;
+}
+
+.th-review-health-head strong {
+  font-size: 1.18rem;
+  line-height: 1.2;
+  color: rgba(28, 52, 61, 0.96);
+}
+
+.th-review-health-pill {
+  align-self: flex-start;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(20, 28, 38, 0.08);
+  background: rgba(255, 255, 255, 0.85);
+  color: rgba(35, 49, 62, 0.74);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.th-review-health-pill.is-up {
+  color: #157347;
+  background: rgba(21, 115, 71, 0.09);
+}
+
+.th-review-health-pill.is-down {
+  color: #b54708;
+  background: rgba(181, 71, 8, 0.09);
+}
+
+.th-review-health-pill.is-flat {
+  color: #155eef;
+  background: rgba(21, 94, 239, 0.08);
+}
+
+.th-review-health-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(180px, 0.7fr);
+  gap: 16px;
+  align-items: end;
+}
+
+.th-review-health-metric-block {
+  display: grid;
+  gap: 6px;
+}
+
+.th-review-health-metric {
+  font-size: clamp(2rem, 3vw, 2.8rem);
+  line-height: 0.95;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: #2d5b56;
+}
+
+.th-review-health-value {
+  font-size: 0.92rem;
+  color: rgba(53, 77, 85, 0.82);
+  font-weight: 600;
+}
+
+.th-review-health-secondary {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(247, 250, 246, 0.9);
+  border: 1px solid rgba(23, 33, 43, 0.07);
+}
+
+.th-review-health-secondary-label {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(79, 96, 110, 0.72);
+  font-weight: 700;
+}
+
+.th-review-health-secondary strong {
+  font-size: 1rem;
+  line-height: 1.2;
 }
 
 .th-review-health-bars {
   display: grid;
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: 12px;
+  align-items: end;
 }
 
-.th-review-health-bar-row {
+.th-review-health-chart {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
   gap: 10px;
-  align-items: center;
+  padding: 14px 16px 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(23, 33, 43, 0.07);
+  background: rgba(252, 253, 252, 0.82);
+}
+
+.th-review-health-chart-title {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(79, 96, 110, 0.72);
+  font-weight: 700;
+}
+
+.th-review-health-bar-column {
+  display: grid;
+  gap: 8px;
+  align-items: end;
+}
+
+.th-review-health-bar-value {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: rgba(63, 78, 96, 0.78);
+}
+
+.th-review-health-bar-label {
+  font-size: 0.74rem;
+  line-height: 1.2;
+  color: rgba(71, 85, 105, 0.78);
+  overflow-wrap: anywhere;
+}
+
+.th-review-health-foot {
+  margin-top: auto;
+  padding-top: 2px;
+  border-top: 1px solid rgba(23, 33, 43, 0.06);
+}
+
+.th-review-health-foot .th-helper {
+  display: block;
+  line-height: 1.5;
 }
 
 .th-review-health-bar-track {
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(23, 33, 43, 0.08);
+  display: flex;
+  align-items: flex-end;
+  height: 112px;
+  border-radius: 16px;
+  background: rgba(225, 231, 236, 0.74);
   overflow: hidden;
+  padding: 8px;
 }
 
 .th-review-health-bar {
-  height: 100%;
-  border-radius: 999px;
-  background: #1463ff;
+  width: 100%;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(136, 154, 176, 0.82), rgba(103, 124, 148, 0.9));
 }
 
 .th-review-health-bar.is-secondary {
-  background: #d06a2b;
+  background: linear-gradient(180deg, rgba(214, 186, 162, 0.82), rgba(193, 154, 122, 0.92));
+}
+
+.th-review-health-bar.is-tertiary {
+  background: linear-gradient(180deg, rgba(220, 231, 240, 0.88), rgba(197, 212, 225, 0.94));
+}
+
+.th-review-health-donut-wrap {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.th-review-health-donut {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(23, 33, 43, 0.05);
+}
+
+.th-review-health-donut-center {
+  position: absolute;
+  inset: 18px;
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  border-radius: 50%;
+  background: rgba(252, 253, 252, 0.96);
+  text-align: center;
+}
+
+.th-review-health-donut-center strong {
+  font-size: 1rem;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: rgba(43, 63, 77, 0.94);
+}
+
+.th-review-health-donut-center span {
+  max-width: 68px;
+  font-size: 0.68rem;
+  line-height: 1.2;
+  color: rgba(84, 98, 112, 0.76);
+}
+
+.th-review-health-donut-legend {
+  display: grid;
+  gap: 8px;
+}
+
+.th-review-health-donut-legend-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.th-review-health-donut-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(103, 124, 148, 0.9);
+}
+
+.th-review-health-donut-dot.is-secondary {
+  background: rgba(193, 154, 122, 0.92);
+}
+
+.th-review-health-donut-dot.is-tertiary {
+  background: rgba(197, 212, 225, 0.94);
+}
+
+.th-review-health-line-chart {
+  display: grid;
+  gap: 10px;
+}
+
+.th-review-health-line-svg-wrap {
+  padding: 2px 0 0;
+}
+
+.th-review-health-line-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.th-review-health-line-grid {
+  stroke: rgba(171, 184, 197, 0.55);
+  stroke-width: 1;
+  fill: none;
+}
+
+.th-review-health-line-path {
+  stroke: rgba(103, 124, 148, 0.92);
+  stroke-width: 2.5;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.th-review-health-line-point {
+  fill: rgba(103, 124, 148, 0.92);
+  stroke: rgba(252, 253, 252, 0.96);
+  stroke-width: 2;
+}
+
+.th-review-health-line-point.is-secondary {
+  fill: rgba(193, 154, 122, 0.92);
+}
+
+.th-review-health-line-point.is-tertiary {
+  fill: rgba(197, 212, 225, 0.94);
+}
+
+.th-review-health-line-labels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: 10px;
+}
+
+.th-review-health-line-label {
+  display: grid;
+  gap: 4px;
+}
+
+.th-review-health-line-label strong {
+  font-size: 0.8rem;
+  color: rgba(63, 78, 96, 0.82);
+}
+
+.th-review-health-line-label span {
+  font-size: 0.74rem;
+  color: rgba(71, 85, 105, 0.78);
+}
+
+.th-review-health-stacked-chart {
+  display: grid;
+  gap: 14px;
+}
+
+.th-review-health-stacked-bars {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 14px;
+  align-items: end;
+}
+
+.th-review-health-stacked-column {
+  display: grid;
+  gap: 10px;
+}
+
+.th-review-health-stacked-track {
+  height: 180px;
+  display: flex;
+  flex-direction: column-reverse;
+  border-radius: 18px;
+  overflow: hidden;
+  background: rgba(225, 231, 236, 0.58);
+  border: 1px solid rgba(23, 33, 43, 0.06);
+}
+
+.th-review-health-stacked-segment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  background: linear-gradient(180deg, rgba(136, 154, 176, 0.82), rgba(103, 124, 148, 0.9));
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+  border-top: 1px solid rgba(252, 253, 252, 0.78);
+}
+
+.th-review-health-stacked-segment.is-secondary {
+  background: linear-gradient(180deg, rgba(214, 186, 162, 0.82), rgba(193, 154, 122, 0.92));
+}
+
+.th-review-health-stacked-segment.is-tertiary {
+  background: linear-gradient(180deg, rgba(191, 203, 215, 0.96), rgba(168, 184, 201, 0.96));
+  color: rgba(54, 68, 83, 0.9);
+}
+
+.th-review-health-stacked-foot {
+  display: grid;
+  gap: 4px;
+}
+
+.th-review-health-stacked-foot strong {
+  font-size: 0.82rem;
+  color: rgba(63, 78, 96, 0.86);
+}
+
+.th-review-health-stacked-foot span {
+  font-size: 0.74rem;
+  color: rgba(71, 85, 105, 0.78);
+}
+
+.th-review-health-stacked-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px 14px;
 }
 
 .th-review-outcome-result-row {
@@ -1113,6 +1785,96 @@ body:has(.th-shell) {
 .th-review-outcome-result-copy p {
   margin: 0;
   color: var(--th-muted);
+}
+
+.th-review-outcome-trend {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(23, 33, 43, 0.08);
+  background: linear-gradient(180deg, rgba(248, 250, 246, 0.94), rgba(255, 255, 255, 0.82));
+}
+
+.th-review-outcome-trend-compact {
+  padding: 10px 12px;
+  border-radius: 14px;
+}
+
+.th-review-outcome-trend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.th-review-outcome-trend-head strong {
+  font-size: 0.84rem;
+}
+
+.th-review-outcome-trend-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: rgba(21, 94, 239, 0.08);
+  color: #155eef;
+}
+
+.th-review-outcome-trend-pill.is-down {
+  background: rgba(181, 71, 8, 0.09);
+  color: #b54708;
+}
+
+.th-review-outcome-trend-pill.is-up {
+  background: rgba(21, 115, 71, 0.09);
+  color: #157347;
+}
+
+.th-review-outcome-trend-pill.is-flat {
+  background: rgba(21, 94, 239, 0.08);
+  color: #155eef;
+}
+
+.th-review-outcome-trend-bars {
+  display: grid;
+  gap: 8px;
+}
+
+.th-review-outcome-trend-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.th-review-outcome-trend-row span,
+.th-review-outcome-trend-row strong {
+  font-size: 0.82rem;
+}
+
+.th-review-outcome-trend-track {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(23, 33, 43, 0.08);
+  overflow: hidden;
+}
+
+.th-review-outcome-trend-bar {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.th-review-outcome-trend-bar.is-previous {
+  background: #d06a2b;
+}
+
+.th-review-outcome-trend-bar.is-current {
+  background: #1463ff;
 }
 
 .th-review-outcome-result-actions {
@@ -2459,6 +3221,10 @@ body:has(.th-shell) {
     flex-wrap: wrap;
   }
 
+  .th-duplicate-check-grid {
+    grid-template-columns: 1fr;
+  }
+
   .th-stat-divider {
     display: none;
   }
@@ -2466,6 +3232,23 @@ body:has(.th-shell) {
   .th-stat {
     flex: 1 0 40%;
     padding: 8px 0;
+  }
+
+  .th-review-health-hero {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .th-review-financial-summary-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .th-review-financial-summary-chart {
+    place-items: start center;
+  }
+
+  .th-review-toggle-row {
+    gap: 10px;
   }
 }
 
