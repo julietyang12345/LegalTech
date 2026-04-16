@@ -569,4 +569,53 @@ Rules:
       return null;
     }
   }
+
+  // Receives only near-miss pairs pre-filtered by the frontend (rule score 0.3–0.49).
+  // Returns only group indices + confidence — no canonicalLabel/reasoning to save output tokens.
+  async suggestTaxonomyGroups(input: {
+    values: Array<{ id: string; rawValue: string; objectType: string }>;
+  }): Promise<Array<{ memberIds: string[]; confidence: 'high' | 'medium' | 'low' }> | null> {
+    if (!this.client || input.values.length < 2) return null;
+
+    const valueList = input.values
+      .map((value, index) => `${index}:"${value.rawValue}"`)
+      .join('\n');
+
+    const prompt = `Group these fundraising label variants by semantic equivalence (same campaign/year/purpose). Only group if clearly the same thing. Same-year variants like abbreviations, acronyms, or alternate phrasing qualify.
+
+${valueList}
+
+JSON only: {"groups":[{"i":[0,2],"c":"high|medium|low"}]}
+- i: member indices (>=2 per group)
+- c: confidence
+- Omit groups you are not confident about`;
+
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.taxonomyModel,
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        max_completion_tokens: 200,
+        temperature: 0,
+      });
+
+      const parsed = JSON.parse(response.choices[0].message.content ?? '{}');
+      if (!Array.isArray(parsed.groups)) return null;
+
+      return parsed.groups
+        .filter((group: any) => Array.isArray(group.i) && group.i.length >= 2)
+        .map((group: any) => {
+          const memberIds = (group.i as number[])
+            .filter((index) => index >= 0 && index < input.values.length)
+            .map((index) => input.values[index].id);
+          const confidence: 'high' | 'medium' | 'low' =
+            group.c === 'high' || group.c === 'medium' || group.c === 'low' ? group.c : 'low';
+          return { memberIds, confidence };
+        })
+        .filter((group: any) => group.memberIds.length >= 2);
+    } catch (err) {
+      this.logger.warn(`AI taxonomy grouping failed: ${String(err)}`);
+      return null;
+    }
+  }
 }

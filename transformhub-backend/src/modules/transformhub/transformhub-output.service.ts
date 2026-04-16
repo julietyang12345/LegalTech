@@ -33,14 +33,33 @@ export class TransformHubOutputService {
     return Boolean(String(schema?.fieldMap?.assigned_staff ?? '').trim());
   }
 
+  private rawValueFallback(rawValues: Record<string, string> | undefined, candidates: string[]): string {
+    if (!rawValues) return '';
+    for (const candidate of candidates) {
+      const normalizedCandidate = candidate.toLowerCase().replace(/[_-]+/g, ' ').trim();
+      for (const [key, value] of Object.entries(rawValues)) {
+        const normalizedKey = key.toLowerCase().replace(/[_-]+/g, ' ').trim();
+        if (normalizedKey === normalizedCandidate && String(value ?? '').trim()) {
+          return String(value).trim();
+        }
+      }
+    }
+    return '';
+  }
+
   private buildAnalyticsEvidenceRows(records: any[] = []) {
     return records
       .map((record: any) => {
+        const rawValues = record?.rawValues as Record<string, string> | undefined;
         const recurring = String(record?.recurring ?? record?.frequency ?? '').toLowerCase();
+        const dateValue = String(record?.date || '').trim()
+          || this.rawValueFallback(rawValues, ['date', 'gift date', 'gift_date', 'payment date', 'transaction date', 'posted date']);
+        const amountRaw = String(record?.amount || '').trim()
+          || this.rawValueFallback(rawValues, ['amount', 'gift amount', 'gross amount', 'net amount', 'credit amount', 'total amount', 'payment amount']);
         return {
           sourceRowRef: String(record?.sourceRowRef ?? record?.id ?? ''),
-          date: record?.date ? String(record.date) : null,
-          amount: this.parseAmount(record?.amount),
+          date: dateValue || null,
+          amount: this.parseAmount(amountRaw || record?.amount),
           source: String(record?.sourceFile || record?.source_file || 'Current file'),
           type: String(record?.type || record?.frequency || record?.method || record?.fund || 'Gift'),
           recurring: recurring.includes('true') || recurring.includes('monthly') || recurring.includes('quarterly') || recurring.includes('yearly'),
@@ -236,8 +255,13 @@ export class TransformHubOutputService {
         records: [] as any[],
         years: new Set<number>(),
       };
-      const amount = this.parseAmount(record?.amount);
-      const nextDate = record?.date ? new Date(String(record.date)) : null;
+      const rawValues = record?.rawValues as Record<string, string> | undefined;
+      const amountRaw = String(record?.amount || '').trim()
+        || this.rawValueFallback(rawValues, ['amount', 'gift amount', 'gross amount', 'net amount', 'credit amount', 'total amount', 'payment amount']);
+      const dateRaw = String(record?.date || '').trim()
+        || this.rawValueFallback(rawValues, ['date', 'gift date', 'gift_date', 'payment date', 'transaction date', 'posted date']);
+      const amount = this.parseAmount(amountRaw);
+      const nextDate = dateRaw ? new Date(dateRaw) : null;
       current.totalAmount += amount;
       current.records.push(record);
       if (nextDate && !Number.isNaN(nextDate.getTime())) {
@@ -287,7 +311,7 @@ export class TransformHubOutputService {
           detailId: 'recurring_donors',
           label: entry.label,
           description: 'Multiple gifts suggest a recurring giving pattern.',
-          amount: Math.max(entry.latestAmount, entry.totalAmount * 0.5),
+          amount: entry.totalAmount,
           sortDate: entry.latestDate?.toISOString() ?? null,
           campaign,
           donorSegment: 'recurring donors',

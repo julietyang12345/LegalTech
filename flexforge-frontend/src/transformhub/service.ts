@@ -206,6 +206,21 @@ export async function evaluateTaxonomyBackend(
   return response.data;
 }
 
+export async function suggestTaxonomyGroupsBackend(
+  values: Array<{ id: string; rawValue: string; objectType: string }>,
+): Promise<Array<{ memberIds: string[]; confidence: 'high' | 'medium' | 'low' }>> {
+  if (values.length < 2) return [];
+  try {
+    const response = await api.post<{ groups: Array<{ memberIds: string[]; confidence: 'high' | 'medium' | 'low' }> }>(
+      '/transformhub/taxonomy-group-suggest',
+      { values },
+    );
+    return response.data.groups ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export async function reviewFieldSuggestionBackend(
   sessionId: string,
   suggestionId: string,

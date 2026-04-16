@@ -1286,6 +1286,11 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     return this.taxonomy.evaluateTaxonomy(body.rows);
   }
 
+  async taxonomyGroupSuggest(body: { values: Array<{ id: string; rawValue: string; objectType: string }> }) {
+    const groups = await this.ai.suggestTaxonomyGroups({ values: body.values });
+    return { groups: groups ?? [] };
+  }
+
   async resolveTaxonomyException(exceptionId: string, body: any) {
     const result = await this.taxonomy.resolveException(exceptionId, body);
     const rows = await this.rowRepo.find({ where: { taxonomy_exception_id: exceptionId } });

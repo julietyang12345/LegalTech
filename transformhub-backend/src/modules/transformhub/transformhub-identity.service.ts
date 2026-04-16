@@ -1389,6 +1389,9 @@ export class TransformHubIdentityService {
       }));
 
       const candidateEntries = [...sameNameEntries, ...identityEntries];
+      this.logger.log(
+        `[tx-dup] row=${rowRef} canonicalPerson=${canonicalPersonId ?? 'none'} inputName="${input.name}" inputEmail="${input.email || ''}" signal=${this.formatDonorSignal(input.donorSignal)} sameNameCandidates=${sameNameEntries.map((entry) => entry.rowRef).join('|') || 'none'} identityCandidates=${identityEntries.map((entry) => entry.rowRef).join('|') || 'none'}`,
+      );
 
       let bestScore = 0;
       let bestMatchedFields: string[] = [];
@@ -1406,6 +1409,9 @@ export class TransformHubIdentityService {
           entry.inputEmail,
           (value) => this.normStr(value),
         );
+        this.logger.log(
+          `[tx-dup] compare row=${rowRef} candidate=${entry.rowRef || 'none'} candidateName="${entry.inputName}" candidateEmail="${entry.inputEmail || ''}" candidateSignal=${this.formatDonorSignal(entry.signal)} score=${result.score} fields=${result.matchedFields.join('|') || 'none'}`,
+        );
         if (result.score > bestScore) {
           bestScore = result.score;
           bestMatchedFields = result.matchedFields;
@@ -1421,16 +1427,25 @@ export class TransformHubIdentityService {
         : duplicateClass === 'likely_match' || duplicateClass === 'possible_match'
           ? 'review'
           : this.getConfidenceBand(bestScore);
+      this.logger.log(
+        `[tx-dup] best row=${rowRef} bestCandidate=${bestMatchedInputRef ?? 'none'} canonicalPerson=${canonicalPersonId ?? 'none'} score=${bestScore} duplicateClass=${duplicateClass} band=${band} fields=${bestMatchedFields.join('|') || 'none'} bestCandidateName="${bestCandidateName}" bestCandidateEmail="${bestCandidateEmail || ''}"`,
+      );
 
       // No real tx duplicate found — count as separated and skip (don't add to review queue).
       if (duplicateClass === 'no_match') {
         separated++;
+        this.logger.log(
+          `[tx-dup] skip row=${rowRef} reason=no_match canonicalPerson=${canonicalPersonId ?? 'none'} score=${bestScore} fields=${bestMatchedFields.join('|') || 'none'}`,
+        );
         continue;
       }
 
       // Avoid showing the same pair twice (A↔B and B↔A).
       const pairKey = [rowRef, bestMatchedInputRef ?? ''].sort().join('::');
-      if (reportedPairs.has(pairKey)) continue;
+      if (reportedPairs.has(pairKey)) {
+        this.logger.log(`[tx-dup] skip row=${rowRef} reason=pair_already_reported pair=${pairKey}`);
+        continue;
+      }
       reportedPairs.add(pairKey);
 
       let decision = 'new';
@@ -1460,6 +1475,9 @@ export class TransformHubIdentityService {
         matchedFields: bestMatchedFields,
         reviewPayload: this.buildMatchReviewPayload(row, rowRef, input, bestMatchedFields, canonicalPerson, aiSuggestion, bestMatchedInputRef),
       });
+      this.logger.log(
+        `[tx-dup] emit row=${rowRef} matched=${bestMatchedInputRef ?? 'none'} decision=${decision} duplicateClass=${duplicateClass} score=${bestScore} fields=${bestMatchedFields.join('|') || 'none'}`,
+      );
     }
 
     return {

@@ -31,6 +31,8 @@ const ABBREVIATION_MAP: Record<string, string[]> = {
   dm: ['direct', 'mail'],
   ym: ['year', 'end', 'match'],
   eoy: ['year', 'end'],
+  ye: ['year', 'end'],
+  fy: ['year'],
   yr: ['year'],
   corp: ['corporate'],
   wkpl: ['workplace'],
@@ -637,6 +639,87 @@ export function buildTaxonomyState(parsedFile: ParsedFile | null, schema: Resolv
   };
 }
 
+// Returns observed values that scored 0.3–0.49 against at least one other value —
+// close enough to be worth an AI opinion but below the rule threshold.
+export function getNearMissCandidates(state: SessionTaxonomyState): Array<{ id: string; rawValue: string; objectType: string }> {
+  const alreadyGrouped = new Set<string>([
+    ...state.candidateGroups.filter((group) => group.status !== 'separate').flatMap((group) => group.members.map((member) => member.observedValueId)),
+    ...state.resolvedGroups.flatMap((group) => group.sourceObservedValueIds),
+  ]);
+  const ungrouped = state.observedValues.filter((value) => !alreadyGrouped.has(value.id));
+  const nearMissIds = new Set<string>();
+  for (let i = 0; i < ungrouped.length; i += 1) {
+    for (let j = i + 1; j < ungrouped.length; j += 1) {
+      const left = ungrouped[i];
+      const right = ungrouped[j];
+      if (left.objectType !== right.objectType) continue;
+      const tokenScore = jaccard(left.tokenSet, right.tokenSet);
+      const yearOverlap = left.years.some((year) => right.years.includes(year));
+      // Loose pre-filter: some token overlap OR same year with any shared character sequence
+      if (tokenScore >= 0.3 || (yearOverlap && tokenScore > 0)) {
+        nearMissIds.add(left.id);
+        nearMissIds.add(right.id);
+      }
+    }
+  }
+  return ungrouped
+    .filter((value) => nearMissIds.has(value.id))
+    .map((value) => ({ id: value.id, rawValue: value.rawValue, objectType: value.objectType }));
+}
+
+export function applyAiSuggestedGroups(
+  state: SessionTaxonomyState,
+  aiGroups: Array<{ memberIds: string[]; confidence: 'high' | 'medium' | 'low' }>,
+): SessionTaxonomyState {
+  if (aiGroups.length === 0) return state;
+
+  const valueById = new Map(state.observedValues.map((value) => [value.id, value]));
+  const alreadyGrouped = new Set<string>([
+    ...state.candidateGroups.filter((group) => group.status !== 'separate').flatMap((group) => group.members.map((member) => member.observedValueId)),
+    ...state.resolvedGroups.flatMap((group) => group.sourceObservedValueIds),
+  ]);
+
+  const newCandidates: TaxonomyCandidateGroup[] = [];
+  for (const aiGroup of aiGroups) {
+    const memberValues = aiGroup.memberIds
+      .map((id) => valueById.get(id))
+      .filter((value): value is TaxonomyObservedValue => Boolean(value))
+      .filter((value) => !alreadyGrouped.has(value.id));
+    if (memberValues.length < 2) continue;
+
+    const objectType = memberValues[0].objectType;
+    const id = `ai-cand-${aiGroup.memberIds.slice().sort().join('-')}`;
+    if (state.candidateGroups.some((group) => group.id === id)) continue;
+
+    // Derive canonical label locally — pick the longest value (most descriptive)
+    const canonicalLabel = memberValues
+      .slice()
+      .sort((left, right) => right.rawValue.length - left.rawValue.length)[0].rawValue;
+
+    newCandidates.push({
+      id,
+      objectType,
+      confidenceBand: aiGroup.confidence === 'high' ? 'high' : 'medium',
+      score: aiGroup.confidence === 'high' ? 0.92 : aiGroup.confidence === 'medium' ? 0.72 : 0.55,
+      reasonSignals: ['AI semantic match'],
+      suggestedCanonicalLabel: canonicalLabel,
+      members: memberValues.map((value) => ({
+        observedValueId: value.id,
+        rawValue: value.rawValue,
+        header: value.header,
+        rowCount: value.rowCount,
+        sourceFiles: value.sourceFiles,
+        sourceRowRefs: value.sourceRowRefs,
+      })),
+      status: 'pending',
+      aiSuggested: true,
+    });
+  }
+
+  if (newCandidates.length === 0) return state;
+  return { ...state, candidateGroups: [...newCandidates, ...state.candidateGroups] };
+}
+
 export function mergeTaxonomyCandidate(state: SessionTaxonomyState, candidateId: string, canonicalLabel?: string) {
   const candidate = state.candidateGroups.find((group) => group.id === candidateId);
   if (!candidate) return state;
@@ -654,6 +737,45 @@ export function mergeTaxonomyCandidate(state: SessionTaxonomyState, candidateId:
     candidateGroups: state.candidateGroups.map((group) => group.id === candidateId ? { ...group, status: 'merged' as const } : group),
     resolvedGroups: [...state.resolvedGroups.filter((group) => group.id !== nextGroup.id), nextGroup],
     dismissedCandidateIds: state.dismissedCandidateIds.filter((id) => id !== candidateId),
+  };
+}
+
+function normalizeManualTaxonomyKey(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+export function createManualTaxonomyMerge(
+  state: SessionTaxonomyState,
+  objectType: TaxonomyObjectType,
+  leftLabel: string,
+  rightLabel: string,
+  canonicalLabel?: string,
+) {
+  const leftValue = leftLabel.trim();
+  const rightValue = rightLabel.trim();
+  if (!leftValue || !rightValue) return null;
+  const normalizedLeft = leftValue.toLowerCase();
+  const normalizedRight = rightValue.toLowerCase();
+  const matchedObserved = state.observedValues.filter((value) => (
+    value.objectType === objectType
+    && (value.rawValue.trim().toLowerCase() === normalizedLeft || value.rawValue.trim().toLowerCase() === normalizedRight)
+  ));
+  const uniqueObserved = Array.from(new Map(matchedObserved.map((value) => [value.id, value])).values());
+  if (uniqueObserved.length < 2) return null;
+
+  const nextGroup: SessionTaxonomyGroup = {
+    id: `resolved-manual-${uniqueObserved.map((value) => value.id).sort().join('-') || `${normalizeManualTaxonomyKey(leftValue)}-${normalizeManualTaxonomyKey(rightValue)}`}`,
+    objectType,
+    canonicalLabel: canonicalLabel?.trim() || leftValue,
+    aliases: Array.from(new Set(uniqueObserved.map((value) => value.rawValue))),
+    sourceObservedValueIds: uniqueObserved.map((value) => value.id),
+    status: 'active',
+    createdAt: new Date().toISOString(),
+  };
+
+  return {
+    ...state,
+    resolvedGroups: [...state.resolvedGroups.filter((group) => group.id !== nextGroup.id), nextGroup],
   };
 }
 

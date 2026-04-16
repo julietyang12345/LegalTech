@@ -155,6 +155,20 @@ describe('buildAppendColumnDecisions', () => {
     ]);
   });
 
+  it('auto-merges donor export aliases seen in workbook tabs', () => {
+    const decisions = buildAppendColumnDecisions(
+      ['home_phone', 'address1', 'gift_amount'],
+      ['phone', 'street_1', 'gross_amount'],
+      'upload.xlsx',
+    );
+
+    expect(decisions.map((decision) => [decision.incomingHeader, decision.targetHeader, decision.action])).toEqual([
+      ['phone', 'home_phone', 'merge'],
+      ['street_1', 'address1', 'merge'],
+      ['gross_amount', 'gift_amount', 'merge'],
+    ]);
+  });
+
   it('does not auto-merge fund and campaign headers', () => {
     const decisions = buildAppendColumnDecisions(['Fund'], ['Campaign'], 'upload.csv');
     expect(decisions[0]).toMatchObject({
@@ -162,6 +176,25 @@ describe('buildAppendColumnDecisions', () => {
       action: 'review',
       targetHeader: 'Fund',
     });
+  });
+
+  it('sends donor schema-union review pairs for program and appeal-style fields', () => {
+    const decisions = buildAppendColumnDecisions(
+      buildParsedFile(
+        ['Fund', 'Campaign'],
+        [{ Fund: 'General Fund', Campaign: 'Spring Gala 2025' }],
+      ),
+      buildParsedFile(
+        ['Program', 'Appeal Name'],
+        [{ Program: 'General', 'Appeal Name': '2025 Spring Gala' }],
+      ),
+      'upload.xlsx',
+    );
+
+    expect(decisions.map((decision) => [decision.incomingHeader, decision.targetHeader, decision.action])).toEqual([
+      ['Program', 'Fund', 'review'],
+      ['Appeal Name', 'Campaign', 'review'],
+    ]);
   });
 
   it('hides legacy text-value column reviews from saved sessions when they are not semantic review pairs', () => {

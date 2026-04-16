@@ -5,6 +5,16 @@ docker logs -f transformhub-backend-prod
   3. 验收标准
   4. 再开始改
 
+  To clear all seeded identity memory and all permanent person-match decisions:
+
+  docker exec -it flexforge-db-prod psql -U flexforge -d transformhub_prod -c "TRUNCATE TABLE th_identity_memory RESTART IDENTITY CASCADE; DELETE
+  FROM th_audit_decisions WHERE permanent = true;"
+
+  If you want to clear only donor-related seeded people and decisions instead of everything:
+
+  docker exec -it flexforge-db-prod psql -U flexforge -d transformhub_prod -c "DELETE FROM th_identity_memory WHERE source_file_class = 'donor';
+  DELETE FROM th_audit_decisions WHERE permanent = true AND file_class = 'donor';"
+  
 
 1. Check pending review decisions (after migrations run):
   docker exec flexforge-db-prod psql -U flexforge -d transformhub_prod -c 'SELECT id, "inputKey", "candidatePersonId", score, "isHighConfidence","confirmationCount",

@@ -8,6 +8,7 @@ type UseTransformHubHouseholdReviewArgs = {
   removedPersonIdsByHousehold: Record<string, string[]>;
   finalHouseholdDrafts: Record<string, FinalHouseholdDraft>;
   finalAttributionDrafts: FinalAttributionDraftMap;
+  embeddedHouseholdDrafts: Record<string, Record<string, PreviewAttributionDraft>>;
   previewMatchByInputRef: Map<string, { matchedPersonId?: string | null }>;
   mergedSourceRefsByRepresentative: Map<string, string[]>;
   representativeByAbsorbedRef: Map<string, string>;
@@ -16,6 +17,7 @@ type UseTransformHubHouseholdReviewArgs = {
   summarizeAttributionDraft: (draft: PreviewAttributionDraft, members: CanonicalPerson[], primaryPerson: CanonicalPerson | null) => string;
   previewRecordLabel: (record: PreviewRecord) => string;
   parseCurrencyAmount: (value: unknown) => number | null;
+  getPreviewRecordBaseAmount: (record: PreviewRecord | null | undefined) => number | null;
   previewRecords: PreviewRecord[];
   ambiguousAttributionRefs: Set<string>;
 };
@@ -30,12 +32,41 @@ function buildDisplayMemberKey(person: Pick<CanonicalPerson, 'firstName' | 'last
   return nameKey || emailKey || person.id;
 }
 
+function isAttributionDraftRemoved(draft: PreviewAttributionDraft): boolean {
+  return draft.householdRemoved === true && !draft.primaryPersonId && !draft.secondaryPersonId;
+}
+
+function getMemberRoleForDraft(
+  draft: PreviewAttributionDraft,
+  memberId: string,
+): 'primary' | 'secondary' | 'unassigned' {
+  if (isAttributionDraftRemoved(draft)) return 'unassigned';
+  if (draft.secondaryPersonId === memberId) return 'secondary';
+  if (draft.primaryPersonId === memberId) return 'primary';
+  return 'unassigned';
+}
+
+function getEffectiveCreditAmount(
+  draft: PreviewAttributionDraft,
+  rawAmount: number | null,
+  role: 'primary' | 'secondary' | 'unassigned' = 'primary',
+): number {
+  const baseAmount = draft.creditAmount ?? rawAmount ?? 0;
+  if (draft.mode === 'soft_credit') return 0;
+  if (draft.mode === 'joint_split') {
+    const pct = role === 'secondary' ? Math.max(0, 100 - draft.splitPercent) : draft.splitPercent;
+    return Math.round((baseAmount * (pct / 100)) * 100) / 100;
+  }
+  return role === 'unassigned' ? 0 : baseAmount;
+}
+
 export function useTransformHubHouseholdReview({
   householdResult,
   peopleById,
   removedPersonIdsByHousehold,
   finalHouseholdDrafts,
   finalAttributionDrafts,
+  embeddedHouseholdDrafts,
   previewMatchByInputRef,
   mergedSourceRefsByRepresentative,
   representativeByAbsorbedRef,
@@ -44,6 +75,7 @@ export function useTransformHubHouseholdReview({
   summarizeAttributionDraft,
   previewRecordLabel,
   parseCurrencyAmount,
+  getPreviewRecordBaseAmount,
   previewRecords,
   ambiguousAttributionRefs,
 }: UseTransformHubHouseholdReviewArgs) {
@@ -95,10 +127,14 @@ export function useTransformHubHouseholdReview({
       const members = displayMemberGroups.map(([, groupedMembers]) => groupedMembers[0]).filter(Boolean);
       const draft = finalHouseholdDrafts[household.id] ?? buildInitialHouseholdDraft(household, rawMembers);
       const primaryMember = rawMembers.find((member) => member.id === draft.primaryPersonId) ?? members[0] ?? rawMembers[0] ?? null;
+      const getActiveAttributionDraft = (record: PreviewRecord, matchedPerson: CanonicalPerson | null) => {
+        const persistedDraft = finalAttributionDrafts[record.sourceRowRef] ?? buildInitialAttributionDraft(record, rawMembers, matchedPerson);
+        return embeddedHouseholdDrafts[household.id]?.[record.sourceRowRef] ?? persistedDraft;
+      };
       const relatedRecords = previewRecords.filter((record) => {
         const clusterContext = getRecordClusterContext(record);
         const defaultHouseholdId = clusterContext.householdIds.length === 1 ? clusterContext.householdIds[0] : null;
-        const attributionDraft = finalAttributionDrafts[record.sourceRowRef];
+        const attributionDraft = getActiveAttributionDraft(record, clusterContext.matchedPerson);
         const assignedHouseholdId = attributionDraft?.householdRemoved
           ? null
           : (attributionDraft?.householdId ?? defaultHouseholdId);
@@ -107,31 +143,31 @@ export function useTransformHubHouseholdReview({
       const memberBreakdown = displayMemberGroups.map(([, groupedMembers]) => {
         const representative = groupedMembers[0];
         const groupedMemberIds = new Set(groupedMembers.map((member) => member.id));
-        const memberRecords = relatedRecords.filter((record) => {
+        const memberRows = relatedRecords.map((record) => {
           const matchedPerson = getRecordClusterContext(record).matchedPerson;
-          const attributionDraft = finalAttributionDrafts[record.sourceRowRef] ?? buildInitialAttributionDraft(record, rawMembers, matchedPerson);
-          const assignedPersonId = attributionDraft.primaryPersonId ?? matchedPerson?.id ?? null;
-          return assignedPersonId ? groupedMemberIds.has(assignedPersonId) : false;
-        });
-        const totals = memberRecords
-          .map((record) => {
-            const matchedPerson = getRecordClusterContext(record).matchedPerson;
-            const attributionDraft = finalAttributionDrafts[record.sourceRowRef] ?? buildInitialAttributionDraft(record, rawMembers, matchedPerson);
-            return attributionDraft.creditAmount ?? parseCurrencyAmount(record.amount);
-          })
-          .filter((amount): amount is number => amount !== null);
+          const attributionDraft = getActiveAttributionDraft(record, matchedPerson);
+          const matchingMemberId = groupedMembers.find((member) => getMemberRoleForDraft(attributionDraft, member.id) !== 'unassigned')?.id ?? null;
+          if (!matchingMemberId || !groupedMemberIds.has(matchingMemberId)) return null;
+          const role = getMemberRoleForDraft(attributionDraft, matchingMemberId);
+          return {
+            amount: getEffectiveCreditAmount(attributionDraft, getPreviewRecordBaseAmount(record), role),
+            countsAsGift: role !== 'unassigned',
+          };
+        }).filter((row): row is { amount: number; countsAsGift: boolean } => Boolean(row));
+        const totals = memberRows
+          .map((row) => row.amount);
         return {
           personId: representative.id,
           name: [representative.firstName, representative.lastName].filter(Boolean).join(' ').trim() || representative.id,
           total: totals.reduce((sum, amount) => sum + amount, 0),
-          giftCount: memberRecords.length,
+          giftCount: memberRows.filter((row) => row.countsAsGift).length,
         };
       });
       const amounts = relatedRecords
         .map((record) => {
           const matchedPerson = getRecordClusterContext(record).matchedPerson;
-          const attributionDraft = finalAttributionDrafts[record.sourceRowRef] ?? buildInitialAttributionDraft(record, rawMembers, matchedPerson);
-          return attributionDraft.creditAmount ?? parseCurrencyAmount(record.amount);
+          const attributionDraft = getActiveAttributionDraft(record, matchedPerson);
+          return getEffectiveCreditAmount(attributionDraft, getPreviewRecordBaseAmount(record));
         })
         .filter((amount): amount is number => amount !== null);
       const years = new Set(
@@ -146,7 +182,7 @@ export function useTransformHubHouseholdReview({
       const lastGift = giftDates.length > 0 ? giftDates[giftDates.length - 1] : null;
       const attributionPreview = relatedRecords.map((record) => {
         const matchedPerson = getRecordClusterContext(record).matchedPerson;
-        const draft = finalAttributionDrafts[record.sourceRowRef] ?? buildInitialAttributionDraft(record, rawMembers, matchedPerson ?? null);
+        const draft = getActiveAttributionDraft(record, matchedPerson ?? null);
         const organization = draft.organizationName ? `${draft.organizationName} context` : null;
         const campaignFund = draft.campaignFund || [record.campaignName, record.fund].filter(Boolean).join(' · ');
         const summary = summarizeAttributionDraft(draft, members, matchedPerson ?? null);
@@ -154,7 +190,7 @@ export function useTransformHubHouseholdReview({
           recordId: record.id,
           sourceRowRef: record.sourceRowRef,
           label: previewRecordLabel(record),
-          amount: draft.creditAmount ?? parseCurrencyAmount(record.amount),
+          amount: getEffectiveCreditAmount(draft, getPreviewRecordBaseAmount(record)),
           summary: [summary, campaignFund, organization, draft.notes || null].filter(Boolean).join(' · '),
           draft,
         };
@@ -204,6 +240,7 @@ export function useTransformHubHouseholdReview({
     peopleById,
     finalHouseholdDrafts,
     finalAttributionDrafts,
+    embeddedHouseholdDrafts,
     previewMatchByInputRef,
     removedPersonIdsByHousehold,
     buildInitialHouseholdDraft,
@@ -211,6 +248,7 @@ export function useTransformHubHouseholdReview({
     summarizeAttributionDraft,
     previewRecordLabel,
     parseCurrencyAmount,
+    getPreviewRecordBaseAmount,
     previewRecords,
     ambiguousAttributionRefs,
     mergedSourceRefsByRepresentative,

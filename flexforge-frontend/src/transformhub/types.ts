@@ -279,6 +279,7 @@ export type TaxonomyCandidateGroup = {
   suggestedCanonicalLabel: string;
   members: TaxonomyCandidateMember[];
   status: 'pending' | 'merged' | 'separate';
+  aiSuggested?: boolean;
 };
 
 export type SessionTaxonomyGroup = {

@@ -17,6 +17,15 @@ export type PendingColumnMerge = {
   }>;
 };
 
+export type AutoMergedColumnMatch = {
+  id: string;
+  sourceFile: string;
+  incomingHeader: string;
+  targetHeader: string;
+  matchType: 'exact' | 'alias';
+  score: number | null;
+};
+
 export type AppendColumnDecision = {
   id: string;
   sourceFile: string;
@@ -38,6 +47,7 @@ type ParsedFileMergeState = {
   uploadedFiles: string[];
   canonicalHeaders: string[];
   pendingMerges: PendingColumnMerge[];
+  autoMergedColumns: AutoMergedColumnMatch[];
 };
 
 type ParsedFileWithMerge = ParsedFile & { mergeState?: ParsedFileMergeState };
@@ -47,18 +57,19 @@ const HEADER_ALIAS_GROUPS = [
   ['firstname', 'first', 'fname', 'givenname'],
   ['lastname', 'last', 'lname', 'surname', 'familyname'],
   ['fullname', 'name', 'donorname', 'displayname', 'entityname'],
-  ['phone', 'phonenumber', 'mobile', 'telephone'],
-  ['address', 'address1', 'street', 'streetaddress'],
+  ['phone', 'phonenumber', 'mobile', 'telephone', 'homephone', 'workphone', 'cellphone'],
+  ['address', 'address1', 'street', 'street1', 'streetaddress', 'addressline1'],
   ['postalcode', 'zipcode', 'zip'],
   ['date', 'giftdate', 'receiveddate', 'transactiondate'],
+  ['amount', 'giftamount', 'donationamount', 'grossamount', 'netamount', 'paymentamount'],
   ['fund', 'fundname'],
   ['appeal', 'appealname'],
   ['campaign', 'campaignname'],
-  ['amount', 'giftamount', 'donationamount'],
 ] as const;
 
 const SEMANTIC_REVIEW_HEADER_GROUPS = [
-  ['fund', 'fundname', 'campaign', 'campaignname'],
+  ['fund', 'fundname', 'program', 'campaign'],
+  ['campaign', 'campaignname', 'appeal', 'appealname'],
   ['paymentmethod', 'tendertype'],
   ['channel', 'sourcechannel'],
   ['receiptstatus', 'receiptflag'],
@@ -86,6 +97,82 @@ function resolveHeaderAlias(value: string): string {
 function resolveSemanticReviewGroup(value: string): readonly string[] | null {
   const normalized = normalizeHeaderKey(value);
   return SEMANTIC_REVIEW_HEADER_GROUPS.find((items) => (items as readonly string[]).includes(normalized)) ?? null;
+}
+
+type HeaderConcept =
+  | 'email'
+  | 'phone'
+  | 'address'
+  | 'postal_code'
+  | 'date'
+  | 'amount'
+  | 'payment_method'
+  | 'channel'
+  | 'receipt_status'
+  | 'external_id'
+  | 'fund'
+  | 'program'
+  | 'campaign'
+  | 'appeal'
+  | null;
+
+const AUTO_MERGE_CONCEPTS = new Set<Exclude<HeaderConcept, null>>([
+  'email',
+  'phone',
+  'address',
+  'postal_code',
+  'date',
+  'amount',
+  'payment_method',
+  'channel',
+  'receipt_status',
+]);
+
+const REVIEW_CONCEPT_FAMILIES: Array<Set<Exclude<HeaderConcept, null>>> = [
+  new Set(['fund', 'program', 'campaign', 'appeal']),
+  new Set(['external_id']),
+];
+
+function inferHeaderConcept(value: string): HeaderConcept {
+  const normalized = normalizeHeaderKey(value);
+  if (!normalized) return null;
+  if (/paymentmethod|tendertype/.test(normalized)) return 'payment_method';
+  if (/sourcechannel|channel/.test(normalized)) return 'channel';
+  if (/receiptstatus|receiptflag/.test(normalized)) return 'receipt_status';
+  if (/constituentid|externalid|contactid|customerid/.test(normalized)) return 'external_id';
+  if (normalized.includes('email')) return 'email';
+  if (/phone|mobile|telephone|cell/.test(normalized)) return 'phone';
+  if (/address|street|addr/.test(normalized)) return 'address';
+  if (/postal|zip/.test(normalized)) return 'postal_code';
+  if (/date|createdat|receiveddate|transactiondate|giftdate|processedat|settledat|submittedat/.test(normalized)) return 'date';
+  if (/amount|total|gross|net|proceeds/.test(normalized) && !normalized.includes('year')) return 'amount';
+  if (/fund|designation/.test(normalized)) return 'fund';
+  if (normalized.includes('program')) return 'program';
+  if (normalized.includes('appeal')) return 'appeal';
+  if (normalized.includes('campaign')) return 'campaign';
+  return null;
+}
+
+function areConceptsInSameReviewFamily(left: HeaderConcept, right: HeaderConcept): boolean {
+  if (!left || !right) return false;
+  return REVIEW_CONCEPT_FAMILIES.some((family) => family.has(left) && family.has(right));
+}
+
+function conceptReviewDistance(left: HeaderConcept, right: HeaderConcept): number {
+  if (!left || !right) return Number.POSITIVE_INFINITY;
+  if (left === right) return 0;
+  const fundraisingPriority: Record<'fund' | 'program' | 'campaign' | 'appeal', HeaderConcept[]> = {
+    fund: ['program', 'campaign', 'appeal'],
+    program: ['fund', 'campaign', 'appeal'],
+    campaign: ['appeal', 'fund', 'program'],
+    appeal: ['campaign', 'fund', 'program'],
+  };
+  if (left in fundraisingPriority) {
+    const priority = fundraisingPriority[left as 'fund' | 'program' | 'campaign' | 'appeal'];
+    const index = priority.indexOf(right);
+    if (index >= 0) return index + 1;
+  }
+  return 10;
 }
 
 function isSemanticReviewPair(left: string, right: string): boolean {
@@ -185,6 +272,195 @@ function getRawValues(record: PreviewRecord): Record<string, string> {
   return record?.rawValues ?? record?.values ?? {};
 }
 
+function money(value: string): string {
+  const cleaned = String(value || '').replace(/[^0-9.-]/g, '').trim();
+  if (!cleaned) return '';
+  const parsed = Number(cleaned);
+  if (!Number.isFinite(parsed)) return '';
+  return Math.abs(parsed).toFixed(2);
+}
+
+function valueFromParsedRow(row: ParsedFile['rows'][number], fieldMap: Record<string, string>, key: string): string {
+  return String(row.values[fieldMap[key] ?? ''] ?? '').trim();
+}
+
+function buildDisplayName(values: string[]): string {
+  return values.map((value) => String(value || '').trim()).filter(Boolean).join(' ').trim();
+}
+
+function splitTags(raw: string): string[] {
+  return String(raw || '').split(/[;,]/).map((tag) => tag.trim()).filter(Boolean);
+}
+
+function rebuildParsedPreview(parsedFile: ParsedFileWithMerge, schema: ResolvedSchema): ParsedFileWithMerge {
+  const existingRecordsByRef = new Map(
+    (parsedFile.preview?.records ?? []).map((record) => [String(record.sourceRowRef), record as PreviewRecord]),
+  );
+
+  // ── DEBUG ────────────────────────────────────────────────────────────────
+  console.group('[rebuildParsedPreview]');
+  console.log('schema.fieldMap used for rebuild:', schema.fieldMap);
+  console.log('existingRecordsByRef keys (first 5):', [...existingRecordsByRef.keys()].slice(0, 5));
+  console.log('total rows to rebuild:', parsedFile.rows.length, '| existing preview records:', existingRecordsByRef.size);
+  console.groupEnd();
+  // ── END DEBUG ────────────────────────────────────────────────────────────
+
+  const records: PreviewRecord[] = parsedFile.rows.map((row, index) => {
+    const existing = existingRecordsByRef.get(String(row.ref));
+    const rawValues = row.values as Record<string, string>;
+
+    // ── DEBUG: first 3 rows ──────────────────────────────────────────────
+    if (index < 3) {
+      const fm = (schema.fieldMap ?? {}) as Record<string, string>;
+      const check = (field: string) => {
+        const h = fm[field];
+        return h ? (rawValues[h] !== undefined ? `"${rawValues[h]}"` : `key "${h}" MISSING ❌`) : `no mapping ❌`;
+      };
+      console.log(`[rebuildParsedPreview] row[${index}] ref="${row.ref}" existing=${Boolean(existing)}`);
+      console.log(`  rawValues keys:`, Object.keys(rawValues));
+      console.log(`  entity_name/donor_name: ${check('entity_name')} / ${check('donor_name')}`);
+      console.log(`  email:       ${check('email')}`);
+      console.log(`  phone:       ${check('phone')}`);
+      console.log(`  address:     ${check('address')}`);
+      console.log(`  city:        ${check('city')}`);
+      console.log(`  state:       ${check('state')}`);
+      console.log(`  postal_code: ${check('postal_code')}`);
+      console.log(`  date:        ${check('date')}`);
+      console.log(`  amount:      ${check('amount')}`);
+      console.log(`  fund:        ${check('fund')}`);
+    }
+    // ── END DEBUG ────────────────────────────────────────────────────────
+
+    if (schema.fileClass === 'constituent') {
+      const firstName = valueFromParsedRow(row, schema.fieldMap, 'first_name');
+      const lastName = valueFromParsedRow(row, schema.fieldMap, 'last_name');
+      const organizationName = valueFromParsedRow(row, schema.fieldMap, 'organization_name');
+      const householdName = valueFromParsedRow(row, schema.fieldMap, 'household_name');
+      return {
+        ...(existing ?? {}),
+        id: existing?.id ?? `constituent-${index + 1}`,
+        sourceRowRef: row.ref,
+        displayName: organizationName || buildDisplayName([firstName, lastName]) || householdName || row.ref,
+        constituentType: valueFromParsedRow(row, schema.fieldMap, 'constituent_type'),
+        firstName,
+        lastName,
+        organizationName,
+        householdName,
+        email: valueFromParsedRow(row, schema.fieldMap, 'email'),
+        phone: valueFromParsedRow(row, schema.fieldMap, 'phone'),
+        address: valueFromParsedRow(row, schema.fieldMap, 'address'),
+        city: valueFromParsedRow(row, schema.fieldMap, 'city'),
+        state: valueFromParsedRow(row, schema.fieldMap, 'state'),
+        postalCode: valueFromParsedRow(row, schema.fieldMap, 'postal_code'),
+        country: valueFromParsedRow(row, schema.fieldMap, 'country'),
+        tags: splitTags(valueFromParsedRow(row, schema.fieldMap, 'tags')),
+        assignedStaff: valueFromParsedRow(row, schema.fieldMap, 'assigned_staff'),
+        createdAt: valueFromParsedRow(row, schema.fieldMap, 'created_at'),
+        updatedAt: valueFromParsedRow(row, schema.fieldMap, 'updated_at'),
+        rawValues,
+        values: rawValues,
+      } as PreviewRecord;
+    }
+
+    if (schema.fileClass === 'donor') {
+      const firstName = valueFromParsedRow(row, schema.fieldMap, 'first_name');
+      const lastName = valueFromParsedRow(row, schema.fieldMap, 'last_name');
+      const organizationName = valueFromParsedRow(row, schema.fieldMap, 'organization_name');
+      const householdName = valueFromParsedRow(row, schema.fieldMap, 'household_name');
+      const donorName = valueFromParsedRow(row, schema.fieldMap, 'donor_name')
+        || valueFromParsedRow(row, schema.fieldMap, 'entity_name')
+        || buildDisplayName([firstName, lastName])
+        || organizationName
+        || householdName
+        || row.ref;
+      return {
+        ...(existing ?? {}),
+        id: existing?.id ?? `donor-${index + 1}`,
+        sourceRowRef: row.ref,
+        donorName,
+        firstName,
+        lastName,
+        organizationName,
+        householdName,
+        date: valueFromParsedRow(row, schema.fieldMap, 'date'),
+        amount: money(valueFromParsedRow(row, schema.fieldMap, 'amount')),
+        fund: valueFromParsedRow(row, schema.fieldMap, 'fund'),
+        appeal: valueFromParsedRow(row, schema.fieldMap, 'appeal'),
+        email: valueFromParsedRow(row, schema.fieldMap, 'email'),
+        phone: valueFromParsedRow(row, schema.fieldMap, 'phone'),
+        address: valueFromParsedRow(row, schema.fieldMap, 'address'),
+        city: valueFromParsedRow(row, schema.fieldMap, 'city'),
+        state: valueFromParsedRow(row, schema.fieldMap, 'state'),
+        postalCode: valueFromParsedRow(row, schema.fieldMap, 'postal_code'),
+        tags: splitTags(valueFromParsedRow(row, schema.fieldMap, 'tags')),
+        assignedStaff: valueFromParsedRow(row, schema.fieldMap, 'assigned_staff'),
+        memo: valueFromParsedRow(row, schema.fieldMap, 'memo'),
+        currency: valueFromParsedRow(row, schema.fieldMap, 'currency') || 'USD',
+        rawValues,
+        values: rawValues,
+      } as PreviewRecord;
+    }
+
+    if (schema.fileClass === 'campaign') {
+      return {
+        ...(existing ?? {}),
+        id: existing?.id ?? `campaign-${index + 1}`,
+        sourceRowRef: row.ref,
+        code: valueFromParsedRow(row, schema.fieldMap, 'code'),
+        campaignName: valueFromParsedRow(row, schema.fieldMap, 'campaign_name') || row.ref,
+        startDate: valueFromParsedRow(row, schema.fieldMap, 'start_date'),
+        endDate: valueFromParsedRow(row, schema.fieldMap, 'end_date'),
+        status: valueFromParsedRow(row, schema.fieldMap, 'status'),
+        goalAmount: money(valueFromParsedRow(row, schema.fieldMap, 'goal_amount')),
+        rawValues,
+        values: rawValues,
+      } as PreviewRecord;
+    }
+
+    if (schema.fileClass === 'coa') {
+      return {
+        ...(existing ?? {}),
+        id: existing?.id ?? `coa-${index + 1}`,
+        sourceRowRef: row.ref,
+        accountCode: valueFromParsedRow(row, schema.fieldMap, 'account_code'),
+        accountName: valueFromParsedRow(row, schema.fieldMap, 'account_name'),
+        accountType: valueFromParsedRow(row, schema.fieldMap, 'account_type'),
+        balance: money(valueFromParsedRow(row, schema.fieldMap, 'balance')),
+        rawValues,
+        values: rawValues,
+      } as PreviewRecord;
+    }
+
+    const preview = Object.entries(rawValues)
+      .filter(([, value]) => String(value || '').trim())
+      .slice(0, 3)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join(' · ');
+    return {
+      ...(existing ?? {}),
+      id: existing?.id ?? `unknown-${index + 1}`,
+      sourceRowRef: row.ref,
+      preview: preview || row.ref,
+      values: rawValues,
+      rawValues,
+    } as PreviewRecord;
+  });
+
+  return {
+    ...parsedFile,
+    preview: {
+      fileClass: schema.fileClass,
+      canonicalModel: schema.canonicalModel,
+      summary: {
+        rowCount: records.length,
+        populatedFields: parsedFile.headers.length,
+        primaryLabel: parsedFile.preview?.summary.primaryLabel ?? schema.reportType,
+      },
+      records,
+    },
+  };
+}
+
 function remapRawValues(rawValues: Record<string, string> | undefined, headerMap: Map<string, string>): Record<string, string> {
   return Object.entries(rawValues ?? {}).reduce<Record<string, string>>((acc, [header, value]) => {
     acc[headerMap.get(header) ?? header] = value;
@@ -209,13 +485,20 @@ function prepareSchemaForMergedHeaders(schema: ResolvedSchema): ResolvedSchema {
   };
 }
 
-function ensureMergeState(parsedFile: ParsedFileWithMerge, uploadedFiles: string[], canonicalHeaders: string[], pendingMerges: PendingColumnMerge[] = []): ParsedFileWithMerge {
+function ensureMergeState(
+  parsedFile: ParsedFileWithMerge,
+  uploadedFiles: string[],
+  canonicalHeaders: string[],
+  pendingMerges: PendingColumnMerge[] = [],
+  autoMergedColumns: AutoMergedColumnMatch[] = [],
+): ParsedFileWithMerge {
   return {
     ...parsedFile,
     mergeState: {
       uploadedFiles,
       canonicalHeaders,
       pendingMerges,
+      autoMergedColumns,
     },
   };
 }
@@ -279,9 +562,13 @@ function mergeSchemas(current: ResolvedSchema, incoming: ResolvedSchema): Resolv
     confidence: Math.min(current.confidence, incoming.confidence),
     expectedFields: Array.from(new Set([...(current.expectedFields ?? []), ...(incoming.expectedFields ?? [])])),
     unresolvedFields: Array.from(new Set([...(current.unresolvedFields ?? []), ...(incoming.unresolvedFields ?? [])])),
+    // Current schema has the actual raw header names in use (applyHeaderMergePlan maps incoming
+    // rows to current's header names). Incoming's prepared fieldMap has canonical-key-as-value
+    // entries (e.g. date→'date') which are wrong once the plan renames the rows back. Let current
+    // take precedence for shared fields; incoming fills in any fields the current doesn't have.
     fieldMap: {
-      ...(current.fieldMap ?? {}),
       ...(incoming.fieldMap ?? {}),
+      ...(current.fieldMap ?? {}),
     },
     fieldSuggestions: [],
   };
@@ -399,6 +686,46 @@ export function buildAppendColumnDecisions(
       } satisfies AppendColumnDecision;
     }
 
+    const incomingConcept = inferHeaderConcept(incomingHeader);
+    if (incomingConcept && AUTO_MERGE_CONCEPTS.has(incomingConcept)) {
+      const conceptAlias = existingHeaders.find((header) => inferHeaderConcept(header) === incomingConcept);
+      if (conceptAlias) {
+        const needsReview = shouldReviewColumnMerge(existingSource, incomingSource, conceptAlias, incomingHeader);
+        const sampleConflicts = needsReview ? collectColumnConflictSamples(existingSource, incomingSource, conceptAlias, incomingHeader) : undefined;
+        return {
+          id: `${sourceFile}::${incomingHeader}::${conceptAlias}`,
+          sourceFile,
+          incomingHeader,
+          suggestedHeader: conceptAlias,
+          targetHeader: conceptAlias,
+          matchType: 'alias',
+          score: null,
+          action: needsReview ? 'review' : 'merge',
+          sampleConflicts,
+        } satisfies AppendColumnDecision;
+      }
+    }
+
+    if (incomingConcept) {
+      const conceptReview = existingHeaders
+        .map((header) => ({ header, concept: inferHeaderConcept(header) }))
+        .filter(({ concept }) => areConceptsInSameReviewFamily(concept, incomingConcept))
+        .sort((left, right) => conceptReviewDistance(incomingConcept, left.concept) - conceptReviewDistance(incomingConcept, right.concept))[0]?.header;
+      if (conceptReview) {
+        return {
+          id: `${sourceFile}::${incomingHeader}::${conceptReview}`,
+          sourceFile,
+          incomingHeader,
+          suggestedHeader: conceptReview,
+          targetHeader: conceptReview,
+          matchType: 'alias',
+          score: null,
+          action: 'review',
+          sampleConflicts: collectColumnConflictSamples(existingSource, incomingSource, conceptReview, incomingHeader),
+        } satisfies AppendColumnDecision;
+      }
+    }
+
     return {
       id: `${sourceFile}::${incomingHeader}::new`,
       sourceFile,
@@ -417,6 +744,7 @@ function buildHeaderPlanFromDecisions(existingHeaders: string[], decisions: Appe
   const headerMap = new Map<string, string>();
   const droppedHeaders = new Set<string>();
   const pendingMerges: PendingColumnMerge[] = [];
+  const autoMergedColumns: AutoMergedColumnMatch[] = [];
 
   decisions.forEach((decision) => {
     if (decision.action === 'drop') {
@@ -436,12 +764,22 @@ function buildHeaderPlanFromDecisions(existingHeaders: string[], decisions: Appe
       });
     }
     const canMerge = decision.action === 'merge' && decision.targetHeader && existingHeaders.includes(decision.targetHeader);
+    if (canMerge && (decision.matchType === 'exact' || decision.matchType === 'alias')) {
+      autoMergedColumns.push({
+        id: decision.id,
+        sourceFile: decision.sourceFile,
+        incomingHeader: decision.incomingHeader,
+        targetHeader: decision.targetHeader!,
+        matchType: decision.matchType,
+        score: decision.score,
+      });
+    }
     const target = canMerge ? decision.targetHeader! : decision.incomingHeader;
     headerMap.set(decision.incomingHeader, target);
     if (!mergedHeaders.includes(target)) mergedHeaders.push(target);
   });
 
-  return { headerMap, droppedHeaders, mergedHeaders, pendingMerges };
+  return { headerMap, droppedHeaders, mergedHeaders, pendingMerges, autoMergedColumns };
 }
 
 function rewriteValuesWithPlan(values: Record<string, string>, headerMap: Map<string, string>, droppedHeaders: Set<string>): Record<string, string> {
@@ -483,6 +821,10 @@ function applyHeaderMergePlan(parsedFile: ParsedFileWithMerge, plan: ReturnType<
       ...(parsedFile.mergeState?.pendingMerges ?? []),
       ...plan.pendingMerges.filter((merge) => !(parsedFile.mergeState?.pendingMerges ?? []).some((current) => current.id === merge.id)),
     ],
+    [
+      ...(parsedFile.mergeState?.autoMergedColumns ?? []),
+      ...plan.autoMergedColumns.filter((merge) => !(parsedFile.mergeState?.autoMergedColumns ?? []).some((current) => current.id === merge.id)),
+    ],
   );
 }
 
@@ -497,7 +839,11 @@ export function prepareIncomingUpload(
   const mappedHeaders = new Map<string, string>();
   const normalizedHeaderLabels = new Map<string, string>();
 
-  Object.entries(preparedSchema.fieldMap ?? {}).forEach(([canonicalKey, header]) => {
+  // Use the ORIGINAL schema (not the prepared one) so raw header names like 'gift_date',
+  // 'home_phone', 'address1' are correctly mapped to their canonical keys when renaming
+  // the incoming file's headers. prepareSchemaForMergedHeaders replaces raw header values
+  // with canonical keys (e.g. gift_date→date), which breaks the lookup.
+  Object.entries(schema.fieldMap ?? {}).forEach(([canonicalKey, header]) => {
     if (!header) return;
     mappedHeaders.set(header, canonicalKey);
     normalizedHeaderLabels.set(normalizeHeaderKey(header), canonicalKey);
@@ -526,7 +872,7 @@ export function prepareIncomingUpload(
     );
   });
 
-  const preparedParsedFile = ensureMergeState(
+  const preparedParsedFile = rebuildParsedPreview(ensureMergeState(
     {
       ...parsedFile,
       fileName: `${parsedFile.fileName} [${namespace}]`,
@@ -564,7 +910,8 @@ export function prepareIncomingUpload(
     [fileName],
     remappedHeaders,
     [],
-  );
+    [],
+  ), preparedSchema);
 
   const preparedRows = rows.map((row) => ({
     ...row,
@@ -599,31 +946,75 @@ export function mergeUploadIntoExisting(input: {
   const plan = buildHeaderPlanFromDecisions(input.currentParsedFile.headers, decisions);
   const plannedIncoming = applyHeaderMergePlan(input.incomingParsedFile, plan);
   const nextSchema = mergeSchemas(input.currentSchema, input.incomingSchema);
+
+  // ── DEBUG ────────────────────────────────────────────────────────────────
+  const DEBUG_FIELDS = ['entity_name', 'donor_name', 'email', 'phone', 'address', 'city', 'state', 'postal_code', 'date', 'amount', 'fund', 'appeal', 'first_name', 'last_name'] as const;
+  function resolveFieldInRow(fieldMap: Record<string, string>, key: string, rowValues: Record<string, string>): string {
+    const header = fieldMap[key];
+    if (!header) return `(no mapping for "${key}")`;
+    const value = rowValues[header];
+    return value !== undefined ? `"${value}"` : `(key "${header}" not found in row)`;
+  }
+
+  console.group('[mergeUploadIntoExisting] append diagnostics');
+  console.log('S1 headers:', input.currentParsedFile.headers);
+  console.log('S2 prepared headers (before plan):', input.incomingParsedFile.headers);
+  console.log('S2 headers after plan:', plannedIncoming.headers);
+  console.log('plan.headerMap (S2-canonical → S1-target):', Object.fromEntries(plan.headerMap));
+  console.log('S1 schema fieldMap:', input.currentSchema.fieldMap);
+  console.log('S2 schema fieldMap (pre-merge, should have canonical keys):', input.incomingSchema.fieldMap);
+  console.log('merged nextSchema fieldMap (what rebuildParsedPreview will use):', nextSchema.fieldMap);
+
+  // For each tracked field, show: what header the merged schema points to,
+  // and whether that header actually exists in an S1 row vs an S2 row.
+  const s1SampleRow = input.currentParsedFile.rows[0];
+  const s2SampleRow = plannedIncoming.rows[0];
+  const mergedFM = (nextSchema.fieldMap ?? {}) as Record<string, string>;
+  console.group('Field resolution check on row[0] of each file after merge:');
+  DEBUG_FIELDS.forEach((field) => {
+    const header = mergedFM[field];
+    const s1Val = s1SampleRow ? s1SampleRow.values[header ?? ''] : undefined;
+    const s2Val = s2SampleRow ? s2SampleRow.values[header ?? ''] : undefined;
+    if (s1Val === undefined || s2Val === undefined) {
+      console.warn(`  ${field} → header="${header}" | S1 row: ${s1Val === undefined ? 'MISSING ❌' : `"${s1Val}"`} | S2 row: ${s2Val === undefined ? 'MISSING ❌' : `"${s2Val}"`}`);
+    } else {
+      console.log(`  ${field} → header="${header}" | S1: "${s1Val}" | S2: "${s2Val}"`);
+    }
+  });
+  console.groupEnd();
+
+  // Show first S1 preview record before rebuild so we can compare after
+  const firstS1Preview = input.currentParsedFile.preview?.records?.[0] as any;
+  if (firstS1Preview) {
+    console.log('S1 preview record[0] BEFORE rebuild:', {
+      sourceRowRef: firstS1Preview.sourceRowRef,
+      donorName: firstS1Preview.donorName,
+      email: firstS1Preview.email,
+      phone: firstS1Preview.phone,
+      address: firstS1Preview.address,
+      city: firstS1Preview.city,
+      state: firstS1Preview.state,
+      postalCode: firstS1Preview.postalCode,
+      date: firstS1Preview.date,
+    });
+  }
+  console.groupEnd();
+  // ── END DEBUG ────────────────────────────────────────────────────────────
   const mergedHeaders = Array.from(new Set([...(input.currentParsedFile.headers ?? []), ...(plannedIncoming.headers ?? [])]));
   const mergedParsedFile = markNeedsPersonResolveOnParsedFile(
-    ensureMergeState(
+    rebuildParsedPreview(ensureMergeState(
       {
         ...input.currentParsedFile,
         fileName: `${input.currentParsedFile.fileName} + ${plannedIncoming.fileName}`,
         headers: mergedHeaders,
         rows: [...(input.currentParsedFile.rows ?? []), ...(plannedIncoming.rows ?? [])],
-        preview: input.currentParsedFile.preview || plannedIncoming.preview
-          ? {
-              fileClass: plannedIncoming.preview?.fileClass ?? input.currentParsedFile.preview?.fileClass ?? nextSchema.fileClass,
-              canonicalModel: plannedIncoming.preview?.canonicalModel ?? input.currentParsedFile.preview?.canonicalModel ?? nextSchema.canonicalModel,
-              summary: {
-                rowCount: [...(input.currentParsedFile.preview?.records ?? []), ...(plannedIncoming.preview?.records ?? [])].length,
-                populatedFields: mergedHeaders.length,
-                primaryLabel: plannedIncoming.preview?.summary.primaryLabel ?? input.currentParsedFile.preview?.summary.primaryLabel ?? nextSchema.reportType,
-              },
-              records: [...(input.currentParsedFile.preview?.records ?? []), ...(plannedIncoming.preview?.records ?? [])],
-            }
-          : undefined,
+        preview: input.currentParsedFile.preview || plannedIncoming.preview,
       },
       Array.from(new Set([...(input.currentParsedFile as ParsedFileWithMerge).mergeState?.uploadedFiles ?? [], ...(plannedIncoming.mergeState?.uploadedFiles ?? [])])),
       mergedHeaders,
       Array.from(new Map([...(input.currentParsedFile as ParsedFileWithMerge).mergeState?.pendingMerges ?? [], ...(plannedIncoming.mergeState?.pendingMerges ?? [])].map((merge) => [merge.id, merge])).values()),
-    ),
+      Array.from(new Map([...(input.currentParsedFile as ParsedFileWithMerge).mergeState?.autoMergedColumns ?? [], ...(plannedIncoming.mergeState?.autoMergedColumns ?? [])].map((merge) => [merge.id, merge])).values()),
+    ), nextSchema),
     nextSchema.fileClass,
   );
 
@@ -650,7 +1041,7 @@ function isLegacyTextValueColumnReview(merge: PendingColumnMerge): boolean {
   );
 }
 
-export function resolvePendingColumnMerge(parsedFile: ParsedFile, merge: PendingColumnMerge, action: 'combine' | 'keep_separate' | 'keep_s1' | 'keep_s2'): ParsedFile {
+export function resolvePendingColumnMerge(parsedFile: ParsedFile, merge: PendingColumnMerge, action: 'combine' | 'keep_separate' | 'keep_s1' | 'keep_s2', schema?: ResolvedSchema | null): ParsedFile {
   const current = parsedFile as ParsedFileWithMerge;
   if (action === 'keep_separate') {
     const nextHeaders = current.headers.map((header) => (header === merge.incomingHeader ? merge.splitHeader : header));
@@ -662,7 +1053,7 @@ export function resolvePendingColumnMerge(parsedFile: ParsedFile, merge: Pending
       }
       return next;
     };
-    return ensureMergeState(
+    const nextParsedFile = ensureMergeState(
       {
         ...current,
         headers: nextHeaders,
@@ -688,7 +1079,9 @@ export function resolvePendingColumnMerge(parsedFile: ParsedFile, merge: Pending
       current.mergeState?.uploadedFiles ?? [],
       nextHeaders,
       (current.mergeState?.pendingMerges ?? []).filter((item) => item.id !== merge.id),
+      current.mergeState?.autoMergedColumns ?? [],
     );
+    return schema ? rebuildParsedPreview(nextParsedFile, schema) : nextParsedFile;
   }
 
   const rewrite = (values: Record<string, string>) => {
@@ -711,7 +1104,7 @@ export function resolvePendingColumnMerge(parsedFile: ParsedFile, merge: Pending
   };
 
   const nextHeaders = current.headers.filter((header) => header !== merge.incomingHeader);
-  return ensureMergeState(
+  const nextParsedFile = ensureMergeState(
     {
       ...current,
       headers: nextHeaders,
@@ -737,7 +1130,9 @@ export function resolvePendingColumnMerge(parsedFile: ParsedFile, merge: Pending
     current.mergeState?.uploadedFiles ?? [],
     nextHeaders,
     (current.mergeState?.pendingMerges ?? []).filter((item) => item.id !== merge.id),
+    current.mergeState?.autoMergedColumns ?? [],
   );
+  return schema ? rebuildParsedPreview(nextParsedFile, schema) : nextParsedFile;
 }
 
 // ─── Merge strategy detection ────────────────────────────────────────────────

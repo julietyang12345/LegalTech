@@ -119,6 +119,11 @@ export class TransformHubController {
     return this.service.taxonomyEvaluate(dto);
   }
 
+  @Post('taxonomy-group-suggest')
+  taxonomyGroupSuggest(@Body() body: { values: Array<{ id: string; rawValue: string; objectType: string }> }) {
+    return this.service.taxonomyGroupSuggest(body);
+  }
+
   @Post('taxonomy-exceptions/:id/resolve')
   resolveTaxonomyException(@Param('id') id: string, @Body() dto: ResolveTaxonomyExceptionDto) {
     return this.service.resolveTaxonomyException(id, dto);
