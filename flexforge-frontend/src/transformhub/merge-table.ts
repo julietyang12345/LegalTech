@@ -4,6 +4,7 @@ export type PendingColumnMerge = {
   id: string;
   sourceFile: string;
   incomingHeader: string;
+  originalIncomingHeader?: string | null;
   suggestedHeader: string;
   splitHeader: string;
   matchType: 'exact' | 'alias' | 'fuzzy';
@@ -21,6 +22,7 @@ export type AutoMergedColumnMatch = {
   id: string;
   sourceFile: string;
   incomingHeader: string;
+  originalIncomingHeader?: string | null;
   targetHeader: string;
   matchType: 'exact' | 'alias';
   score: number | null;
@@ -30,6 +32,7 @@ export type AppendColumnDecision = {
   id: string;
   sourceFile: string;
   incomingHeader: string;
+  originalIncomingHeader?: string | null;
   suggestedHeader: string | null;
   targetHeader: string | null;
   matchType: 'exact' | 'alias' | 'fuzzy' | 'new';
@@ -48,6 +51,7 @@ type ParsedFileMergeState = {
   canonicalHeaders: string[];
   pendingMerges: PendingColumnMerge[];
   autoMergedColumns: AutoMergedColumnMatch[];
+  rawHeaderLabelsByMergedHeader?: Record<string, string>;
 };
 
 type ParsedFileWithMerge = ParsedFile & { mergeState?: ParsedFileMergeState };
@@ -297,39 +301,9 @@ function rebuildParsedPreview(parsedFile: ParsedFileWithMerge, schema: ResolvedS
     (parsedFile.preview?.records ?? []).map((record) => [String(record.sourceRowRef), record as PreviewRecord]),
   );
 
-  // ── DEBUG ────────────────────────────────────────────────────────────────
-  console.group('[rebuildParsedPreview]');
-  console.log('schema.fieldMap used for rebuild:', schema.fieldMap);
-  console.log('existingRecordsByRef keys (first 5):', [...existingRecordsByRef.keys()].slice(0, 5));
-  console.log('total rows to rebuild:', parsedFile.rows.length, '| existing preview records:', existingRecordsByRef.size);
-  console.groupEnd();
-  // ── END DEBUG ────────────────────────────────────────────────────────────
-
   const records: PreviewRecord[] = parsedFile.rows.map((row, index) => {
     const existing = existingRecordsByRef.get(String(row.ref));
     const rawValues = row.values as Record<string, string>;
-
-    // ── DEBUG: first 3 rows ──────────────────────────────────────────────
-    if (index < 3) {
-      const fm = (schema.fieldMap ?? {}) as Record<string, string>;
-      const check = (field: string) => {
-        const h = fm[field];
-        return h ? (rawValues[h] !== undefined ? `"${rawValues[h]}"` : `key "${h}" MISSING ❌`) : `no mapping ❌`;
-      };
-      console.log(`[rebuildParsedPreview] row[${index}] ref="${row.ref}" existing=${Boolean(existing)}`);
-      console.log(`  rawValues keys:`, Object.keys(rawValues));
-      console.log(`  entity_name/donor_name: ${check('entity_name')} / ${check('donor_name')}`);
-      console.log(`  email:       ${check('email')}`);
-      console.log(`  phone:       ${check('phone')}`);
-      console.log(`  address:     ${check('address')}`);
-      console.log(`  city:        ${check('city')}`);
-      console.log(`  state:       ${check('state')}`);
-      console.log(`  postal_code: ${check('postal_code')}`);
-      console.log(`  date:        ${check('date')}`);
-      console.log(`  amount:      ${check('amount')}`);
-      console.log(`  fund:        ${check('fund')}`);
-    }
-    // ── END DEBUG ────────────────────────────────────────────────────────
 
     if (schema.fileClass === 'constituent') {
       const firstName = valueFromParsedRow(row, schema.fieldMap, 'first_name');
@@ -385,6 +359,7 @@ function rebuildParsedPreview(parsedFile: ParsedFileWithMerge, schema: ResolvedS
         date: valueFromParsedRow(row, schema.fieldMap, 'date'),
         amount: money(valueFromParsedRow(row, schema.fieldMap, 'amount')),
         fund: valueFromParsedRow(row, schema.fieldMap, 'fund'),
+        campaignName: valueFromParsedRow(row, schema.fieldMap, 'campaign_name'),
         appeal: valueFromParsedRow(row, schema.fieldMap, 'appeal'),
         email: valueFromParsedRow(row, schema.fieldMap, 'email'),
         phone: valueFromParsedRow(row, schema.fieldMap, 'phone'),
@@ -478,6 +453,45 @@ function prepareSchemaForMergedHeaders(schema: ResolvedSchema): ResolvedSchema {
     acc[canonicalKey] = mergedHeader;
     return acc;
   }, {});
+
+  return {
+    ...schema,
+    fieldMap: nextFieldMap,
+  };
+}
+
+function findPreferredHeader(headers: string[], preferredNormalizedHeaders: string[]): string | null {
+  const preferred = new Set(preferredNormalizedHeaders);
+  return headers.find((header) => preferred.has(normalizeHeaderKey(header))) ?? null;
+}
+
+function applyHeaderHeuristicsToSchema(schema: ResolvedSchema, headers: string[]): ResolvedSchema {
+  if (schema.fileClass !== 'donor' && schema.fileClass !== 'ledger') return schema;
+
+  const nextFieldMap = { ...(schema.fieldMap ?? {}) } as Record<string, string>;
+  const maybeOverride = (canonicalKey: string, preferredNormalizedHeaders: string[]) => {
+    const preferredHeader = findPreferredHeader(headers, preferredNormalizedHeaders);
+    if (!preferredHeader) return;
+    const currentHeader = nextFieldMap[canonicalKey];
+    const currentNormalized = normalizeHeaderKey(currentHeader ?? '');
+    if (preferredNormalizedHeaders.includes(currentNormalized)) return;
+    nextFieldMap[canonicalKey] = preferredHeader;
+  };
+
+  // Fundraising transaction headers need stronger guardrails than the generic schema guesser.
+  // In multi-source donor uploads we often see:
+  // program -> fund
+  // campaign_name -> campaign
+  // appeal_name -> appeal
+  // If we collapse these incorrectly during prepareIncomingUpload, the original meaning is lost.
+  maybeOverride('fund', ['fund', 'fundname', 'designation', 'program', 'programname']);
+  maybeOverride('campaign_name', ['campaign', 'campaignname']);
+  maybeOverride('appeal', ['appeal', 'appealname']);
+
+  maybeOverride('address', ['address', 'address1', 'street1', 'street', 'streetaddress', 'addressline1']);
+  maybeOverride('phone', ['phone', 'phonenumber', 'homephone', 'mobile', 'telephone', 'cellphone', 'workphone']);
+  maybeOverride('email', ['email', 'emailaddress', 'email_address', 'e-mail', 'e-mailaddress']);
+  maybeOverride('postal_code', ['postalcode', 'zipcode', 'zip']);
 
   return {
     ...schema,
@@ -588,6 +602,24 @@ function resolveSchemaTarget(header: string, targetMap: Map<string, string>): st
   return targetMap.get(normalizeHeaderKey(header)) ?? null;
 }
 
+function buildCanonicalToRawHeaderMap(schema: ResolvedSchema | null | undefined): Map<string, string> {
+  const reverse = new Map<string, string>();
+  Object.entries(schema?.fieldMap ?? {}).forEach(([canonicalKey, rawHeader]) => {
+    if (!canonicalKey || !rawHeader) return;
+    reverse.set(normalizeHeaderKey(canonicalKey), rawHeader);
+  });
+  return reverse;
+}
+
+function buildPreparedRawHeaderMap(parsedFile: ParsedFileWithMerge | null | undefined): Map<string, string> {
+  const reverse = new Map<string, string>();
+  Object.entries(parsedFile?.mergeState?.rawHeaderLabelsByMergedHeader ?? {}).forEach(([mergedHeader, rawHeader]) => {
+    if (!mergedHeader || !rawHeader) return;
+    reverse.set(normalizeHeaderKey(mergedHeader), rawHeader);
+  });
+  return reverse;
+}
+
 export function buildAppendColumnDecisions(
   existingSource: string[] | ParsedFile,
   incomingSource: string[] | ParsedFile,
@@ -598,7 +630,12 @@ export function buildAppendColumnDecisions(
   const incomingHeaders = Array.isArray(incomingSource) ? incomingSource : incomingSource.headers;
   const existingSchemaTargets = buildSchemaTargetMap(options.existingSchema);
   const incomingSchemaTargets = buildSchemaTargetMap(options.incomingSchema);
+  const incomingCanonicalToRawHeader = buildCanonicalToRawHeaderMap(options.incomingSchema);
+  const preparedIncomingRawHeaders = Array.isArray(incomingSource) ? new Map<string, string>() : buildPreparedRawHeaderMap(incomingSource);
   return incomingHeaders.map((incomingHeader) => {
+    const originalIncomingHeader = preparedIncomingRawHeaders.get(normalizeHeaderKey(incomingHeader))
+      ?? incomingCanonicalToRawHeader.get(normalizeHeaderKey(incomingHeader))
+      ?? incomingHeader;
     const exact = existingHeaders.find((header) => normalizeHeaderKey(header) === normalizeHeaderKey(incomingHeader));
     if (exact) {
       const needsReview = shouldReviewColumnMerge(existingSource, incomingSource, exact, incomingHeader);
@@ -607,6 +644,7 @@ export function buildAppendColumnDecisions(
         id: `${sourceFile}::${incomingHeader}::${exact}`,
         sourceFile,
         incomingHeader,
+        originalIncomingHeader,
         suggestedHeader: exact,
         targetHeader: exact,
         matchType: 'exact',
@@ -627,6 +665,7 @@ export function buildAppendColumnDecisions(
         id: `${sourceFile}::${incomingHeader}::${schemaAlias}`,
         sourceFile,
         incomingHeader,
+        originalIncomingHeader,
         suggestedHeader: schemaAlias,
         targetHeader: schemaAlias,
         matchType: 'alias',
@@ -644,6 +683,7 @@ export function buildAppendColumnDecisions(
         id: `${sourceFile}::${incomingHeader}::${alias}`,
         sourceFile,
         incomingHeader,
+        originalIncomingHeader,
         suggestedHeader: alias,
         targetHeader: alias,
         matchType: 'alias',
@@ -659,6 +699,7 @@ export function buildAppendColumnDecisions(
         id: `${sourceFile}::${incomingHeader}::${semanticReview}`,
         sourceFile,
         incomingHeader,
+        originalIncomingHeader,
         suggestedHeader: semanticReview,
         targetHeader: semanticReview,
         matchType: 'alias',
@@ -677,6 +718,7 @@ export function buildAppendColumnDecisions(
         id: `${sourceFile}::${incomingHeader}::${scored.header}`,
         sourceFile,
         incomingHeader,
+        originalIncomingHeader,
         suggestedHeader: scored.header,
         targetHeader: scored.header,
         matchType: 'fuzzy',
@@ -696,6 +738,7 @@ export function buildAppendColumnDecisions(
           id: `${sourceFile}::${incomingHeader}::${conceptAlias}`,
           sourceFile,
           incomingHeader,
+          originalIncomingHeader,
           suggestedHeader: conceptAlias,
           targetHeader: conceptAlias,
           matchType: 'alias',
@@ -716,6 +759,7 @@ export function buildAppendColumnDecisions(
           id: `${sourceFile}::${incomingHeader}::${conceptReview}`,
           sourceFile,
           incomingHeader,
+          originalIncomingHeader,
           suggestedHeader: conceptReview,
           targetHeader: conceptReview,
           matchType: 'alias',
@@ -730,6 +774,7 @@ export function buildAppendColumnDecisions(
       id: `${sourceFile}::${incomingHeader}::new`,
       sourceFile,
       incomingHeader,
+      originalIncomingHeader,
       suggestedHeader: null,
       targetHeader: null,
       matchType: 'new',
@@ -756,6 +801,7 @@ function buildHeaderPlanFromDecisions(existingHeaders: string[], decisions: Appe
         id: decision.id,
         sourceFile: decision.sourceFile,
         incomingHeader: decision.incomingHeader,
+        originalIncomingHeader: decision.originalIncomingHeader,
         suggestedHeader: decision.suggestedHeader,
         splitHeader: buildIncomingSplitHeader([...mergedHeaders, decision.incomingHeader], decision.suggestedHeader),
         matchType: decision.matchType === 'new' ? 'fuzzy' : decision.matchType,
@@ -769,6 +815,7 @@ function buildHeaderPlanFromDecisions(existingHeaders: string[], decisions: Appe
         id: decision.id,
         sourceFile: decision.sourceFile,
         incomingHeader: decision.incomingHeader,
+        originalIncomingHeader: decision.originalIncomingHeader,
         targetHeader: decision.targetHeader!,
         matchType: decision.matchType,
         score: decision.score,
@@ -835,7 +882,8 @@ export function prepareIncomingUpload(
   fileName: string,
   namespace: string,
 ): { parsedFile: ParsedFileWithMerge; schema: ResolvedSchema; rows: CanonicalLedgerRow[] } {
-  const preparedSchema = prepareSchemaForMergedHeaders(schema);
+  const correctedSchema = applyHeaderHeuristicsToSchema(schema, parsedFile.headers ?? []);
+  const preparedSchema = prepareSchemaForMergedHeaders(correctedSchema);
   const mappedHeaders = new Map<string, string>();
   const normalizedHeaderLabels = new Map<string, string>();
 
@@ -843,7 +891,7 @@ export function prepareIncomingUpload(
   // 'home_phone', 'address1' are correctly mapped to their canonical keys when renaming
   // the incoming file's headers. prepareSchemaForMergedHeaders replaces raw header values
   // with canonical keys (e.g. gift_date→date), which breaks the lookup.
-  Object.entries(schema.fieldMap ?? {}).forEach(([canonicalKey, header]) => {
+  Object.entries(correctedSchema.fieldMap ?? {}).forEach(([canonicalKey, header]) => {
     if (!header) return;
     mappedHeaders.set(header, canonicalKey);
     normalizedHeaderLabels.set(normalizeHeaderKey(header), canonicalKey);
@@ -861,6 +909,13 @@ export function prepareIncomingUpload(
   }, []);
 
   const rawHeaderMap = new Map<string, string>();
+  const rawHeaderLabelsByMergedHeader = parsedFile.headers.reduce<Record<string, string[]>>((acc, header, index) => {
+    const mergedHeader = remappedHeaders[index] ?? header;
+    const current = acc[mergedHeader] ?? [];
+    if (!current.includes(header)) current.push(header);
+    acc[mergedHeader] = current;
+    return acc;
+  }, {});
   parsedFile.headers.forEach((header, index) => {
     const normalized = normalizeHeaderKey(header);
     rawHeaderMap.set(
@@ -897,8 +952,8 @@ export function prepareIncomingUpload(
                 id: `${namespace}::${previewRecord.id}`,
                 sourceRowRef: `${namespace}::${previewRecord.sourceRowRef}`,
                 source_file: fileName,
-                source_file_class: schema.fileClass,
-                sourceFileClass: schema.fileClass,
+                source_file_class: correctedSchema.fileClass,
+                sourceFileClass: correctedSchema.fileClass,
                 needs_person_resolve: false,
                 rawValues: remapRawValues(getRawValues(previewRecord), rawHeaderMap),
                 ...(previewRecord.values ? { values: remapRawValues(previewRecord.values, rawHeaderMap) } : {}),
@@ -912,6 +967,12 @@ export function prepareIncomingUpload(
     [],
     [],
   ), preparedSchema);
+
+  if (preparedParsedFile.mergeState) {
+    preparedParsedFile.mergeState.rawHeaderLabelsByMergedHeader = Object.fromEntries(
+      Object.entries(rawHeaderLabelsByMergedHeader).map(([mergedHeader, rawHeaders]) => [mergedHeader, rawHeaders.join(' + ')]),
+    );
+  }
 
   const preparedRows = rows.map((row) => ({
     ...row,
@@ -946,60 +1007,6 @@ export function mergeUploadIntoExisting(input: {
   const plan = buildHeaderPlanFromDecisions(input.currentParsedFile.headers, decisions);
   const plannedIncoming = applyHeaderMergePlan(input.incomingParsedFile, plan);
   const nextSchema = mergeSchemas(input.currentSchema, input.incomingSchema);
-
-  // ── DEBUG ────────────────────────────────────────────────────────────────
-  const DEBUG_FIELDS = ['entity_name', 'donor_name', 'email', 'phone', 'address', 'city', 'state', 'postal_code', 'date', 'amount', 'fund', 'appeal', 'first_name', 'last_name'] as const;
-  function resolveFieldInRow(fieldMap: Record<string, string>, key: string, rowValues: Record<string, string>): string {
-    const header = fieldMap[key];
-    if (!header) return `(no mapping for "${key}")`;
-    const value = rowValues[header];
-    return value !== undefined ? `"${value}"` : `(key "${header}" not found in row)`;
-  }
-
-  console.group('[mergeUploadIntoExisting] append diagnostics');
-  console.log('S1 headers:', input.currentParsedFile.headers);
-  console.log('S2 prepared headers (before plan):', input.incomingParsedFile.headers);
-  console.log('S2 headers after plan:', plannedIncoming.headers);
-  console.log('plan.headerMap (S2-canonical → S1-target):', Object.fromEntries(plan.headerMap));
-  console.log('S1 schema fieldMap:', input.currentSchema.fieldMap);
-  console.log('S2 schema fieldMap (pre-merge, should have canonical keys):', input.incomingSchema.fieldMap);
-  console.log('merged nextSchema fieldMap (what rebuildParsedPreview will use):', nextSchema.fieldMap);
-
-  // For each tracked field, show: what header the merged schema points to,
-  // and whether that header actually exists in an S1 row vs an S2 row.
-  const s1SampleRow = input.currentParsedFile.rows[0];
-  const s2SampleRow = plannedIncoming.rows[0];
-  const mergedFM = (nextSchema.fieldMap ?? {}) as Record<string, string>;
-  console.group('Field resolution check on row[0] of each file after merge:');
-  DEBUG_FIELDS.forEach((field) => {
-    const header = mergedFM[field];
-    const s1Val = s1SampleRow ? s1SampleRow.values[header ?? ''] : undefined;
-    const s2Val = s2SampleRow ? s2SampleRow.values[header ?? ''] : undefined;
-    if (s1Val === undefined || s2Val === undefined) {
-      console.warn(`  ${field} → header="${header}" | S1 row: ${s1Val === undefined ? 'MISSING ❌' : `"${s1Val}"`} | S2 row: ${s2Val === undefined ? 'MISSING ❌' : `"${s2Val}"`}`);
-    } else {
-      console.log(`  ${field} → header="${header}" | S1: "${s1Val}" | S2: "${s2Val}"`);
-    }
-  });
-  console.groupEnd();
-
-  // Show first S1 preview record before rebuild so we can compare after
-  const firstS1Preview = input.currentParsedFile.preview?.records?.[0] as any;
-  if (firstS1Preview) {
-    console.log('S1 preview record[0] BEFORE rebuild:', {
-      sourceRowRef: firstS1Preview.sourceRowRef,
-      donorName: firstS1Preview.donorName,
-      email: firstS1Preview.email,
-      phone: firstS1Preview.phone,
-      address: firstS1Preview.address,
-      city: firstS1Preview.city,
-      state: firstS1Preview.state,
-      postalCode: firstS1Preview.postalCode,
-      date: firstS1Preview.date,
-    });
-  }
-  console.groupEnd();
-  // ── END DEBUG ────────────────────────────────────────────────────────────
   const mergedHeaders = Array.from(new Set([...(input.currentParsedFile.headers ?? []), ...(plannedIncoming.headers ?? [])]));
   const mergedParsedFile = markNeedsPersonResolveOnParsedFile(
     rebuildParsedPreview(ensureMergeState(

@@ -83,6 +83,7 @@ import { IdentityHubPanel } from './identity-hub';
 import { AppliedDecisionsPanel } from './applied-decisions';
 import { applyAiSuggestedGroups, applyTaxonomyGroupsToPreviewRecords, buildTaxonomyState, createManualTaxonomyMerge, dismissTaxonomyCandidate, getNearMissCandidates, mergeTaxonomyCandidate, renameResolvedTaxonomyGroup, summarizeTaxonomyState, updateTaxonomyScanColumn } from './taxonomy-session';
 import { buildAppendColumnDecisions, getMergeStrategy, getPendingColumnMerges, mergeUploadIntoExisting, prepareIncomingUpload, resolvePendingColumnMerge as resolvePendingColumnMergeInParsedFile, type AutoMergedColumnMatch, type PendingColumnMerge } from './merge-table';
+import { buildPreviewMergeView } from './preview-merge';
 import type { EntityGraphSelection, EntityGraphView } from './review-graph';
 import type { FinalAttributionDraftMap, FinalHouseholdDraft } from './review-types';
 import { useTransformHubReviewGraph } from './use-transformhub-review-graph';
@@ -173,6 +174,7 @@ type ReviewOutcomeCard = {
     value: number;
     displayValue?: string;
   }>;
+  supplementalHealthCards?: DonorHealthCard[];
 };
 
 type AnalyticsWorkspaceItem = {
@@ -646,6 +648,16 @@ function getPreviewRecordAnalyticsFund(record: PreviewRecord | null | undefined,
     || getPreviewRecordMappedValue(record, fieldMap, 'appeal')
     || record?.campaignName
     || getPreviewRecordMappedValue(record, fieldMap, 'campaign_name')
+    || 'Unassigned',
+  ).trim() || 'Unassigned';
+}
+
+function getPreviewRecordAnalyticsCampaign(record: PreviewRecord | null | undefined, fieldMap?: Record<string, string> | null): string {
+  return String(
+    record?.campaignName
+    || getPreviewRecordMappedValue(record, fieldMap, 'campaign_name')
+    || record?.appeal
+    || getPreviewRecordMappedValue(record, fieldMap, 'appeal')
     || 'Unassigned',
   ).trim() || 'Unassigned';
 }
@@ -1987,7 +1999,10 @@ function SchemaUnionReviewPanel({
           <div style={{ flex: 1 }}>
             <strong>{merge.reason === 'value_review' ? 'Confirm column match' : 'Review possible column match'}</strong>
             <p><strong>S1 column:</strong> {merge.suggestedHeader}</p>
-            <p><strong>S2 column:</strong> {merge.incomingHeader}</p>
+            <p><strong>S2 raw column:</strong> {merge.originalIncomingHeader ?? merge.incomingHeader}</p>
+            {(merge.originalIncomingHeader ?? merge.incomingHeader) !== merge.incomingHeader && (
+              <p><strong>S2 mapped to canonical:</strong> {merge.incomingHeader}</p>
+            )}
             <p className="th-helper">
               {merge.reason === 'value_review'
                 ? (variant === 'compact'
@@ -2018,8 +2033,14 @@ function SchemaUnionReviewPanel({
           <div style={{ flex: 1 }}>
             <strong>Detected alias merge</strong>
             <p><strong>S1 column:</strong> {merge.targetHeader}</p>
-            <p><strong>S2 column:</strong> {merge.incomingHeader}</p>
-            <p className="th-helper">Auto-merged as a safe {merge.matchType} match during workbook schema union.</p>
+            <p><strong>S2 raw column:</strong> {merge.originalIncomingHeader ?? merge.incomingHeader}</p>
+            {(merge.originalIncomingHeader ?? merge.incomingHeader) !== merge.incomingHeader && (
+              <p><strong>S2 mapped to canonical:</strong> {merge.incomingHeader}</p>
+            )}
+            <p className="th-helper">
+              Auto-merged as a safe {merge.matchType} match during workbook schema union
+              {(merge.originalIncomingHeader ?? merge.incomingHeader) !== merge.incomingHeader ? ' after canonical header mapping.' : '.'}
+            </p>
           </div>
           <div className="th-review-match-actions">
             <span className="th-status is-ready">Merged</span>
@@ -2513,49 +2534,10 @@ export default function TransformHubPage() {
     });
     return next;
   }, [householdResult]);
-  const previewMergeView = useMemo(() => {
-    const txAnchoredPreviewRecords = hasTransactionLinkFlow
-      ? previewRecords.filter((record) => {
-          const sourceFileClass = record.sourceFileClass ?? record.source_file_class ?? null;
-          return sourceFileClass === 'donor' || sourceFileClass === 'ledger' || Boolean((record as Record<string, unknown>)['link_profile_only']);
-        })
-      : previewRecords;
-    const representativeByAbsorbedRef = new Map<string, string>();
-    const mergedSourceRefsByRepresentative = new Map<string, string[]>();
-    const resolveRepresentativeRef = (sourceRowRef: string): string => {
-      let current = sourceRowRef;
-      const visited = new Set<string>();
-      while (representativeByAbsorbedRef.has(current) && !visited.has(current)) {
-        visited.add(current);
-        current = representativeByAbsorbedRef.get(current) ?? current;
-      }
-      return current;
-    };
-    confirmedTxDuplicateMatches.forEach((match) => {
-      const incomingRef = match.inputRef;
-      const matchedInputRef = match.reviewPayload?.matchedInputRef ?? null;
-      if (!matchedInputRef || matchedInputRef === incomingRef) return;
-      const isSwapped = txSwapDecisions.get(match.inputRef) === true;
-      const absorbedRef = isSwapped ? matchedInputRef : incomingRef;
-      const representativeRef = isSwapped ? incomingRef : matchedInputRef;
-      representativeByAbsorbedRef.set(absorbedRef, resolveRepresentativeRef(representativeRef));
-    });
-    Array.from(representativeByAbsorbedRef.entries()).forEach(([absorbedRef, representativeRef]) => {
-      const finalRepresentativeRef = resolveRepresentativeRef(representativeRef);
-      if (finalRepresentativeRef !== representativeRef) {
-        representativeByAbsorbedRef.set(absorbedRef, finalRepresentativeRef);
-      }
-      const current = mergedSourceRefsByRepresentative.get(finalRepresentativeRef) ?? [];
-      if (!current.includes(absorbedRef)) current.push(absorbedRef);
-      mergedSourceRefsByRepresentative.set(finalRepresentativeRef, current);
-    });
-    const displayedPreviewRecords = txAnchoredPreviewRecords.filter((record) => !representativeByAbsorbedRef.has(record.sourceRowRef));
-    return {
-      representativeByAbsorbedRef,
-      mergedSourceRefsByRepresentative,
-      displayedPreviewRecords,
-    };
-  }, [confirmedTxDuplicateMatches, hasTransactionLinkFlow, previewRecords, txSwapDecisions]);
+  const previewMergeView = useMemo(
+    () => buildPreviewMergeView(previewRecords, confirmedTxDuplicateMatches, txSwapDecisions, hasTransactionLinkFlow),
+    [confirmedTxDuplicateMatches, hasTransactionLinkFlow, previewRecords, txSwapDecisions],
+  );
   const representativeByAbsorbedRef = previewMergeView.representativeByAbsorbedRef;
   const mergedSourceRefsByRepresentative = previewMergeView.mergedSourceRefsByRepresentative;
   const displayedPreviewRecords = previewMergeView.displayedPreviewRecords;
@@ -2608,11 +2590,9 @@ export default function TransformHubPage() {
       };
     });
   }, [isDonorFile, peopleById, previewMatchByInputRef, reviewedPreviewRecords, schema?.fieldMap]);
-  const getAnalyticsRecordIdentity = useCallback((record: PreviewRecord): string => {
-    const matchedPersonId = previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId ?? null;
-    if (matchedPersonId) return `person:${matchedPersonId}`;
-    return normalizeRecordIdentity(record);
-  }, [previewMatchByInputRef]);
+  const getAnalyticsRecordIdentity = useCallback((record: PreviewRecord): string => (
+    normalizeRecordIdentity(record)
+  ), []);
   const donorHealthCards = useMemo<DonorHealthCard[]>(() => {
     if (fileClass !== 'donor') return [];
     const fieldMap = (schema?.fieldMap ?? {}) as Record<string, string>;
@@ -2756,63 +2736,33 @@ export default function TransformHubPage() {
       return (topRevenue / latest.revenue) * 100;
     })();
 
-    const fundDependency = (() => {
-      if (latestYear == null) return null;
+    const fundComposition = (() => {
       const fundTotals = new Map<string, number>();
       analyticsPreviewRecords.forEach((record) => {
         const amount = getPreviewRecordAnalyticsAmount(record, fieldMap) ?? 0;
-        const dateValue = getPreviewRecordAnalyticsDate(record, fieldMap);
-        const date = dateValue ? new Date(dateValue) : null;
-        if (!date || Number.isNaN(date.getTime()) || date.getFullYear() !== latestYear || amount <= 0) return;
+        if (amount <= 0) return;
         const fund = getPreviewRecordAnalyticsFund(record, fieldMap);
         fundTotals.set(fund, (fundTotals.get(fund) ?? 0) + amount);
       });
-      if (fundTotals.size === 0 || !latest || latest.revenue <= 0) return null;
+      const totalRevenue = Array.from(fundTotals.values()).reduce((sum, value) => sum + value, 0);
+      if (fundTotals.size === 0 || totalRevenue <= 0) return null;
       const ranked = Array.from(fundTotals.entries()).sort((left, right) => right[1] - left[1]);
       const [topFundName, topFundAmount] = ranked[0];
-      const topSegments = ranked.slice(0, 3).map(([label, value], index) => ({
+      const topSegments = ranked.slice(0, 4).map(([label, value], index) => ({
         label,
         value,
-        share: (value / latest.revenue) * 100,
+        share: (value / totalRevenue) * 100,
         tone: index === 0 ? 'primary' as const : index === 1 ? 'secondary' as const : 'tertiary' as const,
       }));
       const coveredAmount = topSegments.reduce((sum, segment) => sum + segment.value, 0);
-      const restAmount = Math.max(0, latest.revenue - coveredAmount);
+      const restAmount = Math.max(0, totalRevenue - coveredAmount);
       return {
         topFundName,
-        topFundShare: (topFundAmount / latest.revenue) * 100,
+        topFundShare: (topFundAmount / totalRevenue) * 100,
+        totalRevenue,
         segments: restAmount > 0
-          ? [...topSegments, { label: 'Rest', value: restAmount, share: (restAmount / latest.revenue) * 100, tone: 'secondary' as const }]
+          ? [...topSegments, { label: 'Other', value: restAmount, share: (restAmount / totalRevenue) * 100, tone: 'secondary' as const }]
           : topSegments,
-      };
-    })();
-
-    const revenueSourceSummary = (() => {
-      if (latestYear == null || !latest || latest.revenue <= 0) return null;
-      const sourceTotals = new Map<string, number>();
-      analyticsPreviewRecords.forEach((record) => {
-        const amount = getPreviewRecordAnalyticsAmount(record, fieldMap) ?? 0;
-        const dateValue = getPreviewRecordAnalyticsDate(record, fieldMap);
-        const date = dateValue ? new Date(dateValue) : null;
-        if (!date || Number.isNaN(date.getTime()) || date.getFullYear() !== latestYear || amount <= 0) return;
-        const source = getPreviewRecordAnalyticsFund(record, fieldMap);
-        sourceTotals.set(source, (sourceTotals.get(source) ?? 0) + amount);
-      });
-      const rankedSources = Array.from(sourceTotals.entries())
-        .sort((left, right) => right[1] - left[1])
-        .slice(0, 4);
-      if (rankedSources.length === 0) return null;
-      const [topSourceName, topSourceAmount] = rankedSources[0];
-      return {
-        topSourceName,
-        topSourceAmount,
-        topSourceShare: (topSourceAmount / latest.revenue) * 100,
-        totalRevenue: latest.revenue,
-        bars: rankedSources.map(([label, value], index) => ({
-          label,
-          value,
-          tone: index === 0 ? 'primary' as const : 'secondary' as const,
-        })),
       };
     })();
 
@@ -2922,8 +2872,8 @@ export default function TransformHubPage() {
         },
       ]
       : undefined;
-    const fundDependencyBars = fundDependency != null
-      ? fundDependency.segments.map((segment) => ({
+    const fundCompositionBars = fundComposition != null
+      ? fundComposition.segments.map((segment) => ({
         label: segment.label,
         value: segment.share,
         displayValue: formatPercent(segment.share),
@@ -2943,18 +2893,18 @@ export default function TransformHubPage() {
     return [
       {
         id: 'financial_summary',
-        title: 'Financial summary',
-        metric: revenueSourceSummary != null ? formatPercent(revenueSourceSummary.topSourceShare) : 'Insufficient history',
-        valueLabel: revenueSourceSummary != null ? revenueSourceSummary.topSourceName : 'No revenue source data',
-        secondaryLabel: latest != null ? `Latest year ${formatCurrencyAmount(latest.revenue)}` : undefined,
-        secondaryTitle: 'Revenue anchor',
-        chartTitle: 'Revenue by year',
-        chartType: 'line',
-        note: revenueSourceSummary != null
-          ? 'Where the latest-year revenue is coming from, based on the largest fund, appeal, or campaign source.'
-          : 'Need at least one year of donor revenue data to summarize revenue sources.',
-        trend: revenueSourceSummary != null ? 'flat' : undefined,
-        bars: revenueByYearBars,
+        title: 'Fund composition',
+        metric: fundComposition != null ? formatPercent(fundComposition.topFundShare) : 'Insufficient history',
+        valueLabel: fundComposition != null ? fundComposition.topFundName : 'No reviewed revenue',
+        secondaryLabel: fundComposition != null ? `Top fund ${fundComposition.topFundName}` : undefined,
+        secondaryTitle: 'Secondary signal',
+        chartTitle: 'Reviewed revenue mix',
+        chartType: 'donut',
+        note: fundComposition != null
+          ? 'Reviewed revenue composition by fund across the active donor layer.'
+          : 'Need reviewed donor revenue to summarize fund composition.',
+        trend: fundComposition != null ? 'flat' : undefined,
+        bars: fundCompositionBars,
       },
       {
         id: 'retention',
@@ -3009,19 +2959,6 @@ export default function TransformHubPage() {
         bars: smallDollarDistributionBars,
       },
       {
-        id: 'recurring_share',
-        title: 'Recurring revenue share',
-        metric: recurringRevenueShare != null ? formatPercent(recurringRevenueShare) : 'Insufficient history',
-        valueLabel: latestYear != null ? `Latest year ${latestYear}` : 'No annual history',
-        secondaryLabel: recurringRetention != null ? `Retention ${formatPercent(recurringRetention)}` : undefined,
-        secondaryTitle: 'Secondary signal',
-        chartTitle: 'Share by year',
-        chartType: 'line',
-        note: 'Based on transactions explicitly marked recurring by the source data.',
-        trend: recurringRevenueShare != null ? (recurringRevenueShare >= 25 ? 'up' : 'flat') : undefined,
-        bars: recurringShareBars,
-      },
-      {
         id: 'donor_concentration',
         title: 'Donor concentration',
         metric: concentrationShare != null ? formatPercent(concentrationShare) : 'Insufficient history',
@@ -3033,21 +2970,6 @@ export default function TransformHubPage() {
         note: 'Measures how much of the latest-year revenue comes from the top decile of donors.',
         trend: concentrationShare != null ? (concentrationShare >= 50 ? 'down' : 'flat') : undefined,
         bars: concentrationBars,
-      },
-      {
-        id: 'fund_dependency',
-        title: 'Fund dependency',
-        metric: fundDependency != null ? formatPercent(fundDependency.topFundShare) : 'Insufficient history',
-        valueLabel: fundDependency != null ? fundDependency.topFundName : 'No annual history',
-        secondaryLabel: fundDependency != null ? `Top fund ${fundDependency.topFundName}` : undefined,
-        secondaryTitle: 'Secondary signal',
-        chartTitle: 'Latest-year revenue mix',
-        chartType: 'donut',
-        note: fundDependency != null
-          ? `If ${fundDependency.topFundName} underperforms, the latest-year revenue base is exposed.`
-          : 'Need latest-year fund totals to assess dependency risk.',
-        trend: fundDependency != null ? (fundDependency.topFundShare >= 50 ? 'down' : 'flat') : undefined,
-        bars: fundDependencyBars,
       },
     ];
   }, [analyticsPreviewRecords, fileClass, getAnalyticsRecordIdentity, schema?.fieldMap]);
@@ -3076,15 +2998,15 @@ export default function TransformHubPage() {
     const canonicalPerson = peopleById.get(resolvedPersonIds[0]) ?? null;
     if (!canonicalPerson) return rawValue;
     const canonicalName = [canonicalPerson.firstName, canonicalPerson.lastName].filter(Boolean).join(' ').trim() || canonicalPerson.id;
-    if (semantic === 'first_name') return canonicalPerson.firstName || '—';
-    if (semantic === 'last_name') return canonicalPerson.lastName || '—';
-    if (semantic === 'email') return canonicalPerson.email || '—';
-    if (semantic === 'phone') return canonicalPerson.phone || '—';
-    if (semantic === 'address') return canonicalPerson.addressLine1 || '—';
-    if (semantic === 'city') return canonicalPerson.city || '—';
-    if (semantic === 'state') return canonicalPerson.state || '—';
-    if (semantic === 'postal_code') return canonicalPerson.zip || '—';
-    if (/entity_name|donor_name|full_name|organization_name/.test(semantic)) return canonicalName || '—';
+    if (semantic === 'first_name') return canonicalPerson.firstName || rawValue;
+    if (semantic === 'last_name') return canonicalPerson.lastName || rawValue;
+    if (semantic === 'email') return canonicalPerson.email || rawValue;
+    if (semantic === 'phone') return canonicalPerson.phone || rawValue;
+    if (semantic === 'address') return canonicalPerson.addressLine1 || rawValue;
+    if (semantic === 'city') return canonicalPerson.city || rawValue;
+    if (semantic === 'state') return canonicalPerson.state || rawValue;
+    if (semantic === 'postal_code') return canonicalPerson.zip || rawValue;
+    if (/entity_name|donor_name|full_name|organization_name/.test(semantic)) return canonicalName || rawValue;
     return rawValue;
   }, [getResolvedPreviewDistinctPersonIds, isDonorFile, peopleById, schema?.fieldMap]);
   const getResolvedPreviewRecordLabel = useCallback((record: PreviewRecord | null | undefined): string => {
@@ -3147,7 +3069,12 @@ export default function TransformHubPage() {
     records.forEach((record) => {
       const resolvedPersonIds = getResolvedPreviewDistinctPersonIds(record.sourceRowRef);
       if (resolvedPersonIds.length === 0) return;
-      const key = resolvedPersonIds.join('|');
+      // In transaction-capable donor flows, the consolidated matching table should preserve
+      // one row per source transaction until the later tx-duplicate step explicitly absorbs it.
+      // Grouping by person here collapses distinct gifts for the same donor into one row and
+      // leaves transaction fields (fund/campaign/appeal/date/amount) coming from whichever row
+      // happened to win first, which makes the consolidated table incorrect.
+      const key = hasTransactionLinkFlow ? record.sourceRowRef : resolvedPersonIds.join('|');
       if (grouped.has(key)) return;
       const canonicalPerson = resolvedPersonIds.length === 1 ? peopleById.get(resolvedPersonIds[0]) ?? null : null;
       if (!canonicalPerson) {
@@ -3169,13 +3096,15 @@ export default function TransformHubPage() {
       ];
       canonicalOverrides.forEach(([canonicalKey, value]) => {
         const header = fieldMap[canonicalKey];
-        if (header) nextRawValues[header] = value;
+        if (header && value) nextRawValues[header] = value;
       });
       const canonicalName = [canonicalPerson.firstName, canonicalPerson.lastName].filter(Boolean).join(' ').trim() || canonicalPerson.id;
       const nameHeaders = Object.entries(fieldMap)
         .filter(([semantic]) => /entity_name|donor_name|full_name/.test(semantic))
         .map(([, header]) => header);
-      nameHeaders.forEach((header) => { nextRawValues[header] = canonicalName; });
+      if (canonicalName) {
+        nameHeaders.forEach((header) => { nextRawValues[header] = canonicalName; });
+      }
       grouped.set(key, {
         ...record,
         firstName: canonicalPerson.firstName,
@@ -3193,7 +3122,7 @@ export default function TransformHubPage() {
       });
     });
     return Array.from(grouped.values());
-  }, [getResolvedPreviewDistinctPersonIds, peopleById, schema?.fieldMap]);
+  }, [getResolvedPreviewDistinctPersonIds, hasTransactionLinkFlow, peopleById, schema?.fieldMap]);
   useEffect(() => {
     if (isLedgerFile || !householdResult) return;
   }, [
@@ -3339,13 +3268,14 @@ export default function TransformHubPage() {
     );
     const taxonomyImpactPercent = donorRecords.length > 0 ? Math.round((taxonomyImpactedRows.size / donorRecords.length) * 100) : 0;
 
+    const recurringDonorAmount = roundCurrencyAmount(recurringDonors.reduce((sum, entry) => sum + entry.totalAmount, 0));
     const revenueAtRiskAmount = roundCurrencyAmount(
-      recurringDonors.reduce((sum, entry) => sum + entry.totalAmount, 0)
-      + lapsedDonors.reduce((sum, entry) => sum + entry.latestAmount, 0),
+      lapsedDonors.reduce((sum, entry) => sum + entry.latestAmount, 0),
     );
     const moneyLeakageAmount = roundCurrencyAmount(
-      missingMatchingGiftDonors.reduce((sum, entry) => sum + entry.totalAmount, 0)
-      + upgradeCandidates.reduce((sum, entry) => sum + (entry.totalAmount * 0.2), 0)
+      recurringDonors.reduce((sum, entry) => sum + entry.totalAmount, 0)
+      + missingMatchingGiftDonors.reduce((sum, entry) => sum + entry.totalAmount, 0)
+      + upgradeCandidates.reduce((sum, entry) => sum + entry.totalAmount, 0)
       + unassignedMajorDonors.reduce((sum, entry) => sum + entry.totalAmount, 0),
     );
     const financeMismatchAmount = roundCurrencyAmount(ambiguousAmount + splitMismatchAmount);
@@ -3357,18 +3287,9 @@ export default function TransformHubPage() {
         tone: 'risk',
         amount: revenueAtRiskAmount,
         metricKind: 'currency',
-        summary: 'Recurring donors and lapsed donors surface churn risk after duplicate, household, and taxonomy review.',
-        supporting: 'Estimated from the cleaned donor layer using reviewed recency, repeat-gift cadence, and attribution updates.',
+        summary: 'Lapsed donors surface churn risk after duplicate, household, and taxonomy review.',
+        supporting: 'Estimated from the cleaned donor layer using reviewed recency and attribution updates.',
         details: [
-          {
-            id: 'recurring_donors',
-            label: 'Recurring donors',
-            count: recurringDonors.length,
-            amount: roundCurrencyAmount(recurringDonors.reduce((sum, entry) => sum + entry.totalAmount, 0)),
-            description: 'Multiple gifts suggest a recurring giving pattern.',
-            ctaLabel: 'Review attribution table',
-            action: 'final_table',
-          },
           {
             id: 'lapsed_donors',
             label: 'Lapsed donors',
@@ -3383,17 +3304,26 @@ export default function TransformHubPage() {
       {
         id: 'money_leakage',
         eyebrow: 'Opportunity · hidden revenue',
-        title: `${formatOutcomeMetric('currency', moneyLeakageAmount)} potential upside`,
+        title: 'Potential upside',
         tone: 'opportunity',
         amount: moneyLeakageAmount,
         metricKind: 'currency',
         summary: hasAssignedStaffField
-          ? 'Matching gifts, upgrade candidates, and unassigned major donors are sitting in the file uncaptured.'
-          : 'Matching gifts and upgrade candidates are sitting in the file uncaptured.',
+          ? 'Recurring donors, matching gifts, upgrade candidates, and unassigned major donors are sitting in the file uncaptured.'
+          : 'Recurring donors, matching gifts, and upgrade candidates are sitting in the file uncaptured.',
         supporting: hasAssignedStaffField
-          ? 'Opportunity sizing is estimated from employer-match hints, donor concentration, and missing ownership.'
-          : 'Opportunity sizing is estimated from employer-match hints and donor concentration.',
+          ? 'Opportunity sizing is estimated from repeat-gift cadence, employer-match hints, donor concentration, and missing ownership.'
+          : 'Opportunity sizing is estimated from repeat-gift cadence, employer-match hints, and donor concentration.',
         details: [
+          {
+            id: 'recurring_donors',
+            label: 'Recurring donors',
+            count: recurringDonors.length,
+            amount: recurringDonorAmount,
+            description: 'Multiple gifts suggest a recurring giving pattern.',
+            ctaLabel: 'Review attribution table',
+            action: 'final_table',
+          },
           {
             id: 'missing_matching_gifts',
             label: 'Missing matching gifts',
@@ -3407,7 +3337,7 @@ export default function TransformHubPage() {
             id: 'upgrade_opportunities',
             label: 'Upgrade opportunities',
             count: upgradeCandidates.length,
-            amount: roundCurrencyAmount(upgradeCandidates.reduce((sum, entry) => sum + (entry.totalAmount * 0.2), 0)),
+            amount: roundCurrencyAmount(upgradeCandidates.reduce((sum, entry) => sum + entry.totalAmount, 0)),
             description: 'High-value donors are giving below what their file pattern suggests.',
             ctaLabel: 'Open review table',
             action: 'final_table',
@@ -3480,19 +3410,101 @@ export default function TransformHubPage() {
     if (fileClass !== 'donor' || donorHealthCards.length === 0) return null;
     const financialSummaryCard = donorHealthCards.find((card) => card.id === 'financial_summary');
     if (!financialSummaryCard?.bars || financialSummaryCard.bars.length === 0) return null;
-    const totalRevenue = financialSummaryCard.bars.reduce((sum, bar) => sum + bar.value, 0);
-    if (totalRevenue <= 0) return null;
     const palette = ['#7f98b5', '#ddb48b', '#c9d8e6', '#e7c7a6', '#efe1d0'];
-    const topSegments = financialSummaryCard.bars.slice(0, 4).map((bar, index) => ({
+    const topSegment = financialSummaryCard.bars[0] ?? null;
+    const totalRevenue = analyticsPreviewRecords.reduce((sum, record) => {
+      const amount = getPreviewRecordAnalyticsAmount(record, schema?.fieldMap ?? null) ?? 0;
+      return amount > 0 ? sum + amount : sum;
+    }, 0);
+    if (!topSegment || totalRevenue <= 0) return null;
+    const chartSegments = financialSummaryCard.bars.map((bar, index) => ({
       label: bar.label,
-      value: bar.value,
+      value: (bar.value / 100) * totalRevenue,
       color: palette[index % palette.length],
     }));
-    const coveredRevenue = topSegments.reduce((sum, segment) => sum + segment.value, 0);
-    const otherRevenue = Math.max(0, totalRevenue - coveredRevenue);
-    const chartSegments = otherRevenue > 0
-      ? [...topSegments, { label: 'Other', value: otherRevenue, color: '#d7e2ec' }]
-      : topSegments;
+    const yearlyRevenue = new Map<number, number>();
+    analyticsPreviewRecords.forEach((record) => {
+      const amount = getPreviewRecordAnalyticsAmount(record, schema?.fieldMap ?? null) ?? 0;
+      const dateValue = getPreviewRecordAnalyticsDate(record, schema?.fieldMap ?? null);
+      const date = dateValue ? new Date(dateValue) : null;
+      if (!date || Number.isNaN(date.getTime()) || amount <= 0) return;
+      yearlyRevenue.set(date.getFullYear(), (yearlyRevenue.get(date.getFullYear()) ?? 0) + amount);
+    });
+    const revenueByYearBars = Array.from(yearlyRevenue.entries())
+      .sort((left, right) => left[0] - right[0])
+      .slice(-4)
+      .map(([year, value], index, source) => ({
+        label: String(year),
+        value,
+        displayValue: formatCompactCurrencyAmount(value),
+        tone: index === source.length - 1 ? 'primary' as const : 'secondary' as const,
+      }));
+    const latestRevenueBar = revenueByYearBars[revenueByYearBars.length - 1] ?? null;
+    const campaignTotals = new Map<string, number>();
+    analyticsPreviewRecords.forEach((record) => {
+      const amount = getPreviewRecordAnalyticsAmount(record, schema?.fieldMap ?? null) ?? 0;
+      if (amount <= 0) return;
+      const campaign = getPreviewRecordAnalyticsCampaign(record, schema?.fieldMap ?? null);
+      campaignTotals.set(campaign, (campaignTotals.get(campaign) ?? 0) + amount);
+    });
+    const rankedCampaigns = Array.from(campaignTotals.entries()).sort((left, right) => right[1] - left[1]);
+    const topCampaigns = rankedCampaigns.slice(0, 4).map(([label, value], index) => ({
+      label,
+      value,
+      share: (value / totalRevenue) * 100,
+      tone: index === 0 ? 'primary' as const : index === 1 ? 'secondary' as const : 'tertiary' as const,
+    }));
+    const coveredCampaignRevenue = topCampaigns.reduce((sum, item) => sum + item.value, 0);
+    const campaignRestRevenue = Math.max(0, totalRevenue - coveredCampaignRevenue);
+    const campaignCompositionBars = (
+      campaignRestRevenue > 0
+        ? [...topCampaigns, { label: 'Other', value: campaignRestRevenue, share: (campaignRestRevenue / totalRevenue) * 100, tone: 'secondary' as const }]
+        : topCampaigns
+    ).map((segment) => ({
+      label: segment.label,
+      value: segment.share,
+      displayValue: formatPercent(segment.share),
+      tone: segment.tone,
+    }));
+    const topCampaign = topCampaigns[0] ?? null;
+    const supplementalHealthCards: DonorHealthCard[] = [
+      {
+        id: 'financial_summary_fund_mix',
+        title: 'Fund composition',
+        metric: financialSummaryCard.metric,
+        valueLabel: financialSummaryCard.valueLabel,
+        secondaryLabel: `Reviewed revenue ${formatCurrencyAmount(totalRevenue)}`,
+        secondaryTitle: 'Revenue anchor',
+        chartTitle: 'Reviewed revenue mix',
+        chartType: 'donut',
+        note: 'Reviewed revenue mix by fund so concentration is visible before export.',
+        bars: financialSummaryCard.bars,
+      },
+      {
+        id: 'financial_summary_revenue_trend',
+        title: 'Revenue by year',
+        metric: latestRevenueBar ? formatCurrencyAmount(latestRevenueBar.value) : 'Insufficient history',
+        valueLabel: latestRevenueBar ? `Latest year ${latestRevenueBar.label}` : 'No annual history',
+        chartTitle: 'Revenue by year',
+        chartType: 'line',
+        note: 'Year-by-year reviewed revenue trend across the active donor layer.',
+        bars: revenueByYearBars,
+      },
+    ];
+    if (topCampaign && campaignCompositionBars.length > 0) {
+      supplementalHealthCards.push({
+        id: 'financial_summary_campaign_mix',
+        title: 'Campaign composition',
+        metric: formatPercent(topCampaign.share),
+        valueLabel: topCampaign.label,
+        secondaryLabel: `Top campaign ${topCampaign.label}`,
+        secondaryTitle: 'Secondary signal',
+        chartTitle: 'Reviewed campaign mix',
+        chartType: 'donut',
+        note: 'Reviewed revenue mix by campaign or appeal across the active donor layer.',
+        bars: campaignCompositionBars,
+      });
+    }
     return {
       id: 'financial_summary',
       eyebrow: 'Overview · financial summary',
@@ -3500,28 +3512,29 @@ export default function TransformHubPage() {
       tone: 'neutral',
       amount: totalRevenue,
       metricKind: 'currency',
-      summary: 'Latest-year revenue mix by fund, appeal, or campaign so concentration is visible before export.',
-      supporting: financialSummaryCard.valueLabel,
+      summary: 'Fund mix, campaign concentration, and year-by-year revenue trend across the reviewed donor layer.',
+      supporting: `Top fund ${financialSummaryCard.valueLabel}`,
       details: chartSegments.map((segment) => ({
         id: `financial_source:${segment.label}`,
         label: segment.label,
         count: 0,
         amount: segment.value,
         description: totalRevenue > 0
-          ? `${formatPercent((segment.value / totalRevenue) * 100)} of latest-year reviewed revenue.`
+          ? `${formatPercent((segment.value / totalRevenue) * 100)} of reviewed revenue.`
           : 'No reviewed revenue yet.',
         ctaLabel: formatCurrencyAmount(segment.value),
         action: 'final_table',
       })),
       chartSegments,
       chartCenterLabel: formatCurrencyAmount(totalRevenue),
-      chartBars: financialSummaryCard.bars?.map((bar) => ({
+      chartBars: revenueByYearBars.map((bar) => ({
         label: bar.label,
         value: bar.value,
-        displayValue: bar.displayValue ?? formatCompactCurrencyAmount(bar.value),
+        displayValue: bar.displayValue,
       })),
+      supplementalHealthCards,
     };
-  }, [donorHealthCards, fileClass]);
+  }, [analyticsPreviewRecords, donorHealthCards, fileClass, schema?.fieldMap]);
   const visibleDonorHealthCards = useMemo(
     () => donorHealthCards.filter((card) => card.id !== 'financial_summary'),
     [donorHealthCards],
@@ -3647,7 +3660,7 @@ export default function TransformHubPage() {
       if (entry.recurringPattern) {
         items.push({
           id: `recurring:${entry.label}`,
-          outcomeId: 'revenue_at_risk',
+          outcomeId: 'money_leakage',
           detailId: 'recurring_donors',
           label: entry.label,
           description: 'Multiple gifts suggest a recurring giving pattern.',
@@ -3733,7 +3746,7 @@ export default function TransformHubPage() {
           detailId: 'upgrade_opportunities',
           label: entry.label,
           description: 'Top-value donor with room to upgrade based on giving concentration.',
-          amount: entry.totalAmount * 0.2,
+          amount: entry.totalAmount,
           sortDate: entry.latestDate?.toISOString() ?? null,
           campaign,
           donorSegment: entry.totalAmount >= 1000 ? 'major donors' : 'upgrade opportunities',
@@ -3908,23 +3921,14 @@ export default function TransformHubPage() {
   const reviewAugmentedColumns = useMemo(
     () => {
       const next: string[] = [];
-      if (isDonorFile && personResult) next.push('__duplicate_target__');
       if (householdResult) next.push('__role__', '__attribution_type__', '__credit_amount__', '__household__', '__notes__');
       return next;
     },
-    [householdResult, isDonorFile, personResult],
-  );
-  const duplicateReviewColumns = useMemo(
-    () => reviewAugmentedColumns.filter((columnKey) => columnKey === '__duplicate_target__'),
-    [reviewAugmentedColumns],
-  );
-  const postReviewAugmentedColumns = useMemo(
-    () => reviewAugmentedColumns.filter((columnKey) => columnKey !== '__duplicate_target__'),
-    [reviewAugmentedColumns],
+    [householdResult],
   );
   const nonLedgerTableColumnKeys = useMemo(
-    () => ['__source__', ...duplicateReviewColumns, ...visibleNonLedgerTableHeaders, ...postReviewAugmentedColumns],
-    [duplicateReviewColumns, visibleNonLedgerTableHeaders, postReviewAugmentedColumns],
+    () => ['__source__', ...visibleNonLedgerTableHeaders, ...reviewAugmentedColumns],
+    [reviewAugmentedColumns, visibleNonLedgerTableHeaders],
   );
 
   const nonLedgerTableWidth = useMemo(
@@ -3997,7 +4001,6 @@ export default function TransformHubPage() {
   function getNonLedgerColumnWidth(columnKey: string) {
     if (nonLedgerColumnWidths[columnKey]) return nonLedgerColumnWidths[columnKey];
     if (columnKey === '__source__') return 172;
-    if (columnKey === '__duplicate_target__') return 196;
     if (columnKey === '__attribution_type__') return 160;
     if (columnKey === '__credit_amount__') return 140;
     if (columnKey === '__role__') return 150;
@@ -4138,8 +4141,6 @@ export default function TransformHubPage() {
         haystack = supportsDuplicateWorkflow
           ? describeRepresentativeSource(record)
           : getCompactSourceRef(record.sourceRowRef).primary;
-      } else if (columnKey === '__duplicate_target__') {
-        haystack = getDuplicateReviewTableTarget(reviewTableDuplicateMatchByInputRef.get(record.sourceRowRef), previewSourceBadgeByOrigin, parsedFile?.fileName);
       } else if (columnKey === '__role__') {
         const { matchedPerson, draft } = getAttributionDraftForRecord(record);
         haystack = `${getRecordRole(record, draft, matchedPerson)} ${getBestPersonDisplayLabel(matchedPerson, record)}`;
@@ -7293,9 +7294,8 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
     if (!preview || previewRecords.length === 0) return null;
     const reviewRows = supportsDuplicateWorkflow ? visibleAttributionTableRecords : displayedPreviewRecords;
     if (supportsDuplicateWorkflow) {
-      const orderedReviewColumns = [...duplicateReviewColumns, ...postReviewAugmentedColumns];
+      const orderedReviewColumns = [...reviewAugmentedColumns];
       const headers = ['Source', ...orderedReviewColumns.map((columnKey) => {
-        if (columnKey === '__duplicate_target__') return 'Duplicate Target';
         if (columnKey === '__role__') return 'Role';
         if (columnKey === '__attribution_type__') return 'Attribution Type';
         if (columnKey === '__credit_amount__') return 'Credit Amount';
@@ -7313,7 +7313,6 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
           const augmentedCells = orderedReviewColumns.map((columnKey) => {
             const { matchedPerson, draft, assignedHouseholdId } = getAttributionDraftForRecord(record);
             const rawAmount = parseCurrencyAmount(record.amount);
-            if (columnKey === '__duplicate_target__') return getDuplicateReviewTableTarget(reviewTableDuplicateMatchByInputRef.get(record.sourceRowRef), previewSourceBadgeByOrigin, parsedFile?.fileName);
             if (columnKey === '__role__') return getRecordRole(record, draft, matchedPerson);
             if (columnKey === '__attribution_type__') return getAttributionModeLabel(draft.mode);
             if (columnKey === '__credit_amount__') return getDisplayCreditAmount(draft, rawAmount, getRecordRole(record, draft, matchedPerson));
@@ -8735,7 +8734,7 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                                 <div className="th-review-outcome-chart">
                                   <div className="th-review-outcome-chart-donut" style={{ background: buildOutcomeChartBackground(card.chartSegments) }}>
                                     <div className="th-review-outcome-chart-center">
-                                      <span>Latest year</span>
+                                      <span>{card.id === 'financial_summary' ? 'Reviewed revenue' : 'Latest year'}</span>
                                       <strong>{card.chartCenterLabel ?? formatCurrencyAmount(card.amount)}</strong>
                                     </div>
                                   </div>
@@ -8772,7 +8771,7 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                             {selectedOutcomeCardId !== 'donor_health' && (
                               <div className="th-review-outcome-detail-metric">
                                 <strong>{formatOutcomeMetric(selectedOutcomeCard.metricKind, selectedOutcomeCard.amount)}</strong>
-                                <span>{selectedOutcomeCardId === 'financial_summary' ? 'latest-year reviewed revenue' : selectedOutcomeCard.metricKind === 'percent' ? 'misclassified' : 'exposure'}</span>
+                                <span>{selectedOutcomeCardId === 'financial_summary' ? 'reviewed revenue' : selectedOutcomeCard.metricKind === 'percent' ? 'misclassified' : 'exposure'}</span>
                               </div>
                             )}
                           </div>
@@ -8808,65 +8807,97 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                             ))}
                           </div>
                           )}
-                          {selectedOutcomeCardId === 'financial_summary' && selectedOutcomeCard.chartSegments && selectedOutcomeCard.chartSegments.length > 0 && (
-                            <div className="th-review-financial-summary-panel">
-                              <div className="th-review-financial-summary-chart">
-                                <div className="th-review-financial-summary-donut" style={{ background: buildOutcomeChartBackground(selectedOutcomeCard.chartSegments) }}>
-                                  <div className="th-review-financial-summary-center">
-                                    <span>Latest year</span>
-                                    <strong>{selectedOutcomeCard.chartCenterLabel ?? formatCurrencyAmount(selectedOutcomeCard.amount)}</strong>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="th-review-financial-summary-breakdown">
-                                {selectedOutcomeCard.chartSegments.map((segment) => (
-                                  <article key={`${selectedOutcomeCard.id}-${segment.label}`} className="th-review-financial-summary-item">
-                                    <div className="th-review-financial-summary-item-head">
-                                      <span className="th-review-outcome-chart-dot" style={{ backgroundColor: segment.color }} />
-                                      <strong>{segment.label}</strong>
+                          {selectedOutcomeCardId === 'financial_summary' && selectedOutcomeCard.supplementalHealthCards && selectedOutcomeCard.supplementalHealthCards.length > 0 && (
+                            <div className="th-review-health-grid">
+                              {selectedOutcomeCard.supplementalHealthCards.map((card) => (
+                                <article key={card.id} className="th-review-health-card">
+                                  <div className="th-review-health-head">
+                                    <div className="th-review-health-intro">
+                                      <span className="th-review-health-kicker">Overview metric</span>
+                                      <strong>{card.title}</strong>
                                     </div>
-                                    <span>{formatPercent((segment.value / Math.max(selectedOutcomeCard.amount, 1)) * 100)} of reviewed revenue</span>
-                                    <strong>{formatCurrencyAmount(segment.value)}</strong>
-                                  </article>
-                                ))}
-                              </div>
-                              {selectedOutcomeCard.chartBars && selectedOutcomeCard.chartBars.length > 0 && (
-                                <div className="th-review-financial-summary-line">
-                                  <div className="th-review-health-chart">
-                                    <span className="th-review-health-chart-title">Revenue by year</span>
-                                    <div className="th-review-health-line-chart">
-                                      <div className="th-review-health-line-svg-wrap">
-                                        <svg viewBox="0 0 240 120" className="th-review-health-line-svg" aria-hidden="true">
-                                          <path className="th-review-health-line-grid" d="M 18 18 H 222 M 18 60 H 222 M 18 102 H 222" />
-                                          <path
-                                            className="th-review-health-line-path"
-                                            d={selectedOutcomeCard.chartBars.map((bar, index) => {
-                                              const maxValue = Math.max(...selectedOutcomeCard.chartBars!.map((item) => item.value), 1);
-                                              const x = 18 + ((204 / Math.max(selectedOutcomeCard.chartBars!.length - 1, 1)) * index);
-                                              const y = 102 - ((bar.value / maxValue) * 84);
-                                              return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
-                                            }).join(' ')}
-                                          />
-                                          {selectedOutcomeCard.chartBars.map((bar, index) => {
-                                            const maxValue = Math.max(...selectedOutcomeCard.chartBars!.map((item) => item.value), 1);
-                                            const x = 18 + ((204 / Math.max(selectedOutcomeCard.chartBars!.length - 1, 1)) * index);
-                                            const y = 102 - ((bar.value / maxValue) * 84);
-                                            return <circle key={`${selectedOutcomeCard.id}-${bar.label}-workspace-point`} className="th-review-health-line-point" cx={x} cy={y} r="4.5" />;
-                                          })}
-                                        </svg>
+                                    <span className={`th-review-health-pill${card.trend ? ` is-${card.trend}` : ''}`}>
+                                      {card.badgeLabel ?? card.secondaryLabel ?? card.valueLabel}
+                                    </span>
+                                  </div>
+                                  <div className="th-review-health-hero">
+                                    <div className="th-review-health-metric-block">
+                                      <span className="th-review-health-metric">{card.metric}</span>
+                                      <span className="th-review-health-value">{card.valueLabel}</span>
+                                    </div>
+                                    {card.secondaryLabel && (
+                                      <div className="th-review-health-secondary">
+                                        <span className="th-review-health-secondary-label">{card.secondaryTitle ?? 'Secondary signal'}</span>
+                                        <strong>{card.secondaryLabel}</strong>
                                       </div>
-                                      <div className="th-review-health-line-labels">
-                                        {selectedOutcomeCard.chartBars.map((bar) => (
-                                          <div key={`${selectedOutcomeCard.id}-${bar.label}-workspace`} className="th-review-health-line-label">
-                                            <strong>{bar.displayValue ?? formatCompactCurrencyAmount(bar.value)}</strong>
-                                            <span>{bar.label}</span>
+                                    )}
+                                  </div>
+                                  {card.bars && card.bars.length > 0 && (
+                                    <div className="th-review-health-chart">
+                                      {card.chartTitle && <span className="th-review-health-chart-title">{card.chartTitle}</span>}
+                                      {card.chartType === 'donut' ? (
+                                        <div className="th-review-health-donut-wrap">
+                                          <div className="th-review-health-donut" style={{ background: buildDonorHealthChartBackground(card.bars) }}>
+                                            <div className="th-review-health-donut-center">
+                                              <strong>{card.metric}</strong>
+                                              <span>{card.valueLabel}</span>
+                                            </div>
                                           </div>
-                                        ))}
-                                      </div>
+                                          <div className="th-review-health-donut-legend">
+                                            {card.bars.map((bar) => (
+                                              <div key={`${card.id}-${bar.label}`} className="th-review-health-donut-legend-item">
+                                                <span className={`th-review-health-donut-dot${donorHealthToneClass(bar.tone)}`} />
+                                                <span>{bar.label}</span>
+                                                <strong>{bar.displayValue ?? formatCompactCount(bar.value)}</strong>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="th-review-health-line-chart">
+                                          <div className="th-review-health-line-svg-wrap">
+                                            <svg viewBox="0 0 240 120" className="th-review-health-line-svg" aria-hidden="true">
+                                              <path className="th-review-health-line-grid" d="M 18 18 H 222 M 18 60 H 222 M 18 102 H 222" />
+                                              <path
+                                                className="th-review-health-line-path"
+                                                d={card.bars.map((bar, index) => {
+                                                  const maxValue = Math.max(...card.bars!.map((item) => item.value), 1);
+                                                  const x = 18 + ((204 / Math.max(card.bars!.length - 1, 1)) * index);
+                                                  const y = 102 - ((bar.value / maxValue) * 84);
+                                                  return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
+                                                }).join(' ')}
+                                              />
+                                              {card.bars.map((bar, index) => {
+                                                const maxValue = Math.max(...card.bars!.map((item) => item.value), 1);
+                                                const x = 18 + ((204 / Math.max(card.bars!.length - 1, 1)) * index);
+                                                const y = 102 - ((bar.value / maxValue) * 84);
+                                                return (
+                                                  <circle
+                                                    key={`${card.id}-${bar.label}-point`}
+                                                    className={`th-review-health-line-point${donorHealthToneClass(bar.tone)}`}
+                                                    cx={x}
+                                                    cy={y}
+                                                    r="4.5"
+                                                  />
+                                                );
+                                              })}
+                                            </svg>
+                                          </div>
+                                          <div className="th-review-health-line-labels">
+                                            {card.bars.map((bar) => (
+                                              <div key={`${card.id}-${bar.label}`} className="th-review-health-line-label">
+                                                <strong>{bar.displayValue ?? formatCompactCount(bar.value)}</strong>
+                                                <span>{bar.label}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
-                                  </div>
-                                </div>
-                              )}
+                                  )}
+                                  <p className="th-helper" style={{ padding: 0, marginTop: 8 }}>{card.note}</p>
+                                </article>
+                              ))}
                             </div>
                           )}
                           {selectedOutcomeCardId === 'donor_health' && visibleDonorHealthCards.length > 0 && (
@@ -10257,20 +10288,16 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                         </th>
                       ))}
                       {reviewAugmentedColumns.map((columnKey) => {
-                        const label = columnKey === '__duplicate_target__'
-                            ? 'Duplicate target'
-                            : columnKey === '__role__'
-                              ? 'Role'
-                              : columnKey === '__attribution_type__'
-                                ? 'Attribution type'
-                                : columnKey === '__credit_amount__'
-                                  ? 'Credit amount'
-                                  : columnKey === '__household__'
-                                    ? 'Household'
-                                    : 'Notes';
-                        const placeholder = columnKey === '__duplicate_target__'
-                            ? 'Filter duplicate target'
-                            : `Filter ${label.toLowerCase()}`;
+                        const label = columnKey === '__role__'
+                          ? 'Role'
+                          : columnKey === '__attribution_type__'
+                            ? 'Attribution type'
+                            : columnKey === '__credit_amount__'
+                              ? 'Credit amount'
+                              : columnKey === '__household__'
+                                ? 'Household'
+                                : 'Notes';
+                        const placeholder = `Filter ${label.toLowerCase()}`;
                         return (
                           <th key={columnKey} className={`th-resizable-header${isPreviewColumnFiltered(columnKey) ? ' is-filtered' : ''}`}>
                             <div className="th-resizable-header-inner">
@@ -10435,14 +10462,6 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                             </td>
                           ))}
                           {reviewAugmentedColumns.map((columnKey) => {
-                            if (columnKey === '__duplicate_target__') {
-                              const target = getDuplicateReviewTableTarget(reviewTableDuplicateMatchByInputRef.get(record.sourceRowRef), previewSourceBadgeByOrigin, parsedFile?.fileName);
-                              return (
-                                <td key={`${record.id}-${columnKey}`}>
-                                  <span className="th-cell-ellipsis" title={target}>{target}</span>
-                                </td>
-                              );
-                            }
                             if (columnKey === '__role__') {
                               return (
                                 <td key={`${record.id}-${columnKey}`}>

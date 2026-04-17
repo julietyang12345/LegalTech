@@ -307,7 +307,7 @@ export class TransformHubOutputService {
       if (entry.recurringPattern) {
         items.push({
           id: `recurring:${entry.label}`,
-          outcomeId: 'revenue_at_risk',
+          outcomeId: 'money_leakage',
           detailId: 'recurring_donors',
           label: entry.label,
           description: 'Multiple gifts suggest a recurring giving pattern.',
@@ -389,7 +389,7 @@ export class TransformHubOutputService {
           detailId: 'upgrade_opportunities',
           label: entry.label,
           description: 'Top-value donor with room to upgrade based on giving concentration.',
-          amount: entry.totalAmount * 0.2,
+          amount: entry.totalAmount,
           sortDate: entry.latestDate?.toISOString() ?? null,
           campaign: Array.from(entry.campaigns)[0] ?? 'Unassigned',
           donorSegment: entry.totalAmount >= 1000 ? 'major donors' : 'upgrade opportunities',
@@ -432,7 +432,7 @@ export class TransformHubOutputService {
       };
     };
 
-    const recurring = summarize('revenue_at_risk', 'recurring_donors');
+    const recurring = summarize('money_leakage', 'recurring_donors');
     const lapsed = summarize('revenue_at_risk', 'lapsed_donors');
     const matches = summarize('money_leakage', 'missing_matching_gifts');
     const upgrades = summarize('money_leakage', 'upgrade_opportunities');
@@ -444,31 +444,31 @@ export class TransformHubOutputService {
       {
         id: 'revenue_at_risk',
         eyebrow: 'Critical · revenue at risk',
-        title: `${this.roundAmount(recurring.amount + lapsed.amount)}`.replace(/^/, '$').replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' at risk of churn',
+        title: `${this.roundAmount(lapsed.amount)}`.replace(/^/, '$').replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' at risk of churn',
         tone: 'risk',
-        amount: this.roundAmount(recurring.amount + lapsed.amount),
+        amount: this.roundAmount(lapsed.amount),
         metricKind: 'currency',
-        summary: 'Recurring donors and lapsed donors surface churn risk after duplicate, household, and taxonomy review.',
-        supporting: 'Calculated from the cleaned donor layer using reviewed recency, repeat-gift cadence, and attribution updates.',
+        summary: 'Lapsed donors surface churn risk after duplicate, household, and taxonomy review.',
+        supporting: 'Calculated from the cleaned donor layer using reviewed recency and attribution updates.',
         details: [
-          { id: 'recurring_donors', label: 'Recurring donors', count: recurring.count, amount: recurring.amount, description: 'Multiple gifts suggest a recurring giving pattern.', ctaLabel: 'Review attribution table', action: 'final_table' },
           { id: 'lapsed_donors', label: 'Lapsed donors', count: lapsed.count, amount: lapsed.amount, description: 'Last gift is over 12 months old.', ctaLabel: 'Open final review', action: 'final_table' },
         ],
       },
       {
         id: 'money_leakage',
         eyebrow: 'Opportunity · hidden revenue',
-        title: `${this.roundAmount(matches.amount + upgrades.amount + unassigned.amount)}`.replace(/^/, '$').replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' potential upside',
+        title: 'Potential upside',
         tone: 'opportunity',
-        amount: this.roundAmount(matches.amount + upgrades.amount + unassigned.amount),
+        amount: this.roundAmount(recurring.amount + matches.amount + upgrades.amount + unassigned.amount),
         metricKind: 'currency',
         summary: hasAssignedStaffField
-          ? 'Matching gifts, upgrade candidates, and unassigned major donors are sitting in the file uncaptured.'
-          : 'Matching gifts and upgrade candidates are sitting in the file uncaptured.',
+          ? 'Recurring donors, matching gifts, upgrade candidates, and unassigned major donors are sitting in the file uncaptured.'
+          : 'Recurring donors, matching gifts, and upgrade candidates are sitting in the file uncaptured.',
         supporting: hasAssignedStaffField
-          ? 'Calculated from employer-match hints, donor concentration, and missing ownership.'
-          : 'Calculated from employer-match hints and donor concentration.',
+          ? 'Calculated from repeat-gift cadence, employer-match hints, donor concentration, and missing ownership.'
+          : 'Calculated from repeat-gift cadence, employer-match hints, and donor concentration.',
         details: [
+          { id: 'recurring_donors', label: 'Recurring donors', count: recurring.count, amount: recurring.amount, description: 'Multiple gifts suggest a recurring giving pattern.', ctaLabel: 'Review attribution table', action: 'final_table' },
           { id: 'missing_matching_gifts', label: 'Missing matching gifts', count: matches.count, amount: matches.amount, description: 'Employer-match signals appear in the source data but are not yet worked.', ctaLabel: 'Open household review', action: 'household' },
           { id: 'upgrade_opportunities', label: 'Upgrade opportunities', count: upgrades.count, amount: upgrades.amount, description: 'High-value donors are giving below what their file pattern suggests.', ctaLabel: 'Open final review', action: 'final_table' },
           ...(hasAssignedStaffField
@@ -497,7 +497,7 @@ export class TransformHubOutputService {
       cards,
       items,
       suggestedViews: [
-        { id: 'template-recurring-risk', name: 'Recurring donors', outcomeId: 'revenue_at_risk', detailId: 'recurring_donors' },
+        { id: 'template-recurring-risk', name: 'Recurring donors', outcomeId: 'money_leakage', detailId: 'recurring_donors' },
       ],
     };
   }

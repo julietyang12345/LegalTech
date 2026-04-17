@@ -74,6 +74,50 @@ describe('buildAppendColumnDecisions', () => {
     });
   });
 
+  it('preserves the true prepared S2 raw header when schema fieldMap is already canonicalized', () => {
+    const existingSchema = {
+      fieldMap: { fund: 'fund' },
+      confidence: 1,
+      expectedFields: [],
+      unresolvedFields: [],
+      fieldSuggestions: [],
+    } as unknown as ResolvedSchema;
+    const incomingSchema = {
+      fieldMap: { fund: 'fund' },
+      confidence: 1,
+      expectedFields: [],
+      unresolvedFields: [],
+      fieldSuggestions: [],
+    } as unknown as ResolvedSchema;
+
+    const incoming = {
+      ...buildParsedFile(['fund'], [{ fund: 'General' }]),
+      mergeState: {
+        uploadedFiles: ['upload.xlsx'],
+        canonicalHeaders: ['fund'],
+        pendingMerges: [],
+        autoMergedColumns: [],
+        rawHeaderLabelsByMergedHeader: {
+          fund: 'program',
+        },
+      },
+    } as ParsedFile;
+
+    const decisions = buildAppendColumnDecisions(
+      buildParsedFile(['fund'], [{ fund: 'General Fund' }]),
+      incoming,
+      'upload.xlsx',
+      { existingSchema, incomingSchema },
+    );
+
+    expect(decisions[0]).toMatchObject({
+      incomingHeader: 'fund',
+      originalIncomingHeader: 'program',
+      targetHeader: 'fund',
+      action: 'merge',
+    });
+  });
+
   it('sends alias matches with incompatible sampled value shapes to review', () => {
     const decisions = buildAppendColumnDecisions(
       buildParsedFile(['Email'], [{ Email: 'john@gmail.com' }]),

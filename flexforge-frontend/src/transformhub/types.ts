@@ -93,6 +93,7 @@ export type DonorPreviewRecord = {
   date: string;
   amount: string;
   fund: string;
+  campaignName?: string;
   appeal: string;
   email: string;
   phone: string;
