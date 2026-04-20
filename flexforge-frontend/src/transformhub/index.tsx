@@ -82,7 +82,7 @@ import { ReviewQueuePanel, useReviewQueueSummary } from './review-queue';
 import { IdentityHubPanel } from './identity-hub';
 import { AppliedDecisionsPanel } from './applied-decisions';
 import { applyAiSuggestedGroups, applyTaxonomyGroupsToPreviewRecords, buildTaxonomyState, createManualTaxonomyMerge, dismissTaxonomyCandidate, getNearMissCandidates, mergeTaxonomyCandidate, renameResolvedTaxonomyGroup, summarizeTaxonomyState, updateTaxonomyScanColumn } from './taxonomy-session';
-import { buildAppendColumnDecisions, getMergeStrategy, getPendingColumnMerges, mergeUploadIntoExisting, prepareIncomingUpload, resolvePendingColumnMerge as resolvePendingColumnMergeInParsedFile, type AutoMergedColumnMatch, type PendingColumnMerge } from './merge-table';
+import { buildAppendColumnDecisions, getMergeStrategy, getPendingColumnMerges, mergeTxWithProfileLookup, mergeUploadIntoExisting, prepareIncomingUpload, resolvePendingColumnMerge as resolvePendingColumnMergeInParsedFile, separateAutoMergedColumn as separateAutoMergedColumnInParsedFile, type AutoMergedColumnMatch, type PendingColumnMerge } from './merge-table';
 import { buildPreviewMergeView } from './preview-merge';
 import type { EntityGraphSelection, EntityGraphView } from './review-graph';
 import type { FinalAttributionDraftMap, FinalHouseholdDraft } from './review-types';
@@ -236,6 +236,32 @@ type ParsedFileWithOptionalMergeState = ParsedFile & {
   };
 };
 
+type TxProfileReviewItem = {
+  id: string;
+  txSourceRowRef: string;
+  profileSourceRowRef: string;
+  txDisplayName: string;
+  profileDisplayName: string;
+  reason: 'field_conflict' | 'ambiguous_match';
+  conflictingFields: string[];
+  evidence: string[];
+};
+
+type ResolvedSchemaWithTxProfileReview = ResolvedSchema & {
+  _txProfileReviewItems?: TxProfileReviewItem[];
+  _txProfileAutoMergePairs?: Array<{
+    txSourceRowRef: string;
+    profileSourceRowRef: string;
+  }>;
+  _txProfileMatchSummary?: {
+    matched?: number;
+    ambiguous?: number;
+    conflicting?: number;
+    unmatched?: number;
+    profileOnly?: number;
+  };
+};
+
 function normalizeManualMergeHeaderKey(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
@@ -378,6 +404,181 @@ function describeLedgerRow(row: CanonicalLedgerRow): string {
 function previewRecordLabel(record: PreviewRecord | null | undefined): string {
   if (!record) return 'Unknown preview record';
   return String(record.displayName || record.donorName || record.campaignName || record.accountName || record.preview || record.sourceRowRef || record.id || 'Unknown preview record');
+}
+
+function getRawPreviewIdentityLabel(record: PreviewRecord | null | undefined): string {
+  if (!record) return '';
+  const rawValues = getPreviewRecordRawValues(record);
+  const preferredHeaders = [
+    'donor_name',
+    'entity_name',
+    'full_name',
+    'name',
+    'display_name',
+    'constituent_name',
+    'donor name',
+    'entity name',
+    'full name',
+    'display name',
+    'constituent name',
+  ];
+
+  for (const header of preferredHeaders) {
+    const value = String(rawValues[header] ?? '').trim();
+    if (value) return value;
+  }
+
+  const fallback = Object.entries(rawValues).find(([header, value]) => {
+    const normalizedHeader = header.toLowerCase().replace(/[^a-z0-9]+/g, '');
+    if (!value || !String(value).trim()) return false;
+    if (normalizedHeader.includes('household')) return false;
+    if (normalizedHeader.includes('campaign') || normalizedHeader.includes('fund') || normalizedHeader.includes('account')) return false;
+    return normalizedHeader === 'name'
+      || normalizedHeader === 'fullname'
+      || normalizedHeader === 'displayname'
+      || normalizedHeader === 'donorname'
+      || normalizedHeader === 'entityname'
+      || normalizedHeader === 'constituentname';
+  })?.[1];
+
+  return String(fallback ?? '').trim();
+}
+
+function previewRecordIdentityLabel(record: PreviewRecord | null | undefined): string {
+  if (!record) return 'Unknown preview record';
+  const personName = [record.firstName, record.lastName].filter(Boolean).join(' ').trim();
+  const rawIdentityLabel = getRawPreviewIdentityLabel(record);
+  return String(
+    personName
+      || rawIdentityLabel
+      || record.donorName
+      || record.displayName
+      || record.organizationName
+      || record.householdName
+      || record.sourceRowRef
+      || record.id
+      || 'Unknown preview record',
+  );
+}
+
+function isSyntheticHouseholdIdentityLabel(value: string | null | undefined): boolean {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (!normalized) return false;
+  return /^h\d+(\s+h\d+)?$/.test(normalized);
+}
+
+function normalizeDuplicateReviewName(value: string | null | undefined): string {
+  return String(value ?? '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9 ]/g, '')
+    .replace(/ +/g, ' ');
+}
+
+function getDuplicateReviewComparableName(record: PreviewRecord | null | undefined, fallback?: string | null): string {
+  if (!record) return String(fallback ?? '').trim();
+  const rawIdentity = getRawPreviewIdentityLabel(record).trim();
+  if (rawIdentity) return rawIdentity;
+  const structuredName = [record.firstName, record.lastName].filter(Boolean).join(' ').trim();
+  return structuredName || String(fallback ?? '').trim();
+}
+
+function buildDuplicateReviewPairKey(left: string | null | undefined, right: string | null | undefined, leftRef?: string | null, rightRef?: string | null): string {
+  const normalizedLeftRef = String(leftRef ?? '').trim().toLowerCase();
+  const normalizedRightRef = String(rightRef ?? '').trim().toLowerCase();
+  if (normalizedLeftRef && normalizedRightRef) {
+    return [normalizedLeftRef, normalizedRightRef].sort().join('|');
+  }
+  const normalizedLeft = normalizeDuplicateReviewName(left);
+  const normalizedRight = normalizeDuplicateReviewName(right);
+  const pair = [
+    normalizedLeft || normalizedLeftRef,
+    normalizedRight || normalizedRightRef,
+  ]
+    .filter(Boolean)
+    .sort();
+  return pair.join('|');
+}
+
+function buildNormalizedNameMirrorKey(left: string | null | undefined, right: string | null | undefined): string {
+  const normalizedLeft = normalizeDuplicateReviewName(left);
+  const normalizedRight = normalizeDuplicateReviewName(right);
+  return [normalizedLeft, normalizedRight].filter(Boolean).sort().join('|');
+}
+
+function isSameNameDonorReviewPair(
+  match: PersonMatch,
+  previewRecords: PreviewRecord[],
+): boolean {
+  const incomingRecord = previewRecords.find((record) => record.sourceRowRef === match.inputRef) ?? null;
+  if (!incomingRecord) return false;
+  const matchedInputRef = match.reviewPayload?.matchedInputRef ?? null;
+  const matchedPreviewRecord = matchedInputRef
+    ? previewRecords.find((record) => record.sourceRowRef === matchedInputRef) ?? null
+    : null;
+  const incomingName = normalizeDuplicateReviewName(
+    getDuplicateReviewComparableName(incomingRecord, match.reviewPayload?.input?.name ?? null),
+  );
+  const matchedName = normalizeDuplicateReviewName(
+    matchedPreviewRecord
+      ? getDuplicateReviewComparableName(matchedPreviewRecord)
+      : match.reviewPayload?.candidate
+        ? `${match.reviewPayload.candidate.firstName ?? ''} ${match.reviewPayload.candidate.lastName ?? ''}`.trim()
+        : '',
+  );
+  return Boolean(incomingName && matchedName && incomingName === matchedName);
+}
+
+function groupPreviewReviewMatches(
+  matches: PersonMatch[],
+  previewRecords: PreviewRecord[],
+  isDonorFile: boolean,
+): Array<{ key: string; representative: PersonMatch; allMatches: PersonMatch[] }> {
+  if (!isDonorFile) {
+    return matches.map((match) => ({ key: match.inputRef, representative: match, allMatches: [match] }));
+  }
+  const donorReviewDescriptors = matches.map((match) => {
+    const incomingRecord = previewRecords.find((record) => record.sourceRowRef === match.inputRef) ?? null;
+    const matchedInputRef = match.reviewPayload?.matchedInputRef ?? null;
+    const matchedPreviewRecord = matchedInputRef
+      ? previewRecords.find((record) => record.sourceRowRef === matchedInputRef) ?? null
+      : null;
+    const candidate = match.reviewPayload?.candidate;
+    const inputName = getDuplicateReviewComparableName(incomingRecord, match.reviewPayload?.input?.name ?? null);
+    const candidateName = matchedPreviewRecord
+      ? getDuplicateReviewComparableName(matchedPreviewRecord)
+      : candidate
+        ? `${candidate.firstName ?? ''} ${candidate.lastName ?? ''}`.trim()
+        : '';
+    return {
+      match,
+      inputName,
+      candidateName,
+      matchedInputRef,
+    };
+  });
+  const groups = new Map<string, { key: string; representative: PersonMatch; allMatches: PersonMatch[] }>();
+  for (const descriptor of donorReviewDescriptors) {
+    const { match, inputName, candidateName, matchedInputRef } = descriptor;
+    const hasMirrorExistingRecordMatch = !matchedInputRef && donorReviewDescriptors.some((candidateDescriptor) => (
+      candidateDescriptor.match.inputRef !== match.inputRef
+      && !candidateDescriptor.matchedInputRef
+      && normalizeDuplicateReviewName(candidateDescriptor.inputName) === normalizeDuplicateReviewName(candidateName)
+      && normalizeDuplicateReviewName(candidateDescriptor.candidateName) === normalizeDuplicateReviewName(inputName)
+    ));
+    const groupKey = matchedInputRef
+      ? buildDuplicateReviewPairKey(inputName, candidateName, match.inputRef, matchedInputRef)
+      : hasMirrorExistingRecordMatch
+        ? buildNormalizedNameMirrorKey(inputName, candidateName)
+        : match.inputRef;
+    const existing = groups.get(groupKey);
+    if (existing) {
+      existing.allMatches.push(match);
+    } else {
+      groups.set(groupKey, { key: groupKey, representative: match, allMatches: [match] });
+    }
+  }
+  return Array.from(groups.values());
 }
 
 function isManualAttributionPreviewRecord(record: PreviewRecord | null | undefined): boolean {
@@ -670,6 +871,16 @@ function getPreviewRecordAnalyticsRecurringLabel(record: PreviewRecord | null | 
     || getPreviewRecordFirstRawValue(record, ['recurring', 'frequency', 'type', 'gift type', 'gift_type'])
     || '',
   ).toLowerCase();
+}
+
+function isDonorAnalyticsTransactionRecord(
+  record: PreviewRecord | null | undefined,
+  hasTransactionLinkFlow: boolean,
+): boolean {
+  if (!record) return false;
+  if (!hasTransactionLinkFlow) return true;
+  const sourceFileClass = record.sourceFileClass ?? record.source_file_class ?? null;
+  return sourceFileClass === 'donor' || sourceFileClass === 'ledger';
 }
 
 function getPreviewRecordAttribution(record: PreviewRecord | null | undefined): PreviewAttributionDraft | null {
@@ -1762,7 +1973,7 @@ function TransactionDuplicateReviewCard({
       <div className="th-review-match-head">
         <div style={{ flex: 1 }}>
           <strong>{incomingSourceLabel} ↔ {matchedSourceLabel}</strong>
-          <p>{getPreviewRecordLabel(incomingRecord)} → {getPreviewRecordLabel(matchedRecord)}</p>
+          <p>{previewRecordIdentityLabel(incomingRecord)} → {previewRecordIdentityLabel(matchedRecord)}</p>
           <p>{candidateEvidence.join(' · ') || 'Matched on donor + amount + date'}</p>
         </div>
         <div className="th-review-match-actions">
@@ -1904,6 +2115,7 @@ type SchemaUnionReviewPanelProps = {
   availableHeaders: string[];
   isResolvingPendingMerge: boolean;
   onResolve: (merge: PendingColumnMerge, action: 'combine' | 'keep_separate' | 'keep_s1' | 'keep_s2') => void | Promise<void>;
+  onKeepAutoMergedSeparate: (merge: AutoMergedColumnMatch) => void | Promise<void>;
   manualSuggestedHeader: string;
   manualIncomingHeader: string;
   onManualSuggestedHeaderChange: (value: string) => void;
@@ -1919,6 +2131,7 @@ function SchemaUnionReviewPanel({
   availableHeaders,
   isResolvingPendingMerge,
   onResolve,
+  onKeepAutoMergedSeparate,
   manualSuggestedHeader,
   manualIncomingHeader,
   onManualSuggestedHeaderChange,
@@ -1944,11 +2157,6 @@ function SchemaUnionReviewPanel({
             <span>{visibleItems.length} column item{visibleItems.length === 1 ? '' : 's'}</span>
           </div>
           <p className="th-helper">Confirm pending column pairs and inspect safe alias merges from the workbook combine step before duplicate review.</p>
-          {pendingColumnMergeSourceFiles.length > 0 && (
-            <p className="th-helper" style={{ padding: 0, marginTop: 6 }}>
-              S1 current table · S2 {pendingColumnMergeSourceFiles.join(' + ')}
-            </p>
-          )}
           <div className="th-review-filter-row">
             <button type="button" className={`th-chip${schemaUnionFilter === 'pending' ? ' is-active' : ''}`} onClick={() => setSchemaUnionFilter('pending')}>Pending {pendingColumnMerges.length}</button>
             <button type="button" className={`th-chip${schemaUnionFilter === 'merged' ? ' is-active' : ''}`} onClick={() => setSchemaUnionFilter('merged')}>Merged {visibleMergedColumns.length}</button>
@@ -1989,9 +2197,6 @@ function SchemaUnionReviewPanel({
       ) : (
         <>
           <div className="th-panel-head"><span>Schema union review</span><span>{pendingColumnMerges.length + visibleMergedColumns.length} column item{pendingColumnMerges.length + visibleMergedColumns.length === 1 ? '' : 's'}</span></div>
-          <p className="th-helper" style={{ padding: 0, margin: 0 }}>
-            S1 current table · S2 {pendingColumnMergeSourceFiles.join(' + ')}
-          </p>
         </>
       )}
       {(schemaUnionFilter === 'pending' || schemaUnionFilter === 'all') && pendingColumnMerges.map((merge) => (
@@ -2043,6 +2248,7 @@ function SchemaUnionReviewPanel({
             </p>
           </div>
           <div className="th-review-match-actions">
+            <button type="button" className="th-button th-button-secondary" onClick={() => void onKeepAutoMergedSeparate(merge)} disabled={isResolvingPendingMerge}>Keep separate</button>
             <span className="th-status is-ready">Merged</span>
           </div>
         </div>
@@ -2053,6 +2259,7 @@ function SchemaUnionReviewPanel({
 
 function buildMatchedPersonCompareRecord(person: CanonicalPerson | null) {
   if (!person) return null;
+  const displayName = [person.firstName, person.lastName].filter(Boolean).join(' ').trim() || person.id;
   return {
     id: `db:${person.id}`,
     sourceRowRef: `db:${person.id}`,
@@ -2074,9 +2281,10 @@ function buildMatchedPersonCompareRecord(person: CanonicalPerson | null) {
     fund: '',
     appeal: '',
     memo: '',
-    donorName: [person.firstName, person.lastName].filter(Boolean).join(' ').trim(),
-    displayName: [person.firstName, person.lastName].filter(Boolean).join(' ').trim() || person.id,
-    preview: [person.firstName, person.lastName].filter(Boolean).join(' ').trim() || person.id,
+    donorName: displayName,
+    displayName,
+    preview: displayName,
+    rawValues: {},
     values: {},
   } as unknown as PreviewRecord;
 }
@@ -2168,6 +2376,8 @@ export default function TransformHubPage() {
   const [hasGeneratedReviewAnalytics, setHasGeneratedReviewAnalytics] = useState(false);
   const [txDuplicateResult, setTxDuplicateResult] = useState<PersonResolverResult | null>(null);
   const [hasRunTransactionDuplicateCheck, setHasRunTransactionDuplicateCheck] = useState(false);
+  const [hasTriggeredTransactionDuplicateCheck, setHasTriggeredTransactionDuplicateCheck] = useState(false);
+  const [isRunningTransactionDuplicateCheck, setIsRunningTransactionDuplicateCheck] = useState(false);
   const [expandedAnalyticsItemId, setExpandedAnalyticsItemId] = useState<string | null>(null);
   const [taxonomyScanColumnsExpanded, setTaxonomyScanColumnsExpanded] = useState(false);
   const [showReviewQueue, setShowReviewQueue] = useState(false);
@@ -2281,8 +2491,12 @@ export default function TransformHubPage() {
   const isLedgerFile = fileClass === 'ledger';
   const reviewTableActive = true;
   const duplicateReviewActive = nonLedgerReviewPanel === 'duplicate';
-  const matchingReviewActive = nonLedgerReviewPanel === 'matching';
   const householdReviewActive = nonLedgerReviewPanel === 'household';
+  useEffect(() => {
+    if (nonLedgerReviewPanel === 'matching') {
+      setNonLedgerReviewPanel('household');
+    }
+  }, [nonLedgerReviewPanel]);
   const previewRecords = useMemo<PreviewRecord[]>(
     () => {
       const base = !isLedgerFile
@@ -2305,10 +2519,6 @@ export default function TransformHubPage() {
   const primaryMergeStepDescription = duplicateStrategySuggestion.transactionCapable
     ? 'Find and resolve duplicate donor records first. Gift duplicate review can run later for transaction-heavy sheets.'
     : 'Find and resolve duplicate donor records across the uploaded rows first.';
-  const matchingStepLabel = 'Record Consolidation';
-  const matchingStepDescription = hasTransactionLinkFlow
-    ? 'Combine rows after duplicate review. Raw rows stay visible until you confirm merges.'
-    : 'Turn approved duplicates into canonical people or donors. Unapproved rows stay separate.';
   const householdCleanupStepLabel = 'Household Cleanup';
   const householdCleanupStepDescription = isDonorFile
     ? 'Review household grouping, attribution, and salutations.'
@@ -2317,10 +2527,10 @@ export default function TransformHubPage() {
   const taxonomyCleanupStepDescription = 'Review possible same fund, appeal, and campaign labels before export.';
   const txCleanupStepLabel = 'Other Duplicate Check';
   const txCleanupStepDescription = 'Choose gift duplicate signals, review the recommended check, and run the duplicate pass after donor deduplication is resolved.';
-  const householdStepNumber = hasTransactionLinkFlow ? 3 : 2;
-  const taxonomyStepNumber = hasTransactionLinkFlow ? 4 : 3;
-  const txCleanupStepNumber = hasTransactionLinkFlow ? 5 : 4;
-  const analyticsStepNumber = hasTransactionLinkFlow ? 6 : (isDonorFile ? 5 : 4);
+  const householdStepNumber = 2;
+  const taxonomyStepNumber = 3;
+  const txCleanupStepNumber = 4;
+  const analyticsStepNumber = isDonorFile ? 5 : 4;
   const analyticsStepLabel = 'Analytics Review';
   const analyticsStepDescription = 'Review post-cleanup metrics, exceptions, and outcome summaries before export.';
   const duplicateQueueLabel = 'Duplicate candidate queue';
@@ -2342,6 +2552,30 @@ export default function TransformHubPage() {
     if (isDonorFile) return getDonorIdentityCompareFields(headers, fieldMap);
     return getPreviewCompareFields(headers);
   }, [supportsDuplicateWorkflow, duplicateReviewActive, isDonorFile, parsedFile?.headers, schema?.fieldMap]);
+  const getExistingPersonCompareValue = useCallback((person: CanonicalPerson | null, field: PreviewCompareField): string => {
+    if (!person) return '—';
+    if (field.kind === 'source') return `db:${person.id}`;
+
+    const fieldMap = (schema?.fieldMap ?? {}) as Record<string, string>;
+    const semanticFromMap = field.header
+      ? Object.entries(fieldMap).find(([, mappedHeader]) => mappedHeader === field.header)?.[0] ?? null
+      : null;
+    const semantic = semanticFromMap ?? field.header ?? null;
+    const displayName = [person.firstName, person.lastName].filter(Boolean).join(' ').trim() || person.id;
+
+    if (!semantic) return '—';
+    if (/entity_name|donor_name|full_name|organization_name/.test(semantic)) return displayName || '—';
+    if (semantic === 'first_name') return person.firstName || '—';
+    if (semantic === 'last_name') return person.lastName || '—';
+    if (semantic === 'email') return person.email || '—';
+    if (semantic === 'phone') return person.phone || '—';
+    if (semantic === 'address') return person.addressLine1 || '—';
+    if (semantic === 'city') return person.city || '—';
+    if (semantic === 'state') return person.state || '—';
+    if (semantic === 'postal_code') return person.zip || '—';
+    if (semantic === 'household_name') return (person as unknown as { householdName?: string | null }).householdName || '—';
+    return getPreviewCompareValue(buildMatchedPersonCompareRecord(person), field);
+  }, [schema?.fieldMap]);
   useEffect(() => {
     if (isLedgerFile || !parsedFile?.preview) {
       setTaxonomyState((current) => (current ? null : current));
@@ -2371,6 +2605,7 @@ export default function TransformHubPage() {
   );
   const [txMergeDecisions, setTxMergeDecisions] = useState<Map<string, 'confirmed' | 'separated'>>(new Map());
   const [txSwapDecisions, setTxSwapDecisions] = useState<Map<string, boolean>>(new Map());
+  const [donorSwapDecisions, setDonorSwapDecisions] = useState<Map<string, boolean>>(new Map());
   const [expandedTxReviewRef, setExpandedTxReviewRef] = useState<string | null>(null);
   const [txReviewFilter, setTxReviewFilter] = useState<PeopleReviewFilter>('pending');
   const [manualMergeSuggestedHeader, setManualMergeSuggestedHeader] = useState('');
@@ -2378,6 +2613,17 @@ export default function TransformHubPage() {
   const txReviewCounts = useMemo(
     () => countTransactionReviewBuckets(txReviewMatches, txMergeDecisions),
     [txReviewMatches, txMergeDecisions],
+  );
+  const txProfileReviewItems = useMemo(
+    () => (((schema as ResolvedSchemaWithTxProfileReview | null)?._txProfileReviewItems ?? []) as TxProfileReviewItem[]),
+    [schema],
+  );
+  const txProfileAutoMergePairs = useMemo(
+    () => (((schema as ResolvedSchemaWithTxProfileReview | null)?._txProfileAutoMergePairs ?? []).map((pair) => ({
+      representativeRef: pair.txSourceRowRef,
+      absorbedRef: pair.profileSourceRowRef,
+    }))),
+    [schema],
   );
   const filteredTxReviewMatches = useMemo(
     () => txReviewMatches.filter((match) => matchesTransactionReviewFilter(txReviewFilter, match, txMergeDecisions)),
@@ -2391,6 +2637,13 @@ export default function TransformHubPage() {
     )),
     [txMergeDecisions, txReviewMatches],
   );
+  const previewMergeView = useMemo(
+    () => buildPreviewMergeView(previewRecords, confirmedTxDuplicateMatches, txSwapDecisions, hasTransactionLinkFlow, txProfileAutoMergePairs),
+    [confirmedTxDuplicateMatches, hasTransactionLinkFlow, previewRecords, txProfileAutoMergePairs, txSwapDecisions],
+  );
+  const representativeByAbsorbedRef = previewMergeView.representativeByAbsorbedRef;
+  const mergedSourceRefsByRepresentative = previewMergeView.mergedSourceRefsByRepresentative;
+  const displayedPreviewRecords = previewMergeView.displayedPreviewRecords;
   const txReviewResetDepsRef = useRef<{
     parsedFile: ParsedFile | null;
     householdResult: HouseholdResolverResult | null;
@@ -2418,8 +2671,11 @@ export default function TransformHubPage() {
 
     setTxDuplicateResult(null);
     setHasRunTransactionDuplicateCheck(false);
+    setHasTriggeredTransactionDuplicateCheck(false);
+    setIsRunningTransactionDuplicateCheck(false);
     setTxMergeDecisions(new Map());
     setTxSwapDecisions(new Map());
+    setDonorSwapDecisions(new Map());
     setExpandedTxReviewRef(null);
     setTxReviewFilter('pending');
   }, [parsedFile, householdResult, taxonomyState]);
@@ -2433,51 +2689,57 @@ export default function TransformHubPage() {
       if (!duplicateReviewActive && !householdReviewActive) return [];
       return (personResult?.matches ?? []).filter((match) => {
         if (isExactDuplicateMatch(match)) return false;
-        return previewRecords.some((record) => record.sourceRowRef === match.inputRef);
+        const incomingRecord = previewRecords.find((record) => record.sourceRowRef === match.inputRef) ?? null;
+        return Boolean(incomingRecord);
       });
     },
     [duplicateReviewActive, householdReviewActive, personResult?.matches, previewRecords],
   );
   const filteredLedgerReviewMatches = ledgerReviewMatches.filter((match) => matchesPeopleReviewFilter(peopleReviewFilter, match, mergeDecisions));
+  const ledgerReviewCounts = countPeopleReviewBuckets(ledgerReviewMatches, mergeDecisions);
+  const mergeableLedgerReviewMatches = filteredLedgerReviewMatches.filter((match) => isPendingDuplicateReview(match, mergeDecisions));
+  const queueEligiblePreviewReviewMatches = useMemo(
+    () => previewReviewMatches.filter((match) => !representativeByAbsorbedRef.has(match.inputRef)),
+    [previewReviewMatches, representativeByAbsorbedRef],
+  );
   const previewReviewCounts = useMemo(
-    () => countPeopleReviewBuckets(previewReviewMatches, mergeDecisions),
-    [previewReviewMatches, mergeDecisions],
+    () => countPeopleReviewBuckets(queueEligiblePreviewReviewMatches, mergeDecisions),
+    [queueEligiblePreviewReviewMatches, mergeDecisions],
   );
   const effectivePreviewReviewFilter = peopleReviewFilter;
   const filteredPreviewReviewMatches = useMemo(
-    () => previewReviewMatches.filter((match) => matchesPeopleReviewFilter(effectivePreviewReviewFilter, match, mergeDecisions)),
-    [previewReviewMatches, effectivePreviewReviewFilter, mergeDecisions],
-  );
-  const ledgerReviewCounts = countPeopleReviewBuckets(ledgerReviewMatches, mergeDecisions);
-  const mergeableLedgerReviewMatches = filteredLedgerReviewMatches.filter((match) => isPendingDuplicateReview(match, mergeDecisions));
-  // Donor files: group matches by unique donor pair (same input name + same matchedPersonId) so each pair shows ONE card
-  const groupedFilteredPreviewReviewMatches = useMemo(() => {
-    if (!isDonorFile) {
-      return filteredPreviewReviewMatches.map((m) => ({ key: m.inputRef, representative: m, allMatches: [m] as PersonMatch[] }));
-    }
-    const groups = new Map<string, { key: string; representative: PersonMatch; allMatches: PersonMatch[] }>();
-    for (const match of filteredPreviewReviewMatches) {
-      const inputName = (match.reviewPayload?.input?.name ?? '').trim().toLowerCase();
-      // Group by input name + candidate display name so that rows matched to the same
-      // person (even via different canonical person IDs) collapse into one card
-      const candidate = match.reviewPayload?.candidate;
-      const candidateName = candidate
-        ? `${candidate.firstName ?? ''} ${candidate.lastName ?? ''}`.trim().toLowerCase()
-        : (match.matchedPersonId ?? '');
-      const groupKey = `${inputName}|${candidateName}`;
-      const existing = groups.get(groupKey);
-      if (existing) {
-        existing.allMatches.push(match);
-      } else {
-        groups.set(groupKey, { key: groupKey, representative: match, allMatches: [match] });
+    () => queueEligiblePreviewReviewMatches.filter((match) => {
+      if (!matchesPeopleReviewFilter(effectivePreviewReviewFilter, match, mergeDecisions)) return false;
+      if (
+        isDonorFile
+        && effectivePreviewReviewFilter === 'pending'
+        && isSameNameDonorReviewPair(match, previewRecords)
+      ) {
+        return false;
       }
-    }
-    return Array.from(groups.values());
-  }, [isDonorFile, filteredPreviewReviewMatches]);
+      return true;
+    }),
+    [queueEligiblePreviewReviewMatches, effectivePreviewReviewFilter, mergeDecisions, isDonorFile, previewRecords],
+  );
+  const actionablePreviewReviewMatches = useMemo(
+    () => queueEligiblePreviewReviewMatches.filter((match) => {
+      if (!isPendingDuplicateReview(match, mergeDecisions)) return false;
+      if (isDonorFile && isSameNameDonorReviewPair(match, previewRecords)) return false;
+      return true;
+    }),
+    [queueEligiblePreviewReviewMatches, mergeDecisions, isDonorFile, previewRecords],
+  );
+  const groupedActionablePreviewReviewMatches = useMemo(
+    () => groupPreviewReviewMatches(actionablePreviewReviewMatches, previewRecords, isDonorFile),
+    [actionablePreviewReviewMatches, previewRecords, isDonorFile],
+  );
+  const groupedFilteredPreviewReviewMatches = useMemo(() => {
+    return groupPreviewReviewMatches(filteredPreviewReviewMatches, previewRecords, isDonorFile);
+  }, [isDonorFile, filteredPreviewReviewMatches, previewRecords]);
   const mergeablePreviewGroupCount = groupedFilteredPreviewReviewMatches.filter(
     ({ representative }) => isPendingDuplicateReview(representative, mergeDecisions),
   ).length;
-  const pendingPeopleReviews = personResult?.matches.filter((match) => isPendingDuplicateReview(match, mergeDecisions)).length ?? 0;
+  const pendingPeopleReviews = groupedActionablePreviewReviewMatches.length;
   const duplicateClassCounts = getDuplicateClassCounts(personResult);
   const peopleStepReady = !supportsDuplicateWorkflow || (!!personResult && pendingPeopleReviews === 0);
   const householdsStepReady = !supportsHouseholdWorkflow || (!!householdResult && peopleStepReady);
@@ -2513,8 +2775,8 @@ export default function TransformHubPage() {
     [txDuplicateResult?.matches],
   );
   const reviewTableDuplicateMatchByInputRef = useMemo(
-    () => (matchingReviewActive && hasRunTransactionDuplicateCheck ? txDuplicateMatchByInputRef : duplicateMatchByInputRef),
-    [matchingReviewActive, hasRunTransactionDuplicateCheck, txDuplicateMatchByInputRef, duplicateMatchByInputRef],
+    () => (hasTransactionLinkFlow && hasRunTransactionDuplicateCheck ? txDuplicateMatchByInputRef : duplicateMatchByInputRef),
+    [hasTransactionLinkFlow, hasRunTransactionDuplicateCheck, txDuplicateMatchByInputRef, duplicateMatchByInputRef],
   );
   useTransformHubReviewDrafts({
     householdResult,
@@ -2534,13 +2796,6 @@ export default function TransformHubPage() {
     });
     return next;
   }, [householdResult]);
-  const previewMergeView = useMemo(
-    () => buildPreviewMergeView(previewRecords, confirmedTxDuplicateMatches, txSwapDecisions, hasTransactionLinkFlow),
-    [confirmedTxDuplicateMatches, hasTransactionLinkFlow, previewRecords, txSwapDecisions],
-  );
-  const representativeByAbsorbedRef = previewMergeView.representativeByAbsorbedRef;
-  const mergedSourceRefsByRepresentative = previewMergeView.mergedSourceRefsByRepresentative;
-  const displayedPreviewRecords = previewMergeView.displayedPreviewRecords;
   const reviewedPreviewRecords = useMemo(
     () => (supportsDuplicateWorkflow ? displayedPreviewRecords : previewRecords),
     [supportsDuplicateWorkflow, displayedPreviewRecords, previewRecords],
@@ -3167,13 +3422,20 @@ export default function TransformHubPage() {
       : householdLayerViews),
     [householdReviewTab, householdLayerViews, householdsNeedingAttribution],
   );
+  const analyticsDonorRecords = useMemo(
+    () => (fileClass === 'donor'
+      ? analyticsPreviewRecords.filter((record) => isDonorAnalyticsTransactionRecord(record, hasTransactionLinkFlow))
+      : []),
+    [analyticsPreviewRecords, fileClass, hasTransactionLinkFlow],
+  );
   useEffect(() => {
     if (householdLayerViews.length === 0) return;
     setHouseholdReviewTab(householdsNeedingAttribution.size === 0 ? 'all' : 'needs_attribution');
   }, [householdsNeedingAttribution.size, householdLayerViews.length]);
   const hasAssignedStaffField = Boolean(String(schema?.fieldMap?.assigned_staff ?? '').trim());
   const reviewOutcomeCards = useMemo<ReviewOutcomeCard[]>(() => {
-    const donorRecords = fileClass === 'donor' ? analyticsPreviewRecords : [];
+    const donorRecords = analyticsDonorRecords;
+    const fieldMap = (schema?.fieldMap ?? {}) as Record<string, string>;
     const donorGroups = new Map<string, {
       label: string;
       totalAmount: number;
@@ -3197,8 +3459,9 @@ export default function TransformHubPage() {
         memoText: [],
         rawCount: 0,
       };
-      const amount = parseCurrencyAmount(record.amount) ?? 0;
-      const nextDate = record.date ? new Date(String(record.date)) : null;
+      const amount = getPreviewRecordAnalyticsAmount(record, fieldMap) ?? 0;
+      const dateValue = getPreviewRecordAnalyticsDate(record, fieldMap);
+      const nextDate = dateValue ? new Date(dateValue) : null;
       const latestTime = current.dates.reduce((max, date) => Math.max(max, date.getTime()), 0);
       if (amount > 0) {
         current.totalAmount += amount;
@@ -3254,11 +3517,11 @@ export default function TransformHubPage() {
       : [];
     const ambiguousAmount = Array.from(ambiguousAttributionRefs).reduce((sum, sourceRowRef) => {
       const record = reviewedPreviewRecords.find((item) => item.sourceRowRef === sourceRowRef);
-      return sum + (parseCurrencyAmount(record?.amount) ?? 0);
+      return sum + (getPreviewRecordAnalyticsAmount(record, fieldMap) ?? 0);
     }, 0);
     const splitMismatchAmount = displayedPreviewRecords.reduce((sum, record) => {
       const draft = finalAttributionDrafts[record.sourceRowRef] ?? getPreviewRecordAttribution(record);
-      const amount = parseCurrencyAmount(record.amount) ?? 0;
+      const amount = getPreviewRecordAnalyticsAmount(record, fieldMap) ?? 0;
       if (!draft || draft.creditAmount == null || draft.mode !== 'joint_split') return sum;
       return Math.abs(draft.creditAmount - amount) > 1 ? sum + Math.abs(draft.creditAmount - amount) : sum;
     }, 0);
@@ -3397,14 +3660,18 @@ export default function TransformHubPage() {
     finalAttributionDrafts,
     hasAssignedStaffField,
     householdLayerViews,
-    analyticsPreviewRecords,
+    analyticsDonorRecords,
     getAnalyticsRecordIdentity,
     previewRecords,
     reviewedPreviewRecords,
+    schema?.fieldMap,
     taxonomyState,
   ]);
+  const shouldUseGeneratedReviewAnalytics = hasGeneratedReviewAnalytics
+    && Boolean(reviewAnalyticsData?.cards?.length)
+    && Boolean(reviewAnalyticsData?.items?.length);
   const effectiveReviewOutcomeCards = hasGeneratedReviewAnalytics
-    ? (reviewAnalyticsData?.cards?.length ? reviewAnalyticsData.cards : reviewOutcomeCards)
+    ? (shouldUseGeneratedReviewAnalytics ? reviewAnalyticsData!.cards : reviewOutcomeCards)
     : [];
   const financialSummaryOutcomeCard = useMemo<ReviewOutcomeCard | null>(() => {
     if (fileClass !== 'donor' || donorHealthCards.length === 0) return null;
@@ -3564,7 +3831,11 @@ export default function TransformHubPage() {
   const displayedOutcomeCards = useMemo(
     () => {
       if (!hasGeneratedReviewAnalytics) return [];
-      const cards = [...effectiveReviewOutcomeCards];
+      const cards = effectiveReviewOutcomeCards.filter((card) => (
+        card.id !== 'finance_mismatch'
+        || card.amount > 0
+        || card.details.some((detail) => detail.count > 0 || detail.amount > 0)
+      ));
       if (donorHealthOutcomeCard) cards.unshift(donorHealthOutcomeCard);
       if (financialSummaryOutcomeCard) cards.unshift(financialSummaryOutcomeCard);
       return cards;
@@ -3573,7 +3844,7 @@ export default function TransformHubPage() {
   );
   const selectedOutcomeCard = displayedOutcomeCards.find((card) => card.id === selectedOutcomeCardId) ?? displayedOutcomeCards[0];
   const analyticsWorkspaceItems = useMemo<AnalyticsWorkspaceItem[]>(() => {
-    const donorRecords = fileClass === 'donor' ? analyticsPreviewRecords : [];
+    const donorRecords = analyticsDonorRecords;
     const fieldMap = (schema?.fieldMap ?? {}) as Record<string, string>;
     const donorGroups = new Map<string, {
       label: string;
@@ -3810,7 +4081,7 @@ export default function TransformHubPage() {
     finalAttributionDrafts,
     getPreviewRecordClusterRefs,
     hasAssignedStaffField,
-    analyticsPreviewRecords,
+    analyticsDonorRecords,
     getAnalyticsRecordIdentity,
     previewRecords,
     reviewedPreviewRecords,
@@ -3821,7 +4092,7 @@ export default function TransformHubPage() {
   const activeOutcomeDetail = selectedOutcomeCard?.details.find((detail) => detail.id === activeOutcomeDetailId) ?? selectedOutcomeCard?.details[0] ?? null;
   const activeAnalyticsFilters = (activeOutcomeDetailId ? analyticsWorkspace.filtersByDetail[activeOutcomeDetailId] : null) ?? buildDefaultAnalyticsFilters();
   const effectiveAnalyticsWorkspaceItems = hasGeneratedReviewAnalytics
-    ? (reviewAnalyticsData?.items?.length ? reviewAnalyticsData.items : analyticsWorkspaceItems)
+    ? (shouldUseGeneratedReviewAnalytics ? reviewAnalyticsData!.items : analyticsWorkspaceItems)
     : [];
   const activeOutcomeItems = activeOutcomeDetailId
     ? effectiveAnalyticsWorkspaceItems.filter((item) => item.outcomeId === selectedOutcomeCardId && item.detailId === activeOutcomeDetailId)
@@ -3880,6 +4151,18 @@ export default function TransformHubPage() {
       },
     }));
   }, [analyticsWorkspace.selectedDetailIdByOutcome, selectedOutcomeCard]);
+  useEffect(() => {
+    setAnalyticsWorkspace((current) => (
+      current.selectedOutcomeId === selectedOutcomeCardId
+        ? current
+        : { ...current, selectedOutcomeId: selectedOutcomeCardId }
+    ));
+  }, [selectedOutcomeCardId]);
+  useEffect(() => {
+    if (!displayedOutcomeCards.length) return;
+    if (displayedOutcomeCards.some((card) => card.id === selectedOutcomeCardId)) return;
+    selectOutcomeCard(displayedOutcomeCards[0].id as ReviewOutcomeId);
+  }, [displayedOutcomeCards, selectedOutcomeCardId]);
   useEffect(() => {
     if (visibleHouseholdLayerViews.length === 0) {
       setExpandedHouseholdReviewId(null);
@@ -4125,8 +4408,8 @@ export default function TransformHubPage() {
     return buildConsolidatedPreviewRecords(filteredDisplayedPreviewRecords);
   }, [buildConsolidatedPreviewRecords, filteredDisplayedPreviewRecords]);
   const latestUpdatedPreviewRecords = useMemo(
-    () => (matchingTableView === 'consolidated' ? consolidatedLatestPreviewRecords : displayedPreviewRecords),
-    [matchingTableView, consolidatedLatestPreviewRecords, displayedPreviewRecords],
+    () => (hasTransactionLinkFlow && matchingTableView === 'consolidated' ? consolidatedLatestPreviewRecords : displayedPreviewRecords),
+    [hasTransactionLinkFlow, matchingTableView, consolidatedLatestPreviewRecords, displayedPreviewRecords],
   );
   const matchesPreviewColumnFilters = useCallback((record: PreviewRecord) => {
     const activeFilters = Object.entries(previewColumnFilters).filter(([, value]) => value.trim());
@@ -4172,7 +4455,7 @@ export default function TransformHubPage() {
   }, [getAttributionDraftForRecord, getResolvedPreviewCellValue, householdLabelById, parsedFile?.fileName, previewColumnFilters, previewSourceBadgeByOrigin, reviewTableDuplicateMatchByInputRef, supportsDuplicateWorkflow]);
   const visibleAttributionTableRecords = useMemo(
     () => {
-      const sourceRecords = matchingReviewActive && matchingTableView === 'consolidated'
+      const sourceRecords = hasTransactionLinkFlow && matchingTableView === 'consolidated'
         ? consolidatedDisplayedPreviewRecords
         : filteredDisplayedPreviewRecords;
       const baseRecords = selectedAttributionGroupKey
@@ -4180,7 +4463,7 @@ export default function TransformHubPage() {
         : sourceRecords;
       return baseRecords.filter(matchesPreviewColumnFilters);
     },
-    [selectedAttributionGroupKey, filteredDisplayedPreviewRecords, consolidatedDisplayedPreviewRecords, ambiguousGroupKeyBySourceRef, matchesPreviewColumnFilters, matchingReviewActive, matchingTableView],
+    [selectedAttributionGroupKey, filteredDisplayedPreviewRecords, consolidatedDisplayedPreviewRecords, ambiguousGroupKeyBySourceRef, matchesPreviewColumnFilters, hasTransactionLinkFlow, matchingTableView],
   );
   useEffect(() => {
     if (isLedgerFile || !parsedFile?.preview) return;
@@ -4323,18 +4606,23 @@ export default function TransformHubPage() {
     const candidateByInputRef = matches.reduce<Map<string, CandidateContact>>((acc, match) => {
       const matchedPerson = match.matchedPersonId ? peopleById.get(match.matchedPersonId) ?? null : null;
       const candidate = match.reviewPayload?.candidate ?? null;
-      const nameSource: CandidateContact | null = matchedPerson
-        ? {
-            firstName: matchedPerson.firstName ?? '',
-            lastName: matchedPerson.lastName ?? '',
-            email: matchedPerson.email ?? '',
-            phone: matchedPerson.phone ?? '',
-            addressLine1: matchedPerson.addressLine1 ?? '',
-            city: matchedPerson.city ?? '',
-            state: matchedPerson.state ?? '',
-            zip: matchedPerson.zip ?? '',
-          }
-        : candidate;
+      const matchedPersonName = [matchedPerson?.firstName, matchedPerson?.lastName].filter(Boolean).join(' ').trim();
+      const candidateName = [candidate?.firstName, candidate?.lastName].filter(Boolean).join(' ').trim();
+      const preferredSource = candidateName && (!matchedPersonName || isSyntheticHouseholdIdentityLabel(matchedPersonName))
+        ? candidate
+        : (matchedPerson
+          ? {
+              firstName: matchedPerson.firstName ?? '',
+              lastName: matchedPerson.lastName ?? '',
+              email: matchedPerson.email ?? '',
+              phone: matchedPerson.phone ?? '',
+              addressLine1: matchedPerson.addressLine1 ?? '',
+              city: matchedPerson.city ?? '',
+              state: matchedPerson.state ?? '',
+              zip: matchedPerson.zip ?? '',
+            }
+          : candidate);
+      const nameSource: CandidateContact | null = preferredSource;
       if (nameSource) {
         acc.set(match.inputRef, nameSource);
         const matchedInputRef = match.reviewPayload?.matchedInputRef ?? null;
@@ -4361,7 +4649,7 @@ export default function TransformHubPage() {
       const matchedPersonId = previewMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId
         ?? duplicateMatchByInputRef.get(record.sourceRowRef)?.matchedPersonId
         ?? null;
-      const recordName = String(record.donorName ?? record.displayName ?? '').trim().toLowerCase();
+      const recordName = previewRecordIdentityLabel(record).trim().toLowerCase();
       const inferredCandidate = directCandidate
         ?? (matchedPersonId ? candidateByPersonId.get(matchedPersonId) ?? null : null)
         ?? inputNames.find((entry) => entry.inputName === recordName)?.candidate
@@ -4626,6 +4914,8 @@ export default function TransformHubPage() {
       setHouseholdResult(null);
       setTxDuplicateResult(null);
       setHasRunTransactionDuplicateCheck(false);
+      setHasTriggeredTransactionDuplicateCheck(false);
+      setIsRunningTransactionDuplicateCheck(false);
       setTxMergeDecisions(new Map());
       setTxSwapDecisions(new Map());
       setExpandedTxReviewRef(null);
@@ -4694,6 +4984,8 @@ export default function TransformHubPage() {
     setHouseholdResult(null);
     setTxDuplicateResult(null);
     setHasRunTransactionDuplicateCheck(false);
+    setHasTriggeredTransactionDuplicateCheck(false);
+    setIsRunningTransactionDuplicateCheck(false);
     setTxMergeDecisions(new Map());
     setTxSwapDecisions(new Map());
     setExpandedTxReviewRef(null);
@@ -5711,6 +6003,8 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
       setHouseholdResult(session.householdResult ?? null);
       setTxDuplicateResult(nextTxDuplicateResult);
       setHasRunTransactionDuplicateCheck(preserveTxReviewState && Boolean(nextTxDuplicateResult));
+      setHasTriggeredTransactionDuplicateCheck(false);
+      setIsRunningTransactionDuplicateCheck(false);
       setTxMergeDecisions(preserveTxReviewState ? (options?.txMergeDecisionsOverride ?? new Map()) : new Map());
       setTxSwapDecisions(preserveTxReviewState ? (options?.txSwapDecisionsOverride ?? new Map()) : new Map());
       setExpandedTxReviewRef(preserveTxReviewState ? (options?.expandedTxReviewRefOverride ?? null) : null);
@@ -5991,6 +6285,11 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
     }));
   }
 
+  function selectOutcomeCard(cardId: ReviewOutcomeId) {
+    setSelectedOutcomeCardId(cardId);
+    setAnalyticsWorkspace((current) => ({ ...current, selectedOutcomeId: cardId }));
+  }
+
   function selectOutcomeDetail(detailId: string) {
     setAnalyticsWorkspace((current) => ({
       ...current,
@@ -6112,20 +6411,11 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
           `${review.payload.fileName} · ${entry.sheet.sheetName}`,
           buildUploadNamespace(`${review.payload.fileName}-${entry.sheet.sheetName}`),
         );
-        const decisions = buildAppendColumnDecisions(combinedPrepared.parsedFile, preparedSheet.parsedFile, `${review.payload.fileName} · ${entry.sheet.sheetName}`, {
-          existingSchema: combinedPrepared.schema,
-          incomingSchema: preparedSheet.schema,
-        });
-        const merged = mergeUploadIntoExisting({
-          currentParsedFile: combinedPrepared.parsedFile,
-          currentSchema: combinedPrepared.schema,
-          currentRows: combinedPrepared.rows,
-          incomingParsedFile: preparedSheet.parsedFile,
-          incomingSchema: preparedSheet.schema,
-          incomingRows: preparedSheet.rows,
-          sourceFile: `${review.payload.fileName} · ${entry.sheet.sheetName}`,
-          columnDecisions: decisions,
-        });
+        const merged = mergePreparedUploads(
+          combinedPrepared,
+          preparedSheet,
+          `${review.payload.fileName} · ${entry.sheet.sheetName}`,
+        );
         combinedPrepared = {
           parsedFile: merged.parsedFile,
           schema: merged.schema,
@@ -6141,20 +6431,11 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
       );
 
       if (canAppend && parsedFile && schema) {
-        const appendColumnDecisions = buildAppendColumnDecisions(parsedFile, combinedPrepared.parsedFile, `${review.payload.fileName} · workbook`, {
-          existingSchema: schema,
-          incomingSchema: combinedPrepared.schema,
-        });
-        const appliedMerge = mergeUploadIntoExisting({
-          currentParsedFile: parsedFile,
-          currentSchema: schema,
-          currentRows: rows,
-          incomingParsedFile: combinedPrepared.parsedFile,
-          incomingSchema: combinedPrepared.schema,
-          incomingRows: combinedPrepared.rows,
-          sourceFile: `${review.payload.fileName} · workbook`,
-          columnDecisions: appendColumnDecisions,
-        });
+        const appliedMerge = mergePreparedUploads(
+          { parsedFile, schema, rows },
+          combinedPrepared,
+          `${review.payload.fileName} · workbook`,
+        );
         const session = await saveSession(
           sessionId ?? baseSessionId,
           appliedMerge.rows,
@@ -6211,6 +6492,8 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
     setHouseholdResult(null);
     setTxDuplicateResult(null);
     setHasRunTransactionDuplicateCheck(false);
+    setHasTriggeredTransactionDuplicateCheck(false);
+    setIsRunningTransactionDuplicateCheck(false);
     setTxMergeDecisions(new Map());
     setTxSwapDecisions(new Map());
     setExpandedTxReviewRef(null);
@@ -6258,11 +6541,11 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
       const canAppend = result.status !== 'blocked' && Boolean(parsedFile && schema && mergeStrategy !== null);
       let merged: { parsedFile: ParsedFile; schema: ResolvedSchema; rows: CanonicalLedgerRow[]; pendingMergeCount?: number };
       if (canAppend && parsedFile && schema) {
-        const appendColumnDecisions = buildAppendColumnDecisions(parsedFile, prepared.parsedFile, payload.fileName, {
-          existingSchema: schema,
-          incomingSchema: prepared.schema,
-        });
-        merged = mergeUploadIntoExisting({ currentParsedFile: parsedFile, currentSchema: schema, currentRows: rows, incomingParsedFile: prepared.parsedFile, incomingSchema: prepared.schema, incomingRows: prepared.rows, sourceFile: payload.fileName, columnDecisions: appendColumnDecisions });
+        merged = mergePreparedUploads(
+          { parsedFile, schema, rows },
+          prepared,
+          payload.fileName,
+        );
       } else {
         merged = { parsedFile: prepared.parsedFile, schema: prepared.schema, rows: prepared.rows, pendingMergeCount: getPendingColumnMerges(prepared.parsedFile).length };
       }
@@ -6318,6 +6601,42 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
     }
   }
 
+  function mergePreparedUploads(
+    currentPrepared: { parsedFile: ParsedFile; schema: ResolvedSchema; rows: CanonicalLedgerRow[] },
+    incomingPrepared: { parsedFile: ParsedFile; schema: ResolvedSchema; rows: CanonicalLedgerRow[] },
+    sourceFile: string,
+  ): { parsedFile: ParsedFile; schema: ResolvedSchema; rows: CanonicalLedgerRow[]; pendingMergeCount?: number } {
+    const mergeStrategy = getMergeStrategy(currentPrepared.schema.fileClass ?? '', incomingPrepared.schema.fileClass ?? '');
+    if (mergeStrategy === 'tx_profile') {
+      const currentIsTx = currentPrepared.schema.fileClass === 'donor' || currentPrepared.schema.fileClass === 'ledger';
+      const txPrepared = currentIsTx ? currentPrepared : incomingPrepared;
+      const profilePrepared = currentIsTx ? incomingPrepared : currentPrepared;
+      return mergeTxWithProfileLookup({
+        txParsedFile: txPrepared.parsedFile,
+        txSchema: txPrepared.schema,
+        txRows: txPrepared.rows,
+        profileParsedFile: profilePrepared.parsedFile,
+        profileSchema: profilePrepared.schema,
+        profileFileName: profilePrepared.parsedFile.fileName,
+      });
+    }
+
+    const appendColumnDecisions = buildAppendColumnDecisions(currentPrepared.parsedFile, incomingPrepared.parsedFile, sourceFile, {
+      existingSchema: currentPrepared.schema,
+      incomingSchema: incomingPrepared.schema,
+    });
+    return mergeUploadIntoExisting({
+      currentParsedFile: currentPrepared.parsedFile,
+      currentSchema: currentPrepared.schema,
+      currentRows: currentPrepared.rows,
+      incomingParsedFile: incomingPrepared.parsedFile,
+      incomingSchema: incomingPrepared.schema,
+      incomingRows: incomingPrepared.rows,
+      sourceFile,
+      columnDecisions: appendColumnDecisions,
+    });
+  }
+
   async function handleResolvePendingColumnMerge(merge: PendingColumnMerge, action: 'combine' | 'keep_separate' | 'keep_s1' | 'keep_s2') {
     if (!parsedFile) return;
     const nextParsedFile = resolvePendingColumnMergeInParsedFile(parsedFile, merge, action, schema);
@@ -6344,6 +6663,155 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
       setMessage(error instanceof Error ? error.message : 'Failed to update the pending column merge.');
     } finally {
       setIsResolvingPendingMerge(false);
+    }
+  }
+
+  async function handleKeepAutoMergedColumnSeparate(merge: AutoMergedColumnMatch) {
+    if (!parsedFile) return;
+    const nextParsedFile = separateAutoMergedColumnInParsedFile(parsedFile, merge, schema);
+    setParsedFile(nextParsedFile);
+    const actionMessage = `Kept ${merge.originalIncomingHeader ?? merge.incomingHeader} separate as ${merge.splitHeader}.`;
+
+    if (!sessionId) {
+      setMessage(actionMessage);
+      return;
+    }
+
+    setIsResolvingPendingMerge(true);
+    try {
+      const nextStatus = deriveSessionStatus(rows, preflight, receipts);
+      const session = await saveSession(sessionId, rows, nextStatus, preflight, personResult, householdResult, nextParsedFile, schema, taxonomyState);
+      applySession(session, actionMessage, {
+        nextNonLedgerReviewPanel: 'schema_union',
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to split the auto-merged column.');
+    } finally {
+      setIsResolvingPendingMerge(false);
+    }
+  }
+
+  async function handleResolveTxProfileReview(item: TxProfileReviewItem, action: 'confirmed' | 'separated') {
+    if (!parsedFile || !schema) return;
+    const currentSchema = schema as ResolvedSchemaWithTxProfileReview;
+    const nextReviewItems = (currentSchema._txProfileReviewItems ?? []).filter((reviewItem) => reviewItem.id !== item.id);
+    let nextParsedFile = parsedFile;
+    let nextRows = rows;
+
+    if (action === 'confirmed') {
+      const txRecord = ((parsedFile.preview?.records ?? []) as PreviewRecord[]).find((record) => record.sourceRowRef === item.txSourceRowRef) ?? null;
+      const profileRecord = ((parsedFile.preview?.records ?? []) as PreviewRecord[]).find((record) => record.sourceRowRef === item.profileSourceRowRef) ?? null;
+      if (txRecord && profileRecord) {
+        const txRawValues = getPreviewRecordRawValues(txRecord);
+        const profileRawValues = getPreviewRecordRawValues(profileRecord);
+        const mergedRawValues = { ...txRawValues };
+        Object.entries(profileRawValues).forEach(([header, value]) => {
+          if (!String(mergedRawValues[header] ?? '').trim()) mergedRawValues[header] = value;
+        });
+
+        const nextPreviewRecords = ((parsedFile.preview?.records ?? []) as PreviewRecord[])
+          .filter((record) => record.sourceRowRef !== item.profileSourceRowRef)
+          .map((record) => {
+            if (record.sourceRowRef !== item.txSourceRowRef) return record;
+            return {
+              ...record,
+              firstName: String(record.firstName ?? profileRecord.firstName ?? ''),
+              lastName: String(record.lastName ?? profileRecord.lastName ?? ''),
+              organizationName: String(record.organizationName ?? profileRecord.organizationName ?? ''),
+              householdName: String(record.householdName ?? profileRecord.householdName ?? ''),
+              email: String(record.email ?? profileRecord.email ?? ''),
+              phone: String(record.phone ?? profileRecord.phone ?? ''),
+              address: String(record.address ?? profileRecord.address ?? ''),
+              city: String(record.city ?? profileRecord.city ?? ''),
+              state: String(record.state ?? profileRecord.state ?? ''),
+              postalCode: String(record.postalCode ?? profileRecord.postalCode ?? ''),
+              rawValues: mergedRawValues,
+              values: { ...(record.values ?? {}), ...mergedRawValues },
+            } as PreviewRecord;
+          });
+
+        const nextParsedRows = parsedFile.rows
+          .filter((row) => row.ref !== item.profileSourceRowRef)
+          .map((row) => {
+            if (row.ref !== item.txSourceRowRef) return row;
+            const mergedValues = { ...(row.values ?? {}) };
+            Object.entries(profileRawValues).forEach(([header, value]) => {
+              if (!String(mergedValues[header] ?? '').trim()) mergedValues[header] = value;
+            });
+            return { ...row, values: mergedValues };
+          });
+
+        nextParsedFile = {
+          ...parsedFile,
+          rows: nextParsedRows,
+          preview: parsedFile.preview
+            ? {
+                ...parsedFile.preview,
+                summary: {
+                  ...parsedFile.preview.summary,
+                  rowCount: nextPreviewRecords.length,
+                },
+                records: nextPreviewRecords,
+              }
+            : parsedFile.preview,
+        };
+
+        const profileRow = rows.find((row) => row.source_row_ref === item.profileSourceRowRef) ?? null;
+        nextRows = rows
+          .filter((row) => row.source_row_ref !== item.profileSourceRowRef)
+          .map((row) => {
+            if (row.source_row_ref !== item.txSourceRowRef || !profileRow) return row;
+            const currentRow = row as CanonicalLedgerRow & Record<string, unknown>;
+            const matchedProfileRow = profileRow as CanonicalLedgerRow & Record<string, unknown>;
+            return {
+              ...currentRow,
+              canonical_person_id: currentRow.canonical_person_id ?? matchedProfileRow.canonical_person_id,
+              entity_name: String(currentRow.entity_name || matchedProfileRow.entity_name || ''),
+              email: String(currentRow.email ?? matchedProfileRow.email ?? ''),
+              phone: String(currentRow.phone ?? matchedProfileRow.phone ?? ''),
+              address: String(currentRow.address ?? matchedProfileRow.address ?? ''),
+              city: String(currentRow.city ?? matchedProfileRow.city ?? ''),
+              state: String(currentRow.state ?? matchedProfileRow.state ?? ''),
+              postalCode: String(currentRow.postalCode ?? matchedProfileRow.postalCode ?? ''),
+              zip: String(currentRow.zip ?? matchedProfileRow.zip ?? ''),
+              householdName: String(currentRow.householdName ?? matchedProfileRow.householdName ?? ''),
+            };
+          });
+      }
+    }
+
+    const nextSchema: ResolvedSchema = {
+      ...schema,
+      _txProfileReviewItems: nextReviewItems,
+      _txProfileMatchSummary: {
+        ...((currentSchema._txProfileMatchSummary ?? {}) as Record<string, number>),
+        conflicting: nextReviewItems.filter((reviewItem) => reviewItem.reason === 'field_conflict').length,
+        ambiguous: nextReviewItems.filter((reviewItem) => reviewItem.reason === 'ambiguous_match').length,
+      },
+    } as ResolvedSchema;
+
+    setParsedFile(nextParsedFile);
+    setRows(nextRows);
+    setSchema(nextSchema);
+
+    const actionMessage = action === 'confirmed'
+      ? `Consolidated ${item.profileDisplayName} into ${item.txDisplayName}.`
+      : `Kept ${item.txDisplayName} and ${item.profileDisplayName} separate.`;
+
+    if (!sessionId) {
+      setMessage(actionMessage);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const nextStatus = deriveSessionStatus(nextRows, preflight, receipts);
+      const session = await saveSession(sessionId, nextRows, nextStatus, preflight, personResult, householdResult, nextParsedFile, nextSchema, taxonomyState);
+      applySession(session, actionMessage, { nextNonLedgerReviewPanel: 'household' });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to update consolidation review.');
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -6594,8 +7062,11 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
     setIsRunningPersonResolver(true);
     setTxDuplicateResult(null);
     setHasRunTransactionDuplicateCheck(false);
+    setHasTriggeredTransactionDuplicateCheck(false);
+    setIsRunningTransactionDuplicateCheck(false);
     setTxMergeDecisions(new Map());
     setTxSwapDecisions(new Map());
+    setDonorSwapDecisions(new Map());
     setExpandedTxReviewRef(null);
     try {
       const identityRows = buildPreviewIdentityRows({ includeTransactionSignals: false });
@@ -6613,10 +7084,11 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
         });
         setPersonResult(result);
         setHouseholdResult(null);
-        setMergeDecisions(new Map());
-        setTxMergeDecisions(new Map());
-        setTxSwapDecisions(new Map());
-        setSessionUpdatedAt(new Date().toISOString());
+      setMergeDecisions(new Map());
+      setTxMergeDecisions(new Map());
+      setTxSwapDecisions(new Map());
+      setDonorSwapDecisions(new Map());
+      setSessionUpdatedAt(new Date().toISOString());
         setMessage(`Identity check: ${result.autoMergedCount} auto-merged, ${result.pendingReviewCount} pending review, ${result.separated} new.`);
         restoreReturnRowFocus(returnRowId);
         return;
@@ -6660,7 +7132,8 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
     const returnRowId = activeFixRowId;
     queueReturnToActiveRow();
     setIsLoading(true);
-    setIsRunningPersonResolver(true);
+    setIsRunningTransactionDuplicateCheck(true);
+    setHasTriggeredTransactionDuplicateCheck(true);
     try {
       setTxDuplicateResult(null);
       setHasRunTransactionDuplicateCheck(false);
@@ -6692,7 +7165,7 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
       setPendingReturnRowId(null);
       setMessage(error instanceof Error ? error.message : 'Duplicate check failed.');
     } finally {
-      setIsRunningPersonResolver(false);
+      setIsRunningTransactionDuplicateCheck(false);
       setIsLoading(false);
     }
   }
@@ -6704,6 +7177,8 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
     setMergeDecisions(new Map());
     setTxDuplicateResult(null);
     setHasRunTransactionDuplicateCheck(false);
+    setHasTriggeredTransactionDuplicateCheck(false);
+    setIsRunningTransactionDuplicateCheck(false);
     setTxMergeDecisions(new Map());
     setTxSwapDecisions(new Map());
     setSessionStatus(nextStatus);
@@ -6822,6 +7297,8 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
     setIsRunningHouseholdResolver(true);
     setTxDuplicateResult(null);
     setHasRunTransactionDuplicateCheck(false);
+    setHasTriggeredTransactionDuplicateCheck(false);
+    setIsRunningTransactionDuplicateCheck(false);
     setTxMergeDecisions(new Map());
     setExpandedTxReviewRef(null);
     try {
@@ -6870,6 +7347,8 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
       setHouseholdResult(null);
       setTxDuplicateResult(null);
       setHasRunTransactionDuplicateCheck(false);
+      setHasTriggeredTransactionDuplicateCheck(false);
+      setIsRunningTransactionDuplicateCheck(false);
       setTxMergeDecisions(new Map());
       setTxSwapDecisions(new Map());
       setExpandedTxReviewRef(null);
@@ -6957,6 +7436,8 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
       setHouseholdResult(null);
       setTxDuplicateResult(null);
       setHasRunTransactionDuplicateCheck(false);
+      setHasTriggeredTransactionDuplicateCheck(false);
+      setIsRunningTransactionDuplicateCheck(false);
       setTxMergeDecisions(new Map());
       setTxSwapDecisions(new Map());
       setExpandedTxReviewRef(null);
@@ -7292,17 +7773,20 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
 
   function buildPreviewExportTable(): { headers: string[]; rows: unknown[][] } | null {
     if (!preview || previewRecords.length === 0) return null;
-    const reviewRows = supportsDuplicateWorkflow ? visibleAttributionTableRecords : displayedPreviewRecords;
+    const reviewRows = supportsDuplicateWorkflow
+      ? visibleAttributionTableRecords
+      : displayedPreviewRecords;
     if (supportsDuplicateWorkflow) {
       const orderedReviewColumns = [...reviewAugmentedColumns];
-      const headers = ['Source', ...orderedReviewColumns.map((columnKey) => {
+      const reviewColumnHeaders = orderedReviewColumns.map((columnKey) => {
         if (columnKey === '__role__') return 'Role';
         if (columnKey === '__attribution_type__') return 'Attribution Type';
         if (columnKey === '__credit_amount__') return 'Credit Amount';
         if (columnKey === '__household__') return 'Household';
         if (columnKey === '__notes__') return 'Notes';
         return columnKey;
-      }), ...visibleNonLedgerTableHeaders];
+      });
+      const headers = ['Source', ...visibleNonLedgerTableHeaders, ...reviewColumnHeaders];
       return {
         headers,
         rows: reviewRows.map((record) => {
@@ -7321,7 +7805,7 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
             return '—';
           });
           const rawCells = visibleNonLedgerTableHeaders.map((header) => getResolvedPreviewCellValue(record, header));
-          return [sourceLabel || '—', ...augmentedCells, ...rawCells];
+          return [sourceLabel || '—', ...rawCells, ...augmentedCells];
         }),
       };
     }
@@ -7332,10 +7816,11 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
   }
 
   function buildPreviewIdentityRows(options?: { includeTransactionSignals?: boolean }): CanonicalLedgerRow[] {
-    if (!supportsDuplicateWorkflow || latestUpdatedPreviewRecords.length === 0) return [];
     const includeTransactionSignals = options?.includeTransactionSignals ?? false;
+    const sourcePreviewRecords = includeTransactionSignals ? latestUpdatedPreviewRecords : previewRecords;
+    if (!supportsDuplicateWorkflow || sourcePreviewRecords.length === 0) return [];
     const fieldMap = schema?.fieldMap as Record<string, string> | null | undefined;
-    return latestUpdatedPreviewRecords.map((record, index: number) => {
+    const identityRows = sourcePreviewRecords.map((record, index: number) => {
       const rawValues = filterPreviewRawValuesForDuplicateSignals(
         record.rawValues || {},
         fieldMap,
@@ -7345,9 +7830,7 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
           : { transaction_ref: false, amount: false, date: false, fund: false, appeal: false },
       );
       const entityName = identitySignalSelection.name
-        ? (isDonorFile
-        ? record.donorName || record.email || record.sourceRowRef
-        : record.displayName || [record.firstName, record.lastName].filter(Boolean).join(" ") || record.organizationName || record.householdName || record.sourceRowRef)
+        ? (previewRecordIdentityLabel(record) || record.email || record.sourceRowRef)
         : String(record.sourceRowRef);
       const rowDate = includeTransactionSignals && transactionSignalSelection.date
         ? (isDonorFile ? record.date || "" : record.updatedAt || record.createdAt || "")
@@ -7400,6 +7883,7 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
         rawValues,
       } as unknown as CanonicalLedgerRow;
     });
+    return identityRows;
   }
 
   function handleExportPreview() {
@@ -7409,7 +7893,7 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
       return;
     }
     const exportViewLabel = supportsDuplicateWorkflow
-      ? (matchingReviewActive ? matchingTableView : 'review')
+      ? (hasTransactionLinkFlow ? matchingTableView : 'review')
       : 'review';
     downloadExcelCompatibleTable(
       "transformhub-" + fileClass + "-" + exportViewLabel + "-" + new Date().toISOString().slice(0, 10) + ".xls",
@@ -7417,7 +7901,7 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
       table.headers,
       table.rows,
     );
-    const exportedCount = supportsDuplicateWorkflow ? visibleAttributionTableRecords.length : displayedPreviewRecords.length;
+    const exportedCount = table.rows.length;
     setMessage("Downloaded " + exportedCount + " " + fileClass + " record" + (exportedCount === 1 ? "" : "s") + " as an Excel-compatible export.");
   }
   const activeAuditCatalog = auditResult?.ruleCatalog ?? auditCatalog;
@@ -7432,12 +7916,20 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
     }
   }
 
+  function handleToggleDonorRowSwap(match: PersonMatch) {
+    setDonorSwapDecisions((current) => {
+      const next = new Map(current);
+      next.set(match.inputRef, !(current.get(match.inputRef) ?? false));
+      return next;
+    });
+  }
+
   function handlePipelineNodeClick(node: { id: string; target: string }) {
     if (!isLedgerFile) {
       if (node.id === 'duplicates') {
         setNonLedgerReviewPanel('duplicate');
       } else if (node.id === 'households') {
-        setNonLedgerReviewPanel('matching');
+        setNonLedgerReviewPanel('household');
       } else if (node.id === 'guardrails') {
         setNonLedgerReviewPanel('taxonomy');
       } else if (node.id === 'analytics') {
@@ -7722,14 +8214,15 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                 <div className="th-file-input-icon"><Upload size={18} /></div>
                 <div className="th-file-input-copy">
                   <strong>Upload source file</strong>
-                  <span>CSV or XLSX · start a new review table or combine sheets into the current one</span>
-                  {activeUploadLabel && <em>{activeUploadLabel}</em>}
                 </div>
                 <input type="file" accept=".csv,.txt,.tsv,.xlsx" onChange={handleFileChange} disabled={isUploadLoading} />
               </label>
               {parsedFile?.preview && (
-                <button type="button" className="th-button th-button-secondary" onClick={handleExportPreview} style={{ minHeight: 44 }}>
-                  <FileSpreadsheet size={14} /> Download existing file
+                <button type="button" className="th-button th-file-action-button" onClick={handleExportPreview}>
+                  <div className="th-file-action-icon"><FileSpreadsheet size={18} /></div>
+                  <div className="th-file-action-copy">
+                    <strong>Download Latest Updated File</strong>
+                  </div>
                 </button>
               )}
             </div>
@@ -7813,6 +8306,7 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                 availableHeaders={parsedFile?.headers ?? []}
                 isResolvingPendingMerge={isResolvingPendingMerge}
                 onResolve={handleResolvePendingColumnMerge}
+                onKeepAutoMergedSeparate={handleKeepAutoMergedColumnSeparate}
                 manualSuggestedHeader={manualMergeSuggestedHeader}
                 manualIncomingHeader={manualMergeIncomingHeader}
                 onManualSuggestedHeaderChange={setManualMergeSuggestedHeader}
@@ -8494,11 +8988,10 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                     className={`th-chip th-review-tab${nonLedgerReviewPanel === 'schema_union' ? ' is-active' : ''}`}
                     onClick={() => setNonLedgerReviewPanel('schema_union')}
                   >
-                    <span>Schema union {pendingColumnMerges.length}</span>
+                    <span>{`Step 0 · Schema union ${pendingColumnMerges.length}`}</span>
                   </button>
                 )}
                 {supportsDuplicateWorkflow && <button type="button" className={`th-chip th-review-tab${nonLedgerReviewPanel === 'duplicate' ? ' is-active' : ''}`} onClick={() => setNonLedgerReviewPanel('duplicate')}><span>Step 1 · {primaryMergeStepLabel}</span><span className="th-step-info-icon" title={primaryMergeStepDescription} aria-label={`Step 1 info. ${primaryMergeStepDescription}`} onClick={(event) => event.stopPropagation()}><CircleHelp size={14} /></span></button>}
-                {supportsHouseholdWorkflow && hasTransactionLinkFlow && <button type="button" className={`th-chip th-review-tab${nonLedgerReviewPanel === 'matching' ? ' is-active' : ''}`} onClick={() => setNonLedgerReviewPanel('matching')}><span>Step 2 · {matchingStepLabel}</span><span className="th-step-info-icon" title={matchingStepDescription} aria-label={`Step 2 info. ${matchingStepDescription}`} onClick={(event) => event.stopPropagation()}><CircleHelp size={14} /></span></button>}
                 {supportsHouseholdWorkflow && <button type="button" className={`th-chip th-review-tab${nonLedgerReviewPanel === 'household' ? ' is-active' : ''}`} onClick={() => setNonLedgerReviewPanel('household')}><span>{`Step ${householdStepNumber} · ${householdCleanupStepLabel}`}</span><span className="th-step-info-icon" title={householdCleanupStepDescription} aria-label={`Step ${householdStepNumber} info. ${householdCleanupStepDescription}`} onClick={(event) => event.stopPropagation()}><CircleHelp size={14} /></span></button>}
                 <button type="button" className={"th-chip th-review-tab" + (nonLedgerReviewPanel === "taxonomy" ? " is-active" : "")} onClick={() => setNonLedgerReviewPanel("taxonomy")}><span>{`Step ${taxonomyStepNumber} · ${taxonomyCleanupStepLabel}`}</span><span className="th-step-info-icon" title={taxonomyCleanupStepDescription} aria-label={`Step ${taxonomyStepNumber} info. ${taxonomyCleanupStepDescription}`} onClick={(event) => event.stopPropagation()}><CircleHelp size={14} /></span></button>
                 {duplicateStrategySuggestion.transactionCapable && <button type="button" className={`th-chip th-review-tab${nonLedgerReviewPanel === 'tx' ? ' is-active' : ''}`} onClick={() => setNonLedgerReviewPanel('tx')}><span>{`Step ${txCleanupStepNumber} · ${txCleanupStepLabel}`}</span><span className="th-step-info-icon" title={txCleanupStepDescription} aria-label={`Step ${txCleanupStepNumber} info. ${txCleanupStepDescription}`} onClick={(event) => event.stopPropagation()}><CircleHelp size={14} /></span></button>}
@@ -8511,11 +9004,6 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                   <span className="th-step-info-icon" title={analyticsStepDescription} aria-label={`Step ${analyticsStepNumber} info. ${analyticsStepDescription}`} onClick={(event) => event.stopPropagation()}><CircleHelp size={14} /></span>
                 </button>
               </div>
-              {previewSourceOrigins.length > 1 && (
-                <p className="th-helper" style={{ padding: 0, marginTop: -4, marginBottom: 12 }}>
-                  Source sheets: {previewSourceLegendEntries.map((entry) => `${entry.badge} = ${entry.label}`).join(' · ')}
-                </p>
-              )}
               {nonLedgerReviewPanel === 'schema_union' && (hasPendingColumnMergeReview || autoMergedColumns.length > 0 || canManualColumnMergeReview) && (
                 <SchemaUnionReviewPanel
                   pendingColumnMerges={pendingColumnMerges}
@@ -8524,6 +9012,7 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                   availableHeaders={parsedFile?.headers ?? []}
                   isResolvingPendingMerge={isResolvingPendingMerge}
                   onResolve={handleResolvePendingColumnMerge}
+                  onKeepAutoMergedSeparate={handleKeepAutoMergedColumnSeparate}
                   manualSuggestedHeader={manualMergeSuggestedHeader}
                   manualIncomingHeader={manualMergeIncomingHeader}
                   onManualSuggestedHeaderChange={setManualMergeSuggestedHeader}
@@ -8586,23 +9075,26 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                           type="button"
                           className="th-button th-button-primary"
                           onClick={handleRunTransactionDuplicatePass}
-                          disabled={isRunningPersonResolver || isResettingPeople || isRunningHouseholdResolver || selectedTransactionSignalCount === 0}
+                          disabled={isRunningTransactionDuplicateCheck || isRunningPersonResolver || isResettingPeople || isRunningHouseholdResolver || selectedTransactionSignalCount === 0}
                         >
-                          <Users size={14} /> {isRunningPersonResolver ? 'Running duplicate check…' : 'Run duplicate check'}
+                          <Users size={14} /> Run duplicate check
                         </button>
                       </div>
+                      {isRunningTransactionDuplicateCheck && (
+                        <div className="th-review-loader" style={{ marginTop: 12 }}>
+                          <div className="th-review-loader-spinner" aria-hidden="true" />
+                          <div>
+                            <strong>Duplicate check</strong>
+                            <p>Scanning the selected identity and transaction signals to build the duplicate review queue.</p>
+                          </div>
+                        </div>
+                      )}
                       {selectedTransactionSignalCount === 0 && (
                         <p className="th-helper">Turn on at least one signal to run Step {txCleanupStepNumber}.</p>
                       )}
                     </div>
                   </div>
-                  {!hasRunTransactionDuplicateCheck && (
-                    <div className="th-mini-block">
-                      <strong>Duplicate check has not run yet</strong>
-                      <p>Use the recommendation above, adjust the signals if needed, then run the duplicate check to build the queue.</p>
-                    </div>
-                  )}
-                  {hasRunTransactionDuplicateCheck && txReviewMatches.length === 0 && (
+                  {hasTriggeredTransactionDuplicateCheck && hasRunTransactionDuplicateCheck && txReviewMatches.length === 0 && (
                     <div className="th-mini-block">
                       <strong>No transaction duplicates found</strong>
                       <p>No rows matched on donor + amount + close date. You can proceed to Analytics Review.</p>
@@ -8722,10 +9214,7 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                               key={card.id}
                               type="button"
                               className={`th-review-outcome-card is-${card.tone}${selectedOutcomeCardId === card.id ? ' is-active' : ''}`}
-                              onClick={() => {
-                                setSelectedOutcomeCardId(card.id);
-                                setAnalyticsWorkspace((current) => ({ ...current, selectedOutcomeId: card.id }));
-                              }}
+                              onClick={() => selectOutcomeCard(card.id as ReviewOutcomeId)}
                             >
                               <span className="th-review-outcome-eyebrow">{card.eyebrow}</span>
                               <strong>{card.title}</strong>
@@ -9467,33 +9956,12 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                   )}
                 </div>
               )}
-              {supportsDuplicateWorkflow && (nonLedgerReviewPanel === 'duplicate' || nonLedgerReviewPanel === 'matching' || nonLedgerReviewPanel === 'household') && (
+              {supportsDuplicateWorkflow && (nonLedgerReviewPanel === 'duplicate' || nonLedgerReviewPanel === 'household') && (
                 <div className="th-grid th-main-grid" style={{ marginBottom: 14 }}>
                   {nonLedgerReviewPanel === 'duplicate' && (
                     <article className="th-panel th-inner-panel">
                       <div className="th-panel-head"><span>{primaryMergeStepLabel}</span><span>{personResult ? `${canonicalPeople.length} resolved` : "not run"}</span></div>
-                      <p className="th-helper">{primaryMergeStepDescription} Pending items block Step 2.</p>
-                      <div className="th-mini-block" style={{ marginBottom: 12 }}>
-                        <strong>Donor identity signals</strong>
-                        <p>Step 1 finds duplicate donors. Gift duplicate review moves to Step {txCleanupStepNumber}.</p>
-                        <div className="th-stack" style={{ marginTop: 12 }}>
-                          <div>
-                            <span className="th-helper">Donor identity signals</span>
-                            <div className="th-chip-row" style={{ marginTop: 8 }}>
-                              {IDENTITY_SIGNAL_OPTIONS.map((option) => (
-                                <button
-                                  key={option.key}
-                                  type="button"
-                                  className={`th-chip th-identity-signal-chip${identitySignalSelection[option.key] ? ' is-active' : ''}`}
-                                  onClick={() => setIdentitySignalSelection((current) => ({ ...current, [option.key]: !current[option.key] }))}
-                                >
-                                  {option.label}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                      <p className="th-helper">{primaryMergeStepDescription} Pending items block household cleanup.</p>
                       <div className="th-grid th-grid-4" style={{ marginBottom: 10 }}>
                         <div className="th-stat-chip th-band-auto"><strong>{duplicateClassCounts.exact_match}</strong><span>Exact</span></div>
                         <div className="th-stat-chip th-band-review"><strong>{duplicateClassCounts.likely_match}</strong><span>Likely</span></div>
@@ -9522,27 +9990,10 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                       )}
                     </article>
                   )}
-                  {supportsHouseholdWorkflow && matchingReviewActive && (
-                    <article className="th-panel th-inner-panel">
-                      <div className="th-panel-head"><span>{matchingStepLabel}</span><span>{filteredDisplayedPreviewRecords.length} rows</span></div>
-                      <p className="th-helper">{matchingStepDescription} Unlocks after Step 1 is clean.</p>
-                      {hasTransactionLinkFlow && (
-                        <p className="th-helper">Transaction rows stay as the base rows. Matched profile fields are added onto those rows, and unmatched profiles are appended as separate rows. If both tables contain the same field, the profile version uses a <code>profile_</code> prefix.</p>
-                      )}
-                      <div className="th-action-row">
-                        <button type="button" className="th-button th-button-primary" onClick={() => jumpToSection('th-review-table')} disabled={!peopleStepReady}>
-                          <Database size={14} /> Open merged table
-                        </button>
-                      </div>
-                      {!peopleStepReady && (
-                        <p className="th-helper">Resolve {pendingPeopleReviews} pending Step 1 review{pendingPeopleReviews === 1 ? '' : 's'} to unlock this matching layer.</p>
-                      )}
-                    </article>
-                  )}
                   {supportsHouseholdWorkflow && householdReviewActive && (
                     <article className="th-panel th-inner-panel">
                       <div className="th-panel-head"><span>{householdCleanupStepLabel}</span><span>{isRunningHouseholdResolver ? 'running' : householdResult ? `${householdResult.households.length} matched` : 'not run'}</span></div>
-                      <p className="th-helper">{householdCleanupStepDescription} Uses the Step 2 merge tables.</p>
+                      <p className="th-helper">{householdCleanupStepDescription} Record consolidation now runs automatically after Step 1.</p>
                       <div className="th-action-row">
                         <button type="button" className="th-button th-button-primary" onClick={handleRunHouseholdResolver} disabled={!peopleStepReady || isRunningHouseholdResolver}>
                           <Building2 size={14} /> {isRunningHouseholdResolver ? 'Building matches…' : householdCleanupStepLabel}
@@ -9565,28 +10016,6 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                     </article>
                   )}
                 </div>
-              )}              {supportsHouseholdWorkflow && matchingReviewActive && (
-                <div className="th-stack" style={{ marginBottom: 14 }}>
-                  {!peopleStepReady ? (
-                    <div className="th-mini-block">
-                      <strong>Merge tables are locked</strong>
-                      <p>Resolve duplicate review first so the person layer is stable before the joined tables are previewed.</p>
-                    </div>
-                  ) : (
-                    <article className="th-panel th-inner-panel">
-                      <div className="th-panel-head">
-                        <span>Merged table</span>
-                        <span>{filteredDisplayedPreviewRecords.length} visible row{filteredDisplayedPreviewRecords.length === 1 ? '' : 's'}</span>
-                      </div>
-                      <p className="th-helper">The canonical profiles / transactions preview has been removed here. Use the merged review table directly for verification and edits.</p>
-                      <div className="th-action-row">
-                        <button type="button" className="th-button th-button-primary" onClick={() => jumpToSection('th-review-table')}>
-                          Open merged table
-                        </button>
-                      </div>
-                    </article>
-                  )}
-                </div>
               )}              {supportsHouseholdWorkflow && householdReviewActive && (
                 <div className="th-stack" style={{ marginBottom: 14 }}>
                   {!peopleStepReady ? (
@@ -9594,27 +10023,76 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                       <strong>Relationship layer is locked</strong>
                       <p>Resolve duplicate review first. Householding creates a grouping object above people, so the person layer has to be stable before relationship logic is safe.</p>
                     </div>
-                  ) : householdLayerViews.length === 0 ? (
-                    <div className="th-mini-block">
-                      <strong>No households built yet</strong>
-                      <p>Run householding to create relationship objects without collapsing the person records.</p>
-                    </div>
                   ) : (
                     <>
-                      <div className="th-review-tab-row" style={{ marginBottom: 14 }}>
-                        <button type="button" className={`th-chip th-review-tab${householdReviewTab === 'needs_attribution' ? ' is-active' : ''}`} onClick={() => setHouseholdReviewTab('needs_attribution')}>
-                          Needs attribution {householdsNeedingAttribution.size}
-                        </button>
-                        <button type="button" className={`th-chip th-review-tab${householdReviewTab === 'all' ? ' is-active' : ''}`} onClick={() => setHouseholdReviewTab('all')}>
-                          All households {householdLayerViews.length}
-                        </button>
-                      </div>
-                      {visibleHouseholdLayerViews.length === 0 ? (
+                      {hasTransactionLinkFlow && (
+                        <article className="th-panel th-inner-panel">
+                          <div className="th-panel-head">
+                            <span>Merged table</span>
+                            <span>{filteredDisplayedPreviewRecords.length} visible row{filteredDisplayedPreviewRecords.length === 1 ? '' : 's'}</span>
+                          </div>
+                          <p className="th-helper">Transaction/profile consolidation now runs automatically after Step 1. Use the merged review table directly for verification and edits.</p>
+                          <div className="th-action-row">
+                            <button type="button" className="th-button th-button-primary" onClick={() => jumpToSection('th-review-table')}>
+                              Open merged table
+                            </button>
+                          </div>
+                        </article>
+                      )}
+                      {txProfileReviewItems.length > 0 && (
+                        <article className="th-panel th-inner-panel">
+                          <div className="th-panel-head">
+                            <span>Consolidation exceptions</span>
+                            <span>{txProfileReviewItems.length} item{txProfileReviewItems.length === 1 ? '' : 's'}</span>
+                          </div>
+                          <p className="th-helper">Safe transaction/profile pairs are auto-combined. Only ambiguous or conflicting row pairs stay here for manual resolution.</p>
+                          <div className="th-stack">
+                            {txProfileReviewItems.map((item) => (
+                              <div key={item.id} className="th-guardrail is-warning th-review-match-card" style={{ gap: 14 }}>
+                                <div className="th-review-match-head">
+                                  <div style={{ flex: 1 }}>
+                                    <strong>{getCompactSourceRef(item.txSourceRowRef).primary} ↔ {getCompactSourceRef(item.profileSourceRowRef).primary}</strong>
+                                    <p>{item.txDisplayName} → {item.profileDisplayName}</p>
+                                    <p className="th-helper">
+                                      {item.reason === 'field_conflict'
+                                        ? `Conflicting populated fields: ${item.conflictingFields.join(', ')}`
+                                        : 'Multiple profile candidates matched this transaction row with the same score.'}
+                                    </p>
+                                    {item.evidence.length > 0 && (
+                                      <p className="th-helper">{item.evidence.join(' · ')}</p>
+                                    )}
+                                  </div>
+                                  <div className="th-review-match-actions">
+                                    <button type="button" className="th-button th-button-primary" style={{ minHeight: 34 }} onClick={() => void handleResolveTxProfileReview(item, 'confirmed')} disabled={isLoading}>Consolidate records</button>
+                                    <button type="button" className="th-button th-button-secondary" style={{ minHeight: 34 }} onClick={() => void handleResolveTxProfileReview(item, 'separated')} disabled={isLoading}>Keep separate</button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </article>
+                      )}
+                      {householdLayerViews.length === 0 ? (
                         <div className="th-mini-block">
-                          <strong>No households need attribution review</strong>
-                          <p>All current households are either complete or only have non-attribution warnings.</p>
+                          <strong>No households built yet</strong>
+                          <p>Run householding to create relationship objects without collapsing the person records.</p>
                         </div>
                       ) : (
+                        <>
+                          <div className="th-review-tab-row" style={{ marginBottom: 14 }}>
+                            <button type="button" className={`th-chip th-review-tab${householdReviewTab === 'needs_attribution' ? ' is-active' : ''}`} onClick={() => setHouseholdReviewTab('needs_attribution')}>
+                              Needs attribution {householdsNeedingAttribution.size}
+                            </button>
+                            <button type="button" className={`th-chip th-review-tab${householdReviewTab === 'all' ? ' is-active' : ''}`} onClick={() => setHouseholdReviewTab('all')}>
+                              All households {householdLayerViews.length}
+                            </button>
+                          </div>
+                          {visibleHouseholdLayerViews.length === 0 ? (
+                            <div className="th-mini-block">
+                              <strong>No households need attribution review</strong>
+                              <p>All current households are either complete or only have non-attribution warnings.</p>
+                            </div>
+                          ) : (
                     <div className="th-household-review-list">
                       <div className="th-household-summary-header" aria-hidden="true">
                         <span />
@@ -9796,7 +10274,7 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                                             const recordRole = getRecordRole(record, attributionDraft, matchedPerson);
                                             const rawAmount = getPreviewRecordBaseAmount(record);
                                             const displayCreditAmount = getDisplayCreditAmount(attributionDraft, rawAmount, recordRole);
-                                            const sourceLabel = previewRecordLabel(record);
+                                            const sourceLabel = getResolvedPreviewRecordLabel(record);
                                             const matchedLabel = matchedPerson ? formatPersonName(matchedPerson) : null;
                                             const transactionId = getPreviewRecordTransactionId(record);
                                             const transactionDate = record.date ? formatReviewTransactionDate(String(record.date)) : null;
@@ -9967,6 +10445,8 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                         );
                       })}
                     </div>
+                          )}
+                        </>
                       )}
                     </>
                   )}
@@ -9998,9 +10478,10 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                   groupedFilteredPreviewReviewMatches.map(({ key, representative: match, allMatches }) => {
                     const decision = deriveReviewDecision(match, mergeDecisions);
                     const duplicateCandidateLabel = classifyDuplicateCandidate(match);
+                    const isSwapped = donorSwapDecisions.get(match.inputRef) === true;
                     const incomingRecord = previewRecords.find((record) => record.sourceRowRef === match.inputRef) ?? null;
                     const matchedRecordRef = match.reviewPayload?.matchedInputRef ?? null;
-                    const siblingMatch = !matchedRecordRef && match.matchedPersonId
+                    const siblingMatch = !isDonorFile && !matchedRecordRef && match.matchedPersonId
                       ? (personResult?.matches ?? []).find((candidate) => candidate.inputRef !== match.inputRef && candidate.matchedPersonId === match.matchedPersonId)
                       : null;
                     const matchedPreviewRecord = matchedRecordRef
@@ -10025,17 +10506,27 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                       ? candidateComparePerson ?? (match.matchedPersonId ? canonicalPeople.find((person: CanonicalPerson) => person.id === match.matchedPersonId) ?? null : null)
                       : null;
                     const matchedRecord = matchedPreviewRecord ?? buildMatchedPersonCompareRecord(matchedPerson);
-                    const matchedLabel = matchedPreviewRecord
-                      ? previewRecordLabel(matchedPreviewRecord)
+                    const baseMatchedLabel = matchedPreviewRecord
+                      ? previewRecordIdentityLabel(matchedPreviewRecord)
                       : formatPersonLabel(matchedPerson);
-                    const incomingDisplayLabel = incomingRecord
-                      ? previewRecordLabel(incomingRecord)
+                    const baseIncomingDisplayLabel = incomingRecord
+                      ? previewRecordIdentityLabel(incomingRecord)
                       : match.inputRef;
+                    const incomingDisplayLabel = isSwapped ? baseMatchedLabel : baseIncomingDisplayLabel;
+                    const matchedLabel = isSwapped ? baseIncomingDisplayLabel : baseMatchedLabel;
                     const isExpanded = expandedPeopleReviewRef === match.inputRef;
                     if (!matchedRecord) return null;
                     const groupRowRefs = allMatches.map((m) => formatSourceBadgeRowLabel(m.inputRef, previewSourceBadgeByOrigin, parsedFile?.fileName)).join(', ');
-                    const matchedRowRef = matchedPreviewRecord
-                      ? formatSourceBadgeRowLabel(matchedRecord.sourceRowRef, previewSourceBadgeByOrigin, parsedFile?.fileName)
+                    const groupedIncomingRows = allMatches
+                      .map((groupMatch) => {
+                        const groupRecord = previewRecords.find((record) => record.sourceRowRef === groupMatch.inputRef) ?? null;
+                        return {
+                          sourceLabel: formatSourceBadgeRowLabel(groupMatch.inputRef, previewSourceBadgeByOrigin, parsedFile?.fileName),
+                          recordLabel: groupRecord ? previewRecordIdentityLabel(groupRecord) : (groupMatch.reviewPayload?.input?.name ?? groupMatch.inputRef),
+                        };
+                      });
+                    const matchedRowRef = matchedPreviewRecord?.sourceRowRef
+                      ? formatSourceBadgeRowLabel(matchedPreviewRecord.sourceRowRef, previewSourceBadgeByOrigin, parsedFile?.fileName)
                       : 'existing record';
                     return (
                       <div key={key} className="th-guardrail is-warning th-review-match-card" style={{ gap: 14 }}>
@@ -10045,6 +10536,11 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                             {allMatches.length > 1 && <p className="th-helper">{allMatches.length} transaction rows tied to the same resolved person</p>}
                             <p className="th-helper" style={{ marginTop: 4, textTransform: 'capitalize' }}>{duplicateCandidateLabel}</p>
                             <p>{incomingDisplayLabel} → {matchedLabel}</p>
+                            {groupedIncomingRows.length > 1 && (
+                              <p className="th-helper">
+                                Grouped rows: {groupedIncomingRows.map((row) => `${row.sourceLabel} ${row.recordLabel}`).join(' · ')}
+                              </p>
+                            )}
                             {describeAiSuggestion(match) && <p className="th-helper">{describeAiSuggestion(match)}</p>}
                           </div>
                           <div className="th-review-match-actions">
@@ -10055,6 +10551,14 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                               onClick={() => setExpandedPeopleReviewRef(isExpanded ? null : match.inputRef)}
                             >
                               {isExpanded ? 'Hide compare' : 'Show compare'}
+                            </button>
+                            <button
+                              type="button"
+                              className="th-button th-button-secondary"
+                              style={{ minHeight: 34 }}
+                              onClick={() => handleToggleDonorRowSwap(match)}
+                            >
+                              Swap rows
                             </button>
                             {decision ? (
                               <span className={`th-status ${decision === "confirmed" ? "is-ready" : "is-rejected"}`}>
@@ -10073,14 +10577,14 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                           className={`th-review-summary ${isExpanded ? 'is-open' : ''}`}
                           onClick={() => setExpandedPeopleReviewRef(isExpanded ? null : match.inputRef)}
                         >
-                          <span><strong>Incoming</strong> {incomingDisplayLabel}</span>
-                          <span><strong>{matchedPreviewRecord ? 'Matched row' : 'Matched record'}</strong> {matchedLabel}</span>
+                          <span><strong>{isSwapped ? (matchedPreviewRecord ? 'Matched row' : 'Matched existing donor') : 'Incoming'}</strong> {incomingDisplayLabel}</span>
+                          <span><strong>{isSwapped ? 'Incoming' : (matchedPreviewRecord ? 'Matched row' : 'Matched existing donor')}</strong> {matchedLabel}</span>
                         </button>
                         {isExpanded && matchedRecord && (
                           <div className="th-stack" style={{ width: '100%' }}>
                             <div className="th-mini-block">
                               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                                <strong>Row compare</strong>
+                                <strong>{matchedPreviewRecord ? 'Row compare' : 'Record compare'}</strong>
                                 <div className="th-review-match-actions">
                                   {matchedPreviewRecord && editingMergedRecordRef === matchedPreviewRecord.sourceRowRef ? (
                                     <>
@@ -10104,32 +10608,44 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                                   </thead>
                                   <tbody>
                                     <tr>
-                                      <td><strong>Incoming</strong></td>
+                                      <td><strong>{isSwapped ? 'Matched' : 'Incoming'}</strong></td>
                                       {previewCompareFields.map((field) => (
                                         <td key={`incoming-${field.key}`}>
-                                          {field.kind === 'source'
-                                            ? (incomingRecord?.sourceRowRef ? String(incomingRecord.sourceRowRef) : '—')
-                                            : (field.header ? getResolvedPreviewCellValue(incomingRecord as PreviewRecord, field.header) : '—')}
+                                          {isSwapped
+                                            ? (
+                                              matchedPreviewRecord
+                                                ? getPreviewCompareValue(matchedRecord, field)
+                                                : getExistingPersonCompareValue(matchedPerson, field)
+                                            )
+                                            : (field.kind === 'source'
+                                              ? (incomingRecord?.sourceRowRef ? String(incomingRecord.sourceRowRef) : '—')
+                                              : getPreviewCompareValue(incomingRecord, field))}
                                         </td>
                                       ))}
                                     </tr>
                                     <tr>
-                                      <td><strong>Matched</strong></td>
+                                      <td><strong>{isSwapped ? 'Incoming' : 'Matched'}</strong></td>
                                       {previewCompareFields.map((field) => {
                                         const isEditingMatched = matchedPreviewRecord && editingMergedRecordRef === matchedPreviewRecord.sourceRowRef;
                                         const draftValue = field.kind === 'source'
                                           ? matchedPreviewRecord?.sourceRowRef ?? '—'
-                                          : String(editingMergedDraft[field.key] ?? (field.header ? getResolvedPreviewCellValue(matchedPreviewRecord as PreviewRecord, field.header) : '') ?? '');
+                                          : String(editingMergedDraft[field.key] ?? getPreviewCompareValue(matchedPreviewRecord, field) ?? '');
                                         return (
                                           <td key={`matched-${field.key}`}>
-                                            {isEditingMatched && field.editable ? (
+                                            {!isSwapped && isEditingMatched && field.editable ? (
                                               <input
                                                 className="th-review-compare-input"
                                                 value={draftValue}
                                                 onChange={(event) => setEditingMergedDraft((current) => ({ ...current, [field.key]: event.target.value }))}
                                               />
                                             ) : (
-                                              getPreviewCompareValue(matchedRecord, field)
+                                              isSwapped
+                                                ? (field.kind === 'source'
+                                                  ? (incomingRecord?.sourceRowRef ? String(incomingRecord.sourceRowRef) : '—')
+                                                  : getPreviewCompareValue(incomingRecord, field))
+                                                : (matchedPreviewRecord
+                                                  ? getPreviewCompareValue(matchedRecord, field)
+                                                  : getExistingPersonCompareValue(matchedPerson, field))
                                             )}
                                           </td>
                                         );
@@ -10179,9 +10695,9 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                     </div>
                   </div>
                 )}
-                {(matchingReviewActive || householdResult) && (
+                {(hasTransactionLinkFlow || householdResult) && (
                   <div className="th-review-tab-row" style={{ marginBottom: 14 }}>
-                    {matchingReviewActive ? (
+                    {hasTransactionLinkFlow ? (
                       <>
                         <button
                           type="button"

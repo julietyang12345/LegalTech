@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ParsedFile, ResolvedSchema } from '../types';
-import { buildAppendColumnDecisions, getPendingColumnMerges, mergeTxWithProfileLookup, resolvePendingColumnMerge, type PendingColumnMerge } from '../merge-table';
+import { buildAppendColumnDecisions, getPendingColumnMerges, mergeTxWithProfileLookup, mergeUploadIntoExisting, prepareIncomingUpload, resolvePendingColumnMerge, separateAutoMergedColumn, type PendingColumnMerge } from '../merge-table';
 
 function buildParsedFile(headers: string[], rows: Array<Record<string, string>>): ParsedFile {
   return {
@@ -213,6 +213,238 @@ describe('buildAppendColumnDecisions', () => {
     ]);
   });
 
+  it('keeps donor full-name aliases merged through prepareIncomingUpload and workbook union', () => {
+    const donorSchema = {
+      reportType: 'donor-export',
+      fileClass: 'donor',
+      canonicalModel: 'canonical-donor',
+      expectedFields: ['date', 'donor_identity', 'amount'],
+      confidence: 1,
+      unresolvedFields: [],
+      fingerprint: 'test-donor',
+      fromTemplateCache: false,
+      fieldMap: {
+        donor_name: 'Donor Name',
+        email: 'Email',
+      },
+      fieldSuggestions: [],
+    } as unknown as ResolvedSchema;
+
+    const fullNameSchema = {
+      ...donorSchema,
+      fieldMap: {
+        donor_name: 'Full Name',
+        email: 'Email Address',
+      },
+    } as unknown as ResolvedSchema;
+
+    const existingPrepared = prepareIncomingUpload(
+      buildParsedFile(['Donor Name', 'Email'], [{ 'Donor Name': 'Emily Johnson', Email: 'emily.j@gmail.com' }]),
+      donorSchema,
+      [],
+      's1.csv',
+      's1',
+    );
+    const incomingPrepared = prepareIncomingUpload(
+      buildParsedFile(['Full Name', 'Email Address'], [{ 'Full Name': 'E. Johnson', 'Email Address': 'emily.j@gmail.com' }]),
+      fullNameSchema,
+      [],
+      's2.csv',
+      's2',
+    );
+
+    const result = mergeUploadIntoExisting({
+      currentParsedFile: existingPrepared.parsedFile,
+      currentSchema: existingPrepared.schema,
+      currentRows: existingPrepared.rows,
+      incomingParsedFile: incomingPrepared.parsedFile,
+      incomingSchema: incomingPrepared.schema,
+      incomingRows: incomingPrepared.rows,
+      sourceFile: 's2.csv',
+    });
+
+    expect(result.parsedFile.headers).toContain('donor_name');
+    expect(result.parsedFile.headers).not.toContain('Full Name');
+    expect(result.pendingMergeCount).toBe(0);
+    expect((result.parsedFile as any).mergeState?.autoMergedColumns).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          incomingHeader: 'donor_name',
+          originalIncomingHeader: 'Full Name',
+          targetHeader: 'donor_name',
+          matchType: 'exact',
+        }),
+      ]),
+    );
+  });
+
+  it('still auto-merges donor name aliases when the incoming sheet keeps a raw full-name header', () => {
+    const donorSchema = {
+      reportType: 'donor-export',
+      fileClass: 'donor',
+      canonicalModel: 'canonical-donor',
+      expectedFields: ['date', 'donor_identity', 'amount'],
+      confidence: 1,
+      unresolvedFields: [],
+      fingerprint: 'test-donor',
+      fromTemplateCache: false,
+      fieldMap: {
+        donor_name: 'Donor Name',
+        email: 'Email',
+      },
+      fieldSuggestions: [],
+    } as unknown as ResolvedSchema;
+
+    const constituentLikeSchema = {
+      reportType: 'constituent-export',
+      fileClass: 'constituent',
+      canonicalModel: 'canonical-constituent',
+      expectedFields: ['first_name_or_org', 'email_or_phone', 'created_at'],
+      confidence: 1,
+      unresolvedFields: [],
+      fingerprint: 'test-constituent',
+      fromTemplateCache: false,
+      fieldMap: {
+        email: 'Email Address',
+      },
+      fieldSuggestions: [],
+    } as unknown as ResolvedSchema;
+
+    const existingPrepared = prepareIncomingUpload(
+      buildParsedFile(['Donor Name', 'Email'], [{ 'Donor Name': 'Emily Johnson', Email: 'emily.j@gmail.com' }]),
+      donorSchema,
+      [],
+      's1.csv',
+      's1',
+    );
+    const incomingPrepared = prepareIncomingUpload(
+      buildParsedFile(['Full Name', 'Email Address'], [{ 'Full Name': 'E. Johnson', 'Email Address': 'emily.j@gmail.com' }]),
+      constituentLikeSchema,
+      [],
+      's2.csv',
+      's2',
+    );
+
+    const result = mergeUploadIntoExisting({
+      currentParsedFile: existingPrepared.parsedFile,
+      currentSchema: existingPrepared.schema,
+      currentRows: existingPrepared.rows,
+      incomingParsedFile: incomingPrepared.parsedFile,
+      incomingSchema: incomingPrepared.schema,
+      incomingRows: incomingPrepared.rows,
+      sourceFile: 's2.csv',
+    });
+
+    expect(result.pendingMergeCount).toBe(0);
+    expect((result.parsedFile as any).mergeState?.autoMergedColumns).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          originalIncomingHeader: 'Full Name',
+          targetHeader: 'donor_name',
+        }),
+      ]),
+    );
+  });
+
+  it('re-canonicalizes donor full-name headers back to donor_name during prepareIncomingUpload', () => {
+    const driftedDonorSchema = {
+      reportType: 'donor-export',
+      fileClass: 'donor',
+      canonicalModel: 'canonical-donor',
+      expectedFields: ['date', 'donor_identity', 'amount'],
+      confidence: 0.7,
+      unresolvedFields: ['donor_identity'],
+      fingerprint: 'test-donor-drift',
+      fromTemplateCache: false,
+      fieldMap: {
+        email: 'Email',
+      },
+      fieldSuggestions: [],
+    } as unknown as ResolvedSchema;
+
+    const prepared = prepareIncomingUpload(
+      buildParsedFile(['Full Name', 'Email'], [{ 'Full Name': 'Emily Johnson', Email: 'emily.j@gmail.com' }]),
+      driftedDonorSchema,
+      [],
+      'drifted.csv',
+      's1',
+    );
+
+    expect(prepared.schema.fieldMap.donor_name).toBe('donor_name');
+    expect(prepared.parsedFile.headers).toContain('donor_name');
+    expect(prepared.parsedFile.headers).not.toContain('Full Name');
+    expect((prepared.parsedFile as any).mergeState?.rawHeaderLabelsByMergedHeader?.donor_name).toBe('Full Name');
+  });
+
+  it('uses original raw header labels to recover donor name merges when prepared headers drift', () => {
+    const existingSchema = {
+      fieldMap: { donor_name: 'donor_name' },
+      confidence: 1,
+      expectedFields: [],
+      unresolvedFields: [],
+      fieldSuggestions: [],
+    } as unknown as ResolvedSchema;
+    const incomingSchema = {
+      fieldMap: { household_name: 'household_name' },
+      confidence: 1,
+      expectedFields: [],
+      unresolvedFields: [],
+      fieldSuggestions: [],
+    } as unknown as ResolvedSchema;
+
+    const decisions = buildAppendColumnDecisions(
+      {
+        ...buildParsedFile(['donor_name'], [{ donor_name: 'Emily Johnson' }]),
+        mergeState: {
+          uploadedFiles: ['existing.xlsx'],
+          canonicalHeaders: ['donor_name'],
+          pendingMerges: [],
+          autoMergedColumns: [],
+          rawHeaderLabelsByMergedHeader: {
+            donor_name: 'Donor Name',
+          },
+        },
+      } as unknown as ParsedFile,
+      {
+        ...buildParsedFile(['household_name'], [{ household_name: 'Emily Johnson Household' }]),
+        mergeState: {
+          uploadedFiles: ['incoming.xlsx'],
+          canonicalHeaders: ['household_name'],
+          pendingMerges: [],
+          autoMergedColumns: [],
+          rawHeaderLabelsByMergedHeader: {
+            household_name: 'Full Name',
+          },
+        },
+      } as unknown as ParsedFile,
+      'upload.xlsx',
+      { existingSchema, incomingSchema },
+    );
+
+    expect(decisions[0]).toMatchObject({
+      incomingHeader: 'household_name',
+      originalIncomingHeader: 'Full Name',
+      targetHeader: 'donor_name',
+      action: 'merge',
+      matchType: 'alias',
+    });
+  });
+
+  it('keeps qualified date fields pending instead of auto-merging into a generic date column', () => {
+    const decisions = buildAppendColumnDecisions(
+      buildParsedFile(['date'], [{ date: '2026-04-01' }]),
+      buildParsedFile(['join_date'], [{ join_date: '2020-01-15' }]),
+      'upload.xlsx',
+    );
+
+    expect(decisions[0]).toMatchObject({
+      incomingHeader: 'join_date',
+      targetHeader: 'date',
+      action: 'review',
+      matchType: 'alias',
+    });
+  });
+
   it('does not auto-merge fund and campaign headers', () => {
     const decisions = buildAppendColumnDecisions(['Fund'], ['Campaign'], 'upload.csv');
     expect(decisions[0]).toMatchObject({
@@ -330,6 +562,53 @@ describe('buildAppendColumnDecisions', () => {
     });
   });
 
+  it('can split an auto-merged incoming column back into an incoming-only header', () => {
+    const parsedFile = {
+      ...buildParsedFile(['Email'], [
+        { Email: 'john@gmail.com' },
+        { Email: 'maria@gmail.com' },
+      ]),
+      mergeState: {
+        uploadedFiles: ['existing.csv', 'incoming.csv'],
+        canonicalHeaders: ['Email'],
+        pendingMerges: [],
+        autoMergedColumns: [{
+          id: 'merged-email',
+          sourceFile: 'incoming.csv',
+          incomingHeader: 'Email Address',
+          originalIncomingHeader: 'Email Address',
+          targetHeader: 'Email',
+          splitHeader: 'email__incoming',
+          matchType: 'alias' as const,
+          score: null,
+          sourceRowRefs: ['row-2'],
+        }],
+      },
+      preview: {
+        summary: { rowCount: 2, populatedFields: 1 },
+        records: [
+          {
+            sourceRowRef: 'row-1',
+            rawValues: { Email: 'john@gmail.com' },
+            values: { Email: 'john@gmail.com' },
+          },
+          {
+            sourceRowRef: 'row-2',
+            rawValues: { Email: 'maria@gmail.com' },
+            values: { Email: 'maria@gmail.com' },
+          },
+        ],
+      },
+    } as unknown as ParsedFile;
+
+    const result = separateAutoMergedColumn(parsedFile, (parsedFile as any).mergeState.autoMergedColumns[0]);
+
+    expect(result.headers).toEqual(['Email', 'email__incoming']);
+    expect(result.rows[0].values).toEqual({ Email: 'john@gmail.com' });
+    expect(result.rows[1].values).toEqual({ email__incoming: 'maria@gmail.com' });
+    expect((result as any).mergeState.autoMergedColumns).toEqual([]);
+  });
+
   it('does not match a transaction to a profile on shared contact info when names conflict', () => {
     const txParsedFile = {
       fileName: 'givebutter.csv',
@@ -387,6 +666,7 @@ describe('buildAppendColumnDecisions', () => {
       txSchema,
       txRows: txRows as any,
       profileParsedFile,
+      profileSchema: txSchema,
       profileFileName: 'bloomerang.csv',
     });
 
@@ -394,5 +674,83 @@ describe('buildAppendColumnDecisions', () => {
     expect(txRecord).toBeTruthy();
     expect((txRecord as Record<string, unknown>)['Role']).toBeUndefined();
     expect((result.schema as Record<string, unknown>)['_txProfileMatchSummary']).toMatchObject({ matched: 0, unmatched: 1, profileOnly: 1 });
+  });
+
+  it('auto-matches tx/profile rows from raw headers even when fieldMap is sparse', () => {
+    const txParsedFile = {
+      fileName: 'transactions.csv',
+      headers: ['Donor Name', 'Email', 'Amount'],
+      rows: [{
+        ref: 'tx-1',
+        values: { 'Donor Name': 'John Smith', Email: 'john.smith@gmail.com', Amount: '100' },
+      }],
+      preview: {
+        summary: { rowCount: 1, populatedFields: 3 },
+        records: [{
+          sourceRowRef: 'tx-1',
+          rawValues: { 'Donor Name': 'John Smith', Email: 'john.smith@gmail.com', Amount: '100' },
+          values: { 'Donor Name': 'John Smith', Email: 'john.smith@gmail.com', Amount: '100' },
+        }],
+      },
+    } as unknown as ParsedFile;
+    const txSchema = {
+      fileClass: 'donor',
+      fieldMap: {},
+      confidence: 1,
+      expectedFields: [],
+      unresolvedFields: [],
+      fieldSuggestions: [],
+    } as unknown as ResolvedSchema;
+    const txRows = [{
+      id: 'row-1',
+      source_row_ref: 'tx-1',
+      entity_name: 'John Smith',
+      canonical_person_id: null,
+      source_platform: 'Givebutter',
+      source_file: 'transactions.csv',
+      memo: '',
+    }];
+    const profileParsedFile = {
+      fileName: 'constituents.csv',
+      headers: ['Full Name', 'Email', 'Phone', 'City'],
+      rows: [{
+        ref: 'profile-1',
+        values: { 'Full Name': 'John Smith', Email: 'john.smith@gmail.com', Phone: '555-111-0001', City: 'LA' },
+      }],
+      preview: {
+        summary: { rowCount: 1, populatedFields: 4 },
+        records: [{
+          sourceRowRef: 'profile-1',
+          rawValues: { 'Full Name': 'John Smith', Email: 'john.smith@gmail.com', Phone: '555-111-0001', City: 'LA' },
+          values: { 'Full Name': 'John Smith', Email: 'john.smith@gmail.com', Phone: '555-111-0001', City: 'LA' },
+        }],
+      },
+    } as unknown as ParsedFile;
+    const profileSchema = {
+      fileClass: 'constituent',
+      fieldMap: {},
+      confidence: 1,
+      expectedFields: [],
+      unresolvedFields: [],
+      fieldSuggestions: [],
+    } as unknown as ResolvedSchema;
+
+    const result = mergeTxWithProfileLookup({
+      txParsedFile,
+      txSchema,
+      txRows: txRows as any,
+      profileParsedFile,
+      profileSchema,
+      profileFileName: 'constituents.csv',
+    });
+
+    const txRecord = result.parsedFile.preview?.records.find((record) => record.sourceRowRef === 'tx-1');
+    expect(txRecord).toBeTruthy();
+    expect((txRecord as Record<string, unknown>)['Phone']).toBe('555-111-0001');
+    expect((txRecord as Record<string, unknown>)['City']).toBe('LA');
+    expect((result.schema as Record<string, unknown>)['_txProfileMatchSummary']).toMatchObject({ matched: 1, unmatched: 0, profileOnly: 0 });
+    expect((result.schema as Record<string, unknown>)['_txProfileAutoMergePairs']).toEqual([
+      { txSourceRowRef: 'tx-1', profileSourceRowRef: 'profile-1' },
+    ]);
   });
 });

@@ -24,8 +24,10 @@ export type AutoMergedColumnMatch = {
   incomingHeader: string;
   originalIncomingHeader?: string | null;
   targetHeader: string;
+  splitHeader: string;
   matchType: 'exact' | 'alias';
   score: number | null;
+  sourceRowRefs?: string[];
 };
 
 export type AppendColumnDecision = {
@@ -157,6 +159,45 @@ function inferHeaderConcept(value: string): HeaderConcept {
   return null;
 }
 
+type DateSemanticGroup =
+  | 'generic'
+  | 'transaction'
+  | 'created'
+  | 'updated'
+  | 'joined'
+  | 'start'
+  | 'end'
+  | 'processed'
+  | 'submitted'
+  | 'settled'
+  | null;
+
+function inferDateSemanticGroup(value: string): DateSemanticGroup {
+  const normalized = normalizeHeaderKey(value);
+  if (!normalized || !/(date|at)$|date/.test(normalized)) return null;
+  if (/joindate|joineddate|membershipdate|signupdate/.test(normalized)) return 'joined';
+  if (/createdat|creationdate/.test(normalized)) return 'created';
+  if (/updatedat|modifiedat|lastupdated/.test(normalized)) return 'updated';
+  if (/startdate|begindate/.test(normalized)) return 'start';
+  if (/enddate|expirydate|expirationdate|closedate/.test(normalized)) return 'end';
+  if (/processedat|processingdate/.test(normalized)) return 'processed';
+  if (/submittedat|submissiondate/.test(normalized)) return 'submitted';
+  if (/settledat|settlementdate/.test(normalized)) return 'settled';
+  if (/giftdate|receiveddate|transactiondate|donationdate|paymentdate|posteddate/.test(normalized)) return 'transaction';
+  if (normalized === 'date') return 'generic';
+  if (normalized.endsWith('date')) return 'generic';
+  return null;
+}
+
+function shouldForceSemanticColumnReview(existingHeader: string, incomingHeader: string): boolean {
+  const existingDateGroup = inferDateSemanticGroup(existingHeader);
+  const incomingDateGroup = inferDateSemanticGroup(incomingHeader);
+  if (!existingDateGroup || !incomingDateGroup) return false;
+  if (existingDateGroup === incomingDateGroup) return false;
+  const safeGenericDateGroups = new Set<DateSemanticGroup>(['generic', 'transaction']);
+  return !(safeGenericDateGroups.has(existingDateGroup) && safeGenericDateGroups.has(incomingDateGroup));
+}
+
 function areConceptsInSameReviewFamily(left: HeaderConcept, right: HeaderConcept): boolean {
   if (!left || !right) return false;
   return REVIEW_CONCEPT_FAMILIES.some((family) => family.has(left) && family.has(right));
@@ -231,6 +272,7 @@ function dominantShape(samples: string[]): ColumnValueShape {
 }
 
 function shouldReviewColumnMerge(existingSource: string[] | ParsedFile, incomingSource: string[] | ParsedFile, existingHeader: string, incomingHeader: string): boolean {
+  if (shouldForceSemanticColumnReview(existingHeader, incomingHeader)) return true;
   const existingSamples = collectColumnSamples(existingSource, existingHeader);
   const incomingSamples = collectColumnSamples(incomingSource, incomingHeader);
   if (existingSamples.length === 0 || incomingSamples.length === 0) return false;
@@ -478,6 +520,13 @@ function applyHeaderHeuristicsToSchema(schema: ResolvedSchema, headers: string[]
     nextFieldMap[canonicalKey] = preferredHeader;
   };
 
+  if (schema.fileClass === 'donor') {
+    // Keep donor identity headers pinned to donor_name before workbook union runs.
+    // If a source tab exposes "Full Name" or "Name" and schema guessing drifts,
+    // safe union can stop collapsing obvious donor-name aliases together.
+    maybeOverride('donor_name', ['donorname', 'constituentname', 'fullname', 'name', 'entityname', 'contactname', 'accountname']);
+  }
+
   // Fundraising transaction headers need stronger guardrails than the generic schema guesser.
   // In multi-source donor uploads we often see:
   // program -> fund
@@ -620,6 +669,185 @@ function buildPreparedRawHeaderMap(parsedFile: ParsedFileWithMerge | null | unde
   return reverse;
 }
 
+function buildPreparedRawHeaderLabelLookup(parsedFile: ParsedFileWithMerge | null | undefined): Map<string, string> {
+  return new Map(
+    Object.entries(parsedFile?.mergeState?.rawHeaderLabelsByMergedHeader ?? {})
+      .filter(([mergedHeader, rawHeader]) => Boolean(mergedHeader && rawHeader)),
+  );
+}
+
+function uniqueHeaderVariants(...values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
+}
+
+function maxHeaderSimilarity(left: string[], right: string[]): number {
+  let best = 0;
+  left.forEach((leftValue) => {
+    right.forEach((rightValue) => {
+      best = Math.max(best, scoreHeaderSimilarity(leftValue, rightValue));
+    });
+  });
+  return best;
+}
+
+function hasExactHeaderVariantMatch(left: string[], right: string[]): boolean {
+  const normalizedRight = new Set(right.map((value) => normalizeHeaderKey(value)).filter(Boolean));
+  return left.some((value) => normalizedRight.has(normalizeHeaderKey(value)));
+}
+
+function hasAliasHeaderVariantMatch(left: string[], right: string[]): boolean {
+  const normalizedRight = new Set(right.map((value) => resolveHeaderAlias(value)).filter(Boolean));
+  return left.some((value) => normalizedRight.has(resolveHeaderAlias(value)));
+}
+
+function isIdentityNameVariant(value: string): boolean {
+  return ['donor_name', 'entity_name'].includes(normalizeHeaderKey(value)) || resolveHeaderAlias(value) === 'fullname';
+}
+
+type IntelligentHeaderMatch = {
+  action: AppendColumnDecision['action'];
+  matchType: AppendColumnDecision['matchType'];
+  reason:
+    | 'exact'
+    | 'schema_alias'
+    | 'alias_group'
+    | 'identity_name_family'
+    | 'semantic_review'
+    | 'fuzzy_review'
+    | 'fuzzy_keep_separate'
+    | 'concept_review'
+    | 'new';
+  score: number | null;
+  targetHeader: string | null;
+};
+
+function chooseIntelligentHeaderMatch(params: {
+  existingHeaders: string[];
+  incomingHeader: string;
+  originalIncomingHeader: string;
+  existingRawHeaderLabels: Map<string, string>;
+  existingSchemaTargets: Map<string, string>;
+  incomingSchemaTargets: Map<string, string>;
+  existingSource: string[] | ParsedFile;
+  incomingSource: string[] | ParsedFile;
+}): IntelligentHeaderMatch {
+  const incomingVariants = uniqueHeaderVariants(params.incomingHeader, params.originalIncomingHeader);
+  const incomingSchemaTarget = resolveSchemaTarget(params.incomingHeader, params.incomingSchemaTargets);
+
+  const scoredCandidates = params.existingHeaders.map((header) => {
+    const existingVariants = uniqueHeaderVariants(header, params.existingRawHeaderLabels.get(header));
+    const exact = hasExactHeaderVariantMatch(existingVariants, incomingVariants);
+    const schemaAlias = incomingSchemaTarget
+      ? resolveSchemaTarget(header, params.existingSchemaTargets) === incomingSchemaTarget
+      : false;
+    const alias = hasAliasHeaderVariantMatch(existingVariants, incomingVariants);
+    const headerSimilarity = maxHeaderSimilarity(existingVariants, incomingVariants);
+    const hasIdentityNameFamily = existingVariants.some(isIdentityNameVariant) && incomingVariants.some(isIdentityNameVariant);
+    const needsReview = shouldReviewColumnMerge(params.existingSource, params.incomingSource, header, params.incomingHeader);
+    const semanticReview = isSemanticReviewPair(header, params.incomingHeader);
+    const forceSemanticReview = shouldForceSemanticColumnReview(header, params.incomingHeader);
+    const incomingConcept = inferHeaderConcept(params.incomingHeader);
+    const headerConcept = inferHeaderConcept(header);
+
+    let match: IntelligentHeaderMatch = {
+      action: 'keep_separate',
+      matchType: 'new',
+      reason: 'new',
+      score: null,
+      targetHeader: null,
+    };
+
+    if (exact) {
+      match = {
+        action: needsReview ? 'review' : 'merge',
+        matchType: 'exact',
+        reason: 'exact',
+        score: 1,
+        targetHeader: header,
+      };
+    } else if (schemaAlias) {
+      match = {
+        action: needsReview ? 'review' : 'merge',
+        matchType: 'alias',
+        reason: 'schema_alias',
+        score: 0.98,
+        targetHeader: header,
+      };
+    } else if (alias) {
+      match = {
+        action: needsReview ? 'review' : 'merge',
+        matchType: 'alias',
+        reason: 'alias_group',
+        score: 0.93,
+        targetHeader: header,
+      };
+    } else if (hasIdentityNameFamily) {
+      match = {
+        action: needsReview ? 'review' : 'merge',
+        matchType: 'alias',
+        reason: 'identity_name_family',
+        score: Math.max(0.9, headerSimilarity),
+        targetHeader: header,
+      };
+    } else if (semanticReview) {
+      match = {
+        action: 'review',
+        matchType: 'alias',
+        reason: 'semantic_review',
+        score: 0.88,
+        targetHeader: header,
+      };
+    } else if (headerSimilarity >= 0.84) {
+      match = {
+        action: forceSemanticReview ? 'review' : 'keep_separate',
+        matchType: forceSemanticReview ? 'alias' : 'fuzzy',
+        reason: forceSemanticReview ? 'fuzzy_review' : 'fuzzy_keep_separate',
+        score: headerSimilarity,
+        targetHeader: header,
+      };
+    } else {
+      if (incomingConcept && areConceptsInSameReviewFamily(headerConcept, incomingConcept)) {
+        match = {
+          action: 'review',
+          matchType: 'alias',
+          reason: 'concept_review',
+          score: 0.8 - (conceptReviewDistance(incomingConcept, headerConcept) * 0.01),
+          targetHeader: header,
+        };
+      }
+    }
+
+    return { header, existingVariants, ...match };
+  });
+
+  const best = scoredCandidates
+    .filter((candidate) => candidate.targetHeader)
+    .sort((left, right) => {
+      const scoreDelta = (right.score ?? -1) - (left.score ?? -1);
+      if (scoreDelta !== 0) return scoreDelta;
+      const reasonPriority = ['exact', 'schema_alias', 'alias_group', 'identity_name_family', 'semantic_review', 'fuzzy_review', 'concept_review', 'fuzzy_keep_separate', 'new'];
+      return reasonPriority.indexOf(left.reason) - reasonPriority.indexOf(right.reason);
+    })[0];
+
+  if (!best?.targetHeader) {
+    return {
+      action: 'keep_separate',
+      matchType: 'new',
+      reason: 'new',
+      score: null,
+      targetHeader: null,
+    };
+  }
+
+  return {
+    action: best.action,
+    matchType: best.matchType,
+    reason: best.reason,
+    score: best.score,
+    targetHeader: best.targetHeader,
+  };
+}
+
 export function buildAppendColumnDecisions(
   existingSource: string[] | ParsedFile,
   incomingSource: string[] | ParsedFile,
@@ -632,144 +860,22 @@ export function buildAppendColumnDecisions(
   const incomingSchemaTargets = buildSchemaTargetMap(options.incomingSchema);
   const incomingCanonicalToRawHeader = buildCanonicalToRawHeaderMap(options.incomingSchema);
   const preparedIncomingRawHeaders = Array.isArray(incomingSource) ? new Map<string, string>() : buildPreparedRawHeaderMap(incomingSource);
+  const existingPreparedRawHeaders = Array.isArray(existingSource) ? new Map<string, string>() : buildPreparedRawHeaderLabelLookup(existingSource);
   return incomingHeaders.map((incomingHeader) => {
     const originalIncomingHeader = preparedIncomingRawHeaders.get(normalizeHeaderKey(incomingHeader))
       ?? incomingCanonicalToRawHeader.get(normalizeHeaderKey(incomingHeader))
       ?? incomingHeader;
-    const exact = existingHeaders.find((header) => normalizeHeaderKey(header) === normalizeHeaderKey(incomingHeader));
-    if (exact) {
-      const needsReview = shouldReviewColumnMerge(existingSource, incomingSource, exact, incomingHeader);
-      const sampleConflicts = needsReview ? collectColumnConflictSamples(existingSource, incomingSource, exact, incomingHeader) : undefined;
-      return {
-        id: `${sourceFile}::${incomingHeader}::${exact}`,
-        sourceFile,
-        incomingHeader,
-        originalIncomingHeader,
-        suggestedHeader: exact,
-        targetHeader: exact,
-        matchType: 'exact',
-        score: 1,
-        action: needsReview ? 'review' : 'merge',
-        sampleConflicts,
-      } satisfies AppendColumnDecision;
-    }
-
-    const incomingSchemaTarget = resolveSchemaTarget(incomingHeader, incomingSchemaTargets);
-    const schemaAlias = incomingSchemaTarget
-      ? existingHeaders.find((header) => resolveSchemaTarget(header, existingSchemaTargets) === incomingSchemaTarget)
-      : null;
-    if (schemaAlias) {
-      const needsReview = shouldReviewColumnMerge(existingSource, incomingSource, schemaAlias, incomingHeader);
-      const sampleConflicts = needsReview ? collectColumnConflictSamples(existingSource, incomingSource, schemaAlias, incomingHeader) : undefined;
-      return {
-        id: `${sourceFile}::${incomingHeader}::${schemaAlias}`,
-        sourceFile,
-        incomingHeader,
-        originalIncomingHeader,
-        suggestedHeader: schemaAlias,
-        targetHeader: schemaAlias,
-        matchType: 'alias',
-        score: null,
-        action: needsReview ? 'review' : 'merge',
-        sampleConflicts,
-      } satisfies AppendColumnDecision;
-    }
-
-    const alias = existingHeaders.find((header) => resolveHeaderAlias(header) === resolveHeaderAlias(incomingHeader));
-    if (alias) {
-      const needsReview = shouldReviewColumnMerge(existingSource, incomingSource, alias, incomingHeader);
-      const sampleConflicts = needsReview ? collectColumnConflictSamples(existingSource, incomingSource, alias, incomingHeader) : undefined;
-      return {
-        id: `${sourceFile}::${incomingHeader}::${alias}`,
-        sourceFile,
-        incomingHeader,
-        originalIncomingHeader,
-        suggestedHeader: alias,
-        targetHeader: alias,
-        matchType: 'alias',
-        score: null,
-        action: needsReview ? 'review' : 'merge',
-        sampleConflicts,
-      } satisfies AppendColumnDecision;
-    }
-
-    const semanticReview = existingHeaders.find((header) => isSemanticReviewPair(header, incomingHeader));
-    if (semanticReview) {
-      return {
-        id: `${sourceFile}::${incomingHeader}::${semanticReview}`,
-        sourceFile,
-        incomingHeader,
-        originalIncomingHeader,
-        suggestedHeader: semanticReview,
-        targetHeader: semanticReview,
-        matchType: 'alias',
-        score: null,
-        action: 'review',
-        sampleConflicts: collectColumnConflictSamples(existingSource, incomingSource, semanticReview, incomingHeader),
-      } satisfies AppendColumnDecision;
-    }
-
-    const scored = existingHeaders
-      .map((header) => ({ header, score: scoreHeaderSimilarity(header, incomingHeader) }))
-      .sort((left, right) => right.score - left.score)[0];
-
-    if (scored && scored.score >= 0.84) {
-      return {
-        id: `${sourceFile}::${incomingHeader}::${scored.header}`,
-        sourceFile,
-        incomingHeader,
-        originalIncomingHeader,
-        suggestedHeader: scored.header,
-        targetHeader: scored.header,
-        matchType: 'fuzzy',
-        score: scored.score,
-        action: 'keep_separate',
-        sampleConflicts: collectColumnConflictSamples(existingSource, incomingSource, scored.header, incomingHeader),
-      } satisfies AppendColumnDecision;
-    }
-
-    const incomingConcept = inferHeaderConcept(incomingHeader);
-    if (incomingConcept && AUTO_MERGE_CONCEPTS.has(incomingConcept)) {
-      const conceptAlias = existingHeaders.find((header) => inferHeaderConcept(header) === incomingConcept);
-      if (conceptAlias) {
-        const needsReview = shouldReviewColumnMerge(existingSource, incomingSource, conceptAlias, incomingHeader);
-        const sampleConflicts = needsReview ? collectColumnConflictSamples(existingSource, incomingSource, conceptAlias, incomingHeader) : undefined;
-        return {
-          id: `${sourceFile}::${incomingHeader}::${conceptAlias}`,
-          sourceFile,
-          incomingHeader,
-          originalIncomingHeader,
-          suggestedHeader: conceptAlias,
-          targetHeader: conceptAlias,
-          matchType: 'alias',
-          score: null,
-          action: needsReview ? 'review' : 'merge',
-          sampleConflicts,
-        } satisfies AppendColumnDecision;
-      }
-    }
-
-    if (incomingConcept) {
-      const conceptReview = existingHeaders
-        .map((header) => ({ header, concept: inferHeaderConcept(header) }))
-        .filter(({ concept }) => areConceptsInSameReviewFamily(concept, incomingConcept))
-        .sort((left, right) => conceptReviewDistance(incomingConcept, left.concept) - conceptReviewDistance(incomingConcept, right.concept))[0]?.header;
-      if (conceptReview) {
-        return {
-          id: `${sourceFile}::${incomingHeader}::${conceptReview}`,
-          sourceFile,
-          incomingHeader,
-          originalIncomingHeader,
-          suggestedHeader: conceptReview,
-          targetHeader: conceptReview,
-          matchType: 'alias',
-          score: null,
-          action: 'review',
-          sampleConflicts: collectColumnConflictSamples(existingSource, incomingSource, conceptReview, incomingHeader),
-        } satisfies AppendColumnDecision;
-      }
-    }
-
+    const chosenMatch = chooseIntelligentHeaderMatch({
+      existingHeaders,
+      incomingHeader,
+      originalIncomingHeader,
+      existingRawHeaderLabels: existingPreparedRawHeaders,
+      existingSchemaTargets,
+      incomingSchemaTargets,
+      existingSource,
+      incomingSource,
+    });
+    if (!chosenMatch.targetHeader) {
     return {
       id: `${sourceFile}::${incomingHeader}::new`,
       sourceFile,
@@ -780,6 +886,24 @@ export function buildAppendColumnDecisions(
       matchType: 'new',
       score: null,
       action: 'keep_separate',
+    } satisfies AppendColumnDecision;
+    }
+    const sampleConflicts = chosenMatch.action === 'review' || chosenMatch.action === 'keep_separate'
+      ? collectColumnConflictSamples(existingSource, incomingSource, chosenMatch.targetHeader, incomingHeader)
+      : (shouldReviewColumnMerge(existingSource, incomingSource, chosenMatch.targetHeader, incomingHeader)
+          ? collectColumnConflictSamples(existingSource, incomingSource, chosenMatch.targetHeader, incomingHeader)
+          : undefined);
+    return {
+      id: `${sourceFile}::${incomingHeader}::${chosenMatch.targetHeader}`,
+      sourceFile,
+      incomingHeader,
+      originalIncomingHeader,
+      suggestedHeader: chosenMatch.targetHeader,
+      targetHeader: chosenMatch.targetHeader,
+      matchType: chosenMatch.matchType,
+      score: chosenMatch.score,
+      action: chosenMatch.action,
+      sampleConflicts,
     } satisfies AppendColumnDecision;
   });
 }
@@ -817,6 +941,7 @@ function buildHeaderPlanFromDecisions(existingHeaders: string[], decisions: Appe
         incomingHeader: decision.incomingHeader,
         originalIncomingHeader: decision.originalIncomingHeader,
         targetHeader: decision.targetHeader!,
+        splitHeader: buildIncomingSplitHeader([...mergedHeaders, decision.incomingHeader], decision.targetHeader!),
         matchType: decision.matchType,
         score: decision.score,
       });
@@ -839,6 +964,7 @@ function rewriteValuesWithPlan(values: Record<string, string>, headerMap: Map<st
 }
 
 function applyHeaderMergePlan(parsedFile: ParsedFileWithMerge, plan: ReturnType<typeof buildHeaderPlanFromDecisions>): ParsedFileWithMerge {
+  const incomingRowRefs = parsedFile.rows.map((row) => row.ref);
   return ensureMergeState(
     {
       ...parsedFile,
@@ -870,7 +996,9 @@ function applyHeaderMergePlan(parsedFile: ParsedFileWithMerge, plan: ReturnType<
     ],
     [
       ...(parsedFile.mergeState?.autoMergedColumns ?? []),
-      ...plan.autoMergedColumns.filter((merge) => !(parsedFile.mergeState?.autoMergedColumns ?? []).some((current) => current.id === merge.id)),
+      ...plan.autoMergedColumns
+        .filter((merge) => !(parsedFile.mergeState?.autoMergedColumns ?? []).some((current) => current.id === merge.id))
+        .map((merge) => ({ ...merge, sourceRowRefs: incomingRowRefs })),
     ],
   );
 }
@@ -1008,6 +1136,18 @@ export function mergeUploadIntoExisting(input: {
   const plannedIncoming = applyHeaderMergePlan(input.incomingParsedFile, plan);
   const nextSchema = mergeSchemas(input.currentSchema, input.incomingSchema);
   const mergedHeaders = Array.from(new Set([...(input.currentParsedFile.headers ?? []), ...(plannedIncoming.headers ?? [])]));
+  const mergedPreviewRecords = Array.from(
+    new Map(
+      [
+        ...(((input.currentParsedFile.preview?.records ?? []) as Array<PreviewRecord | null | undefined>)
+          .filter((record): record is PreviewRecord => Boolean(record?.sourceRowRef))
+          .map((record) => [String(record.sourceRowRef), record] as const)),
+        ...(((plannedIncoming.preview?.records ?? []) as Array<PreviewRecord | null | undefined>)
+          .filter((record): record is PreviewRecord => Boolean(record?.sourceRowRef))
+          .map((record) => [String(record.sourceRowRef), record] as const)),
+      ],
+    ).values(),
+  );
   const mergedParsedFile = markNeedsPersonResolveOnParsedFile(
     rebuildParsedPreview(ensureMergeState(
       {
@@ -1015,7 +1155,31 @@ export function mergeUploadIntoExisting(input: {
         fileName: `${input.currentParsedFile.fileName} + ${plannedIncoming.fileName}`,
         headers: mergedHeaders,
         rows: [...(input.currentParsedFile.rows ?? []), ...(plannedIncoming.rows ?? [])],
-        preview: input.currentParsedFile.preview || plannedIncoming.preview,
+        preview: mergedPreviewRecords.length > 0
+          ? {
+              ...(input.currentParsedFile.preview ?? plannedIncoming.preview ?? {
+                fileClass: nextSchema.fileClass,
+                canonicalModel: nextSchema.canonicalModel,
+                summary: {
+                  rowCount: mergedPreviewRecords.length,
+                  populatedFields: mergedHeaders.length,
+                  primaryLabel: nextSchema.reportType,
+                },
+              }),
+              summary: {
+                ...(input.currentParsedFile.preview?.summary
+                  ?? plannedIncoming.preview?.summary
+                  ?? {
+                    rowCount: mergedPreviewRecords.length,
+                    populatedFields: mergedHeaders.length,
+                    primaryLabel: nextSchema.reportType,
+                  }),
+                rowCount: mergedPreviewRecords.length,
+                populatedFields: mergedHeaders.length,
+              },
+              records: mergedPreviewRecords,
+            }
+          : (input.currentParsedFile.preview || plannedIncoming.preview),
       },
       Array.from(new Set([...(input.currentParsedFile as ParsedFileWithMerge).mergeState?.uploadedFiles ?? [], ...(plannedIncoming.mergeState?.uploadedFiles ?? [])])),
       mergedHeaders,
@@ -1142,6 +1306,55 @@ export function resolvePendingColumnMerge(parsedFile: ParsedFile, merge: Pending
   return schema ? rebuildParsedPreview(nextParsedFile, schema) : nextParsedFile;
 }
 
+export function separateAutoMergedColumn(parsedFile: ParsedFile, merge: AutoMergedColumnMatch, schema?: ResolvedSchema | null): ParsedFile {
+  const current = parsedFile as ParsedFileWithMerge;
+  const sourceRowRefs = new Set(merge.sourceRowRefs ?? []);
+  const nextHeaders = current.headers.includes(merge.splitHeader)
+    ? current.headers
+    : [...current.headers, merge.splitHeader];
+
+  const rewriteSeparate = (values: Record<string, string>, rowRef: string) => {
+    if (!sourceRowRefs.has(rowRef)) return values ?? {};
+    const next = { ...(values ?? {}) };
+    if (merge.targetHeader in next) {
+      next[merge.splitHeader] = next[merge.targetHeader];
+      delete next[merge.targetHeader];
+    }
+    return next;
+  };
+
+  const nextParsedFile = ensureMergeState(
+    {
+      ...current,
+      headers: nextHeaders,
+      rows: current.rows.map((row) => ({ ...row, values: rewriteSeparate(row.values, row.ref) })),
+      preview: current.preview
+        ? {
+            ...current.preview,
+            summary: {
+              ...current.preview.summary,
+              populatedFields: nextHeaders.length,
+            },
+            records: current.preview.records.map((record) => {
+              const previewRecord = record as PreviewRecord;
+              return {
+                ...previewRecord,
+                rawValues: rewriteSeparate(getRawValues(previewRecord), previewRecord.sourceRowRef),
+                ...(previewRecord.values ? { values: rewriteSeparate(previewRecord.values, previewRecord.sourceRowRef) } : {}),
+              };
+            }),
+          }
+        : current.preview,
+    },
+    current.mergeState?.uploadedFiles ?? [],
+    nextHeaders,
+    current.mergeState?.pendingMerges ?? [],
+    (current.mergeState?.autoMergedColumns ?? []).filter((item) => item.id !== merge.id),
+  );
+
+  return schema ? rebuildParsedPreview(nextParsedFile, schema) : nextParsedFile;
+}
+
 // ─── Merge strategy detection ────────────────────────────────────────────────
 
 function isTxFileClass(fc: string): boolean {
@@ -1175,6 +1388,241 @@ type ProfileLookupEntry = {
   state: string;
   postalCode: string;
 };
+
+type TxProfileReviewItem = {
+  id: string;
+  txSourceRowRef: string;
+  profileSourceRowRef: string;
+  txDisplayName: string;
+  profileDisplayName: string;
+  reason: 'field_conflict' | 'ambiguous_match';
+  conflictingFields: string[];
+  evidence: string[];
+};
+
+type TxProfileAutoMergePair = {
+  txSourceRowRef: string;
+  profileSourceRowRef: string;
+};
+
+const PREVIEW_FIELD_BY_SEMANTIC: Partial<Record<string, keyof PreviewRecord>> = {
+  donor_name: 'donorName',
+  first_name: 'firstName',
+  last_name: 'lastName',
+  organization_name: 'organizationName',
+  household_name: 'householdName',
+  email: 'email',
+  phone: 'phone',
+  address: 'address',
+  city: 'city',
+  state: 'state',
+  postal_code: 'postalCode',
+  date: 'date',
+  amount: 'amount',
+  fund: 'fund',
+  appeal: 'appeal',
+  campaign_name: 'campaignName',
+  memo: 'memo',
+  currency: 'currency',
+  assigned_staff: 'assignedStaff',
+  created_at: 'createdAt',
+  updated_at: 'updatedAt',
+};
+
+function getSemanticRecordValue(record: PreviewRecord, schema: ResolvedSchema, semantic: string): string {
+  const rawValues = getRawValues(record);
+  const mappedHeader = schema.fieldMap?.[semantic as keyof typeof schema.fieldMap];
+  if (mappedHeader) {
+    const rawValue = String(rawValues[mappedHeader] ?? '').trim();
+    if (rawValue) return rawValue;
+  }
+  const fallbackRawValue = getSemanticFallbackRawValue(rawValues, semantic);
+  if (fallbackRawValue) return fallbackRawValue;
+  if (semantic === 'entity_name') {
+    const entityValue = String((record as Record<string, unknown>)['displayName'] ?? '').trim();
+    if (entityValue) return entityValue;
+  }
+  const previewField = PREVIEW_FIELD_BY_SEMANTIC[semantic];
+  if (previewField) {
+    const previewValue = String(record[previewField] ?? '').trim();
+    if (previewValue) return previewValue;
+  }
+  return '';
+}
+
+type SemanticFallbackFamily =
+  | 'identity_name'
+  | 'first_name'
+  | 'last_name'
+  | 'organization_name'
+  | 'household_name'
+  | 'email'
+  | 'phone'
+  | 'address'
+  | 'city'
+  | 'state'
+  | 'postal_code'
+  | 'country'
+  | 'date'
+  | 'created_at'
+  | 'updated_at'
+  | 'amount'
+  | 'fund'
+  | 'appeal'
+  | 'campaign_name'
+  | null;
+
+function tokenizeSemanticLabel(value: string): string[] {
+  return String(value || '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/g)
+    .filter(Boolean);
+}
+
+function inferSemanticFallbackFamily(value: string): SemanticFallbackFamily {
+  const normalized = normalizeHeaderKey(value);
+  if (!normalized) return null;
+
+  const headerConcept = inferHeaderConcept(value);
+  if (headerConcept === 'email') return 'email';
+  if (headerConcept === 'phone') return 'phone';
+  if (headerConcept === 'address') return 'address';
+  if (headerConcept === 'postal_code') return 'postal_code';
+  if (headerConcept === 'amount') return 'amount';
+  if (headerConcept === 'appeal') return 'appeal';
+  if (headerConcept === 'campaign') return 'campaign_name';
+  if (headerConcept === 'fund' || headerConcept === 'program') return 'fund';
+
+  const dateGroup = inferDateSemanticGroup(value);
+  if (dateGroup === 'created') return 'created_at';
+  if (dateGroup === 'updated') return 'updated_at';
+  if (dateGroup === 'generic' || dateGroup === 'transaction') return 'date';
+
+  const tokens = new Set(tokenizeSemanticLabel(value));
+  if (tokens.has('email')) return 'email';
+  if (tokens.has('phone') || tokens.has('telephone') || tokens.has('mobile')) return 'phone';
+  if (tokens.has('address') || tokens.has('street')) return 'address';
+  if (tokens.has('postal') || tokens.has('zip') || tokens.has('zipcode')) return 'postal_code';
+  if (tokens.has('city') || tokens.has('town')) return 'city';
+  if (tokens.has('state') || tokens.has('province') || tokens.has('region')) return 'state';
+  if (tokens.has('country') || tokens.has('nation')) return 'country';
+  if (tokens.has('household')) return 'household_name';
+  if (tokens.has('organization') || tokens.has('company') || tokens.has('business') || tokens.has('account')) return 'organization_name';
+  if (tokens.has('first') || tokens.has('given') || tokens.has('fname')) return 'first_name';
+  if (tokens.has('last') || tokens.has('family') || tokens.has('surname') || tokens.has('lname')) return 'last_name';
+  if (tokens.has('name') || isIdentityNameVariant(value)) return 'identity_name';
+
+  return null;
+}
+
+function headerMatchesSemantic(header: string, semantic: string): boolean {
+  const headerFamily = inferSemanticFallbackFamily(header);
+  const semanticFamily = inferSemanticFallbackFamily(semantic);
+  if (!headerFamily || !semanticFamily) return normalizeHeaderKey(header) === normalizeHeaderKey(semantic);
+  if (semanticFamily === 'identity_name') return headerFamily === 'identity_name';
+  return headerFamily === semanticFamily;
+}
+
+function getSemanticFallbackRawValue(rawValues: Record<string, string>, semantic: string): string {
+  const direct = Object.entries(rawValues).find(([header, value]) => headerMatchesSemantic(header, semantic) && String(value ?? '').trim());
+  if (direct) return String(direct[1] ?? '').trim();
+
+  if (semantic === 'entity_name') {
+    const donorName = getSemanticFallbackRawValue(rawValues, 'donor_name');
+    if (donorName) return donorName;
+  }
+
+  if (semantic === 'donor_name') {
+    const firstName = getSemanticFallbackRawValue(rawValues, 'first_name');
+    const lastName = getSemanticFallbackRawValue(rawValues, 'last_name');
+    const organizationName = getSemanticFallbackRawValue(rawValues, 'organization_name');
+    return organizationName || [firstName, lastName].filter(Boolean).join(' ').trim();
+  }
+
+  return '';
+}
+
+function getFirstPopulatedSemanticValue(record: PreviewRecord, schema: ResolvedSchema, semantics: string[]): string {
+  for (const semantic of semantics) {
+    const value = getSemanticRecordValue(record, schema, semantic);
+    if (value) return value;
+  }
+  return '';
+}
+
+function getLookupNameParts(record: PreviewRecord, schema: ResolvedSchema): { display: string; normalized: string } {
+  const directName = getFirstPopulatedSemanticValue(record, schema, ['donor_name', 'entity_name']);
+  if (directName) return { display: directName, normalized: normLookupStr(directName) };
+  const firstName = getSemanticRecordValue(record, schema, 'first_name');
+  const lastName = getSemanticRecordValue(record, schema, 'last_name');
+  const organizationName = getSemanticRecordValue(record, schema, 'organization_name');
+  const display = organizationName || [firstName, lastName].filter(Boolean).join(' ').trim();
+  return { display, normalized: normLookupStr(display) };
+}
+
+function getLookupContactValue(record: PreviewRecord, schema: ResolvedSchema, kind: 'email' | 'phone'): string {
+  return getSemanticRecordValue(record, schema, kind);
+}
+
+function compareLookupField(left: string, right: string, kind: 'email' | 'phone' | 'text'): boolean {
+  const leftValue = String(left || '').trim();
+  const rightValue = String(right || '').trim();
+  if (!leftValue || !rightValue) return true;
+  if (kind === 'email') return normLookupEmail(leftValue) === normLookupEmail(rightValue);
+  if (kind === 'phone') return normLookupPhone(leftValue) === normLookupPhone(rightValue);
+  return normLookupStr(leftValue) === normLookupStr(rightValue);
+}
+
+function getRecordConflictValues(record: PreviewRecord, schema: ResolvedSchema) {
+  const rawValues = getRawValues(record);
+  return {
+    email: getSemanticRecordValue(record, schema, 'email'),
+    phone: getSemanticRecordValue(record, schema, 'phone'),
+    address: getSemanticRecordValue(record, schema, 'address'),
+    city: getSemanticRecordValue(record, schema, 'city'),
+    state: getSemanticRecordValue(record, schema, 'state'),
+    postalCode: getSemanticRecordValue(record, schema, 'postal_code'),
+    rawValues,
+  };
+}
+
+function getTxProfileConflictingFields(
+  txRecord: PreviewRecord,
+  txSchema: ResolvedSchema,
+  profileRecord: PreviewRecord,
+  profileSchema: ResolvedSchema,
+): string[] {
+  const conflicts: string[] = [];
+  const txValues = getRecordConflictValues(txRecord, txSchema);
+  const profileValues = getRecordConflictValues(profileRecord, profileSchema);
+  if (!compareLookupField(txValues.email, profileValues.email, 'email')) conflicts.push('email');
+  if (!compareLookupField(txValues.phone, profileValues.phone, 'phone')) conflicts.push('phone');
+  if (!compareLookupField(txValues.address, profileValues.address, 'text')) conflicts.push('address');
+  if (!compareLookupField(txValues.city, profileValues.city, 'text')) conflicts.push('city');
+  if (!compareLookupField(txValues.state, profileValues.state, 'text')) conflicts.push('state');
+  if (!compareLookupField(txValues.postalCode, profileValues.postalCode, 'text')) conflicts.push('postal code');
+  return conflicts;
+}
+
+function buildTxProfileEvidence(
+  txRecord: PreviewRecord,
+  txSchema: ResolvedSchema,
+  profileRecord: PreviewRecord,
+  profileSchema: ResolvedSchema,
+): string[] {
+  const evidence: string[] = [];
+  const txEmail = getLookupContactValue(txRecord, txSchema, 'email');
+  const profileEmail = getLookupContactValue(profileRecord, profileSchema, 'email');
+  if (txEmail && profileEmail && compareLookupField(txEmail, profileEmail, 'email')) evidence.push(`Email ${txEmail}`);
+  const txPhone = getLookupContactValue(txRecord, txSchema, 'phone');
+  const profilePhone = getLookupContactValue(profileRecord, profileSchema, 'phone');
+  if (txPhone && profilePhone && compareLookupField(txPhone, profilePhone, 'phone')) evidence.push(`Phone ${txPhone}`);
+  const txName = getLookupNameParts(txRecord, txSchema).display;
+  const profileName = getLookupNameParts(profileRecord, profileSchema).display;
+  if (txName && profileName && hasCompatibleLookupName(txName, profileName)) evidence.push(`Name ${txName} ↔ ${profileName}`);
+  return evidence;
+}
 
 function normLookupStr(s: string): string {
   return String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '');
@@ -1248,7 +1696,7 @@ function hasCompatibleLookupName(txName: string, profileName: string): boolean {
   return computeLookupNameSimilarity(txName, profileName) >= 0.78;
 }
 
-function buildProfileLookupIndex(profileRecords: PreviewRecord[]): {
+function buildProfileLookupIndex(profileRecords: PreviewRecord[], profileSchema: ResolvedSchema): {
   byEmail: Map<string, ProfileLookupEntry[]>;
   byPhone: Map<string, ProfileLookupEntry[]>;
   byName: Map<string, ProfileLookupEntry[]>;
@@ -1259,9 +1707,9 @@ function buildProfileLookupIndex(profileRecords: PreviewRecord[]): {
 
   for (const record of profileRecords) {
     const r = record as Record<string, unknown>;
-    const email = normLookupEmail(String(r['email'] || ''));
-    const phone = normLookupPhone(String(r['phone'] || ''));
-    const rawName = String(r['displayName'] || r['donorName'] || [r['firstName'], r['lastName']].filter(Boolean).join(' ') || '');
+    const email = normLookupEmail(getLookupContactValue(record, profileSchema, 'email'));
+    const phone = normLookupPhone(getLookupContactValue(record, profileSchema, 'phone'));
+    const rawName = getLookupNameParts(record, profileSchema).display;
     const name = normLookupStr(rawName);
     const entry: ProfileLookupEntry = {
       sourceRowRef: String(r['sourceRowRef'] || r['id'] || ''),
@@ -1270,10 +1718,10 @@ function buildProfileLookupIndex(profileRecords: PreviewRecord[]): {
       email,
       phone,
       name,
-      address: String(r['address'] || ''),
-      city: String(r['city'] || ''),
-      state: String(r['state'] || ''),
-      postalCode: String(r['postalCode'] || ''),
+      address: getSemanticRecordValue(record, profileSchema, 'address'),
+      city: getSemanticRecordValue(record, profileSchema, 'city'),
+      state: getSemanticRecordValue(record, profileSchema, 'state'),
+      postalCode: getSemanticRecordValue(record, profileSchema, 'postal_code'),
     };
 
     if (email) { if (!byEmail.has(email)) byEmail.set(email, []); byEmail.get(email)!.push(entry); }
@@ -1284,14 +1732,15 @@ function buildProfileLookupIndex(profileRecords: PreviewRecord[]): {
   return { byEmail, byPhone, byName };
 }
 
-function findBestProfileMatch(txRecord: PreviewRecord, index: ReturnType<typeof buildProfileLookupIndex>): {
+function findBestProfileMatch(txRecord: PreviewRecord, txSchema: ResolvedSchema, profileSchema: ResolvedSchema, index: ReturnType<typeof buildProfileLookupIndex>): {
   entry: ProfileLookupEntry | null;
-  matchStatus: 'matched' | 'unmatched' | 'ambiguous';
+  matchStatus: 'matched' | 'unmatched' | 'ambiguous' | 'conflict';
+  conflictingFields: string[];
+  ambiguousEntries: ProfileLookupEntry[];
 } {
-  const r = txRecord as Record<string, unknown>;
-  const email = normLookupEmail(String(r['email'] || getRawValues(txRecord)['email'] || ''));
-  const phone = normLookupPhone(String(r['phone'] || getRawValues(txRecord)['phone'] || ''));
-  const rawName = String(r['donorName'] || r['displayName'] || [r['firstName'], r['lastName']].filter(Boolean).join(' ') || r['entity_name'] || '');
+  const email = normLookupEmail(getLookupContactValue(txRecord, txSchema, 'email'));
+  const phone = normLookupPhone(getLookupContactValue(txRecord, txSchema, 'phone'));
+  const rawName = getLookupNameParts(txRecord, txSchema).display;
   const name = normLookupStr(rawName);
   const txName = rawName;
 
@@ -1315,13 +1764,29 @@ function findBestProfileMatch(txRecord: PreviewRecord, index: ReturnType<typeof 
   }
   if (name) (index.byName.get(name) ?? []).forEach((e) => add(e, 1));
 
-  if (scores.size === 0) return { entry: null, matchStatus: 'unmatched' };
+  if (scores.size === 0) return { entry: null, matchStatus: 'unmatched', conflictingFields: [], ambiguousEntries: [] };
 
-  const sorted = Array.from(scores.values()).sort((a, b) => b.score - a.score);
-  if (sorted.length > 1 && sorted[0].score === sorted[1].score) {
-    return { entry: sorted[0].entry, matchStatus: 'ambiguous' };
+  const sorted = Array.from(scores.values())
+    .filter(({ entry }) => {
+      if (email && entry.email && email !== entry.email) return false;
+      if (phone && entry.phone && phone !== entry.phone) return false;
+      return true;
+    })
+    .sort((a, b) => b.score - a.score);
+  if (sorted.length === 0) return { entry: null, matchStatus: 'unmatched', conflictingFields: [], ambiguousEntries: [] };
+  const conflictingFields = getTxProfileConflictingFields(txRecord, txSchema, sorted[0].entry.record, profileSchema);
+  if (conflictingFields.length > 0) {
+    return { entry: sorted[0].entry, matchStatus: 'conflict', conflictingFields, ambiguousEntries: [] };
   }
-  return { entry: sorted[0].entry, matchStatus: 'matched' };
+  if (sorted.length > 1 && sorted[0].score === sorted[1].score) {
+    return {
+      entry: sorted[0].entry,
+      matchStatus: 'ambiguous',
+      conflictingFields: [],
+      ambiguousEntries: sorted.filter((item) => item.score === sorted[0].score).map((item) => item.entry),
+    };
+  }
+  return { entry: sorted[0].entry, matchStatus: 'matched', conflictingFields: [], ambiguousEntries: [] };
 }
 
 export function mergeTxWithProfileLookup(input: {
@@ -1329,44 +1794,73 @@ export function mergeTxWithProfileLookup(input: {
   txSchema: ResolvedSchema;
   txRows: CanonicalLedgerRow[];
   profileParsedFile: ParsedFile;
+  profileSchema: ResolvedSchema;
   profileFileName: string;
 }): { parsedFile: ParsedFileWithMerge; schema: ResolvedSchema; rows: CanonicalLedgerRow[] } {
+  const columnDecisions = buildAppendColumnDecisions(
+    input.txParsedFile,
+    input.profileParsedFile,
+    input.profileFileName,
+    {
+      existingSchema: input.txSchema,
+      incomingSchema: input.profileSchema,
+    },
+  );
+  const plan = buildHeaderPlanFromDecisions(input.txParsedFile.headers ?? [], columnDecisions);
   const profileRecords = (input.profileParsedFile.preview?.records ?? []) as PreviewRecord[];
-  const index = buildProfileLookupIndex(profileRecords);
+  const index = buildProfileLookupIndex(profileRecords, input.profileSchema);
   const profileHeaders = input.profileParsedFile.headers ?? [];
   const profileHeaderTargets = new Map<string, string>(
-    profileHeaders.map((header) => [
-      header,
-      input.txParsedFile.headers.includes(header) ? `profile_${header}` : header,
-    ]),
+    profileHeaders.map((header) => [header, plan.headerMap.get(header) ?? header]),
   );
 
   // Build match map: tx preview record sourceRowRef → { entry, matchStatus }
   const txRecords = (input.txParsedFile.preview?.records ?? []) as PreviewRecord[];
-  const matchMap = new Map<string, { entry: ProfileLookupEntry | null; matchStatus: 'matched' | 'unmatched' | 'ambiguous' }>();
+  const matchMap = new Map<string, ReturnType<typeof findBestProfileMatch>>();
   for (const record of txRecords) {
     const ref = String((record as Record<string, unknown>)['sourceRowRef'] || (record as Record<string, unknown>)['id'] || '');
-    matchMap.set(ref, findBestProfileMatch(record, index));
+    matchMap.set(ref, findBestProfileMatch(record, input.txSchema, input.profileSchema, index));
   }
+  const txProfileReviewItems: TxProfileReviewItem[] = txRecords.flatMap((record) => {
+    const ref = String((record as Record<string, unknown>)['sourceRowRef'] || (record as Record<string, unknown>)['id'] || '');
+    const match = matchMap.get(ref);
+    if (!match || !match.entry || (match.matchStatus !== 'conflict' && match.matchStatus !== 'ambiguous')) return [];
+    const profileRecord = match.entry.record;
+    return [{
+      id: `tx-profile-review::${ref}::${match.entry.sourceRowRef}`,
+      txSourceRowRef: ref,
+      profileSourceRowRef: match.entry.sourceRowRef,
+      txDisplayName: getLookupNameParts(record, input.txSchema).display || ref,
+      profileDisplayName: getLookupNameParts(profileRecord, input.profileSchema).display || match.entry.sourceRowRef,
+      reason: match.matchStatus === 'conflict' ? 'field_conflict' : 'ambiguous_match',
+      conflictingFields: match.conflictingFields,
+      evidence: buildTxProfileEvidence(record, input.txSchema, profileRecord, input.profileSchema),
+    }];
+  });
+  const txProfileAutoMergePairs: TxProfileAutoMergePair[] = txRecords.flatMap((record) => {
+    const ref = String((record as Record<string, unknown>)['sourceRowRef'] || (record as Record<string, unknown>)['id'] || '');
+    const match = matchMap.get(ref);
+    if (!match || match.matchStatus !== 'matched' || !match.entry) return [];
+    return [{ txSourceRowRef: ref, profileSourceRowRef: match.entry.sourceRowRef }];
+  });
 
-  const extraHeaders = profileHeaders
-    .map((header) => profileHeaderTargets.get(header) ?? header)
-    .filter((header) => !input.txParsedFile.headers.includes(header));
-  const nextHeaders = [...input.txParsedFile.headers, ...extraHeaders];
+  const nextHeaders = plan.mergedHeaders;
 
   // Enrich parsed source rows with profile lookup results
   const enrichedRows = input.txParsedFile.rows.map((row) => {
     const match = matchMap.get(row.ref);
     if (!match || match.matchStatus !== 'matched' || !match.entry) return row;
-    const profileValues = getRawValues(match.entry.record);
+    const profileValues = rewriteValuesWithPlan(getRawValues(match.entry.record), plan.headerMap, plan.droppedHeaders);
     return {
       ...row,
       values: {
         ...row.values,
-        ...Object.fromEntries(profileHeaders.map((header) => [
-          profileHeaderTargets.get(header) ?? header,
-          profileValues[header] || '',
-        ])),
+        ...Object.fromEntries(
+          Object.entries(profileValues).map(([header, value]) => [
+            header,
+            row.values?.[header] || value || '',
+          ]),
+        ),
       },
     };
   });
@@ -1374,11 +1868,11 @@ export function mergeTxWithProfileLookup(input: {
   const enrichedCanonicalRows = input.txRows.map((row) => {
     const match = matchMap.get(row.source_row_ref);
     if (!match || match.matchStatus !== 'matched' || !match.entry) return row;
-    const profileValues = getRawValues(match.entry.record);
+    const profileValues = rewriteValuesWithPlan(getRawValues(match.entry.record), plan.headerMap, plan.droppedHeaders);
     return {
       ...row,
       canonical_person_id: match.entry.canonicalPersonId ?? row.canonical_person_id,
-      entity_name: row.entity_name || String((match.entry.record as Record<string, unknown>)['displayName'] || (match.entry.record as Record<string, unknown>)['donorName'] || ''),
+      entity_name: row.entity_name || getLookupNameParts(match.entry.record, input.profileSchema).display,
       source_file: row.source_file || String((match.entry.record as Record<string, unknown>)['source_file'] || (match.entry.record as Record<string, unknown>)['sourceFile'] || ''),
       memo: row.memo || String(profileValues.memo || ''),
     };
@@ -1391,55 +1885,47 @@ export function mergeTxWithProfileLookup(input: {
     if (!match || match.matchStatus !== 'matched' || !match.entry) return record;
     const entry = match.entry;
     const currentRawValues = getRawValues(record);
-    const profileValues = getRawValues(entry.record);
+    const profileValues = rewriteValuesWithPlan(getRawValues(entry.record), plan.headerMap, plan.droppedHeaders);
     return {
       ...record,
       rawValues: {
         ...currentRawValues,
-        ...Object.fromEntries(profileHeaders.map((header) => [
-          profileHeaderTargets.get(header) ?? header,
-          String(profileValues[header] ?? ''),
-        ])),
+        ...Object.fromEntries(
+          Object.entries(profileValues).map(([header, value]) => [
+            header,
+            currentRawValues[header] || String(value ?? ''),
+          ]),
+        ),
       },
       values: {
         ...(record.values ?? {}),
-        ...Object.fromEntries(profileHeaders.map((header) => [
-          profileHeaderTargets.get(header) ?? header,
-          String(profileValues[header] ?? ''),
-        ])),
+        ...Object.fromEntries(
+          Object.entries(profileValues).map(([header, value]) => [
+            header,
+            String((record.values ?? {})[header] ?? value ?? ''),
+          ]),
+        ),
       },
       canonical_person_id: entry.canonicalPersonId ?? (record as Record<string, unknown>)['canonical_person_id'] ?? null,
-      ...Object.fromEntries(profileHeaders.map((header) => [
-        profileHeaderTargets.get(header) ?? header,
-        String(profileValues[header] ?? ''),
-      ])),
+      ...Object.fromEntries(Object.entries(profileValues).map(([header, value]) => [header, String(value ?? '')])),
     };
   });
 
-  const matchedProfileRefs = new Set(
-    Array.from(matchMap.values())
-      .filter((match) => match.matchStatus === 'matched' && match.entry)
-      .map((match) => match.entry!.sourceRowRef),
-  );
-  const profileOnlyRecords = profileRecords.filter((record) => !matchedProfileRefs.has(String(record.sourceRowRef ?? record.id ?? '')));
-  const profileOnlyParsedRows = profileOnlyRecords.map((record, index) => ({
-    ref: `profile-only::${String(record.sourceRowRef ?? record.id ?? index)}`,
-    values: Object.fromEntries(nextHeaders.map((header) => [
-      header,
-      String(
-        (() => {
-          const originalProfileHeader = Array.from(profileHeaderTargets.entries()).find(([, target]) => target === header)?.[0];
-          return originalProfileHeader
-            ? (getRawValues(record)[originalProfileHeader] ?? (record as Record<string, unknown>)[originalProfileHeader] ?? '')
-            : '';
-        })(),
-      ),
-    ])),
+  const allProfileRecords = profileRecords;
+  const allProfileParsedRows = allProfileRecords.map((record, index) => ({
+    ref: String(record.sourceRowRef ?? record.id ?? `profile-row-${index + 1}`),
+    values: Object.fromEntries(nextHeaders.map((header) => [header, ''])),
+  })).map((row, index) => ({
+    ...row,
+    values: {
+      ...row.values,
+      ...rewriteValuesWithPlan(getRawValues(allProfileRecords[index]), plan.headerMap, plan.droppedHeaders),
+    },
   }));
-  const profileOnlyCanonicalRows = profileOnlyRecords.map((record, index) => {
-    const label = String((record as Record<string, unknown>)['displayName'] || (record as Record<string, unknown>)['donorName'] || [record.firstName, record.lastName].filter(Boolean).join(' ') || record.sourceRowRef || record.id || `profile-only-${index + 1}`);
+  const allProfileCanonicalRows = allProfileRecords.map((record, index) => {
+    const label = getLookupNameParts(record, input.profileSchema).display || String(record.sourceRowRef || record.id || `profile-only-${index + 1}`);
     return {
-      id: `profile-only::${String(record.sourceRowRef ?? record.id ?? index)}`,
+      id: String(record.sourceRowRef ?? record.id ?? `profile-row-${index + 1}`),
       date: '',
       entity_name: label,
       account_code: '',
@@ -1449,7 +1935,7 @@ export function mergeTxWithProfileLookup(input: {
       currency: '',
       memo: '',
       source_platform: input.txRows[0]?.source_platform ?? input.txParsedFile.platform,
-      source_row_ref: `profile-only::${String(record.sourceRowRef ?? record.id ?? index)}`,
+      source_row_ref: String(record.sourceRowRef ?? record.id ?? `profile-row-${index + 1}`),
       source_file: String((record as Record<string, unknown>)['source_file'] || (record as Record<string, unknown>)['sourceFile'] || input.profileFileName),
       journal_id: '',
       mapping_confidence: 0,
@@ -1470,32 +1956,18 @@ export function mergeTxWithProfileLookup(input: {
       needs_person_resolve: false,
     };
   });
-  const profileOnlyPreviewRecords = profileOnlyRecords.map((record, index) => ({
+  const allProfilePreviewRecords = allProfileRecords.map((record, index) => ({
     ...record,
-    id: `profile-only::${String(record.sourceRowRef ?? record.id ?? index)}`,
-    sourceRowRef: `profile-only::${String(record.sourceRowRef ?? record.id ?? index)}`,
-    rawValues: Object.fromEntries(nextHeaders.map((header) => [
-      header,
-      String(
-        (() => {
-          const originalProfileHeader = Array.from(profileHeaderTargets.entries()).find(([, target]) => target === header)?.[0];
-          return originalProfileHeader
-            ? (getRawValues(record)[originalProfileHeader] ?? (record as Record<string, unknown>)[originalProfileHeader] ?? '')
-            : '';
-        })(),
-      ),
-    ])),
-    values: Object.fromEntries(nextHeaders.map((header) => [
-      header,
-      String(
-        (() => {
-          const originalProfileHeader = Array.from(profileHeaderTargets.entries()).find(([, target]) => target === header)?.[0];
-          return originalProfileHeader
-            ? ((record.values as Record<string, string> | undefined)?.[originalProfileHeader] ?? getRawValues(record)[originalProfileHeader] ?? (record as Record<string, unknown>)[originalProfileHeader] ?? '')
-            : '';
-        })(),
-      ),
-    ])),
+    id: String(record.id ?? record.sourceRowRef ?? `profile-row-${index + 1}`),
+    sourceRowRef: String(record.sourceRowRef ?? record.id ?? `profile-row-${index + 1}`),
+    rawValues: {
+      ...Object.fromEntries(nextHeaders.map((header) => [header, ''])),
+      ...rewriteValuesWithPlan(getRawValues(record), plan.headerMap, plan.droppedHeaders),
+    },
+    values: {
+      ...Object.fromEntries(nextHeaders.map((header) => [header, ''])),
+      ...rewriteValuesWithPlan(getRawValues(record), plan.headerMap, plan.droppedHeaders),
+    },
     sourceFileClass: (record.sourceFileClass ?? record.source_file_class ?? 'constituent'),
     source_file_class: (record.sourceFileClass ?? record.source_file_class ?? 'constituent'),
     link_profile_only: true,
@@ -1515,27 +1987,42 @@ export function mergeTxWithProfileLookup(input: {
       ...input.txParsedFile,
       fileName: `${input.txParsedFile.fileName} + ${input.profileFileName}`,
       headers: nextHeaders,
-      rows: [...enrichedRows, ...profileOnlyParsedRows],
+      rows: [...enrichedRows, ...allProfileParsedRows],
       preview: input.txParsedFile.preview
         ? {
             ...input.txParsedFile.preview,
             summary: {
               ...input.txParsedFile.preview.summary,
-              rowCount: enrichedRecords.length + profileOnlyPreviewRecords.length,
+              rowCount: enrichedRecords.length + allProfilePreviewRecords.length,
               populatedFields: nextHeaders.length,
             },
-            records: [...enrichedRecords, ...profileOnlyPreviewRecords],
+            records: [...enrichedRecords, ...allProfilePreviewRecords],
           }
         : input.txParsedFile.preview,
     },
     uploadedFiles,
     nextHeaders,
-    [],
+    plan.pendingMerges,
+    plan.autoMergedColumns,
   );
 
   return {
     parsedFile: nextParsedFile,
-    schema: { ...input.txSchema, _txProfileMatchSummary: { matched: matchedCount, ambiguous: ambiguousCount, unmatched: unmatchedCount, profileOnly: profileOnlyRecords.length } } as ResolvedSchema,
-    rows: [...enrichedCanonicalRows, ...profileOnlyCanonicalRows],
+    schema: {
+      ...mergeSchemas(input.txSchema, input.profileSchema),
+      _txProfileMatchSummary: {
+        matched: matchedCount,
+        ambiguous: ambiguousCount,
+        conflicting: txProfileReviewItems.filter((item) => item.reason === 'field_conflict').length,
+        unmatched: unmatchedCount,
+        profileOnly: allProfileRecords.filter((record) => {
+          const recordRef = String(record.sourceRowRef ?? record.id ?? '');
+          return !Array.from(matchMap.values()).some((match) => match.matchStatus === 'matched' && match.entry?.sourceRowRef === recordRef);
+        }).length,
+      },
+      _txProfileAutoMergePairs: txProfileAutoMergePairs,
+      _txProfileReviewItems: txProfileReviewItems,
+    } as ResolvedSchema,
+    rows: [...enrichedCanonicalRows, ...allProfileCanonicalRows],
   };
 }

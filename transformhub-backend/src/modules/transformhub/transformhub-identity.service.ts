@@ -434,10 +434,6 @@ export class TransformHubIdentityService {
     };
     const enrichedSignal = this.extractDonorSignal(aiPatchedRow);
 
-    this.logger.log(
-      `[identity:donor-debug] ai-fallback row=${rowRef} missing=${missingFields.join('|')} amountHeader=${aiResult.amountHeader || 'none'} dateHeader=${aiResult.dateHeader || 'none'} txRefHeader=${aiResult.transactionRefHeader || 'none'} confidence=${aiResult.confidence}`,
-    );
-
     return enrichedSignal;
   }
 
@@ -578,12 +574,11 @@ export class TransformHubIdentityService {
     const nameSimilarity = this.computeNameSimilarity(inputName, candidateName);
     const hasExactNameMatch = Boolean(inputName && candidateName && inputName === candidateName);
 
-    // Exact same donor names should still be surfaced during identity review.
-    // Keep them in the review band by default, then let stronger signals
-    // promote them into auto-merge territory.
+    // Donor duplicate review is for alias cleanup, not same-name identity
+    // consolidation. If the normalized names are already identical, do not
+    // create a review or merge action from this pass.
     if (hasExactNameMatch) {
-      score += 85;
-      matchedFields.push('full_name');
+      return { score: 0, matchedFields: [], matchedInputRef: null };
     }
 
     if (inputEmail && candidateEmail && inputEmail === candidateEmail) {
@@ -651,17 +646,6 @@ export class TransformHubIdentityService {
     score += transactionContext.score;
     matchedFields.push(...transactionContext.matchedFields);
 
-    if (hasExactNameMatch) {
-      if (matchedFields.includes('email') && matchedFields.includes('phone')) {
-        score += 10;
-        matchedFields.push('strong_multisignal');
-      } else if (matchedFields.includes('email') || matchedFields.includes('phone') || matchedFields.includes('address_zip')) {
-        score += 5;
-        matchedFields.push('identity_anchor');
-      }
-      return { score, matchedFields, matchedInputRef: null };
-    }
-
     const hasStrongIdentitySignal = matchedFields.includes('email')
       || matchedFields.includes('phone')
       || matchedFields.includes('address_zip')
@@ -673,9 +657,6 @@ export class TransformHubIdentityService {
       && this.isInitialCompatible(inputName, candidateName);
 
     if (!hasStrongIdentitySignal || (!hasEnoughNameSimilarity && !isInitialVariant)) {
-      this.logger.debug(
-        `[identity-score0] input="${inputName}" candidate="${candidateName}" nameSimilarity=${nameSimilarity.toFixed(2)} hasStrongIdentitySignal=${hasStrongIdentitySignal} hasEnoughNameSimilarity=${hasEnoughNameSimilarity} isInitialVariant=${isInitialVariant} matchedFields=${matchedFields.join('|') || 'none'}`,
-      );
       return { score: 0, matchedFields: [], matchedInputRef: null };
     }
 
@@ -1203,7 +1184,38 @@ export class TransformHubIdentityService {
       if (storedMergeDecision?.matchedPersonId) {
         const storedPerson = await this.ensureStoredMatchPerson(persons, storedMergeDecision.matchedPersonId);
         if (storedPerson) {
-          const matchedInputRef = personInputRefs.get(storedPerson.id) ?? null;
+          if (personScope.fileClass === 'donor' && matchMode === TransformHubIdentityService.MATCH_MODE_IDENTITY) {
+            const storedValidation = this.scorePersonPair(storedPerson, input, personScope.fileClass, matchMode);
+            if (storedValidation.score < 60) {
+            } else {
+              const matchedInputRef = null;
+              const mergeCount = storedMergeDecision.confirmationCount ?? 1;
+              const splitCount = (storedMergeDecision as any).splitConfirmationCount ?? 0;
+              const isOrgRule = (mergeCount - splitCount) >= 2;
+              const decision = isOrgRule ? 'org_rule' : 'review';
+              if (isOrgRule) {
+                this.mergePersonSignals(storedPerson, input, rowRef, personScope);
+                pendingPersonSaves.push(storedPerson);
+                autoMatched++;
+              } else {
+                needsReviewCount++;
+              }
+              matches.push({
+                inputRef: rowRef,
+                score: 100,
+                band: isOrgRule ? 'org_rule' : 'auto',
+                decision,
+                duplicateClass: isOrgRule ? 'exact_match' : 'likely_match',
+                matchedPersonId: storedPerson.id,
+                matchedFields: ['stored_decision'],
+                reviewPayload: this.buildMatchReviewPayload(row, rowRef, input, ['stored_decision'], storedPerson, null, matchedInputRef),
+              });
+              continue;
+            }
+          } else {
+          const matchedInputRef = personScope.fileClass === 'donor'
+            ? null
+            : (personInputRefs.get(storedPerson.id) ?? null);
           const mergeCount = storedMergeDecision.confirmationCount ?? 1;
           const splitCount = (storedMergeDecision as any).splitConfirmationCount ?? 0;
           const isOrgRule = (mergeCount - splitCount) >= 2;
@@ -1226,6 +1238,7 @@ export class TransformHubIdentityService {
             reviewPayload: this.buildMatchReviewPayload(row, rowRef, input, ['stored_decision'], storedPerson, null, matchedInputRef),
           });
           continue;
+          }
         }
       }
 
@@ -1261,7 +1274,9 @@ export class TransformHubIdentityService {
       let decision = 'new';
 
       let aiSuggestion = null;
-      const matchedInputRef = bestMatchedInputRef ?? (bestMatch ? (personInputRefs.get(bestMatch.id) ?? null) : null);
+      const matchedInputRef = personScope.fileClass === 'donor'
+        ? (bestMatchedInputRef ?? null)
+        : (bestMatchedInputRef ?? (bestMatch ? (personInputRefs.get(bestMatch.id) ?? null) : null));
 
       if (duplicateClass === 'exact_match' && bestMatch) {
         matchedPersonId = bestMatch.id;

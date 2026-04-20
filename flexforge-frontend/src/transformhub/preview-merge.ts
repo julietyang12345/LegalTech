@@ -6,6 +6,11 @@ type PreviewMergeView = {
   displayedPreviewRecords: PreviewRecord[];
 };
 
+type AutoMergedPreviewPair = {
+  representativeRef: string;
+  absorbedRef: string;
+};
+
 function getCompactSourceRef(sourceRef: string | null | undefined): string {
   if (!sourceRef) return '';
   const parts = sourceRef.split(':').filter(Boolean);
@@ -34,6 +39,7 @@ export function buildPreviewMergeView(
   confirmedTxDuplicateMatches: PersonMatch[],
   txSwapDecisions: Map<string, boolean>,
   hasTransactionLinkFlow: boolean,
+  autoMergedPreviewPairs: AutoMergedPreviewPair[] = [],
 ): PreviewMergeView {
   const txAnchoredPreviewRecords = hasTransactionLinkFlow
     ? previewRecords.filter(isTxAnchoredRecord)
@@ -74,6 +80,13 @@ export function buildPreviewMergeView(
     const absorbedRef = isSwapped ? normalizedMatchedRef : normalizedIncomingRef;
     const representativeRef = isSwapped ? normalizedIncomingRef : normalizedMatchedRef;
     representativeByAbsorbedRef.set(absorbedRef, resolveRepresentativeRef(representativeRef));
+  });
+
+  autoMergedPreviewPairs.forEach((pair) => {
+    const normalizedRepresentativeRef = normalizePreviewRef(pair.representativeRef);
+    const normalizedAbsorbedRef = normalizePreviewRef(pair.absorbedRef);
+    if (!normalizedRepresentativeRef || !normalizedAbsorbedRef || normalizedRepresentativeRef === normalizedAbsorbedRef) return;
+    representativeByAbsorbedRef.set(normalizedAbsorbedRef, resolveRepresentativeRef(normalizedRepresentativeRef));
   });
 
   Array.from(representativeByAbsorbedRef.entries()).forEach(([absorbedRef, representativeRef]) => {

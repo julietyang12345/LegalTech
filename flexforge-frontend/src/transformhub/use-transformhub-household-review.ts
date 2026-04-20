@@ -109,7 +109,7 @@ export function useTransformHubHouseholdReview({
         matchedPerson: personIds.length === 1 ? peopleById.get(personIds[0]) ?? null : null,
       };
     };
-    return householdResult.households.map((household) => {
+    return householdResult.households.flatMap((household) => {
       const removedMemberIds = new Set(removedPersonIdsByHousehold[household.id] ?? []);
       const rawMembers = household.memberIds
         .filter((memberId) => !removedMemberIds.has(memberId))
@@ -125,6 +125,11 @@ export function useTransformHubHouseholdReview({
         }, new Map<string, CanonicalPerson[]>()),
       );
       const members = displayMemberGroups.map(([, groupedMembers]) => groupedMembers[0]).filter(Boolean);
+
+      // Household review only makes sense when there are multiple distinct people left
+      // after duplicate-collapse and manual member removals.
+      if (members.length < 2) return [];
+
       const draft = finalHouseholdDrafts[household.id] ?? buildInitialHouseholdDraft(household, rawMembers);
       const primaryMember = rawMembers.find((member) => member.id === draft.primaryPersonId) ?? members[0] ?? rawMembers[0] ?? null;
       const getActiveAttributionDraft = (record: PreviewRecord, matchedPerson: CanonicalPerson | null) => {
@@ -211,7 +216,7 @@ export function useTransformHubHouseholdReview({
         : hasNoGivingHistory
           ? { tone: 'warning' as const, label: 'Review', note: 'Household exists, but linked giving rows are still missing.' }
           : { tone: 'ready' as const, label: 'Complete', note: 'Communication and giving context are internally consistent.' };
-      return {
+      return [{
         householdId: household.id,
         members,
         relatedRecords,
@@ -233,7 +238,7 @@ export function useTransformHubHouseholdReview({
         status,
         alerts,
         attributionPreview,
-      };
+      }];
     });
   }, [
     householdResult,
