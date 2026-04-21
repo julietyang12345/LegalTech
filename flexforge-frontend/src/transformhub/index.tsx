@@ -10,6 +10,7 @@ import {
   FileSpreadsheet,
   FolderTree,
   GripVertical,
+  Link2,
   RefreshCcw,
   Save,
   ShieldAlert,
@@ -19,8 +20,10 @@ import {
   X,
 } from 'lucide-react';
 import './transformhub.css';
+import toast from 'react-hot-toast';
 import { addBalancingRow, updateCanonicalRow } from './engine';
 import {
+  createSessionShareLink,
   evaluateTaxonomyBackend,
   suggestTaxonomyGroupsBackend,
   exportCsvFallback,
@@ -6993,6 +6996,23 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
     }
   }
 
+  async function handleCopyShareLink() {
+    if (!sessionId) {
+      setMessage('Save or create a session first so there is a linkable backend snapshot.');
+      return;
+    }
+
+    try {
+      const response = await createSessionShareLink(sessionId);
+      await navigator.clipboard.writeText(response.shareUrl);
+      toast.success('Share link copied');
+      setMessage(`Read-only share link copied. Expires ${new Date(response.expiresAt).toLocaleString()}.`);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Failed to create share link');
+      setMessage(error instanceof Error ? error.message : 'Failed to create a share link.');
+    }
+  }
+
   async function handleRunPreflight() {
     setIsLoading(true);
     try {
@@ -8124,6 +8144,9 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
             </button>
             <button type="button" className="th-button th-button-secondary" onClick={handleReloadSession} disabled={!sessionId} style={{ minHeight: 34, fontSize: '0.82rem' }}>
               <RefreshCcw size={14} /> Reload
+            </button>
+            <button type="button" className="th-button th-button-secondary" onClick={handleCopyShareLink} disabled={!sessionId} style={{ minHeight: 34, fontSize: '0.82rem' }}>
+              <Link2 size={14} /> Copy share link
             </button>
             <button
               type="button"

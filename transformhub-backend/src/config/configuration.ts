@@ -16,6 +16,8 @@ export default () => ({
   transformhub: {
     apiKey: process.env.TRANSFORMHUB_API_KEY || '',
     requestBodyLimit: process.env.TRANSFORMHUB_REQUEST_BODY_LIMIT || '10mb',
+    shareSecret: process.env.TRANSFORMHUB_SHARE_SECRET || process.env.TRANSFORMHUB_API_KEY || '',
+    shareLinkTtlHours: parseInt(process.env.TRANSFORMHUB_SHARE_LINK_TTL_HOURS || '168', 10),
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY || '',

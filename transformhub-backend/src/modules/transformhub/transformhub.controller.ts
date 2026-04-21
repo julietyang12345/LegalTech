@@ -69,6 +69,17 @@ export class TransformHubController {
     return this.service.getSession(id);
   }
 
+  @Post('session/:id/share-link')
+  createShareLink(@Param('id') id: string) {
+    return this.service.createSessionShareLink(id);
+  }
+
+  @PublicTransformHub()
+  @Get('share/:token')
+  getSharedSession(@Param('token') token: string) {
+    return this.service.getSharedSession(token);
+  }
+
   @Put('session/:id')
   updateSession(@Param('id') id: string, @Body() dto: UpdateSessionDto) {
     return this.service.updateSession(id, dto);

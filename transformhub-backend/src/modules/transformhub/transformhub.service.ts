@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, OnModuleDestroy, OnModuleInit, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, LessThan, Repository } from 'typeorm';
-import { createHash } from 'crypto';
+import { createHash, createHmac, timingSafeEqual, randomBytes } from 'crypto';
 import { ThTransformSession, TransformSessionStatus } from '../../database/entities/th-transform-session.entity';
 import { ThCanonicalRow } from '../../database/entities/th-canonical-row.entity';
 import { ThAuditRun } from '../../database/entities/th-audit-run.entity';
@@ -38,6 +39,7 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
   private cleanupTimer: NodeJS.Timeout | null = null;
 
   constructor(
+    private readonly configService: ConfigService,
     @InjectRepository(ThTransformSession)
     private readonly sessionRepo: Repository<ThTransformSession>,
     @InjectRepository(ThCanonicalRow)
@@ -70,6 +72,56 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     private readonly ai: TransformHubAiService,
     private readonly structure: TransformHubStructureService,
   ) {}
+
+  private getShareSecret() {
+    const secret = this.configService.get<string>('transformhub.shareSecret');
+    if (!secret) {
+      throw new BadRequestException('TransformHub share links are not configured. Set TRANSFORMHUB_SHARE_SECRET.');
+    }
+    return secret;
+  }
+
+  private getShareLinkTtlHours() {
+    const configured = this.configService.get<number>('transformhub.shareLinkTtlHours');
+    return Number.isFinite(configured) && configured! > 0 ? configured! : 168;
+  }
+
+  private signSharePayload(payload: Record<string, unknown>) {
+    const secret = this.getShareSecret();
+    const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    const signature = createHmac('sha256', secret).update(encodedPayload).digest('base64url');
+    return `${encodedPayload}.${signature}`;
+  }
+
+  private verifyShareToken(token: string) {
+    const [encodedPayload, signature] = token.split('.');
+    if (!encodedPayload || !signature) {
+      throw new UnauthorizedException('Invalid share token.');
+    }
+
+    const expectedSignature = createHmac('sha256', this.getShareSecret()).update(encodedPayload).digest();
+    const providedSignature = Buffer.from(signature, 'base64url');
+    if (expectedSignature.length !== providedSignature.length || !timingSafeEqual(expectedSignature, providedSignature)) {
+      throw new UnauthorizedException('Invalid share token.');
+    }
+
+    let payload: { sid?: string; exp?: number } | null = null;
+    try {
+      payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8'));
+    } catch {
+      throw new UnauthorizedException('Invalid share token.');
+    }
+
+    if (!payload?.sid || !payload?.exp) {
+      throw new UnauthorizedException('Invalid share token.');
+    }
+
+    if (payload.exp <= Date.now()) {
+      throw new UnauthorizedException('Share link has expired.');
+    }
+
+    return payload;
+  }
 
   private async logReviewAction(sessionId: string | null, action: {
     actionType: string;
@@ -552,6 +604,38 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
     const auditDecisions = await this.auditDecisionRepo.find({ where: { sessionId }, order: { createdAt: 'ASC' } });
     const structure = await this.structure.getSessionStructure(sessionId);
     return { ...session, schema: this.normalizeSchemaFieldSuggestions(session.schema), auditDecisions, structure };
+  }
+
+  async createSessionShareLink(sessionId: string) {
+    const session = await this.sessionRepo.findOne({ where: { id: sessionId }, select: ['id'] });
+    if (!session) {
+      throw new NotFoundException('Session ' + sessionId + ' not found.');
+    }
+
+    const expiresAt = new Date(Date.now() + this.getShareLinkTtlHours() * 60 * 60 * 1000);
+    const token = this.signSharePayload({
+      sid: session.id,
+      exp: expiresAt.getTime(),
+      nonce: randomBytes(12).toString('base64url'),
+      v: 1,
+    });
+    const frontendUrl = this.configService.get<string>('frontend.url') || '';
+    const trimmedFrontendUrl = frontendUrl.replace(/\/+$/, '');
+
+    return {
+      token,
+      expiresAt: expiresAt.toISOString(),
+      shareUrl: `${trimmedFrontendUrl}/transformhub/share/${token}`,
+    };
+  }
+
+  async getSharedSession(token: string) {
+    const payload = this.verifyShareToken(token);
+    const session = await this.getSession(payload.sid!);
+    return {
+      expiresAt: new Date(payload.exp!).toISOString(),
+      session,
+    };
   }
 
   async updateSession(sessionId: string, body: any) {

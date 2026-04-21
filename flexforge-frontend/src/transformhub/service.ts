@@ -82,6 +82,17 @@ type CsvFallbackResponse = {
   audit?: AuditRuleResult;
 };
 
+type ShareLinkResponse = {
+  token: string;
+  shareUrl: string;
+  expiresAt: string;
+};
+
+type SharedSessionResponse = {
+  expiresAt: string;
+  session: TransformSession;
+};
+
 export async function fetchSample(platform: SourcePlatform): Promise<SampleResponse> {
   const response = await api.get<SampleResponse>('/transformhub/sample', { params: { platform } });
   return response.data;
@@ -114,6 +125,16 @@ export async function simulateBackendPost(rows: CanonicalLedgerRow[], sessionId?
 
 export async function fetchSession(sessionId: string): Promise<TransformSession> {
   const response = await api.get<TransformSession>(`/transformhub/session/${sessionId}`);
+  return response.data;
+}
+
+export async function createSessionShareLink(sessionId: string): Promise<ShareLinkResponse> {
+  const response = await api.post<ShareLinkResponse>(`/transformhub/session/${sessionId}/share-link`);
+  return response.data;
+}
+
+export async function fetchSharedSession(token: string): Promise<SharedSessionResponse> {
+  const response = await api.get<SharedSessionResponse>(`/transformhub/share/${token}`);
   return response.data;
 }
 
