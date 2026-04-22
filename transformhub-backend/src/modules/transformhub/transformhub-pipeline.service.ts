@@ -445,6 +445,17 @@ export class TransformHubPipelineService implements OnModuleInit {
     if (/subtotal|grand total|total for|net total|summary total/.test(joined)) return 'subtotal';
     if (/generated on|report generated|prepared by|printed on|page \d+ of \d+|end of report/.test(joined)) return 'footer';
     if (nonEmptyCount === 1 && /report|statement|ledger|export|generated|prepared|page \d+/.test(joined)) return 'footer';
+    if (nonEmptyCount === 1) {
+      const onlyValue = cells.find((cell) => String(cell || '').trim())?.trim() ?? '';
+      const wordCount = onlyValue.split(/\s+/).filter(Boolean).length;
+      if (
+        wordCount >= 6
+        && /[:.]/.test(onlyValue)
+        && !/\b\d{4}-\d{2}-\d{2}\b/.test(onlyValue)
+        && !/\b[A-Z]{1,5}-\d+\b/i.test(onlyValue)
+        && !/@/.test(onlyValue)
+      ) return 'footer';
+    }
     return 'data';
   }
 
@@ -463,35 +474,46 @@ export class TransformHubPipelineService implements OnModuleInit {
     return score;
   }
 
-  private analyzeStructure(platform: string, matrix: string[][]): any {
+  private analyzeStructure(
+    platform: string,
+    matrix: Array<string[] | { cells?: string[]; source_row_number?: number }>,
+  ): any {
     const copy = [...matrix];
-    while (copy.length > 0 && copy[copy.length - 1].every((c) => !String(c || '').trim())) copy.pop();
-    const rows = copy.map((row) => row.map((c) => String(c || '').trim()));
+    const getCells = (row: string[] | { cells?: string[]; source_row_number?: number }): string[] => (
+      Array.isArray(row) ? row : Array.isArray(row?.cells) ? row.cells : []
+    );
+    while (copy.length > 0 && getCells(copy[copy.length - 1]).every((c) => !String(c || '').trim())) copy.pop();
+    const rows = copy.map((row, index) => ({
+      cells: getCells(row).map((c) => String(c || '').trim()),
+      sourceRowNumber: Array.isArray(row)
+        ? index + 1
+        : (typeof row?.source_row_number === 'number' && Number.isFinite(row.source_row_number) ? row.source_row_number : index + 1),
+    }));
     if (rows.length < 2) throw new Error('The file needs a header row and at least one data row.');
 
     const scanLimit = Math.min(rows.length, 8);
     let headerRowIndex = 0, bestScore = -1;
     for (let i = 0; i < scanLimit; i++) {
-      const score = this.scoreHeaderRow(platform, rows[i]);
+      const score = this.scoreHeaderRow(platform, rows[i].cells);
       if (score > bestScore) { bestScore = score; headerRowIndex = i; }
     }
 
-    const width = rows.reduce((max, row) => Math.max(max, row.length), 0);
-    const headers = Array.from({ length: width }, (_, i) => String(rows[headerRowIndex][i] || '').trim() || `Column ${i + 1}`);
+    const width = rows.reduce((max, row) => Math.max(max, row.cells.length), 0);
+    const headers = Array.from({ length: width }, (_, i) => String(rows[headerRowIndex].cells[i] || '').trim() || `Column ${i + 1}`);
     const rowRoleSummary: Record<string, number> = { data: 0, blank: 0, subtotal: 0, footer: 0 };
     const parsedRows: any[] = [];
 
     for (let ri = headerRowIndex + 1; ri < rows.length; ri++) {
-      const cells = Array.from({ length: width }, (_, i) => String(rows[ri][i] || '').trim());
+      const cells = Array.from({ length: width }, (_, i) => String(rows[ri].cells[i] || '').trim());
       const role = this.classifyStructuralRow(cells);
       rowRoleSummary[role]++;
       if (role !== 'data') continue;
       const values = headers.reduce((acc, h, hi) => { acc[h] = cells[hi] ?? ''; return acc; }, {} as Record<string, string>);
-      if (Object.values(values).some((v) => String(v).trim())) parsedRows.push({ ref: `row-${ri + 1}`, values });
+      if (Object.values(values).some((v) => String(v).trim())) parsedRows.push({ ref: `row-${rows[ri].sourceRowNumber}`, values });
     }
 
     const warnings: string[] = [];
-    if (headerRowIndex > 0) warnings.push(`Detected header on row ${headerRowIndex + 1}; skipped ${headerRowIndex} top row(s).`);
+    if (headerRowIndex > 0) warnings.push(`Detected header on row ${rows[headerRowIndex].sourceRowNumber}; skipped ${headerRowIndex} top row(s).`);
     if (rowRoleSummary.subtotal > 0) warnings.push(`Removed ${rowRoleSummary.subtotal} subtotal row(s).`);
     if (rowRoleSummary.footer > 0) warnings.push(`Removed ${rowRoleSummary.footer} footer row(s).`);
     if (rowRoleSummary.blank > 0) warnings.push(`Ignored ${rowRoleSummary.blank} blank row(s).`);

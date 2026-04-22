@@ -20,7 +20,6 @@ import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
 import { VerifyEmailPage } from '@/pages/VerifyEmailPage';
 import { TermsPage } from '@/pages/TermsPage';
 import { PrivacyPage } from '@/pages/PrivacyPage';
-import { TransformHubSharePage } from '@/pages/TransformHubSharePage';
 
 // React Query client
 const queryClient = new QueryClient({
@@ -109,10 +108,14 @@ function App() {
             <Route path="/demo" element={renderLazyPage(<DemoSessionPage />, 'Loading demo...')} />
             <Route path="/demo/career-paths" element={renderLazyPage(<CareerPathsDemoPage />, 'Loading demo...')} />
             <Route path="/explore" element={renderLazyPage(<ExplorePage />, 'Loading explore...')} />
-            <Route path="/transformhub/share/:token" element={<TransformHubSharePage />} />
+            <Route path="/transformhub/share/:token" element={renderLazyPage(<TransformHubPage />, 'Loading TransformHub...')} />
             <Route
               path="/transformhub"
-              element={renderLazyPage(<TransformHubPage />, 'Loading TransformHub...')}
+              element={
+                <ProtectedRoute skipOnboardingCheck>
+                  {renderLazyPage(<TransformHubPage />, 'Loading TransformHub...')}
+                </ProtectedRoute>
+              }
             />
 
             <Route

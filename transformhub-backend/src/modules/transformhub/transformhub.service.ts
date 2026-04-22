@@ -631,10 +631,8 @@ export class TransformHubService implements OnModuleInit, OnModuleDestroy {
 
   async getSharedSession(token: string) {
     const payload = this.verifyShareToken(token);
-    const session = await this.getSession(payload.sid!);
     return {
       expiresAt: new Date(payload.exp!).toISOString(),
-      session,
     };
   }
 

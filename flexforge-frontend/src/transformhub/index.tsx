@@ -1,4 +1,5 @@
 import { startTransition, type ChangeEvent, useCallback, useEffect, useMemo, useRef, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowRight,
@@ -36,6 +37,7 @@ import {
   fetchCrmSyncExport,
   fetchDonorReport,
   fetchReviewAnalytics,
+  fetchSharedSession,
   fetchTaxonomy,
   fetchSession,
   ingestFile,
@@ -86,7 +88,7 @@ import { IdentityHubPanel } from './identity-hub';
 import { AppliedDecisionsPanel } from './applied-decisions';
 import { applyAiSuggestedGroups, applyTaxonomyGroupsToPreviewRecords, buildTaxonomyState, createManualTaxonomyMerge, dismissTaxonomyCandidate, getNearMissCandidates, mergeTaxonomyCandidate, renameResolvedTaxonomyGroup, summarizeTaxonomyState, updateTaxonomyScanColumn } from './taxonomy-session';
 import { buildAppendColumnDecisions, getMergeStrategy, getPendingColumnMerges, mergeTxWithProfileLookup, mergeUploadIntoExisting, prepareIncomingUpload, resolvePendingColumnMerge as resolvePendingColumnMergeInParsedFile, separateAutoMergedColumn as separateAutoMergedColumnInParsedFile, type AutoMergedColumnMatch, type PendingColumnMerge } from './merge-table';
-import { buildPreviewMergeView } from './preview-merge';
+import { buildConfirmedSafeAbsorbPairs, buildPreviewMergeView } from './preview-merge';
 import type { EntityGraphSelection, EntityGraphView } from './review-graph';
 import type { FinalAttributionDraftMap, FinalHouseholdDraft } from './review-types';
 import { useTransformHubReviewGraph } from './use-transformhub-review-graph';
@@ -803,6 +805,16 @@ function getPreviewRecordRawCell(record: PreviewRecord | null | undefined, heade
   return String(value);
 }
 
+function splitPreviewFullName(value: string): { firstName: string; lastName: string } {
+  const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: '', lastName: '' };
+  if (parts.length === 1) return { firstName: parts[0] ?? '', lastName: '' };
+  return {
+    firstName: parts.slice(0, -1).join(' '),
+    lastName: parts[parts.length - 1] ?? '',
+  };
+}
+
 function getPreviewRecordMappedValue(
   record: PreviewRecord | null | undefined,
   fieldMap: Record<string, string> | null | undefined,
@@ -1389,7 +1401,7 @@ function formatCompactCount(value: number): string {
   }).format(value);
 }
 
-function roundCurrencyAmount(value: number, increment = 100): number {
+function roundCurrencyAmount(value: number, increment = 1): number {
   if (!Number.isFinite(value) || value <= 0) return 0;
   return Math.round(value / increment) * increment;
 }
@@ -2293,6 +2305,7 @@ function buildMatchedPersonCompareRecord(person: CanonicalPerson | null) {
 }
 
 export default function TransformHubPage() {
+  const { token: sharedToken } = useParams<{ token?: string }>();
   const [platform, setPlatform] = useState<SourcePlatform>('AppFolio');
   const [parsedFile, setParsedFile] = useState<ParsedFile | null>(null);
   const [schema, setSchema] = useState<ResolvedSchema | null>(null);
@@ -2444,6 +2457,34 @@ export default function TransformHubPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSharedWorkspace() {
+      if (!sharedToken) return;
+      handleStartFresh();
+      setIsLoading(true);
+      setMessage('Loading shared workspace...');
+      try {
+        const result = await fetchSharedSession(sharedToken);
+        if (cancelled) return;
+        setMessage(`Shared workspace ready. Link expires ${new Date(result.expiresAt).toLocaleString()}. Upload a file to begin.`);
+      } catch (error: any) {
+        if (cancelled) return;
+        setMessage(error?.response?.data?.message || 'This share link is invalid or has expired.');
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadSharedWorkspace();
+    return () => {
+      cancelled = true;
+    };
+  }, [sharedToken]);
+
   const readyRows = rows.filter((row) => row.review_status === 'approved').length;
   const reviewRows = rows.filter((row) => row.review_status === 'pending').length;
   const rejectedRows = rows.filter((row) => row.review_status === 'rejected').length;
@@ -2518,6 +2559,11 @@ export default function TransformHubPage() {
     () => inferDuplicateStrategySuggestion(parsedFile?.headers ?? [], schema?.fieldMap as Record<string, string> | null | undefined, fileClass, hasTransactionLinkFlow),
     [parsedFile?.headers, schema?.fieldMap, fileClass, hasTransactionLinkFlow],
   );
+  useEffect(() => {
+    if (nonLedgerReviewPanel === 'tx' && !duplicateStrategySuggestion.transactionCapable) {
+      setNonLedgerReviewPanel('taxonomy');
+    }
+  }, [duplicateStrategySuggestion.transactionCapable, nonLedgerReviewPanel]);
   const primaryMergeStepLabel = 'Duplicate Donor Check';
   const primaryMergeStepDescription = duplicateStrategySuggestion.transactionCapable
     ? 'Find and resolve duplicate donor records first. Gift duplicate review can run later for transaction-heavy sheets.'
@@ -2640,9 +2686,27 @@ export default function TransformHubPage() {
     )),
     [txMergeDecisions, txReviewMatches],
   );
+  const confirmedSafeAbsorbPairs = useMemo(
+    () => buildConfirmedSafeAbsorbPairs(
+      previewRecords,
+      (personResult?.matches ?? []).filter((match) => (
+        deriveReviewDecision(match, mergeDecisions) === 'confirmed'
+        && Boolean(match.reviewPayload?.matchedInputRef)
+        && match.reviewPayload?.matchedInputRef !== match.inputRef
+      )),
+      donorSwapDecisions,
+    ),
+    [previewRecords, personResult?.matches, mergeDecisions, donorSwapDecisions],
+  );
   const previewMergeView = useMemo(
-    () => buildPreviewMergeView(previewRecords, confirmedTxDuplicateMatches, txSwapDecisions, hasTransactionLinkFlow, txProfileAutoMergePairs),
-    [confirmedTxDuplicateMatches, hasTransactionLinkFlow, previewRecords, txProfileAutoMergePairs, txSwapDecisions],
+    () => buildPreviewMergeView(
+      previewRecords,
+      confirmedTxDuplicateMatches,
+      txSwapDecisions,
+      hasTransactionLinkFlow,
+      [...txProfileAutoMergePairs, ...confirmedSafeAbsorbPairs],
+    ),
+    [confirmedTxDuplicateMatches, confirmedSafeAbsorbPairs, hasTransactionLinkFlow, previewRecords, txProfileAutoMergePairs, txSwapDecisions],
   );
   const representativeByAbsorbedRef = previewMergeView.representativeByAbsorbedRef;
   const mergedSourceRefsByRepresentative = previewMergeView.mergedSourceRefsByRepresentative;
@@ -3212,7 +3276,7 @@ export default function TransformHubPage() {
         valueLabel: smallDollarChange != null ? formatDeltaLabel(smallDollarChange) : '',
         chartTitle: 'Giving bands by year',
         chartType: 'stacked',
-        note: 'Yearly donor mix across giving bands. Zero-share bands are hidden in each year.',
+        note: 'small donors means 0-100 donation',
         trend: smallDollarChange != null ? (smallDollarChange >= 0 ? 'up' : 'down') : undefined,
         bars: smallDollarDistributionBars,
       },
@@ -3250,6 +3314,32 @@ export default function TransformHubPage() {
     if (!isDonorFile) return rawValue;
     const fieldMap = (schema?.fieldMap ?? {}) as Record<string, string>;
     const semantic = Object.entries(fieldMap).find(([, mappedHeader]) => mappedHeader === header)?.[0] ?? null;
+
+    // In tx+profile raw review, show the source row's actual values.
+    // Canonical-person overlays are useful in consolidated review, but they make
+    // raw transaction rows look mutated when the matched profile has different
+    // name/email data.
+    if (hasTransactionLinkFlow && matchingTableView === 'raw') {
+      const normalizedHeader = normalizeSheetHeader(header);
+      const fullNameHeader = Object.keys(getPreviewRecordRawValues(record)).find((candidate) => {
+        const normalizedCandidate = normalizeSheetHeader(candidate);
+        return normalizedCandidate === 'full name'
+          || normalizedCandidate === 'name'
+          || normalizedCandidate === 'donor name'
+          || normalizedCandidate === 'constituent name';
+      });
+      const fullNameValue = fullNameHeader ? String(getPreviewRecordRawValues(record)[fullNameHeader] ?? '').trim() : '';
+      if (fullNameValue) {
+        const { firstName, lastName } = splitPreviewFullName(fullNameValue);
+        if ((normalizedHeader === 'first name' || semantic === 'first_name') && firstName) {
+          return rawValue === '—' ? firstName : rawValue;
+        }
+        if ((normalizedHeader === 'last name' || semantic === 'last_name') && lastName) {
+          return rawValue === '—' ? lastName : rawValue;
+        }
+      }
+      return rawValue;
+    }
     if (!semantic) return rawValue;
     const resolvedPersonIds = getResolvedPreviewDistinctPersonIds(record.sourceRowRef);
     if (resolvedPersonIds.length !== 1) return rawValue;
@@ -3266,7 +3356,7 @@ export default function TransformHubPage() {
     if (semantic === 'postal_code') return canonicalPerson.zip || rawValue;
     if (/entity_name|donor_name|full_name|organization_name/.test(semantic)) return canonicalName || rawValue;
     return rawValue;
-  }, [getResolvedPreviewDistinctPersonIds, isDonorFile, peopleById, schema?.fieldMap]);
+  }, [getResolvedPreviewDistinctPersonIds, hasTransactionLinkFlow, isDonorFile, matchingTableView, peopleById, schema?.fieldMap]);
   const getResolvedPreviewRecordLabel = useCallback((record: PreviewRecord | null | undefined): string => {
     if (!record) return 'Unknown preview record';
     if (!isDonorFile) return previewRecordLabel(record);
@@ -7006,7 +7096,7 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
       const response = await createSessionShareLink(sessionId);
       await navigator.clipboard.writeText(response.shareUrl);
       toast.success('Share link copied');
-      setMessage(`Read-only share link copied. Expires ${new Date(response.expiresAt).toLocaleString()}.`);
+      setMessage(`Share link copied. Expires ${new Date(response.expiresAt).toLocaleString()}.`);
     } catch (error: any) {
       toast.error(error?.response?.data?.message || 'Failed to create share link');
       setMessage(error instanceof Error ? error.message : 'Failed to create a share link.');
@@ -9043,7 +9133,7 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                   onAddManualMerge={handleAddManualColumnMerge}
                 />
               )}
-              {nonLedgerReviewPanel === 'tx' && (
+              {nonLedgerReviewPanel === 'tx' && duplicateStrategySuggestion.transactionCapable && (
                 <div className="th-stack" style={{ marginBottom: 14 }}>
                   <div className="th-panel th-inner-panel">
                     <div className="th-panel-head">
@@ -10048,7 +10138,7 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                     </div>
                   ) : (
                     <>
-                      {hasTransactionLinkFlow && (
+                      {hasTransactionLinkFlow && householdResult && (
                         <article className="th-panel th-inner-panel">
                           <div className="th-panel-head">
                             <span>Merged table</span>
@@ -10059,39 +10149,6 @@ setReviewAnalyticsData(result as { generatedAt: string; cards: ReviewOutcomeCard
                             <button type="button" className="th-button th-button-primary" onClick={() => jumpToSection('th-review-table')}>
                               Open merged table
                             </button>
-                          </div>
-                        </article>
-                      )}
-                      {txProfileReviewItems.length > 0 && (
-                        <article className="th-panel th-inner-panel">
-                          <div className="th-panel-head">
-                            <span>Consolidation exceptions</span>
-                            <span>{txProfileReviewItems.length} item{txProfileReviewItems.length === 1 ? '' : 's'}</span>
-                          </div>
-                          <p className="th-helper">Safe transaction/profile pairs are auto-combined. Only ambiguous or conflicting row pairs stay here for manual resolution.</p>
-                          <div className="th-stack">
-                            {txProfileReviewItems.map((item) => (
-                              <div key={item.id} className="th-guardrail is-warning th-review-match-card" style={{ gap: 14 }}>
-                                <div className="th-review-match-head">
-                                  <div style={{ flex: 1 }}>
-                                    <strong>{getCompactSourceRef(item.txSourceRowRef).primary} ↔ {getCompactSourceRef(item.profileSourceRowRef).primary}</strong>
-                                    <p>{item.txDisplayName} → {item.profileDisplayName}</p>
-                                    <p className="th-helper">
-                                      {item.reason === 'field_conflict'
-                                        ? `Conflicting populated fields: ${item.conflictingFields.join(', ')}`
-                                        : 'Multiple profile candidates matched this transaction row with the same score.'}
-                                    </p>
-                                    {item.evidence.length > 0 && (
-                                      <p className="th-helper">{item.evidence.join(' · ')}</p>
-                                    )}
-                                  </div>
-                                  <div className="th-review-match-actions">
-                                    <button type="button" className="th-button th-button-primary" style={{ minHeight: 34 }} onClick={() => void handleResolveTxProfileReview(item, 'confirmed')} disabled={isLoading}>Consolidate records</button>
-                                    <button type="button" className="th-button th-button-secondary" style={{ minHeight: 34 }} onClick={() => void handleResolveTxProfileReview(item, 'separated')} disabled={isLoading}>Keep separate</button>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
                           </div>
                         </article>
                       )}

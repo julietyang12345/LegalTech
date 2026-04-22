@@ -74,6 +74,36 @@ describe('buildAppendColumnDecisions', () => {
     });
   });
 
+  it('keeps combined full-name columns separate from split first or last name fields', () => {
+    const existingSchema = {
+      fieldMap: { first_name: 'first_name', last_name: 'last_name' },
+      confidence: 1,
+      expectedFields: [],
+      unresolvedFields: [],
+      fieldSuggestions: [],
+    } as unknown as ResolvedSchema;
+    const incomingSchema = {
+      fieldMap: { last_name: 'full_name' },
+      confidence: 1,
+      expectedFields: [],
+      unresolvedFields: [],
+      fieldSuggestions: [],
+    } as unknown as ResolvedSchema;
+
+    const decisions = buildAppendColumnDecisions(
+      buildParsedFile(['first_name', 'last_name'], [{ first_name: 'John', last_name: 'Smith' }]),
+      buildParsedFile(['full_name'], [{ full_name: 'John Smith' }]),
+      'upload.xlsx',
+      { existingSchema, incomingSchema },
+    );
+
+    expect(decisions[0]).toMatchObject({
+      incomingHeader: 'full_name',
+      targetHeader: null,
+      action: 'keep_separate',
+    });
+  });
+
   it('preserves the true prepared S2 raw header when schema fieldMap is already canonicalized', () => {
     const existingSchema = {
       fieldMap: { fund: 'fund' },
@@ -374,6 +404,37 @@ describe('buildAppendColumnDecisions', () => {
     expect(prepared.parsedFile.headers).toContain('donor_name');
     expect(prepared.parsedFile.headers).not.toContain('Full Name');
     expect((prepared.parsedFile as any).mergeState?.rawHeaderLabelsByMergedHeader?.donor_name).toBe('Full Name');
+  });
+
+  it('derives first and last name from a drifted full-name mapping during prepareIncomingUpload', () => {
+    const constituentSchema = {
+      reportType: 'constituent-export',
+      fileClass: 'constituent',
+      canonicalModel: 'canonical-constituent',
+      expectedFields: ['first_name_or_org', 'email_or_phone', 'created_at'],
+      confidence: 0.72,
+      unresolvedFields: ['first_name_or_org'],
+      fingerprint: 'test-constituent-drift',
+      fromTemplateCache: false,
+      fieldMap: {
+        last_name: 'full_name',
+        email: 'email_address',
+      },
+      fieldSuggestions: [],
+    } as unknown as ResolvedSchema;
+
+    const prepared = prepareIncomingUpload(
+      buildParsedFile(['full_name', 'email_address'], [{ full_name: 'John Smith', email_address: 'john.smith@gmail.com' }]),
+      constituentSchema,
+      [],
+      'drifted-constituent.xlsx',
+      's2',
+    );
+
+    const previewRecord = prepared.parsedFile.preview?.records?.[0] as any;
+    expect(previewRecord?.firstName).toBe('John');
+    expect(previewRecord?.lastName).toBe('Smith');
+    expect(previewRecord?.displayName).toBe('John Smith');
   });
 
   it('uses original raw header labels to recover donor name merges when prepared headers drift', () => {
@@ -753,4 +814,178 @@ describe('buildAppendColumnDecisions', () => {
       { txSourceRowRef: 'tx-1', profileSourceRowRef: 'profile-1' },
     ]);
   });
+
+  it('auto-matches tx/profile rows when the profile sheet drifted full_name into last_name', () => {
+    const txParsedFile = {
+      fileName: 'transactions.csv',
+      headers: ['First Name', 'Last Name', 'Email', 'Amount'],
+      rows: [{
+        ref: 'tx-1',
+        values: { 'First Name': 'John', 'Last Name': 'Smith', Email: 'john.smith@gmail.com', Amount: '100' },
+      }],
+      preview: {
+        summary: { rowCount: 1, populatedFields: 4 },
+        records: [{
+          sourceRowRef: 'tx-1',
+          firstName: 'John',
+          lastName: 'Smith',
+          email: 'john.smith@gmail.com',
+          rawValues: { 'First Name': 'John', 'Last Name': 'Smith', Email: 'john.smith@gmail.com', Amount: '100' },
+          values: { 'First Name': 'John', 'Last Name': 'Smith', Email: 'john.smith@gmail.com', Amount: '100' },
+        }],
+      },
+    } as unknown as ParsedFile;
+    const txSchema = {
+      fileClass: 'donor',
+      fieldMap: { first_name: 'First Name', last_name: 'Last Name', email: 'Email' },
+      confidence: 1,
+      expectedFields: [],
+      unresolvedFields: [],
+      fieldSuggestions: [],
+    } as unknown as ResolvedSchema;
+    const txRows = [{
+      id: 'row-1',
+      source_row_ref: 'tx-1',
+      entity_name: 'John Smith',
+      canonical_person_id: null,
+      source_platform: 'Givebutter',
+      source_file: 'transactions.csv',
+      memo: '',
+    }];
+
+    const preparedProfile = prepareIncomingUpload(
+      buildParsedFile(['full_name', 'email_address'], [{ full_name: 'John Smith', email_address: 'john.smith@gmail.com' }]),
+      {
+        fileClass: 'constituent',
+        fieldMap: { last_name: 'full_name', email: 'email_address' },
+        confidence: 0.72,
+        expectedFields: [],
+        unresolvedFields: [],
+        fieldSuggestions: [],
+      } as unknown as ResolvedSchema,
+      [],
+      'constituents.xlsx',
+      's2',
+    );
+
+    const result = mergeTxWithProfileLookup({
+      txParsedFile,
+      txSchema,
+      txRows: txRows as any,
+      profileParsedFile: preparedProfile.parsedFile,
+      profileSchema: preparedProfile.schema,
+      profileFileName: 'constituents.xlsx',
+    });
+
+    expect((result.schema as Record<string, unknown>)['_txProfileMatchSummary']).toMatchObject({ matched: 1, unmatched: 0, profileOnly: 0 });
+    expect((result.schema as Record<string, unknown>)['_txProfileAutoMergePairs']).toEqual([
+      { txSourceRowRef: 'tx-1', profileSourceRowRef: 's2::row-1' },
+    ]);
+  });
+
+  it('does not auto-match tx/profile rows before Step 1 when names differ even if email and phone align', () => {
+    const txParsedFile = {
+      fileName: 'transactions.csv',
+      headers: ['Donor Name', 'Email', 'Phone', 'Amount'],
+      rows: [{
+        ref: 'tx-1',
+        values: {
+          'Donor Name': 'John Smith',
+          Email: 'john.smith@gmail.com',
+          Phone: '555-111-0001',
+          Amount: '100',
+        },
+      }],
+      preview: {
+        summary: { rowCount: 1, populatedFields: 4 },
+        records: [{
+          sourceRowRef: 'tx-1',
+          rawValues: {
+            'Donor Name': 'John Smith',
+            Email: 'john.smith@gmail.com',
+            Phone: '555-111-0001',
+            Amount: '100',
+          },
+          values: {
+            'Donor Name': 'John Smith',
+            Email: 'john.smith@gmail.com',
+            Phone: '555-111-0001',
+            Amount: '100',
+          },
+        }],
+      },
+    } as unknown as ParsedFile;
+    const txSchema = {
+      fileClass: 'donor',
+      fieldMap: {},
+      confidence: 1,
+      expectedFields: [],
+      unresolvedFields: [],
+      fieldSuggestions: [],
+    } as unknown as ResolvedSchema;
+    const txRows = [{
+      id: 'row-1',
+      source_row_ref: 'tx-1',
+      entity_name: 'John Smith',
+      canonical_person_id: null,
+      source_platform: 'Givebutter',
+      source_file: 'transactions.csv',
+      memo: '',
+    }];
+    const profileParsedFile = {
+      fileName: 'constituents.csv',
+      headers: ['Full Name', 'Email', 'Phone', 'Address'],
+      rows: [{
+        ref: 'profile-1',
+        values: {
+          'Full Name': 'John A Smith',
+          Email: 'john.smith@gmail.com',
+          Phone: '555-111-0001',
+          Address: '123 Oak St',
+        },
+      }],
+      preview: {
+        summary: { rowCount: 1, populatedFields: 4 },
+        records: [{
+          sourceRowRef: 'profile-1',
+          rawValues: {
+            'Full Name': 'John A Smith',
+            Email: 'john.smith@gmail.com',
+            Phone: '555-111-0001',
+            Address: '123 Oak St',
+          },
+          values: {
+            'Full Name': 'John A Smith',
+            Email: 'john.smith@gmail.com',
+            Phone: '555-111-0001',
+            Address: '123 Oak St',
+          },
+        }],
+      },
+    } as unknown as ParsedFile;
+    const profileSchema = {
+      fileClass: 'constituent',
+      fieldMap: {},
+      confidence: 1,
+      expectedFields: [],
+      unresolvedFields: [],
+      fieldSuggestions: [],
+    } as unknown as ResolvedSchema;
+
+    const result = mergeTxWithProfileLookup({
+      txParsedFile,
+      txSchema,
+      txRows: txRows as any,
+      profileParsedFile,
+      profileSchema,
+      profileFileName: 'constituents.csv',
+    });
+
+    const txRecord = result.parsedFile.preview?.records.find((record) => record.sourceRowRef === 'tx-1');
+    expect(txRecord).toBeTruthy();
+    expect((txRecord as Record<string, unknown>)['Address']).toBeUndefined();
+    expect((result.schema as Record<string, unknown>)['_txProfileMatchSummary']).toMatchObject({ matched: 0, unmatched: 1, profileOnly: 1 });
+    expect((result.schema as Record<string, unknown>)['_txProfileAutoMergePairs']).toEqual([]);
+  });
+
 });

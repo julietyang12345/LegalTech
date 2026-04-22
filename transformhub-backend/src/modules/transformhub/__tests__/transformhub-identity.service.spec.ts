@@ -2,17 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TransformHubIdentityService } from '../transformhub-identity.service';
 
-function createService(aiEnabled = false) {
+function createService(aiEnabled = false, overrides: { personRepo?: any; householdRepo?: any; auditDecisionRepo?: any } = {}) {
   const repo = {
     create: (value: any) => value,
     save: async (value: any) => value,
     find: async () => [],
     findOne: async () => null,
   };
+  const personRepo = overrides.personRepo ?? repo;
+  const householdRepo = overrides.householdRepo ?? repo;
+  const auditDecisionRepo = overrides.auditDecisionRepo ?? repo;
   return new TransformHubIdentityService(
-    repo as any,
-    repo as any,
-    repo as any,
+    personRepo as any,
+    householdRepo as any,
+    auditDecisionRepo as any,
     {
       isEnabled: aiEnabled,
       suggestHouseholdMatch: async () => ({ confidence: 'review' }),
@@ -141,6 +144,171 @@ test('flags donor alias cleanup only for different names with strong identity si
   assert.equal(result.needsReview, 1);
   assert.equal(result.duplicateClassCounts.likely_match, 1);
   assert.ok(result.matches.some((match: any) => match.matchedFields.includes('name_variant')));
+});
+
+test('flags unioned donor rows when a transaction row and profile-style row share strong identity signals', async () => {
+  const service = createService(false);
+  const rows = [
+    {
+      source_row_ref: 'GB-1015',
+      source_platform: 'GiveButter',
+      entity_name: 'Emily Johnson',
+      firstName: 'Emily',
+      lastName: 'Johnson',
+      email: 'emily.j@gmail.com',
+      phone: '555-111-2003',
+      address: '456 Pine Street',
+      postalCode: '91101',
+      rawValues: {
+        donation_id: 'GB-1015',
+        date: '2025-11-28',
+        full_name: 'Emily Johnson',
+        email: 'emily.j@gmail.com',
+        phone: '555-111-2003',
+        address: '456 Pine Street',
+        postal_code: '91101',
+      },
+    },
+    {
+      source_row_ref: 'C-003',
+      source_platform: 'Bloomerang',
+      entity_name: 'Emily R Johnson',
+      firstName: '',
+      lastName: '',
+      email: 'emily.j@gmail.com',
+      phone: '(555) 111-2003',
+      address: '456 Pine Street',
+      postalCode: '91101',
+      householdName: 'Johnson Household',
+      rawValues: {
+        contact_id: 'C-003',
+        full_name: 'Emily R Johnson',
+        preferred_name: 'Emily',
+        email: 'emily.j@gmail.com',
+        phone: '(555) 111-2003',
+        address: '456 Pine Street',
+        postal_code: '91101',
+        municipality: 'Pasadena',
+        region: 'CA',
+        household_name: 'Johnson Household',
+      },
+    },
+  ];
+
+  const result = await service.resolvePersons(rows, [], {
+    baselinePlatform: 'mixed',
+    baselineFileClass: 'donor',
+    forceReviewOnAutoMatches: true,
+    persistIdentityMemory: false,
+    includeAiSuggestions: false,
+  });
+
+  assert.equal(result.matchMode, 'identity');
+  assert.equal(result.needsReview, 1);
+  assert.equal(result.duplicateClassCounts.likely_match, 1);
+  const reviewMatch = result.matches.find((match: any) => match.inputRef === 'C-003');
+  assert.ok(reviewMatch);
+  assert.equal(reviewMatch.matchedPersonId, result.matches.find((match: any) => match.inputRef === 'GB-1015')?.matchedPersonId);
+  assert.ok(reviewMatch.matchedFields.includes('email'));
+  assert.ok(reviewMatch.matchedFields.includes('phone'));
+  assert.ok(reviewMatch.matchedFields.includes('address_zip'));
+});
+
+test('surfaces stored donor alias decisions as review instead of silently auto-consuming them', async () => {
+  const personRepo = {
+    create: (value: any) => value,
+    save: async (value: any) => value,
+    find: async () => [],
+    findOne: async ({ where: { id } }: any) => {
+      if (id !== 'P-10005') return null;
+      return {
+        id: 'P-10005',
+        firstName: 'Emily',
+        lastName: 'Johnson',
+        email: 'emily.j@gmail.com',
+        phone: '555-111-2003',
+        addressLine1: '456 Pine Street',
+        zip: '91101',
+        city: 'Pasadena',
+        state: 'CA',
+        sourcePlatform: 'mixed',
+        sourceFileClass: 'donor',
+      };
+    },
+  };
+  const auditDecisionRepo = {
+    find: async () => [{
+      permanent: true,
+      merge: true,
+      split: false,
+      matchedPersonId: 'P-10005',
+      inputKey: 'donor|identity|emilyrjohnson|emilyjgmailcom|5551112003|456pinestreet|91101||',
+      updatedAt: new Date(),
+    }],
+  };
+  const service = createService(false, { personRepo, auditDecisionRepo });
+  const rows = [
+    {
+      source_row_ref: 'GB-1015',
+      source_platform: 'GiveButter',
+      entity_name: 'Emily Johnson',
+      firstName: 'Emily',
+      lastName: 'Johnson',
+      email: 'emily.j@gmail.com',
+      phone: '555-111-2003',
+      address: '456 Pine Street',
+      postalCode: '91101',
+      rawValues: {
+        donation_id: 'GB-1015',
+        full_name: 'Emily Johnson',
+        email: 'emily.j@gmail.com',
+        phone: '555-111-2003',
+        address: '456 Pine Street',
+        postal_code: '91101',
+      },
+    },
+    {
+      source_row_ref: 'C-003',
+      source_platform: 'Bloomerang',
+      entity_name: 'Emily R Johnson',
+      firstName: '',
+      lastName: '',
+      email: 'emily.j@gmail.com',
+      phone: '(555) 111-2003',
+      address: '456 Pine Street',
+      postalCode: '91101',
+      householdName: 'Johnson Household',
+      rawValues: {
+        contact_id: 'C-003',
+        full_name: 'Emily R Johnson',
+        preferred_name: 'Emily',
+        email: 'emily.j@gmail.com',
+        phone: '(555) 111-2003',
+        address: '456 Pine Street',
+        postal_code: '91101',
+        municipality: 'Pasadena',
+        region: 'CA',
+        household_name: 'Johnson Household',
+      },
+    },
+  ];
+
+  const result = await service.resolvePersons(rows, [], {
+    baselinePlatform: 'mixed',
+    baselineFileClass: 'donor',
+    forceReviewOnAutoMatches: true,
+    seedExistingPersonsFromDb: false,
+    usePersistentIdentityMemory: true,
+    persistIdentityMemory: false,
+    includeAiSuggestions: false,
+  });
+
+  const reviewMatch = result.matches.find((match: any) => match.inputRef === 'C-003');
+  assert.ok(reviewMatch);
+  assert.equal(reviewMatch.decision, 'review');
+  assert.equal(reviewMatch.band, 'review');
+  assert.equal(reviewMatch.duplicateClass, 'likely_match');
+  assert.ok(reviewMatch.matchedFields.includes('stored_decision'));
 });
 
 test('does not flag household members with different first names as donor aliases', async () => {

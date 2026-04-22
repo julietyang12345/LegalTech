@@ -5,7 +5,7 @@ import { TransformHubAuditRuleEngineService } from './transformhub-audit-rule-en
 export class TransformHubOutputService {
   constructor(private readonly auditEngine: TransformHubAuditRuleEngineService) {}
 
-  private roundAmount(value: number, increment = 100) {
+  private roundAmount(value: number, increment = 1) {
     if (!Number.isFinite(value) || value <= 0) return 0;
     return Math.round(value / increment) * increment;
   }

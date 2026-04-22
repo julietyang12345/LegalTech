@@ -284,6 +284,13 @@ export function scoreDonorDuplicateSignalPair(
     if (!sameName && !sameEmail) {
       return { score: 0, matchedFields: [], matchedInputRef: null };
     }
+
+    // Transaction duplicate review needs a transaction-level anchor. When there
+    // is no stable transaction reference, require the amount to match before
+    // considering the pair a possible duplicate transaction.
+    if (!sameAmount) {
+      return { score: 0, matchedFields: [], matchedInputRef: null };
+    }
   }
 
   if (hasAmountValues) {
@@ -329,22 +336,6 @@ export function scoreDonorDuplicateSignalPair(
   if (sameSource) {
     score += 6;
     matchedFields.push('source');
-  }
-
-  const identitySignalCount = [sameName, sameEmail].filter(Boolean).length;
-  const contextSignalCount = [sameFund, sameAppeal, sameSource].filter(Boolean).length;
-  const hasExactlyOneTransactionField = Number(hasAmountValues) + Number(hasDateValues) === 1;
-  if (!sameTransactionRef && !hasAmountValues && !hasDateValues) {
-    if (identitySignalCount === 0 || contextSignalCount < 2) {
-      return { score: 0, matchedFields: [], matchedInputRef: null };
-    }
-    score += 24;
-    matchedFields.push('missing_tx_fields_multisignal');
-  }
-
-  if (!sameTransactionRef && hasExactlyOneTransactionField && identitySignalCount > 0 && score < 60) {
-    score += 12;
-    matchedFields.push('partial_tx_match_missing_field');
   }
 
   return {

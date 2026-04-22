@@ -90,7 +90,6 @@ type ShareLinkResponse = {
 
 type SharedSessionResponse = {
   expiresAt: string;
-  session: TransformSession;
 };
 
 export async function fetchSample(platform: SourcePlatform): Promise<SampleResponse> {

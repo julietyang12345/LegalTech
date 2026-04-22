@@ -60,6 +60,7 @@ for sheet_index, sheet in enumerate(sheets):
     max_index = -1
     for row in sheet_xml.findall('main:sheetData/main:row', NS):
         values = {}
+        row_number = int(row.attrib.get('r', '0') or '0')
         for cell in row.findall('main:c', NS):
             ref = cell.attrib.get('r', '')
             idx = col_index(col_letters(ref))
@@ -75,13 +76,19 @@ for sheet_index, sheet in enumerate(sheets):
             elif value_node is not None:
                 value = value_node.text or ''
             values[idx] = str(value).strip()
-        rows.append(values)
+        rows.append({
+            'row_number': row_number,
+            'values': values,
+        })
 
     raw_rows = []
     if rows:
         width = max_index + 1
         for row in rows:
-            raw_rows.append([str(row.get(index, '')).strip() for index in range(width)])
+            raw_rows.append({
+                'source_row_number': row['row_number'],
+                'cells': [str(row['values'].get(index, '')).strip() for index in range(width)],
+            })
 
     parsed_sheets.append({
         'sheet_name': sheet_name,

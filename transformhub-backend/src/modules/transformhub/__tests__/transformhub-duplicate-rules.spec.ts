@@ -236,7 +236,7 @@ test('falls back to heuristic title detection for unfamiliar transaction referen
   assert.equal(result.transactionRef, 'gwref9988');
 });
 
-test('treats missing amount and date as review candidate when identity and multiple context signals match', () => {
+test('does not treat missing amount and date as a transaction duplicate without tx reference', () => {
   const left = extractDonorDuplicateSignalFromRow(donorRow({
     amount: '',
     date: '',
@@ -254,11 +254,8 @@ test('treats missing amount and date as review candidate when identity and multi
   }));
 
   const result = scoreDonorDuplicateSignalPair(left, right, 'John Smith', 'John Smith');
-  assert.ok(result.score >= 60);
-  assert.ok(result.matchedFields.includes('full_name'));
-  assert.ok(result.matchedFields.includes('fund'));
-  assert.ok(result.matchedFields.includes('appeal'));
-  assert.ok(result.matchedFields.includes('missing_tx_fields_multisignal'));
+  assert.equal(result.score, 0);
+  assert.deepEqual(result.matchedFields, []);
 });
 
 test('does not review missing amount and date with only one weak supporting signal', () => {
@@ -279,6 +276,37 @@ test('does not review missing amount and date with only one weak supporting sign
   }));
 
   const result = scoreDonorDuplicateSignalPair(left, right, 'John Smith', 'John Smith');
+  assert.equal(result.score, 0);
+  assert.deepEqual(result.matchedFields, []);
+});
+
+test('does not flag same donor/date/email when one side is missing amount and there is no tx reference', () => {
+  const left = extractDonorDuplicateSignalFromRow(donorRow({
+    source_row_ref: 'row-1',
+    amount: '250',
+    date: '2021-12-15',
+    source_file: 'Source_A_Givebutter.csv',
+    raw_fund: '',
+    raw_appeal: '',
+  }));
+  const right = extractDonorDuplicateSignalFromRow(donorRow({
+    source_row_ref: 'row-2',
+    amount: '',
+    date: '2021-12-15',
+    source_file: 'Source_B_CRM.csv',
+    raw_fund: '',
+    raw_appeal: '',
+  }));
+
+  const result = scoreDonorDuplicateSignalPair(
+    left,
+    right,
+    'John Smith',
+    'John Smith',
+    'john.smith@gmail.com',
+    'john.smith@gmail.com',
+  );
+
   assert.equal(result.score, 0);
   assert.deepEqual(result.matchedFields, []);
 });

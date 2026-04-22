@@ -573,6 +573,15 @@ export class TransformHubIdentityService {
     const namesDiffer = Boolean(inputName && candidateName && inputName !== candidateName);
     const nameSimilarity = this.computeNameSimilarity(inputName, candidateName);
     const hasExactNameMatch = Boolean(inputName && candidateName && inputName === candidateName);
+    const hasSameEmail = Boolean(inputEmail && candidateEmail && inputEmail === candidateEmail);
+    const hasSamePhone = Boolean(inputPhone && candidatePhone && inputPhone.length >= 7 && inputPhone === candidatePhone);
+    const hasSameAddressZip = Boolean(
+      input.zip
+      && candidate.zip
+      && input.zip.trim() === candidate.zip.trim()
+      && inputAddress
+      && inputAddress === candidateAddress,
+    );
 
     // Donor duplicate review is for alias cleanup, not same-name identity
     // consolidation. If the normalized names are already identical, do not
@@ -581,17 +590,17 @@ export class TransformHubIdentityService {
       return { score: 0, matchedFields: [], matchedInputRef: null };
     }
 
-    if (inputEmail && candidateEmail && inputEmail === candidateEmail) {
+    if (hasSameEmail) {
       score += 60;
       matchedFields.push('email');
     }
 
-    if (inputPhone && candidatePhone && inputPhone.length >= 7 && inputPhone === candidatePhone) {
+    if (hasSamePhone) {
       score += 30;
       matchedFields.push('phone');
     }
 
-    if (input.zip && candidate.zip && input.zip.trim() === candidate.zip.trim() && inputAddress && inputAddress === candidateAddress) {
+    if (hasSameAddressZip) {
       score += 25;
       matchedFields.push('address_zip');
     }
@@ -1188,27 +1197,25 @@ export class TransformHubIdentityService {
             const storedValidation = this.scorePersonPair(storedPerson, input, personScope.fileClass, matchMode);
             if (storedValidation.score < 60) {
             } else {
-              const matchedInputRef = null;
-              const mergeCount = storedMergeDecision.confirmationCount ?? 1;
-              const splitCount = (storedMergeDecision as any).splitConfirmationCount ?? 0;
-              const isOrgRule = (mergeCount - splitCount) >= 2;
-              const decision = isOrgRule ? 'org_rule' : 'review';
-              if (isOrgRule) {
-                this.mergePersonSignals(storedPerson, input, rowRef, personScope);
-                pendingPersonSaves.push(storedPerson);
-                autoMatched++;
-              } else {
-                needsReviewCount++;
-              }
+              const matchedInputRef = personInputRefs.get(storedPerson.id) ?? null;
+              needsReviewCount++;
               matches.push({
                 inputRef: rowRef,
-                score: 100,
-                band: isOrgRule ? 'org_rule' : 'auto',
-                decision,
-                duplicateClass: isOrgRule ? 'exact_match' : 'likely_match',
+                score: Math.max(storedValidation.score, 85),
+                band: 'review',
+                decision: 'review',
+                duplicateClass: 'likely_match',
                 matchedPersonId: storedPerson.id,
-                matchedFields: ['stored_decision'],
-                reviewPayload: this.buildMatchReviewPayload(row, rowRef, input, ['stored_decision'], storedPerson, null, matchedInputRef),
+                matchedFields: ['stored_decision', ...storedValidation.matchedFields],
+                reviewPayload: this.buildMatchReviewPayload(
+                  row,
+                  rowRef,
+                  input,
+                  ['stored_decision', ...storedValidation.matchedFields],
+                  storedPerson,
+                  null,
+                  matchedInputRef,
+                ),
               });
               continue;
             }
@@ -1329,11 +1336,12 @@ export class TransformHubIdentityService {
       await this.personRepo.save(dedupedPersonSaves);
     }
 
+    const duplicateClassCounts = this.countDuplicateClasses(matches);
     return {
       persons,
       canonicalPersons: persons,
       matches,
-      duplicateClassCounts: this.countDuplicateClasses(matches),
+      duplicateClassCounts,
       autoMatched,
       autoMergedCount: autoMatched,
       needsReview: needsReviewCount,

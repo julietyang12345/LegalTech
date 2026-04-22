@@ -334,6 +334,16 @@ function buildDisplayName(values: string[]): string {
   return values.map((value) => String(value || '').trim()).filter(Boolean).join(' ').trim();
 }
 
+function splitCombinedIdentityName(value: string): { firstName: string; lastName: string } {
+  const parts = String(value || '').trim().replace(/\s+/g, ' ').split(' ').filter(Boolean);
+  if (parts.length === 0) return { firstName: '', lastName: '' };
+  if (parts.length === 1) return { firstName: parts[0] ?? '', lastName: '' };
+  return {
+    firstName: parts.slice(0, -1).join(' '),
+    lastName: parts[parts.length - 1] ?? '',
+  };
+}
+
 function splitTags(raw: string): string[] {
   return String(raw || '').split(/[;,]/).map((tag) => tag.trim()).filter(Boolean);
 }
@@ -348,15 +358,24 @@ function rebuildParsedPreview(parsedFile: ParsedFileWithMerge, schema: ResolvedS
     const rawValues = row.values as Record<string, string>;
 
     if (schema.fileClass === 'constituent') {
-      const firstName = valueFromParsedRow(row, schema.fieldMap, 'first_name');
-      const lastName = valueFromParsedRow(row, schema.fieldMap, 'last_name');
+      const directFirstName = valueFromParsedRow(row, schema.fieldMap, 'first_name');
+      const directLastName = valueFromParsedRow(row, schema.fieldMap, 'last_name');
       const organizationName = valueFromParsedRow(row, schema.fieldMap, 'organization_name');
       const householdName = valueFromParsedRow(row, schema.fieldMap, 'household_name');
+      const combinedIdentityName = buildDisplayName([directFirstName, directLastName]);
+      const derivedIdentityParts = !organizationName && combinedIdentityName
+        ? splitCombinedIdentityName(combinedIdentityName)
+        : { firstName: '', lastName: '' };
+      const firstName = directFirstName || derivedIdentityParts.firstName;
+      const lastName = directLastName === combinedIdentityName && !directFirstName
+        ? derivedIdentityParts.lastName
+        : (directLastName || derivedIdentityParts.lastName);
+      const displayName = organizationName || buildDisplayName([firstName, lastName]) || householdName || row.ref;
       return {
         ...(existing ?? {}),
         id: existing?.id ?? `constituent-${index + 1}`,
         sourceRowRef: row.ref,
-        displayName: organizationName || buildDisplayName([firstName, lastName]) || householdName || row.ref,
+        displayName,
         constituentType: valueFromParsedRow(row, schema.fieldMap, 'constituent_type'),
         firstName,
         lastName,
@@ -379,16 +398,23 @@ function rebuildParsedPreview(parsedFile: ParsedFileWithMerge, schema: ResolvedS
     }
 
     if (schema.fileClass === 'donor') {
-      const firstName = valueFromParsedRow(row, schema.fieldMap, 'first_name');
-      const lastName = valueFromParsedRow(row, schema.fieldMap, 'last_name');
+      const directFirstName = valueFromParsedRow(row, schema.fieldMap, 'first_name');
+      const directLastName = valueFromParsedRow(row, schema.fieldMap, 'last_name');
       const organizationName = valueFromParsedRow(row, schema.fieldMap, 'organization_name');
       const householdName = valueFromParsedRow(row, schema.fieldMap, 'household_name');
       const donorName = valueFromParsedRow(row, schema.fieldMap, 'donor_name')
         || valueFromParsedRow(row, schema.fieldMap, 'entity_name')
-        || buildDisplayName([firstName, lastName])
+        || buildDisplayName([directFirstName, directLastName])
         || organizationName
         || householdName
         || row.ref;
+      const derivedIdentityParts = !organizationName && donorName
+        ? splitCombinedIdentityName(donorName)
+        : { firstName: '', lastName: '' };
+      const firstName = directFirstName || derivedIdentityParts.firstName;
+      const lastName = directLastName === donorName && !directFirstName
+        ? derivedIdentityParts.lastName
+        : (directLastName || derivedIdentityParts.lastName);
       return {
         ...(existing ?? {}),
         id: existing?.id ?? `donor-${index + 1}`,
@@ -704,6 +730,19 @@ function isIdentityNameVariant(value: string): boolean {
   return ['donor_name', 'entity_name'].includes(normalizeHeaderKey(value)) || resolveHeaderAlias(value) === 'fullname';
 }
 
+function isSplitIdentityNameVariant(value: string): boolean {
+  const alias = resolveHeaderAlias(value);
+  return alias === 'firstname' || alias === 'lastname';
+}
+
+function hasCombinedVsSplitIdentityNameMismatch(left: string[], right: string[]): boolean {
+  const leftHasCombined = left.some(isIdentityNameVariant);
+  const rightHasCombined = right.some(isIdentityNameVariant);
+  const leftHasSplit = left.some(isSplitIdentityNameVariant);
+  const rightHasSplit = right.some(isSplitIdentityNameVariant);
+  return (leftHasCombined && rightHasSplit) || (rightHasCombined && leftHasSplit);
+}
+
 type IntelligentHeaderMatch = {
   action: AppendColumnDecision['action'];
   matchType: AppendColumnDecision['matchType'];
@@ -743,6 +782,7 @@ function chooseIntelligentHeaderMatch(params: {
     const alias = hasAliasHeaderVariantMatch(existingVariants, incomingVariants);
     const headerSimilarity = maxHeaderSimilarity(existingVariants, incomingVariants);
     const hasIdentityNameFamily = existingVariants.some(isIdentityNameVariant) && incomingVariants.some(isIdentityNameVariant);
+    const hasIdentityNameMismatch = hasCombinedVsSplitIdentityNameMismatch(existingVariants, incomingVariants);
     const needsReview = shouldReviewColumnMerge(params.existingSource, params.incomingSource, header, params.incomingHeader);
     const semanticReview = isSemanticReviewPair(header, params.incomingHeader);
     const forceSemanticReview = shouldForceSemanticColumnReview(header, params.incomingHeader);
@@ -757,7 +797,15 @@ function chooseIntelligentHeaderMatch(params: {
       targetHeader: null,
     };
 
-    if (exact) {
+    if (hasIdentityNameMismatch) {
+      match = {
+        action: 'keep_separate',
+        matchType: 'new',
+        reason: 'new',
+        score: null,
+        targetHeader: null,
+      };
+    } else if (exact) {
       match = {
         action: needsReview ? 'review' : 'merge',
         matchType: 'exact',
@@ -1382,6 +1430,7 @@ type ProfileLookupEntry = {
   record: PreviewRecord;
   email: string;
   phone: string;
+  rawName: string;
   name: string;
   address: string;
   city: string;
@@ -1571,7 +1620,7 @@ function compareLookupField(left: string, right: string, kind: 'email' | 'phone'
   if (!leftValue || !rightValue) return true;
   if (kind === 'email') return normLookupEmail(leftValue) === normLookupEmail(rightValue);
   if (kind === 'phone') return normLookupPhone(leftValue) === normLookupPhone(rightValue);
-  return normLookupStr(leftValue) === normLookupStr(rightValue);
+  return normLookupText(leftValue) === normLookupText(rightValue);
 }
 
 function getRecordConflictValues(record: PreviewRecord, schema: ResolvedSchema) {
@@ -1627,6 +1676,35 @@ function buildTxProfileEvidence(
 function normLookupStr(s: string): string {
   return String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '');
 }
+
+function normLookupText(s: string): string {
+  const tokens = String(s || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/ +/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((token) => {
+      const normalizedToken = token.replace(/\.+$/g, '');
+      switch (normalizedToken) {
+        case 'st': return 'street';
+        case 'rd': return 'road';
+        case 'ave': return 'avenue';
+        case 'blvd': return 'boulevard';
+        case 'dr': return 'drive';
+        case 'ln': return 'lane';
+        case 'ct': return 'court';
+        case 'cir': return 'circle';
+        case 'pkwy': return 'parkway';
+        case 'hwy': return 'highway';
+        case 'apt': return 'apartment';
+        default: return normalizedToken;
+      }
+    });
+  return tokens.join('');
+}
+
 function normLookupPhone(s: string): string {
   return String(s || '').replace(/\D/g, '').slice(-10);
 }
@@ -1696,6 +1774,12 @@ function hasCompatibleLookupName(txName: string, profileName: string): boolean {
   return computeLookupNameSimilarity(txName, profileName) >= 0.78;
 }
 
+function hasExactLookupName(txName: string, profileName: string): boolean {
+  const normalizedTx = normLookupStr(txName);
+  const normalizedProfile = normLookupStr(profileName);
+  return Boolean(normalizedTx) && normalizedTx === normalizedProfile;
+}
+
 function buildProfileLookupIndex(profileRecords: PreviewRecord[], profileSchema: ResolvedSchema): {
   byEmail: Map<string, ProfileLookupEntry[]>;
   byPhone: Map<string, ProfileLookupEntry[]>;
@@ -1717,6 +1801,7 @@ function buildProfileLookupIndex(profileRecords: PreviewRecord[], profileSchema:
       record,
       email,
       phone,
+      rawName,
       name,
       address: getSemanticRecordValue(record, profileSchema, 'address'),
       city: getSemanticRecordValue(record, profileSchema, 'city'),
@@ -1752,14 +1837,14 @@ function findBestProfileMatch(txRecord: PreviewRecord, txSchema: ResolvedSchema,
 
   if (email) {
     (index.byEmail.get(email) ?? []).forEach((entry) => {
-      if (hasConflictingLookupName(txName, entry.name)) return;
-      if (hasCompatibleLookupName(txName, entry.name)) add(entry, 3);
+      if (hasConflictingLookupName(txName, entry.rawName)) return;
+      if (hasExactLookupName(txName, entry.rawName)) add(entry, 3);
     });
   }
   if (phone) {
     (index.byPhone.get(phone) ?? []).forEach((entry) => {
-      if (hasConflictingLookupName(txName, entry.name)) return;
-      if (hasCompatibleLookupName(txName, entry.name)) add(entry, 2);
+      if (hasConflictingLookupName(txName, entry.rawName)) return;
+      if (hasExactLookupName(txName, entry.rawName)) add(entry, 2);
     });
   }
   if (name) (index.byName.get(name) ?? []).forEach((e) => add(e, 1));
