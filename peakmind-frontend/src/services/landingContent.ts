@@ -13,20 +13,20 @@ import type {
 
 export const challengeCards: ChallengeCard[] = [
   {
-    title: 'When one mistake follows you home',
-    copy: 'You replay the moment long after practice ends, even when everyone else has moved on.',
+    title: 'When one mistake keeps replaying',
+    copy: 'A bad rep, bad game, or bad race can stick with you long after practice ends.',
   },
   {
-    title: 'When tired starts feeling like numb',
-    copy: 'Training, class, travel, and expectations pile up until you stop feeling like yourself.',
+    title: 'When tired starts feeling like burnout',
+    copy: 'Training, class, travel, recovery, and pressure can make exhaustion feel permanent.',
   },
   {
-    title: 'When your body is cleared but your mind is not',
-    copy: 'You are back on paper, but trust, confidence, role, or identity still feels different.',
+    title: 'When your body is cleared, but your confidence is not',
+    copy: 'You are back on paper, but trust, identity, and timing still feel different.',
   },
   {
     title: 'When sport feels like your whole identity',
-    copy: 'A bad day does not just feel like a bad day. It starts feeling like a verdict on you.',
+    copy: 'One result can start to feel like a verdict on who you are.',
   },
   {
     title: 'When you need help outside the team system',
@@ -120,14 +120,14 @@ export const providerTypes: ProviderOption[] = [
 ];
 
 export const socialPrompts = [
-  'Signs your sport has become your entire identity.',
-  'Need support, but do not want it getting back to your coach?',
-  'When one mistake makes you question your whole worth.',
+  'Private support for the pressure athletes carry',
+  'I wanted support, but I did not want it getting back to my coach.',
+  'One mistake keeps replaying long after practice.',
 ];
 
 export const athleteStories: AthleteStory[] = [
   {
-    quote: "I wasn't injured anymore, but I still didn't feel like myself.",
+    quote: "My body was cleared, but my confidence wasn't.",
     context: 'Returning from injury',
     image: lockerRoomReflection,
     imageAlt: 'Male boxer sitting in a training gym after a round',
@@ -145,7 +145,7 @@ export const athleteStories: AthleteStory[] = [
     imageAlt: 'Track athlete sitting on the ground with her head resting on her arms',
   },
   {
-    quote: 'I thought being tired was part of the sport until I stopped feeling like me.',
+    quote: 'I thought I was tired. I was actually burned out.',
     context: 'Burnout',
     image: recoveryRoomReflection,
     imageAlt: 'Athlete sitting alone in a quiet recovery room after practice',

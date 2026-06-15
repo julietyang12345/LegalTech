@@ -8,13 +8,13 @@ export function ProviderSection() {
       <div className="provider-copy">
         <span className="label-pill">Clear support choices</span>
         <RevealTitle>
-          Therapist, sports psychologist, or performance coach? We help you
-          understand the difference.
+          Not sure what kind of support fits? Start here.
         </RevealTitle>
         <p>
-          Athletes should not have to know the provider landscape before asking
-          for help. PeakMind explains the differences, including insurance and
-          price expectations, then helps athletes choose.
+          Athletes should not have to self-diagnose or guess at the provider
+          landscape before asking for help. PeakMind explains the differences,
+          including insurance and price expectations, then helps athletes
+          choose.
         </p>
         <a href="/pressure-check" className="inline-link">
           Help me choose the right support <ArrowRight size={17} />

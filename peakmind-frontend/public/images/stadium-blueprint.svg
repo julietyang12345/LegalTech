@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" fill="none">
+  <defs>
+    <linearGradient id="fieldGlow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2fe7da" stop-opacity="0.22"/>
+      <stop offset="55%" stop-color="#6ee6ff" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#2fe7da" stop-opacity="0.02"/>
+    </linearGradient>
+    <linearGradient id="arcGlow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#9fd8e6" stop-opacity="0.03"/>
+      <stop offset="50%" stop-color="#9fd8e6" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#9fd8e6" stop-opacity="0.03"/>
+    </linearGradient>
+  </defs>
+
+  <g opacity="0.52" stroke="url(#arcGlow)">
+    <ellipse cx="1100" cy="570" rx="610" ry="360" stroke-width="2"/>
+    <ellipse cx="1100" cy="570" rx="520" ry="300" stroke-width="1.5"/>
+    <ellipse cx="1100" cy="570" rx="430" ry="240" stroke-width="1.25"/>
+    <ellipse cx="1100" cy="570" rx="340" ry="185" stroke-width="1.1"/>
+  </g>
+
+  <g opacity="0.34" stroke="#33e9dc" stroke-width="2">
+    <path d="M520 415H1460"/>
+    <path d="M520 675H1460"/>
+    <path d="M760 285V855"/>
+    <path d="M1220 285V855"/>
+    <path d="M920 415V675"/>
+    <path d="M1460 415V675"/>
+    <path d="M520 415V675"/>
+  </g>
+
+  <g opacity="0.24" stroke="#9fd8e6" stroke-width="1.3" stroke-dasharray="10 18">
+    <path d="M330 760C520 660 640 640 800 620C1010 594 1210 620 1440 740"/>
+    <path d="M280 510C490 430 675 410 840 420C1065 434 1235 485 1470 610"/>
+    <path d="M390 255C610 210 810 205 1000 220C1210 237 1370 290 1510 390"/>
+  </g>
+
+  <g opacity="0.45">
+    <ellipse cx="1100" cy="570" rx="210" ry="118" stroke="#2fe7da" stroke-width="2"/>
+    <ellipse cx="1100" cy="570" rx="165" ry="92" stroke="#9fd8e6" stroke-width="1.5"/>
+    <circle cx="1100" cy="570" r="24" stroke="#2fe7da" stroke-width="2"/>
+    <circle cx="1100" cy="570" r="72" stroke="#9fd8e6" stroke-width="1.2"/>
+  </g>
+
+  <g opacity="0.2" stroke="#9fd8e6" stroke-width="1">
+    <path d="M700 390L1450 390"/>
+    <path d="M700 750L1450 750"/>
+    <path d="M760 310L1420 310"/>
+    <path d="M760 830L1420 830"/>
+  </g>
+
+  <g opacity="0.24" fill="url(#fieldGlow)">
+    <path d="M760 410C860 360 1240 360 1340 410V730C1240 780 860 780 760 730Z"/>
+  </g>
+
+  <g opacity="0.12" stroke="#2fe7da" stroke-width="1">
+    <path d="M800 430H1320"/>
+    <path d="M800 710H1320"/>
+    <path d="M800 430V710"/>
+    <path d="M1320 430V710"/>
+    <path d="M1060 430V710"/>
+  </g>
+</svg>

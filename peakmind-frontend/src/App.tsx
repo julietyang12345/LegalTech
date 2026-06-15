@@ -1,4 +1,4 @@
-import { LandingPage, PressureCheckPage, ProvidersPage, ToolsPage } from './pages';
+import { LandingPage, PressureCheckPage, ProvidersPage, StoriesPage, ToolsPage } from './pages';
 
 function App() {
   if (window.location.pathname === '/pressure-check') {
@@ -11,6 +11,10 @@ function App() {
 
   if (window.location.pathname === '/tools') {
     return <ToolsPage />;
+  }
+
+  if (window.location.pathname === '/stories') {
+    return <StoriesPage />;
   }
 
   return <LandingPage />;

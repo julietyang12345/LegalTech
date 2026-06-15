@@ -5,7 +5,8 @@ const navItems = [
   { label: 'Start', href: '#top' },
   { label: 'Pressure check', href: '/pressure-check' },
   { label: 'Privacy', href: '#privacy' },
-  { label: 'Athlete stories', href: '#stories' },
+  { label: 'Athlete moments', href: '#stories' },
+  { label: 'Stories', href: '/stories' },
   { label: 'Next steps', href: '#paths' },
   { label: 'Tools', href: '/tools' },
 ];
@@ -59,6 +60,7 @@ export function LandingNavigation() {
         <nav className="site-nav-links" aria-label="Primary navigation">
           <a href="/pressure-check">Pressure check</a>
           <a href="#privacy">Privacy</a>
+          <a href="/stories">Stories</a>
           <a href="#paths">Next steps</a>
         </nav>
 

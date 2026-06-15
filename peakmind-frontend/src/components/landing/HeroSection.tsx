@@ -1,7 +1,6 @@
 import {
   ArrowRight,
   LockKeyhole,
-  ShieldCheck,
   Sparkles,
 } from 'lucide-react';
 
@@ -28,18 +27,16 @@ export function HeroSection() {
 
       <div className="hero-content" id="top">
         <div className="hero-copy">
-          <div className="eyebrow">
-            <ShieldCheck size={18} />
-            Independent from your university and athletic department
-          </div>
           <h1 className="hero-title">
             <span className="hero-title-main">
-              A private space for the mental side of sport.
+              Private support from people who understand
             </span>
+            <span className="hero-title-accent">athlete life</span>
           </h1>
           <p>
-            Check in on pressure, confidence, burnout, injury recovery, or
-            anything you do not want routed through your team.
+            PeakMind helps athletes check in on performance pressure, burnout,
+            injury comeback, confidence, identity, and support needs - privately
+            and without starting inside the team system.
           </p>
           <div className="hero-actions">
             <a className="primary-button" href="/pressure-check">
@@ -54,7 +51,7 @@ export function HeroSection() {
         <div className="locker-visual" aria-label="Private athlete support preview">
           <div className="locker-note locker-note-top">
             <span>after practice</span>
-            <strong>I can’t switch off.</strong>
+            <strong>I can’t switch off after practice.</strong>
           </div>
           <a className="hero-assessment-card" href="/pressure-check" aria-label="Open pressure check">
             <div className="assessment-card-top">
@@ -68,7 +65,9 @@ export function HeroSection() {
             <div className="assessment-preview-options">
               <span>One mistake keeps replaying</span>
               <span>I feel burned out</span>
+              <span>I’m cleared, but I don’t trust my body</span>
               <span>I need support outside my team</span>
+              <span>I don’t know where to start</span>
             </div>
             <div className="assessment-card-footer">
               Start privately <ArrowRight size={17} />
@@ -76,7 +75,7 @@ export function HeroSection() {
           </a>
           <div className="locker-note locker-note-bottom">
             <span>private note</span>
-            <strong>Don’t send this to my coach.</strong>
+            <strong>I need help, but not through my coach.</strong>
           </div>
           <div className="privacy-token">
             <LockKeyhole size={15} />
@@ -84,22 +83,15 @@ export function HeroSection() {
           </div>
           <div className="thought-rail" aria-hidden="true">
             <div>
-              <span>I’m cleared, but I don’t trust my body yet.</span>
-              <span>One mistake should not feel this heavy.</span>
-              <span>I need help, but not through my team.</span>
+              <span>Everyone sees the performance. Not everyone sees the pressure.</span>
+              <span>One mistake keeps replaying.</span>
+              <span>I wanted support, but not through my coach.</span>
               <span>I’m tired in a way sleep does not fix.</span>
-              <span>I’m cleared, but I don’t trust my body yet.</span>
-              <span>One mistake should not feel this heavy.</span>
-              <span>I need help, but not through my team.</span>
+              <span>Everyone sees the performance. Not everyone sees the pressure.</span>
+              <span>One mistake keeps replaying.</span>
+              <span>I wanted support, but not through my coach.</span>
               <span>I’m tired in a way sleep does not fix.</span>
             </div>
-          </div>
-        </div>
-
-        <div className="trust-strip">
-          <div>
-            <LockKeyhole size={18} />
-            Private by design
           </div>
         </div>
       </div>

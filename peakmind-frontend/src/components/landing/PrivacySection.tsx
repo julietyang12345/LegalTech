@@ -1,21 +1,18 @@
-import { EyeOff, LockKeyhole, ShieldCheck } from 'lucide-react';
+import { LockKeyhole } from 'lucide-react';
 import { RevealTitle } from './RevealTitle';
 
 const privacyPoints = [
   {
-    icon: LockKeyhole,
-    title: 'Your check-in starts private',
-    copy: 'Use PeakMind to name what is going on before you decide whether to share anything with anyone.',
+    step: '01',
+    visual: 'door',
+    title: 'Start with what athlete life feels like',
+    copy: 'Name the pressure, confidence hit, injury worry, burnout, or team dynamic before deciding what to do next.',
   },
   {
-    icon: ShieldCheck,
-    title: 'Independent from the team system',
-    copy: 'The experience is designed around support outside coaches, roster decisions, and athletic department pressure.',
-  },
-  {
-    icon: EyeOff,
-    title: 'No self-diagnosis required',
-    copy: 'Start with real athlete moments, then choose tools, stories, or private support based on what fits.',
+    step: '02',
+    visual: 'shield',
+    title: 'Outside the team system',
+    copy: 'For when you want support without starting with your coach, roster, school, or athletic department.',
   },
 ];
 
@@ -25,24 +22,37 @@ export function PrivacySection() {
       <div className="privacy-panel">
         <div className="privacy-copy">
           <span className="label-pill">Private by design</span>
-          <RevealTitle>Support should not feel like reporting yourself.</RevealTitle>
+          <RevealTitle>
+            Support should not feel like{' '}
+            <span className="privacy-title-accent">reporting yourself</span>
+          </RevealTitle>
           <p>
-            PeakMind gives athletes a place to check in, understand what they
-            might need, and choose a next step without starting inside the
-            school or team system.
+            Start privately before deciding what, when, or whether to share.
+            PeakMind gives athletes a private place to check in, understand
+            what they might need, and choose a next step without starting
+            inside the school or team system.
           </p>
+          <div className="privacy-proof">
+            <LockKeyhole size={16} />
+            <span>Private. Independent. No pressure.</span>
+          </div>
         </div>
         <div className="privacy-grid">
-          {privacyPoints.map((point) => {
-            const Icon = point.icon;
-            return (
-              <article key={point.title}>
-                <Icon size={24} />
+          {privacyPoints.map((point) => (
+            <article key={point.title}>
+              <span className="privacy-step">{point.step}</span>
+              <div
+                aria-hidden="true"
+                className={`privacy-hero-visual privacy-hero-visual-${point.visual}`}
+              >
+                <span />
+              </div>
+              <div>
                 <h3>{point.title}</h3>
                 <p>{point.copy}</p>
-              </article>
-            );
-          })}
+              </div>
+            </article>
+          ))}
         </div>
       </div>
     </section>

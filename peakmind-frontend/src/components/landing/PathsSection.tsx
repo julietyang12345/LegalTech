@@ -6,7 +6,7 @@ export function PathsSection() {
     <section className="section approach-section" id="paths">
       <SectionHeading
         label="Athlete-first navigation"
-        title="Choose the next step that fits right now."
+        title="Start with the kind of support you actually need."
       />
       <div className="support-route">
         <article className="route-stop route-stop-featured" id="start">
@@ -18,7 +18,7 @@ export function PathsSection() {
             <h3>What feels hardest right now?</h3>
             <p>
               Start with one answer. PeakMind can point you toward a private
-              next step based on what you are carrying.
+              next step without making you name it perfectly first.
             </p>
             <div className="moment-grid route-quick-picks" aria-label="Quick check-in prompts">
               <span className="moment-chip is-active">Pressure to perform</span>
@@ -40,7 +40,8 @@ export function PathsSection() {
             <h3>Need someone who gets it?</h3>
             <p>
               Browse athlete-informed therapists, sports psychologists, or
-              performance coaches outside your school/team system.
+              performance coaches when you know you need support, but not what
+              type yet.
             </p>
             <a href="/providers" className="inline-link">
               Find my match <ArrowRight size={17} />
@@ -55,8 +56,8 @@ export function PathsSection() {
             <div className="path-number">Tools</div>
             <h3>Want tools and tips?</h3>
             <p>
-              Access short resources built for athletes navigating pressure,
-              confidence, sleep, injury recovery, and the mental game.
+              Access short resources for the moments pressure actually shows up:
+              before practice, after a mistake, in recovery, or before sleep.
             </p>
             <a href="/tools" className="inline-link">
               Browse tools <ArrowRight size={17} />

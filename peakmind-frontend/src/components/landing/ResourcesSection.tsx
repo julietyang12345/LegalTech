@@ -7,8 +7,8 @@ export function ResourcesSection() {
     <section className="section resources-section" id="tools">
       <SectionHeading
         label="Self-guided tools"
-        title="Support between sessions - or before you are ready for one."
-        copy="Short, athlete-specific tools for the moments pressure actually shows up: before a game, after a mistake, during injury recovery, or when sleep is hard."
+        title="Short tools for the moments pressure actually shows up."
+        copy="Short, athlete-specific tools for before a game, after a mistake, during injury recovery, on the bus, or when sleep is hard."
       />
       <div className="resource-grid">
         {resources.map((resource) => {

@@ -6,9 +6,9 @@ export function ChallengeSection() {
   return (
     <section className="section dark-section" id="moments">
       <SectionHeading
-        label="The mental side of being an athlete"
-        title="The mental side of being an athlete is real."
-        copy="Performance pressure does not stay on the field. It follows you into sleep, school, recovery, relationships, and how you see yourself."
+        label="The mental side of sport"
+        title="Everyone sees the performance. Not everyone sees the pressure."
+        copy="Training, class, travel, recovery, and identity can all get pulled into the same week. This is what the pressure feels like when it follows athletes off the field."
         revealTitle={false}
       />
       <div className="moments-board">
