@@ -1873,7 +1873,7 @@ html.theme-light .privacy-section::before {
   display: grid;
   grid-template-columns: minmax(0, 0.94fr) minmax(0, 1.06fr);
   gap: clamp(32px, 4vw, 64px);
-  align-items: center;
+  align-items: stretch;
   width: min(85vw, 1240px);
   max-width: none;
   margin: 0 auto;
@@ -1925,11 +1925,6 @@ html.theme-light .privacy-copy p {
   color: rgba(23, 36, 54, 0.74);
 }
 
-html.theme-light .privacy-proof {
-  color: #2a6d73;
-  border-top-color: rgba(23, 36, 54, 0.12);
-}
-
 .privacy-copy h2 {
   max-width: 700px;
   margin: 20px 0 22px;
@@ -1959,18 +1954,10 @@ html.theme-light .privacy-proof {
   line-height: 1.7;
 }
 
-.privacy-proof {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 26px;
-  padding-top: 18px;
-  color: var(--teal);
-  border-top: 1px solid rgba(159, 216, 230, 0.22);
-  font-size: 0.8rem;
-  font-weight: 900;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+.privacy-copy {
+  display: grid;
+  align-content: end;
+  min-height: 100%;
 }
 
 .privacy-grid {

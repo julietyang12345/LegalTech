@@ -1,4 +1,3 @@
-import { LockKeyhole } from 'lucide-react';
 import { RevealTitle } from './RevealTitle';
 
 const privacyPoints = [
@@ -32,10 +31,6 @@ export function PrivacySection() {
             what they might need, and choose a next step without starting
             inside the school or team system.
           </p>
-          <div className="privacy-proof">
-            <LockKeyhole size={16} />
-            <span>Private. Independent. No pressure.</span>
-          </div>
         </div>
         <div className="privacy-grid">
           {privacyPoints.map((point) => (
