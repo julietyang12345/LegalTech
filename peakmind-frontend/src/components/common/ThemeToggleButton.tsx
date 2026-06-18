@@ -15,8 +15,7 @@ export function ThemeToggleButton() {
 
   useEffect(() => {
     const storedTheme = localStorage.getItem(THEME_KEY) as 'light' | 'dark' | null;
-    const prefersLight = window.matchMedia?.('(prefers-color-scheme: light)').matches;
-    const nextTheme = storedTheme ?? (prefersLight ? 'light' : 'dark');
+    const nextTheme = storedTheme ?? 'dark';
 
     applyTheme(nextTheme);
     setIsLight(nextTheme === 'light');

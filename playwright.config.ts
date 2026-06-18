@@ -6,7 +6,7 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: 'http://localhost:5173',
-    colorScheme: 'light',
+    colorScheme: 'dark',
     trace: 'on-first-retry',
   },
   projects: [
