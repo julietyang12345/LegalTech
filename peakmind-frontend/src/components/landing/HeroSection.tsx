@@ -1,7 +1,6 @@
 import {
   ArrowRight,
   LockKeyhole,
-  Sparkles,
 } from 'lucide-react';
 
 export function HeroSection() {
@@ -52,53 +51,6 @@ export function HeroSection() {
             <a className="secondary-button" href="/providers">
               Find Athlete-Specialized Support
             </a>
-          </div>
-        </div>
-
-        <div className="locker-visual" aria-label="Private athlete support preview">
-          <div className="locker-note locker-note-top">
-            <span>after practice</span>
-            <strong>I can’t switch off after practice.</strong>
-          </div>
-          <a className="hero-assessment-card" href="/pressure-check" aria-label="Open pressure check">
-            <div className="assessment-card-top">
-              <span>
-                <Sparkles size={16} />
-                Private pressure check
-              </span>
-              <small>2 min</small>
-            </div>
-            <h2>What feels hardest right now?</h2>
-            <div className="assessment-preview-options">
-              <span>One mistake keeps replaying</span>
-              <span>I feel burned out</span>
-              <span>I’m cleared, but I don’t trust my body</span>
-              <span>I need support outside my team</span>
-              <span>I don’t know where to start</span>
-            </div>
-            <div className="assessment-card-footer">
-              Start privately <ArrowRight size={17} />
-            </div>
-          </a>
-          <div className="locker-note locker-note-bottom">
-            <span>private note</span>
-            <strong>I need help, but not through my coach.</strong>
-          </div>
-          <div className="privacy-token">
-            <LockKeyhole size={15} />
-            independent support path
-          </div>
-          <div className="thought-rail" aria-hidden="true">
-            <div>
-              <span>Everyone sees the performance. Not everyone sees the pressure.</span>
-              <span>One mistake keeps replaying.</span>
-              <span>I wanted support, but not through my coach.</span>
-              <span>I’m tired in a way sleep does not fix.</span>
-              <span>Everyone sees the performance. Not everyone sees the pressure.</span>
-              <span>One mistake keeps replaying.</span>
-              <span>I wanted support, but not through my coach.</span>
-              <span>I’m tired in a way sleep does not fix.</span>
-            </div>
           </div>
         </div>
       </div>
