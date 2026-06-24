@@ -8,7 +8,7 @@ export function HeroSection() {
   return (
     <section className="hero-section">
       <div className="hero-video-layer" aria-hidden="true">
-        <img src="/images/peakmind-hero-motion.png" alt="" />
+        <img src="/images/peakmind-hero-motion-light.png" alt="" />
       </div>
 
       <div className="motion-field" aria-hidden="true">
@@ -27,23 +27,30 @@ export function HeroSection() {
 
       <div className="hero-content" id="top">
         <div className="hero-copy">
+          <div className="privacy-badge">
+            <LockKeyhole size={20} />
+            <span>Independent from your university and athletic department</span>
+          </div>
           <h1 className="hero-title">
             <span className="hero-title-main">
-              Private support from people who understand
+              The support your mind needs,
             </span>
-            <span className="hero-title-accent">athlete life</span>
+            <span className="hero-title-accent">built for athletes</span>
           </h1>
           <p>
-            PeakMind helps athletes check in on performance pressure, burnout,
-            injury comeback, confidence, identity, and support needs - privately
-            and without starting inside the team system.
+            PeakMind helps athletes better understand what they're experiencing
+            through an Athlete Insight Check-In and personalized next-step
+            guidance. Whether you're navigating burnout, injury, performance
+            anxiety, identity challenges, or life transitions, PeakMind helps
+            you understand your options and decide what support feels right for
+            you.
           </p>
           <div className="hero-actions">
             <a className="primary-button" href="/pressure-check">
-              Take the 2-minute pressure check <ArrowRight size={18} />
+              Take the Athlete Insight Check <ArrowRight size={18} />
             </a>
             <a className="secondary-button" href="/providers">
-              Browse private support
+              Find Athlete-Specialized Support
             </a>
           </div>
         </div>
@@ -94,6 +101,12 @@ export function HeroSection() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="hero-wave-divider" aria-hidden="true">
+        <svg viewBox="0 0 1440 64" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M0,30 C260,18 460,18 700,31 C940,44 1160,45 1440,27 L1440,64 L0,64 Z" />
+        </svg>
       </div>
     </section>
   );

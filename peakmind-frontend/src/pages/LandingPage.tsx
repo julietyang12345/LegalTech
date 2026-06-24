@@ -12,8 +12,8 @@ export function LandingPage() {
     <main className="site-shell">
       <LandingNavigation />
       <HeroSection />
-      <PrivacySection />
       <StoriesSection />
+      <PrivacySection />
       <PathsSection />
       <FinalCtaSection />
     </main>

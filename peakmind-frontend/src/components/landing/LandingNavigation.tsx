@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ThemeToggleButton } from '../common/ThemeToggleButton';
 
 const navItems = [
@@ -14,6 +14,7 @@ const navItems = [
 export function LandingNavigation() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [navTone, setNavTone] = useState('hero');
+  const headerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const sectionTones = [
@@ -25,7 +26,16 @@ export function LandingNavigation() {
     ];
 
     const updateNavState = () => {
-      setIsScrolled(window.scrollY > 24);
+      const hero = document.querySelector('.hero-section');
+      const navHeight = headerRef.current?.offsetHeight ?? 72;
+      const BUFFER = 32;
+
+      if (hero) {
+        const heroBottom = hero.getBoundingClientRect().bottom;
+        setIsScrolled(heroBottom <= navHeight + BUFFER);
+      } else {
+        setIsScrolled(window.scrollY > navHeight + BUFFER);
+      }
 
       const activeTone =
         sectionTones.find(({ selector }) => {
@@ -51,7 +61,7 @@ export function LandingNavigation() {
 
   return (
     <>
-      <header className={`site-nav nav-tone-${navTone}${isScrolled ? ' is-scrolled' : ''}`}>
+      <header ref={headerRef} className={`site-nav nav-tone-${navTone}${isScrolled ? ' is-scrolled' : ''}`}>
         <a className="site-brand" href="#top" aria-label="PeakMind home">
           <span>PeakMind</span>
           <small>private athlete support</small>
