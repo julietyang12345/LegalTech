@@ -1,4 +1,4 @@
-import { ArrowRight, Zap } from 'lucide-react';
+import { Zap } from 'lucide-react';
 import { RevealTitle } from './RevealTitle';
 
 export function FinalCtaSection() {
@@ -10,9 +10,6 @@ export function FinalCtaSection() {
         Private mental performance and wellbeing support, independent from your
         athletic department.
       </p>
-      <a className="primary-button" href="/pressure-check">
-        Check my athlete pressure level <ArrowRight size={18} />
-      </a>
     </section>
   );
 }

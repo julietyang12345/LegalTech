@@ -12,44 +12,44 @@ import {
 
 const supportTopics = [
   {
-    title: 'Loss of identity',
-    icon: Compass,
-    copy: 'When your sport is who you are, stepping away feels like losing yourself. You need someone who understands that depth.',
-  },
-  {
-    title: 'Injury recovery',
+    title: 'Injury Recovery',
     icon: Activity,
-    copy: 'Physical healing is only part of it. The mental side of coming back is rarely talked about—but it\'s just as crucial.',
-  },
-  {
-    title: 'Performance pressure',
-    icon: CircleGauge,
-    copy: 'Everyone expects you to perform. But who do you talk to when the pressure becomes too much to carry alone?',
+    copy: 'Injury can bring frustration, isolation, fear about the future, and uncertainty. The mental side of recovery is often overlooked, but building confidence, resilience, and trust in your body again is just as important as healing physically.',
   },
   {
     title: 'Burnout',
     icon: BatteryLow,
-    copy: 'The sport you loved now feels like a job. You\'re exhausted but feel guilty for not wanting to push harder.',
+    copy: 'When the demands of your sport start outweighing the joy, burnout can take hold - you may feel exhausted, unmotivated, emotionally drained or disconnected from a sport you once loved. Burnout is common among athletes, but it\'s often misunderstood or ignored.',
   },
   {
-    title: 'Stuck in a plateau',
-    icon: Scale,
-    copy: 'You\'re doing everything right—the training, the routine—but the results still aren\'t showing up like you thought.',
-  },
-  {
-    title: 'Transition out of sports',
-    icon: ArrowUpRight,
-    copy: 'Moving into "normal life" after years of sport and discipline can feel empty and confusing. You don\'t have to figure it out alone.',
-  },
-  {
-    title: 'Self-doubt & confidence',
+    title: 'Performance Anxiety',
     icon: Brain,
-    copy: 'You question if you\'re good enough, if you made the right choices, or if you even belong. Let\'s rebuild that belief together.',
+    copy: 'Fear of making mistakes, overthinking, loss of confidence or difficulty performing under pressure can make competition feel overwhelming. Performance anxiety affects athletes at every level.',
   },
   {
-    title: 'Relationships & support',
+    title: 'Pressure & Expectations',
+    icon: CircleGauge,
+    copy: 'Whether the pressure comes from others or from the standards you set for yourself, constantly feeling like you have to prove your worth can be exhausting, impacting confidence, enjoyment, relationships, and mental wellbeing. There are ways to navigate the pressure while protecting your wellbeing.',
+  },
+  {
+    title: 'Stuck in a Plateau',
+    icon: Scale,
+    copy: 'You\'re doing everything right, but the results still aren\'t showing up like you thought they would. When progress stalls, it\'s easy to question yourself or lose confidence. Sometimes the challenge isn\'t physical - it\'s navigating the frustration, self-doubt, and mental fatigue that come with feeling stuck.',
+  },
+  {
+    title: 'Loss of Identity',
+    icon: Compass,
+    copy: 'When your sport becomes a central part of who you are, challenges on the field can start to feel personal, leaving you feeling disconnected from yourself. Rebuilding confidence and discovering your identity beyond performance can be difficult, but it\'s a journey you don\'t have to navigate alone.',
+  },
+  {
+    title: 'Balancing Sport & Life',
     icon: Users,
-    copy: 'It can be hard for others to understand what you\'re going through. We\'ll help you build stronger connections and find your support system.',
+    copy: 'Being an athlete often means juggling competing demands every day and it can feel impossible to keep up. Finding balance isn\'t about doing more, it\'s about learning how to manage expectations, protect your wellbeing and make space for life beyond your sport.',
+  },
+  {
+    title: 'Transition Out of Sports',
+    icon: ArrowUpRight,
+    copy: 'For years, your schedule, goals, relationships, and purpose may have revolved around your sport. When that chapter ends, it\'s normal to feel lost or unsure of who you are without it. Transitioning out of sport is an emotional journey, but you can build a new sense of identity, purpose and direction for what comes next.',
   },
 ];
 

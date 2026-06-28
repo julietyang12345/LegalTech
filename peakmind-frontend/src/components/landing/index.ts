@@ -1,6 +1,7 @@
 export { AlumniSection } from './AlumniSection';
 export { ChallengeSection } from './ChallengeSection';
 export { CommunitySection } from './CommunitySection';
+export { FaqSection } from './FaqSection';
 export { FinalCtaSection } from './FinalCtaSection';
 export { HeroSection } from './HeroSection';
 export { LandingNavigation } from './LandingNavigation';

@@ -1,6 +1,7 @@
 import { LandingPage, PressureCheckPage, ProvidersPage, StoriesPage, ToolsPage } from './pages';
 
 function App() {
+
   if (window.location.pathname === '/pressure-check') {
     return <PressureCheckPage />;
   }

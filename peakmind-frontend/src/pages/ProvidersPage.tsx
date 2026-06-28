@@ -1,5 +1,4 @@
 import { ArrowLeft, ArrowRight } from 'lucide-react';
-import { ThemeToggleButton } from '../components/common/ThemeToggleButton';
 import { providerTypes } from '../services/landingContent';
 
 export function ProvidersPage() {
@@ -14,7 +13,6 @@ export function ProvidersPage() {
           <a className="nav-pill" href="/pressure-check">
             Start check-in
           </a>
-          <ThemeToggleButton />
         </div>
       </nav>
 

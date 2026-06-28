@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { ThemeToggleButton } from '../common/ThemeToggleButton';
 
 const navItems = [
-  { label: 'Start', href: '#top' },
-  { label: 'Pressure check', href: '/pressure-check' },
-  { label: 'Privacy', href: '#privacy' },
-  { label: 'Athlete moments', href: '#stories' },
-  { label: 'Stories', href: '/stories' },
-  { label: 'Next steps', href: '#paths' },
-  { label: 'Tools', href: '/tools' },
+  { label: 'Home', href: '#top' },
+  { label: 'Athlete Insight Check', href: '/pressure-check' },
+  { label: 'Resources', href: '/tools' },
+  { label: 'Find Support', href: '/providers' },
+  { label: 'For Providers', href: '/providers' },
+  { label: 'About', href: '#privacy' },
+  { label: 'FAQ', href: '#faq' },
 ];
 
 export function LandingNavigation() {
@@ -68,22 +67,18 @@ export function LandingNavigation() {
         </a>
 
         <nav className="site-nav-links" aria-label="Primary navigation">
-          <a href="/pressure-check">Pressure check</a>
-          <a href="#privacy">Privacy</a>
-          <a href="/stories">Stories</a>
-          <a href="#paths">Next steps</a>
+          {navItems.map((item) => (
+            <a href={item.href} key={item.label}>
+              {item.label}
+            </a>
+          ))}
         </nav>
-
-        <a className="site-nav-cta" href="/pressure-check">
-          Start privately
-        </a>
-        <ThemeToggleButton />
 
         <details className="mobile-menu">
           <summary>Menu</summary>
           <div>
             {navItems.map((item) => (
-              <a href={item.href} key={item.href}>
+              <a href={item.href} key={item.label}>
                 {item.label}
               </a>
             ))}

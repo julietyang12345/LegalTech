@@ -1,6 +1,8 @@
 import {
   ArrowRight,
+  ClipboardCheck,
   LockKeyhole,
+  UsersRound,
 } from 'lucide-react';
 
 export function HeroSection() {
@@ -37,19 +39,17 @@ export function HeroSection() {
             <span className="hero-title-accent">built for athletes</span>
           </h1>
           <p>
-            PeakMind helps athletes better understand what they're experiencing
-            through an Athlete Insight Check-In and personalized next-step
-            guidance. Whether you're navigating burnout, injury, performance
-            anxiety, identity challenges, or life transitions, PeakMind helps
-            you understand your options and decide what support feels right for
-            you.
+            Gain clarity on what you’re experiencing and find private,
+            athlete-informed support outside your team or school system.
           </p>
           <div className="hero-actions">
             <a className="primary-button" href="/pressure-check">
-              Take the Athlete Insight Check <ArrowRight size={18} />
+              <ClipboardCheck size={24} />
+              Take the Athlete Insight Check <ArrowRight size={22} />
             </a>
             <a className="secondary-button" href="/providers">
-              Find Athlete-Specialized Support
+              <UsersRound size={24} />
+              Find Athlete-Specialized Support <ArrowRight size={22} />
             </a>
           </div>
         </div>

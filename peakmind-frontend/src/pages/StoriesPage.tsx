@@ -1,6 +1,5 @@
 import { useRef } from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
-import { ThemeToggleButton } from '../components/common/ThemeToggleButton';
 import { athleteStories } from '../services/landingContent';
 
 const storyCards = [
@@ -43,7 +42,6 @@ export function StoriesPage() {
           <a className="nav-pill" href="/pressure-check">
             Start check-in
           </a>
-          <ThemeToggleButton />
         </div>
       </nav>
 

@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { ArrowLeft, ArrowRight, LockKeyhole, ShieldCheck } from 'lucide-react';
-import { ThemeToggleButton } from '../components/common/ThemeToggleButton';
 
 const questions = [
   {
@@ -66,7 +65,6 @@ export function PressureCheckPage() {
               <LockKeyhole size={16} />
               Private result
             </div>
-            <ThemeToggleButton />
           </div>
         </header>
 
@@ -132,7 +130,6 @@ export function PressureCheckPage() {
             <LockKeyhole size={16} />
             Private check-in
           </div>
-          <ThemeToggleButton />
         </div>
       </header>
 

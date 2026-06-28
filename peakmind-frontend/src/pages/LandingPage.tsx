@@ -1,4 +1,5 @@
 import {
+  FaqSection,
   FinalCtaSection,
   HeroSection,
   LandingNavigation,
@@ -15,6 +16,7 @@ export function LandingPage() {
       <StoriesSection />
       <PrivacySection />
       <PathsSection />
+      <FaqSection />
       <FinalCtaSection />
     </main>
   );

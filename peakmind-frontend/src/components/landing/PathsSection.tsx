@@ -1,69 +1,73 @@
-import { ArrowRight, Calendar, UserRoundCheck, Zap } from 'lucide-react';
-import { SectionHeading } from './SectionHeading';
+import {
+  ArrowUpRight,
+  ClipboardCheck,
+  LibraryBig,
+  MessagesSquare,
+} from 'lucide-react';
 
 export function PathsSection() {
   return (
     <section className="section approach-section" id="paths">
-      <SectionHeading
-        label="Athlete-first navigation"
-        title="Start with the kind of support you actually need."
-      />
-      <div className="support-route">
-        <article className="route-stop route-stop-featured" id="start">
-          <div className="path-icon">
-            <UserRoundCheck size={28} />
-          </div>
-          <div className="route-stop-copy">
-            <div className="path-number">Check-in</div>
-            <h3>What feels hardest right now?</h3>
-            <p>
-              Start with one answer. PeakMind can point you toward a private
-              next step without making you name it perfectly first.
-            </p>
-            <div className="moment-grid route-quick-picks" aria-label="Quick check-in prompts">
-              <span className="moment-chip is-active">Pressure to perform</span>
-              <span className="moment-chip">Burnout</span>
-              <span className="moment-chip">Coming back from injury</span>
-              <span className="moment-chip">I need support outside my team</span>
+      <div className="next-steps-shell">
+        <header className="next-steps-heading">
+          <span>Our approach</span>
+          <h2>Got a feeling, but don&apos;t know where to start?</h2>
+          <p>Choose the path that feels most useful right now.</p>
+        </header>
+
+        <div className="next-step-grid">
+          <a className="next-step-card next-step-card-featured" href="/pressure-check" id="start">
+            <div className="next-step-card-top">
+              <span className="next-step-number">01</span>
+              <span className="next-step-icon">
+                <ClipboardCheck size={25} strokeWidth={1.8} />
+              </span>
             </div>
-            <a href="/pressure-check" className="inline-link">
-              Start the pressure check <ArrowRight size={17} />
-            </a>
-          </div>
-        </article>
-        <article className="route-stop" id="providers">
-          <div className="path-icon">
-            <Zap size={28} />
-          </div>
-          <div className="route-stop-copy">
-            <div className="path-number">Providers</div>
-            <h3>Need someone who gets it?</h3>
+            <h3>2-minute Athlete Check-In</h3>
             <p>
-              Browse athlete-informed therapists, sports psychologists, or
-              performance coaches when you know you need support, but not what
-              type yet.
+              Not sure what you&apos;re experiencing? Start here. Gain clarity
+              and discover personalized next steps designed for athletes.
             </p>
-            <a href="/providers" className="inline-link">
-              Find my match <ArrowRight size={17} />
-            </a>
-          </div>
-        </article>
-        <article className="route-stop">
-          <div className="path-icon">
-            <Calendar size={28} />
-          </div>
-          <div className="route-stop-copy">
-            <div className="path-number">Tools</div>
-            <h3>Want tools and tips?</h3>
+            <span className="next-step-link">
+              Start the check-in <ArrowUpRight size={18} />
+            </span>
+          </a>
+
+          <a className="next-step-card" href="/providers" id="providers">
+            <div className="next-step-card-top">
+              <span className="next-step-number">02</span>
+              <span className="next-step-icon">
+                <MessagesSquare size={25} strokeWidth={1.8} />
+              </span>
+            </div>
+            <h3>Talk to someone who gets it</h3>
             <p>
-              Access short resources for the moments pressure actually shows up:
-              before practice, after a mistake, in recovery, or before sleep.
+              Find athlete-informed professionals who understand the unique
+              pressures, challenges, and realities of competitive sport.
             </p>
-            <a href="/tools" className="inline-link">
-              Browse tools <ArrowRight size={17} />
-            </a>
-          </div>
-        </article>
+            <span className="next-step-link">
+              Find support <ArrowUpRight size={18} />
+            </span>
+          </a>
+
+          <a className="next-step-card" href="/tools">
+            <div className="next-step-card-top">
+              <span className="next-step-number">03</span>
+              <span className="next-step-icon">
+                <LibraryBig size={25} strokeWidth={1.8} />
+              </span>
+            </div>
+            <h3>Tools &amp; Resources</h3>
+            <p>
+              Explore practical articles, guides, and strategies for burnout,
+              performance anxiety, injury recovery, identity, and life beyond
+              sport.
+            </p>
+            <span className="next-step-link">
+              Explore resources <ArrowUpRight size={18} />
+            </span>
+          </a>
+        </div>
       </div>
     </section>
   );
