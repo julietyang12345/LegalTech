@@ -60,7 +60,7 @@ export function StoriesSection() {
         <header className="support-spectrum-header">
           <div className="support-spectrum-kicker">Sound familiar?</div>
           <h2 className="support-spectrum-title">
-            Felt any of these?<br />We can <span className="support-spectrum-accent">help.</span>
+            Felt any of these?<br />We can <span className="support-spectrum-accent">help</span>
           </h2>
           <div className="support-spectrum-not-alone">
             <Heart size={13} />
