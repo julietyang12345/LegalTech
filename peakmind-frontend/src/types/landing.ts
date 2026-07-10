@@ -13,6 +13,7 @@ export type ResourceCard = {
 
 export type ProviderOption = {
   title: string;
+  fit: string;
   bestFor: string;
   note: string;
 };

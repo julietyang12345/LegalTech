@@ -388,6 +388,9 @@ html.theme-light .theme-toggle:hover {
 
 .hero-section {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-height: max(960px, calc(100svh + 80px));
   overflow: hidden;
   padding: 92px clamp(20px, 5vw, 76px) 72px;
@@ -684,12 +687,13 @@ html.theme-light .wave-ring {
 
 .hero-content {
   position: relative;
+  top: -34px;
   z-index: 2;
   display: flex;
   justify-content: center;
   width: min(100%, 1180px);
   max-width: 92vw;
-  margin: 70px auto 0;
+  margin: 0 auto;
   text-align: center;
   animation: heroRise 760ms ease both;
 }
@@ -702,6 +706,7 @@ html.theme-light .wave-ring {
 
 .hero-copy .privacy-badge {
   margin-inline: auto;
+  transform: translateY(-10px);
 }
 
 .eyebrow,
@@ -745,7 +750,7 @@ p {
   display: grid;
   gap: 6px;
   max-width: 1080px;
-  margin: 20px 0 20px;
+  margin: 34px 0 30px;
   color: var(--cream);
   font-size: clamp(3.2rem, 4.6vw, 5.15rem);
   font-weight: 880;
@@ -792,7 +797,7 @@ html.theme-light .hero-title-accent {
   max-width: 900px;
   margin-right: auto;
   margin-left: auto;
-  margin-bottom: 30px;
+  margin-bottom: 42px;
   color: rgba(244, 241, 233, 0.94);
   font-size: clamp(1.05rem, 1.15vw, 1.2rem);
   line-height: 1.55;
@@ -4114,7 +4119,7 @@ html.theme-light .constellation-line {
 }
 
 .support-spectrum-shell {
-  width: min(100%, 1480px);
+  width: min(100%, 1540px);
   margin: 0 auto;
 }
 
@@ -4163,8 +4168,8 @@ html.theme-light .constellation-line {
 
 .support-spectrum-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 36px 28px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(42px, 4.8vw, 64px) clamp(36px, 4.5vw, 58px);
 }
 
 .support-spectrum-card {
@@ -4179,19 +4184,19 @@ html.theme-light .constellation-line {
 .support-spectrum-icon {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
-  margin-bottom: 14px;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 18px;
   color: #19c7b5;
-  border-radius: 10px;
+  border-radius: 12px;
   background: rgba(25, 199, 181, 0.08);
   transition: background 200ms ease, color 200ms ease;
 }
 
 .support-spectrum-card h3 {
-  margin: 0 0 10px;
+  margin: 0 0 14px;
   color: #0d1b3d;
-  font-size: 1.4rem;
+  font-size: clamp(1.46rem, 1.58vw, 1.78rem);
   font-weight: 760;
   line-height: 1.25;
 }
@@ -4199,8 +4204,8 @@ html.theme-light .constellation-line {
 .support-spectrum-card p {
   margin: 0;
   color: rgba(13, 27, 61, 0.62);
-  font-size: 0.98rem;
-  line-height: 1.65;
+  font-size: clamp(1rem, 1.03vw, 1.1rem);
+  line-height: 1.68;
 }
 
 .support-spectrum-footer {
@@ -4766,6 +4771,9 @@ html.theme-light .constellation-line {
   position: relative;
   --card-accent: var(--sky);
   --card-accent-rgb: 159, 216, 230;
+  display: flex;
+  flex-direction: column;
+  height: 300px;
   padding: 24px;
   overflow: hidden;
   border: 1px solid var(--line-dark);
@@ -4785,7 +4793,7 @@ html.theme-light .provider-comparison article {
   box-shadow: 0 14px 30px rgba(23, 36, 54, 0.05);
 }
 
-html.theme-light .provider-comparison span {
+html.theme-light .provider-comparison article > span {
   color: rgba(var(--card-accent-rgb), 0.9);
 }
 
@@ -4804,12 +4812,35 @@ html.theme-light .provider-comparison span {
   --card-accent-rgb: 197, 148, 111;
 }
 
-.provider-comparison span {
-  display: inline-block;
-  margin-top: 2px;
+.provider-comparison article > span,
+.route-card > span {
+  display: block;
+  margin-top: auto;
+  padding-top: 12px;
   color: var(--card-accent);
   font-size: 0.94rem;
   font-weight: 760;
+  line-height: 1.45;
+}
+
+.provider-comparison .provider-fit,
+.route-card .provider-fit {
+  min-height: 4.35em;
+  margin-bottom: 12px;
+  color: #14223a;
+  font-weight: 780;
+  line-height: 1.45;
+}
+
+.provider-comparison .provider-fit + p,
+.route-card .provider-fit + p {
+  min-height: 8.2em;
+  margin-bottom: 0;
+}
+
+html.theme-light .provider-comparison .provider-fit,
+html.theme-light .route-card .provider-fit {
+  color: #14223a;
 }
 
 .community-section {
@@ -5201,12 +5232,30 @@ html.theme-light .faq-section {
 }
 
 .back-link {
-  transition: transform 180ms ease, color 180ms ease;
+  padding: 10px 14px;
+  border: 1px solid rgba(244, 241, 233, 0.14);
+  border-radius: 999px;
+  background: rgba(244, 241, 233, 0.06);
+  transition: transform 180ms ease, color 180ms ease, border-color 180ms ease, background 180ms ease;
 }
 
 .back-link:hover {
   color: var(--sky);
+  border-color: rgba(159, 216, 230, 0.34);
+  background: rgba(159, 216, 230, 0.08);
   transform: translateX(-3px);
+}
+
+html.theme-light .back-link {
+  color: rgba(15, 23, 42, 0.78);
+  border-color: rgba(15, 23, 42, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+html.theme-light .back-link:hover {
+  color: #006c70;
+  border-color: rgba(0, 108, 112, 0.18);
+  background: rgba(236, 255, 254, 0.92);
 }
 
 .survey-privacy {
@@ -5934,6 +5983,7 @@ html.theme-light .route-hero p {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
+  align-items: stretch;
   width: min(63vw, 1240px);
   max-width: none;
   margin: 0 auto;
@@ -5942,7 +5992,9 @@ html.theme-light .route-hero p {
 .route-card {
   --card-accent: var(--sky);
   --card-accent-rgb: 159, 216, 230;
-  min-height: 250px;
+  display: flex;
+  flex-direction: column;
+  height: 380px;
   padding: 28px;
   border: 1px solid rgba(244, 241, 233, 0.14);
   border-radius: 24px;
@@ -5977,7 +6029,7 @@ html.theme-light .route-card:nth-child(3) {
 }
 
 .route-card h2 {
-  margin: 0 0 14px;
+  margin: 0 0 24px;
   font-size: clamp(1.22rem, 1.8vw, 1.55rem);
 }
 
@@ -6520,6 +6572,7 @@ html.theme-light .route-card:nth-child(3) {
   }
 
   .hero-content {
+    top: 0;
     display: block;
     width: auto;
     max-width: none;
@@ -6883,14 +6936,14 @@ html.theme-light .privacy-section::before {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(330px, 0.9fr) minmax(0, 1.4fr);
+  grid-template-columns: minmax(350px, 0.85fr) minmax(0, 1.55fr);
   grid-template-areas:
     "intro cards"
     "note cards";
-  column-gap: clamp(54px, 6vw, 88px);
+  column-gap: clamp(24px, 3vw, 44px);
   row-gap: 28px;
   align-items: start;
-  width: min(1280px, 92vw);
+  width: min(1480px, 94vw);
   margin: 0 auto;
 }
 
@@ -6899,7 +6952,7 @@ html.theme-light .privacy-section::before {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  padding: 2px 0 0;
+  padding: 2px 0 0 clamp(18px, 1.8vw, 34px);
 }
 
 .privacy-trust-kicker,
@@ -6913,7 +6966,7 @@ html.theme-light .privacy-trust-kicker {
   border: 1px solid rgba(6, 178, 170, 0.28);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.58);
-  font-size: 0.68rem;
+  font-size: 0.74rem;
   font-weight: 900;
   letter-spacing: 0.045em;
   text-transform: uppercase;
@@ -6953,8 +7006,8 @@ html.theme-light .privacy-trust-intro > p {
   padding: 0;
   color: #42526b;
   border: 0;
-  font-size: 1rem;
-  line-height: 1.7;
+  font-size: 1.08rem;
+  line-height: 1.72;
 }
 
 .privacy-trust-intro > p strong {
@@ -6969,10 +7022,10 @@ html.theme-light .privacy-trust-footer {
   align-items: flex-start;
   justify-content: flex-start;
   max-width: 360px;
-  margin: 0;
+  margin: 0 0 0 clamp(18px, 1.8vw, 34px);
   color: #526177;
-  font-size: 0.78rem;
-  line-height: 1.45;
+  font-size: 0.86rem;
+  line-height: 1.48;
   text-align: left;
 }
 
@@ -6988,7 +7041,7 @@ html.theme-light .privacy-trust-footer {
 
 .privacy-trust-footer strong {
   color: #17263e;
-  font-size: 0.86rem;
+  font-size: 0.95rem;
 }
 
 .privacy-trust-cards {
@@ -7089,7 +7142,7 @@ html.theme-light .privacy-trust-card.is-featured {
 html.theme-light .privacy-card-number {
   align-self: flex-start;
   color: #08aaa1;
-  font-size: 0.8rem;
+  font-size: 0.88rem;
   font-weight: 900;
   letter-spacing: 0.04em;
 }
@@ -7105,7 +7158,7 @@ html.theme-light .privacy-trust-card h3 {
   max-width: 280px;
   margin: 0 0 18px;
   color: #0a1730;
-  font-size: clamp(1.18rem, 1.55vw, 1.5rem);
+  font-size: clamp(1.28rem, 1.68vw, 1.62rem);
   font-weight: 850;
   line-height: 1.25;
   letter-spacing: -0.025em;
@@ -7115,8 +7168,8 @@ html.theme-light .privacy-trust-card h3 {
 html.theme-light .privacy-trust-card p {
   margin: 0;
   color: #4b5c72;
-  font-size: 0.9rem;
-  line-height: 1.7;
+  font-size: 0.98rem;
+  line-height: 1.72;
 }
 
 .privacy-trust-card-secondary {
@@ -7143,8 +7196,8 @@ html.theme-light .privacy-trust-card p {
 }
 
 .privacy-trust-card-secondary p {
-  font-size: 0.86rem;
-  line-height: 1.58;
+  font-size: 0.94rem;
+  line-height: 1.64;
 }
 
 @media (max-width: 760px) {
@@ -7171,6 +7224,7 @@ html.theme-light .privacy-trust-card p {
 
   .privacy-trust-footer,
   html.theme-light .privacy-trust-footer {
+    margin-left: 0;
     max-width: 480px;
   }
 }

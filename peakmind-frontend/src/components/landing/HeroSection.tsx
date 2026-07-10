@@ -34,9 +34,9 @@ export function HeroSection() {
           </div>
           <h1 className="hero-title">
             <span className="hero-title-main">
-              The support your mind needs,
+              The mental side of sport,
             </span>
-            <span className="hero-title-accent">built for athletes</span>
+            <span className="hero-title-accent">supported</span>
           </h1>
           <p>
             Gain clarity on what you’re experiencing and find private,

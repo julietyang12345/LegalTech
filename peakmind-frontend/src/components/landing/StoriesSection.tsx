@@ -3,8 +3,6 @@ import {
   ArrowUpRight,
   BatteryLow,
   Brain,
-  CircleGauge,
-  Compass,
   Heart,
   Scale,
   Users,
@@ -22,14 +20,9 @@ const supportTopics = [
     copy: 'When the demands of your sport start outweighing the joy, burnout can take hold - you may feel exhausted, unmotivated, emotionally drained or disconnected from a sport you once loved. Burnout is common among athletes, but it\'s often misunderstood or ignored.',
   },
   {
-    title: 'Performance Anxiety',
-    icon: Brain,
-    copy: 'Fear of making mistakes, overthinking, loss of confidence or difficulty performing under pressure can make competition feel overwhelming. Performance anxiety affects athletes at every level.',
-  },
-  {
-    title: 'Pressure & Expectations',
-    icon: CircleGauge,
-    copy: 'Whether the pressure comes from others or from the standards you set for yourself, constantly feeling like you have to prove your worth can be exhausting, impacting confidence, enjoyment, relationships, and mental wellbeing. There are ways to navigate the pressure while protecting your wellbeing.',
+    title: 'Balancing Sport & Life',
+    icon: Users,
+    copy: 'Being an athlete often means juggling competing demands every day and it can feel impossible to keep up. Finding balance isn\'t about doing more, it\'s about learning how to manage expectations, protect your wellbeing and make space for life beyond your sport.',
   },
   {
     title: 'Stuck in a Plateau',
@@ -37,14 +30,9 @@ const supportTopics = [
     copy: 'You\'re doing everything right, but the results still aren\'t showing up like you thought they would. When progress stalls, it\'s easy to question yourself or lose confidence. Sometimes the challenge isn\'t physical - it\'s navigating the frustration, self-doubt, and mental fatigue that come with feeling stuck.',
   },
   {
-    title: 'Loss of Identity',
-    icon: Compass,
-    copy: 'When your sport becomes a central part of who you are, challenges on the field can start to feel personal, leaving you feeling disconnected from yourself. Rebuilding confidence and discovering your identity beyond performance can be difficult, but it\'s a journey you don\'t have to navigate alone.',
-  },
-  {
-    title: 'Balancing Sport & Life',
-    icon: Users,
-    copy: 'Being an athlete often means juggling competing demands every day and it can feel impossible to keep up. Finding balance isn\'t about doing more, it\'s about learning how to manage expectations, protect your wellbeing and make space for life beyond your sport.',
+    title: 'Performance & Pressure',
+    icon: Brain,
+    copy: 'Pressure is part of being an athlete, but when it becomes overwhelming, it can affect every aspect of your performance. Whether you\'re struggling with overthinking, fear of failure, perfectionism, or feeling like you constantly have to prove yourself, these challenges are common among athletes. With the right support, you can build confidence, manage pressure, and enjoy your sport again.',
   },
   {
     title: 'Transition Out of Sports',
@@ -72,7 +60,7 @@ export function StoriesSection() {
           {supportTopics.map(({ title, icon: Icon, copy }) => (
             <article className="support-spectrum-card" key={title}>
               <span className="support-spectrum-icon" aria-hidden="true">
-                <Icon size={20} strokeWidth={1.8} />
+                <Icon size={23} strokeWidth={1.8} />
               </span>
               <h3>{title}</h3>
               <p>{copy}</p>

@@ -30,6 +30,7 @@ export function ProvidersPage() {
         {providerTypes.map((provider) => (
           <article className="route-card" key={provider.title}>
             <h2>{provider.title}</h2>
+            <p className="provider-fit">"{provider.fit}"</p>
             <p>{provider.bestFor}</p>
             <span>{provider.note}</span>
           </article>

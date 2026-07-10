@@ -100,21 +100,24 @@ export const resources: ResourceCard[] = [
 
 export const providerTypes: ProviderOption[] = [
   {
-    title: 'Therapists / psychologists',
+    title: 'Therapists / Psychologists',
+    fit: "I'm struggling with my wellbeing or life outside of sport.",
     bestFor:
-      'Anxiety, depression, trauma, stress, emotional wellbeing, and clinical support.',
-    note: 'May be insurance eligible.',
+      'Help with anxiety, depression, trauma, stress, relationships, life transitions, and other mental health concerns that may affect your life and sport.',
+    note: 'May be insurance eligible depending on provider and coverage.',
   },
   {
-    title: 'Sports psychologists',
+    title: 'Sports Psychologists',
+    fit: 'My sport is affecting my mental wellbeing-or my mental wellbeing is affecting my sport.',
     bestFor:
-      'Athlete-specific mental skills, performance pressure, confidence, recovery, and identity challenges.',
-    note: 'Often focused on the overlap between wellbeing and performance.',
+      'Sports psychologists understand the unique demands of sport and help athletes navigate performance challenges alongside mental health concerns such as anxiety, burnout, identity, and confidence.',
+    note: 'Mostly Out-Of-Network.',
   },
   {
-    title: 'Performance coaches',
+    title: 'Performance Coaches',
+    fit: 'Mentally, I feel great but want to improve my performance.',
     bestFor:
-      'Mental skills, routines, self-talk, focus, confidence, and game-day mindset.',
+      'Focus on goal setting, routines, visualization, self-talk, concentration, resilience, and performing consistently under pressure. They typically do not provide mental health treatment.',
     note: 'Often self-pay.',
   },
 ];

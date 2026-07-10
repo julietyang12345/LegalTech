@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, Bookmark, LockKeyhole, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bookmark, Info, LockKeyhole, ShieldCheck } from 'lucide-react';
 
 type QuestionKind = 'single' | 'multi';
 
@@ -394,13 +394,38 @@ export function TopBadge({ questionCount }: TopBadgeProps) {
 
 export function PrivacyNote() {
   return (
-    <p className="mt-7 flex flex-wrap items-center justify-center gap-2 text-center text-sm font-semibold text-[#6d746f]">
-      <LockKeyhole size={17} className="text-[#59645f]" aria-hidden="true" />
-      <span>Your answers are private and secure.</span>
-      <a className="border-b border-[#3f7b67] text-[#3f7b67]" href="/privacy">
-        Learn more
-      </a>
-    </p>
+    <div className="mt-7 flex flex-col items-center gap-3 text-center">
+      <p className="m-0 flex flex-wrap items-center justify-center gap-2 text-sm font-semibold text-[#6d746f]">
+        <LockKeyhole size={17} className="text-[#59645f]" aria-hidden="true" />
+        <span>Your answers are private and secure.</span>
+        <a className="border-b border-[#3f7b67] text-[#3f7b67]" href="/privacy">
+          Learn more
+        </a>
+      </p>
+
+      <div className="group relative max-w-[620px] text-left text-xs font-semibold text-[#717a74]">
+        <button
+          className="inline-flex cursor-help items-center gap-1.5 rounded-full px-3 py-1.5 transition hover:bg-[#ebe6dc] hover:text-[#3f7b67] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3f7b67]"
+          type="button"
+          aria-describedby="assessment-important-info"
+        >
+          <Info size={14} aria-hidden="true" />
+          Important info
+        </button>
+        <div
+          id="assessment-important-info"
+          className="pointer-events-none absolute bottom-1/2 left-full z-20 ml-4 w-[min(760px,calc(100vw-2rem))] translate-y-1/2 rounded-[1.25rem] rounded-bl-md border border-[#ded8cf] bg-white/95 p-4 leading-6 opacity-0 shadow-[0_14px_34px_rgba(54,64,57,0.08)] transition duration-150 before:absolute before:left-[-8px] before:top-1/2 before:h-4 before:w-4 before:-translate-y-1/2 before:rotate-45 before:border-b before:border-l before:border-[#ded8cf] before:bg-white/95 before:content-[''] group-hover:opacity-100 group-focus-within:opacity-100 max-sm:bottom-auto max-sm:left-1/2 max-sm:top-full max-sm:ml-0 max-sm:mt-3 max-sm:-translate-x-1/2 max-sm:translate-y-0 max-sm:rounded-bl-[1.25rem] max-sm:before:left-1/2 max-sm:before:top-[-8px] max-sm:before:-translate-x-1/2 max-sm:before:translate-y-0 max-sm:before:border-b-0 max-sm:before:border-l-0 max-sm:before:border-r max-sm:before:border-t"
+          role="tooltip"
+        >
+          <p className="m-0">
+            This is educational, not diagnosis or therapy. Results are private
+            to the athlete; coaches, schools, and teams will not see individual
+            answers. If you request a provider match, you choose what to share.
+            If you are in crisis, use emergency or crisis resources.
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -483,7 +508,7 @@ export function CheckInPage() {
           <TopBadge questionCount={visibleQuestions.length} />
           <div className="mt-9 max-w-[860px]">
             <h1 className="m-0 max-w-full font-[Georgia,serif] text-[2.55rem] leading-[1.03] text-[#090d0b] sm:text-[4.25rem] lg:text-[4.95rem]">
-              Take this one page at a time.
+              Let's understand what you're carrying
             </h1>
             <p className="mt-6 max-w-[560px] break-words text-lg leading-8 text-[#59645f] sm:text-xl">
               Your answers help us understand what support might be most helpful for you right now.
