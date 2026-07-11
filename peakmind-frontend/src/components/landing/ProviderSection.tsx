@@ -24,8 +24,12 @@ export function ProviderSection() {
         {providerTypes.map((item) => (
           <article key={item.title}>
             <h3>{item.title}</h3>
+            <p className="provider-fit">"{item.fit}"</p>
             <p>{item.bestFor}</p>
             <span>{item.note}</span>
+            <a className="provider-card-link" href={`/provider-filter?type=${item.slug}`}>
+              View providers <ArrowRight size={16} />
+            </a>
           </article>
         ))}
       </div>

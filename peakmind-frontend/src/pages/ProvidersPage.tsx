@@ -33,6 +33,9 @@ export function ProvidersPage() {
             <p className="provider-fit">"{provider.fit}"</p>
             <p>{provider.bestFor}</p>
             <span>{provider.note}</span>
+            <a className="provider-card-link" href={`/provider-filter?type=${provider.slug}`}>
+              View providers <ArrowRight size={16} />
+            </a>
           </article>
         ))}
       </section>

@@ -1,4 +1,11 @@
-import { LandingPage, PressureCheckPage, ProvidersPage, StoriesPage, ToolsPage } from './pages';
+import {
+  LandingPage,
+  PressureCheckPage,
+  ProviderFilterPage,
+  ProvidersPage,
+  StoriesPage,
+  ToolsPage,
+} from './pages';
 
 function App() {
 
@@ -8,6 +15,10 @@ function App() {
 
   if (window.location.pathname === '/providers') {
     return <ProvidersPage />;
+  }
+
+  if (window.location.pathname === '/provider-filter') {
+    return <ProviderFilterPage />;
   }
 
   if (window.location.pathname === '/tools') {
