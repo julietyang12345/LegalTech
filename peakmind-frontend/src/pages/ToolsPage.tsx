@@ -3,7 +3,7 @@ import { resources } from '../services/landingContent';
 
 export function ToolsPage() {
   return (
-    <main className="route-shell">
+    <main className="route-shell tools-route">
       <nav className="survey-nav">
         <a href="/" className="back-link">
           <ArrowLeft size={17} />

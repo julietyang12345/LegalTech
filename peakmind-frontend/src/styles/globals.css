@@ -6062,6 +6062,33 @@ html.theme-light .route-card:nth-child(3) {
   font-weight: 780;
 }
 
+.tools-route .route-card {
+  height: 280px;
+  padding: 24px 28px;
+}
+
+.tools-route .route-card-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: min(86vw, 1500px);
+}
+
+.tools-route .icon-tile {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 24px;
+  border-radius: 14px;
+}
+
+.tools-route .route-card h2 {
+  margin-bottom: 18px;
+  font-size: clamp(1.18rem, 1.55vw, 1.45rem);
+}
+
+.tools-route .route-card p {
+  margin: 0;
+  line-height: 1.55;
+}
+
 .route-cta-panel {
   display: flex;
   align-items: center;
@@ -7203,6 +7230,11 @@ html.theme-light .provider-empty-state p {
   .support-grid,
   .route-card-grid {
     grid-template-columns: 1fr;
+  }
+
+  .tools-route .route-card {
+    height: auto;
+    min-height: 240px;
   }
 
   .privacy-grid article {

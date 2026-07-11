@@ -511,7 +511,8 @@ export function CheckInPage() {
               Let's understand what you're carrying
             </h1>
             <p className="mt-6 max-w-[560px] break-words text-lg leading-8 text-[#59645f] sm:text-xl">
-              Your answers help us understand what support might be most helpful for you right now.
+              Help us personalize your experience. Your responses help surface
+              information and resources that may be most relevant to you.
             </p>
           </div>
         </header>

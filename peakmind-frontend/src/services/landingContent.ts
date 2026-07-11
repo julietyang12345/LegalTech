@@ -1,4 +1,13 @@
-import { Brain, HeartPulse, Moon, RotateCcw, Sparkles, Volume2 } from 'lucide-react';
+import {
+  Brain,
+  ExternalLink,
+  HeartPulse,
+  LifeBuoy,
+  Moon,
+  RotateCcw,
+  Sparkles,
+  Volume2,
+} from 'lucide-react';
 import lockerRoomReflection from '../assets/stories/locker-room-reflection.png';
 import nightBusReflection from '../assets/stories/night-bus-reflection.png';
 import recoveryRoomReflection from '../assets/stories/recovery-room-reflection.png';
@@ -96,6 +105,16 @@ export const resources: ResourceCard[] = [
     icon: Brain,
     title: 'Self-talk training',
     copy: 'Practice reframing the inner voice that gets loud under pressure.',
+  },
+  {
+    icon: LifeBuoy,
+    title: 'Eating disorders and crisis support',
+    copy: 'Quick links for urgent care, crisis lines, and eating disorder support outside PeakMind.',
+  },
+  {
+    icon: ExternalLink,
+    title: 'Official external support resources',
+    copy: 'Find trusted national resources for mental health, crisis support, and athlete wellbeing.',
   },
 ];
 
