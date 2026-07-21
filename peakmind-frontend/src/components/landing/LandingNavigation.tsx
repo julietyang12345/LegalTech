@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 
 const navItems = [
   { label: 'Home', href: '#top' },
-  { label: 'Athlete Insight Check', href: '/pressure-check' },
+  // { label: 'Athlete Insight Check', href: '/pressure-check' },
   { label: 'Resources', href: '/tools' },
-  { label: 'Find Support', href: '/providers' },
-  { label: 'For Providers', href: '/providers' },
+  { label: 'Find Support', href: '/support-options' },
+  { label: 'For Providers', href: '/for-providers' },
   { label: 'About', href: '#privacy' },
   { label: 'FAQ', href: '#faq' },
 ];

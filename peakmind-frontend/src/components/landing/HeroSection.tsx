@@ -1,8 +1,7 @@
 import {
   ArrowRight,
-  ClipboardCheck,
-  LockKeyhole,
   UsersRound,
+  LockKeyhole,
 } from 'lucide-react';
 
 export function HeroSection() {
@@ -43,13 +42,15 @@ export function HeroSection() {
             athlete-informed support outside your team or school system.
           </p>
           <div className="hero-actions">
-            <a className="primary-button" href="/pressure-check">
-              <ClipboardCheck size={24} />
-              Take the Athlete Insight Check <ArrowRight size={22} />
-            </a>
-            <a className="secondary-button" href="/providers">
+            {/* MVP: keep the insight check hidden.
+              <a className="secondary-button" href="/pressure-check">
+                <ClipboardCheck size={24} />
+                Take the Athlete Insight Check <ArrowRight size={22} />
+              </a>
+            */}
+            <a className="primary-button" href="/support-options">
               <UsersRound size={24} />
-              Find Athlete-Specialized Support <ArrowRight size={22} />
+              Find athlete-specific support <ArrowRight size={22} />
             </a>
           </div>
         </div>

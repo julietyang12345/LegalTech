@@ -1,6 +1,5 @@
 import {
   ArrowUpRight,
-  ClipboardCheck,
   LibraryBig,
   MessagesSquare,
 } from 'lucide-react';
@@ -15,27 +14,10 @@ export function PathsSection() {
           <p>Choose the path that feels most useful right now.</p>
         </header>
 
-        <div className="next-step-grid">
-          <a className="next-step-card next-step-card-featured" href="/pressure-check" id="start">
+        <div className="next-step-grid next-step-grid-two">
+          <a className="next-step-card next-step-card-featured" href="/support-options" id="providers">
             <div className="next-step-card-top">
               <span className="next-step-number">01</span>
-              <span className="next-step-icon">
-                <ClipboardCheck size={25} strokeWidth={1.8} />
-              </span>
-            </div>
-            <h3>2-minute Athlete Check-In</h3>
-            <p>
-              Not sure what you&apos;re experiencing? Start here. Gain clarity
-              and discover personalized next steps designed for athletes.
-            </p>
-            <span className="next-step-link">
-              Start the check-in <ArrowUpRight size={18} />
-            </span>
-          </a>
-
-          <a className="next-step-card" href="/providers" id="providers">
-            <div className="next-step-card-top">
-              <span className="next-step-number">02</span>
               <span className="next-step-icon">
                 <MessagesSquare size={25} strokeWidth={1.8} />
               </span>
@@ -52,7 +34,7 @@ export function PathsSection() {
 
           <a className="next-step-card" href="/tools">
             <div className="next-step-card-top">
-              <span className="next-step-number">03</span>
+              <span className="next-step-number">02</span>
               <span className="next-step-icon">
                 <LibraryBig size={25} strokeWidth={1.8} />
               </span>

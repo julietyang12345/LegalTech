@@ -3,8 +3,7 @@ import {
   ArrowUpRight,
   BatteryLow,
   Brain,
-  Heart,
-  Scale,
+  Fence,
   Users,
 } from 'lucide-react';
 
@@ -26,18 +25,18 @@ const supportTopics = [
   },
   {
     title: 'Stuck in a Plateau',
-    icon: Scale,
-    copy: 'You\'re doing everything right, but the results still aren\'t showing up like you thought they would. When progress stalls, it\'s easy to question yourself or lose confidence. Sometimes the challenge isn\'t physical - it\'s navigating the frustration, self-doubt, and mental fatigue that come with feeling stuck.',
+    icon: Fence,
+    copy: 'You\'re doing everything right, but the results aren\'t showing up like you thought they would. When progress stalls, it\'s easy to question yourself. Sometimes the challenge isn\'t physical - it\'s navigating frustration, self-doubt, and mental fatigue that comes with feeling stuck.',
   },
   {
     title: 'Performance & Pressure',
     icon: Brain,
-    copy: 'Pressure is part of being an athlete, but when it becomes overwhelming, it can affect every aspect of your performance. Whether you\'re struggling with overthinking, fear of failure, perfectionism, or feeling like you constantly have to prove yourself, these challenges are common among athletes. With the right support, you can build confidence, manage pressure, and enjoy your sport again.',
+    copy: 'Pressure is part of being an athlete, but when it becomes overwhelming, it can affect your performance. Overthinking, fear of failure, perfectionism, or feeling like you constantly have to prove yourself is common among athletes.',
   },
   {
     title: 'Transition Out of Sports',
     icon: ArrowUpRight,
-    copy: 'For years, your schedule, goals, relationships, and purpose may have revolved around your sport. When that chapter ends, it\'s normal to feel lost or unsure of who you are without it. Transitioning out of sport is an emotional journey, but you can build a new sense of identity, purpose and direction for what comes next.',
+    copy: 'When your life revolved around sports, as that chapter ends, it\'s normal to feel lost or unsure of who you are. Life after sports is an emotional journey, but you can build a new sense of identity, purpose and direction for what comes next.',
   },
 ];
 
@@ -46,14 +45,9 @@ export function StoriesSection() {
     <section className="section support-spectrum-section" id="stories">
       <div className="support-spectrum-shell">
         <header className="support-spectrum-header">
-          <div className="support-spectrum-kicker">Sound familiar?</div>
           <h2 className="support-spectrum-title">
-            Felt any of these?<br />We can <span className="support-spectrum-accent">help</span>
+            Sound <span className="support-spectrum-accent">Familiar?</span>
           </h2>
-          <div className="support-spectrum-not-alone">
-            <Heart size={13} />
-            You're not alone
-          </div>
         </header>
 
         <div className="support-spectrum-grid">
