@@ -1,12 +1,12 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "peakmind",
+  "name": "legaltech",
   "compatibility_date": "2026-06-18",
   "observability": {
     "enabled": true
   },
   "assets": {
-    "directory": "peakmind-frontend"
+    "directory": "legaltech-frontend"
   },
   "compatibility_flags": [
     "nodejs_compat"

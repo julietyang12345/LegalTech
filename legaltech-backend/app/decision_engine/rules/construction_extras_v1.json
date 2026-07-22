@@ -1,0 +1,33 @@
+{
+  "version": "1.0",
+  "nodes": [
+    {
+      "node_id": "authorization_gate",
+      "depends_on": [
+        "instruction_to_proceed",
+        "actor_authority",
+        "written_authorization",
+        "signed_change_order",
+        "authorization_denial"
+      ]
+    },
+    {
+      "node_id": "pricing_gate",
+      "depends_on": [
+        "estimate_amount",
+        "approved_amount",
+        "invoice_submitted",
+        "invoice_amount",
+        "pricing_method"
+      ]
+    },
+    {
+      "node_id": "amount_consistency_gate",
+      "depends_on": [
+        "estimate_amount",
+        "approved_amount",
+        "invoice_amount"
+      ]
+    }
+  ]
+}

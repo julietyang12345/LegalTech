@@ -1,4 +1,6 @@
 {
+  "name": "legaltech",
+  "private": true,
   "scripts": {
     "test:visual": "playwright test",
     "test:visual:update": "playwright test --update-snapshots",

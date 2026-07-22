@@ -1,0 +1,173 @@
+from app.ingestion.upload_ingestor import ingest_upload
+from app.jobs.worker import run_once
+from app.matching.change_event_matcher import resolve_change_event
+from app.models import ChangeEvent, MatchFeedback, Matter, ProcessingJob, Project
+from app.models.domain import DocumentType, JobStatus, Severity
+from app.parsers.base import ParsedContent
+from app.repositories.memory import store
+
+
+def clear_store() -> None:
+    store.matters.clear()
+    store.projects.clear()
+    store.change_events.clear()
+    store.documents.clear()
+    store.events.clear()
+    store.signals.clear()
+    store.node_states.clear()
+    store.risk_factors.clear()
+    store.risk_tickets.clear()
+    store.risk_ticket_history.clear()
+    store.jobs.clear()
+    store.reviews.clear()
+    store.match_feedback.clear()
+    store.processed_documents.clear()
+
+
+def test_pipeline_creates_authorization_risk_ticket() -> None:
+    clear_store()
+    matter = Matter(name="Demo Matter")
+    store.matters[matter.id] = matter
+    project = Project(matter_id=matter.id, name="East Slope Project", project_number="P-100")
+    store.projects[project.id] = project
+    change_event = ChangeEvent(project_id=project.id, title="East slope unsuitable soil removal")
+    store.change_events[change_event.id] = change_event
+
+    document, job = ingest_upload(
+        content=b"P-100 east slope: Please proceed and keep the crew moving.",
+        filename="message.txt",
+        document_type=DocumentType.email,
+        matter_id=matter.id,
+        sender="pm@owner.com",
+    )
+
+    assert job is not None
+    assert document.id in store.documents
+    assert run_once() is True
+    assert any(ticket.change_event_id == change_event.id for ticket in store.risk_tickets.values())
+
+
+def test_change_event_matcher_uses_human_feedback_features() -> None:
+    clear_store()
+    matter = Matter(name="Demo Matter")
+    store.matters[matter.id] = matter
+    project = Project(matter_id=matter.id, name="Panel Project", project_number="P-200")
+    store.projects[project.id] = project
+    change_event = ChangeEvent(project_id=project.id, title="Curtain system acceleration")
+    store.change_events[change_event.id] = change_event
+    feedback = MatchFeedback(
+        user_id="USER-1",
+        document_id="DOC-OLD",
+        selected_project_id=project.id,
+        selected_change_event_id=change_event.id,
+        features={"keyword": "wall panel", "aliases": ["panel resequence"]},
+    )
+    store.match_feedback[feedback.id] = feedback
+
+    match = resolve_change_event(
+        project_id=project.id,
+        parsed_content=ParsedContent(
+            document_id="DOC-NEW",
+            text="Please keep moving on the wall panel work and send pricing backup.",
+        ),
+    )
+
+    assert match.change_event_id == change_event.id
+    assert match.confidence == 0.35
+    assert "feedback keyword" in match.reasons
+    assert match.status == "needs_review"
+
+
+def test_signed_change_order_mitigates_missing_signed_change_order_risk() -> None:
+    clear_store()
+    matter = Matter(name="Demo Matter")
+    store.matters[matter.id] = matter
+    project = Project(matter_id=matter.id, name="East Slope Project", project_number="P-100")
+    store.projects[project.id] = project
+    change_event = ChangeEvent(project_id=project.id, title="East slope unsuitable soil removal")
+    store.change_events[change_event.id] = change_event
+
+    first_document, first_job = ingest_upload(
+        content=b"P-100 east slope: Please proceed and keep the crew moving.",
+        filename="day-1.txt",
+        document_type=DocumentType.email,
+        matter_id=matter.id,
+        sender="pm@owner.com",
+    )
+
+    assert first_job is not None
+    assert run_once() is True
+    factor_key = f"{change_event.id}:missing_signed_change_order"
+    assert store.risk_factors[factor_key].status == "active"
+    ticket = store.risk_tickets[f"{change_event.id}:authorization_and_pricing"]
+    assert ticket.severity == Severity.high
+    assert ticket.status == "open"
+
+    second_document, second_job = ingest_upload(
+        content=b"P-100 east slope: The signed change order is attached for the extra work.",
+        filename="day-2.txt",
+        document_type=DocumentType.change_order,
+        matter_id=matter.id,
+        sender="pm@owner.com",
+    )
+
+    assert second_job is not None
+    assert run_once() is True
+    node_state = store.node_states[f"{change_event.id}:authorization_gate:1.0"]
+    assert node_state.status == "supported"
+    factor = store.risk_factors[factor_key]
+    assert factor.status == "mitigated"
+    assert factor.mitigated_by_document_id == second_document.id
+    assert factor.mitigated_at is not None
+    updated_ticket = store.risk_tickets[f"{change_event.id}:authorization_and_pricing"]
+    assert updated_ticket.severity == Severity.low
+    assert updated_ticket.status == "resolved"
+    assert any(history.risk_ticket_id == updated_ticket.id for history in store.risk_ticket_history.values())
+
+
+def test_worker_marks_review_jobs_waiting_for_review() -> None:
+    clear_store()
+    matter = Matter(name="Demo Matter")
+    store.matters[matter.id] = matter
+    project = Project(matter_id=matter.id, name="Project With Weak Match", project_number="P-300")
+    store.projects[project.id] = project
+
+    _document, job = ingest_upload(
+        content=b"P-300 Please proceed with the field instruction.",
+        filename="weak-match.txt",
+        document_type=DocumentType.email,
+        matter_id=matter.id,
+        sender="pm@owner.com",
+    )
+
+    assert job is not None
+    assert run_once() is True
+    assert job.status == JobStatus.waiting_for_review
+    assert store.reviews
+
+
+def test_waiting_for_review_job_and_review_creation_are_idempotent() -> None:
+    clear_store()
+    matter = Matter(name="Demo Matter")
+    store.matters[matter.id] = matter
+    project = Project(matter_id=matter.id, name="Project With Weak Match", project_number="P-300")
+    store.projects[project.id] = project
+
+    document, job = ingest_upload(
+        content=b"P-300 Please proceed with the field instruction.",
+        filename="weak-match.txt",
+        document_type=DocumentType.email,
+        matter_id=matter.id,
+        sender="pm@owner.com",
+    )
+
+    assert job is not None
+    assert run_once() is True
+    assert job.status == JobStatus.waiting_for_review
+    assert len(store.reviews) == 1
+
+    duplicate_job = store.enqueue_job(ProcessingJob(document_id=document.id))
+
+    assert duplicate_job.id == job.id
+    assert run_once() is False
+    assert len(store.reviews) == 1
