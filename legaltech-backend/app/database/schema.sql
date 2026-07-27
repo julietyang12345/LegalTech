@@ -143,6 +143,7 @@ CREATE TABLE risk_factors (
     first_detected_at timestamptz NOT NULL DEFAULT now(),
     last_updated_at timestamptz NOT NULL DEFAULT now(),
     supporting_signal_ids jsonb NOT NULL DEFAULT '[]',
+    contrary_signal_ids jsonb NOT NULL DEFAULT '[]',
     mitigated_by_document_id text REFERENCES documents(id),
     mitigated_at timestamptz,
     UNIQUE (change_event_id, factor_type)
@@ -167,6 +168,9 @@ CREATE TABLE risk_ticket_history (
     previous_status text,
     new_status text,
     reason text NOT NULL,
+    supporting_event_id text REFERENCES events(id),
+    supporting_signal_ids jsonb NOT NULL DEFAULT '[]',
+    contrary_signal_ids jsonb NOT NULL DEFAULT '[]',
     created_at timestamptz NOT NULL DEFAULT now()
 );
 

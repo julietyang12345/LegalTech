@@ -2,7 +2,13 @@ from app.models.domain import Severity
 
 
 def severity_for_factor_types(factor_types: list[str]) -> Severity:
-    if "authorization_disputed" in factor_types or "missing_signed_change_order" in factor_types:
+    high_risk = {
+        "authorization_disputed",
+        "missing_signed_change_order",
+        "invoice_exceeds_approved_amount",
+        "document_consistency_conflict",
+    }
+    if any(factor_type in high_risk for factor_type in factor_types):
         return Severity.high
     if factor_types:
         return Severity.medium

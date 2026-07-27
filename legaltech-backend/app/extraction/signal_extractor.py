@@ -1,11 +1,13 @@
+from app.extraction.ai_signal_extractor import ai_candidates
 from app.extraction.schemas import SignalCandidate
 from app.models import Document, ExtractedSignal
 from app.parsers.base import ParsedContent
 from app.services.hashing import stable_text_hash
+import re
 
 
 def extract_atomic_signals(document: Document, parsed_content: ParsedContent) -> list[ExtractedSignal]:
-    candidates = _heuristic_candidates(parsed_content.text)
+    candidates = ai_candidates(parsed_content.text) or _heuristic_candidates(parsed_content.text)
     return [
         ExtractedSignal(
             signal_type=candidate.signal_type,
@@ -25,23 +27,57 @@ def _heuristic_candidates(text: str) -> list[SignalCandidate]:
     candidates: list[SignalCandidate] = []
 
     if any(phrase in lowered for phrase in ["proceed", "keep the crew moving", "continue work"]):
+        source_text = _snippet(text, ["proceed", "keep the crew moving", "continue work"])
         candidates.append(
             SignalCandidate(
                 signal_type="instruction_to_proceed",
                 value=True,
-                source_text=_snippet(text, ["proceed", "keep the crew moving", "continue work"]),
+                source_text=source_text,
+                confidence=0.72,
+            )
+        )
+        candidates.append(
+            SignalCandidate(
+                signal_type="operational_direction",
+                value=True,
+                source_text=source_text,
                 confidence=0.72,
             )
         )
 
-    if any(phrase in lowered for phrase in ["signed change order", "executed change order"]):
+    if any(phrase in lowered for phrase in ["schedule is not delayed", "schedule not delayed", "keep the crew moving", "accelerate"]):
         candidates.append(
             SignalCandidate(
-                signal_type="signed_change_order",
+                signal_type="schedule_pressure",
                 value=True,
-                source_text=_snippet(text, ["signed change order", "executed change order"]),
+                source_text=_snippet(text, ["schedule is not delayed", "schedule not delayed", "keep the crew moving", "accelerate"]),
                 confidence=0.7,
             )
+        )
+
+    signed_document_phrases = [
+        "signed change order",
+        "executed change order",
+        "signed change document",
+        "signed authorization document",
+    ]
+    if any(phrase in lowered for phrase in signed_document_phrases):
+        source_text = _snippet(text, signed_document_phrases)
+        candidates.extend(
+            [
+                SignalCandidate(
+                    signal_type="signed_change_order",
+                    value=True,
+                    source_text=source_text,
+                    confidence=0.7,
+                ),
+                SignalCandidate(
+                    signal_type="formal_change_document",
+                    value=True,
+                    source_text=source_text,
+                    confidence=0.68,
+                ),
+            ]
         )
 
     if any(phrase in lowered for phrase in ["invoice", "amount due", "payment application"]):
@@ -54,16 +90,141 @@ def _heuristic_candidates(text: str) -> list[SignalCandidate]:
             )
         )
 
-    if any(phrase in lowered for phrase in ["not authorize", "unauthorized", "dispute"]):
+    if any(phrase in lowered for phrase in ["approve", "approved", "authorization", "authorized"]):
+        source_text = _snippet(text, ["approve", "approved", "authorization", "authorized"])
+        candidates.append(
+            SignalCandidate(
+                signal_type="express_authorization",
+                value=True,
+                source_text=source_text,
+                confidence=0.74,
+            )
+        )
+        candidates.append(
+            SignalCandidate(
+                signal_type="price_approval",
+                value="cost" in lowered or "$" in source_text,
+                source_text=source_text,
+                confidence=0.68,
+            )
+        )
+
+    if any(phrase in lowered for phrase in ["authorized to approve", "delegated authority", "authorized approver"]):
+        candidates.append(
+            SignalCandidate(
+                signal_type="actor_authority",
+                value=True,
+                source_text=_snippet(text, ["authorized to approve", "delegated authority", "authorized approver"]),
+                confidence=0.72,
+            )
+        )
+
+    if any(phrase in lowered for phrase in ["scheduling only", "not additional cost", "not extra cost", "not approve extra cost"]):
+        candidates.append(
+            SignalCandidate(
+                signal_type="delegated_authority_limited",
+                value=True,
+                source_text=_snippet(text, ["scheduling only", "not additional cost", "not extra cost", "not approve extra cost"]),
+                confidence=0.76,
+            )
+        )
+
+    if any(phrase in lowered for phrase in ["not authorize", "unauthorized", "dispute", "never approved extra cost"]):
         candidates.append(
             SignalCandidate(
                 signal_type="authorization_denial",
                 value=True,
-                source_text=_snippet(text, ["not authorize", "unauthorized", "dispute"]),
+                source_text=_snippet(text, ["not authorize", "unauthorized", "dispute", "never approved extra cost"]),
                 confidence=0.74,
             )
         )
 
+    if any(phrase in lowered for phrase in ["written notice", "notice of change", "notice was provided"]):
+        candidates.append(
+            SignalCandidate(
+                signal_type="written_notice",
+                value=True,
+                source_text=_snippet(text, ["written notice", "notice of change", "notice was provided"]),
+                confidence=0.68,
+            )
+        )
+
+    if "see attached" in lowered or "attached" in lowered:
+        if any(phrase in lowered for phrase in ["no attachment", "missing attachment", "attachment missing"]):
+            candidates.append(
+                SignalCandidate(
+                    signal_type="attachment_missing",
+                    value=True,
+                    source_text=_snippet(text, ["no attachment", "missing attachment", "attachment missing"]),
+                    confidence=0.8,
+                )
+            )
+        if any(phrase in lowered for phrase in ["unsigned", "not signed"]):
+            candidates.append(
+                SignalCandidate(
+                    signal_type="attachment_unsigned",
+                    value=True,
+                    source_text=_snippet(text, ["unsigned", "not signed"]),
+                    confidence=0.78,
+                )
+            )
+
+    candidates.extend(_amount_candidates(text))
+    candidates.extend(_identifier_candidates(text))
+    return candidates
+
+
+def _amount_candidates(text: str) -> list[SignalCandidate]:
+    candidates: list[SignalCandidate] = []
+    lowered = text.lower()
+    for match in re.finditer(r"\$\s?([0-9][0-9,]*(?:\.\d{2})?)", text):
+        source_text = _window(text, match.start(), 100)
+        amount = float(match.group(1).replace(",", ""))
+        local = source_text.lower()
+        if any(word in local for word in ["invoice", "amount due", "payment application"]):
+            signal_type = "invoice_amount"
+        elif any(word in local for word in ["approve", "approved", "authorized"]):
+            signal_type = "approved_amount"
+        elif any(word in local for word in ["estimate", "proposal", "quote"]):
+            signal_type = "estimate_amount"
+        else:
+            continue
+        candidates.append(
+            SignalCandidate(
+                signal_type=signal_type,
+                value=amount,
+                source_text=source_text,
+                confidence=0.72,
+            )
+        )
+    if any(phrase in lowered for phrase in ["time and materials", "t&m", "unit price", "lump sum"]):
+        candidates.append(
+            SignalCandidate(
+                signal_type="pricing_method",
+                value=True,
+                source_text=_snippet(text, ["time and materials", "t&m", "unit price", "lump sum"]),
+                confidence=0.7,
+            )
+        )
+    return candidates
+
+
+def _identifier_candidates(text: str) -> list[SignalCandidate]:
+    candidates: list[SignalCandidate] = []
+    for signal_type, pattern in {
+        "project_number": r"\b(?:P|PRJ)-\d{2,}\b",
+        "po_number": r"\bPO[-\s]?\d{2,}\b",
+    }.items():
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            candidates.append(
+                SignalCandidate(
+                    signal_type=signal_type,
+                    value=match.group(0).upper().replace(" ", "-"),
+                    source_text=_window(text, match.start(), 80),
+                    confidence=0.68,
+                )
+            )
     return candidates
 
 
@@ -72,3 +233,9 @@ def _snippet(text: str, phrases: list[str], radius: int = 180) -> str:
     index = next((lowered.find(phrase) for phrase in phrases if phrase in lowered), 0)
     start = max(index, 0)
     return text[start : start + radius].strip()
+
+
+def _window(text: str, index: int, radius: int) -> str:
+    start = max(index - radius, 0)
+    end = min(index + radius, len(text))
+    return text[start:end].strip()

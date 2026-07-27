@@ -4,10 +4,14 @@
     {
       "node_id": "authorization_gate",
       "depends_on": [
+        "operational_direction",
+        "express_authorization",
         "instruction_to_proceed",
         "actor_authority",
         "written_authorization",
         "signed_change_order",
+        "owner_awareness",
+        "delegated_authority_limited",
         "authorization_denial"
       ]
     },
@@ -18,15 +22,57 @@
         "approved_amount",
         "invoice_submitted",
         "invoice_amount",
-        "pricing_method"
+        "pricing_method",
+        "price_approval"
       ]
     },
     {
-      "node_id": "amount_consistency_gate",
+      "node_id": "invoice_support_gate",
+      "depends_on": [
+        "invoice_submitted",
+        "invoice_amount",
+        "invoice_support",
+        "attachment_missing",
+        "attachment_unsigned"
+      ]
+    },
+    {
+      "node_id": "quantum_gate",
       "depends_on": [
         "estimate_amount",
         "approved_amount",
         "invoice_amount"
+      ]
+    },
+    {
+      "node_id": "document_consistency_gate",
+      "depends_on": [
+        "approved_amount",
+        "invoice_amount",
+        "project_number",
+        "po_number",
+        "attachment_missing",
+        "attachment_unsigned",
+        "project_mismatch",
+        "amount_mismatch",
+        "invoice_before_authorization"
+      ]
+    },
+    {
+      "node_id": "process_compliance_gate",
+      "depends_on": [
+        "written_notice",
+        "formal_change_document",
+        "signed_change_order",
+        "express_authorization",
+        "delegated_authority_limited"
+      ]
+    },
+    {
+      "node_id": "acceleration_gate",
+      "depends_on": [
+        "operational_direction",
+        "schedule_pressure"
       ]
     }
   ]

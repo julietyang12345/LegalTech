@@ -41,10 +41,15 @@ def get_change_event(change_event_id: str) -> dict:
     tickets = [
         ticket for ticket in store.risk_tickets.values() if ticket.change_event_id == change_event_id
     ]
+    ticket_ids = {ticket.id for ticket in tickets}
+    ticket_history = [
+        item for item in store.risk_ticket_history.values() if item.risk_ticket_id in ticket_ids
+    ]
     return {
         "change_event": store.change_events.get(change_event_id),
         "signals": signals,
         "node_states": node_states,
         "risk_factors": factors,
         "risk_tickets": tickets,
+        "risk_ticket_history": ticket_history,
     }

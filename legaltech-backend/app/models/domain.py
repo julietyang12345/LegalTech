@@ -42,6 +42,17 @@ class Severity(str, Enum):
     high = "high"
 
 
+class RiskStatus(str, Enum):
+    detected = "Detected"
+    under_review = "Under Review"
+    supported = "Supported"
+    contradicted = "Contradicted"
+    escalated = "Escalated"
+    mitigated = "Mitigated"
+    resolved = "Resolved"
+    insufficient_evidence = "Insufficient Evidence"
+
+
 class Matter(BaseModel):
     id: str = Field(default_factory=lambda: new_id("MATTER"))
     name: str
@@ -118,6 +129,7 @@ class RiskFactor(BaseModel):
     status: str = "active"
     strength: str = "medium"
     supporting_signal_ids: list[str] = Field(default_factory=list)
+    contrary_signal_ids: list[str] = Field(default_factory=list)
     first_detected_at: datetime = Field(default_factory=datetime.utcnow)
     last_updated_at: datetime = Field(default_factory=datetime.utcnow)
     mitigated_by_document_id: str | None = None
@@ -129,7 +141,7 @@ class RiskTicket(BaseModel):
     change_event_id: str
     title: str
     severity: Severity
-    status: str = "open"
+    status: RiskStatus = RiskStatus.detected
     factor_ids: list[str] = Field(default_factory=list)
     summary: str
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -143,6 +155,9 @@ class RiskTicketHistory(BaseModel):
     previous_status: str | None = None
     new_status: str | None = None
     reason: str
+    supporting_event_id: str | None = None
+    supporting_signal_ids: list[str] = Field(default_factory=list)
+    contrary_signal_ids: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

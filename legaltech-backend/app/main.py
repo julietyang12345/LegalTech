@@ -1,14 +1,24 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import change_events, documents, matters, reviews, risks
+from app.api import change_events, documents, jobs, matters, reviews, risks
 
-app = FastAPI(title="LegalTech Risk Engine", version="0.1.0")
+app = FastAPI(title="Evidence Risk Engine", version="0.1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):[0-9]+",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(matters.router, prefix="/api/matters", tags=["matters"])
 app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
 app.include_router(change_events.router, prefix="/api/change-events", tags=["change-events"])
 app.include_router(risks.router, prefix="/api/risks", tags=["risks"])
 app.include_router(reviews.router, prefix="/api/reviews", tags=["reviews"])
+app.include_router(jobs.router, prefix="/api/jobs", tags=["jobs"])
 
 
 @app.get("/health")

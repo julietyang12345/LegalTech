@@ -98,10 +98,10 @@ def test_signed_change_order_mitigates_missing_signed_change_order_risk() -> Non
     assert first_job is not None
     assert run_once() is True
     factor_key = f"{change_event.id}:missing_signed_change_order"
-    assert store.risk_factors[factor_key].status == "active"
+    assert store.risk_factors[factor_key].status == "Insufficient Evidence"
     ticket = store.risk_tickets[f"{change_event.id}:authorization_and_pricing"]
     assert ticket.severity == Severity.high
-    assert ticket.status == "open"
+    assert ticket.status == "Detected"
 
     second_document, second_job = ingest_upload(
         content=b"P-100 east slope: The signed change order is attached for the extra work.",
@@ -116,13 +116,95 @@ def test_signed_change_order_mitigates_missing_signed_change_order_risk() -> Non
     node_state = store.node_states[f"{change_event.id}:authorization_gate:1.0"]
     assert node_state.status == "supported"
     factor = store.risk_factors[factor_key]
-    assert factor.status == "mitigated"
+    assert factor.status == "Mitigated"
     assert factor.mitigated_by_document_id == second_document.id
     assert factor.mitigated_at is not None
     updated_ticket = store.risk_tickets[f"{change_event.id}:authorization_and_pricing"]
-    assert updated_ticket.severity == Severity.low
-    assert updated_ticket.status == "resolved"
+    assert updated_ticket.severity == Severity.medium
+    assert updated_ticket.status == "Under Review"
     assert any(history.risk_ticket_id == updated_ticket.id for history in store.risk_ticket_history.values())
+
+
+def test_invoice_recomputes_invoice_pricing_quantum_and_consistency_nodes_only() -> None:
+    clear_store()
+    matter = Matter(name="Demo Matter")
+    store.matters[matter.id] = matter
+    project = Project(matter_id=matter.id, name="East Slope Project", project_number="P-100")
+    store.projects[project.id] = project
+    change_event = ChangeEvent(project_id=project.id, title="East slope unsuitable soil removal")
+    store.change_events[change_event.id] = change_event
+
+    document, job = ingest_upload(
+        content=b"P-100 east slope invoice amount due $48,500 for unsuitable soil removal.",
+        filename="invoice.txt",
+        document_type=DocumentType.invoice,
+        matter_id=matter.id,
+        sender="billing@contractor.com",
+    )
+
+    assert job is not None
+    assert run_once() is True
+    assert document.id in store.documents
+    node_ids = {state.node_id for state in store.node_states.values()}
+    assert "authorization_gate" not in node_ids
+    assert {
+        "pricing_gate",
+        "invoice_support_gate",
+        "quantum_gate",
+        "document_consistency_gate",
+    }.issubset(node_ids)
+
+
+def test_risk_ticket_evolves_with_authority_support_and_later_limitation() -> None:
+    clear_store()
+    matter = Matter(name="Demo Matter")
+    store.matters[matter.id] = matter
+    project = Project(matter_id=matter.id, name="East Slope Project", project_number="P-100")
+    store.projects[project.id] = project
+    change_event = ChangeEvent(project_id=project.id, title="East slope unsuitable soil removal")
+    store.change_events[change_event.id] = change_event
+
+    _first_document, first_job = ingest_upload(
+        content=b"P-100 east slope: Please proceed and keep the crew moving.",
+        filename="direction.txt",
+        document_type=DocumentType.email,
+        matter_id=matter.id,
+        sender="superintendent@owner.com",
+    )
+    assert first_job is not None
+    assert run_once() is True
+    ticket = store.risk_tickets[f"{change_event.id}:authorization_and_pricing"]
+    assert ticket.severity == Severity.high
+    assert ticket.status == "Detected"
+
+    _second_document, second_job = ingest_upload(
+        content=b"P-100 east slope: Mark is authorized to approve the field changes for $42,000.",
+        filename="authority.txt",
+        document_type=DocumentType.email,
+        matter_id=matter.id,
+        sender="owner@owner.com",
+    )
+    assert second_job is not None
+    assert run_once() is True
+    ticket = store.risk_tickets[f"{change_event.id}:authorization_and_pricing"]
+    assert ticket.severity == Severity.medium
+    assert ticket.status == "Insufficient Evidence"
+
+    _third_document, third_job = ingest_upload(
+        content=b"P-100 east slope: Authorization was limited to scheduling only, not additional cost.",
+        filename="limitation.txt",
+        document_type=DocumentType.email,
+        matter_id=matter.id,
+        sender="owner@owner.com",
+    )
+    assert third_job is not None
+    assert run_once() is True
+    ticket = store.risk_tickets[f"{change_event.id}:authorization_and_pricing"]
+    assert ticket.severity == Severity.high
+    assert ticket.status == "Contradicted"
+    factor = store.risk_factors[f"{change_event.id}:authorization_disputed"]
+    assert factor.contrary_signal_ids
+    assert len([history for history in store.risk_ticket_history.values() if history.risk_ticket_id == ticket.id]) >= 2
 
 
 def test_worker_marks_review_jobs_waiting_for_review() -> None:
