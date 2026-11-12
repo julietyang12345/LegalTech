@@ -28,6 +28,11 @@ ALLOWED_SIGNAL_TYPES = {
     "schedule_pressure",
     "formal_change_document",
     "written_notice",
+    "extra_work_detected",
+    "cost_communication",
+    "approval_denied",
+    "scheduling_only",
+    "notice_denied",
     "attachment_missing",
     "attachment_unsigned",
     "project_number",
@@ -48,7 +53,8 @@ invoice_submitted, invoice_support, estimate_amount, approved_amount,
 invoice_amount, pricing_method, price_approval, actor_authority,
 written_authorization, owner_awareness, schedule_pressure,
 formal_change_document, written_notice, attachment_missing,
-attachment_unsigned, project_number, po_number, project_mismatch,
+attachment_unsigned, extra_work_detected, cost_communication, approval_denied,
+scheduling_only, notice_denied, project_number, po_number, project_mismatch,
 amount_mismatch, invoice_before_authorization.
 source_text must be an exact excerpt from the document. Do not infer facts that
 are not supported by an excerpt."""

@@ -114,6 +114,35 @@ type Review = {
   };
 };
 
+type RequirementCheck = {
+  requirement_id: string;
+  result: string;
+  evidence_status: string;
+  supporting_evidence_ids: string[];
+  contrary_evidence_ids: string[];
+  explanation: string;
+  requires_lawyer_review: boolean;
+};
+
+type LegalIssueRecord = {
+  issue: {
+    id: string;
+    type: string;
+    title: string;
+    summary: string;
+    workflow_status: string;
+    evidence_status: string;
+  };
+  assessment?: {
+    status: string;
+    evidence_status: string;
+    conclusion: string;
+    requirement_checks: RequirementCheck[];
+  } | null;
+  evidence: { id: string; statement: string; source_document_id: string }[];
+  rules: { title: string; version: string; applicability: { jurisdiction: string } }[];
+};
+
 type MatchResult = {
   project_id?: string | null;
   change_event_id?: string | null;
@@ -156,6 +185,7 @@ function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [detail, setDetail] = useState<ChangeEventDetail>(defaultDetail);
+  const [legalIssues, setLegalIssues] = useState<LegalIssueRecord[]>([]);
   const [evidenceText, setEvidenceText] = useState(sampleEvidence.risk);
   const [documentType, setDocumentType] = useState('email');
   const [busy, setBusy] = useState('');
@@ -187,14 +217,16 @@ function App() {
 
   async function refresh(nextChangeEventId = changeEvent?.id) {
     setError('');
-    const [documentList, jobList, reviewList] = await Promise.all([
+    const [documentList, jobList, reviewList, issueList] = await Promise.all([
       api<DocumentRecord[]>('/api/documents'),
       api<Job[]>('/api/jobs'),
       api<Review[]>('/api/reviews?status='),
+      api<LegalIssueRecord[]>('/api/issues'),
     ]);
     setDocuments(documentList);
     setJobs(jobList);
     setReviews(reviewList);
+    setLegalIssues(issueList);
     if (nextChangeEventId) {
       setDetail(await api<ChangeEventDetail>(`/api/change-events/${nextChangeEventId}`));
     }
@@ -414,6 +446,43 @@ function App() {
         </section>
 
         <section className="content-grid">
+          <Panel id="legal-issues" title="Legal Issue Detail" meta="Rule requirements and evidence">
+            {legalIssues.length === 0 ? (
+              <EmptyState text="No executable-rule issue has been activated yet." />
+            ) : (
+              <div className="ticket-list">
+                {legalIssues.map((record) => (
+                  <article className="legal-issue" key={record.issue.id}>
+                    <div className="panel-header">
+                      <div>
+                        <strong>{labelize(record.issue.type)} · {record.issue.title}</strong>
+                        <span>{record.issue.summary}</span>
+                      </div>
+                      <mark className={record.assessment?.status === 'REQUIREMENT_SATISFIED' ? 'low' : 'medium'}>
+                        {record.assessment?.status || record.issue.workflow_status}
+                      </mark>
+                    </div>
+                    {record.rules.map((rule) => (
+                      <p className="hint" key={`${rule.title}-${rule.version}`}>
+                        Rule: {rule.title} · v{rule.version} · applicability: {rule.applicability.jurisdiction}
+                      </p>
+                    ))}
+                    {record.assessment?.requirement_checks?.map((check) => (
+                      <div className="requirement-row" key={check.requirement_id}>
+                        <div>
+                          <strong>{labelize(check.requirement_id)}</strong>
+                          <span>{check.explanation}</span>
+                        </div>
+                        <mark className={check.result === 'REQUIREMENT_SATISFIED' ? 'low' : 'medium'}>{check.result}</mark>
+                      </div>
+                    ))}
+                    <p className="hint">Evidence: {record.evidence.length ? record.evidence.map((item) => item.source_document_id).join(', ') : 'No qualifying evidence found in recorded scope.'}</p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </Panel>
+
           <Panel id="risks" title="Risk Tickets" meta="Persistent flags">
             {detail.risk_tickets.length === 0 ? (
               <EmptyState text="No risk ticket yet. Upload and process evidence with incomplete authorization support." />

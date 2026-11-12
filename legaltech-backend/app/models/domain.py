@@ -57,6 +57,7 @@ class Matter(BaseModel):
     id: str = Field(default_factory=lambda: new_id("MATTER"))
     name: str
     organization_id: str | None = None
+    tenant_id: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -87,6 +88,8 @@ class Document(BaseModel):
     gmail_message_id: str | None = None
     internet_message_id: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    tenant_id: str | None = None
+    matter_id: str | None = None
 
 
 class Event(BaseModel):
@@ -96,6 +99,7 @@ class Event(BaseModel):
     document_id: str
     occurred_at: datetime = Field(default_factory=datetime.utcnow)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    tenant_id: str | None = None
 
 
 class ExtractedSignal(BaseModel):
@@ -108,6 +112,8 @@ class ExtractedSignal(BaseModel):
     source_text: str
     confidence: float = 0.0
     source_text_hash: str
+    tenant_id: str | None = None
+    provenance_id: str | None = None
 
 
 class DecisionNodeState(BaseModel):

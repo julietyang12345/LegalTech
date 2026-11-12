@@ -159,7 +159,8 @@ h2 {
 .button-row,
 .segmented,
 .review-row,
-.ticket {
+.ticket,
+.requirement-row {
   display: flex;
   align-items: center;
 }
@@ -212,6 +213,8 @@ h2 {
 .metric,
 .workflow-step div:last-child,
 .ticket div,
+.legal-issue div,
+.requirement-row div,
 .source-card div,
 .review-row div,
 .field {
@@ -375,6 +378,22 @@ small {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: #f8fafc;
+}
+
+.legal-issue {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.requirement-row {
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-top: 1px solid #e2e8f0;
 }
 
 .ledger-row,

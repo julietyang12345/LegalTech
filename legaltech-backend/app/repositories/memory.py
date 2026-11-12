@@ -15,6 +15,18 @@ from app.models import (
     RiskTicket,
     RiskTicketHistory,
 )
+from app.domain_contracts.schemas import (
+    Assessment,
+    DependencyEdge,
+    EvidenceAssertion,
+    ExecutableRuleSpec,
+    Issue,
+    LegalPrinciple,
+    Obligation,
+    Provenance,
+    RuleActivation,
+    SearchAttempt,
+)
 from app.models.domain import JobStatus
 
 
@@ -34,14 +46,30 @@ class InMemoryStore:
         self.reviews: dict[str, HumanReview] = {}
         self.match_feedback: dict[str, MatchFeedback] = {}
         self.processed_documents: set[tuple[str, str]] = set()
+        self.obligations: dict[str, Obligation] = {}
+        self.assertions: dict[str, EvidenceAssertion] = {}
+        self.issues: dict[str, Issue] = {}
+        self.assessments: dict[str, Assessment] = {}
+        self.provenance: dict[str, Provenance] = {}
+        self.search_attempts: dict[str, SearchAttempt] = {}
+        self.legal_principles: dict[str, LegalPrinciple] = {}
+        self.rule_specs: dict[tuple[str, str], ExecutableRuleSpec] = {}
+        self.rule_activations: dict[str, RuleActivation] = {}
+        self.dependency_edges: dict[str, DependencyEdge] = {}
 
     def find_document_duplicate(
         self,
         file_hash: str,
         gmail_message_id: str | None = None,
         internet_message_id: str | None = None,
+        tenant_id: str | None = None,
+        matter_id: str | None = None,
     ) -> Document | None:
         for document in self.documents.values():
+            if tenant_id is not None and document.tenant_id != tenant_id:
+                continue
+            if matter_id is not None and document.matter_id != matter_id:
+                continue
             if document.file_hash == file_hash:
                 return document
             if gmail_message_id and document.gmail_message_id == gmail_message_id:

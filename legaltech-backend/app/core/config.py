@@ -33,6 +33,8 @@ class Settings(BaseModel):
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
     openai_timeout_seconds: int = _env_int("OPENAI_TIMEOUT_SECONDS", 20)
     ai_extraction_max_chars: int = _env_int("AI_EXTRACTION_MAX_CHARS", 12000)
+    database_url: str | None = os.getenv("DATABASE_URL") or None
+    database_connect_timeout_seconds: int = _env_int("DATABASE_CONNECT_TIMEOUT_SECONDS", 3)
 
 
 @lru_cache

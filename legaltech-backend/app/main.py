@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import change_events, documents, jobs, matters, reviews, risks
+from app.api import change_events, documents, issues, jobs, matters, reviews, risks
+from app.database.connection import database_status
 
 app = FastAPI(title="Evidence Risk Engine", version="0.1.0")
 
@@ -19,8 +20,9 @@ app.include_router(change_events.router, prefix="/api/change-events", tags=["cha
 app.include_router(risks.router, prefix="/api/risks", tags=["risks"])
 app.include_router(reviews.router, prefix="/api/reviews", tags=["reviews"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["jobs"])
+app.include_router(issues.router, prefix="/api/issues", tags=["issues"])
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "database": database_status()}

@@ -7,7 +7,7 @@ import re
 
 
 def extract_atomic_signals(document: Document, parsed_content: ParsedContent) -> list[ExtractedSignal]:
-    candidates = ai_candidates(parsed_content.text) or _heuristic_candidates(parsed_content.text)
+    candidates = _merge_candidates(ai_candidates(parsed_content.text), _heuristic_candidates(parsed_content.text))
     return [
         ExtractedSignal(
             signal_type=candidate.signal_type,
@@ -25,6 +25,46 @@ def extract_atomic_signals(document: Document, parsed_content: ParsedContent) ->
 def _heuristic_candidates(text: str) -> list[SignalCandidate]:
     lowered = text.lower()
     candidates: list[SignalCandidate] = []
+
+    if any(phrase in lowered for phrase in ["extra work", "additional work", "changed scope", "change in scope"]):
+        candidates.append(
+            SignalCandidate(
+                signal_type="extra_work_detected",
+                value=True,
+                source_text=_snippet(text, ["extra work", "additional work", "changed scope", "change in scope"]),
+                confidence=0.74,
+            )
+        )
+
+    if any(phrase in lowered for phrase in ["additional cost", "additional costs", "extra compensation", "revised price"]):
+        candidates.append(
+            SignalCandidate(
+                signal_type="cost_communication",
+                value=True,
+                source_text=_snippet(text, ["additional cost", "additional costs", "extra compensation", "revised price"]),
+                confidence=0.74,
+            )
+        )
+
+    if any(phrase in lowered for phrase in ["never approved", "not approved", "no approval", "without approval"]):
+        candidates.append(
+            SignalCandidate(
+                signal_type="approval_denied",
+                value=True,
+                source_text=_snippet(text, ["never approved", "not approved", "no approval", "without approval"]),
+                confidence=0.78,
+            )
+        )
+
+    if "scheduling only" in lowered or "not additional cost" in lowered:
+        candidates.append(
+            SignalCandidate(
+                signal_type="scheduling_only",
+                value=True,
+                source_text=_snippet(text, ["scheduling only", "not additional cost"]),
+                confidence=0.78,
+            )
+        )
 
     if any(phrase in lowered for phrase in ["proceed", "keep the crew moving", "continue work"]):
         source_text = _snippet(text, ["proceed", "keep the crew moving", "continue work"])
@@ -139,15 +179,28 @@ def _heuristic_candidates(text: str) -> list[SignalCandidate]:
             )
         )
 
-    if any(phrase in lowered for phrase in ["written notice", "notice of change", "notice was provided"]):
-        candidates.append(
-            SignalCandidate(
-                signal_type="written_notice",
-                value=True,
-                source_text=_snippet(text, ["written notice", "notice of change", "notice was provided"]),
-                confidence=0.68,
+    if any(phrase in lowered for phrase in [
+        "written notice", "notice of change", "notice was provided",
+        "no notice was sent", "no written notice", "notice was not sent", "never sent notice",
+    ]):
+        if _negative_notice(lowered):
+            candidates.append(
+                SignalCandidate(
+                    signal_type="notice_denied",
+                    value=True,
+                    source_text=_snippet(text, ["no notice was sent", "no written notice", "notice was not sent", "never sent notice"]),
+                    confidence=0.8,
+                )
             )
-        )
+        else:
+            candidates.append(
+                SignalCandidate(
+                    signal_type="written_notice",
+                    value=True,
+                    source_text=_snippet(text, ["written notice", "notice of change", "notice was provided"]),
+                    confidence=0.68,
+                )
+            )
 
     if "see attached" in lowered or "attached" in lowered:
         if any(phrase in lowered for phrase in ["no attachment", "missing attachment", "attachment missing"]):
@@ -172,6 +225,25 @@ def _heuristic_candidates(text: str) -> list[SignalCandidate]:
     candidates.extend(_amount_candidates(text))
     candidates.extend(_identifier_candidates(text))
     return candidates
+
+
+def _merge_candidates(*groups: list[SignalCandidate]) -> list[SignalCandidate]:
+    merged: list[SignalCandidate] = []
+    seen: set[tuple[str, str]] = set()
+    for group in groups:
+        for candidate in group:
+            key = (candidate.signal_type, candidate.source_text.strip().lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(candidate)
+    return merged
+
+
+def _negative_notice(lowered_text: str) -> bool:
+    return any(phrase in lowered_text for phrase in (
+        "no notice was sent", "no written notice", "notice was not sent", "never sent notice",
+    ))
 
 
 def _amount_candidates(text: str) -> list[SignalCandidate]:

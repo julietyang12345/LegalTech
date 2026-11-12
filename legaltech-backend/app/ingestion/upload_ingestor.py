@@ -18,9 +18,13 @@ def ingest_upload(
     subject: str | None = None,
     gmail_message_id: str | None = None,
     internet_message_id: str | None = None,
+    tenant_id: str | None = None,
 ) -> tuple[Document, ProcessingJob | None]:
     file_hash = sha256_bytes(content)
-    existing = find_existing_document(file_hash, gmail_message_id, internet_message_id)
+    existing = find_existing_document(
+        file_hash, gmail_message_id, internet_message_id,
+        tenant_id=tenant_id, matter_id=matter_id,
+    )
     if existing:
         return existing, None
 
@@ -32,12 +36,14 @@ def ingest_upload(
         storage_path="",
         gmail_message_id=gmail_message_id,
         internet_message_id=internet_message_id,
-        metadata={"original_filename": filename},
+        metadata={"original_filename": Path(filename).name, "matter_id": matter_id},
+        tenant_id=tenant_id,
+        matter_id=matter_id,
     )
 
     document_dir = STORAGE_ROOT / document.id
     document_dir.mkdir(parents=True, exist_ok=True)
-    storage_path = document_dir / filename
+    storage_path = document_dir / Path(filename).name
     storage_path.write_bytes(content)
     document.storage_path = str(storage_path)
 
@@ -47,6 +53,7 @@ def ingest_upload(
             event_type="document_received",
             matter_id=matter_id,
             document_id=document.id,
+            tenant_id=tenant_id,
         )
     )
     job = store.enqueue_job(ProcessingJob(document_id=document.id))

@@ -8,6 +8,7 @@ CREATE TABLE matters (
     id text PRIMARY KEY,
     organization_id text REFERENCES organizations(id),
     name text NOT NULL,
+    tenant_id text NOT NULL DEFAULT 'unassigned',
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -24,6 +25,7 @@ CREATE TABLE contracts (
     project_id text NOT NULL REFERENCES projects(id),
     contract_number text,
     title text NOT NULL,
+    issue_type text NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -46,9 +48,11 @@ CREATE TABLE documents (
     gmail_message_id text,
     internet_message_id text,
     metadata jsonb NOT NULL DEFAULT '{}',
-    UNIQUE (file_hash),
-    UNIQUE (gmail_message_id),
-    UNIQUE (internet_message_id)
+    tenant_id text NOT NULL DEFAULT 'unassigned',
+    matter_id text REFERENCES matters(id),
+    UNIQUE (tenant_id, matter_id, file_hash),
+    UNIQUE (tenant_id, matter_id, gmail_message_id),
+    UNIQUE (tenant_id, matter_id, internet_message_id)
 );
 
 CREATE TABLE document_attachments (
@@ -77,6 +81,7 @@ CREATE TABLE events (
     document_id text NOT NULL REFERENCES documents(id),
     occurred_at timestamptz NOT NULL DEFAULT now(),
     metadata jsonb NOT NULL DEFAULT '{}'
+    ,tenant_id text NOT NULL DEFAULT 'unassigned'
 );
 
 CREATE TABLE extracted_signals (
@@ -89,6 +94,8 @@ CREATE TABLE extracted_signals (
     source_text text NOT NULL,
     source_text_hash text NOT NULL,
     confidence numeric(4,3) NOT NULL,
+    tenant_id text NOT NULL DEFAULT 'unassigned',
+    provenance_id text,
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (source_document_id, signal_type, source_text_hash)
 );
@@ -232,6 +239,247 @@ CREATE TABLE audit_logs (
     metadata jsonb NOT NULL DEFAULT '{}',
     created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Domain contracts for the Notice / Change Order vertical slice.
+CREATE TABLE analysis_runs (
+    id text PRIMARY KEY,
+    tenant_id text NOT NULL,
+    matter_id text NOT NULL REFERENCES matters(id),
+    pipeline_version text NOT NULL,
+    status text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    completed_at timestamptz
+);
+
+CREATE TABLE source_spans (
+    id text PRIMARY KEY,
+    tenant_id text NOT NULL,
+    document_id text NOT NULL REFERENCES documents(id),
+    page_number integer,
+    section_identifier text,
+    start_offset integer,
+    end_offset integer,
+    text_content text NOT NULL
+);
+
+CREATE TABLE provenances (
+    id text PRIMARY KEY,
+    tenant_id text NOT NULL,
+    matter_id text NOT NULL REFERENCES matters(id),
+    analysis_run_id text NOT NULL REFERENCES analysis_runs(id),
+    source_span_ids jsonb NOT NULL DEFAULT '[]',
+    source_document_ids jsonb NOT NULL DEFAULT '[]',
+    pipeline_version text NOT NULL,
+    model_id text,
+    prompt_version text,
+    method text NOT NULL,
+    review_status text NOT NULL DEFAULT 'PENDING',
+    rationale text,
+    generated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE obligations (
+    id text PRIMARY KEY,
+    tenant_id text NOT NULL,
+    matter_id text NOT NULL REFERENCES matters(id),
+    clause_id text NOT NULL,
+    obligation_type text NOT NULL,
+    trigger_event text,
+    deadline_value integer,
+    deadline_unit text,
+    required_form text,
+    recipient text,
+    source_span_id text NOT NULL REFERENCES source_spans(id),
+    version text NOT NULL,
+    ambiguity_notes text,
+    provenance_id text NOT NULL REFERENCES provenances(id)
+);
+
+CREATE TABLE evidence_assertions (
+    id text PRIMARY KEY,
+    tenant_id text NOT NULL,
+    matter_id text NOT NULL REFERENCES matters(id),
+    source_document_id text NOT NULL REFERENCES documents(id),
+    source_span_id text REFERENCES source_spans(id),
+    assertion_type text NOT NULL,
+    statement text NOT NULL,
+    value jsonb,
+    actor text,
+    asserted_at timestamptz,
+    verified boolean NOT NULL DEFAULT false,
+    provenance_id text NOT NULL REFERENCES provenances(id)
+);
+
+CREATE TABLE issue_instances (
+    id text PRIMARY KEY,
+    tenant_id text NOT NULL,
+    matter_id text NOT NULL REFERENCES matters(id),
+    issue_type text NOT NULL,
+    obligation_ids jsonb NOT NULL DEFAULT '[]',
+    evidence_ids jsonb NOT NULL DEFAULT '[]',
+    rule_version_ids jsonb NOT NULL DEFAULT '[]',
+    rule_ids jsonb NOT NULL DEFAULT '[]',
+    workflow_status text NOT NULL,
+    evidence_status text NOT NULL,
+    current_assessment_id text,
+    title text NOT NULL,
+    summary text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE assessments (
+    id text PRIMARY KEY,
+    tenant_id text NOT NULL,
+    matter_id text NOT NULL REFERENCES matters(id),
+    issue_id text NOT NULL REFERENCES issue_instances(id),
+    assessment_status text NOT NULL,
+    evidence_status text NOT NULL,
+    conclusion text NOT NULL,
+    evidence_ids jsonb NOT NULL DEFAULT '[]',
+    obligation_ids jsonb NOT NULL DEFAULT '[]',
+    rule_version_ids jsonb NOT NULL DEFAULT '[]',
+    rule_ids jsonb NOT NULL DEFAULT '[]',
+    provenance_id text NOT NULL REFERENCES provenances(id),
+    supersedes_assessment_id text REFERENCES assessments(id),
+    is_current boolean NOT NULL DEFAULT true,
+    stale_reason text,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE search_attempts (
+    id text PRIMARY KEY,
+    tenant_id text NOT NULL,
+    matter_id text NOT NULL REFERENCES matters(id),
+    issue_id text REFERENCES issue_instances(id),
+    query text NOT NULL,
+    scope jsonb NOT NULL DEFAULT '{}',
+    filters jsonb NOT NULL DEFAULT '{}',
+    corpus_version text NOT NULL,
+    retrieval_strategy text NOT NULL,
+    result_document_ids jsonb NOT NULL DEFAULT '[]',
+    result_count integer NOT NULL DEFAULT 0,
+    analysis_run_id text NOT NULL REFERENCES analysis_runs(id),
+    completed_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE legal_principles (
+    id text PRIMARY KEY,
+    tenant_id text NOT NULL,
+    matter_id text NOT NULL REFERENCES matters(id),
+    title text NOT NULL,
+    statement text NOT NULL,
+    jurisdiction text NOT NULL,
+    source_document_ids jsonb NOT NULL DEFAULT '[]',
+    source_span_ids jsonb NOT NULL DEFAULT '[]',
+    version text NOT NULL,
+    approval_status text NOT NULL,
+    provenance_id text NOT NULL REFERENCES provenances(id),
+    UNIQUE (id, version)
+);
+
+CREATE TABLE executable_rules (
+    id text NOT NULL,
+    version text NOT NULL,
+    tenant_id text NOT NULL,
+    matter_id text NOT NULL REFERENCES matters(id),
+    title text NOT NULL,
+    issue_type text NOT NULL,
+    legal_principle_id text NOT NULL REFERENCES legal_principles(id),
+    approval_status text NOT NULL,
+    applicability jsonb NOT NULL,
+    discovery_triggers jsonb NOT NULL DEFAULT '[]',
+    assessment_preconditions jsonb NOT NULL DEFAULT '[]',
+    exceptions_to_check jsonb NOT NULL DEFAULT '[]',
+    review_policy text NOT NULL,
+    provenance_id text NOT NULL REFERENCES provenances(id),
+    PRIMARY KEY (id, version)
+);
+
+CREATE TABLE rule_requirements (
+    id text NOT NULL,
+    rule_id text NOT NULL,
+    rule_version text NOT NULL,
+    label text NOT NULL,
+    evaluation text NOT NULL,
+    evidence_queries jsonb NOT NULL DEFAULT '[]',
+    supporting_assertion_types jsonb NOT NULL DEFAULT '[]',
+    contrary_assertion_types jsonb NOT NULL DEFAULT '[]',
+    deterministic_fields jsonb NOT NULL DEFAULT '[]',
+    lawyer_review_required boolean NOT NULL DEFAULT false,
+    PRIMARY KEY (id, rule_id, rule_version),
+    FOREIGN KEY (rule_id, rule_version) REFERENCES executable_rules(id, version)
+);
+
+CREATE TABLE rule_activations (
+    id text PRIMARY KEY,
+    tenant_id text NOT NULL,
+    matter_id text NOT NULL REFERENCES matters(id),
+    rule_id text NOT NULL,
+    rule_version text NOT NULL,
+    status text NOT NULL,
+    trigger_ids jsonb NOT NULL DEFAULT '[]',
+    applicability_reason text NOT NULL,
+    requires_lawyer_review boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    FOREIGN KEY (rule_id, rule_version) REFERENCES executable_rules(id, version)
+);
+
+CREATE TABLE requirement_checks (
+    id text PRIMARY KEY,
+    tenant_id text NOT NULL,
+    matter_id text NOT NULL REFERENCES matters(id),
+    assessment_id text,
+    requirement_id text NOT NULL,
+    result text NOT NULL,
+    evidence_status text NOT NULL,
+    supporting_evidence_ids jsonb NOT NULL DEFAULT '[]',
+    contrary_evidence_ids jsonb NOT NULL DEFAULT '[]',
+    search_attempt_ids jsonb NOT NULL DEFAULT '[]',
+    explanation text NOT NULL,
+    requires_lawyer_review boolean NOT NULL DEFAULT false,
+    provenance_id text NOT NULL REFERENCES provenances(id)
+);
+
+CREATE TABLE dependency_edges (
+    id text PRIMARY KEY,
+    tenant_id text NOT NULL,
+    matter_id text NOT NULL REFERENCES matters(id),
+    upstream_type text NOT NULL,
+    upstream_id text NOT NULL,
+    downstream_type text NOT NULL,
+    downstream_id text NOT NULL,
+    relation_type text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE case_rule_candidates (
+    id text PRIMARY KEY,
+    tenant_id text NOT NULL,
+    matter_id text NOT NULL REFERENCES matters(id),
+    case_document_id text NOT NULL REFERENCES documents(id),
+    title text NOT NULL,
+    extracted_facts jsonb NOT NULL DEFAULT '[]',
+    court_findings jsonb NOT NULL DEFAULT '[]',
+    candidate_principle text NOT NULL,
+    applicability_limits jsonb NOT NULL DEFAULT '[]',
+    source_span_ids jsonb NOT NULL DEFAULT '[]',
+    review_status text NOT NULL DEFAULT 'PENDING',
+    requires_lawyer_review boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Defense in depth: application code must set app.tenant_id per transaction.
+-- Rows without a tenant are intentionally not visible through tenant-scoped DB roles.
+DO $$
+DECLARE table_name text;
+BEGIN
+  FOREACH table_name IN ARRAY ARRAY['matters','documents','events','extracted_signals','analysis_runs','source_spans','provenances','obligations','evidence_assertions','issue_instances','assessments','search_attempts','legal_principles','executable_rules','rule_activations','requirement_checks','dependency_edges','case_rule_candidates']
+  LOOP
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', table_name);
+    EXECUTE format('CREATE POLICY %I_tenant_isolation ON %I USING (tenant_id = current_setting(''app.tenant_id'', true)) WITH CHECK (tenant_id = current_setting(''app.tenant_id'', true))', table_name, table_name);
+  END LOOP;
+END $$;
 
 CREATE INDEX idx_events_matter_time ON events (matter_id, occurred_at);
 CREATE INDEX idx_signals_change_event_type ON extracted_signals (change_event_id, signal_type);

@@ -35,6 +35,17 @@ def resolve_change_event(project_id: str | None, parsed_content: ParsedContent) 
             scored.append((min(score, 0.99), reasons, change_event.id))
 
     if not scored:
+        candidates = [
+            change_event for change_event in store.change_events.values()
+            if change_event.project_id == project_id and change_event.status == "active"
+        ]
+        if len(candidates) == 1:
+            return ChangeEventMatch(
+                change_event_id=candidates[0].id,
+                confidence=0.1,
+                reasons=["single active project event candidate"],
+                status="needs_review",
+            )
         return ChangeEventMatch(change_event_id=None, confidence=0.0, status="unlinked")
 
     confidence, reasons, change_event_id = sorted(scored, key=lambda item: item[0], reverse=True)[0]

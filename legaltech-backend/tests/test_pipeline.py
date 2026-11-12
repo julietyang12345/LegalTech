@@ -3,6 +3,7 @@ from app.jobs.worker import run_once
 from app.matching.change_event_matcher import resolve_change_event
 from app.models import ChangeEvent, MatchFeedback, Matter, ProcessingJob, Project
 from app.models.domain import DocumentType, JobStatus, Severity
+from app.domain_contracts.schemas import Obligation, Provenance
 from app.parsers.base import ParsedContent
 from app.repositories.memory import store
 
@@ -22,6 +23,16 @@ def clear_store() -> None:
     store.reviews.clear()
     store.match_feedback.clear()
     store.processed_documents.clear()
+    store.obligations.clear()
+    store.assertions.clear()
+    store.issues.clear()
+    store.assessments.clear()
+    store.provenance.clear()
+    store.search_attempts.clear()
+    store.legal_principles.clear()
+    store.rule_specs.clear()
+    store.rule_activations.clear()
+    store.dependency_edges.clear()
 
 
 def test_pipeline_creates_authorization_risk_ticket() -> None:
@@ -253,3 +264,35 @@ def test_waiting_for_review_job_and_review_creation_are_idempotent() -> None:
     assert duplicate_job.id == job.id
     assert run_once() is False
     assert len(store.reviews) == 1
+
+
+def test_extra_work_rule_pipeline_searches_cost_evidence_and_requires_review() -> None:
+    clear_store()
+    matter = Matter(name="Rule Matter", organization_id="TENANT-1", tenant_id="TENANT-1")
+    store.matters[matter.id] = matter
+    project = Project(matter_id=matter.id, name="Rule Project", project_number="P-910")
+    store.projects[project.id] = project
+    change_event = ChangeEvent(project_id=project.id, title="Steel support extra work")
+    store.change_events[change_event.id] = change_event
+    provenance = Provenance(tenant_id="TENANT-1", matter_id=matter.id, analysis_run_id="SEED", pipeline_version="test")
+    store.obligations["OBL-RULE"] = Obligation(
+        tenant_id="TENANT-1", matter_id=matter.id, clause_id="CLAUSE-RULE",
+        obligation_type="change_order_approval", source_span_id="SPAN-RULE", provenance=provenance,
+    )
+
+    for content, filename in [
+        (b"P-910 additional work is required for steel supports.", "extra.txt"),
+        (b"P-910 Please proceed with the additional work.", "proceed.txt"),
+        (b"P-910 Additional cost: $25,000.", "invoice.txt"),
+    ]:
+        _document, job = ingest_upload(content, filename, DocumentType.email, matter.id, tenant_id="TENANT-1")
+        assert job is not None
+        assert run_once() is True
+
+    issues = [issue for issue in store.issues.values() if "EXTRA_WORK_COST_COMMUNICATION" in issue.rule_ids]
+    assert issues
+    assessment = store.assessments[issues[0].current_assessment_id]
+    checks = {check.requirement_id: check for check in assessment.requirement_checks}
+    assert checks["cost_impact_communicated"].supporting_evidence_ids
+    assert checks["owner_approved_additional_cost"].result.value == "INSUFFICIENT_INFORMATION"
+    assert any(attempt.issue_id == issues[0].id for attempt in store.search_attempts.values())
