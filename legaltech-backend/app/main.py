@@ -1,8 +1,16 @@
+import logging
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import change_events, documents, issues, jobs, matters, reviews, risks
 from app.database.connection import database_status
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
 
 app = FastAPI(title="Evidence Risk Engine", version="0.1.0")
 
