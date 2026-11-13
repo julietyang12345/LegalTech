@@ -38,6 +38,20 @@ class EvidenceStatus(str, Enum):
     reconstructable = "RECONSTRUCTABLE"
 
 
+class EvidenceRole(str, Enum):
+    """How an assertion participates in factual requirement evaluation."""
+
+    project_fact = "PROJECT_FACT"
+    normative_rule = "NORMATIVE_RULE"
+    context_only = "CONTEXT_ONLY"
+
+
+class EvidenceRelationType(str, Enum):
+    supports = "SUPPORTS"
+    contradicts = "CONTRADICTS"
+    context_only = "CONTEXT_ONLY"
+
+
 class AssessmentStatus(str, Enum):
     satisfied = "REQUIREMENT_SATISFIED"
     not_satisfied = "REQUIREMENT_NOT_SATISFIED"
@@ -144,9 +158,22 @@ class RuleActivation(BaseModel):
     requires_lawyer_review: bool = True
 
 
+class ExtraWork(ContractModel):
+    id: str = Field(default_factory=lambda: new_id("EW"))
+    external_id: str
+    title: str | None = None
+    description: str | None = None
+    proposed_amount: float | None = None
+    currency: str | None = None
+    status: str = "identified"
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class RequirementCheck(BaseModel):
     id: str = Field(default_factory=lambda: new_id("REQCHECK"))
     requirement_id: str
+    extra_work_id: str | None = None
     result: AssessmentStatus
     evidence_status: EvidenceStatus
     supporting_evidence_ids: list[str] = Field(default_factory=list)
@@ -155,6 +182,15 @@ class RequirementCheck(BaseModel):
     explanation: str
     requires_lawyer_review: bool = False
     provenance: Provenance
+
+
+class EvidenceLink(ContractModel):
+    id: str = Field(default_factory=lambda: new_id("ELINK"))
+    extra_work_id: str | None = None
+    requirement_check_id: str
+    assertion_id: str
+    relation_type: EvidenceRelationType
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class DependencyEdge(ContractModel):
@@ -204,6 +240,8 @@ class Obligation(ContractModel):
 class EvidenceAssertion(ContractModel):
     id: str = Field(default_factory=lambda: new_id("ASSERT"))
     source_document_id: str
+    extra_work_id: str | None = None
+    evidence_role: EvidenceRole = EvidenceRole.project_fact
     source_span_id: str | None = None
     assertion_type: str
     statement: str
@@ -235,6 +273,7 @@ class Issue(ContractModel):
 class Assessment(ContractModel):
     id: str = Field(default_factory=lambda: new_id("ASSESS"))
     issue_id: str
+    extra_work_id: str | None = None
     status: AssessmentStatus
     evidence_status: EvidenceStatus
     conclusion: str

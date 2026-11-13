@@ -16,6 +16,7 @@ from app.domain_contracts.schemas import (
     WorkflowStatus,
 )
 from app.analysis.requirement_evaluator import evaluate_requirements
+from app.analysis.evidence_relationships import assertion_scope
 from app.analysis.dependency_graph import record_issue_dependencies
 from app.analysis.text_semantics import is_negative_statement
 from app.repositories.memory import store
@@ -62,6 +63,7 @@ def reconcile_issue(
         tenant_id=issue.tenant_id,
         matter_id=issue.matter_id,
         issue_id=issue.id,
+        extra_work_id=issue.extra_work_id or next((assertion_scope(assertion) for assertion in relevant if assertion_scope(assertion)), None),
         status=status,
         evidence_status=evidence_status,
         conclusion=conclusion,

@@ -18,8 +18,10 @@ from app.models import (
 from app.domain_contracts.schemas import (
     Assessment,
     DependencyEdge,
+    EvidenceLink,
     EvidenceAssertion,
     ExecutableRuleSpec,
+    ExtraWork,
     Issue,
     LegalPrinciple,
     Obligation,
@@ -47,7 +49,9 @@ class InMemoryStore:
         self.match_feedback: dict[str, MatchFeedback] = {}
         self.processed_documents: set[tuple[str, str]] = set()
         self.obligations: dict[str, Obligation] = {}
+        self.extra_works: dict[str, ExtraWork] = {}
         self.assertions: dict[str, EvidenceAssertion] = {}
+        self.evidence_links: dict[str, EvidenceLink] = {}
         self.issues: dict[str, Issue] = {}
         self.assessments: dict[str, Assessment] = {}
         self.provenance: dict[str, Provenance] = {}

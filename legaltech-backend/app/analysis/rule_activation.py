@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 
-from app.domain_contracts.schemas import EvidenceAssertion, ExecutableRuleSpec, RuleActivation
+from app.domain_contracts.schemas import EvidenceAssertion, EvidenceRole, ExecutableRuleSpec, RuleActivation
 from app.repositories.memory import store
 
 
@@ -21,7 +21,8 @@ def activate_rules(
     for rule in rules:
         trigger_ids = [
             assertion.id for assertion in assertions
-            if _matches_trigger(assertion, rule.discovery_triggers)
+            if assertion.evidence_role == EvidenceRole.project_fact
+            and _matches_trigger(assertion, rule.discovery_triggers)
         ]
         if not trigger_ids:
             continue

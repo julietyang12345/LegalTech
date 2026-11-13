@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from app.domain_contracts.schemas import Issue, Provenance, SearchAttempt, WorkflowStatus
+from app.domain_contracts.schemas import EvidenceLink, EvidenceRelationType, Issue, Provenance, SearchAttempt, WorkflowStatus
 from app.domain_contracts.state_machine import transition
 from app.repositories.memory import store
 
@@ -27,6 +27,35 @@ def record_search_attempt(
     )
     store.search_attempts[attempt.id] = attempt
     return attempt
+
+
+def record_evidence_link(
+    *, tenant_id: str, matter_id: str, requirement_check_id: str,
+    assertion_id: str, relation_type: EvidenceRelationType,
+    extra_work_id: str | None = None,
+) -> EvidenceLink:
+    """Persist an explicit assertion-to-requirement relationship."""
+    existing = next(
+        (
+            link for link in store.evidence_links.values()
+            if link.requirement_check_id == requirement_check_id
+            and link.assertion_id == assertion_id
+            and link.relation_type == relation_type
+        ),
+        None,
+    )
+    if existing:
+        return existing
+    link = EvidenceLink(
+        tenant_id=tenant_id,
+        matter_id=matter_id,
+        extra_work_id=extra_work_id,
+        requirement_check_id=requirement_check_id,
+        assertion_id=assertion_id,
+        relation_type=relation_type,
+    )
+    store.evidence_links[link.id] = link
+    return link
 
 
 def transition_issue(issue_id: str, target: WorkflowStatus) -> Issue:

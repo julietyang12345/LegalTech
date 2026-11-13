@@ -1,7 +1,8 @@
 from collections.abc import Iterable
 
 from app.domain_contracts.recording import record_search_attempt
-from app.domain_contracts.schemas import EvidenceAssertion, ExecutableRuleSpec, Issue, SearchAttempt
+from app.domain_contracts.schemas import EvidenceAssertion, EvidenceRole, ExecutableRuleSpec, Issue, SearchAttempt
+from app.analysis.evidence_relationships import assertion_event_scope, assertion_scope
 
 
 def retrieve_requirement_evidence(
@@ -42,14 +43,18 @@ def retrieve_requirement_evidence(
 def _in_issue_scope(issue: Issue, assertion: EvidenceAssertion) -> bool:
     if assertion.tenant_id != issue.tenant_id or assertion.matter_id != issue.matter_id:
         return False
-    assertion_scope = None
-    if isinstance(assertion.value, dict):
-        assertion_scope = assertion.value.get("extra_work_id") or assertion.value.get("event_id") or assertion.value.get("change_event_id")
-    if issue.extra_work_id and assertion_scope:
-        return str(assertion_scope) == issue.extra_work_id
-    if issue.issue_scope and not assertion_scope:
-        return assertion.source_document_id == issue.issue_scope
-    return True
+    scope = assertion_scope(assertion)
+    if issue.extra_work_id:
+        # An EW-scoped issue must not silently absorb unscoped contract text or
+        # evidence from another EW. Normative text is retained separately as
+        # context, never as a project fact for this issue.
+        return scope == issue.extra_work_id
+    if issue.issue_scope:
+        return (
+            assertion_event_scope(assertion) == issue.issue_scope
+            or assertion.source_document_id == issue.issue_scope
+        ) and assertion.evidence_role == EvidenceRole.project_fact
+    return assertion.evidence_role == EvidenceRole.project_fact
 
 
 def _matches_requirement(assertion: EvidenceAssertion, queries: list[str]) -> bool:

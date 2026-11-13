@@ -278,6 +278,21 @@ CREATE TABLE provenances (
     generated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE extra_works (
+    id text PRIMARY KEY,
+    tenant_id text NOT NULL,
+    matter_id text NOT NULL REFERENCES matters(id),
+    external_id text NOT NULL,
+    title text,
+    description text,
+    proposed_amount numeric,
+    currency text,
+    status text NOT NULL DEFAULT 'identified',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, matter_id, external_id)
+);
+
 CREATE TABLE obligations (
     id text PRIMARY KEY,
     tenant_id text NOT NULL,
@@ -300,6 +315,9 @@ CREATE TABLE evidence_assertions (
     tenant_id text NOT NULL,
     matter_id text NOT NULL REFERENCES matters(id),
     source_document_id text NOT NULL REFERENCES documents(id),
+    extra_work_id text REFERENCES extra_works(id),
+    evidence_role text NOT NULL DEFAULT 'PROJECT_FACT'
+        CHECK (evidence_role IN ('PROJECT_FACT', 'NORMATIVE_RULE', 'CONTEXT_ONLY')),
     source_span_id text REFERENCES source_spans(id),
     assertion_type text NOT NULL,
     statement text NOT NULL,
@@ -319,6 +337,7 @@ CREATE TABLE issue_instances (
     evidence_ids jsonb NOT NULL DEFAULT '[]',
     rule_version_ids jsonb NOT NULL DEFAULT '[]',
     rule_ids jsonb NOT NULL DEFAULT '[]',
+    extra_work_id text REFERENCES extra_works(id),
     workflow_status text NOT NULL,
     evidence_status text NOT NULL,
     current_assessment_id text,
@@ -333,6 +352,7 @@ CREATE TABLE assessments (
     tenant_id text NOT NULL,
     matter_id text NOT NULL REFERENCES matters(id),
     issue_id text NOT NULL REFERENCES issue_instances(id),
+    extra_work_id text REFERENCES extra_works(id),
     assessment_status text NOT NULL,
     evidence_status text NOT NULL,
     conclusion text NOT NULL,
@@ -430,6 +450,7 @@ CREATE TABLE requirement_checks (
     tenant_id text NOT NULL,
     matter_id text NOT NULL REFERENCES matters(id),
     assessment_id text,
+    extra_work_id text REFERENCES extra_works(id),
     requirement_id text NOT NULL,
     result text NOT NULL,
     evidence_status text NOT NULL,
@@ -439,6 +460,19 @@ CREATE TABLE requirement_checks (
     explanation text NOT NULL,
     requires_lawyer_review boolean NOT NULL DEFAULT false,
     provenance_id text NOT NULL REFERENCES provenances(id)
+);
+
+CREATE TABLE evidence_links (
+    id text PRIMARY KEY,
+    tenant_id text NOT NULL,
+    matter_id text NOT NULL REFERENCES matters(id),
+    extra_work_id text REFERENCES extra_works(id),
+    requirement_check_id text NOT NULL REFERENCES requirement_checks(id),
+    assertion_id text NOT NULL REFERENCES evidence_assertions(id),
+    relation_type text NOT NULL
+        CHECK (relation_type IN ('SUPPORTS', 'CONTRADICTS', 'CONTEXT_ONLY')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (requirement_check_id, assertion_id, relation_type)
 );
 
 CREATE TABLE dependency_edges (

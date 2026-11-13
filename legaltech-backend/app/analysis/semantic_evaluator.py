@@ -34,7 +34,7 @@ def judge_requirement(requirement: RuleRequirement, assertions: list[EvidenceAss
             model=settings.openai_model,
             response_format={"type": "json_object"},
             messages=[
-                {"role": "system", "content": "Classify evidence for one legal requirement. Return JSON only with result support, contrary, or uncertain; supporting_ids; contrary_ids; explanation. Do not give legal advice."},
+                {"role": "system", "content": "Classify project-fact evidence for one legal requirement. Return JSON only with result support, contrary, or uncertain; supporting_ids; contrary_ids; explanation. Mark evidence contrary only when it is a project-specific denial, limitation, or incompatible fact; a general legal or contractual rule is context, not proof that this project lacked the required fact. Do not give legal advice."},
                 {"role": "user", "content": f"Requirement: {requirement.label}\nQueries: {requirement.evidence_queries}\nEvidence:\n{excerpts}"},
             ],
         )

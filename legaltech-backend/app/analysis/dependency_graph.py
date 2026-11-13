@@ -17,6 +17,17 @@ def record_issue_dependencies(issue: Issue, assessment: Assessment, rule: Execut
     return edges
 
 
+def determine_assertion_affected_issues(assertion_ids: set[str]) -> set[str]:
+    """Return issues downstream of newly added or corrected assertions."""
+    return {
+        edge.downstream_id
+        for edge in store.dependency_edges.values()
+        if edge.upstream_type == "evidence_assertion"
+        and edge.upstream_id in assertion_ids
+        and edge.downstream_type == "issue"
+    }
+
+
 def _edge(issue: Issue, upstream_type: str, upstream_id: str, downstream_type: str, downstream_id: str, relation_type: str) -> DependencyEdge:
     return DependencyEdge(
         tenant_id=issue.tenant_id,

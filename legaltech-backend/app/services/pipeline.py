@@ -3,6 +3,8 @@ import os
 from contextlib import contextmanager
 from time import perf_counter
 
+from app.analysis.dependency_graph import determine_assertion_affected_issues
+from app.analysis.evidence_issue_matching import match_new_evidence
 from app.decision_engine.dependencies import determine_affected_nodes
 from app.decision_engine.evaluator import recompute_nodes
 from app.extraction.signal_extractor import extract_atomic_signals
@@ -17,7 +19,8 @@ from app.risks.ticket_manager import update_risk_tickets
 from app.validation.extraction_validator import validate_signals
 from app.validation.cross_document_reconciler import reconcile_cross_document_signals
 from app.domain_contracts.recording import record_provenance
-from app.domain_contracts.schemas import EvidenceAssertion, Provenance
+from app.domain_contracts.schemas import EvidenceAssertion, ExtraWork, Provenance
+from app.analysis.evidence_relationships import evidence_role_for_document, infer_extra_work_id
 from app.analysis.issue_discovery import discover_issues
 from app.analysis.reconciliation import reconcile_issue
 from app.analysis.rule_activation import activate_rules
@@ -78,6 +81,8 @@ def process_document(document_id: str) -> str:
         )
 
     analysis_run_id = f"RUN-{stable_text_hash(document_id + PIPELINE_VERSION)[:12].upper()}"
+    new_assertion_ids: set[str] = set()
+    new_extra_work_ids: set[str] = set()
     with _detector_step("extract_atomic_signals", document_id=document_id):
         extracted_signals = extract_atomic_signals(document, parsed_content)
     logger.info("[detector] signals extracted document_id=%s count=%d", document_id, len(extracted_signals))
@@ -102,15 +107,32 @@ def process_document(document_id: str) -> str:
         )
         signal.provenance_id = provenance.id
         assertion_id = f"ASSERT-{signal.id}"
-        assertion_value = signal.value if isinstance(signal.value, dict) else {
+        extra_work_id = infer_extra_work_id(signal.value, signal.source_text)
+        if extra_work_id and not any(item.external_id == extra_work_id for item in store.extra_works.values()):
+            extra_work = ExtraWork(
+                id=extra_work_id,
+                tenant_id=signal.tenant_id,
+                matter_id=document.metadata.get("matter_id") or "unassigned",
+                external_id=extra_work_id,
+                title=signal.source_text[:160],
+            )
+            store.extra_works[extra_work.id] = extra_work
+        if extra_work_id:
+            new_extra_work_ids.add(extra_work_id)
+        assertion_value = dict(signal.value) if isinstance(signal.value, dict) else {
             "value": signal.value,
             "change_event_id": change_event_match.change_event_id,
         }
+        assertion_value.setdefault("change_event_id", change_event_match.change_event_id)
+        if extra_work_id:
+            assertion_value["extra_work_id"] = extra_work_id
         store.assertions[assertion_id] = EvidenceAssertion(
             id=assertion_id,
             tenant_id=signal.tenant_id,
             matter_id=document.metadata.get("matter_id") or "unassigned",
             source_document_id=signal.source_document_id,
+            extra_work_id=extra_work_id,
+            evidence_role=evidence_role_for_document(document),
             assertion_type=signal.signal_type,
             statement=signal.source_text,
             value=assertion_value,
@@ -118,6 +140,7 @@ def process_document(document_id: str) -> str:
             asserted_at=document.received_at,
             provenance=provenance,
         )
+        new_assertion_ids.add(assertion_id)
         key = f"{signal.source_document_id}:{signal.signal_type}:{signal.source_text_hash}"
         store.signals[key] = signal
 
@@ -140,6 +163,11 @@ def process_document(document_id: str) -> str:
     matter_id = document.metadata.get("matter_id")
     if matter_id:
         logger.info("[detector] legal analysis started document_id=%s matter_id=%s", document_id, matter_id)
+        matched_issue_ids = match_new_evidence(new_assertion_ids)
+        logger.info(
+            "[detector] new evidence matched existing issues document_id=%s issue_ids=%s",
+            document_id, sorted(matched_issue_ids),
+        )
         if not store.rule_specs:
             logger.info("[detector] registering default executable rules")
             for principle, default_rule in default_rule_set():
@@ -169,7 +197,18 @@ def process_document(document_id: str) -> str:
                 activations=activations,
             )
         logger.info("[detector] issues discovered document_id=%s issue_count=%d", document_id, len(issues))
-        for issue in issues:
+        affected_issue_ids = determine_assertion_affected_issues(new_assertion_ids) | matched_issue_ids
+        issues_to_reconcile = [
+            issue for issue in issues
+            if issue.id in affected_issue_ids
+            or issue.current_assessment_id is None
+            or (issue.extra_work_id and issue.extra_work_id in new_extra_work_ids)
+        ]
+        logger.info(
+            "[detector] targeted issue reconciliation document_id=%s affected=%d skipped=%d",
+            document_id, len(issues_to_reconcile), len(issues) - len(issues_to_reconcile),
+        )
+        for issue in issues_to_reconcile:
             logger.info("[detector] issue started issue_id=%s issue_scope=%s rule_ids=%s", issue.id, issue.issue_scope, issue.rule_ids)
             issue_rule = next((rule for rule in rules if rule.id in issue.rule_ids), None)
             targeted_assertions: list[EvidenceAssertion] = []

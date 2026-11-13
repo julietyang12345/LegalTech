@@ -3,6 +3,7 @@ from collections.abc import Iterable
 from app.domain_contracts.schemas import (
     EvidenceAssertion,
     EvidenceStatus,
+    EvidenceRole,
     ExecutableRuleSpec,
     Issue,
     IssueType,
@@ -10,6 +11,7 @@ from app.domain_contracts.schemas import (
     RuleActivation,
     WorkflowStatus,
 )
+from app.analysis.evidence_relationships import assertion_event_scope, assertion_scope
 from app.repositories.memory import store
 
 
@@ -51,7 +53,8 @@ def discover_issues(
 
     if _has_obligation(obligations, "change") and _matches(assertions, _CHANGE_ORDER_TERMS) and not activations:
         change_assertions = [a for a in assertions if _matches_assertion(a, _CHANGE_ORDER_TERMS)]
-        scope = _scope_from_assertions(change_assertions)
+        scope = _issue_scope_from_assertions(change_assertions)
+        extra_work_id = next((assertion_scope(a) for a in change_assertions if assertion_scope(a)), None)
         created.append(_upsert_issue(
             tenant_id=tenant_id,
             matter_id=matter_id,
@@ -63,7 +66,7 @@ def discover_issues(
             rule_ids=[],
             rule_versions=[],
             issue_scope=scope,
-            extra_work_id=scope,
+            extra_work_id=extra_work_id,
         ))
 
     for rule in rules:
@@ -78,6 +81,7 @@ def discover_issues(
         for assertion in trigger_assertions:
             by_scope.setdefault(_scope_from_assertions([assertion]), []).append(assertion)
         for scope, scoped_assertions in by_scope.items():
+            extra_work_id = next((assertion_scope(a) for a in scoped_assertions if assertion_scope(a)), None)
             created.append(_upsert_issue(
                 tenant_id=tenant_id,
                 matter_id=matter_id,
@@ -89,7 +93,7 @@ def discover_issues(
                 rule_ids=[rule.id],
                 rule_versions=[rule.version],
                 issue_scope=scope,
-                extra_work_id=scope,
+                extra_work_id=extra_work_id,
             ))
 
     # Bounded independent check: surface an unexpected legal signal even when
@@ -117,6 +121,8 @@ def _matches(assertions: list[EvidenceAssertion], terms: set[str]) -> bool:
 
 
 def _matches_assertion(assertion: EvidenceAssertion, terms: set[str]) -> bool:
+    if assertion.evidence_role != EvidenceRole.project_fact:
+        return False
     haystack = f"{assertion.assertion_type} {assertion.statement}".lower()
     return any(term in haystack for term in terms)
 
@@ -160,8 +166,19 @@ def _upsert_issue(**kwargs: object) -> Issue:
 
 def _scope_from_assertions(assertions: list[EvidenceAssertion]) -> str | None:
     for assertion in assertions:
-        if isinstance(assertion.value, dict):
-            scope = assertion.value.get("extra_work_id") or assertion.value.get("event_id") or assertion.value.get("change_event_id")
-            if scope:
-                return str(scope)
+        scope = assertion_scope(assertion)
+        if scope:
+            return scope
+    for assertion in assertions:
+        event_scope = assertion_event_scope(assertion)
+        if event_scope:
+            return event_scope
     return assertions[0].source_document_id if assertions else None
+
+
+def _issue_scope_from_assertions(assertions: list[EvidenceAssertion]) -> str | None:
+    return (
+        next((assertion_scope(a) for a in assertions if assertion_scope(a)), None)
+        or next((assertion_event_scope(a) for a in assertions if assertion_event_scope(a)), None)
+        or (assertions[0].source_document_id if assertions else None)
+    )

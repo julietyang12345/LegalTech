@@ -48,6 +48,7 @@
 .upload-pending { justify-self: end; margin-top: 3px; }
 .file-dropzone-error { display: block; margin-top: 6px; color: #a34e49; font-size: .72rem; line-height: 1.4; }
 .empty-state { display: flex; align-items: center; gap: 9px; padding: 14px 4px; color: #8b969f; font-size: .76rem; } .empty-state svg { flex: 0 0 auto; color: #7eaaa4; } .mobile-close { color: #b9c6d5; border-color: transparent; background: transparent; }
+.requirement-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; } .requirement-meta .status-chip { font-size: .56rem; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes detector-spin { to { transform: rotate(360deg); } }
 @keyframes detector-pulse { 50% { opacity: .45; transform: scale(.82); } }

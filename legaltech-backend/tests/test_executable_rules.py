@@ -9,6 +9,7 @@ from app.extraction.signal_extractor import extract_atomic_signals
 from app.parsers.base import ParsedContent
 from app.domain_contracts.schemas import (
     AssessmentStatus,
+    EvidenceRole,
     EvidenceAssertion,
     EvidenceStatus,
     Obligation,
@@ -86,6 +87,60 @@ def test_proceed_is_not_cost_approval_and_negative_approval_is_contrary() -> Non
     assert approval.result == AssessmentStatus.disputed
     assert negative.id in approval.contrary_evidence_ids
     assert proceed.id not in approval.supporting_evidence_ids
+
+
+def test_case_a_contract_context_does_not_override_explicit_project_approval() -> None:
+    _principle, rule = extra_work_cost_communication_rule()
+    contract_context = _assertion(
+        "scheduling_only",
+        "A field direction such as Please proceed does not, without more, constitute written approval of an increase to the Contract Price.",
+        "EW-101",
+        "00_contract",
+    )
+    contract_context.evidence_role = EvidenceRole.normative_rule
+    priced_request = _assertion(
+        "cost_communication",
+        "This extra work will increase the Contract Price by an estimated additional cost of $25,000.",
+        "EW-101",
+        "01_priced_request",
+    )
+    approval = _assertion(
+        "price_approval",
+        "I approve the additional cost of $25,000 for EW-101.",
+        "EW-101",
+        "02_owner_price_approval",
+    )
+    signed_change_order = _assertion(
+        "signed_change_order",
+        "Signed change order CO-101 approves the $25,000 adjustment for EW-101.",
+        "EW-101",
+        "03_signed_change_order",
+    )
+
+    checks = evaluate_requirements(
+        rule=rule,
+        assertions=[contract_context, priced_request, approval, signed_change_order],
+        search_attempts=[], tenant_id="T1", matter_id="M1", analysis_run_id="R1",
+    )
+    by_id = {check.requirement_id: check for check in checks}
+
+    assert by_id["cost_impact_communicated"].result != AssessmentStatus.disputed
+    assert by_id["owner_approved_additional_cost"].result != AssessmentStatus.disputed
+    assert priced_request.id in by_id["cost_impact_communicated"].supporting_evidence_ids
+    assert approval.id in by_id["owner_approved_additional_cost"].supporting_evidence_ids
+    assert signed_change_order.id in by_id["owner_approved_additional_cost"].supporting_evidence_ids
+    assert all(
+        link.relation_type.value != "CONTRADICTS"
+        for link in store.evidence_links.values()
+        if link.assertion_id == contract_context.id
+    )
+
+
+def test_normative_contract_text_does_not_activate_project_rule() -> None:
+    _principle, rule = extra_work_cost_communication_rule()
+    contract_signal = _assertion("extra_work_detected", "Extra Work means work outside the original scope.")
+    contract_signal.evidence_role = EvidenceRole.normative_rule
+    assert activate_rules(rules=[rule], assertions=[contract_signal]) == []
 
 
 def test_working_day_notice_deadline_does_not_use_calendar_days() -> None:

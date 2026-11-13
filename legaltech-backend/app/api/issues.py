@@ -29,9 +29,25 @@ def get_issue(issue_id: str) -> dict:
 
 
 def _serialize_issue(issue) -> dict:
+    assessment = store.assessments.get(issue.current_assessment_id) if issue.current_assessment_id else None
+    assessment_history = sorted(
+        [item for item in store.assessments.values() if item.issue_id == issue.id],
+        key=lambda item: item.created_at,
+        reverse=True,
+    )
+    requirement_check_ids = {check.id for check in assessment.requirement_checks} if assessment else set()
     return {
         "issue": issue,
-        "assessment": store.assessments.get(issue.current_assessment_id) if issue.current_assessment_id else None,
+        "assessment": assessment,
+        "assessment_history": assessment_history,
+        "extra_work": next(
+            (item for item in store.extra_works.values() if item.external_id == issue.extra_work_id),
+            None,
+        ) if issue.extra_work_id else None,
+        "evidence_links": [
+            link for link in store.evidence_links.values()
+            if link.requirement_check_id in requirement_check_ids
+        ],
         "evidence": [store.assertions[evidence_id] for evidence_id in issue.evidence_ids if evidence_id in store.assertions],
         "rules": [
             store.rule_specs[(rule_id, version)]
