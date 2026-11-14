@@ -20,7 +20,7 @@ from app.validation.extraction_validator import validate_signals
 from app.validation.cross_document_reconciler import reconcile_cross_document_signals
 from app.domain_contracts.recording import record_provenance
 from app.domain_contracts.schemas import EvidenceAssertion, ExtraWork, Provenance
-from app.analysis.evidence_relationships import evidence_role_for_document, infer_extra_work_id
+from app.analysis.evidence_relationships import assertion_scope, evidence_role_for_document, infer_extra_work_id
 from app.analysis.issue_discovery import discover_issues
 from app.analysis.reconciliation import reconcile_issue
 from app.analysis.rule_activation import activate_rules
@@ -160,6 +160,24 @@ def process_document(document_id: str) -> str:
             persist_signal(signal)
     validated_signals.extend(reconciled_signals)
 
+    # Some extractors identify the EW on one assertion in a document but not
+    # on neighboring assertions. Propagate only a single unambiguous document
+    # identity; documents mentioning multiple EWs remain paragraph-scoped.
+    document_assertions = [
+        assertion for assertion in store.assertions.values()
+        if assertion.source_document_id == document.id
+    ]
+    document_ew_ids = {assertion_scope(assertion) for assertion in document_assertions if assertion_scope(assertion)}
+    if len(document_ew_ids) == 1:
+        document_ew_id = next(iter(document_ew_ids))
+        new_extra_work_ids.add(document_ew_id)
+        for assertion in document_assertions:
+            if assertion.extra_work_id:
+                continue
+            assertion.extra_work_id = document_ew_id
+            if isinstance(assertion.value, dict):
+                assertion.value["extra_work_id"] = document_ew_id
+
     matter_id = document.metadata.get("matter_id")
     if matter_id:
         logger.info("[detector] legal analysis started document_id=%s matter_id=%s", document_id, matter_id)
@@ -210,7 +228,16 @@ def process_document(document_id: str) -> str:
         )
         for issue in issues_to_reconcile:
             logger.info("[detector] issue started issue_id=%s issue_scope=%s rule_ids=%s", issue.id, issue.issue_scope, issue.rule_ids)
-            issue_rule = next((rule for rule in rules if rule.id in issue.rule_ids), None)
+            issue_rules = [rule for rule in rules if rule.id in issue.rule_ids]
+            if len(issue_rules) > 1:
+                # This is a legacy/corrupt aggregate. Do not silently execute
+                # only the first rule and present incomplete legal analysis.
+                logger.error(
+                    "[detector] issue has multiple rules; skipping aggregate issue_id=%s rule_ids=%s",
+                    issue.id, issue.rule_ids,
+                )
+                continue
+            issue_rule = issue_rules[0] if issue_rules else None
             targeted_assertions: list[EvidenceAssertion] = []
             targeted_searches = []
             if issue_rule:

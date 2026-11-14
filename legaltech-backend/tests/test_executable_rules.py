@@ -15,7 +15,8 @@ from app.domain_contracts.schemas import (
     Obligation,
     Provenance,
 )
-from app.legal_knowledge.default_rules import extra_work_cost_communication_rule
+from app.legal_knowledge.default_rules import change_order_approval_rule, extra_work_cost_communication_rule
+from app.analysis.semantic_evaluator import SemanticJudgment
 from app.repositories.memory import store
 from app.ingestion.upload_ingestor import ingest_upload
 from app.models.domain import DocumentType
@@ -74,6 +75,70 @@ def test_extra_work_rule_creates_separate_issues_by_extra_work_scope() -> None:
     assert all(rule.id in issue.rule_ids for issue in issues)
 
 
+def test_two_rules_keep_separate_issues_but_share_one_extra_work() -> None:
+    store.issues.clear()
+    store.rule_activations.clear()
+    _principle_a, cost_rule = extra_work_cost_communication_rule()
+    _principle_b, approval_rule = change_order_approval_rule()
+    assertions = [
+        _assertion("extra_work_detected", "EW-101 adds four steel supports.", "EW-101"),
+        _assertion("signed_change_order", "CO-101 is signed by both parties.", {"extra_work_id": "EW-101"}, "CO-101"),
+    ]
+    activations = activate_rules(rules=[cost_rule, approval_rule], assertions=assertions)
+    issues = discover_issues(
+        tenant_id="T1", matter_id="M1", obligations=[_obligation()],
+        assertions=assertions, rules=[cost_rule, approval_rule], activations=activations,
+    )
+
+    rule_issues = [issue for issue in issues if issue.rule_ids]
+    assert {issue.rule_ids[0] for issue in rule_issues} == {cost_rule.id, approval_rule.id}
+    assert {issue.extra_work_id for issue in rule_issues} == {"EW-101"}
+    assert all(len(issue.rule_ids) == 1 for issue in rule_issues)
+
+
+def test_ambiguous_multi_ew_triggers_do_not_create_unscoped_issue() -> None:
+    store.issues.clear()
+    store.rule_activations.clear()
+    _principle, rule = extra_work_cost_communication_rule()
+    event_id = "CE-MULTI"
+    assertions = [
+        _assertion("extra_work_detected", "EW-401 loading dock work.", "EW-401"),
+        _assertion("extra_work_detected", "EW-402 service pipe work.", "EW-402"),
+        _assertion("instruction_to_proceed", "Please proceed with the event.", {"change_event_id": event_id}),
+    ]
+    for assertion in assertions[:2]:
+        assertion.value["change_event_id"] = event_id
+    activations = activate_rules(rules=[rule], assertions=assertions)
+    issues = discover_issues(
+        tenant_id="T1", matter_id="M1", obligations=[_obligation()],
+        assertions=assertions, rules=[rule], activations=activations,
+    )
+
+    assert issues
+    assert all(issue.extra_work_id in {"EW-401", "EW-402"} for issue in issues)
+    assert all(issue.issue_scope != event_id for issue in issues)
+
+
+def test_document_level_ew_id_is_applied_when_document_is_unambiguous(monkeypatch) -> None:
+    monkeypatch.setattr("app.extraction.signal_extractor.ai_candidates", lambda _text: [])
+    signals = extract_atomic_signals(
+        type("Document", (), {"id": "DOC-CO"})(),
+        ParsedContent(document_id="DOC-CO", text="The signed change order is attached for EW-101. CO-101 adjusts the Contract Price by $25,000."),
+    )
+    assert signals
+    assert {signal.value.get("extra_work_id") for signal in signals if isinstance(signal.value, dict)} == {"EW-101"}
+
+
+def test_explicit_filename_disambiguates_change_order_document(monkeypatch) -> None:
+    monkeypatch.setattr("app.extraction.signal_extractor.ai_candidates", lambda _text: [])
+    signals = extract_atomic_signals(
+        type("Document", (), {"id": "DOC-CO", "metadata": {"original_filename": "03_signed_change_order_EW401.txt"}})(),
+        ParsedContent(document_id="DOC-CO", text="The signed change order is attached for EW-401 only. This document does not authorize EW-402."),
+    )
+    scoped = {signal.signal_type: signal.value.get("extra_work_id") for signal in signals if isinstance(signal.value, dict)}
+    assert scoped["signed_change_order"] == "EW-401"
+
+
 def test_proceed_is_not_cost_approval_and_negative_approval_is_contrary() -> None:
     _principle, rule = extra_work_cost_communication_rule()
     proceed = _assertion("instruction_to_proceed", "Please proceed with the extra work.")
@@ -87,6 +152,65 @@ def test_proceed_is_not_cost_approval_and_negative_approval_is_contrary() -> Non
     assert approval.result == AssessmentStatus.disputed
     assert negative.id in approval.contrary_evidence_ids
     assert proceed.id not in approval.supporting_evidence_ids
+
+
+def test_invoice_reference_does_not_prove_owner_price_approval() -> None:
+    _principle, rule = extra_work_cost_communication_rule()
+    invoice = _assertion(
+        "invoice_amount",
+        "Invoice requests $25,000 payable under the signed change order.",
+        "EW-101",
+        "invoice",
+    )
+    checks = evaluate_requirements(
+        rule=rule, assertions=[invoice], search_attempts=[],
+        tenant_id="T1", matter_id="M1", analysis_run_id="R1",
+    )
+    approval = next(check for check in checks if check.requirement_id == "owner_approved_additional_cost")
+
+    assert approval.evidence_outcome.value == "INSUFFICIENT_INFORMATION"
+    assert approval.supporting_evidence_ids == []
+
+
+def test_ai_cannot_promote_invoice_to_owner_approval(monkeypatch) -> None:
+    _principle, rule = extra_work_cost_communication_rule()
+    invoice = _assertion(
+        "invoice_amount",
+        "Invoice requests $25,000 payable under the signed change order.",
+        "EW-101",
+        "invoice",
+    )
+    monkeypatch.setattr(
+        "app.analysis.requirement_evaluator.judge_requirement",
+        lambda _requirement, _assertions: SemanticJudgment(
+            result="support", supporting_ids=[invoice.id], contrary_ids=[], explanation="invalid model citation"
+        ),
+    )
+    checks = evaluate_requirements(
+        rule=rule, assertions=[invoice], search_attempts=[],
+        tenant_id="T1", matter_id="M1", analysis_run_id="R1",
+    )
+    approval = next(check for check in checks if check.requirement_id == "owner_approved_additional_cost")
+
+    assert approval.evidence_outcome.value == "INSUFFICIENT_INFORMATION"
+    assert invoice.id not in approval.supporting_evidence_ids
+
+
+def test_signed_change_order_amount_supports_price_basis() -> None:
+    change_order = _assertion(
+        "formal_change_document",
+        "CO-101 is signed by both parties and adjusts the Contract Price by a $25,000 lump sum.",
+        "EW-101",
+        "CO-101",
+    )
+    _principle, change_rule = change_order_approval_rule()
+    checks = evaluate_requirements(
+        rule=change_rule, assertions=[change_order], search_attempts=[],
+        tenant_id="T1", matter_id="M1", analysis_run_id="R1",
+    )
+    price_basis = next(check for check in checks if check.requirement_id == "price_basis_identified")
+
+    assert price_basis.evidence_outcome.value == "SUPPORTED"
 
 
 def test_case_a_contract_context_does_not_override_explicit_project_approval() -> None:
@@ -164,26 +288,26 @@ def test_working_day_notice_deadline_does_not_use_calendar_days() -> None:
     assert assessment.evidence_status == EvidenceStatus.reconstructable
 
 
-def test_four_extra_work_gold_cases_keep_semantic_evidence_reviewable() -> None:
+def test_four_extra_work_gold_cases_separate_evidence_outcome_from_review() -> None:
     _principle, rule = extra_work_cost_communication_rule()
     cases = [
         ([
             _assertion("extra_work_detected", "Additional steel supports are extra work."),
             _assertion("cost_communication", "Additional cost is $25,000."),
             _assertion("price_approval", "Owner approved the additional cost."),
-        ], {"extra_work_occurred": "LAWYER_REVIEW_REQUIRED", "cost_impact_communicated": "LAWYER_REVIEW_REQUIRED", "owner_approved_additional_cost": "LAWYER_REVIEW_REQUIRED"}),
+        ], {"extra_work_occurred": "REQUIREMENT_SATISFIED", "cost_impact_communicated": "REQUIREMENT_SATISFIED", "owner_approved_additional_cost": "REQUIREMENT_SATISFIED"}),
         ([
             _assertion("extra_work_detected", "Additional steel supports are extra work."),
             _assertion("instruction_to_proceed", "Please proceed with the work."),
-        ], {"extra_work_occurred": "LAWYER_REVIEW_REQUIRED", "cost_impact_communicated": "INSUFFICIENT_INFORMATION", "owner_approved_additional_cost": "INSUFFICIENT_INFORMATION"}),
+        ], {"extra_work_occurred": "REQUIREMENT_SATISFIED", "cost_impact_communicated": "INSUFFICIENT_INFORMATION", "owner_approved_additional_cost": "INSUFFICIENT_INFORMATION"}),
         ([
             _assertion("extra_work_detected", "Additional steel supports are extra work."),
             _assertion("instruction_to_proceed", "Please proceed."),
-        ], {"extra_work_occurred": "LAWYER_REVIEW_REQUIRED", "cost_impact_communicated": "INSUFFICIENT_INFORMATION", "owner_approved_additional_cost": "INSUFFICIENT_INFORMATION"}),
+        ], {"extra_work_occurred": "REQUIREMENT_SATISFIED", "cost_impact_communicated": "INSUFFICIENT_INFORMATION", "owner_approved_additional_cost": "INSUFFICIENT_INFORMATION"}),
         ([
             _assertion("extra_work_detected", "East supports are extra work.", "EW-1"),
             _assertion("cost_communication", "West supports have additional cost.", "EW-2"),
-        ], {"extra_work_occurred": "LAWYER_REVIEW_REQUIRED", "cost_impact_communicated": "INSUFFICIENT_INFORMATION", "owner_approved_additional_cost": "INSUFFICIENT_INFORMATION"}),
+        ], {"extra_work_occurred": "REQUIREMENT_SATISFIED", "cost_impact_communicated": "INSUFFICIENT_INFORMATION", "owner_approved_additional_cost": "INSUFFICIENT_INFORMATION"}),
     ]
     from app.evals.golden import GoldenCase, evaluate_golden_cases
     report = evaluate_golden_cases(rule, [

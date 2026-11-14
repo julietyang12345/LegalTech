@@ -7,6 +7,7 @@ from app.domain_contracts.schemas import (
     AssessmentStatus,
     EvidenceAssertion,
     EvidenceStatus,
+    RequirementReviewStatus,
     ExecutableRuleSpec,
     Issue,
     IssueType,
@@ -64,6 +65,15 @@ def reconcile_issue(
         matter_id=issue.matter_id,
         issue_id=issue.id,
         extra_work_id=issue.extra_work_id or next((assertion_scope(assertion) for assertion in relevant if assertion_scope(assertion)), None),
+        review_status=(
+            RequirementReviewStatus.required
+            if status == AssessmentStatus.lawyer_review_required
+            else RequirementReviewStatus.not_required
+        ),
+        legal_applicability=(
+            rule.applicability.jurisdiction
+            if rule else "UNVERIFIED"
+        ),
         status=status,
         evidence_status=evidence_status,
         conclusion=conclusion,

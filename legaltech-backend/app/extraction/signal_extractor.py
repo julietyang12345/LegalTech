@@ -1,4 +1,5 @@
 from app.extraction.ai_signal_extractor import ai_candidates
+from app.analysis.evidence_relationships import infer_document_extra_work_id
 from app.extraction.schemas import SignalCandidate
 from app.models import Document, ExtractedSignal
 from app.parsers.base import ParsedContent
@@ -8,10 +9,23 @@ import re
 
 def extract_atomic_signals(document: Document, parsed_content: ParsedContent) -> list[ExtractedSignal]:
     candidates = _merge_candidates(ai_candidates(parsed_content.text), _heuristic_candidates(parsed_content.text))
+    document_extra_work_id = infer_document_extra_work_id(parsed_content.text)
+    filename_extra_work_id = infer_document_extra_work_id(
+        str(getattr(document, "metadata", {}).get("original_filename", ""))
+    )
+    # An explicit EW in a source filename is document metadata, not free text;
+    # it can disambiguate a change-order attachment that mentions another EW
+    # only in a limiting clause.
+    document_extra_work_id = filename_extra_work_id or document_extra_work_id
+    for candidate in candidates:
+        # A document-level identity is safe only when exactly one EW appears
+        # in the document. Explicit AI/heuristic paragraph-level IDs win.
+        if not candidate.extra_work_id and document_extra_work_id:
+            candidate.extra_work_id = document_extra_work_id
     return [
         ExtractedSignal(
             signal_type=candidate.signal_type,
-            value=candidate.value,
+            value=_candidate_value(candidate),
             actor=candidate.actor,
             source_document_id=document.id,
             source_text=candidate.source_text,
@@ -19,6 +33,7 @@ def extract_atomic_signals(document: Document, parsed_content: ParsedContent) ->
             source_text_hash=stable_text_hash(candidate.source_text),
         )
         for candidate in candidates
+        if _candidate_is_usable(candidate)
     ]
 
 
@@ -95,11 +110,18 @@ def _heuristic_candidates(text: str) -> list[SignalCandidate]:
             )
         )
 
+    # A future plan such as "after a signed change order" is not evidence
+    # that a change order was actually signed. Keep this heuristic limited to
+    # explicit execution/status language; the AI extractor handles nuanced
+    # temporal and conditional phrasing when enabled.
     signed_document_phrases = [
-        "signed change order",
+        "signed change order is attached",
+        "status: signed change order",
         "executed change order",
-        "signed change document",
-        "signed authorization document",
+        "both parties signed",
+        "owner signature",
+        "contractor signature",
+        "signed change document is attached",
     ]
     if any(phrase in lowered for phrase in signed_document_phrases):
         source_text = _snippet(text, signed_document_phrases)
@@ -240,6 +262,28 @@ def _merge_candidates(*groups: list[SignalCandidate]) -> list[SignalCandidate]:
     return merged
 
 
+def _candidate_value(candidate: SignalCandidate):
+    value = dict(candidate.value) if isinstance(candidate.value, dict) else {"value": candidate.value}
+    value["polarity"] = candidate.polarity
+    value["temporal_status"] = candidate.temporal_status
+    if candidate.extra_work_id:
+        value["extra_work_id"] = candidate.extra_work_id
+    return value
+
+
+def _candidate_is_usable(candidate: SignalCandidate) -> bool:
+    """Do not turn future or conditional language into completed actions."""
+    action_signals = {
+        "signed_change_order", "price_approval", "approved_amount",
+        "express_authorization", "written_authorization",
+    }
+    if candidate.signal_type not in action_signals:
+        return True
+    if candidate.polarity == "negative":
+        return False
+    return candidate.temporal_status not in {"planned", "denied", "conditional"}
+
+
 def _negative_notice(lowered_text: str) -> bool:
     return any(phrase in lowered_text for phrase in (
         "no notice was sent", "no written notice", "notice was not sent", "never sent notice",
@@ -259,6 +303,8 @@ def _amount_candidates(text: str) -> list[SignalCandidate]:
             signal_type = "approved_amount"
         elif any(word in local for word in ["estimate", "proposal", "quote"]):
             signal_type = "estimate_amount"
+        elif any(word in local for word in ["adjustment to contract price", "price adjustment", "lump sum"]):
+            signal_type = "approved_amount"
         else:
             continue
         candidates.append(

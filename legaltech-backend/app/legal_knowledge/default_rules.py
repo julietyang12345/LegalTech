@@ -127,7 +127,7 @@ def change_order_approval_rule() -> tuple[LegalPrinciple, ExecutableRuleSpec]:
         requirements=[
             RuleRequirement(id="extra_work_occurred", label="Extra work identified", evaluation=EvaluationMethod.ai_semantic, evidence_queries=["extra work", "additional work"], supporting_assertion_types=["extra_work_detected"]),
             RuleRequirement(id="approval_documented", label="Approval or equivalent authority documented", evaluation=EvaluationMethod.ai_and_lawyer, evidence_queries=["signed change order", "approved change"], supporting_assertion_types=["signed_change_order", "express_authorization"], contrary_assertion_types=["approval_denied", "scheduling_only"], lawyer_review_required=True),
-            RuleRequirement(id="price_basis_identified", label="Price basis identified", evaluation=EvaluationMethod.ai_semantic, evidence_queries=["approved amount", "unit price", "time and materials"], supporting_assertion_types=["approved_amount", "pricing_method"]),
+            RuleRequirement(id="price_basis_identified", label="Price basis identified", evaluation=EvaluationMethod.ai_semantic, evidence_queries=["approved amount", "unit price", "time and materials", "adjustment to contract price", "lump sum"], supporting_assertion_types=["approved_amount", "pricing_method", "formal_change_document"]),
         ],
         exceptions_to_check=["waiver", "owner_awareness", "alternative_entitlement_basis"],
         review_policy=ReviewPolicy.adverse_conclusion, provenance=provenance,

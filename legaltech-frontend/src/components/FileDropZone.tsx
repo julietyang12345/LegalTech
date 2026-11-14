@@ -4,7 +4,20 @@ import { FileUp, Loader2, X } from 'lucide-react';
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 type PendingFile = { id: string; file: File; documentType: string };
 type FileDropZoneProps = { matterId?: string; busy: boolean; onUploaded: () => void };
-const documentTypes = [['email', 'Email'], ['contract', 'Contract'], ['change_order', 'Change order'], ['rfi', 'RFI'], ['invoice', 'Invoice'], ['project_log', 'Project log'], ['other', 'Other']];
+// Keep upload values aligned with the backend DocumentType enum. The UI labels
+// can still describe common source documents without sending unsupported enum
+// values to the API.
+const documentTypes = [
+  ['email', 'Email'],
+  ['attachment', 'Attachment / RFI'],
+  ['contract', 'Contract'],
+  ['change_order', 'Change order'],
+  ['invoice', 'Invoice'],
+  ['purchase_order', 'Purchase order'],
+  ['daily_report', 'Daily report / project log'],
+  ['photo', 'Photo'],
+  ['unknown', 'Other'],
+];
 
 export default function FileDropZone({ matterId, busy, onUploaded }: FileDropZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);

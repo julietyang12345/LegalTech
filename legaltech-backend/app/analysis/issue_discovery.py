@@ -54,7 +54,7 @@ def discover_issues(
     if _has_obligation(obligations, "change") and _matches(assertions, _CHANGE_ORDER_TERMS) and not activations:
         change_assertions = [a for a in assertions if _matches_assertion(a, _CHANGE_ORDER_TERMS)]
         scope = _issue_scope_from_assertions(change_assertions)
-        extra_work_id = next((assertion_scope(a) for a in change_assertions if assertion_scope(a)), None)
+        extra_work_id = _unique_event_extra_work_id(change_assertions, assertions)
         created.append(_upsert_issue(
             tenant_id=tenant_id,
             matter_id=matter_id,
@@ -77,11 +77,12 @@ def discover_issues(
         trigger_assertions = [assertion for assertion in assertions if assertion.id in trigger_ids]
         if not trigger_assertions:
             continue
-        by_scope: dict[str | None, list[EvidenceAssertion]] = {}
-        for assertion in trigger_assertions:
-            by_scope.setdefault(_scope_from_assertions([assertion]), []).append(assertion)
+        by_scope = _group_trigger_assertions(trigger_assertions, assertions)
         for scope, scoped_assertions in by_scope.items():
-            extra_work_id = next((assertion_scope(a) for a in scoped_assertions if assertion_scope(a)), None)
+            extra_work_id = (
+                scope if scope and str(scope).upper().startswith("EW-")
+                else next((assertion_scope(a) for a in scoped_assertions if assertion_scope(a)), None)
+            )
             created.append(_upsert_issue(
                 tenant_id=tenant_id,
                 matter_id=matter_id,
@@ -134,6 +135,7 @@ def _upsert_issue(**kwargs: object) -> Issue:
          and issue.matter_id == kwargs["matter_id"]
          and issue.type == kwargs["issue_type"]
          and issue.issue_scope == kwargs.get("issue_scope")
+         and set(issue.rule_ids) == set(kwargs.get("rule_ids", []))
          and set(issue.rule_version_ids) == set(kwargs.get("rule_versions", []))),
         None,
     )
@@ -143,6 +145,10 @@ def _upsert_issue(**kwargs: object) -> Issue:
         existing.evidence_status = EvidenceStatus.partial if existing.evidence_ids else EvidenceStatus.not_found
         existing.rule_version_ids = sorted(set(existing.rule_version_ids + list(kwargs.get("rule_versions", []))))
         existing.rule_ids = sorted(set(existing.rule_ids + list(kwargs.get("rule_ids", []))))
+        if not existing.extra_work_id and kwargs.get("extra_work_id"):
+            existing.extra_work_id = kwargs["extra_work_id"]
+        if existing.extra_work_id and not existing.issue_scope:
+            existing.issue_scope = existing.extra_work_id
         return existing
 
     issue = Issue(
@@ -164,21 +170,61 @@ def _upsert_issue(**kwargs: object) -> Issue:
     return issue
 
 
-def _scope_from_assertions(assertions: list[EvidenceAssertion]) -> str | None:
-    for assertion in assertions:
-        scope = assertion_scope(assertion)
-        if scope:
-            return scope
-    for assertion in assertions:
-        event_scope = assertion_event_scope(assertion)
-        if event_scope:
-            return event_scope
-    return assertions[0].source_document_id if assertions else None
-
-
 def _issue_scope_from_assertions(assertions: list[EvidenceAssertion]) -> str | None:
     return (
         next((assertion_scope(a) for a in assertions if assertion_scope(a)), None)
         or next((assertion_event_scope(a) for a in assertions if assertion_event_scope(a)), None)
         or (assertions[0].source_document_id if assertions else None)
     )
+
+
+def _group_trigger_assertions(
+    assertions: list[EvidenceAssertion],
+    all_assertions: list[EvidenceAssertion] | None = None,
+) -> dict[str | None, list[EvidenceAssertion]]:
+    """Group rule triggers by EW, attaching unscoped facts when unambiguous."""
+    groups: dict[str | None, list[EvidenceAssertion]] = {}
+    event_to_ews: dict[str, set[str]] = {}
+    for assertion in all_assertions or assertions:
+        ew_id = assertion_scope(assertion)
+        event_id = assertion_event_scope(assertion)
+        if ew_id and event_id:
+            event_to_ews.setdefault(event_id, set()).add(ew_id)
+
+    for assertion in assertions:
+        ew_id = assertion_scope(assertion)
+        event_id = assertion_event_scope(assertion)
+        groups.setdefault(ew_id or (event_id if event_id else None), []).append(assertion)
+
+    normalized: dict[str | None, list[EvidenceAssertion]] = {}
+    for scope, scoped in groups.items():
+        for assertion in scoped:
+            ew_id = assertion_scope(assertion)
+            event_id = assertion_event_scope(assertion)
+            target = ew_id
+            event_ews = event_to_ews.get(event_id, set()) if event_id else set()
+            if not target and event_id and len(event_ews) == 1:
+                target = next(iter(event_ews))
+            # An unscoped trigger in a multi-EW event cannot safely create a
+            # catch-all issue. Wait for an EW-specific assertion instead.
+            if not target and event_id and len(event_ews) > 1:
+                continue
+            if not target:
+                target = event_id or scope
+            normalized.setdefault(target, []).append(assertion)
+    return normalized
+
+
+def _unique_event_extra_work_id(
+    scoped_assertions: list[EvidenceAssertion], all_assertions: list[EvidenceAssertion],
+) -> str | None:
+    direct = {assertion_scope(assertion) for assertion in scoped_assertions if assertion_scope(assertion)}
+    if len(direct) == 1:
+        return next(iter(direct))
+    events = {assertion_event_scope(assertion) for assertion in scoped_assertions if assertion_event_scope(assertion)}
+    related = {
+        assertion_scope(assertion)
+        for assertion in all_assertions
+        if assertion_event_scope(assertion) in events and assertion_scope(assertion)
+    }
+    return next(iter(related)) if len(related) == 1 else None

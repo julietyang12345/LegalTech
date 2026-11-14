@@ -28,8 +28,8 @@ def test_golden_metrics_cover_activation_and_requirement_accuracy() -> None:
             assertions=[_a("extra_work_detected", "Additional work occurred"), _a("cost_communication", "Additional costs were communicated")],
             expects_activation=True,
             expected_requirements={
-                "extra_work_occurred": "LAWYER_REVIEW_REQUIRED",
-                "cost_impact_communicated": "LAWYER_REVIEW_REQUIRED",
+                    "extra_work_occurred": "REQUIREMENT_SATISFIED",
+                    "cost_impact_communicated": "REQUIREMENT_SATISFIED",
                 "owner_approved_additional_cost": "INSUFFICIENT_INFORMATION",
             },
         ),

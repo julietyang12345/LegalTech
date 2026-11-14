@@ -29,12 +29,15 @@ def judge_requirement(requirement: RuleRequirement, assertions: list[EvidenceAss
         from openai import OpenAI, OpenAIError
         import json
         client = OpenAI(api_key=settings.openai_api_key, timeout=settings.openai_timeout_seconds)
-        excerpts = "\n".join(f"{a.id}: {a.statement}" for a in assertions)[: settings.ai_extraction_max_chars]
+        excerpts = "\n".join(
+            f"{a.id}: statement={a.statement}; metadata={a.value}"
+            for a in assertions
+        )[: settings.ai_extraction_max_chars]
         response = client.chat.completions.create(
             model=settings.openai_model,
             response_format={"type": "json_object"},
             messages=[
-                {"role": "system", "content": "Classify project-fact evidence for one legal requirement. Return JSON only with result support, contrary, or uncertain; supporting_ids; contrary_ids; explanation. Mark evidence contrary only when it is a project-specific denial, limitation, or incompatible fact; a general legal or contractual rule is context, not proof that this project lacked the required fact. Do not give legal advice."},
+                {"role": "system", "content": "Classify project-fact evidence for one legal requirement. Return JSON only with result support, contrary, or uncertain; supporting_ids; contrary_ids; explanation. Mark evidence contrary only when it is a project-specific denial, limitation, or incompatible fact. Distinguish affirmative completed acts from future plans, conditional language, and denials. A general legal or contractual rule is context, not proof that this project lacked the required fact. Do not give legal advice."},
                 {"role": "user", "content": f"Requirement: {requirement.label}\nQueries: {requirement.evidence_queries}\nEvidence:\n{excerpts}"},
             ],
         )
@@ -46,6 +49,12 @@ def judge_requirement(requirement: RuleRequirement, assertions: list[EvidenceAss
     contrary = [item for item in payload.get("contrary_ids", []) if item in valid_ids]
     result = payload.get("result")
     if result not in {"support", "contrary", "uncertain"}:
+        return None
+    if result == "support" and not supporting:
+        return None
+    if result == "contrary" and not contrary:
+        return None
+    if set(supporting) & set(contrary):
         return None
     return SemanticJudgment(
         result=result,

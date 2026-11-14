@@ -3,6 +3,7 @@ from collections.abc import Iterable
 from app.domain_contracts.recording import record_search_attempt
 from app.domain_contracts.schemas import EvidenceAssertion, EvidenceRole, ExecutableRuleSpec, Issue, SearchAttempt
 from app.analysis.evidence_relationships import assertion_event_scope, assertion_scope
+from app.analysis.evidence_matching import matches_queries
 
 
 def retrieve_requirement_evidence(
@@ -21,7 +22,7 @@ def retrieve_requirement_evidence(
     for requirement in rule.requirements:
         matches = [
             assertion for assertion in scoped
-            if _matches_requirement(assertion, requirement.evidence_queries)
+            if matches_queries(assertion, requirement.evidence_queries)
         ]
         for assertion in matches:
             found[assertion.id] = assertion
@@ -56,7 +57,3 @@ def _in_issue_scope(issue: Issue, assertion: EvidenceAssertion) -> bool:
         ) and assertion.evidence_role == EvidenceRole.project_fact
     return assertion.evidence_role == EvidenceRole.project_fact
 
-
-def _matches_requirement(assertion: EvidenceAssertion, queries: list[str]) -> bool:
-    haystack = f"{assertion.assertion_type} {assertion.statement}".lower()
-    return any(query.lower() in haystack for query in queries)

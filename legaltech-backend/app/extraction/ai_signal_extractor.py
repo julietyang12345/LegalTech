@@ -45,7 +45,8 @@ ALLOWED_SIGNAL_TYPES = {
 
 SYSTEM_PROMPT = """You extract audit-ready evidence risk signals.
 Return only JSON with a top-level "signals" array. Each signal must include:
-signal_type, value, actor, source_text, confidence.
+signal_type, value, actor, source_text, confidence, extra_work_id, polarity,
+temporal_status.
 Use only these signal_type values:
 operational_direction, instruction_to_proceed, express_authorization,
 signed_change_order, authorization_denial, delegated_authority_limited,
@@ -57,7 +58,11 @@ attachment_unsigned, extra_work_detected, cost_communication, approval_denied,
 scheduling_only, notice_denied, project_number, po_number, project_mismatch,
 amount_mismatch, invoice_before_authorization.
 source_text must be an exact excerpt from the document. Do not infer facts that
-are not supported by an excerpt."""
+are not supported by an excerpt. Use polarity affirmative, negative, or
+uncertain. Use temporal_status completed, planned, conditional, denied, or
+unknown. A phrase about signing in the future is planned, not signed. A
+contractual rule describing what would count as approval is normative context,
+not a project-specific denial."""
 
 
 def ai_candidates(text: str) -> list[SignalCandidate]:
@@ -128,12 +133,21 @@ def _candidate_from_item(item: Any, text: str) -> SignalCandidate | None:
         return None
 
     try:
+        polarity = str(item.get("polarity") or "unknown").lower()
+        temporal_status = str(item.get("temporal_status") or "unknown").lower()
+        if polarity not in {"affirmative", "negative", "uncertain", "unknown"}:
+            return None
+        if temporal_status not in {"completed", "planned", "conditional", "denied", "unknown"}:
+            return None
         return SignalCandidate(
             signal_type=signal_type,
             value=item.get("value"),
             actor=item.get("actor"),
             source_text=source_text.strip(),
             confidence=normalized_confidence,
+            polarity=polarity,
+            temporal_status=temporal_status,
+            extra_work_id=item.get("extra_work_id"),
         )
     except ValidationError:
         return None

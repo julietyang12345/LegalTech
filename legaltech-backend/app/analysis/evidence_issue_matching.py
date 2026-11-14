@@ -20,13 +20,16 @@ def match_new_evidence(assertion_ids: Iterable[str]) -> set[str]:
         if not assertion:
             continue
         candidates = _candidates(assertion)
-        if len(candidates) != 1:
+        if not candidates:
             continue
-        issue = candidates[0]
-        if assertion.id not in issue.evidence_ids:
-            issue.evidence_ids.append(assertion.id)
-        _record_evidence_dependency(issue, assertion)
-        matched_issue_ids.add(issue.id)
+        for issue in candidates:
+            if not issue.extra_work_id and assertion_scope(assertion):
+                issue.extra_work_id = assertion_scope(assertion)
+                issue.issue_scope = issue.extra_work_id
+            if assertion.id not in issue.evidence_ids:
+                issue.evidence_ids.append(assertion.id)
+            _record_evidence_dependency(issue, assertion)
+            matched_issue_ids.add(issue.id)
     return matched_issue_ids
 
 
@@ -40,7 +43,13 @@ def _candidates(assertion: EvidenceAssertion) -> list[Issue]:
         and _issue_matches(issue, ew_id, event_id)
     ]
     if candidates:
-        return candidates
+        if ew_id:
+            return candidates
+        # An unscoped assertion can update all rules for one event when those
+        # issues share the same unambiguous EW identity (including all-null
+        # legacy issues). Never fan out across multiple known EWs.
+        known_ews = {issue.extra_work_id for issue in candidates if issue.extra_work_id}
+        return candidates if len(known_ews) <= 1 else []
     # A unique unresolved issue in the same matter is a safe fallback for
     # sources whose parser could not recover a project/event identifier.
     return [
@@ -56,7 +65,18 @@ def _candidates(assertion: EvidenceAssertion) -> list[Issue]:
 def _issue_matches(issue: Issue, ew_id: str | None, event_id: str | None) -> bool:
     if ew_id:
         return issue.extra_work_id == ew_id or issue.issue_scope == ew_id
-    return bool(event_id and issue.issue_scope == event_id)
+    if not event_id:
+        return False
+    if issue.issue_scope == event_id:
+        return True
+    # Older issues may have a document or event scope recorded differently.
+    # Their existing evidence still provides a reliable event relationship.
+    linked_event_ids = {
+        assertion_event_scope(store.assertions[assertion_id])
+        for assertion_id in issue.evidence_ids
+        if assertion_id in store.assertions
+    }
+    return event_id in linked_event_ids
 
 
 def _record_evidence_dependency(issue: Issue, assertion: EvidenceAssertion) -> None:

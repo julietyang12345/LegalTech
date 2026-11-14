@@ -9,3 +9,6 @@ class SignalCandidate(BaseModel):
     actor: str | None = None
     source_text: str
     confidence: float
+    polarity: str = "unknown"
+    temporal_status: str = "unknown"
+    extra_work_id: str | None = None

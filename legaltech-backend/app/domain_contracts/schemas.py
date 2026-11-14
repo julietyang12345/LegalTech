@@ -60,6 +60,19 @@ class AssessmentStatus(str, Enum):
     lawyer_review_required = "LAWYER_REVIEW_REQUIRED"
 
 
+class EvidenceOutcome(str, Enum):
+    supported = "SUPPORTED"
+    contradicted = "CONTRADICTED"
+    disputed = "DISPUTED"
+    insufficient_information = "INSUFFICIENT_INFORMATION"
+    unknown = "UNKNOWN"
+
+
+class RequirementReviewStatus(str, Enum):
+    not_required = "NOT_REQUIRED"
+    required = "REQUIRED"
+
+
 class ReviewStatus(str, Enum):
     pending = "PENDING"
     approved = "APPROVED"
@@ -174,6 +187,8 @@ class RequirementCheck(BaseModel):
     id: str = Field(default_factory=lambda: new_id("REQCHECK"))
     requirement_id: str
     extra_work_id: str | None = None
+    evidence_outcome: EvidenceOutcome | None = None
+    review_status: RequirementReviewStatus = RequirementReviewStatus.not_required
     result: AssessmentStatus
     evidence_status: EvidenceStatus
     supporting_evidence_ids: list[str] = Field(default_factory=list)
@@ -274,6 +289,8 @@ class Assessment(ContractModel):
     id: str = Field(default_factory=lambda: new_id("ASSESS"))
     issue_id: str
     extra_work_id: str | None = None
+    review_status: RequirementReviewStatus = RequirementReviewStatus.required
+    legal_applicability: str = "UNVERIFIED"
     status: AssessmentStatus
     evidence_status: EvidenceStatus
     conclusion: str
