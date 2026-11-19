@@ -73,6 +73,27 @@ class RequirementReviewStatus(str, Enum):
     required = "REQUIRED"
 
 
+class UncertaintyReason(str, Enum):
+    no_explicit_approval_found = "NO_EXPLICIT_APPROVAL_FOUND"
+    partial_evidence_set = "PARTIAL_EVIDENCE_SET"
+    search_no_match = "SEARCH_NO_MATCH"
+    conflicting_evidence = "CONFLICTING_EVIDENCE"
+    ambiguous_extra_work_match = "AMBIGUOUS_EXTRA_WORK_MATCH"
+    heuristic_only = "HEURISTIC_ONLY"
+    legal_applicability_unverified = "LEGAL_APPLICABILITY_UNVERIFIED"
+    temporal_order_uncertain = "TEMPORAL_ORDER_UNCERTAIN"
+    cost_communication_after_work_start = "COST_COMMUNICATION_AFTER_WORK_START"
+
+
+class ConflictClassification(str, Enum):
+    direct_conflict = "DIRECT_CONFLICT"
+    later_modification = "LATER_MODIFICATION"
+    different_scope = "DIFFERENT_SCOPE"
+    missing_evidence = "MISSING_EVIDENCE"
+    authority_conflict = "AUTHORITY_CONFLICT"
+    temporal_supersession = "TEMPORAL_SUPERSESSION"
+
+
 class ReviewStatus(str, Enum):
     pending = "PENDING"
     approved = "APPROVED"
@@ -196,6 +217,9 @@ class RequirementCheck(BaseModel):
     search_attempt_ids: list[str] = Field(default_factory=list)
     explanation: str
     requires_lawyer_review: bool = False
+    uncertainty_reason: UncertaintyReason | None = None
+    next_action: str | None = None
+    conflict_classification: ConflictClassification | None = None
     provenance: Provenance
 
 
@@ -243,6 +267,8 @@ class Obligation(ContractModel):
     source_span_id: str
     version: str = "1.0"
     ambiguity_notes: str | None = None
+    holiday_dates: list[str] = Field(default_factory=list)
+    counting_rule: str = "AFTER_EVENT"
     provenance: Provenance
 
     @model_validator(mode="after")
@@ -262,6 +288,16 @@ class EvidenceAssertion(ContractModel):
     statement: str
     value: Any = None
     actor: str | None = None
+    event_at: str | None = None
+    communication_at: str | None = None
+    work_start_at: str | None = None
+    approval_at: str | None = None
+    document_sent_at: str | None = None
+    uploaded_at: datetime | None = None
+    time_source: str | None = None
+    time_confidence: str = "unknown"
+    relationship_status: str = "EXPLICIT"
+    relationship_reason: str | None = None
     asserted_at: datetime | None = None
     verified: bool = False
     provenance: Provenance
@@ -303,6 +339,9 @@ class Assessment(ContractModel):
     supersedes_assessment_id: str | None = None
     is_current: bool = True
     stale_reason: str | None = None
+    uncertainty_reasons: list[UncertaintyReason] = Field(default_factory=list)
+    next_action: str | None = None
+    conflict_classifications: list[ConflictClassification] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

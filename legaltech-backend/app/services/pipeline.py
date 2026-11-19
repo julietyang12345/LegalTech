@@ -108,15 +108,25 @@ def process_document(document_id: str) -> str:
         signal.provenance_id = provenance.id
         assertion_id = f"ASSERT-{signal.id}"
         extra_work_id = infer_extra_work_id(signal.value, signal.source_text)
-        if extra_work_id and not any(item.external_id == extra_work_id for item in store.extra_works.values()):
-            extra_work = ExtraWork(
-                id=extra_work_id,
-                tenant_id=signal.tenant_id,
-                matter_id=document.metadata.get("matter_id") or "unassigned",
-                external_id=extra_work_id,
-                title=signal.source_text[:160],
+        if extra_work_id:
+            extra_work = next(
+                (item for item in store.extra_works.values() if item.external_id == extra_work_id),
+                None,
             )
-            store.extra_works[extra_work.id] = extra_work
+            if extra_work is None:
+                extra_work = ExtraWork(
+                    id=extra_work_id,
+                    tenant_id=signal.tenant_id,
+                    matter_id=document.metadata.get("matter_id") or "unassigned",
+                    external_id=extra_work_id,
+                    title=signal.source_text[:160],
+                )
+                store.extra_works[extra_work.id] = extra_work
+            if signal.signal_type in {"invoice_amount", "estimate_amount", "approved_amount"} and isinstance(signal.value, (int, float)):
+                # Keep the amount visible on the Extra Work summary while the
+                # source assertion remains the authoritative legal evidence.
+                extra_work.proposed_amount = float(signal.value)
+                extra_work.currency = "USD"
         if extra_work_id:
             new_extra_work_ids.add(extra_work_id)
         assertion_value = dict(signal.value) if isinstance(signal.value, dict) else {
@@ -137,6 +147,16 @@ def process_document(document_id: str) -> str:
             statement=signal.source_text,
             value=assertion_value,
             actor=signal.actor,
+            event_at=assertion_value.get("event_at") if isinstance(assertion_value.get("event_at"), str) else None,
+            communication_at=assertion_value.get("event_at") if signal.signal_type in {"cost_communication", "price_approval", "written_notice"} and isinstance(assertion_value.get("event_at"), str) else None,
+            work_start_at=assertion_value.get("event_at") if signal.signal_type in {"work_performed", "daily_report", "extra_work_detected"} and isinstance(assertion_value.get("event_at"), str) else None,
+            approval_at=assertion_value.get("event_at") if signal.signal_type in {"price_approval", "approved_amount", "signed_change_order", "express_authorization"} and isinstance(assertion_value.get("event_at"), str) else None,
+            document_sent_at=assertion_value.get("document_sent_at") if isinstance(assertion_value.get("document_sent_at"), str) else None,
+            uploaded_at=document.received_at,
+            time_source="SOURCE_TEXT" if isinstance(assertion_value.get("event_at"), str) else "UPLOADED_AT",
+            time_confidence="EXPLICIT" if isinstance(assertion_value.get("event_at"), str) else "FALLBACK_UPLOAD_TIME",
+            relationship_status="EXPLICIT" if extra_work_id else "UNSCOPED",
+            relationship_reason="EW identifier extracted from source or document metadata" if extra_work_id else "No unambiguous Extra Work identifier found",
             asserted_at=document.received_at,
             provenance=provenance,
         )
@@ -175,6 +195,8 @@ def process_document(document_id: str) -> str:
             if assertion.extra_work_id:
                 continue
             assertion.extra_work_id = document_ew_id
+            assertion.relationship_status = "INFERRED"
+            assertion.relationship_reason = "Document contained one unambiguous Extra Work identifier"
             if isinstance(assertion.value, dict):
                 assertion.value["extra_work_id"] = document_ew_id
 

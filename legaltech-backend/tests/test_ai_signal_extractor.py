@@ -1,5 +1,6 @@
 from app.extraction.ai_signal_extractor import _candidate_from_item, ai_candidates
-from app.extraction.signal_extractor import _heuristic_candidates
+from app.extraction.signal_extractor import _heuristic_candidates, extract_atomic_signals
+from app.parsers.base import ParsedContent
 
 
 def test_ai_candidates_disabled_without_env_key() -> None:
@@ -65,3 +66,14 @@ def test_ai_candidate_requires_bounded_semantic_fields() -> None:
     assert candidate is not None
     assert candidate.extra_work_id == "EW-101"
     assert candidate.temporal_status == "completed"
+
+
+def test_explicit_source_date_is_preserved_for_dashboard_timeline() -> None:
+    document = type("Document", (), {"id": "DOC-DATE", "metadata": {"original_filename": "02_owner_proceed_only.txt"}})()
+    signals = extract_atomic_signals(
+        document,
+        ParsedContent(document_id="DOC-DATE", text="Feb 3: Please proceed with the extra work."),
+    )
+
+    proceed = next(signal for signal in signals if signal.signal_type == "instruction_to_proceed")
+    assert proceed.value["event_at"] == "Feb 3"

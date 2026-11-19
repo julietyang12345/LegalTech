@@ -3,6 +3,7 @@
 from app.domain_contracts.schemas import (
     Assessment,
     AssessmentStatus,
+    ConflictClassification,
     CaseRuleCandidate,
     DependencyEdge,
     EvidenceAssertion,
@@ -22,6 +23,7 @@ from app.domain_contracts.schemas import (
     RuleActivation,
     ReviewStatus,
     SearchAttempt,
+    UncertaintyReason,
     WorkflowStatus,
 )
 from app.domain_contracts.state_machine import InvalidTransition, transition
@@ -29,6 +31,7 @@ from app.domain_contracts.state_machine import InvalidTransition, transition
 __all__ = [
     "Assessment",
     "AssessmentStatus",
+    "ConflictClassification",
     "CaseRuleCandidate",
     "DependencyEdge",
     "EvidenceAssertion",
@@ -49,6 +52,7 @@ __all__ = [
     "RuleActivation",
     "ReviewStatus",
     "SearchAttempt",
+    "UncertaintyReason",
     "WorkflowStatus",
     "transition",
 ]

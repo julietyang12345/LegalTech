@@ -21,6 +21,9 @@ def match_new_evidence(assertion_ids: Iterable[str]) -> set[str]:
             continue
         candidates = _candidates(assertion)
         if not candidates:
+            if assertion_scope(assertion) is None:
+                assertion.relationship_status = "AMBIGUOUS"
+                assertion.relationship_reason = "No unique Extra Work match was established; human review required"
             continue
         for issue in candidates:
             if not issue.extra_work_id and assertion_scope(assertion):
@@ -28,6 +31,9 @@ def match_new_evidence(assertion_ids: Iterable[str]) -> set[str]:
                 issue.issue_scope = issue.extra_work_id
             if assertion.id not in issue.evidence_ids:
                 issue.evidence_ids.append(assertion.id)
+            if assertion.relationship_status == "UNSCOPED":
+                assertion.relationship_status = "INFERRED"
+                assertion.relationship_reason = "Matched to the only Extra Work scope within the same matter and change event"
             _record_evidence_dependency(issue, assertion)
             matched_issue_ids.add(issue.id)
     return matched_issue_ids

@@ -25,7 +25,7 @@ def extract_atomic_signals(document: Document, parsed_content: ParsedContent) ->
     return [
         ExtractedSignal(
             signal_type=candidate.signal_type,
-            value=_candidate_value(candidate),
+            value=_candidate_value(candidate, _explicit_date(candidate.source_text) or _explicit_date(parsed_content.text)),
             actor=candidate.actor,
             source_document_id=document.id,
             source_text=candidate.source_text,
@@ -262,13 +262,27 @@ def _merge_candidates(*groups: list[SignalCandidate]) -> list[SignalCandidate]:
     return merged
 
 
-def _candidate_value(candidate: SignalCandidate):
+def _candidate_value(candidate: SignalCandidate, event_at: str | None = None):
     value = dict(candidate.value) if isinstance(candidate.value, dict) else {"value": candidate.value}
     value["polarity"] = candidate.polarity
     value["temporal_status"] = candidate.temporal_status
     if candidate.extra_work_id:
         value["extra_work_id"] = candidate.extra_work_id
+    if event_at:
+        value["event_at"] = event_at
     return value
+
+
+def _explicit_date(text: str) -> str | None:
+    """Return a human-readable date only when the source text states one."""
+    match = re.search(
+        r"\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+        r"Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|"
+        r"Dec(?:ember)?)\s+\d{1,2}(?:,?\s+\d{4})?\b|\b\d{4}-\d{2}-\d{2}\b",
+        text,
+        re.IGNORECASE,
+    )
+    return match.group(0) if match else None
 
 
 def _candidate_is_usable(candidate: SignalCandidate) -> bool:

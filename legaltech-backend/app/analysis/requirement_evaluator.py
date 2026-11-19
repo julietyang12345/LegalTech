@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from datetime import date, datetime
 
 from app.analysis.evidence_relationships import assertion_scope
 from app.domain_contracts.recording import record_evidence_link, record_provenance
@@ -14,9 +15,12 @@ from app.domain_contracts.schemas import (
     RequirementCheck,
     RequirementReviewStatus,
     SearchAttempt,
+    UncertaintyReason,
 )
 from app.analysis.semantic_evaluator import judge_requirement
 from app.analysis.text_semantics import is_negative_statement
+from app.analysis.text_semantics import is_explicit_denial
+from app.analysis.conflict_classifier import classify_conflict
 from app.analysis.evidence_matching import matches_queries
 
 
@@ -68,6 +72,18 @@ def evaluate_requirements(
             matching_searches=matching_searches,
             semantic_explanation=semantic.explanation if semantic else None,
         )
+        conflict_classification = None
+        if supporting and contrary:
+            conflict_classification = classify_conflict(supporting[0], contrary[0])
+        uncertainty_reason, next_action = _uncertainty_for(
+            requirement=requirement,
+            result=result,
+            supporting=supporting,
+            contrary=contrary,
+            matching_searches=matching_searches,
+            semantic=semantic,
+            all_assertions=project_assertions,
+        )
 
         provenance = record_provenance(Provenance(
             tenant_id=tenant_id,
@@ -91,6 +107,9 @@ def evaluate_requirements(
             search_attempt_ids=[s.id for s in matching_searches],
             explanation=explanation,
             requires_lawyer_review=review_status == RequirementReviewStatus.required,
+            uncertainty_reason=uncertainty_reason,
+            next_action=next_action,
+            conflict_classification=conflict_classification,
             provenance=provenance,
         )
         checks.append(check)
@@ -148,6 +167,67 @@ def _classify_result(*, supporting, contrary, matching_searches, semantic_explan
     )
 
 
+def _uncertainty_for(*, requirement, result, supporting, contrary, matching_searches, semantic, all_assertions):
+    if contrary:
+        return (
+            UncertaintyReason.conflicting_evidence,
+            "Compare the conflicting source documents, scope, authority, and dates.",
+        )
+    if not supporting:
+        if matching_searches:
+            return (
+                UncertaintyReason.search_no_match,
+                "Search the remaining project evidence and confirm the supplied corpus is complete.",
+            )
+        if requirement.id in {"owner_approved_additional_cost", "approval_documented"}:
+            return (
+                UncertaintyReason.no_explicit_approval_found,
+                "Search signed change orders, owner pricing emails, and possible waiver or alternative entitlement evidence.",
+            )
+        return (
+            UncertaintyReason.partial_evidence_set,
+            "Confirm whether the relevant project records were uploaded and searched.",
+        )
+    if requirement.id == "cost_impact_communicated" and _communication_after_work(all_assertions):
+        return (
+            UncertaintyReason.cost_communication_after_work_start,
+            "Check the contract notice rule and whether a waiver or alternative entitlement basis applies.",
+        )
+    if semantic is None and requirement.evaluation.value in {"AI_SEMANTIC", "AI_AND_LAWYER_REVIEW"}:
+        return (
+            UncertaintyReason.heuristic_only,
+            "Confirm the classification against the cited source text before relying on it for entitlement.",
+        )
+    return (None, None)
+
+
+def _communication_after_work(assertions) -> bool:
+    work_dates = [_assertion_date(item) for item in assertions if any(term in item.assertion_type for term in ("work_performed", "installation", "daily_report", "construction_started"))]
+    communication_dates = [_assertion_date(item) for item in assertions if "cost" in item.assertion_type or "price" in item.assertion_type or "invoice" in item.assertion_type]
+    work_dates = [value for value in work_dates if value]
+    communication_dates = [value for value in communication_dates if value]
+    return bool(work_dates and communication_dates and min(communication_dates) > min(work_dates))
+
+
+def _assertion_date(assertion):
+    value = assertion.event_at
+    if not value and isinstance(assertion.value, dict):
+        value = assertion.value.get("event_at") or assertion.value.get("communication_at")
+    if not value:
+        return assertion.asserted_at.date() if assertion.asserted_at else None
+    return _as_date(value)
+
+
+def _as_date(value) -> date | None:
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).date()
+    except (TypeError, ValueError):
+        try:
+            return date.fromisoformat(str(value))
+        except (TypeError, ValueError):
+            return None
+
+
 def _supports(assertion: EvidenceAssertion, requirement) -> bool:
     if assertion.evidence_role != EvidenceRole.project_fact:
         return False
@@ -186,7 +266,7 @@ def _is_negative_or_denial(assertion: EvidenceAssertion) -> bool:
     return (
         value.get("polarity") == "negative"
         or value.get("temporal_status") == "denied"
-        or is_negative_statement(assertion.statement)
+        or is_explicit_denial(assertion.statement)
         or assertion.assertion_type in {"approval_denied", "authorization_denial", "notice_denied"}
     )
 

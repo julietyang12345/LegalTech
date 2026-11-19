@@ -65,9 +65,16 @@ def reconcile_issue(
         matter_id=issue.matter_id,
         issue_id=issue.id,
         extra_work_id=issue.extra_work_id or next((assertion_scope(assertion) for assertion in relevant if assertion_scope(assertion)), None),
+        # The assessment inherits review requirements from its child checks.
+        # Missing evidence can still require legal review when entitlement,
+        # exceptions, or contract applicability remain unresolved.
         review_status=(
             RequirementReviewStatus.required
-            if status == AssessmentStatus.lawyer_review_required
+            if (
+                status == AssessmentStatus.lawyer_review_required
+                or any(check.review_status == RequirementReviewStatus.required for check in requirement_checks)
+                or (rule is not None and rule.review_policy.value != "OPTIONAL")
+            )
             else RequirementReviewStatus.not_required
         ),
         legal_applicability=(
@@ -84,6 +91,9 @@ def reconcile_issue(
         requirement_checks=requirement_checks,
         provenance=provenance,
         supersedes_assessment_id=prior,
+        uncertainty_reasons=_unique_uncertainty_reasons(requirement_checks, rule),
+        next_action=_next_action(requirement_checks, rule),
+        conflict_classifications=_unique_conflict_classifications(requirement_checks),
     )
     store.assessments[assessment.id] = assessment
     issue.current_assessment_id = assessment.id
@@ -91,6 +101,28 @@ def reconcile_issue(
     issue.evidence_status = evidence_status
     record_issue_dependencies(issue, assessment, rule)
     return assessment
+
+
+def _unique_uncertainty_reasons(checks: list, rule: ExecutableRuleSpec | None):
+    values = [check.uncertainty_reason for check in checks if check.uncertainty_reason]
+    if rule and (rule.applicability.jurisdiction in {"REQUIRES_VERIFICATION", "UNKNOWN"} or rule.applicability.contract_review_required):
+        from app.domain_contracts.schemas import UncertaintyReason
+        values.append(UncertaintyReason.legal_applicability_unverified)
+    return list(dict.fromkeys(values))
+
+
+def _unique_conflict_classifications(checks: list):
+    values = [check.conflict_classification for check in checks if check.conflict_classification]
+    return list(dict.fromkeys(values))
+
+
+def _next_action(checks: list, rule: ExecutableRuleSpec | None) -> str | None:
+    for check in checks:
+        if check.next_action:
+            return check.next_action
+    if rule and rule.applicability.contract_review_required:
+        return "Confirm contract applicability, exceptions, waiver, and alternative entitlement bases with counsel."
+    return None
 
 
 def _assess(
@@ -116,7 +148,7 @@ def _assess_notice(obligation: Obligation | None, assertions: list[EvidenceAsser
     if not dates:
         return AssessmentStatus.insufficient_information, EvidenceStatus.partial, "Notice evidence exists, but the trigger and notice dates could not be reconstructed."
     trigger_at, notice_at = dates
-    elapsed = _elapsed_days(trigger_at, notice_at, obligation.deadline_unit)
+    elapsed = _elapsed_days(trigger_at, notice_at, obligation.deadline_unit, obligation)
     if elapsed < 0:
         return AssessmentStatus.disputed, EvidenceStatus.reconstructable, "The notice date precedes the identified trigger date; dates require lawyer review."
     if elapsed <= obligation.deadline_value:
@@ -152,13 +184,21 @@ def _assess_requirement_checks(checks: list, rule: ExecutableRuleSpec | None) ->
     return AssessmentStatus.satisfied, EvidenceStatus.reconstructable, "All executable-rule requirements were supported by the available evidence."
 
 
-def _elapsed_days(start: date, end: date, unit: str | None) -> int:
+def _elapsed_days(start: date, end: date, unit: str | None, obligation: Obligation | None = None) -> int:
     if unit and unit.lower() in {"working_days", "work_days", "business_days"}:
+        holidays = set()
+        for value in (obligation.holiday_dates if obligation else []):
+            try:
+                holidays.add(date.fromisoformat(value))
+            except ValueError:
+                continue
         current = start
         count = 0
+        if obligation and obligation.counting_rule == "INCLUDING_EVENT" and current.weekday() < 5 and current not in holidays:
+            count = 1
         while current < end:
             current = current.fromordinal(current.toordinal() + 1)
-            if current.weekday() < 5:
+            if current.weekday() < 5 and current not in holidays:
                 count += 1
         return count
     return (end - start).days
@@ -169,19 +209,38 @@ def _deadline_label(unit: str | None) -> str:
 
 
 def _notice_dates(assertions: list[EvidenceAssertion]) -> tuple[date, date] | None:
-    trigger: date | None = None
-    notice: date | None = None
+    triggers: list[date] = []
+    notices: list[date] = []
     for assertion in assertions:
         value: Any = assertion.value
         if isinstance(value, dict):
-            trigger = trigger or _as_date(value.get("trigger_at") or value.get("event_at"))
-            notice = notice or _as_date(value.get("notice_at"))
+            trigger = _as_date(value.get("trigger_at") or value.get("event_at"))
+            notice = _as_date(value.get("notice_at") or value.get("communication_at"))
+            if trigger:
+                triggers.append(trigger)
+            if notice:
+                notices.append(notice)
+        if assertion.event_at:
+            event_date = _as_date(assertion.event_at)
+            if event_date:
+                triggers.append(event_date)
+        if assertion.document_sent_at:
+            sent_date = _as_date(assertion.document_sent_at)
+            if sent_date:
+                notices.append(sent_date)
         if "notice" in assertion.assertion_type.lower() or "notice" in assertion.statement.lower():
             if is_negative_statement(assertion.statement):
                 continue
-            notice = notice or (assertion.asserted_at.date() if assertion.asserted_at else None)
+            if assertion.asserted_at:
+                notices.append(assertion.asserted_at.date())
         if "delay" in assertion.assertion_type.lower() or "trigger" in assertion.assertion_type.lower():
-            trigger = trigger or (assertion.asserted_at.date() if assertion.asserted_at else None)
+            if assertion.asserted_at:
+                triggers.append(assertion.asserted_at.date())
+    # A forwarded or corrected document can be encountered before the source
+    # event in iteration order. Select the earliest explicit trigger and the
+    # earliest communication date rather than the first assertion seen.
+    trigger = min(triggers) if triggers else None
+    notice = min(notices) if notices else None
     return (trigger, notice) if trigger and notice else None
 
 

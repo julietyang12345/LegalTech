@@ -318,6 +318,30 @@ def test_four_extra_work_gold_cases_separate_evidence_outcome_from_review() -> N
     assert report["requirement_evaluation_accuracy"] == 1.0
 
 
+def test_missing_entitlement_evidence_still_requires_review() -> None:
+    _principle, rule = extra_work_cost_communication_rule()
+    obligation = Obligation(
+        tenant_id="T1", matter_id="M1", clause_id="C1",
+        obligation_type="change_order_approval", source_span_id="S1", provenance=_p(),
+    )
+    assertions = [
+        _assertion("extra_work_detected", "Additional steel supports were installed."),
+        _assertion("instruction_to_proceed", "Please proceed with the work."),
+    ]
+    activations = activate_rules(rules=[rule], assertions=assertions)
+    issue = discover_issues(
+        tenant_id="T1", matter_id="M1", obligations=[obligation],
+        assertions=assertions, rules=[rule], activations=activations,
+    )[0]
+    assessment = reconcile_issue(
+        issue=issue, obligations=[obligation], assertions=assertions,
+        analysis_run_id="R1", rule=rule,
+    )
+
+    assert assessment.status == AssessmentStatus.insufficient_information
+    assert assessment.review_status.value == "REQUIRED"
+
+
 def test_evidence_scope_does_not_use_other_extra_work_cost() -> None:
     _principle, rule = extra_work_cost_communication_rule()
     ew1 = _assertion("extra_work_detected", "EW-1 additional work.", "EW-1")
