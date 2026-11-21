@@ -17,6 +17,7 @@ from app.models import (
 )
 from app.domain_contracts.schemas import (
     Assessment,
+    AssertionLink,
     DependencyEdge,
     EvidenceLink,
     EvidenceAssertion,
@@ -52,14 +53,22 @@ class InMemoryStore:
         self.extra_works: dict[str, ExtraWork] = {}
         self.assertions: dict[str, EvidenceAssertion] = {}
         self.evidence_links: dict[str, EvidenceLink] = {}
+        self.assertion_links: dict[str, AssertionLink] = {}
         self.issues: dict[str, Issue] = {}
         self.assessments: dict[str, Assessment] = {}
         self.provenance: dict[str, Provenance] = {}
         self.search_attempts: dict[str, SearchAttempt] = {}
         self.legal_principles: dict[str, LegalPrinciple] = {}
+        self.case_rule_candidates: dict[str, object] = {}
         self.rule_specs: dict[tuple[str, str], ExecutableRuleSpec] = {}
         self.rule_activations: dict[str, RuleActivation] = {}
         self.dependency_edges: dict[str, DependencyEdge] = {}
+
+    def reset(self) -> None:
+        """Clear all state. Intended for isolated tests and evaluation runs."""
+        for name, value in vars(self).items():
+            if isinstance(value, dict | set | list):
+                value.clear()
 
     def find_document_duplicate(
         self,
@@ -89,6 +98,24 @@ class InMemoryStore:
     def save_event(self, event: Event) -> Event:
         self.events[event.id] = event
         return event
+
+    def find_extra_work(
+        self,
+        *,
+        tenant_id: str,
+        matter_id: str,
+        external_id: str,
+    ) -> ExtraWork | None:
+        """Find an Extra Work only inside its tenant and Matter boundary."""
+        return next(
+            (
+                item for item in self.extra_works.values()
+                if item.tenant_id == tenant_id
+                and item.matter_id == matter_id
+                and item.external_id == external_id
+            ),
+            None,
+        )
 
     def enqueue_job(self, job: ProcessingJob) -> ProcessingJob:
         existing = [

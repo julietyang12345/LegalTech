@@ -120,7 +120,14 @@ def test_ambiguous_multi_ew_triggers_do_not_create_unscoped_issue() -> None:
 
 
 def test_document_level_ew_id_is_applied_when_document_is_unambiguous(monkeypatch) -> None:
-    monkeypatch.setattr("app.extraction.signal_extractor.ai_candidates", lambda _text: [])
+    monkeypatch.setattr(
+        "app.extraction.signal_extractor.ai_candidates",
+        lambda _text: [SignalCandidate(
+            signal_type="signed_change_order", value=True,
+            source_text="The signed change order is attached for EW-101.",
+            confidence=0.9, extra_work_id="EW-101",
+        )],
+    )
     signals = extract_atomic_signals(
         type("Document", (), {"id": "DOC-CO"})(),
         ParsedContent(document_id="DOC-CO", text="The signed change order is attached for EW-101. CO-101 adjusts the Contract Price by $25,000."),
@@ -130,7 +137,14 @@ def test_document_level_ew_id_is_applied_when_document_is_unambiguous(monkeypatc
 
 
 def test_explicit_filename_disambiguates_change_order_document(monkeypatch) -> None:
-    monkeypatch.setattr("app.extraction.signal_extractor.ai_candidates", lambda _text: [])
+    monkeypatch.setattr(
+        "app.extraction.signal_extractor.ai_candidates",
+        lambda _text: [SignalCandidate(
+            signal_type="signed_change_order", value=True,
+            source_text="The signed change order is attached for EW-401 only.",
+            confidence=0.9,
+        )],
+    )
     signals = extract_atomic_signals(
         type("Document", (), {"id": "DOC-CO", "metadata": {"original_filename": "03_signed_change_order_EW401.txt"}})(),
         ParsedContent(document_id="DOC-CO", text="The signed change order is attached for EW-401 only. This document does not authorize EW-402."),
@@ -356,7 +370,7 @@ def test_evidence_scope_does_not_use_other_extra_work_cost() -> None:
     assert cost_check.result == AssessmentStatus.insufficient_information
 
 
-def test_ai_partial_output_is_merged_with_heuristic_trigger(monkeypatch) -> None:
+def test_ai_partial_output_is_not_augmented_by_keyword_trigger(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.extraction.signal_extractor.ai_candidates",
         lambda _text: [SignalCandidate(signal_type="instruction_to_proceed", value=True, source_text="Please proceed", confidence=0.9)],
@@ -365,7 +379,7 @@ def test_ai_partial_output_is_merged_with_heuristic_trigger(monkeypatch) -> None
         type("Document", (), {"id": "DOC-1"})(),
         ParsedContent(document_id="DOC-1", text="Extra work is required. Please proceed."),
     )
-    assert {signal.signal_type for signal in signals} >= {"instruction_to_proceed", "extra_work_detected"}
+    assert {signal.signal_type for signal in signals} == {"instruction_to_proceed"}
 
 
 def test_no_notice_sent_is_not_extracted_as_notice(monkeypatch) -> None:
@@ -375,8 +389,7 @@ def test_no_notice_sent_is_not_extracted_as_notice(monkeypatch) -> None:
         ParsedContent(document_id="DOC-2", text="No notice was sent for the delay."),
     )
     signal_types = {signal.signal_type for signal in signals}
-    assert "written_notice" not in signal_types
-    assert "notice_denied" in signal_types
+    assert signal_types == set()
 
 
 def test_activation_rejects_cross_matter_evidence() -> None:

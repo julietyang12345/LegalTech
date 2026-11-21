@@ -179,6 +179,8 @@ class ProcessingJob(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     completed_at: datetime | None = None
     pipeline_version: str = "0.1.0"
+    analysis_status: str = "PENDING"
+    analysis_reason: str | None = None
 
 
 class HumanReview(BaseModel):

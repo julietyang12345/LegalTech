@@ -23,7 +23,8 @@
         "invoice_submitted",
         "invoice_amount",
         "pricing_method",
-        "price_approval"
+        "price_approval",
+        "signed_change_order"
       ]
     },
     {

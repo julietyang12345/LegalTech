@@ -1,0 +1,8 @@
+INVOICE
+Project: PRJ-505
+Invoice Number: INV-505
+Invoice Date: April 17, 2026
+Reference: EW-505 / CO-505
+Description: Service chase duct reroute
+Amount: $13,600.00
+Terms: Net 30

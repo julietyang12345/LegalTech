@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from contextlib import contextmanager
 from time import perf_counter
 
@@ -25,9 +26,13 @@ from app.analysis.issue_discovery import discover_issues
 from app.analysis.reconciliation import reconcile_issue
 from app.analysis.rule_activation import activate_rules
 from app.analysis.targeted_retrieval import retrieve_requirement_evidence
+from app.core.config import get_settings
 from app.legal_knowledge.default_rules import default_rule_set
 from app.legal_knowledge.rule_registry import register_rule
+from app.legal_knowledge.ai_rule_discovery import discover_rule_candidates
 from app.services.hashing import stable_text_hash
+from app.analysis.event_time import normalize_event_time
+from app.models.domain import DocumentType
 
 PIPELINE_VERSION = "0.1.0"
 logger = logging.getLogger(__name__)
@@ -62,6 +67,14 @@ def process_document(document_id: str) -> str:
     with _detector_step("parse_document", document_id=document_id):
         parsed_content = parse_document(document)
     logger.info("[detector] document parsed document_id=%s text_chars=%d", document_id, len(parsed_content.text or ""))
+    if document.document_type.value == "contract":
+        discover_rule_candidates(
+            document_id=document.id,
+            text=parsed_content.text,
+            tenant_id=document.tenant_id or "unassigned",
+            matter_id=document.matter_id or document.metadata.get("matter_id") or "unassigned",
+            analysis_run_id=f"RUN-{stable_text_hash(document_id + PIPELINE_VERSION)[:12].upper()}",
+        )
     with _detector_step("resolve_project", document_id=document_id):
         project_match = resolve_project(document, parsed_content)
     logger.info("[detector] project resolved document_id=%s project_id=%s status=%s", document_id, project_match.project_id, project_match.status)
@@ -92,6 +105,26 @@ def process_document(document_id: str) -> str:
     with _detector_step("validate_signals", document_id=document_id, input_count=len(extracted_signals)):
         validated_signals = validate_signals(document, extracted_signals)
     logger.info("[detector] signals validated document_id=%s count=%d", document_id, len(validated_signals))
+    semantic_signals = [
+        signal for signal in validated_signals
+        if signal.signal_type not in {"project_number", "po_number"}
+    ]
+    settings = get_settings()
+    if not settings.ai_extraction_enabled or not settings.openai_api_key:
+        document.metadata["analysis_status"] = "ANALYSIS_INCOMPLETE"
+        document.metadata["analysis_reason"] = "AI extraction is disabled or OPENAI_API_KEY is unavailable."
+    elif not semantic_signals and document.document_type != DocumentType.contract:
+        # Contract text is normative: obligations come from clause parsing,
+        # so zero project-fact signals is expected, not a failed analysis.
+        document.metadata["analysis_status"] = "ANALYSIS_INCOMPLETE"
+        document.metadata["analysis_reason"] = "AI extraction returned no validated semantic signals."
+    else:
+        document.metadata["analysis_status"] = "COMPLETE"
+        document.metadata.pop("analysis_reason", None)
+    logger.info(
+        "[detector] analysis status document_id=%s status=%s reason=%s",
+        document_id, document.metadata["analysis_status"], document.metadata.get("analysis_reason"),
+    )
     def persist_signal(signal):
         signal.tenant_id = document.tenant_id or "unassigned"
         provenance = record_provenance(
@@ -101,31 +134,40 @@ def process_document(document_id: str) -> str:
                 source_document_ids=[document.id],
                 analysis_run_id=analysis_run_id,
                 pipeline_version=PIPELINE_VERSION,
-                method="ai_or_heuristic_extraction",
+                method="ai_extraction_or_deterministic_metadata",
                 rationale="Candidate interpretation linked to source text; not a verified fact.",
             )
         )
         signal.provenance_id = provenance.id
         assertion_id = f"ASSERT-{signal.id}"
         extra_work_id = infer_extra_work_id(signal.value, signal.source_text)
+        tenant_id = document.tenant_id or "unassigned"
+        matter_id = document.matter_id or document.metadata.get("matter_id") or "unassigned"
         if extra_work_id:
-            extra_work = next(
-                (item for item in store.extra_works.values() if item.external_id == extra_work_id),
-                None,
+            extra_work = store.find_extra_work(
+                tenant_id=tenant_id,
+                matter_id=matter_id,
+                external_id=extra_work_id,
             )
             if extra_work is None:
                 extra_work = ExtraWork(
-                    id=extra_work_id,
-                    tenant_id=signal.tenant_id,
-                    matter_id=document.metadata.get("matter_id") or "unassigned",
+                    tenant_id=tenant_id,
+                    matter_id=matter_id,
                     external_id=extra_work_id,
-                    title=signal.source_text[:160],
+                    title=_extra_work_title(document, signal.source_text, change_event_match.change_event_id),
                 )
                 store.extra_works[extra_work.id] = extra_work
-            if signal.signal_type in {"invoice_amount", "estimate_amount", "approved_amount"} and isinstance(signal.value, (int, float)):
-                # Keep the amount visible on the Extra Work summary while the
-                # source assertion remains the authoritative legal evidence.
-                extra_work.proposed_amount = float(signal.value)
+            amount = _signal_amount(signal.value)
+            if signal.signal_type in {"invoice_amount", "estimate_amount", "approved_amount"} and amount is not None:
+                # Keep legacy proposed_amount populated while preserving the
+                # semantic distinction needed by the dashboard.
+                extra_work.proposed_amount = amount
+                if signal.signal_type == "invoice_amount":
+                    extra_work.claimed_amount = amount
+                elif signal.signal_type == "estimate_amount":
+                    extra_work.estimated_amount = amount
+                elif signal.signal_type == "approved_amount":
+                    extra_work.approved_amount = amount
                 extra_work.currency = "USD"
         if extra_work_id:
             new_extra_work_ids.add(extra_work_id)
@@ -136,10 +178,19 @@ def process_document(document_id: str) -> str:
         assertion_value.setdefault("change_event_id", change_event_match.change_event_id)
         if extra_work_id:
             assertion_value["extra_work_id"] = extra_work_id
+        raw_event_at = assertion_value.get("event_at") if isinstance(assertion_value.get("event_at"), str) else None
+        normalized_time = normalize_event_time(raw_event_at, reference_at=document.received_at)
+        event_at = normalized_time.raw_value
+        event_iso = normalized_time.iso_value
+        raw_document_sent_at = assertion_value.get("document_sent_at") if isinstance(assertion_value.get("document_sent_at"), str) else None
+        normalized_document_sent_at = normalize_event_time(raw_document_sent_at, reference_at=document.received_at)
+        communication_types = {"cost_communication", "pricing_unresolved", "written_notice", "estimate_amount"}
+        approval_types = {"price_approval", "approved_amount", "signed_change_order", "express_authorization"}
         store.assertions[assertion_id] = EvidenceAssertion(
             id=assertion_id,
-            tenant_id=signal.tenant_id,
-            matter_id=document.metadata.get("matter_id") or "unassigned",
+            conversation_id=document.metadata.get("conversation_id"),
+            tenant_id=tenant_id,
+            matter_id=matter_id,
             source_document_id=signal.source_document_id,
             extra_work_id=extra_work_id,
             evidence_role=evidence_role_for_document(document),
@@ -147,16 +198,21 @@ def process_document(document_id: str) -> str:
             statement=signal.source_text,
             value=assertion_value,
             actor=signal.actor,
-            event_at=assertion_value.get("event_at") if isinstance(assertion_value.get("event_at"), str) else None,
-            communication_at=assertion_value.get("event_at") if signal.signal_type in {"cost_communication", "price_approval", "written_notice"} and isinstance(assertion_value.get("event_at"), str) else None,
-            work_start_at=assertion_value.get("event_at") if signal.signal_type in {"work_performed", "daily_report", "extra_work_detected"} and isinstance(assertion_value.get("event_at"), str) else None,
-            approval_at=assertion_value.get("event_at") if signal.signal_type in {"price_approval", "approved_amount", "signed_change_order", "express_authorization"} and isinstance(assertion_value.get("event_at"), str) else None,
-            document_sent_at=assertion_value.get("document_sent_at") if isinstance(assertion_value.get("document_sent_at"), str) else None,
+            event_at=event_at,
+            communication_at=event_iso if signal.signal_type in communication_types else None,
+            work_planned_at=event_iso if signal.signal_type == "work_planned" else None,
+            work_start_at=event_iso if signal.signal_type == "work_performed" else None,
+            work_completed_at=event_iso if signal.signal_type == "work_completed" else None,
+            approval_at=event_iso if signal.signal_type in approval_types else None,
+            price_communicated_at=event_iso if signal.signal_type in communication_types else None,
+            price_approved_at=event_iso if signal.signal_type in approval_types else None,
+            document_sent_at=normalized_document_sent_at.iso_value,
             uploaded_at=document.received_at,
-            time_source="SOURCE_TEXT" if isinstance(assertion_value.get("event_at"), str) else "UPLOADED_AT",
-            time_confidence="EXPLICIT" if isinstance(assertion_value.get("event_at"), str) else "FALLBACK_UPLOAD_TIME",
+            time_source="SOURCE_TEXT" if raw_event_at else "UNKNOWN",
+            time_confidence=normalized_time.confidence,
             relationship_status="EXPLICIT" if extra_work_id else "UNSCOPED",
             relationship_reason="EW identifier extracted from source or document metadata" if extra_work_id else "No unambiguous Extra Work identifier found",
+            scope_confidence="HIGH" if extra_work_id else "UNKNOWN",
             asserted_at=document.received_at,
             provenance=provenance,
         )
@@ -273,7 +329,7 @@ def process_document(document_id: str) -> str:
                 issue.evidence_ids = sorted(set(issue.evidence_ids + [a.id for a in targeted_assertions]))
             logger.info("[detector] targeted evidence complete issue_id=%s assertions=%d searches=%d", issue.id, len(targeted_assertions), len(targeted_searches))
             with _detector_step("reconcile_issue", issue_id=issue.id):
-                reconcile_issue(
+                assessment = reconcile_issue(
                     issue=issue,
                     obligations=obligations,
                     assertions=assertions + targeted_assertions,
@@ -285,6 +341,15 @@ def process_document(document_id: str) -> str:
                     pipeline_version=PIPELINE_VERSION,
                     rule=issue_rule,
                 )
+                if any(not check.analysis_complete for check in assessment.requirement_checks):
+                    document.metadata["analysis_status"] = "ANALYSIS_INCOMPLETE"
+                    document.metadata["analysis_reason"] = (
+                        "Semantic evaluation did not classify every relevant evidence item."
+                    )
+                    logger.warning(
+                        "[detector] semantic analysis incomplete document_id=%s issue_id=%s",
+                        document_id, issue.id,
+                    )
             logger.info("[detector] issue finished issue_id=%s", issue.id)
     else:
         logger.warning("[detector] no matter_id; legal issue analysis skipped document_id=%s", document_id)
@@ -302,3 +367,32 @@ def process_document(document_id: str) -> str:
     result = "waiting_for_review" if needs_review else "completed"
     logger.info("[detector] document pipeline finished document_id=%s result=%s", document_id, result)
     return result
+
+
+def _signal_amount(value) -> float | None:
+    raw = value.get("value") if isinstance(value, dict) else value
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    return None
+
+
+def _extra_work_title(document, source_text: str, change_event_id: str | None) -> str:
+    """Use a human subject/scope title, never a raw mail header prefix."""
+    subject = (document.subject or "").strip()
+    subject_lower = subject.lower()
+    header_like = subject_lower.startswith("project correspondence") or (
+        "project:" in subject_lower and "date sent:" in subject_lower
+    )
+    if subject and not header_like and subject_lower not in {"none", "unknown"} and not subject_lower.endswith((".txt", ".pdf", ".docx")):
+        return subject[:160]
+    if change_event_id:
+        change_event = store.change_events.get(change_event_id)
+        if change_event and change_event.title and "cost communication" not in change_event.title.lower():
+            return change_event.title[:160]
+    subject_match = re.search(r"(?im)^subject:\s*(.+)$", source_text)
+    if subject_match:
+        return subject_match.group(1).strip()[:160]
+    cleaned = re.sub(r"(?is)^project correspondence\s*", "", source_text).strip()
+    return cleaned[:160] or "Extra Work"

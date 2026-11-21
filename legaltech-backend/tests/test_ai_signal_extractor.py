@@ -1,9 +1,14 @@
 from app.extraction.ai_signal_extractor import _candidate_from_item, ai_candidates
-from app.extraction.signal_extractor import _heuristic_candidates, extract_atomic_signals
+from app.extraction.schemas import SignalCandidate
+from app.extraction.signal_extractor import extract_atomic_signals
 from app.parsers.base import ParsedContent
 
 
-def test_ai_candidates_disabled_without_env_key() -> None:
+def test_ai_candidates_disabled_when_feature_flag_is_off(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.extraction.ai_signal_extractor.get_settings",
+        lambda: type("Settings", (), {"ai_extraction_enabled": False, "openai_api_key": None})(),
+    )
     assert ai_candidates("Please proceed with the work.") == []
 
 
@@ -38,18 +43,6 @@ def test_candidate_requires_source_excerpt_from_document() -> None:
     assert unsupported is None
 
 
-def test_future_signed_change_order_is_not_extracted_as_executed() -> None:
-    planned = _heuristic_candidates(
-        "We can start on February 5 after a signed change order."
-    )
-    assert not any(item.signal_type == "signed_change_order" for item in planned)
-
-    executed = _heuristic_candidates(
-        "Status: Signed change order / executed change order."
-    )
-    assert any(item.signal_type == "signed_change_order" for item in executed)
-
-
 def test_ai_candidate_requires_bounded_semantic_fields() -> None:
     candidate = _candidate_from_item(
         {
@@ -68,7 +61,11 @@ def test_ai_candidate_requires_bounded_semantic_fields() -> None:
     assert candidate.temporal_status == "completed"
 
 
-def test_explicit_source_date_is_preserved_for_dashboard_timeline() -> None:
+def test_explicit_source_date_is_preserved_for_dashboard_timeline(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.extraction.signal_extractor.ai_candidates",
+        lambda _text: [SignalCandidate(signal_type="instruction_to_proceed", value=True, source_text="Please proceed with the extra work.", confidence=0.9)],
+    )
     document = type("Document", (), {"id": "DOC-DATE", "metadata": {"original_filename": "02_owner_proceed_only.txt"}})()
     signals = extract_atomic_signals(
         document,
@@ -77,3 +74,46 @@ def test_explicit_source_date_is_preserved_for_dashboard_timeline() -> None:
 
     proceed = next(signal for signal in signals if signal.signal_type == "instruction_to_proceed")
     assert proceed.value["event_at"] == "Feb 3"
+
+
+def test_ai_disabled_keeps_only_deterministic_identifiers(monkeypatch) -> None:
+    monkeypatch.setattr("app.extraction.signal_extractor.ai_candidates", lambda _text: [])
+    document = type("Document", (), {"id": "DOC-ID", "metadata": {}})()
+    signals = extract_atomic_signals(
+        document,
+        ParsedContent(document_id="DOC-ID", text="PRJ-502 Go ahead with the additional framing."),
+    )
+    assert {signal.signal_type for signal in signals} == {"project_number"}
+
+
+def test_event_date_comes_from_signal_excerpt_not_later_document_date(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.extraction.signal_extractor.ai_candidates",
+        lambda _text: [SignalCandidate(
+            signal_type="instruction_to_proceed", value=True,
+            source_text="April 8: Go ahead with the framing.", confidence=0.9,
+        )],
+    )
+    document = type("Document", (), {"id": "DOC-TIME", "metadata": {}})()
+    signals = extract_atomic_signals(
+        document,
+        ParsedContent(document_id="DOC-TIME", text="April 8: Go ahead with the framing. Planned start April 10."),
+    )
+    assert signals[0].value["event_at"] == "April 8"
+
+
+def test_extractor_preserves_semantic_candidate_for_central_validator(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.extraction.signal_extractor.ai_candidates",
+        lambda _text: [SignalCandidate(
+            signal_type="price_approval", value=True,
+            source_text="We have not approved the revised price.", confidence=0.9,
+            polarity="negative", temporal_status="completed",
+        )],
+    )
+    document = type("Document", (), {"id": "DOC-VALIDATE", "metadata": {}})()
+    signals = extract_atomic_signals(
+        document,
+        ParsedContent(document_id="DOC-VALIDATE", text="We have not approved the revised price."),
+    )
+    assert signals[0].value["polarity"] == "negative"

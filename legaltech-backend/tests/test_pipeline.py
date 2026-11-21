@@ -1,3 +1,7 @@
+import re
+
+import pytest
+
 from app.ingestion.upload_ingestor import ingest_upload
 from app.jobs.worker import run_once
 from app.matching.change_event_matcher import resolve_change_event
@@ -6,6 +10,58 @@ from app.models.domain import DocumentType, JobStatus, Severity
 from app.domain_contracts.schemas import Obligation, Provenance
 from app.parsers.base import ParsedContent
 from app.repositories.memory import store
+from app.extraction.schemas import SignalCandidate
+
+
+def _fixture_ai_candidates(text: str) -> list[SignalCandidate]:
+    """Semantic extraction substitute for pipeline tests; production uses the LLM."""
+    lowered = text.lower()
+    ew_match = re.search(r"\bEW[- ]?\d+\b", text, re.IGNORECASE)
+    ew_id = ew_match.group(0).upper().replace(" ", "-") if ew_match else None
+    candidates: list[SignalCandidate] = []
+
+    def add(signal_type: str, source: str, value=True, **kwargs) -> None:
+        candidates.append(SignalCandidate(signal_type=signal_type, value=value, source_text=source, confidence=0.95, extra_work_id=ew_id, **kwargs))
+
+    if "proceed" in lowered or "go ahead" in lowered or "keep the crew moving" in lowered:
+        source = "Please proceed" if "proceed" in lowered else "go ahead"
+        add("instruction_to_proceed", source)
+        add("operational_direction", source)
+    if "signed change order is attached" in lowered or "signed change order" in lowered:
+        source = "The signed change order is attached" if "the signed change order is attached" in lowered else "signed change order"
+        add("signed_change_order", source)
+    if "invoice" in lowered or "amount due" in lowered:
+        source = "invoice amount due" if "invoice amount due" in lowered else "invoice"
+        add("invoice_submitted", source)
+        amount = re.search(r"\$([0-9,]+(?:\.\d+)?)", text)
+        if amount:
+            add("invoice_amount", amount.group(0), float(amount.group(1).replace(",", "")))
+    if "authorized to approve" in lowered:
+        source = "authorized to approve"
+        add("express_authorization", source)
+        add("actor_authority", source)
+        amount = re.search(r"\$([0-9,]+(?:\.\d+)?)", text)
+        if amount:
+            add("approved_amount", amount.group(0), float(amount.group(1).replace(",", "")))
+    if "scheduling only" in lowered or "not additional cost" in lowered:
+        source = "scheduling only" if "scheduling only" in lowered else "not additional cost"
+        add("scheduling_only", source, polarity="negative")
+        add("delegated_authority_limited", source, polarity="negative")
+    if "extra work" in lowered or "additional work" in lowered:
+        source = "additional work" if "additional work" in lowered else "extra work"
+        add("extra_work_detected", source)
+    if "additional cost" in lowered:
+        source = "Additional cost"
+        add("cost_communication", source)
+        amount = re.search(r"\$([0-9,]+(?:\.\d+)?)", text)
+        if amount:
+            add("estimate_amount", amount.group(0), float(amount.group(1).replace(",", "")))
+    return candidates
+
+
+@pytest.fixture(autouse=True)
+def semantic_extraction_fixture(monkeypatch):
+    monkeypatch.setattr("app.extraction.signal_extractor.ai_candidates", _fixture_ai_candidates)
 
 
 def clear_store() -> None:
@@ -24,6 +80,7 @@ def clear_store() -> None:
     store.match_feedback.clear()
     store.processed_documents.clear()
     store.obligations.clear()
+    store.extra_works.clear()
     store.assertions.clear()
     store.issues.clear()
     store.assessments.clear()

@@ -88,7 +88,8 @@ def _numeric_signals(signals: list[ExtractedSignal], signal_type: str) -> list[t
         if signal.signal_type != signal_type:
             continue
         try:
-            values.append((float(signal.value), signal))
+            raw = signal.value.get("value") if isinstance(signal.value, dict) else signal.value
+            values.append((float(raw), signal))
         except (TypeError, ValueError):
             continue
     return values

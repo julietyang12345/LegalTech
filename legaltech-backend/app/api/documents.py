@@ -23,6 +23,9 @@ async def upload_document(
     gmail_message_id: str | None = Form(default=None),
     internet_message_id: str | None = Form(default=None),
     tenant_id: str | None = Form(default=None),
+    conversation_id: str | None = Form(default=None),
+    in_reply_to: str | None = Form(default=None),
+    thread_index: int | None = Form(default=None),
 ) -> dict:
     document, job = ingest_upload(
         content=await file.read(),
@@ -34,6 +37,9 @@ async def upload_document(
         gmail_message_id=gmail_message_id,
         internet_message_id=internet_message_id,
         tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        in_reply_to=in_reply_to,
+        thread_index=thread_index,
     )
     return {"document": document, "job": job, "deduplicated": job is None}
 

@@ -1,0 +1,56 @@
+{
+  "case_id": "CO-05",
+  "project_number": "PRJ-505",
+  "project": "Gardenview Hospital - Service Chase",
+  "documents": [
+    {
+      "filename": "00_contract.txt",
+      "document_type": "contract",
+      "available_at": "2026-03-18",
+      "sender": "synthetic@test.example",
+      "subject": "00_contract.txt"
+    },
+    {
+      "filename": "01_request.txt",
+      "document_type": "email",
+      "available_at": "2026-04-07T15:00",
+      "sender": "Owen Fox <owen@stellar.example>",
+      "subject": "Additional duct reroute near service chase"
+    },
+    {
+      "filename": "02_initial_direction.txt",
+      "document_type": "email",
+      "available_at": "2026-04-08T10:00",
+      "sender": "Anika Patel <anika@gardenview.example>",
+      "subject": "RE: Additional duct reroute"
+    },
+    {
+      "filename": "03_daily_report.txt",
+      "document_type": "daily_report",
+      "available_at": "2026-04-10T17:45",
+      "sender": "synthetic@test.example",
+      "subject": "03_daily_report.txt"
+    },
+    {
+      "filename": "04_cost_reconciliation.txt",
+      "document_type": "email",
+      "available_at": "2026-04-13T11:20",
+      "sender": "Owen Fox <owen@stellar.example>",
+      "subject": "Final measure for service chase"
+    },
+    {
+      "filename": "05_later_signed_co.txt",
+      "document_type": "change_order",
+      "available_at": "2026-04-14T13:30",
+      "sender": "synthetic@test.example",
+      "subject": "05_later_signed_co.txt"
+    },
+    {
+      "filename": "06_invoice.txt",
+      "document_type": "invoice",
+      "available_at": "2026-04-17T09:00",
+      "sender": "synthetic@test.example",
+      "subject": "06_invoice.txt"
+    }
+  ]
+}

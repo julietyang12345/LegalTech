@@ -1,0 +1,82 @@
+{
+  "case_id": "CO-05",
+  "label": "late executed change order",
+  "synthetic": true,
+  "project_number": "PRJ-505",
+  "scenario": "Initial approval gap; later signed priced CO covers earlier work but timing compliance still merits review.",
+  "dimension_under_test": "Temporal updating / partial resolution",
+  "expected": {
+    "expected_distinct_extra_work_scopes": 1,
+    "multiple_legal_issues_per_scope_allowed": true,
+    "extra_work_ids": [
+      "EW-505"
+    ],
+    "cost_communication": "supported_prework",
+    "price_approval": "signed_after_work",
+    "work_direction": "supported",
+    "final_legal_outcome": "requires_contract_specific_and_lawyer_review",
+    "required_evidence_files": [
+      "00_contract.txt",
+      "01_request.txt",
+      "02_initial_direction.txt",
+      "03_daily_report.txt",
+      "05_later_signed_co.txt"
+    ],
+    "must_not": [
+      "Maintain an unresolved missing-priced-CO alert after April 14",
+      "State work was authorized by signed CO before April 9",
+      "Claim a later signature conclusively cures all past contractual noncompliance"
+    ],
+    "recommended_action": "Update state when CO arrives; maintain traceable historical issue."
+  },
+  "timepoints": [
+    {
+      "as_of": "2026-04-08T23:59",
+      "expected_state": "POTENTIAL_RISK",
+      "evidence_files": [
+        "00_contract.txt",
+        "01_request.txt",
+        "02_initial_direction.txt"
+      ],
+      "rationale": "Price and scope are proposed but the contract-required executed priced CO is not yet available; changed work is authorized to begin.",
+      "recommended_action": "Seek signed price authorization before Thursday work.",
+      "alert_required": true,
+      "clarification_required": false,
+      "assessment_scope": "approval_or_notice_documentation_risk"
+    },
+    {
+      "as_of": "2026-04-14T23:59",
+      "expected_state": "RESOLVED",
+      "evidence_files": [
+        "00_contract.txt",
+        "03_daily_report.txt",
+        "05_later_signed_co.txt"
+      ],
+      "rationale": "A signed priced CO now documents the amount and earlier scope. It does not erase the historical fact that work preceded the signed form; timing consequences require review.",
+      "recommended_action": "Close current missing-price-document warning; retain historical timing review if material.",
+      "alert_required": false,
+      "clarification_required": false,
+      "assessment_scope": "approval_or_notice_documentation_risk",
+      "residual_timing_review_required": true
+    }
+  ],
+  "labeling_function_challenges": [
+    "Incremental updates",
+    "Partial versus complete risk resolution"
+  ],
+  "expert_review": {
+    "status": "DRAFT_NOT_LEGAL_EXPERT_VERIFIED",
+    "review_questions": [
+      "Confirm risk state under the fictional contract terms",
+      "Identify any plausible exception, alternative interpretation or additional required evidence"
+    ]
+  },
+  "notes": [
+    "Draft benchmark expectations, not legal conclusions or court holdings.",
+    "All entities and data are invented. Contract variations are intentional.",
+    "Absence of document means not identified in this supplied corpus, not proof it never existed.",
+    "Expected results must be reviewed independently from labeling functions before use as gold data.",
+    "Do not upload this JSON to the test application; the current backend does not necessarily consume this as an eval schema.",
+    "Use --through to create an isolated Matter with only documents available as of that date."
+  ]
+}

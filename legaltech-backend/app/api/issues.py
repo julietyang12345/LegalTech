@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
+from app.analysis.event_time import assertion_event_date
 from app.repositories.memory import store
 
 router = APIRouter()
@@ -34,6 +35,12 @@ def list_issue_dashboard(tenant_id: str | None = None, matter_id: str | None = N
         issues = [issue for issue in issues if issue.tenant_id == tenant_id]
     if matter_id:
         issues = [issue for issue in issues if issue.matter_id == matter_id]
+    incomplete_documents = [
+        document for document in store.documents.values()
+        if document.matter_id == matter_id
+        and (not tenant_id or document.tenant_id == tenant_id)
+        and document.metadata.get("analysis_status") == "ANALYSIS_INCOMPLETE"
+    ]
     grouped: dict[str, list[dict]] = {}
     for issue in issues:
         serialized = _serialize_issue(issue)
@@ -43,20 +50,52 @@ def list_issue_dashboard(tenant_id: str | None = None, matter_id: str | None = N
     for extra_work_id, records in grouped.items():
         dashboards = [record["dashboard"] for record in records]
         first = records[0]
+        missing_requirements, contrary_requirements = _aggregate_requirement_gaps(records)
+        historical_timing_review = any(
+            reason in {"APPROVAL_AFTER_WORK_START", "COST_COMMUNICATION_AFTER_WORK_START", "TEMPORAL_ORDER_UNCERTAIN"}
+            for dashboard in dashboards for reason in dashboard["uncertainty_reasons"]
+        )
+        current_gap = bool(missing_requirements or contrary_requirements)
         cards.append({
             "extra_work_id": extra_work_id,
             "title": first["dashboard"]["title"],
             "claimed_amount": first["dashboard"]["claimed_amount"],
             "currency": first["dashboard"]["currency"],
-            "risk_label": "Potential documentation risk" if any(item["risk_label"] == "Potential documentation risk" for item in dashboards) else "No identified documentation gap",
+            "risk_label": "Potential documentation risk" if current_gap else "No identified documentation gap",
             "review_status": "RECOMMENDED" if any(item["review_status"] == "RECOMMENDED" for item in dashboards) else "NOT_REQUIRED",
-            "missing_requirements": sorted({item for dashboard in dashboards for item in dashboard["missing_requirements"]}),
-            "contrary_requirements": sorted({item for dashboard in dashboards for item in dashboard["contrary_requirements"]}),
-            "next_action": next((item["next_action"] for item in dashboards if item["risk_label"] == "Potential documentation risk"), "No additional documentation action identified."),
+            "missing_requirements": missing_requirements,
+            "contrary_requirements": contrary_requirements,
+            "current_documentation_status": "POTENTIAL_RISK" if current_gap else "RESOLVED",
+            "historical_timing_review_required": historical_timing_review,
+            "next_action": next((item["next_action"] for item in dashboards if item["risk_label"] == "Potential documentation risk"), "Retain historical timing review; confirm whether late execution has any contractual effect." if historical_timing_review else "No additional documentation action identified."),
             "search_coverage": sum(item["search_coverage"] for item in dashboards),
+            "retrieval_coverage": _merge_retrieval_coverage(records),
             "uncertainty_reasons": sorted({item for dashboard in dashboards for item in dashboard["uncertainty_reasons"]}),
             "conflict_classifications": sorted({item for dashboard in dashboards for item in dashboard["conflict_classifications"]}),
             "issues": records,
+            "analysis_incomplete": bool(incomplete_documents),
+            "analysis_incomplete_documents": [document.metadata.get("original_filename", document.id) for document in incomplete_documents],
+        })
+    if incomplete_documents and not cards:
+        cards.append({
+            "extra_work_id": "__ANALYSIS_INCOMPLETE__",
+            "title": "Analysis incomplete",
+            "claimed_amount": None,
+            "currency": None,
+            "risk_label": "Analysis incomplete",
+            "review_status": "RECOMMENDED",
+            "current_documentation_status": "ANALYSIS_INCOMPLETE",
+            "historical_timing_review_required": False,
+            "missing_requirements": [],
+            "contrary_requirements": [],
+            "next_action": "Configure AI extraction or retry analysis before treating the absence of findings as low risk.",
+            "search_coverage": 0,
+            "retrieval_coverage": {"status": "UNKNOWN", "eligible_documents": [], "searched_documents": [], "candidate_assertions": [], "unresolved_scope_assertions": []},
+            "uncertainty_reasons": ["AI_EXTRACTION_UNAVAILABLE"],
+            "conflict_classifications": [],
+            "issues": [],
+            "analysis_incomplete": True,
+            "analysis_incomplete_documents": [document.metadata.get("original_filename", document.id) for document in incomplete_documents],
         })
     return cards
 
@@ -78,6 +117,7 @@ def _serialize_issue(issue) -> dict:
     )
     requirement_check_ids = {check.id for check in assessment.requirement_checks} if assessment else set()
     checks = assessment.requirement_checks if assessment else []
+    search_attempts = [attempt for attempt in store.search_attempts.values() if attempt.issue_id == issue.id]
     missing_requirements = [
         check.requirement_id
         for check in checks
@@ -88,9 +128,10 @@ def _serialize_issue(issue) -> dict:
         for check in checks
         if check.result.value == "DISPUTED" or (check.evidence_outcome and check.evidence_outcome.value == "CONTRADICTED")
     ]
-    extra_work = next(
-        (item for item in store.extra_works.values() if item.external_id == issue.extra_work_id),
-        None,
+    extra_work = store.find_extra_work(
+        tenant_id=issue.tenant_id,
+        matter_id=issue.matter_id,
+        external_id=issue.extra_work_id,
     ) if issue.extra_work_id else None
     return {
         "issue": issue,
@@ -100,7 +141,11 @@ def _serialize_issue(issue) -> dict:
         "dashboard": {
             "extra_work_id": issue.extra_work_id,
             "title": extra_work.title if extra_work and extra_work.title else issue.title,
-            "claimed_amount": extra_work.proposed_amount if extra_work else None,
+            "claimed_amount": (
+                extra_work.claimed_amount
+                if extra_work and extra_work.claimed_amount is not None
+                else extra_work.proposed_amount if extra_work else None
+            ),
             "currency": extra_work.currency if extra_work else None,
             "risk_label": "Potential documentation risk" if missing_requirements or contrary_requirements else "No identified documentation gap",
             "review_status": "RECOMMENDED" if assessment and assessment.review_status.value == "REQUIRED" else "NOT_REQUIRED",
@@ -112,6 +157,13 @@ def _serialize_issue(issue) -> dict:
                 else "No additional documentation action identified."
             ),
             "search_coverage": sum(len(check.search_attempt_ids) for check in checks),
+            "retrieval_coverage": {
+                "status": "PARTIAL" if any(item.coverage_status == "PARTIAL" for item in search_attempts) else "SEARCHED_CORPUS" if search_attempts else "UNKNOWN",
+                "eligible_documents": sorted({doc_id for item in search_attempts for doc_id in item.eligible_document_ids}),
+                "searched_documents": sorted({doc_id for item in search_attempts for doc_id in item.searched_document_ids}),
+                "candidate_assertions": sorted({assertion_id for item in search_attempts for assertion_id in item.candidate_assertion_ids}),
+                "unresolved_scope_assertions": sorted({assertion_id for item in search_attempts for assertion_id in item.unresolved_scope_assertion_ids}),
+            },
             "uncertainty_reasons": [item.value for item in (assessment.uncertainty_reasons if assessment else [])],
             "conflict_classifications": [item.value for item in (assessment.conflict_classifications if assessment else [])],
         },
@@ -119,7 +171,17 @@ def _serialize_issue(issue) -> dict:
             link for link in store.evidence_links.values()
             if link.requirement_check_id in requirement_check_ids
         ],
-        "evidence": [store.assertions[evidence_id] for evidence_id in issue.evidence_ids if evidence_id in store.assertions],
+        "assertion_links": [
+            link for link in store.assertion_links.values()
+            if link.tenant_id == issue.tenant_id and link.matter_id == issue.matter_id
+            and (link.source_assertion_id in issue.evidence_ids or link.target_assertion_id in issue.evidence_ids)
+        ],
+        # event_date: ISO date stated by the source for the fact; null when the
+        # source gives none. Never the upload time.
+        "evidence": [
+            {**store.assertions[evidence_id].model_dump(), "event_date": assertion_event_date(store.assertions[evidence_id])}
+            for evidence_id in issue.evidence_ids if evidence_id in store.assertions
+        ],
         "rules": [
             store.rule_specs[(rule_id, version)]
             for rule_id in issue.rule_ids
@@ -127,3 +189,52 @@ def _serialize_issue(issue) -> dict:
             if (rule_id, version) in store.rule_specs
         ],
     }
+
+
+def _merge_retrieval_coverage(records: list[dict]) -> dict:
+    coverage = [item["dashboard"].get("retrieval_coverage", {}) for item in records]
+    statuses = {item.get("status", "UNKNOWN") for item in coverage}
+    status = "PARTIAL" if "PARTIAL" in statuses else "SEARCHED_CORPUS" if "SEARCHED_CORPUS" in statuses else "UNKNOWN"
+    return {
+        "status": status,
+        "eligible_documents": sorted({value for item in coverage for value in item.get("eligible_documents", [])}),
+        "searched_documents": sorted({value for item in coverage for value in item.get("searched_documents", [])}),
+        "candidate_assertions": sorted({value for item in coverage for value in item.get("candidate_assertions", [])}),
+        "unresolved_scope_assertions": sorted({value for item in coverage for value in item.get("unresolved_scope_assertions", [])}),
+    }
+
+
+def _aggregate_requirement_gaps(records: list[dict]) -> tuple[list[str], list[str]]:
+    """Union gaps; a supported check resolves a gap only within the same rule.
+
+    Two rules can share a requirement id (e.g. ``extra_work_occurred``) with
+    different legal scope, so resolution is keyed by (rule, requirement).
+    """
+    resolved: set[tuple[str, str]] = set()
+    missing: set[tuple[str, str]] = set()
+    contrary: set[tuple[str, str]] = set()
+    for record in records:
+        issue = record.get("issue")
+        rule_ids = _field(issue, "rule_ids") or [_field(issue, "id")]
+        rule_key = "|".join(sorted(rule_ids))
+        assessment = record.get("assessment")
+        checks = (
+            (assessment.get("requirement_checks", []) if isinstance(assessment, dict) else getattr(assessment, "requirement_checks", []))
+            if assessment else []
+        )
+        resolved |= {
+            (rule_key, _field(check, "requirement_id")) for check in checks
+            if _field(check, "result") in {"REQUIREMENT_SATISFIED", "AssessmentStatus.satisfied"}
+            or _field(check, "evidence_outcome") in {"SUPPORTED", "EvidenceOutcome.supported"}
+        }
+        missing |= {(rule_key, item) for item in record["dashboard"]["missing_requirements"]}
+        contrary |= {(rule_key, item) for item in record["dashboard"]["contrary_requirements"]}
+    return (
+        sorted({requirement for _rule, requirement in missing - resolved}),
+        sorted({requirement for _rule, requirement in contrary - resolved}),
+    )
+
+
+def _field(value, name: str):
+    item = value.get(name) if isinstance(value, dict) else getattr(value, name, None)
+    return getattr(item, "value", item)

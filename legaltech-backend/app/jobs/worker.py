@@ -4,6 +4,7 @@ from time import sleep
 from app.jobs.repository import claim_next_job, mark_completed, mark_failed, mark_waiting_for_review
 from app.jobs.retry_policy import schedule_retry
 from app.services.pipeline import process_document
+from app.repositories.memory import store
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,10 @@ def run_once() -> bool:
     logger.info("[detector] job started job_id=%s document_id=%s attempt=%s", job.id, job.document_id, job.attempt_count)
     try:
         result = process_document(job.document_id)
+        document = store.documents.get(job.document_id)
+        if document:
+            job.analysis_status = document.metadata.get("analysis_status", "COMPLETE")
+            job.analysis_reason = document.metadata.get("analysis_reason")
         if result == "waiting_for_review":
             mark_waiting_for_review(job)
         else:

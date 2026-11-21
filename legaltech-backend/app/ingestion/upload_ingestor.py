@@ -19,6 +19,9 @@ def ingest_upload(
     gmail_message_id: str | None = None,
     internet_message_id: str | None = None,
     tenant_id: str | None = None,
+    conversation_id: str | None = None,
+    in_reply_to: str | None = None,
+    thread_index: int | None = None,
 ) -> tuple[Document, ProcessingJob | None]:
     file_hash = sha256_bytes(content)
     existing = find_existing_document(
@@ -36,7 +39,13 @@ def ingest_upload(
         storage_path="",
         gmail_message_id=gmail_message_id,
         internet_message_id=internet_message_id,
-        metadata={"original_filename": Path(filename).name, "matter_id": matter_id},
+        metadata={
+            "original_filename": Path(filename).name,
+            "matter_id": matter_id,
+            **({"conversation_id": conversation_id} if conversation_id else {}),
+            **({"in_reply_to": in_reply_to} if in_reply_to else {}),
+            **({"thread_index": thread_index} if thread_index is not None else {}),
+        },
         tenant_id=tenant_id,
         matter_id=matter_id,
     )

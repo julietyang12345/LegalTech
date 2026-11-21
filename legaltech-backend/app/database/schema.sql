@@ -286,6 +286,9 @@ CREATE TABLE extra_works (
     title text,
     description text,
     proposed_amount numeric,
+    claimed_amount numeric,
+    estimated_amount numeric,
+    approved_amount numeric,
     currency text,
     status text NOT NULL DEFAULT 'identified',
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -319,12 +322,15 @@ CREATE TABLE evidence_assertions (
     evidence_role text NOT NULL DEFAULT 'PROJECT_FACT'
         CHECK (evidence_role IN ('PROJECT_FACT', 'NORMATIVE_RULE', 'CONTEXT_ONLY')),
     source_span_id text REFERENCES source_spans(id),
+    conversation_id text,
     assertion_type text NOT NULL,
     statement text NOT NULL,
     value jsonb,
     actor text,
     asserted_at timestamptz,
     verified boolean NOT NULL DEFAULT false,
+    scope_confidence text NOT NULL DEFAULT 'UNKNOWN',
+    scope_candidates jsonb NOT NULL DEFAULT '[]',
     provenance_id text NOT NULL REFERENCES provenances(id)
 );
 
@@ -380,6 +386,11 @@ CREATE TABLE search_attempts (
     corpus_version text NOT NULL,
     retrieval_strategy text NOT NULL,
     result_document_ids jsonb NOT NULL DEFAULT '[]',
+    eligible_document_ids jsonb NOT NULL DEFAULT '[]',
+    searched_document_ids jsonb NOT NULL DEFAULT '[]',
+    candidate_assertion_ids jsonb NOT NULL DEFAULT '[]',
+    unresolved_scope_assertion_ids jsonb NOT NULL DEFAULT '[]',
+    coverage_status text NOT NULL DEFAULT 'UNKNOWN',
     result_count integer NOT NULL DEFAULT 0,
     analysis_run_id text NOT NULL REFERENCES analysis_runs(id),
     completed_at timestamptz NOT NULL DEFAULT now()
@@ -463,6 +474,12 @@ CREATE TABLE requirement_checks (
     search_attempt_ids jsonb NOT NULL DEFAULT '[]',
     explanation text NOT NULL,
     requires_lawyer_review boolean NOT NULL DEFAULT false,
+    uncertainty_reasons jsonb NOT NULL DEFAULT '[]',
+    conditional_evidence_ids jsonb NOT NULL DEFAULT '[]',
+    uncertain_evidence_ids jsonb NOT NULL DEFAULT '[]',
+    superseded_evidence_ids jsonb NOT NULL DEFAULT '[]',
+    excluded_evidence_ids jsonb NOT NULL DEFAULT '[]',
+    analysis_complete boolean NOT NULL DEFAULT true,
     provenance_id text NOT NULL REFERENCES provenances(id)
 );
 
@@ -474,9 +491,30 @@ CREATE TABLE evidence_links (
     requirement_check_id text NOT NULL REFERENCES requirement_checks(id),
     assertion_id text NOT NULL REFERENCES evidence_assertions(id),
     relation_type text NOT NULL
-        CHECK (relation_type IN ('SUPPORTS', 'CONTRADICTS', 'CONTEXT_ONLY')),
+        CHECK (relation_type IN ('SUPPORTS', 'CONTRADICTS', 'CONDITIONAL', 'CONTEXT_ONLY', 'UNCERTAIN')),
+    method text NOT NULL DEFAULT 'DETERMINISTIC',
+    rationale text,
+    condition text,
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (requirement_check_id, assertion_id, relation_type)
+);
+
+-- A later assertion that changes a specific earlier one (edge points new -> old).
+CREATE TABLE assertion_links (
+    id text PRIMARY KEY,
+    tenant_id text NOT NULL,
+    matter_id text NOT NULL REFERENCES matters(id),
+    extra_work_id text REFERENCES extra_works(id),
+    source_assertion_id text NOT NULL REFERENCES evidence_assertions(id),
+    target_assertion_id text NOT NULL REFERENCES evidence_assertions(id),
+    relation_type text NOT NULL
+        CHECK (relation_type IN ('MODIFIES', 'SUPERSEDES', 'REVOKES')),
+    requirement_id text,
+    method text NOT NULL DEFAULT 'AI_SEMANTIC',
+    rationale text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (source_assertion_id <> target_assertion_id),
+    UNIQUE (source_assertion_id, target_assertion_id, relation_type)
 );
 
 CREATE TABLE dependency_edges (
@@ -502,6 +540,8 @@ CREATE TABLE case_rule_candidates (
     candidate_principle text NOT NULL,
     applicability_limits jsonb NOT NULL DEFAULT '[]',
     source_span_ids jsonb NOT NULL DEFAULT '[]',
+    candidate_triggers jsonb NOT NULL DEFAULT '[]',
+    candidate_requirements jsonb NOT NULL DEFAULT '[]',
     review_status text NOT NULL DEFAULT 'PENDING',
     requires_lawyer_review boolean NOT NULL DEFAULT true,
     created_at timestamptz NOT NULL DEFAULT now()

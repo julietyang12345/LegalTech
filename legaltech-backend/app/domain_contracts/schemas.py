@@ -47,9 +47,24 @@ class EvidenceRole(str, Enum):
 
 
 class EvidenceRelationType(str, Enum):
+    """How one assertion bears on one requirement (never on the matter as a whole)."""
+
     supports = "SUPPORTS"
     contradicts = "CONTRADICTS"
+    # Affirmative but gated on an unverified condition ("approve, subject to signing").
+    conditional = "CONDITIONAL"
     context_only = "CONTEXT_ONLY"
+    # The relation could not be determined (model said so, or model and
+    # deterministic polarity disagree).
+    uncertain = "UNCERTAIN"
+
+
+class AssertionRelationType(str, Enum):
+    """How a later assertion changes an earlier one. Edges point new -> old."""
+
+    modifies = "MODIFIES"
+    supersedes = "SUPERSEDES"
+    revokes = "REVOKES"
 
 
 class AssessmentStatus(str, Enum):
@@ -83,6 +98,18 @@ class UncertaintyReason(str, Enum):
     legal_applicability_unverified = "LEGAL_APPLICABILITY_UNVERIFIED"
     temporal_order_uncertain = "TEMPORAL_ORDER_UNCERTAIN"
     cost_communication_after_work_start = "COST_COMMUNICATION_AFTER_WORK_START"
+    approval_after_work_start = "APPROVAL_AFTER_WORK_START"
+    # The model judged the language itself ambiguous for this requirement.
+    semantic_uncertain = "SEMANTIC_UNCERTAIN"
+    # Approval or support exists but depends on a condition not shown as met.
+    condition_unmet = "CONDITION_UNMET"
+    # An earlier assertion was modified, superseded, or revoked by a later one.
+    later_modification = "LATER_MODIFICATION"
+    # The semantic step failed or did not see every candidate (error, invalid
+    # output, truncation). Distinct from missing evidence.
+    analysis_incomplete = "ANALYSIS_INCOMPLETE"
+    # Supporting evidence carries no EW identifier while the check is EW-scoped.
+    scope_unverified = "SCOPE_UNVERIFIED"
 
 
 class ConflictClassification(str, Enum):
@@ -160,6 +187,9 @@ class RuleRequirement(BaseModel):
     evidence_queries: list[str] = Field(default_factory=list)
     supporting_assertion_types: list[str] = Field(default_factory=list)
     contrary_assertion_types: list[str] = Field(default_factory=list)
+    # Always retrieved as candidates; may support only when the assertion
+    # itself states an amount or pricing method.
+    price_bearing_assertion_types: list[str] = Field(default_factory=list)
     deterministic_fields: list[str] = Field(default_factory=list)
     lawyer_review_required: bool = False
 
@@ -198,6 +228,9 @@ class ExtraWork(ContractModel):
     title: str | None = None
     description: str | None = None
     proposed_amount: float | None = None
+    claimed_amount: float | None = None
+    estimated_amount: float | None = None
+    approved_amount: float | None = None
     currency: str | None = None
     status: str = "identified"
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -218,6 +251,15 @@ class RequirementCheck(BaseModel):
     explanation: str
     requires_lawyer_review: bool = False
     uncertainty_reason: UncertaintyReason | None = None
+    # All applicable reasons; ``uncertainty_reason`` stays the primary one.
+    uncertainty_reasons: list[UncertaintyReason] = Field(default_factory=list)
+    conditional_evidence_ids: list[str] = Field(default_factory=list)
+    uncertain_evidence_ids: list[str] = Field(default_factory=list)
+    # Earlier assertions no longer in force because a later one changed them.
+    superseded_evidence_ids: list[str] = Field(default_factory=list)
+    # Candidates removed by deterministic scope validation (other EW).
+    excluded_evidence_ids: list[str] = Field(default_factory=list)
+    analysis_complete: bool = True
     next_action: str | None = None
     conflict_classification: ConflictClassification | None = None
     provenance: Provenance
@@ -229,6 +271,27 @@ class EvidenceLink(ContractModel):
     requirement_check_id: str
     assertion_id: str
     relation_type: EvidenceRelationType
+    method: str = "DETERMINISTIC"
+    rationale: str | None = None
+    condition: str | None = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AssertionLink(ContractModel):
+    """A validated edge from a later assertion to the earlier one it changes.
+
+    Stored against the specific prior assertion so a correction to either side
+    identifies exactly which conclusions must be recomputed.
+    """
+
+    id: str = Field(default_factory=lambda: new_id("ALINK"))
+    extra_work_id: str | None = None
+    source_assertion_id: str
+    target_assertion_id: str
+    relation_type: AssertionRelationType
+    requirement_id: str | None = None
+    method: str = "AI_SEMANTIC"
+    rationale: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -251,6 +314,8 @@ class CaseRuleCandidate(ContractModel):
     candidate_principle: str
     applicability_limits: list[str] = Field(default_factory=list)
     source_span_ids: list[str] = Field(default_factory=list)
+    candidate_triggers: list[str] = Field(default_factory=list)
+    candidate_requirements: list[str] = Field(default_factory=list)
     review_status: ReviewStatus = ReviewStatus.pending
     requires_lawyer_review: bool = True
 
@@ -281,6 +346,7 @@ class Obligation(ContractModel):
 class EvidenceAssertion(ContractModel):
     id: str = Field(default_factory=lambda: new_id("ASSERT"))
     source_document_id: str
+    conversation_id: str | None = None
     extra_work_id: str | None = None
     evidence_role: EvidenceRole = EvidenceRole.project_fact
     source_span_id: str | None = None
@@ -290,14 +356,20 @@ class EvidenceAssertion(ContractModel):
     actor: str | None = None
     event_at: str | None = None
     communication_at: str | None = None
+    work_planned_at: str | None = None
     work_start_at: str | None = None
+    work_completed_at: str | None = None
     approval_at: str | None = None
+    price_communicated_at: str | None = None
+    price_approved_at: str | None = None
     document_sent_at: str | None = None
     uploaded_at: datetime | None = None
     time_source: str | None = None
     time_confidence: str = "unknown"
     relationship_status: str = "EXPLICIT"
     relationship_reason: str | None = None
+    scope_confidence: str = "UNKNOWN"
+    scope_candidates: list[str] = Field(default_factory=list)
     asserted_at: datetime | None = None
     verified: bool = False
     provenance: Provenance
@@ -354,6 +426,15 @@ class SearchAttempt(ContractModel):
     corpus_version: str
     retrieval_strategy: str
     result_document_ids: list[str] = Field(default_factory=list)
+    eligible_document_ids: list[str] = Field(default_factory=list)
+    searched_document_ids: list[str] = Field(default_factory=list)
+    candidate_assertion_ids: list[str] = Field(default_factory=list)
+    unresolved_scope_assertion_ids: list[str] = Field(default_factory=list)
+    # Candidates contributed only by AI selection (not type/keyword/thread).
+    semantic_candidate_ids: list[str] = Field(default_factory=list)
+    # NOT_RUN (AI off), COMPLETED, PARTIAL (budget omitted items), FAILED.
+    semantic_status: str = "NOT_RUN"
+    coverage_status: str = "UNKNOWN"
     result_count: int = 0
     completed_at: datetime = Field(default_factory=datetime.utcnow)
     analysis_run_id: str

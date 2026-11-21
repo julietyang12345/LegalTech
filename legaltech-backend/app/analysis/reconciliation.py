@@ -20,6 +20,7 @@ from app.analysis.requirement_evaluator import evaluate_requirements
 from app.analysis.evidence_relationships import assertion_scope
 from app.analysis.dependency_graph import record_issue_dependencies
 from app.analysis.text_semantics import is_negative_statement
+from app.analysis.event_time import parse_event_date
 from app.repositories.memory import store
 
 
@@ -44,6 +45,7 @@ def reconcile_issue(
         matter_id=issue.matter_id,
         analysis_run_id=analysis_run_id,
         pipeline_version=pipeline_version,
+        extra_work_id=issue.extra_work_id,
     ) if rule else []
     status, evidence_status, conclusion = _assess(issue.type, obligation, relevant, search_attempts or [], requirement_checks, rule)
     provenance = record_provenance(Provenance(
@@ -104,7 +106,7 @@ def reconcile_issue(
 
 
 def _unique_uncertainty_reasons(checks: list, rule: ExecutableRuleSpec | None):
-    values = [check.uncertainty_reason for check in checks if check.uncertainty_reason]
+    values = [reason for check in checks for reason in (check.uncertainty_reasons or ([check.uncertainty_reason] if check.uncertainty_reason else []))]
     if rule and (rule.applicability.jurisdiction in {"REQUIRES_VERIFICATION", "UNKNOWN"} or rule.applicability.contract_review_required):
         from app.domain_contracts.schemas import UncertaintyReason
         values.append(UncertaintyReason.legal_applicability_unverified)
@@ -214,28 +216,32 @@ def _notice_dates(assertions: list[EvidenceAssertion]) -> tuple[date, date] | No
     for assertion in assertions:
         value: Any = assertion.value
         if isinstance(value, dict):
-            trigger = _as_date(value.get("trigger_at") or value.get("event_at"))
-            notice = _as_date(value.get("notice_at") or value.get("communication_at"))
+            trigger = parse_event_date(value.get("trigger_at") or value.get("event_at"), reference_at=assertion.uploaded_at)
+            notice = parse_event_date(value.get("notice_at") or value.get("communication_at"), reference_at=assertion.uploaded_at)
             if trigger:
                 triggers.append(trigger)
             if notice:
                 notices.append(notice)
         if assertion.event_at:
-            event_date = _as_date(assertion.event_at)
+            event_date = parse_event_date(assertion.event_at, reference_at=assertion.uploaded_at)
             if event_date:
                 triggers.append(event_date)
         if assertion.document_sent_at:
-            sent_date = _as_date(assertion.document_sent_at)
+            sent_date = parse_event_date(assertion.document_sent_at, reference_at=assertion.uploaded_at)
             if sent_date:
                 notices.append(sent_date)
         if "notice" in assertion.assertion_type.lower() or "notice" in assertion.statement.lower():
             if is_negative_statement(assertion.statement):
                 continue
-            if assertion.asserted_at:
-                notices.append(assertion.asserted_at.date())
+            if assertion.price_communicated_at:
+                notice_date = parse_event_date(assertion.price_communicated_at, reference_at=assertion.uploaded_at)
+                if notice_date:
+                    notices.append(notice_date)
         if "delay" in assertion.assertion_type.lower() or "trigger" in assertion.assertion_type.lower():
-            if assertion.asserted_at:
-                triggers.append(assertion.asserted_at.date())
+            if assertion.work_start_at:
+                trigger_date = parse_event_date(assertion.work_start_at, reference_at=assertion.uploaded_at)
+                if trigger_date:
+                    triggers.append(trigger_date)
     # A forwarded or corrected document can be encountered before the source
     # event in iteration order. Select the earliest explicit trigger and the
     # earliest communication date rather than the first assertion seen.

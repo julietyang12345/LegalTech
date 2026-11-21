@@ -47,8 +47,14 @@ def activate_rules(
 
 
 def _matches_trigger(assertion: EvidenceAssertion, triggers: list[str]) -> bool:
-    haystack = f"{assertion.assertion_type} {assertion.statement}".lower()
-    return any(
-        trigger.lower() in haystack or trigger.lower().replace("_", " ") in haystack
-        for trigger in triggers
-    )
+    assertion_type = assertion.assertion_type.lower()
+    statement = assertion.statement.lower()
+    for trigger in triggers:
+        normalized = trigger.lower()
+        if normalized == assertion_type or normalized.replace(" ", "_") == assertion_type:
+            return True
+        # Legacy rules may still contain phrase triggers. Keep this fallback
+        # bounded to the source statement rather than mixing fields together.
+        if normalized in statement or normalized.replace("_", " ") in statement:
+            return True
+    return False

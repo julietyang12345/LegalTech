@@ -12,3 +12,4 @@ class SignalCandidate(BaseModel):
     polarity: str = "unknown"
     temporal_status: str = "unknown"
     extra_work_id: str | None = None
+    event_at: str | None = None

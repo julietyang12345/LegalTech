@@ -54,7 +54,7 @@ def _factor_type_for_state(state: DecisionNodeState) -> str | None:
         return "authorization_disputed"
     if state.node_id == "authorization_gate" and state.status == "incomplete":
         return "missing_signed_change_order"
-    if state.node_id == "pricing_gate" and state.status == "incomplete":
+    if state.node_id == "pricing_gate" and state.status in {"incomplete", "needs_review"}:
         return "pricing_approval_missing"
     if state.node_id == "invoice_support_gate" and state.status in {"incomplete", "contradicted"}:
         return "invoice_support_incomplete"

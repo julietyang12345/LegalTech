@@ -70,6 +70,7 @@ def _evaluate_pricing(change_event_id: str, signals: list[ExtractedSignal]) -> D
     invoice = _signals(signals, {"invoice_submitted", "invoice_amount"})
     approved = _signals(signals, {"approved_amount", "price_approval"})
     pricing_method = _signals(signals, {"pricing_method"})
+    signed = _signals(signals, {"signed_change_order"})
     if approved and pricing_method:
         return make_node_state(change_event_id, TREE_VERSION, "pricing_gate", "supported", approved + pricing_method)
     if invoice or approved:
@@ -82,6 +83,15 @@ def _evaluate_pricing(change_event_id: str, signals: list[ExtractedSignal]) -> D
             missing_factors=_missing(
                 [("approved_amount", approved), ("pricing_method", pricing_method)]
             ),
+        )
+    if signed:
+        return make_node_state(
+            change_event_id,
+            TREE_VERSION,
+            "pricing_gate",
+            "needs_review",
+            signed,
+            missing_factors=["approved_amount", "pricing_method"],
         )
     return make_node_state(change_event_id, TREE_VERSION, "pricing_gate", "unknown", [])
 
