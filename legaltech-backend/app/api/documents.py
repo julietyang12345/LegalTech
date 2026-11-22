@@ -1,9 +1,10 @@
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app.ingestion.upload_ingestor import ingest_upload
 from app.models import Document
 from app.models.domain import DocumentType
 from app.repositories.memory import store
+from app.services.document_deletion import delete_document
 
 router = APIRouter()
 
@@ -51,3 +52,11 @@ def get_document(document_id: str) -> dict:
     ]
     events = [event for event in store.events.values() if event.document_id == document_id]
     return {"document": store.documents.get(document_id), "signals": signals, "events": events}
+
+
+@router.delete("/{document_id}")
+def remove_document(document_id: str) -> dict:
+    """Delete a document; the rest of its matter is queued for re-analysis."""
+    if document_id not in store.documents:
+        raise HTTPException(status_code=404, detail="document not found")
+    return delete_document(document_id)

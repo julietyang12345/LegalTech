@@ -8,6 +8,7 @@ from app.analysis.dependency_graph import determine_assertion_affected_issues
 from app.analysis.evidence_issue_matching import match_new_evidence
 from app.decision_engine.dependencies import determine_affected_nodes
 from app.decision_engine.evaluator import recompute_nodes
+from app.extraction.ai_signal_extractor import document_date
 from app.extraction.signal_extractor import extract_atomic_signals
 from app.ingestion.deduplication import document_already_processed
 from app.matching.change_event_matcher import resolve_change_event
@@ -36,6 +37,25 @@ from app.models.domain import DocumentType
 
 PIPELINE_VERSION = "0.1.0"
 logger = logging.getLogger(__name__)
+
+
+_HEADER_FIELDS = {"from": "from", "to": "to", "cc": "cc", "subject": "subject", "date sent": "date_sent", "sent": "date_sent"}
+_HEADER_LINE = re.compile(r"^\s*(from|to|cc|subject|date sent|sent)\s*:\s*(.+?)\s*$", re.IGNORECASE)
+
+
+def correspondence_header(text: str) -> dict[str, str]:
+    """From/To/Subject lines stated at the top of the document text.
+
+    Uploads carry no trustworthy sender metadata, so who wrote to whom is read
+    from the document itself. Only the first lines are scanned so quoted
+    replies further down cannot overwrite the header.
+    """
+    header: dict[str, str] = {}
+    for line in text.splitlines()[:25]:
+        match = _HEADER_LINE.match(line)
+        if match:
+            header.setdefault(_HEADER_FIELDS[match.group(1).lower()], match.group(2)[:200])
+    return header
 
 
 @contextmanager
@@ -67,6 +87,13 @@ def process_document(document_id: str) -> str:
     with _detector_step("parse_document", document_id=document_id):
         parsed_content = parse_document(document)
     logger.info("[detector] document parsed document_id=%s text_chars=%d", document_id, len(parsed_content.text or ""))
+    # Flat string keys: document metadata is passed to ParsedContent, which
+    # only accepts string values.
+    for field, value in correspondence_header(parsed_content.text or "").items():
+        document.metadata[f"header_{field}"] = value
+    stated_document_date = document_date(parsed_content.text or "")
+    if stated_document_date:
+        document.metadata["document_date"] = stated_document_date.isoformat()
     if document.document_type.value == "contract":
         discover_rule_candidates(
             document_id=document.id,
@@ -157,6 +184,8 @@ def process_document(document_id: str) -> str:
                     title=_extra_work_title(document, signal.source_text, change_event_match.change_event_id),
                 )
                 store.extra_works[extra_work.id] = extra_work
+            elif _looks_like_header(extra_work.title):
+                extra_work.title = _extra_work_title(document, signal.source_text, change_event_match.change_event_id)
             amount = _signal_amount(signal.value)
             if signal.signal_type in {"invoice_amount", "estimate_amount", "approved_amount"} and amount is not None:
                 # Keep legacy proposed_amount populated while preserving the
@@ -179,6 +208,13 @@ def process_document(document_id: str) -> str:
         if extra_work_id:
             assertion_value["extra_work_id"] = extra_work_id
         raw_event_at = assertion_value.get("event_at") if isinstance(assertion_value.get("event_at"), str) else None
+        model_event_at = raw_event_at
+        raw_event_at, time_source = fact_event_at(
+            signal.signal_type, signal.source_text, raw_event_at, document.metadata.get("document_date"),
+        )
+        if raw_event_at != model_event_at:
+            assertion_value["model_event_at"] = model_event_at
+            assertion_value["event_at"] = raw_event_at
         normalized_time = normalize_event_time(raw_event_at, reference_at=document.received_at)
         event_at = normalized_time.raw_value
         event_iso = normalized_time.iso_value
@@ -186,6 +222,7 @@ def process_document(document_id: str) -> str:
         normalized_document_sent_at = normalize_event_time(raw_document_sent_at, reference_at=document.received_at)
         communication_types = {"cost_communication", "pricing_unresolved", "written_notice", "estimate_amount"}
         approval_types = {"price_approval", "approved_amount", "signed_change_order", "express_authorization"}
+        assertion_type = _normalize_assertion_type(signal.signal_type, signal.source_text)
         store.assertions[assertion_id] = EvidenceAssertion(
             id=assertion_id,
             conversation_id=document.metadata.get("conversation_id"),
@@ -194,7 +231,7 @@ def process_document(document_id: str) -> str:
             source_document_id=signal.source_document_id,
             extra_work_id=extra_work_id,
             evidence_role=evidence_role_for_document(document),
-            assertion_type=signal.signal_type,
+            assertion_type=assertion_type,
             statement=signal.source_text,
             value=assertion_value,
             actor=signal.actor,
@@ -208,7 +245,7 @@ def process_document(document_id: str) -> str:
             price_approved_at=event_iso if signal.signal_type in approval_types else None,
             document_sent_at=normalized_document_sent_at.iso_value,
             uploaded_at=document.received_at,
-            time_source="SOURCE_TEXT" if raw_event_at else "UNKNOWN",
+            time_source=time_source,
             time_confidence=normalized_time.confidence,
             relationship_status="EXPLICIT" if extra_work_id else "UNSCOPED",
             relationship_reason="EW identifier extracted from source or document metadata" if extra_work_id else "No unambiguous Extra Work identifier found",
@@ -369,6 +406,32 @@ def process_document(document_id: str) -> str:
     return result
 
 
+WORK_SIGNAL_TYPES = {"work_performed", "work_completed", "work_planned", "installation", "construction_started"}
+SIGNATURE_SIGNAL_TYPES = {"signed_change_order", "price_approval", "approved_amount", "express_authorization", "written_authorization"}
+_STATED_DATE = re.compile(r"\b[A-Z][a-z]{2,8}\.?\s+\d{1,2},?\s+\d{4}\b|\b\d{4}-\d{2}-\d{2}\b")
+
+
+def fact_event_at(signal_type: str, statement: str, model_event_at: str | None, document_date_iso: str | None) -> tuple[str | None, str]:
+    """When the fact an assertion records happened, and where that date came from.
+
+    A sentence can mention dates other than its own. "CO ... including work
+    performed April 9-10" is a document dated April 14 that recites earlier
+    work, so only work facts keep the date the model read from the sentence.
+    A signature line carries its own date ("/s/ <name>, <date>").
+    Every other fact (letters, estimates, directions, CO terms) happened on
+    the date the document states in its header.
+    """
+    if signal_type in WORK_SIGNAL_TYPES:
+        return model_event_at, "SOURCE_TEXT" if model_event_at else "UNKNOWN"
+    if signal_type in SIGNATURE_SIGNAL_TYPES:
+        stated = _STATED_DATE.findall(statement or "")
+        if len(stated) == 1:
+            return stated[0], "SOURCE_TEXT"
+    if document_date_iso:
+        return document_date_iso, "DOCUMENT_DATE"
+    return model_event_at, "SOURCE_TEXT" if model_event_at else "UNKNOWN"
+
+
 def _signal_amount(value) -> float | None:
     raw = value.get("value") if isinstance(value, dict) else value
     if isinstance(raw, bool):
@@ -382,9 +445,7 @@ def _extra_work_title(document, source_text: str, change_event_id: str | None) -
     """Use a human subject/scope title, never a raw mail header prefix."""
     subject = (document.subject or "").strip()
     subject_lower = subject.lower()
-    header_like = subject_lower.startswith("project correspondence") or (
-        "project:" in subject_lower and "date sent:" in subject_lower
-    )
+    header_like = _looks_like_header(subject)
     if subject and not header_like and subject_lower not in {"none", "unknown"} and not subject_lower.endswith((".txt", ".pdf", ".docx")):
         return subject[:160]
     if change_event_id:
@@ -396,3 +457,29 @@ def _extra_work_title(document, source_text: str, change_event_id: str | None) -
         return subject_match.group(1).strip()[:160]
     cleaned = re.sub(r"(?is)^project correspondence\s*", "", source_text).strip()
     return cleaned[:160] or "Extra Work"
+
+
+def _looks_like_header(value: str | None) -> bool:
+    normalized = (value or "").strip().lower()
+    return normalized.startswith("project correspondence") or (
+        "project:" in normalized and "date sent:" in normalized
+    )
+
+
+def _normalize_assertion_type(signal_type: str, source_text: str) -> str:
+    """Upgrade unmistakable signed CO evidence from a generic AI label.
+
+    The generic formal-document label is useful for discovery, but it cannot
+    satisfy the approval requirement. Both signatures and the change-order
+    form must be present before making this narrow normalization.
+    """
+    normalized = source_text.lower()
+    if (
+        signal_type == "formal_change_document"
+        and "change order" in normalized
+        and "owner signature" in normalized
+        and "contractor signature" in normalized
+        and "/s/" in normalized
+    ):
+        return "signed_change_order"
+    return signal_type

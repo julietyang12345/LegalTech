@@ -237,6 +237,28 @@ class ExtraWork(ContractModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class TimingStatus(str, Enum):
+    before_work_start = "BEFORE_WORK_START"
+    after_work_start = "AFTER_WORK_START"
+    # Missing dates, or the fact and work start fall on the same day.
+    undetermined = "UNDETERMINED"
+
+
+class TimingAssessment(BaseModel):
+    """Whether a supported requirement was met before the work began.
+
+    Kept apart from the evidence result: "a signed CO exists" (result) and
+    "it was signed before work started" (timing) are separate findings, and a
+    late fact is a historical timing concern, not missing evidence.
+    """
+
+    status: TimingStatus
+    fact_date: str | None = None
+    work_start_date: str | None = None
+    fact_evidence_ids: list[str] = Field(default_factory=list)
+    work_evidence_ids: list[str] = Field(default_factory=list)
+
+
 class RequirementCheck(BaseModel):
     id: str = Field(default_factory=lambda: new_id("REQCHECK"))
     requirement_id: str
@@ -262,6 +284,8 @@ class RequirementCheck(BaseModel):
     analysis_complete: bool = True
     next_action: str | None = None
     conflict_classification: ConflictClassification | None = None
+    # Set for requirements whose effect depends on ordering against work start.
+    timing: TimingAssessment | None = None
     provenance: Provenance
 
 

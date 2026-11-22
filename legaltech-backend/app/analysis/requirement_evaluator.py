@@ -19,6 +19,8 @@ from app.domain_contracts.schemas import (
     RequirementCheck,
     RequirementReviewStatus,
     SearchAttempt,
+    TimingAssessment,
+    TimingStatus,
     UncertaintyReason,
 )
 from app.analysis.semantic_evaluator import PROMPT_VERSION, judge_requirement
@@ -33,6 +35,10 @@ AI_METHODS = {"AI_SEMANTIC", "AI_AND_LAWYER_REVIEW"}
 APPROVAL_REQUIREMENTS = {"owner_approved_additional_cost", "approval_documented"}
 # Requirements whose legal effect depends on ordering against work start.
 TEMPORAL_REQUIREMENTS = {"cost_impact_communicated", *APPROVAL_REQUIREMENTS}
+# Requirements satisfied by the act of communicating, which code can verify
+# from the document itself: a priced statement in a letter or email to a named
+# recipient was communicated, whatever the model thinks of its wording.
+COMMUNICATION_REQUIREMENTS = {"cost_impact_communicated"}
 # Reasons that always route a check to human review, whatever the outcome.
 REVIEW_REASONS = {
     UncertaintyReason.analysis_incomplete,
@@ -167,8 +173,10 @@ def evaluate_requirements(
             conflict_classification = relationship_classifications[0]
         elif superseded:
             conflict_classification = ConflictClassification.later_modification
+        timing = _timing(requirement, supporting, project_assertions)
         reasons = _uncertainty_reasons(
             requirement=requirement,
+            timing=timing,
             supporting=supporting,
             contrary=contrary,
             conditional=conditional,
@@ -218,6 +226,7 @@ def evaluate_requirements(
             uncertainty_reasons=reasons,
             next_action=NEXT_ACTIONS.get(reasons[0]) if reasons else None,
             conflict_classification=conflict_classification,
+            timing=timing,
             provenance=provenance,
         )
         checks.append(check)
@@ -314,7 +323,39 @@ def _admit(judged, assertion, requirement, semantic_only=False) -> _Classified:
         return _Classified(EvidenceRelationType.context_only, method, judged.rationale)
     if relation == "UNCERTAIN" and eligible:
         return _Classified(EvidenceRelationType.uncertain, method, judged.rationale)
+    if relation == "CONTEXT" and supporting_type and requirement.id in COMMUNICATION_REQUIREMENTS:
+        return _communication_fallback(assertion, judged)
     return _Classified(EvidenceRelationType.context_only, method, judged.rationale)
+
+
+def _communication_fallback(assertion, judged) -> _Classified:
+    """A model CONTEXT label on an eligible communication fact.
+
+    Whether a priced statement was sent to a named recipient is a fact code
+    can check, so it is admitted as support. Otherwise the disagreement goes
+    to review; it is never silently dropped and reported as "not found".
+    """
+    if (
+        _is_affirmative_fact(assertion) and not _is_conditional(assertion)
+        and _states_price(assertion) and _sent_to_recipient(assertion)
+    ):
+        return _Classified(
+            EvidenceRelationType.supports, "CODE_STRUCTURAL",
+            "Priced statement in correspondence to a named recipient; the model labelled it context "
+            f"({judged.rationale or 'no rationale'}), but sending it is the communication.",
+        )
+    return _Classified(
+        EvidenceRelationType.uncertain, "AI_SEMANTIC",
+        f"Model labelled an eligible {assertion.assertion_type} fact as context; verify manually. {judged.rationale}".strip(),
+    )
+
+
+def _sent_to_recipient(assertion) -> bool:
+    from app.repositories.memory import store
+
+    document = store.documents.get(assertion.source_document_id)
+    metadata = document.metadata if document else {}
+    return bool(metadata.get("header_from") and metadata.get("header_to"))
 
 
 def _deterministic(assertion, requirement) -> _Classified:
@@ -421,7 +462,7 @@ def _classify_result(*, supporting, contrary, conditional, uncertain, matching_s
 
 
 def _uncertainty_reasons(
-    *, requirement, supporting, contrary, conditional, uncertain, superseded,
+    *, requirement, timing, supporting, contrary, conditional, uncertain, superseded,
     unordered_changes, matching_searches, semantic, analysis_complete,
     all_assertions, extra_work_id,
 ) -> list[UncertaintyReason]:
@@ -444,11 +485,13 @@ def _uncertainty_reasons(
             else:
                 reasons.append(UncertaintyReason.partial_evidence_set)
     else:
-        if requirement.id == "cost_impact_communicated" and _communication_after_work(all_assertions):
-            reasons.append(UncertaintyReason.cost_communication_after_work_start)
-        if requirement.id in APPROVAL_REQUIREMENTS and _after_work_start(supporting, all_assertions):
-            reasons.append(UncertaintyReason.approval_after_work_start)
-        if requirement.id in TEMPORAL_REQUIREMENTS and _work_dates(all_assertions) and not any(_assertion_date(a) for a in supporting):
+        if timing and timing.status == TimingStatus.after_work_start:
+            reasons.append(
+                UncertaintyReason.approval_after_work_start
+                if requirement.id in APPROVAL_REQUIREMENTS
+                else UncertaintyReason.cost_communication_after_work_start
+            )
+        if timing and timing.status == TimingStatus.undetermined and timing.work_start_date:
             reasons.append(UncertaintyReason.temporal_order_uncertain)
         if extra_work_id and not any(assertion_scope(a) for a in supporting):
             reasons.append(UncertaintyReason.scope_unverified)
@@ -461,27 +504,44 @@ def _uncertainty_reasons(
     return list(dict.fromkeys(reasons))
 
 
-def _work_dates(assertions) -> list[date]:
-    dates = [
-        _assertion_date(item) for item in assertions
-        if any(term in item.assertion_type for term in ("work_performed", "installation", "daily_report", "construction_started"))
-    ]
-    return [value for value in dates if value]
+_WORK_TYPE_TERMS = ("work_performed", "installation", "daily_report", "construction_started")
 
 
-def _after_work_start(evidence, all_assertions) -> bool:
-    """True only when every dated item post-dates the earliest work start."""
-    work_dates = _work_dates(all_assertions)
-    evidence_dates = [value for value in (_assertion_date(a) for a in evidence) if value]
-    return bool(work_dates and evidence_dates and min(evidence_dates) > min(work_dates))
+def _earliest(assertions) -> tuple[date | None, list[str]]:
+    """Earliest stated date and the ids of the assertions that state it."""
+    dated = [(value, a.id) for a in assertions if (value := _assertion_date(a))]
+    if not dated:
+        return None, []
+    first = min(value for value, _id in dated)
+    return first, [assertion_id for value, assertion_id in dated if value == first]
 
 
-def _communication_after_work(assertions) -> bool:
-    communications = [
-        item for item in assertions
-        if any(term in item.assertion_type for term in ("cost", "price", "invoice", "estimate"))
-    ]
-    return _after_work_start(communications, assertions)
+def _timing(requirement, supporting, all_assertions) -> TimingAssessment | None:
+    """Compare the earliest supporting fact with the earliest work start.
+
+    Independent of the evidence result: an approval can be documented
+    (SUPPORTED) and still have been given after work began. Only supporting
+    evidence counts as the fact; an invoice is not a pre-work notice.
+    """
+    if requirement.id not in TEMPORAL_REQUIREMENTS or not supporting:
+        return None
+    fact_date, fact_ids = _earliest(supporting)
+    work = [a for a in all_assertions if any(term in a.assertion_type for term in _WORK_TYPE_TERMS)]
+    work_date, work_ids = _earliest(work)
+    if fact_date and work_date and fact_date != work_date:
+        status = TimingStatus.after_work_start if fact_date > work_date else TimingStatus.before_work_start
+    elif fact_date and not work:
+        # No work start in the record yet: nothing has begun to be late for.
+        status = TimingStatus.before_work_start
+    else:
+        status = TimingStatus.undetermined
+    return TimingAssessment(
+        status=status,
+        fact_date=fact_date.isoformat() if fact_date else None,
+        work_start_date=work_date.isoformat() if work_date else None,
+        fact_evidence_ids=fact_ids,
+        work_evidence_ids=work_ids,
+    )
 
 
 def _assertion_date(assertion):
@@ -569,7 +629,7 @@ def _is_affirmative_fact(assertion: EvidenceAssertion) -> bool:
     if assertion.assertion_type in {
         "signed_change_order", "price_approval", "approved_amount",
         "express_authorization", "written_authorization",
-        # "We need to finalize the change form" is a plan, not a document.
+        # A statement that a change document still has to be prepared is a plan, not a document.
         "formal_change_document", "pricing_method",
     } and value.get("temporal_status") in {"planned", "denied", "conditional"}:
         return False

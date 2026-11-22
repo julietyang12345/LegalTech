@@ -14,6 +14,7 @@ from app.domain_contracts.schemas import (
     Obligation,
     Provenance,
     SearchAttempt,
+    TimingStatus,
     WorkflowStatus,
 )
 from app.analysis.requirement_evaluator import evaluate_requirements
@@ -175,15 +176,56 @@ def _assess_change_order(assertions: list[EvidenceAssertion]) -> tuple[Assessmen
 
 
 def _assess_requirement_checks(checks: list, rule: ExecutableRuleSpec | None) -> tuple[AssessmentStatus, EvidenceStatus, str]:
+    labels = {requirement.id: requirement.label for requirement in (rule.requirements if rule else [])}
+    missing = [labels.get(check.requirement_id, check.requirement_id) for check in checks if check.result == AssessmentStatus.insufficient_information]
+    timing = _timing_findings(checks, labels)
+    late = any(check.timing and check.timing.status == TimingStatus.after_work_start for check in checks)
     if any(check.result == AssessmentStatus.disputed for check in checks):
-        return AssessmentStatus.disputed, EvidenceStatus.reconstructable, "One or more rule requirements have contrary evidence."
+        return AssessmentStatus.disputed, EvidenceStatus.reconstructable, _join("One or more rule requirements have contrary evidence.", *timing)
     if any(check.result == AssessmentStatus.lawyer_review_required for check in checks):
-        return AssessmentStatus.lawyer_review_required, EvidenceStatus.reconstructable, "The executable rule found evidence but requires lawyer review for one or more requirements."
-    if any(check.result == AssessmentStatus.insufficient_information for check in checks):
-        return AssessmentStatus.insufficient_information, EvidenceStatus.partial, "One or more executable-rule requirements lack sufficient evidence."
+        return AssessmentStatus.lawyer_review_required, EvidenceStatus.reconstructable, _join("The executable rule found evidence but requires lawyer review for one or more requirements.", *timing)
+    if missing:
+        return AssessmentStatus.insufficient_information, EvidenceStatus.partial, _join(f"Not identified in the supplied evidence: {', '.join(missing)}.", *timing)
+    if late:
+        # Every requirement is documented; what remains is when. That is a
+        # historical timing concern for review, not missing evidence.
+        return AssessmentStatus.lawyer_review_required, EvidenceStatus.reconstructable, _join(
+            *timing, "The legal effect of the late timing (ratification, waiver, or a contractual exception) requires review.",
+        )
     if rule and (rule.applicability.jurisdiction in {"REQUIRES_VERIFICATION", "UNKNOWN"} or rule.applicability.contract_review_required):
-        return AssessmentStatus.lawyer_review_required, EvidenceStatus.reconstructable, "The requirements have supporting evidence, but rule applicability requires lawyer review."
-    return AssessmentStatus.satisfied, EvidenceStatus.reconstructable, "All executable-rule requirements were supported by the available evidence."
+        return AssessmentStatus.lawyer_review_required, EvidenceStatus.reconstructable, _join(
+            "All requirements have supporting evidence.", *timing, "Contract applicability remains subject to review.",
+        )
+    return AssessmentStatus.satisfied, EvidenceStatus.reconstructable, _join("All executable-rule requirements were supported by the available evidence.", *timing)
+
+
+def _timing_findings(checks: list, labels: dict[str, str]) -> list[str]:
+    """One sentence per timed requirement, built from its TimingAssessment."""
+    findings = []
+    for check in checks:
+        timing = check.timing
+        if not timing:
+            continue
+        label = labels.get(check.requirement_id, check.requirement_id.replace("_", " "))
+        fact, work = _long_date(timing.fact_date), _long_date(timing.work_start_date)
+        if timing.status == TimingStatus.after_work_start:
+            findings.append(f"{label}: documented {fact}, after work began {work}.")
+        elif timing.status == TimingStatus.before_work_start and work:
+            findings.append(f"{label}: {fact}, before work began {work}.")
+        elif timing.status == TimingStatus.undetermined and work:
+            findings.append(f"{label}: order against work start ({work}) could not be established from the stated dates.")
+    return findings
+
+
+def _long_date(value: str | None) -> str | None:
+    if not value:
+        return None
+    parsed = date.fromisoformat(value)
+    return f"{parsed:%B} {parsed.day}, {parsed.year}"
+
+
+def _join(*parts: str) -> str:
+    return " ".join(part for part in parts if part)
 
 
 def _elapsed_days(start: date, end: date, unit: str | None, obligation: Obligation | None = None) -> int:

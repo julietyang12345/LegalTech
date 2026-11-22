@@ -142,6 +142,7 @@ def _semantic_select(label: str, queries: list[str], candidates: list[EvidenceAs
         from openai import OpenAI
         response = OpenAI(api_key=settings.openai_api_key, timeout=settings.openai_timeout_seconds).chat.completions.create(
             model=settings.openai_model,
+            temperature=0,
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": "Select every evidence candidate that could bear on the requirement, including indirect wording (favor recall; a later step classifies meaning). Return JSON only: {\"assertion_ids\": [ids]}. Never invent IDs. Selection is retrieval only, not legal classification."},

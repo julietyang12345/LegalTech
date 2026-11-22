@@ -22,6 +22,7 @@ def discover_rule_candidates(*, document_id: str, text: str, tenant_id: str, mat
         from openai import OpenAI
         response = OpenAI(api_key=settings.openai_api_key, timeout=settings.openai_timeout_seconds).chat.completions.create(
             model=settings.openai_model,
+            temperature=0,
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": "Identify possible contract rule candidates from the supplied contract text. Return JSON only: {\"candidates\":[{\"title\":str,\"principle\":str,\"facts\":[str],\"limits\":[str],\"triggers\":[str],\"requirements\":[str],\"source_text\":str}]}. Do not state that a rule is legally applicable. Every source_text must be an exact excerpt."},

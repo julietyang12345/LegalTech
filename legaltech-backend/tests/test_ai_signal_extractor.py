@@ -117,3 +117,16 @@ def test_extractor_preserves_semantic_candidate_for_central_validator(monkeypatc
         ParsedContent(document_id="DOC-VALIDATE", text="We have not approved the revised price."),
     )
     assert signals[0].value["polarity"] == "negative"
+
+
+def test_weekday_references_resolve_against_document_date_in_code() -> None:
+    from app.extraction.ai_signal_extractor import resolve_weekday_event_at
+
+    report = "DAILY FIELD REPORT\nDate: April 10, 2026\n\nCrew completed most of the reroute Thursday and Friday."
+    email = "Date sent: April 7, 2026 3:00 PM Pacific\nFrom: Owen\n\nWe can start Thursday if released."
+    # Completed work in a Friday report: Thursday Apr 9 (the model said Apr 8).
+    assert resolve_weekday_event_at("Crew completed most of the reroute Thursday and Friday.", report, "completed") == "2026-04-09"
+    # A plan in a Tuesday email points forward.
+    assert resolve_weekday_event_at("We can start Thursday if released.", email, "planned") == "2026-04-09"
+    assert resolve_weekday_event_at("Installed two elbows.", report, "completed") is None
+    assert resolve_weekday_event_at("Crew worked Thursday.", "No header date here.", "completed") is None

@@ -51,8 +51,9 @@ def list_issue_dashboard(tenant_id: str | None = None, matter_id: str | None = N
         dashboards = [record["dashboard"] for record in records]
         first = records[0]
         missing_requirements, contrary_requirements = _aggregate_requirement_gaps(records)
-        historical_timing_review = any(
-            reason in {"APPROVAL_AFTER_WORK_START", "COST_COMMUNICATION_AFTER_WORK_START", "TEMPORAL_ORDER_UNCERTAIN"}
+        timing_concerns = [concern for dashboard in dashboards for concern in dashboard["timing_concerns"]]
+        historical_timing_review = bool(timing_concerns) or any(
+            reason == "TEMPORAL_ORDER_UNCERTAIN"
             for dashboard in dashboards for reason in dashboard["uncertainty_reasons"]
         )
         current_gap = bool(missing_requirements or contrary_requirements)
@@ -67,7 +68,13 @@ def list_issue_dashboard(tenant_id: str | None = None, matter_id: str | None = N
             "contrary_requirements": contrary_requirements,
             "current_documentation_status": "POTENTIAL_RISK" if current_gap else "RESOLVED",
             "historical_timing_review_required": historical_timing_review,
-            "next_action": next((item["next_action"] for item in dashboards if item["risk_label"] == "Potential documentation risk"), "Retain historical timing review; confirm whether late execution has any contractual effect." if historical_timing_review else "No additional documentation action identified."),
+            # Past timing problems, kept apart from missing_requirements: a CO
+            # signed after work started is documented, but late.
+            "timing_concerns": timing_concerns,
+            "next_action": next(
+                (item["next_action"] for item in dashboards if item["risk_label"] == "Potential documentation risk"),
+                _timing_next_action(timing_concerns) if historical_timing_review else "No additional documentation action identified.",
+            ),
             "search_coverage": sum(item["search_coverage"] for item in dashboards),
             "retrieval_coverage": _merge_retrieval_coverage(records),
             "uncertainty_reasons": sorted({item for dashboard in dashboards for item in dashboard["uncertainty_reasons"]}),
@@ -86,6 +93,7 @@ def list_issue_dashboard(tenant_id: str | None = None, matter_id: str | None = N
             "review_status": "RECOMMENDED",
             "current_documentation_status": "ANALYSIS_INCOMPLETE",
             "historical_timing_review_required": False,
+            "timing_concerns": [],
             "missing_requirements": [],
             "contrary_requirements": [],
             "next_action": "Configure AI extraction or retry analysis before treating the absence of findings as low risk.",
@@ -166,6 +174,11 @@ def _serialize_issue(issue) -> dict:
             },
             "uncertainty_reasons": [item.value for item in (assessment.uncertainty_reasons if assessment else [])],
             "conflict_classifications": [item.value for item in (assessment.conflict_classifications if assessment else [])],
+            "requirement_findings": [_requirement_finding(check, issue) for check in checks],
+            "timing_concerns": [
+                _requirement_finding(check, issue) for check in checks
+                if check.timing and check.timing.status.value in {"AFTER_WORK_START", "UNDETERMINED"} and check.timing.work_start_date
+            ],
         },
         "evidence_links": [
             link for link in store.evidence_links.values()
@@ -189,6 +202,45 @@ def _serialize_issue(issue) -> dict:
             if (rule_id, version) in store.rule_specs
         ],
     }
+
+
+def _requirement_finding(check, issue) -> dict:
+    """Structured per-requirement result the Dashboard builds its text from."""
+    rule_id = issue.rule_ids[0] if issue.rule_ids else None
+    timing = check.timing
+    return {
+        "rule_id": rule_id,
+        "requirement_id": check.requirement_id,
+        "result": check.result.value,
+        "evidence_outcome": check.evidence_outcome.value if check.evidence_outcome else None,
+        "timing_status": timing.status.value if timing else None,
+        "fact_date": timing.fact_date if timing else None,
+        "work_start_date": timing.work_start_date if timing else None,
+        "fact_documents": _documents_for(timing.fact_evidence_ids if timing else check.supporting_evidence_ids),
+        "work_documents": _documents_for(timing.work_evidence_ids if timing else []),
+    }
+
+
+def _documents_for(assertion_ids: list[str]) -> list[dict]:
+    documents: dict[str, dict] = {}
+    for assertion_id in assertion_ids:
+        assertion = store.assertions.get(assertion_id)
+        if not assertion:
+            continue
+        document = store.documents.get(assertion.source_document_id)
+        name = document.metadata.get("original_filename", document.id) if document else assertion.source_document_id
+        documents.setdefault(assertion.source_document_id, {"document_id": assertion.source_document_id, "filename": name})
+    return list(documents.values())
+
+
+def _timing_next_action(concerns: list[dict]) -> str:
+    late = [item for item in concerns if item["timing_status"] == "AFTER_WORK_START"]
+    if late:
+        return (
+            "Review the legal effect of the late timing (possible ratification, waiver, or contractual exception). "
+            "The supporting documents already exist; do not request them again."
+        )
+    return "Confirm the source dates; the order of approval or communication against work start could not be established."
 
 
 def _merge_retrieval_coverage(records: list[dict]) -> dict:

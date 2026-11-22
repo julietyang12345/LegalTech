@@ -324,3 +324,23 @@ def test_dashboard_gap_is_not_cancelled_by_another_rule_with_same_requirement_id
         record("RULE_B", [], ["extra_work_occurred"]),
     ])
     assert missing == ["extra_work_occurred"]
+
+
+def test_semantic_excerpt_names_source_document_and_correspondents() -> None:
+    """The model needs to know a sentence came from the contractor's email to the
+    owner; otherwise "current estimate is $13,600" reads as mere background."""
+    from app.analysis.semantic_evaluator import _excerpt
+    from app.models.domain import Document, DocumentType
+    from app.services.pipeline import correspondence_header
+
+    text = ("PROJECT CORRESPONDENCE\nDate sent: April 7, 2026\nFrom: Owen Fox <owen@stellar.example>\n"
+            "To: Anika Patel <anika@gardenview.example>\nSubject: Additional duct reroute\n\n"
+            "current estimate is $13,600.")
+    header = correspondence_header(text)
+    assert header["from"].startswith("Owen Fox") and header["to"].startswith("Anika Patel")
+
+    document = Document(document_type=DocumentType.email, file_hash="h", storage_path="/tmp/x",
+                        metadata={f"header_{key}": value for key, value in header.items()})
+    store.documents[document.id] = document
+    excerpt = _excerpt(_a("estimate_amount", "current estimate is $13,600.", doc=document.id))
+    assert "source=email from Owen Fox" in excerpt and "to Anika Patel" in excerpt

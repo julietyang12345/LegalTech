@@ -11,6 +11,7 @@ from app.domain_contracts.schemas import Obligation, Provenance
 from app.parsers.base import ParsedContent
 from app.repositories.memory import store
 from app.extraction.schemas import SignalCandidate
+from app.services.pipeline import _extra_work_title, _normalize_assertion_type
 
 
 def _fixture_ai_candidates(text: str) -> list[SignalCandidate]:
@@ -191,6 +192,23 @@ def test_signed_change_order_mitigates_missing_signed_change_order_risk() -> Non
     assert updated_ticket.severity == Severity.medium
     assert updated_ticket.status == "Under Review"
     assert any(history.risk_ticket_id == updated_ticket.id for history in store.risk_ticket_history.values())
+
+
+def test_late_signed_change_order_is_normalized_and_title_uses_subject() -> None:
+    source = (
+        "CHANGE ORDER\nProject: PRJ-505\n"
+        "Owner signature: /s/ Anika Patel, April 14, 2026\n"
+        "Contractor signature: /s/ Owen Fox, April 14, 2026"
+    )
+    assert _normalize_assertion_type("formal_change_document", source) == "signed_change_order"
+
+    document = type("Document", (), {"subject": "PROJECT CORRESPONDENCE Project: PRJ-505 Date sent: April 7"})()
+    title = _extra_work_title(
+        document,
+        "PROJECT CORRESPONDENCE\nSubject: Additional duct reroute near service chase\nReference: EW-505",
+        None,
+    )
+    assert title == "Additional duct reroute near service chase"
 
 
 def test_invoice_recomputes_invoice_pricing_quantum_and_consistency_nodes_only() -> None:

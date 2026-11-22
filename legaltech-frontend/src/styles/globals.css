@@ -121,3 +121,41 @@
 .workspace-form .field small { color: #929ba3; font-size: .68rem; line-height: 1.4; }
 .workspace-form .form-actions { justify-content: flex-end; margin-top: 4px; }
 .required-mark { color: #a34e49; font-style: normal; }
+
+/* Source-dated event timeline (What happened) */
+.event-timeline { display: grid; gap: 0; margin: 16px 0 6px; padding: 0; list-style: none; }
+.event-timeline li { position: relative; display: grid; grid-template-columns: 92px 1fr; gap: 14px; padding: 0 0 16px; }
+.event-timeline li::before { content: ""; position: absolute; top: 5px; left: 99px; width: 9px; height: 9px; border-radius: 50%; background: #53ab9c; }
+.event-timeline li:not(:last-child)::after { content: ""; position: absolute; top: 16px; bottom: 0; left: 103px; width: 1px; background: #dfe7e4; }
+.event-timeline li.undated::before { background: #c9d0d5; }
+.event-timeline time { color: #4c5965; font-size: .74rem; font-weight: 600; white-space: nowrap; }
+.event-timeline li > div { display: grid; gap: 4px; padding-left: 20px; }
+.event-timeline strong { color: #344250; font-size: .77rem; }
+.event-timeline p { color: #6b7782; font-size: .72rem; line-height: 1.45; }
+.event-timeline .source-link { margin-left: 4px; padding: 0; border: 0; background: none; }
+.event-timeline small { color: #919ba4; font-size: .7rem; }
+@media (max-width: 560px) { .event-timeline li { grid-template-columns: 1fr; gap: 4px; } .event-timeline li::before, .event-timeline li::after { display: none; } .event-timeline li > div { padding-left: 0; } }
+
+/* Requirement rows with their cited sources inline */
+.requirement-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.requirement-sources { display: grid; gap: 7px; margin: 4px 0 0; padding: 0; list-style: none; }
+.requirement-sources li { display: grid; gap: 2px; padding-left: 10px; border-left: 2px solid #cfe6df; }
+.requirement-sources li.contradicts { border-left-color: #e8b9b5; }
+.requirement-sources li.conditional { border-left-color: #efd3ae; }
+.requirement-sources .quote { color: #596673; font-size: .73rem; line-height: 1.45; overflow-wrap: anywhere; }
+.requirement-sources .source-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #919ba4; font-size: .68rem; }
+.requirement-sources em { color: #a06f34; font-style: normal; font-weight: 600; }
+.requirement-why summary { color: #87929c; font-size: .68rem; cursor: pointer; }
+.requirement-why p { margin-top: 4px; color: #87929c; font-size: .7rem; line-height: 1.45; }
+.legal-issue-row .issue-verdict { font-style: normal; font-size: .72rem; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
+.legal-issue-row .issue-verdict.success { color: #2f7a4f; }
+.legal-issue-row .issue-verdict.warning { color: #9a6412; }
+.legal-issue-row .issue-verdict.danger { color: #b42318; }
+.legal-issue-row small { color: #7a8691; font-size: .7rem; }
+
+/* Document row with a delete action beside it (buttons cannot nest) */
+.document-row-wrap { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid #eef0ed; }
+.document-row-wrap .document-row { flex: 1; min-width: 0; border-bottom: 0; }
+.document-delete { flex: 0 0 auto; color: #9aa3ab; }
+.document-delete:hover:not(:disabled) { color: #b5524c; background: #fdebea; }
+.document-delete:disabled { opacity: .45; cursor: not-allowed; }

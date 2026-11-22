@@ -1,5 +1,7 @@
 import json
 import logging
+import re
+from datetime import date, timedelta
 from typing import Any
 
 from openai import OpenAI, OpenAIError
@@ -54,6 +56,9 @@ Return only JSON with a top-level "signals" array. Each signal must include:
 signal_type, value, actor, source_text, confidence, extra_work_id, polarity,
 temporal_status, event_at. confidence is a number between 0 and 1. event_at is
 the date the source states for the fact itself (not the document upload date).
+Resolve relative days ("Thursday", "yesterday") against the document's own date
+and give the earliest day of a range; if you cannot resolve it, use the
+document's date rather than guessing.
 Use only these signal_type values:
 operational_direction, instruction_to_proceed, express_authorization,
 signed_change_order, authorization_denial, delegated_authority_limited,
@@ -94,6 +99,7 @@ def ai_candidates(text: str) -> list[SignalCandidate]:
     try:
         response = client.chat.completions.create(
             model=settings.openai_model,
+            temperature=0,
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -161,6 +167,45 @@ def _confidence(value: Any) -> float | None:
     return max(0.0, min(1.0, number))
 
 
+_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+_MONTHS = {name: index for index, name in enumerate(
+    ["january", "february", "march", "april", "may", "june", "july", "august",
+     "september", "october", "november", "december"], start=1)}
+_DOCUMENT_DATE = re.compile(r"^\s*(?:date(?: sent)?|sent)\s*:\s*([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})", re.IGNORECASE | re.MULTILINE)
+
+
+def document_date(text: str) -> date | None:
+    """The date stated in the document's own header ("Date: April 10, 2026")."""
+    match = _DOCUMENT_DATE.search(text[:2000])
+    if not match or match.group(1).lower() not in _MONTHS:
+        return None
+    try:
+        return date(int(match.group(3)), _MONTHS[match.group(1).lower()], int(match.group(2)))
+    except ValueError:
+        return None
+
+
+def resolve_weekday_event_at(source_text: str, text: str, temporal_status: str | None = None) -> str | None:
+    """Resolve weekday references against the document date, in code.
+
+    Models routinely miscount weekdays ("Thursday" in a Friday Apr 10 report
+    came back as Apr 8). A completed fact refers back: the latest such day on
+    or before the document date. A planned or conditional one refers forward:
+    the next such day after it. The earliest resolved day wins.
+    Returns None when the statement names no weekday or the document is undated.
+    """
+    named = [day for day in _WEEKDAYS if re.search(rf"\b{day}\b", source_text, re.IGNORECASE)]
+    anchor = document_date(text) if named else None
+    if not anchor:
+        return None
+    forward = str(temporal_status or "").lower() in {"planned", "conditional", "future"}
+    if forward:
+        resolved = [anchor + timedelta(days=(_WEEKDAYS.index(day) - anchor.weekday()) % 7 or 7) for day in named]
+    else:
+        resolved = [anchor - timedelta(days=(anchor.weekday() - _WEEKDAYS.index(day)) % 7) for day in named]
+    return min(resolved).isoformat()
+
+
 def _candidate_from_item(item: Any, text: str) -> SignalCandidate | None:
     if not isinstance(item, dict):
         return None
@@ -194,7 +239,7 @@ def _candidate_from_item(item: Any, text: str) -> SignalCandidate | None:
             polarity=polarity,
             temporal_status=temporal_status,
             extra_work_id=item.get("extra_work_id"),
-            event_at=item.get("event_at"),
+            event_at=resolve_weekday_event_at(source_text, text, item.get("temporal_status")) or item.get("event_at"),
         )
     except ValidationError:
         return None

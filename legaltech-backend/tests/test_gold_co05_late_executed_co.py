@@ -217,3 +217,146 @@ def test_evidence_dates_come_from_source_text_not_upload_time() -> None:
     for assertion in dated:
         event_date = assertion_event_date(assertion)
         assert event_date is not None and event_date.startswith("2026-04"), (assertion.assertion_type, event_date)
+
+
+@pytest.mark.parametrize("signature_type", ["signed_change_order", "express_authorization", "written_authorization"])
+def test_c04_resolves_whichever_type_the_model_gives_the_signature_line(monkeypatch, signature_type) -> None:
+    """Live runs labelled the same "Owner signature" line with all three types."""
+    outputs = {marker: [dict(item) for item in items] for marker, items in MODEL_OUTPUT.items()}
+    for item in outputs["Change Order Number: CO-505"]:
+        if item["source_text"].startswith("Owner signature"):
+            item["signal_type"] = signature_type
+    monkeypatch.setattr(
+        "app.extraction.signal_extractor.ai_candidates",
+        lambda text: [c for item in next((v for k, v in outputs.items() if k in text), []) if (c := _candidate_from_item(item, text))],
+    )
+    matter = _new_matter()
+    _upload(matter, "2026-04-14T23:59")
+    card = _card(matter)
+
+    assert card["current_documentation_status"] == "RESOLVED", card["missing_requirements"]
+    assert card["historical_timing_review_required"] is True
+
+
+def _late_approval(card: dict) -> list[dict]:
+    return [item for item in card["timing_concerns"] if item["timing_status"] == "AFTER_WORK_START"]
+
+
+def test_c04_approval_timing_is_judged_separately_from_approval_existence() -> None:
+    matter = _new_matter()
+    _upload(matter, "2026-04-14T23:59")
+    card = _card(matter)
+    checks = _checks(card)
+
+    approval = checks["approval_documented@CHANGE_ORDER_APPROVAL"]
+    # The signed CO exists...
+    assert approval.result.value == "REQUIREMENT_SATISFIED"
+    # ...and was signed after the work, as a separate structured finding.
+    assert approval.timing.status.value == "AFTER_WORK_START"
+    assert (approval.timing.fact_date, approval.timing.work_start_date) == ("2026-04-14", "2026-04-09")
+
+    cost = checks["cost_impact_communicated@EXTRA_WORK_COST_COMMUNICATION"]
+    assert cost.timing.status.value == "BEFORE_WORK_START"
+    assert cost.timing.fact_date == "2026-04-07"
+
+    # Late timing is a historical concern, never an evidence gap.
+    assert card["missing_requirements"] == []
+    late = _late_approval(card)
+    assert {item["requirement_id"] for item in late} == {"approval_documented", "owner_approved_additional_cost"}
+    assert all("05_later_signed_co.txt" in [d["filename"] for d in item["fact_documents"]] for item in late)
+    assert any("03_daily_report.txt" in [d["filename"] for d in item["work_documents"]] for item in late)
+    assert not any(item["requirement_id"] == "cost_impact_communicated" for item in card["timing_concerns"])
+
+    conclusion = next(r["assessment"].conclusion for r in card["issues"] if r["issue"].rule_ids[0] == "CHANGE_ORDER_APPROVAL")
+    assert "documented April 14, 2026, after work began April 9, 2026" in conclusion
+    assert "lack sufficient evidence" not in conclusion
+    assert "do not request them again" in card["next_action"]
+
+
+def test_c04_dates_recited_inside_the_co_do_not_become_its_signing_date(monkeypatch) -> None:
+    """Live runs dated the CO's lines April 9 because the scope recites "work
+    performed April 9-10". Only the work fact keeps that date."""
+    outputs = {marker: [dict(item) for item in items] for marker, items in MODEL_OUTPUT.items()}
+    for item in outputs["Change Order Number: CO-505"]:
+        if item["signal_type"] != "work_performed":
+            item["event_at"] = "April 9, 2026"
+    monkeypatch.setattr(
+        "app.extraction.signal_extractor.ai_candidates",
+        lambda text: [c for item in next((v for k, v in outputs.items() if k in text), []) if (c := _candidate_from_item(item, text))],
+    )
+    matter = _new_matter()
+    _upload(matter, "2026-04-14T23:59")
+    approval = _checks(_card(matter))["approval_documented@CHANGE_ORDER_APPROVAL"]
+
+    assert approval.timing.status.value == "AFTER_WORK_START"
+    assert approval.timing.fact_date == "2026-04-14"
+    co_scope = next(a for a in store.assertions.values() if a.statement.startswith("Scope of Change"))
+    assert assertion_event_date(co_scope) == "2026-04-14"
+    assert co_scope.value["model_event_at"] == "April 9, 2026"
+
+
+def test_c04_model_context_label_does_not_erase_the_april_7_cost_notice(monkeypatch) -> None:
+    """Live runs reported "Cost notice: Not Found" although the timeline showed
+    the April 7 estimate: the model labelled it CONTEXT and it was dropped."""
+    from app.analysis.semantic_evaluator import RelationJudgment, SemanticJudgment
+
+    def judge(requirement, candidates):
+        if requirement.id != "cost_impact_communicated":
+            return None
+        return SemanticJudgment(result="uncertain", relations={
+            a.id: RelationJudgment(a.id, "CONTEXT", "background estimate") for a in candidates
+        })
+
+    monkeypatch.setattr("app.analysis.requirement_evaluator.judge_requirement", judge)
+    matter = _new_matter()
+    _upload(matter, "2026-04-14T23:59")
+    card = _card(matter)
+    cost = _checks(card)["cost_impact_communicated@EXTRA_WORK_COST_COMMUNICATION"]
+
+    assert cost.evidence_outcome.value == "SUPPORTED"
+    supporting = [store.assertions[item].statement for item in cost.supporting_evidence_ids]
+    assert "current estimate is $13,600" in supporting
+    # The conditional April 13 offer stays out of the supporting set.
+    assert not any("if you can sign today" in text for text in supporting)
+    assert cost.timing.status.value == "BEFORE_WORK_START"
+    assert "cost_impact_communicated" not in card["missing_requirements"]
+
+
+def test_deleting_signed_co_reanalyzes_matter_and_reupload_restores_it() -> None:
+    from pathlib import Path as _Path
+
+    from app.api.documents import remove_document
+
+    matter = _new_matter()
+    _upload(matter, "2026-04-14T23:59")
+    assert _card(matter)["current_documentation_status"] == "RESOLVED"
+    co = next(doc for doc in store.documents.values() if doc.metadata.get("original_filename") == "05_later_signed_co.txt")
+    stored = _Path(co.storage_path)
+
+    result = remove_document(co.id)
+    assert result["requeued_document_ids"] and co.id not in result["requeued_document_ids"]
+    while run_once():
+        pass
+    card = _card(matter)
+
+    assert co.id not in store.documents and not stored.exists()
+    assert not any(a.source_document_id == co.id for a in store.assertions.values())
+    cited = {e["source_document_id"] for record in card["issues"] for e in record["evidence"]}
+    assert co.id not in cited
+    assert card["current_documentation_status"] == "POTENTIAL_RISK"
+    # Every remaining document was re-analysed, none left pending.
+    jobs = [job for job in store.jobs.values() if job.document_id in result["requeued_document_ids"]]
+    assert len(jobs) == len(result["requeued_document_ids"]) and all(job.status.value != "pending" for job in jobs)
+
+    _upload(matter, "2026-04-14T23:59")  # re-upload the deleted file
+    assert _card(matter)["current_documentation_status"] == "RESOLVED"
+
+
+def test_delete_unknown_document_is_404() -> None:
+    from fastapi import HTTPException
+
+    from app.api.documents import remove_document
+
+    with pytest.raises(HTTPException) as error:
+        remove_document("DOC-MISSING")
+    assert error.value.status_code == 404

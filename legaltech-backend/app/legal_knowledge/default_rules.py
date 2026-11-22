@@ -32,7 +32,7 @@ def extra_work_cost_communication_rule() -> tuple[LegalPrinciple, ExecutableRule
     )
     spec = ExecutableRuleSpec(
         id="EXTRA_WORK_COST_COMMUNICATION",
-        version="1.1",
+        version="1.2",
         tenant_id="SYSTEM",
         matter_id="SYSTEM",
         title="Extra Work Cost Communication",
@@ -68,7 +68,9 @@ def extra_work_cost_communication_rule() -> tuple[LegalPrinciple, ExecutableRule
                 label="Owner approved additional cost",
                 evaluation=EvaluationMethod.ai_and_lawyer,
                 evidence_queries=["approved additional cost", "signed change order", "approved price"],
-                supporting_assertion_types=["signed_change_order", "approved_amount", "price_approval"],
+                # The extractor labels the same owner signature line signed_change_order,
+                # express_authorization or written_authorization from run to run.
+                supporting_assertion_types=["signed_change_order", "approved_amount", "price_approval", "express_authorization", "written_authorization"],
                 contrary_assertion_types=["approval_denied", "scheduling_only"],
                 lawyer_review_required=True,
             ),
@@ -120,7 +122,7 @@ def change_order_approval_rule() -> tuple[LegalPrinciple, ExecutableRuleSpec]:
         jurisdiction="REQUIRES_VERIFICATION", approval_status=RuleApprovalStatus.approved, provenance=provenance,
     )
     return principle, ExecutableRuleSpec(
-        id="CHANGE_ORDER_APPROVAL", version="1.1", tenant_id="SYSTEM", matter_id="SYSTEM",
+        id="CHANGE_ORDER_APPROVAL", version="1.2", tenant_id="SYSTEM", matter_id="SYSTEM",
         title="Change Order Approval", issue_type="CHANGE_ORDER", legal_principle_id=principle.id,
         approval_status=RuleApprovalStatus.approved,
         applicability=RuleApplicability(jurisdiction="REQUIRES_VERIFICATION", contract_review_required=True),
@@ -128,7 +130,7 @@ def change_order_approval_rule() -> tuple[LegalPrinciple, ExecutableRuleSpec]:
         assessment_preconditions=["extra_work_detected"],
         requirements=[
             RuleRequirement(id="extra_work_occurred", label="Extra work identified", evaluation=EvaluationMethod.ai_semantic, evidence_queries=["extra work", "additional work"], supporting_assertion_types=["extra_work_detected", "instruction_to_proceed", "change_order", "work_performed"]),
-            RuleRequirement(id="approval_documented", label="Approval or equivalent authority documented", evaluation=EvaluationMethod.ai_and_lawyer, evidence_queries=["signed change order", "approved change"], supporting_assertion_types=["signed_change_order", "express_authorization"], contrary_assertion_types=["approval_denied", "scheduling_only"], lawyer_review_required=True),
+            RuleRequirement(id="approval_documented", label="Approval or equivalent authority documented", evaluation=EvaluationMethod.ai_and_lawyer, evidence_queries=["signed change order", "approved change"], supporting_assertion_types=["signed_change_order", "express_authorization", "written_authorization"], contrary_assertion_types=["approval_denied", "scheduling_only"], lawyer_review_required=True),
             RuleRequirement(id="price_basis_identified", label="Price basis identified", evaluation=EvaluationMethod.ai_semantic, evidence_queries=["approved amount", "unit price", "time and materials", "adjustment to contract price", "lump sum"], supporting_assertion_types=["approved_amount", "pricing_method", "formal_change_document"], price_bearing_assertion_types=["signed_change_order", "change_order"]),
         ],
         exceptions_to_check=["waiver", "owner_awareness", "alternative_entitlement_basis"],

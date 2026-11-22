@@ -15,7 +15,7 @@ from app.domain_contracts.schemas import EvidenceAssertion, RuleRequirement
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "semantic-relations-v3"
+PROMPT_VERSION = "semantic-relations-v5"
 
 RELATIONS = {"SUPPORTS", "CONTRADICTS", "CONDITIONAL", "CONTEXT", "UNCERTAIN"}
 CHANGE_RELATIONS = {"MODIFIES", "SUPERSEDES", "REVOKES"}
@@ -27,10 +27,11 @@ For EVERY evidence item, return how it bears on THIS requirement only:
 - CONDITIONAL: the very fact the requirement asks about depends on an unmet condition (signature, funding, later confirmation). Put the condition in "condition".
 - CONTEXT: relevant background that does not establish or deny the requirement.
 Judge the requirement exactly as worded, not a neighbouring one. The same sentence can bear differently on different requirements:
-- "Current estimate is $13,600" SUPPORTS "cost impact communicated" (the cost was communicated) but is CONTEXT for "owner approved additional cost".
-- "We can hold the price at $13,600 if you sign today" SUPPORTS "cost impact communicated" (the communication itself is complete) and is CONDITIONAL only for approval.
+- A contractor's statement of the expected price (a figure, a range, or a pricing method such as unit rates or time-and-materials) SUPPORTS "cost impact communicated", because the cost was communicated, but is CONTEXT for "owner approved additional cost", because nobody approved it.
+- A price offer that depends on the owner acting (signing, releasing, confirming by a deadline) still SUPPORTS "cost impact communicated", because the communication itself is complete, and is CONDITIONAL only for approval.
 - "Please proceed" SUPPORTS "work directed / extra work occurred" but is CONTEXT for price approval.
 - UNCERTAIN: the language is genuinely ambiguous for this requirement.
+Each item names its source document. A statement written in an email or letter was communicated to that document's recipient: a cost stated in a contractor's email to the owner SUPPORTS "cost impact communicated" even if the sentence itself does not say "we are notifying you".
 Distinguish completed acts from future plans, proposals, conditions, and denials. A general legal or contractual rule is CONTEXT, never proof of a project fact.
 If an item changes an EARLIER item in the list (new amount, withdrawal, replacement), set "changes" to {"target_id": <earlier id>, "type": "MODIFIES" | "SUPERSEDES" | "REVOKES"}. Only reference ids from the list.
 Return JSON only: {"relations": [{"id", "relation", "rationale", "condition"?, "changes"?}], "explanation"}.
@@ -104,6 +105,7 @@ def judge_requirement(requirement: RuleRequirement, assertions: list[EvidenceAss
         client = OpenAI(api_key=settings.openai_api_key, timeout=settings.openai_timeout_seconds)
         response = client.chat.completions.create(
             model=settings.openai_model,
+            temperature=0,
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -205,8 +207,24 @@ def _excerpt(assertion: EvidenceAssertion) -> str:
     return (
         f"{assertion.id}: type={assertion.assertion_type}; date={when or 'unknown'}; "
         f"actor={assertion.actor or 'unknown'}; ew={assertion_scope(assertion) or 'unscoped'}; "
-        f"statement={assertion.statement}"
+        f"source={_source(assertion)}; statement={assertion.statement}"
     )
+
+
+def _source(assertion: EvidenceAssertion) -> str:
+    """Document kind plus the From/To header the document itself states."""
+    from app.repositories.memory import store
+
+    document = store.documents.get(assertion.source_document_id)
+    if document is None:
+        return "unknown"
+    kind = getattr(document.document_type, "value", document.document_type)
+    parts = [str(kind)]
+    if document.metadata.get("header_from"):
+        parts.append(f"from {document.metadata['header_from']}")
+    if document.metadata.get("header_to"):
+        parts.append(f"to {document.metadata['header_to']}")
+    return " ".join(parts)
 
 
 def _sort_key(assertion: EvidenceAssertion):
