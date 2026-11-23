@@ -90,6 +90,8 @@ def test_ew201_timeline_relations_are_per_requirement_and_change_edge_targets_pr
     proceed = _a("instruction_to_proceed", "Please proceed with the work.", at="2025-02-03", doc="feb3")
     denial = _a("price_approval", "I do not approve the additional $25,000.", at="2025-02-04", doc="feb4")
     conditional = _a("price_approval", "I now approve $20,000, subject to signing.", at="2025-02-06", doc="feb6")
+    # The same owner revises their own decision.
+    denial.actor = conditional.actor = "Dana Owner"
     monkeypatch.setattr("app.analysis.requirement_evaluator.judge_requirement", _judge({
         APPROVAL: {
             cost.id: RelationJudgment(cost.id, "CONTEXT", "A cost proposal is not approval."),

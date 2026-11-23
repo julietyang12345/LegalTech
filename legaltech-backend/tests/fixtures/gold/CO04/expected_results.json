@@ -1,0 +1,84 @@
+{
+  "case_id": "CO-04",
+  "label": "express rejection then work",
+  "synthetic": true,
+  "project_number": "PRJ-504",
+  "scenario": "Owner rejects quoted price; separate scheduling directive leads to work proceeding.",
+  "dimension_under_test": "Negation, distinct work and price decisions",
+  "expected": {
+    "expected_distinct_extra_work_scopes": 1,
+    "multiple_legal_issues_per_scope_allowed": true,
+    "extra_work_ids": [
+      "EW-504"
+    ],
+    "cost_communication": "supported_prework",
+    "price_approval": "expressly_disputed",
+    "work_direction": "site_schedule_direction",
+    "final_legal_outcome": "requires_contract_specific_and_lawyer_review",
+    "required_evidence_files": [
+      "00_contract.txt",
+      "01_quote.txt",
+      "02_owner_rejection.txt",
+      "03_site_coordination.txt",
+      "04_daily_report.txt",
+      "05_revised_quote.txt"
+    ],
+    "must_not": [
+      "Misread not approved as approved",
+      "Assume owner rejection means no work was performed",
+      "Treat a revised quote as an accepted amount"
+    ],
+    "recommended_action": "Separate scope instruction from rejected price; seek express response."
+  },
+  "timepoints": [
+    {
+      "as_of": "2026-04-09T17:00",
+      "expected_state": "POTENTIAL_RISK",
+      "evidence_files": [
+        "00_contract.txt",
+        "01_quote.txt",
+        "02_owner_rejection.txt",
+        "03_site_coordination.txt"
+      ],
+      "rationale": "Price expressly rejected and a separate on-site direction seeks continued work before agreement on amount.",
+      "recommended_action": "Clarify price and authorization before the April 10 work.",
+      "alert_required": true,
+      "clarification_required": false,
+      "assessment_scope": "approval_or_notice_documentation_risk"
+    },
+    {
+      "as_of": "2026-04-13T23:59",
+      "expected_state": "POTENTIAL_RISK",
+      "evidence_files": [
+        "00_contract.txt",
+        "02_owner_rejection.txt",
+        "04_daily_report.txt",
+        "05_revised_quote.txt"
+      ],
+      "rationale": "Revised price is a new proposal, not proof that Owner accepted it.",
+      "recommended_action": "Request documented response to revised proposal.",
+      "alert_required": true,
+      "clarification_required": false,
+      "assessment_scope": "approval_or_notice_documentation_risk"
+    }
+  ],
+  "labeling_function_challenges": [
+    "Negation in documents",
+    "Revised proposal state"
+  ],
+  "expert_review": {
+    "status": "DRAFT_NOT_LEGAL_EXPERT_VERIFIED",
+    "review_questions": [
+      "Confirm risk state under the fictional contract terms",
+      "Identify any plausible exception, alternative interpretation or additional required evidence"
+    ]
+  },
+  "notes": [
+    "Draft benchmark expectations, not legal conclusions or court holdings.",
+    "All entities and data are invented. Contract variations are intentional.",
+    "Absence of document means not identified in this supplied corpus, not proof it never existed.",
+    "Expected results must be reviewed independently from labeling functions before use as gold data.",
+    "Do not upload this JSON to the test application; the current backend does not necessarily consume this as an eval schema.",
+    "Use --through to create an isolated Matter with only documents available as of that date."
+  ]
+}

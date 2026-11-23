@@ -209,13 +209,15 @@ function formatAmount(amount?: number, currency?: string) { return typeof amount
 const TIMELINE_LABELS: [string[], string][] = [
   [['extra_work_detected', 'extra_work_identified', 'scope_change'], 'Extra work identified'],
   [['estimate_amount', 'cost_communicated', 'price_communicated', 'proposed_amount'], 'Cost communicated'],
-  [['instruction_to_proceed', 'operational_direction', 'work_authorized', 'owner_direction'], 'Work authorized to proceed'],
+  [['instruction_to_proceed', 'work_authorized', 'owner_direction'], 'Work authorized to proceed'],
+  [['operational_direction', 'scheduling_only'], 'Site or schedule direction (not price approval)'],
+  [['approval_denied', 'authorization_denial'], 'Price or approval rejected'],
+  [['pricing_unresolved'], 'Pricing still open'],
   [['work_planned'], 'Work planned'],
   [['work_performed', 'work_started', 'work_completed'], 'Work performed'],
   [['signed_change_order', 'express_authorization', 'written_authorization', 'approved_amount', 'price_approval', 'price_approved'], 'Change order signed'],
   [['formal_change_document', 'change_order', 'pricing_method'], 'Change order documentation'],
   [['invoice_amount', 'invoice_submitted', 'invoice_support', 'claimed_amount'], 'Invoice issued'],
-  [['authorization_denial'], 'Authorization denied'],
   [['schedule_pressure'], 'Schedule note'],
 ];
 const HIDDEN_TIMELINE_TYPES = new Set(['project_number', 'po_number']);

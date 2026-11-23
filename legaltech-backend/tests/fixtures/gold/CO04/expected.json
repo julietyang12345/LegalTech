@@ -1,0 +1,154 @@
+{
+  "schema_version": "1.0-draft",
+  "case_id": "CO-04",
+  "scenario": "Owner rejects quoted price; separate scheduling directive leads to work proceeding.",
+  "synthetic": true,
+  "source_benchmark": "Change_Order_Benchmark_v2",
+  "gold_status": "DRAFT_NOT_LEGAL_EXPERT_VERIFIED",
+  "project_number": "PRJ-504",
+  "scope_ids": [
+    "EW-504"
+  ],
+  "input_directory": "UPLOAD/",
+  "manifest": "manifest.json",
+  "evaluation_context": {
+    "timepoints_must_be_run_with_as_of_document_filter": true,
+    "availability_source": "manifest.json:documents[].available_at",
+    "valid_input_documents": {
+      "00_contract.txt": "2026-03-18",
+      "01_quote.txt": "2026-04-07T10:45",
+      "02_owner_rejection.txt": "2026-04-08T12:05",
+      "03_site_coordination.txt": "2026-04-09T07:30",
+      "04_daily_report.txt": "2026-04-10T18:00",
+      "05_revised_quote.txt": "2026-04-13T16:00"
+    },
+    "do_not_feed_expected_files_to_model": true
+  },
+  "criteria": [
+    {
+      "id": "C01",
+      "type": "scope_count",
+      "method": "python_adapter",
+      "check": {
+        "expected": 1,
+        "expected_scope_ids": [
+          "EW-504"
+        ]
+      }
+    },
+    {
+      "id": "C02",
+      "type": "domain_assessment",
+      "method": "adapter_or_expert_review",
+      "check": {
+        "expected_labels": {
+          "cost_communication": "supported_prework",
+          "price_approval": "expressly_disputed",
+          "work_direction": "site_schedule_direction"
+        }
+      },
+      "source_files": [
+        "00_contract.txt",
+        "01_quote.txt",
+        "02_owner_rejection.txt",
+        "03_site_coordination.txt",
+        "04_daily_report.txt",
+        "05_revised_quote.txt"
+      ]
+    },
+    {
+      "id": "C03",
+      "type": "checkpoint_state",
+      "method": "python_adapter",
+      "check": {
+        "expected_state": "POTENTIAL_RISK",
+        "alert_required": true,
+        "clarification_required": false,
+        "assessment_scope": "approval_or_notice_documentation_risk"
+      },
+      "source_files": [
+        "00_contract.txt",
+        "01_quote.txt",
+        "02_owner_rejection.txt",
+        "03_site_coordination.txt"
+      ],
+      "as_of": "2026-04-09T17:00"
+    },
+    {
+      "id": "C04",
+      "type": "checkpoint_state",
+      "method": "python_adapter",
+      "check": {
+        "expected_state": "POTENTIAL_RISK",
+        "alert_required": true,
+        "clarification_required": false,
+        "assessment_scope": "approval_or_notice_documentation_risk"
+      },
+      "source_files": [
+        "00_contract.txt",
+        "02_owner_rejection.txt",
+        "04_daily_report.txt",
+        "05_revised_quote.txt"
+      ],
+      "as_of": "2026-04-13T23:59"
+    },
+    {
+      "id": "C05",
+      "type": "required_evidence_attribution",
+      "method": "python_plus_semantic_review",
+      "check": {
+        "require_support_for_pertinent_findings": true,
+        "does_not_require_every_file_to_be_cited": true
+      },
+      "source_files": [
+        "00_contract.txt",
+        "01_quote.txt",
+        "02_owner_rejection.txt",
+        "03_site_coordination.txt",
+        "04_daily_report.txt",
+        "05_revised_quote.txt"
+      ]
+    },
+    {
+      "id": "C06",
+      "type": "express_rejection",
+      "method": "llm_judge_or_expert",
+      "check": {
+        "match_criteria": "Explicit rejection of quoted price must be captured as a price dispute, not as cost approval."
+      },
+      "source_files": [
+        "02_owner_rejection.txt"
+      ]
+    },
+    {
+      "id": "C07",
+      "type": "direction_vs_rejection",
+      "method": "llm_judge_or_expert",
+      "check": {
+        "match_criteria": "Separate scheduling or site direction and actual performance from the rejected compensation amount."
+      },
+      "source_files": [
+        "03_site_coordination.txt",
+        "04_daily_report.txt"
+      ]
+    },
+    {
+      "id": "C08",
+      "type": "revised_quote",
+      "method": "llm_judge_or_expert",
+      "check": {
+        "match_criteria": "A later revised quote is not itself proof of acceptance."
+      },
+      "source_files": [
+        "05_revised_quote.txt"
+      ]
+    }
+  ],
+  "global_rules_ref": "../shared_rules.json",
+  "limitations": [
+    "Expectations are draft labels requiring expert validation.",
+    "Backend output field mapping and some checks require an adapter; this file is not directly executable by the existing backend.",
+    "Missing evidence means not found in supplied as-of corpus, not necessarily nonexistent.",
+    "A semantic judge must assess assertion meaning and attribution, not just substring matches."
+  ]
+}

@@ -70,6 +70,18 @@ attachment_unsigned, extra_work_detected, cost_communication, approval_denied,
 scheduling_only, notice_denied, project_number, po_number, project_mismatch,
 amount_mismatch, invoice_before_authorization, work_performed, work_planned,
 pricing_unresolved.
+Decisions on price are the most important facts to capture; never skip one:
+- approval_denied (polarity negative): a decision-maker explicitly rejects or
+  withholds approval of a proposed price, amount or change, in any wording
+  (for example "We can't accept that number" or "Pricing declined as
+  submitted"). authorization_denial is for refusing permission to do the work.
+- pricing_unresolved: a request to revise, justify or resubmit pricing. On its
+  own it is NOT a rejection and NOT an instruction to proceed or an approval.
+- scheduling_only / operational_direction: site logistics, sequencing or
+  staffing requests. They direct how work happens, not what it costs, and are
+  never price approval.
+- estimate_amount: any price the contractor proposes, including a revised or
+  reduced one. It is not approved_amount until the owner accepts it.
 source_text must be an exact excerpt from the document. Do not infer facts that
 are not supported by an excerpt. Use polarity affirmative, negative, or
 uncertain. Use temporal_status completed, planned, conditional, denied, or

@@ -1,0 +1,49 @@
+{
+  "case_id": "CO-04",
+  "project_number": "PRJ-504",
+  "project": "Willow Arts Center - Stair Landing",
+  "documents": [
+    {
+      "filename": "00_contract.txt",
+      "document_type": "contract",
+      "available_at": "2026-03-18",
+      "sender": "synthetic@test.example",
+      "subject": "00_contract.txt"
+    },
+    {
+      "filename": "01_quote.txt",
+      "document_type": "email",
+      "available_at": "2026-04-07T10:45",
+      "sender": "Rose Vega <rose@vector.example>",
+      "subject": "Stair landing angle adjustment"
+    },
+    {
+      "filename": "02_owner_rejection.txt",
+      "document_type": "email",
+      "available_at": "2026-04-08T12:05",
+      "sender": "Carmen Reyes <carmen@willow.example>",
+      "subject": "RE: Stair landing angle adjustment"
+    },
+    {
+      "filename": "03_site_coordination.txt",
+      "document_type": "email",
+      "available_at": "2026-04-09T07:30",
+      "sender": "Matt Ellison <matt@willow.example>",
+      "subject": "Landing tomorrow"
+    },
+    {
+      "filename": "04_daily_report.txt",
+      "document_type": "daily_report",
+      "available_at": "2026-04-10T18:00",
+      "sender": "synthetic@test.example",
+      "subject": "04_daily_report.txt"
+    },
+    {
+      "filename": "05_revised_quote.txt",
+      "document_type": "email",
+      "available_at": "2026-04-13T16:00",
+      "sender": "Rose Vega <rose@vector.example>",
+      "subject": "Revised landing price"
+    }
+  ]
+}

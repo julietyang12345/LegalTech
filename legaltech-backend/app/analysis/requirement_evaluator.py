@@ -406,8 +406,39 @@ def _record_changes(*, candidates, semantic, classified, requirement_id, tenant_
             relation_type=AssertionRelationType(judged.change_type),
             requirement_id=requirement_id, rationale=judged.rationale,
         )
-        superseded.add(target_id)
+        if _displaces(classified[source_id], source, target, requirement_id):
+            superseded.add(target_id)
     return superseded, unordered, classifications
+
+
+def _displaces(label: "_Classified", source, target, requirement_id: str) -> bool:
+    """Whether a validated change edge removes its target from this check.
+
+    The edge is always recorded for audit; only the evaluation is affected.
+    - A communication requirement asks whether notice was given: a later
+      revised amount does not un-send the earlier notice.
+    - A fact can only displace an earlier fact on this requirement if it bears
+      on the requirement itself, firmly. A contractor's revised quote is
+      context for "owner approved", so it cannot erase the owner's express
+      rejection; a later owner approval or denial can.
+    - A conditional item replaces an earlier decision only when its author made
+      that decision ("I do not approve" -> the same owner's "I approve $20,000
+      subject to signing"). Another party's conditional offer, or unknown
+      authors, leave the earlier decision in force and visible.
+    """
+    if requirement_id in COMMUNICATION_REQUIREMENTS:
+        return False
+    if label.relation in {EvidenceRelationType.supports, EvidenceRelationType.contradicts}:
+        return True
+    if label.relation == EvidenceRelationType.conditional:
+        return _same_author(source, target)
+    return False
+
+
+def _same_author(source, target) -> bool:
+    def author(assertion):
+        return " ".join(str(assertion.actor or "").lower().split())
+    return bool(author(source)) and author(source) == author(target)
 
 
 def _classify_result(*, supporting, contrary, conditional, uncertain, matching_searches, analysis_complete, semantic_explanation):

@@ -1,0 +1,9 @@
+PROJECT CORRESPONDENCE
+Project: PRJ-504
+Date sent: April 7, 2026 10:45 AM Pacific
+From: Rose Vega <rose@vector.example>
+To: Carmen Reyes <carmen@willow.example>
+Subject: Stair landing angle adjustment
+Reference: EW-504
+
+The latest steel sketch adds a new bent angle at the second-floor landing. We estimate $10,200 of work beyond the original steel package. Please review the pricing before we proceed.
