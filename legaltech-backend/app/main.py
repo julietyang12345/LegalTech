@@ -4,7 +4,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import change_events, documents, issues, jobs, matters, reviews, risks, rule_candidates
+from app.api import change_events, documents, issues, jobs, matters, reviews, risks, rule_candidates, events
 from app.database.connection import database_status
 
 logging.basicConfig(
@@ -30,6 +30,7 @@ app.include_router(reviews.router, prefix="/api/reviews", tags=["reviews"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["jobs"])
 app.include_router(issues.router, prefix="/api/issues", tags=["issues"])
 app.include_router(rule_candidates.router, prefix="/api/rule-candidates", tags=["rule-candidates"])
+app.include_router(events.router, prefix="/api/events", tags=["events"])
 
 
 @app.get("/health")

@@ -1,0 +1,75 @@
+{
+  "case_id": "E03",
+  "dataset": "Category E Synthetic Risk Detection Benchmark - Cross-document nuance variant",
+  "as_of": "2026-09-08T17:00:00-06:00",
+  "canonical_input_dir": "UPLOAD",
+  "native_format_alternative_dir": "REALISTIC_ORIGINALS",
+  "never_upload_both_variants": true,
+  "documents": [
+    {
+      "doc_id": "D01",
+      "title": "Prime Construction Agreement - Selected Articles",
+      "kind": "Executed agreement excerpt",
+      "date": "2026-06-03",
+      "status": "Executed - illustrative extract",
+      "issuer": "Cedar Quay Developments Ltd. / Northfield Construction Partners Ltd.",
+      "document_number": "AGR-ERL-C-2026-017",
+      "text_upload": "UPLOAD/E03_D01_prime_construction_agreement_selected_arti.txt",
+      "realistic_original": "REALISTIC_ORIGINALS/E03_D01_prime_construction_agreement_selected_arti.pdf",
+      "sha256_text": "b2563466a20ec042709444d8d8fcbe23380220e453392e2cc4dac426465c45ff",
+      "sha256_original": "e08e8408e9365b41d2aee2e8747cb2b674f5778f02b7f5735fa0737be4de3e72"
+    },
+    {
+      "doc_id": "D02",
+      "title": "Exhibit G - Owner-Supplied Geotechnical Investigation Matrix",
+      "kind": "Contract exhibit",
+      "date": "2026-06-03",
+      "status": "Issued",
+      "issuer": "Cedar Quay Developments Ltd.",
+      "document_number": "EX-G-14",
+      "text_upload": "UPLOAD/E03_D02_exhibit_g_owner_supplied_geotechnical_inve.txt",
+      "realistic_original": "REALISTIC_ORIGINALS/E03_D02_exhibit_g_owner_supplied_geotechnical_inve.pdf",
+      "sha256_text": "b3b4b02bee90f6a5e304045164372560d19cb6a233ff07f6cec5e710980c7e8e",
+      "sha256_original": "8d7b2c86043657a04b7a0059d635107d79c07e18f0417c8b29309af8490cc4f5"
+    },
+    {
+      "doc_id": "D03",
+      "title": "Interim Geotechnical Field Log Transmittal",
+      "kind": "Geotechnical field investigation",
+      "date": "2026-09-07",
+      "status": "Interim - unsigned",
+      "issuer": "Redstone Subsurface Ltd.",
+      "document_number": "GEO-INT-0907",
+      "text_upload": "UPLOAD/E03_D03_interim_field_log_transmittal.txt",
+      "realistic_original": "REALISTIC_ORIGINALS/E03_D03_interim_field_log_transmittal.pdf",
+      "sha256_text": "4d3973d498055f86b8dee39082223466134df76c69b114ab7a475f90bd7105b3",
+      "sha256_original": "a7b774507f4309a491390d9832c5816ace8acd0823dece177aa313baa18cbb7a"
+    },
+    {
+      "doc_id": "D04",
+      "title": "Drilling completion follow-up / field log reconciliation",
+      "kind": "Email correspondence",
+      "date": "2026-09-07",
+      "status": "Sent",
+      "issuer": "M. Iqbal <miqbal@redstone.example>",
+      "document_number": "EM-003",
+      "text_upload": "UPLOAD/E03_D04_drilling_completion_follow_up.txt",
+      "realistic_original": "REALISTIC_ORIGINALS/E03_D04_drilling_completion_follow_up.eml",
+      "sha256_text": "aec8f080a42cd50fa830b715e3367010cb7fa45aa3ede07db4f74c6b54ef8c65",
+      "sha256_original": "ccd4f3b33f12d95e3e8e8c809d52c12c7c56cd06835ccbc12754fde705153e73"
+    },
+    {
+      "doc_id": "D05",
+      "title": "Foundation Design Release Readiness Log",
+      "kind": "Design coordination memo",
+      "date": "2026-09-08",
+      "status": "Issued",
+      "issuer": "Northfield Construction Partners Ltd.",
+      "document_number": "DES-0908",
+      "text_upload": "UPLOAD/E03_D05_foundation_design_release_readiness_log.txt",
+      "realistic_original": "REALISTIC_ORIGINALS/E03_D05_foundation_design_release_readiness_log.pdf",
+      "sha256_text": "2f74a0192ff94539fc12614c0697f7c486798aa8b9bfbf6cc0a901330cd80d0e",
+      "sha256_original": "77103132a9812dee7c9672b5dc4cc9e530f862264ac181b35a8b29508f852d87"
+    }
+  ]
+}

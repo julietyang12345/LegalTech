@@ -1,0 +1,21 @@
+DOCUMENT ID: GEO-INT-0907
+DOCUMENT TYPE: Geotechnical field investigation
+DATE: 2026-09-07
+TITLE: Interim Borehole Completion Log - 10 of 14
+FROM / ISSUER: Redstone Subsurface Ltd.
+STATUS: Interim / incomplete
+PROJECT: East Rail Lands - Building C / ERL-C-26
+
+[SYNTHETIC EVALUATION DOCUMENT - NOT AN ACTUAL PROJECT RECORD]
+
+COMPLETION RECORD
+Borehole group | Completed | Outstanding
+BH-01 to BH-05 | 5 | 0
+BH-06 to BH-10 | 5 | 0
+BH-11 to BH-14 | 0 | 4
+
+FIELD NOTE
+West wing access not available due to temporary material laydown. The west wing foundation line has not been sampled. Preliminary log is unsigned and not a final geotechnical interpretation.
+
+NEXT STEP
+Provide access, complete BH-11 to BH-14, and issue a consolidated report. No technical substitution has been approved.

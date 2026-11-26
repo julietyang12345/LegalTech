@@ -1,0 +1,20 @@
+DOCUMENT ID: DES-0908
+DOCUMENT TYPE: Design coordination memo
+DATE: 2026-09-08
+TITLE: Foundation Design Release Readiness Log
+FROM / ISSUER: Northfield Construction Partners Ltd.
+STATUS: Issued
+PROJECT: East Rail Lands - Building C / ERL-C-26
+
+[SYNTHETIC EVALUATION DOCUMENT - NOT AN ACTUAL PROJECT RECORD]
+
+DESIGN COORDINATION - SEPTEMBER 8 STATUS
+Decision / item | Current record | Next verification
+Geotechnical final signed report | Not in the design release folder | Request final approved issue from geotechnical consultant
+West wing borehole log package | No BH-11, BH-12, BH-13 or BH-14 log sheets in the transmittal reviewed | Ask field team whether testing occurred and obtain corresponding signed records
+Approved modification to Exhibit G | No approval found in design coordination records | Confirm with Owner's authorized representative and consultant
+West wing access | Clearance requested | Confirm availability for return visit
+Foundation design release | Structural team requested September 12 | Hold requested pending geotechnical sign-off / investigation coverage confirmation
+
+ACTION
+Please reconcile Exhibit G's scheduled investigation locations with the field log attachments and any separate field records before the proposed footing release. The absence of BH-11 through BH-14 logs from our folder does not, by itself, establish that the field tests were not performed.

@@ -360,3 +360,42 @@ def test_delete_unknown_document_is_404() -> None:
     with pytest.raises(HTTPException) as error:
         remove_document("DOC-MISSING")
     assert error.value.status_code == 404
+
+
+def test_live_regression_material_work_items_do_not_split_the_event(monkeypatch) -> None:
+    """Live gpt-4.1-mini gave the daily report work_items ["TWO ELBOWS",
+    "18 FEET OF RECTANGULAR DUCT"]; that created a separate event and removed
+    the work-start date from EW-505, hiding the late-approval timing concern."""
+    outputs = {marker: [dict(item) for item in items] for marker, items in MODEL_OUTPUT.items()}
+    outputs["DAILY FIELD REPORT"][0]["value"] = {"item": "service chase duct reroute", "completed": "most",
+                                                 "work_items": ["TWO ELBOWS", "18 FEET OF RECTANGULAR DUCT"]}
+    # As live: the CO's "work performed April 9-10" recital was not extracted,
+    # so the daily report is the only source of the work start.
+    outputs["Change Order Number: CO-505"] = [i for i in outputs["Change Order Number: CO-505"] if i["signal_type"] != "work_performed"]
+    monkeypatch.setattr(
+        "app.extraction.signal_extractor.ai_candidates",
+        lambda text: [c for item in next((v for k, v in outputs.items() if k in text), []) if (c := _candidate_from_item(item, text))],
+    )
+    matter = _new_matter()
+    _upload(matter, "2026-04-14T23:59")
+    card = _card(matter)
+    assert card["historical_timing_review_required"] is True
+    assert {item["requirement_id"] for item in card["timing_concerns"] if item["timing_status"] == "AFTER_WORK_START"} >= {"approval_documented"}
+
+
+def test_live_regression_vague_quantity_line_adds_no_precondition_issue(monkeypatch) -> None:
+    """Live: "Installed quantities are consistent with the original estimate."
+    came back as completed_quantity, firing the precondition rule with nothing
+    to compare. It must not appear as an issue."""
+    outputs = {marker: [dict(item) for item in items] for marker, items in MODEL_OUTPUT.items()}
+    outputs["Subject: Final measure for service chase"].append(
+        _item("completed_quantity", "Installed quantities are consistent with the original estimate.", value={"item": "installed quantities"}))
+    monkeypatch.setattr(
+        "app.extraction.signal_extractor.ai_candidates",
+        lambda text: [c for item in next((v for k, v in outputs.items() if k in text), []) if (c := _candidate_from_item(item, text))],
+    )
+    matter = _new_matter()
+    _upload(matter, "2026-04-14T23:59")
+    card = _card(matter)
+    assert all(record["issue"].rule_ids != ["REQUIRED_PRECONDITION"] for record in card["issues"])
+    assert card["current_documentation_status"] == "RESOLVED"

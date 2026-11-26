@@ -27,12 +27,14 @@ from app.analysis.issue_discovery import discover_issues
 from app.analysis.reconciliation import reconcile_issue
 from app.analysis.rule_activation import activate_rules
 from app.analysis.targeted_retrieval import retrieve_requirement_evidence
+from app.analysis.risk_discovery import discover_candidate_risks
 from app.core.config import get_settings
 from app.legal_knowledge.default_rules import default_rule_set
 from app.legal_knowledge.rule_registry import register_rule
 from app.legal_knowledge.ai_rule_discovery import discover_rule_candidates
 from app.services.hashing import stable_text_hash
 from app.analysis.event_time import normalize_event_time
+from app.analysis.event_identity import resolve_event_identity, suggest_location_matches
 from app.models.domain import DocumentType
 
 PIPELINE_VERSION = "0.1.0"
@@ -41,6 +43,15 @@ logger = logging.getLogger(__name__)
 
 _HEADER_FIELDS = {"from": "from", "to": "to", "cc": "cc", "subject": "subject", "date sent": "date_sent", "sent": "date_sent"}
 _HEADER_LINE = re.compile(r"^\s*(from|to|cc|subject|date sent|sent)\s*:\s*(.+?)\s*$", re.IGNORECASE)
+
+
+_DECLARED_KIND = re.compile(r"^\s*document type\s*:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
+
+
+def _declared_kind(text: str) -> str | None:
+    """The kind of document the document states in its own header."""
+    match = _DECLARED_KIND.search("\n".join(text.splitlines()[:25]))
+    return match.group(1)[:120] if match else None
 
 
 def correspondence_header(text: str) -> dict[str, str]:
@@ -94,6 +105,9 @@ def process_document(document_id: str) -> str:
     stated_document_date = document_date(parsed_content.text or "")
     if stated_document_date:
         document.metadata["document_date"] = stated_document_date.isoformat()
+    declared_kind = _declared_kind(parsed_content.text or "")
+    if declared_kind:
+        document.metadata["declared_kind"] = declared_kind
     if document.document_type.value == "contract":
         discover_rule_candidates(
             document_id=document.id,
@@ -170,6 +184,12 @@ def process_document(document_id: str) -> str:
         extra_work_id = infer_extra_work_id(signal.value, signal.source_text)
         tenant_id = document.tenant_id or "unassigned"
         matter_id = document.matter_id or document.metadata.get("matter_id") or "unassigned"
+        identity = resolve_event_identity(
+            tenant_id=tenant_id, matter_id=matter_id, extra_work_id=extra_work_id,
+            value=signal.value, document=document, assertion_id=assertion_id,
+        )
+        extra_work_id = identity.key
+        event_id = identity.event_id
         if extra_work_id:
             extra_work = store.find_extra_work(
                 tenant_id=tenant_id,
@@ -184,7 +204,10 @@ def process_document(document_id: str) -> str:
                     title=_extra_work_title(document, signal.source_text, change_event_match.change_event_id),
                 )
                 store.extra_works[extra_work.id] = extra_work
-            elif _looks_like_header(extra_work.title):
+            event_id = extra_work.id
+            if document.id not in extra_work.document_ids:
+                extra_work.document_ids.append(document.id)
+            if _looks_like_header(extra_work.title):
                 extra_work.title = _extra_work_title(document, signal.source_text, change_event_match.change_event_id)
             amount = _signal_amount(signal.value)
             if signal.signal_type in {"invoice_amount", "estimate_amount", "approved_amount"} and amount is not None:
@@ -207,6 +230,8 @@ def process_document(document_id: str) -> str:
         assertion_value.setdefault("change_event_id", change_event_match.change_event_id)
         if extra_work_id:
             assertion_value["extra_work_id"] = extra_work_id
+        if identity.possible_keys:
+            assertion_value["possible_event_ids"] = identity.possible_keys
         raw_event_at = assertion_value.get("event_at") if isinstance(assertion_value.get("event_at"), str) else None
         model_event_at = raw_event_at
         raw_event_at, time_source = fact_event_at(
@@ -230,7 +255,8 @@ def process_document(document_id: str) -> str:
             matter_id=matter_id,
             source_document_id=signal.source_document_id,
             extra_work_id=extra_work_id,
-            evidence_role=evidence_role_for_document(document),
+            event_id=event_id,
+            evidence_role=evidence_role_for_document(document, assertion_value),
             assertion_type=assertion_type,
             statement=signal.source_text,
             value=assertion_value,
@@ -247,8 +273,16 @@ def process_document(document_id: str) -> str:
             uploaded_at=document.received_at,
             time_source=time_source,
             time_confidence=normalized_time.confidence,
-            relationship_status="EXPLICIT" if extra_work_id else "UNSCOPED",
-            relationship_reason="EW identifier extracted from source or document metadata" if extra_work_id else "No unambiguous Extra Work identifier found",
+            relationship_status=(
+                "EXPLICIT" if extra_work_id
+                else "UNRESOLVED_SCOPE" if identity.status == "POSSIBLE_MATCH"
+                else "UNSCOPED"
+            ),
+            relationship_reason=(
+                "Event identity from a stated EW identifier or stated work items" if extra_work_id
+                else f"Stated work items overlap several events ({', '.join(identity.possible_keys)}); not merged" if identity.status == "POSSIBLE_MATCH"
+                else "No unambiguous Extra Work identifier found"
+            ),
             scope_confidence="HIGH" if extra_work_id else "UNKNOWN",
             asserted_at=document.received_at,
             provenance=provenance,
@@ -285,9 +319,11 @@ def process_document(document_id: str) -> str:
         document_ew_id = next(iter(document_ew_ids))
         new_extra_work_ids.add(document_ew_id)
         for assertion in document_assertions:
-            if assertion.extra_work_id:
+            if assertion.extra_work_id or assertion.relationship_status == "UNRESOLVED_SCOPE":
                 continue
             assertion.extra_work_id = document_ew_id
+            document_event = store.find_extra_work(tenant_id=assertion.tenant_id, matter_id=assertion.matter_id, external_id=document_ew_id)
+            assertion.event_id = document_event.id if document_event else None
             assertion.relationship_status = "INFERRED"
             assertion.relationship_reason = "Document contained one unambiguous Extra Work identifier"
             if isinstance(assertion.value, dict):
@@ -295,99 +331,12 @@ def process_document(document_id: str) -> str:
 
     matter_id = document.metadata.get("matter_id")
     if matter_id:
-        logger.info("[detector] legal analysis started document_id=%s matter_id=%s", document_id, matter_id)
-        matched_issue_ids = match_new_evidence(new_assertion_ids)
-        logger.info(
-            "[detector] new evidence matched existing issues document_id=%s issue_ids=%s",
-            document_id, sorted(matched_issue_ids),
+        suggest_location_matches(tenant_id=document.tenant_id or "unassigned", matter_id=matter_id, assertion_ids=new_assertion_ids)
+        analyze_matter(
+            tenant_id=document.tenant_id or "unassigned", matter_id=matter_id,
+            new_assertion_ids=new_assertion_ids, new_extra_work_ids=new_extra_work_ids,
+            analysis_run_id=analysis_run_id, document=document,
         )
-        if not store.rule_specs:
-            logger.info("[detector] registering default executable rules")
-            for principle, default_rule in default_rule_set():
-                register_rule(principle, default_rule)
-        obligations = [
-            obligation for obligation in store.obligations.values()
-            if obligation.tenant_id == (document.tenant_id or "unassigned")
-            and obligation.matter_id == matter_id
-        ]
-        assertions = [
-            assertion for assertion in store.assertions.values()
-            if assertion.tenant_id == (document.tenant_id or "unassigned")
-            and assertion.matter_id == matter_id
-        ]
-        rules = [rule for rule in store.rule_specs.values() if rule.approval_status.value == "APPROVED"]
-        logger.info("[detector] legal inputs loaded document_id=%s obligations=%d assertions=%d approved_rules=%d", document_id, len(obligations), len(assertions), len(rules))
-        with _detector_step("activate_rules", document_id=document_id, rule_count=len(rules), assertion_count=len(assertions)):
-            activations = activate_rules(rules=rules, assertions=assertions)
-        logger.info("[detector] rules activated document_id=%s activation_count=%d", document_id, len(activations))
-        with _detector_step("discover_issues", document_id=document_id):
-            issues = discover_issues(
-                tenant_id=document.tenant_id or "unassigned",
-                matter_id=matter_id,
-                obligations=obligations,
-                assertions=assertions,
-                rules=rules,
-                activations=activations,
-            )
-        logger.info("[detector] issues discovered document_id=%s issue_count=%d", document_id, len(issues))
-        affected_issue_ids = determine_assertion_affected_issues(new_assertion_ids) | matched_issue_ids
-        issues_to_reconcile = [
-            issue for issue in issues
-            if issue.id in affected_issue_ids
-            or issue.current_assessment_id is None
-            or (issue.extra_work_id and issue.extra_work_id in new_extra_work_ids)
-        ]
-        logger.info(
-            "[detector] targeted issue reconciliation document_id=%s affected=%d skipped=%d",
-            document_id, len(issues_to_reconcile), len(issues) - len(issues_to_reconcile),
-        )
-        for issue in issues_to_reconcile:
-            logger.info("[detector] issue started issue_id=%s issue_scope=%s rule_ids=%s", issue.id, issue.issue_scope, issue.rule_ids)
-            issue_rules = [rule for rule in rules if rule.id in issue.rule_ids]
-            if len(issue_rules) > 1:
-                # This is a legacy/corrupt aggregate. Do not silently execute
-                # only the first rule and present incomplete legal analysis.
-                logger.error(
-                    "[detector] issue has multiple rules; skipping aggregate issue_id=%s rule_ids=%s",
-                    issue.id, issue.rule_ids,
-                )
-                continue
-            issue_rule = issue_rules[0] if issue_rules else None
-            targeted_assertions: list[EvidenceAssertion] = []
-            targeted_searches = []
-            if issue_rule:
-                with _detector_step("retrieve_requirement_evidence", issue_id=issue.id, rule_id=issue_rule.id):
-                    targeted_assertions, targeted_searches = retrieve_requirement_evidence(
-                        issue=issue,
-                        rule=issue_rule,
-                        assertions=assertions,
-                        analysis_run_id=analysis_run_id,
-                    )
-                issue.evidence_ids = sorted(set(issue.evidence_ids + [a.id for a in targeted_assertions]))
-            logger.info("[detector] targeted evidence complete issue_id=%s assertions=%d searches=%d", issue.id, len(targeted_assertions), len(targeted_searches))
-            with _detector_step("reconcile_issue", issue_id=issue.id):
-                assessment = reconcile_issue(
-                    issue=issue,
-                    obligations=obligations,
-                    assertions=assertions + targeted_assertions,
-                    search_attempts=targeted_searches + [
-                        attempt for attempt in store.search_attempts.values()
-                        if attempt.tenant_id == issue.tenant_id and attempt.matter_id == issue.matter_id
-                    ],
-                    analysis_run_id=analysis_run_id,
-                    pipeline_version=PIPELINE_VERSION,
-                    rule=issue_rule,
-                )
-                if any(not check.analysis_complete for check in assessment.requirement_checks):
-                    document.metadata["analysis_status"] = "ANALYSIS_INCOMPLETE"
-                    document.metadata["analysis_reason"] = (
-                        "Semantic evaluation did not classify every relevant evidence item."
-                    )
-                    logger.warning(
-                        "[detector] semantic analysis incomplete document_id=%s issue_id=%s",
-                        document_id, issue.id,
-                    )
-            logger.info("[detector] issue finished issue_id=%s", issue.id)
     else:
         logger.warning("[detector] no matter_id; legal issue analysis skipped document_id=%s", document_id)
 
@@ -406,7 +355,120 @@ def process_document(document_id: str) -> str:
     return result
 
 
+def analyze_matter(
+    *, tenant_id: str, matter_id: str, new_assertion_ids: set[str], new_extra_work_ids: set[str],
+    analysis_run_id: str, document=None, reconcile_all: bool = False,
+) -> None:
+    """Rule activation, issue discovery and reconciliation for one Matter.
+
+    Runs after each document, and after a reviewer confirms an event match
+    (``reconcile_all``), so merged evidence is re-assessed without a new upload.
+    """
+    document_id = document.id if document is not None else "-"
+    logger.info("[detector] legal analysis started document_id=%s matter_id=%s", document_id, matter_id)
+    matched_issue_ids = match_new_evidence(new_assertion_ids)
+    logger.info(
+        "[detector] new evidence matched existing issues document_id=%s issue_ids=%s",
+        document_id, sorted(matched_issue_ids),
+    )
+    if not store.rule_specs:
+        logger.info("[detector] registering default executable rules")
+        for principle, default_rule in default_rule_set():
+            register_rule(principle, default_rule)
+    obligations = [
+        obligation for obligation in store.obligations.values()
+        if obligation.tenant_id == tenant_id
+        and obligation.matter_id == matter_id
+    ]
+    assertions = [
+        assertion for assertion in store.assertions.values()
+        if assertion.tenant_id == tenant_id
+        and assertion.matter_id == matter_id
+    ]
+    rules = [rule for rule in store.rule_specs.values() if rule.approval_status.value == "APPROVED"]
+    logger.info("[detector] legal inputs loaded document_id=%s obligations=%d assertions=%d approved_rules=%d", document_id, len(obligations), len(assertions), len(rules))
+    with _detector_step("activate_rules", document_id=document_id, rule_count=len(rules), assertion_count=len(assertions)):
+        activations = activate_rules(rules=rules, assertions=assertions)
+    logger.info("[detector] rules activated document_id=%s activation_count=%d", document_id, len(activations))
+    with _detector_step("discover_issues", document_id=document_id):
+        issues = discover_issues(
+            tenant_id=tenant_id,
+            matter_id=matter_id,
+            obligations=obligations,
+            assertions=assertions,
+            rules=rules,
+            activations=activations,
+        )
+    logger.info("[detector] issues discovered document_id=%s issue_count=%d", document_id, len(issues))
+    affected_issue_ids = determine_assertion_affected_issues(new_assertion_ids) | matched_issue_ids
+    issues_to_reconcile = [
+        issue for issue in issues
+        if reconcile_all
+        or issue.id in affected_issue_ids
+        or issue.current_assessment_id is None
+        or (issue.extra_work_id and issue.extra_work_id in new_extra_work_ids)
+    ]
+    logger.info(
+        "[detector] targeted issue reconciliation document_id=%s affected=%d skipped=%d",
+        document_id, len(issues_to_reconcile), len(issues) - len(issues_to_reconcile),
+    )
+    for issue in issues_to_reconcile:
+        logger.info("[detector] issue started issue_id=%s issue_scope=%s rule_ids=%s", issue.id, issue.issue_scope, issue.rule_ids)
+        issue_rules = [rule for rule in rules if rule.id in issue.rule_ids]
+        if len(issue_rules) > 1:
+            # This is a legacy/corrupt aggregate. Do not silently execute
+            # only the first rule and present incomplete legal analysis.
+            logger.error(
+                "[detector] issue has multiple rules; skipping aggregate issue_id=%s rule_ids=%s",
+                issue.id, issue.rule_ids,
+            )
+            continue
+        issue_rule = issue_rules[0] if issue_rules else None
+        targeted_assertions: list[EvidenceAssertion] = []
+        targeted_searches = []
+        if issue_rule:
+            with _detector_step("retrieve_requirement_evidence", issue_id=issue.id, rule_id=issue_rule.id):
+                targeted_assertions, targeted_searches = retrieve_requirement_evidence(
+                    issue=issue,
+                    rule=issue_rule,
+                    assertions=assertions,
+                    analysis_run_id=analysis_run_id,
+                )
+            issue.evidence_ids = sorted(set(issue.evidence_ids + [a.id for a in targeted_assertions]))
+        logger.info("[detector] targeted evidence complete issue_id=%s assertions=%d searches=%d", issue.id, len(targeted_assertions), len(targeted_searches))
+        with _detector_step("reconcile_issue", issue_id=issue.id):
+            assessment = reconcile_issue(
+                issue=issue,
+                obligations=obligations,
+                assertions=assertions + targeted_assertions,
+                search_attempts=targeted_searches + [
+                    attempt for attempt in store.search_attempts.values()
+                    if attempt.tenant_id == issue.tenant_id and attempt.matter_id == issue.matter_id
+                ],
+                analysis_run_id=analysis_run_id,
+                pipeline_version=PIPELINE_VERSION,
+                rule=issue_rule,
+            )
+            if document is not None and any(not check.analysis_complete for check in assessment.requirement_checks):
+                document.metadata["analysis_status"] = "ANALYSIS_INCOMPLETE"
+                document.metadata["analysis_reason"] = (
+                    "Semantic evaluation did not classify every relevant evidence item."
+                )
+                logger.warning(
+                    "[detector] semantic analysis incomplete document_id=%s issue_id=%s",
+                    document_id, issue.id,
+                )
+        logger.info("[detector] issue finished issue_id=%s", issue.id)
+    with _detector_step("discover_candidate_risks", document_id=document_id):
+        findings = discover_candidate_risks(tenant_id=tenant_id, matter_id=matter_id)
+    if findings:
+        logger.info("[detector] candidate risks document_id=%s count=%d pending=%d", document_id, len(findings), sum(f["status"] != "ASSESSED" for f in findings))
+
+
 WORK_SIGNAL_TYPES = {"work_performed", "work_completed", "work_planned", "installation", "construction_started"}
+# Facts whose own date is the one stated in the sentence, not the document's:
+# work, and planned milestones ("release planned for 12 March").
+STATED_DATE_TYPES = WORK_SIGNAL_TYPES | {"milestone_planned"}
 SIGNATURE_SIGNAL_TYPES = {"signed_change_order", "price_approval", "approved_amount", "express_authorization", "written_authorization"}
 _STATED_DATE = re.compile(r"\b[A-Z][a-z]{2,8}\.?\s+\d{1,2},?\s+\d{4}\b|\b\d{4}-\d{2}-\d{2}\b")
 
@@ -421,7 +483,7 @@ def fact_event_at(signal_type: str, statement: str, model_event_at: str | None, 
     Every other fact (letters, estimates, directions, CO terms) happened on
     the date the document states in its header.
     """
-    if signal_type in WORK_SIGNAL_TYPES:
+    if signal_type in STATED_DATE_TYPES:
         return model_event_at, "SOURCE_TEXT" if model_event_at else "UNKNOWN"
     if signal_type in SIGNATURE_SIGNAL_TYPES:
         stated = _STATED_DATE.findall(statement or "")

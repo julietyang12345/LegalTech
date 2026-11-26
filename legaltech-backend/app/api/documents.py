@@ -51,7 +51,20 @@ def get_document(document_id: str) -> dict:
         signal for signal in store.signals.values() if signal.source_document_id == document_id
     ]
     events = [event for event in store.events.values() if event.document_id == document_id]
-    return {"document": store.documents.get(document_id), "signals": signals, "events": events}
+    document = store.documents.get(document_id)
+    return {"document": document, "signals": signals, "events": events, "text": _document_text(document)}
+
+
+def _document_text(document) -> str | None:
+    """The parsed text, so a cited passage can be shown in its document."""
+    if document is None:
+        return None
+    from app.parsers.base import parse_document
+
+    try:
+        return parse_document(document).text[:500_000]
+    except Exception:  # viewing must not fail because a file cannot be parsed
+        return None
 
 
 @router.delete("/{document_id}")

@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 
 from app.domain_contracts.schemas import (
+    DETERMINISTIC_PATTERNS,
     EvidenceAssertion,
     EvidenceStatus,
     EvidenceRole,
@@ -15,6 +16,9 @@ from app.analysis.evidence_relationships import assertion_event_scope, assertion
 from app.repositories.memory import store
 
 
+# Typed events only: a fact that can require notice, or a notice given or
+# refused. A word ("notice", "delay", "claim") in an ordinary email is not one.
+_NOTICE_TRIGGER_TYPES = {"written_notice", "notice_denied", "notice_event", "delay_event", "condition_encountered"}
 _NOTICE_TERMS = {"notice", "delay", "claim", "extra_compensation", "written_notice"}
 _CHANGE_ORDER_TERMS = {"change", "change_order", "extra_work", "authorization", "pricing", "approval"}
 _INDEPENDENT_TERMS = {"waiver", "repudiation", "termination", "reservation of rights"}
@@ -83,6 +87,21 @@ def discover_issues(
                 scope if scope and str(scope).upper().startswith("EW-")
                 else next((assertion_scope(a) for a in scoped_assertions if assertion_scope(a)), None)
             )
+            # Contract requirements stated for this same event (e.g. an exhibit
+            # requiring 14 test holes) are evidence of what was required. They
+            # are never triggers, so attach them here.
+            requirements = [
+                a for a in assertions
+                if a.evidence_role == EvidenceRole.normative_rule and extra_work_id
+                and assertion_scope(a) == extra_work_id
+            ]
+            # Required-vs-observed checks compare every fact of the event (a
+            # scope revision, a milestone), not only the facts that triggered it.
+            if extra_work_id and any(set(req.patterns) & DETERMINISTIC_PATTERNS for req in rule.requirements):
+                requirements += [
+                    a for a in assertions
+                    if a.evidence_role == EvidenceRole.project_fact and assertion_scope(a) == extra_work_id
+                ]
             created.append(_upsert_issue(
                 tenant_id=tenant_id,
                 matter_id=matter_id,
@@ -90,7 +109,7 @@ def discover_issues(
                 title=rule.title,
                 summary="Executable rule activated; each requirement must be evaluated separately.",
                 obligation_ids=[o.id for o in obligations if o.id],
-                evidence_ids=[a.id for a in scoped_assertions],
+                evidence_ids=[a.id for a in [*scoped_assertions, *requirements]],
                 rule_ids=[rule.id],
                 rule_versions=[rule.version],
                 issue_scope=scope,
@@ -124,6 +143,8 @@ def _matches(assertions: list[EvidenceAssertion], terms: set[str]) -> bool:
 def _matches_assertion(assertion: EvidenceAssertion, terms: set[str]) -> bool:
     if assertion.evidence_role != EvidenceRole.project_fact:
         return False
+    if terms is _NOTICE_TERMS:
+        return assertion.assertion_type.lower() in _NOTICE_TRIGGER_TYPES
     haystack = f"{assertion.assertion_type} {assertion.statement}".lower()
     return any(term in haystack for term in terms)
 
@@ -131,7 +152,8 @@ def _matches_assertion(assertion: EvidenceAssertion, terms: set[str]) -> bool:
 def _upsert_issue(**kwargs: object) -> Issue:
     existing = next(
         (issue for issue in store.issues.values()
-         if issue.tenant_id == kwargs["tenant_id"]
+         if not issue.merged_into_event_id
+         and issue.tenant_id == kwargs["tenant_id"]
          and issue.matter_id == kwargs["matter_id"]
          and issue.type == kwargs["issue_type"]
          and issue.issue_scope == kwargs.get("issue_scope")
@@ -149,6 +171,7 @@ def _upsert_issue(**kwargs: object) -> Issue:
             existing.extra_work_id = kwargs["extra_work_id"]
         if existing.extra_work_id and not existing.issue_scope:
             existing.issue_scope = existing.extra_work_id
+        _link_event(existing)
         return existing
 
     issue = Issue(
@@ -166,8 +189,18 @@ def _upsert_issue(**kwargs: object) -> Issue:
         issue_scope=kwargs.get("issue_scope"),
         extra_work_id=kwargs.get("extra_work_id"),
     )
+    _link_event(issue)
     store.issues[issue.id] = issue
     return issue
+
+
+def _link_event(issue: Issue) -> None:
+    """Carry the internal event identity, resolving merged aliases."""
+    if not issue.extra_work_id:
+        return
+    event = store.find_extra_work(tenant_id=issue.tenant_id, matter_id=issue.matter_id, external_id=issue.extra_work_id)
+    if event is not None:
+        issue.event_id = event.id
 
 
 def _issue_scope_from_assertions(assertions: list[EvidenceAssertion]) -> str | None:

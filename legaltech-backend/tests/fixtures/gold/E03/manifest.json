@@ -1,0 +1,75 @@
+{
+  "case_id": "E03",
+  "dataset": "Category E Synthetic Risk Detection Benchmark",
+  "as_of": "2026-09-08T17:00:00-06:00",
+  "canonical_input_dir": "UPLOAD",
+  "native_format_alternative_dir": "REALISTIC_ORIGINALS",
+  "never_upload_both_variants": true,
+  "documents": [
+    {
+      "doc_id": "D01",
+      "title": "Prime Construction Agreement - Selected Articles",
+      "kind": "Executed agreement excerpt",
+      "date": "2026-06-03",
+      "status": "Executed - illustrative extract",
+      "issuer": "Cedar Quay Developments Ltd. / Northfield Construction Partners Ltd.",
+      "document_number": "AGR-ERL-C-2026-017",
+      "text_upload": "UPLOAD/E03_D01_prime_construction_agreement_selected_arti.txt",
+      "realistic_original": "REALISTIC_ORIGINALS/E03_D01_prime_construction_agreement_selected_arti.pdf",
+      "sha256_text": "b2563466a20ec042709444d8d8fcbe23380220e453392e2cc4dac426465c45ff",
+      "sha256_original": "e08e8408e9365b41d2aee2e8747cb2b674f5778f02b7f5735fa0737be4de3e72"
+    },
+    {
+      "doc_id": "D02",
+      "title": "Exhibit G - Owner-Supplied Geotechnical Investigation Matrix",
+      "kind": "Contract exhibit",
+      "date": "2026-06-03",
+      "status": "Issued",
+      "issuer": "Cedar Quay Developments Ltd.",
+      "document_number": "EX-G-14",
+      "text_upload": "UPLOAD/E03_D02_exhibit_g_owner_supplied_geotechnical_inve.txt",
+      "realistic_original": "REALISTIC_ORIGINALS/E03_D02_exhibit_g_owner_supplied_geotechnical_inve.pdf",
+      "sha256_text": "ccb1a0e0e909e0337bd1b1714b3c1a7888386089c6425062f763a3d6c84f6c96",
+      "sha256_original": "752b0148edbbf439147f726c63e8f3ae27e3396cfcf9bc55bb685cedad1f7f8c"
+    },
+    {
+      "doc_id": "D03",
+      "title": "Interim Borehole Completion Log - 10 of 14",
+      "kind": "Geotechnical field investigation",
+      "date": "2026-09-07",
+      "status": "Interim / incomplete",
+      "issuer": "Redstone Subsurface Ltd.",
+      "document_number": "GEO-INT-0907",
+      "text_upload": "UPLOAD/E03_D03_interim_borehole_completion_log_10_of_14.txt",
+      "realistic_original": "REALISTIC_ORIGINALS/E03_D03_interim_borehole_completion_log_10_of_14.pdf",
+      "sha256_text": "1ff7c354cc4440e241b705041ee3594d35a1cbf09451caf0bfa35de822b99726",
+      "sha256_original": "dccaa66a7a90342149ac71dcf28edb994b3a9d73e525db14e473bd4fa7b37e06"
+    },
+    {
+      "doc_id": "D04",
+      "title": "Drilling completion follow-up",
+      "kind": "Email correspondence",
+      "date": "2026-09-07",
+      "status": "Sent",
+      "issuer": "M. Iqbal <miqbal@redstone.example>",
+      "document_number": "EM-003",
+      "text_upload": "UPLOAD/E03_D04_drilling_completion_follow_up.txt",
+      "realistic_original": "REALISTIC_ORIGINALS/E03_D04_drilling_completion_follow_up.eml",
+      "sha256_text": "a98164f26cbe580acd860806c8cedd50e4f3e2b0bc58a7d66bebadaf7ed60085",
+      "sha256_original": "f78c9aa5f26d312e9a3d693cb6598982bdf91e72c33de25de333a7a260ea7a86"
+    },
+    {
+      "doc_id": "D05",
+      "title": "Foundation Design Release Readiness Log",
+      "kind": "Design coordination memo",
+      "date": "2026-09-08",
+      "status": "Issued",
+      "issuer": "Northfield Construction Partners Ltd.",
+      "document_number": "DES-0908",
+      "text_upload": "UPLOAD/E03_D05_foundation_design_release_readiness_log.txt",
+      "realistic_original": "REALISTIC_ORIGINALS/E03_D05_foundation_design_release_readiness_log.pdf",
+      "sha256_text": "fe3abbb7c036af35420196008444a0136157573953d7d5b201b23f16b0752bc4",
+      "sha256_original": "1fa4470533b50956852277995bd32ed437eac946684c2d0ab264e9f3c551a4dd"
+    }
+  ]
+}

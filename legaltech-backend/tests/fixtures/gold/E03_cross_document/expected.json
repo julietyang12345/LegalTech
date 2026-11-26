@@ -1,0 +1,114 @@
+{
+  "schema_version": "1.2",
+  "case_id": "E03",
+  "shared_rules": [
+    {
+      "id": "SHARED-01",
+      "name": "evidence_provenance",
+      "expected": true
+    },
+    {
+      "id": "SHARED-02",
+      "name": "no_unfounded_legal_conclusions",
+      "expected": true
+    },
+    {
+      "id": "SHARED-03",
+      "name": "work_item_isolation",
+      "expected": true
+    },
+    {
+      "id": "SHARED-04",
+      "name": "uncertainty_and_temporal_scope",
+      "expected": true
+    }
+  ],
+  "criteria": [
+    {
+      "id": "E03-C01",
+      "type": "issue_discovery",
+      "requirement": "Discover the cross-document investigation coverage verification gap by comparing Exhibit G locations with field log attachments and follow-up records.",
+      "expected": true,
+      "evidence_document_ids": [
+        "D02",
+        "D03",
+        "D04",
+        "D05"
+      ]
+    },
+    {
+      "id": "E03-C02",
+      "type": "classification",
+      "requirement": "Assign correct issue-scoped outcome at review as-of date.",
+      "expected": "POTENTIAL_RISK",
+      "evidence_document_ids": [
+        "D02",
+        "D03",
+        "D04",
+        "D05"
+      ]
+    },
+    {
+      "id": "E03-C03",
+      "type": "evidence_linkage",
+      "requirement": "Use D02 for fourteen required locations; D03/D04 for the ten explicitly listed log sheets; D05 for absent west-wing records and proposed release.",
+      "expected": true,
+      "evidence_document_ids": [
+        "D02",
+        "D03",
+        "D04",
+        "D05"
+      ]
+    },
+    {
+      "id": "E03-C04",
+      "type": "uncertainty_guardrail",
+      "requirement": "Distinguish unverified completion at BH-11 through BH-14 from affirmative proof that the four locations were never tested; do not invent CO approval, contamination, or milestone occurrence.",
+      "expected": true,
+      "evidence_document_ids": [
+        "D02",
+        "D03",
+        "D04",
+        "D05"
+      ]
+    },
+    {
+      "id": "E03-C05",
+      "type": "recommended_action",
+      "requirement": "Propose appropriate next project action for this issue.",
+      "expected": "Reconcile the contract schedule to actual field records; verify whether BH-11 through BH-14 were performed, complete any outstanding work or document approved scope revision, and obtain final signed report before release.",
+      "evidence_document_ids": [
+        "D02",
+        "D03",
+        "D04",
+        "D05"
+      ]
+    },
+    {
+      "id": "E03-C06",
+      "type": "timing",
+      "requirement": "Recognize the event/deadline that makes action useful.",
+      "expected": "Proposed foundation design release on 2026-09-12, evaluated as of 2026-09-08; prerequisites unverified, not proof of release breach.",
+      "evidence_document_ids": [
+        "D02",
+        "D03",
+        "D04",
+        "D05"
+      ]
+    },
+    {
+      "id": "E03-C07",
+      "type": "cross_document_reconciliation",
+      "requirement": "Do not rely on an explicit aggregate completion count; compare individually required locations BH-01–BH-14 with the logs listed in D03/D04 and identify BH-11–BH-14 as not verified in provided records.",
+      "expected": true,
+      "evidence_document_ids": [
+        "D02",
+        "D03",
+        "D04",
+        "D05"
+      ]
+    }
+  ],
+  "review_status": "PROPOSED_PENDING_LAWYER_REVIEW",
+  "source": "Derived from JN General/JN Example 1 + original user template; independent expected results are NOT reviewed gold."
+}

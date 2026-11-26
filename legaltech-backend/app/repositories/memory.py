@@ -63,6 +63,10 @@ class InMemoryStore:
         self.rule_specs: dict[tuple[str, str], ExecutableRuleSpec] = {}
         self.rule_activations: dict[str, RuleActivation] = {}
         self.dependency_edges: dict[str, DependencyEdge] = {}
+        # AI-proposed candidate risks (app.analysis.risk_discovery), keyed by id.
+        self.candidate_findings: dict[str, dict] = {}
+        # Reviewer-confirmable event matches (app.analysis.event_identity).
+        self.event_match_suggestions: dict[str, dict] = {}
 
     def reset(self) -> None:
         """Clear all state. Intended for isolated tests and evaluation runs."""
@@ -112,7 +116,9 @@ class InMemoryStore:
                 item for item in self.extra_works.values()
                 if item.tenant_id == tenant_id
                 and item.matter_id == matter_id
-                and item.external_id == external_id
+                # An identifier of a merged event resolves to the survivor.
+                and (item.external_id == external_id or external_id in item.aliases)
+                and item.status != "merged"
             ),
             None,
         )

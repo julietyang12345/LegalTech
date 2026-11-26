@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.1",
+  "case_id": "E03",
+  "benchmark_category": "E - Unexpected Site Conditions",
+  "scenario_title": "Four Required Boreholes Not Completed",
+  "jurisdiction_context": "Alberta, Canada - fictional contract clauses, no assertion of actual law",
+  "as_of": "2026-09-08T17:00:00-06:00",
+  "target_issue": "SITE_INVESTIGATION_SCOPE_GAP",
+  "proposed_case_label": "POTENTIAL_RISK",
+  "expected_issues": [
+    {
+      "issue_id": "E03-SITE_INVESTIGATION_SCOPE_GAP",
+      "work_item_id": "SITE-AREA-C",
+      "issue_type": "SITE_INVESTIGATION_SCOPE_GAP",
+      "issue_name": "Investigation gap",
+      "expected_label": "POTENTIAL_RISK",
+      "must_detect": [
+        "Exhibit G requires 14 boreholes and signed final reporting.",
+        "Field log documents only 10 completed holes.",
+        "The omitted four locations coincide with a planned foundation work area."
+      ],
+      "must_not_conclude": [
+        "Claim all 14 holes were completed based on a proposed test plan.",
+        "Treat a partial draft report as final verification.",
+        "Infer contamination from a borehole count alone."
+      ],
+      "evidence_document_ids": [
+        "D02",
+        "D03",
+        "D04",
+        "D05"
+      ],
+      "recommended_action": "Complete remaining boreholes or document an appropriately authorized and technically supported revised investigation scope before footing work.",
+      "action_timing": "Before foundation design release/footing excavation on 2026-09-12."
+    }
+  ],
+  "global_exclusions": [
+    "Do not use scenario.json or any expected*.json as source evidence when analyzing UPLOAD documents.",
+    "Do not apply a signed change to a different work-item location without scope support.",
+    "Do not assume statutory duties from the invented contract; source-specific legal review is required."
+  ],
+  "expert_sources": [
+    "JN General - Construction Risk Detection.docx, p. 2 (14 required, only 10 completed)"
+  ],
+  "source_type": "DIRECT_TRIGGER",
+  "ground_truth_review": "PENDING_LAWYER_REVIEW",
+  "data_origin": "Fully fictional documents generated from expert-provided risk themes; not a real case file."
+}

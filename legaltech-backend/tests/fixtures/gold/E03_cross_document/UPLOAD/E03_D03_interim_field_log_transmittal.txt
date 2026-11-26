@@ -1,0 +1,27 @@
+DOCUMENT ID: GEO-INT-0907
+DOCUMENT TYPE: Geotechnical field investigation
+DATE: 2026-09-07
+TITLE: Interim Geotechnical Field Log Transmittal
+FROM / ISSUER: Redstone Subsurface Ltd.
+STATUS: Interim - unsigned
+PROJECT: East Rail Lands - Building C / ERL-C-26
+
+[SYNTHETIC EVALUATION DOCUMENT - NOT AN ACTUAL PROJECT RECORD]
+
+FIELD TRANSMITTAL - INTERIM LOG SHEETS
+The following log sheets were attached to the September 7 transmittal. This list is a record of attachments in this package, not a project-wide certified completion register.
+
+Attached log sheet | Field date | Status
+BH-01 | 2026-09-01 | Draft log sheet enclosed
+BH-02 | 2026-09-01 | Draft log sheet enclosed
+BH-03 | 2026-09-02 | Draft log sheet enclosed
+BH-04 | 2026-09-02 | Draft log sheet enclosed
+BH-05 | 2026-09-03 | Draft log sheet enclosed
+BH-06 | 2026-09-03 | Draft log sheet enclosed
+BH-07 | 2026-09-04 | Draft log sheet enclosed
+BH-08 | 2026-09-04 | Draft log sheet enclosed
+BH-09 | 2026-09-05 | Draft log sheet enclosed
+BH-10 | 2026-09-05 | Draft log sheet enclosed
+
+TRANSMITTAL NOTE
+These working sheets have not been signed off by the geotechnical engineer. They are provided for coordination, not as a final interpreted foundation report. This transmittal is not a certification that it contains every field log on the project. Please reconcile the attachment list against the Owner's Exhibit G location schedule before releasing the west wing footing design.

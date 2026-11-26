@@ -321,7 +321,7 @@ def test_dashboard_gap_is_not_cancelled_by_another_rule_with_same_requirement_id
             "dashboard": {"missing_requirements": missing, "contrary_requirements": []},
         }
 
-    missing, _ = _aggregate_requirement_gaps([
+    missing, _contrary, _unmet = _aggregate_requirement_gaps([
         record("RULE_A", ["extra_work_occurred"], []),
         record("RULE_B", [], ["extra_work_occurred"]),
     ])

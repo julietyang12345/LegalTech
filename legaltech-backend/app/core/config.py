@@ -30,6 +30,9 @@ def _env_int(name: str, default: int) -> int:
 class Settings(BaseModel):
     ai_extraction_enabled: bool = _env_bool("AI_EXTRACTION_ENABLED", bool(os.getenv("OPENAI_API_KEY")))
     ai_rule_discovery_enabled: bool = _env_bool("AI_RULE_DISCOVERY_ENABLED", bool(os.getenv("OPENAI_API_KEY")))
+    # Experimental: AI proposes candidate risks beyond the approved rules.
+    # Off unless explicitly enabled; findings never count as assessed risks.
+    ai_risk_discovery_enabled: bool = _env_bool("AI_RISK_DISCOVERY_ENABLED", False)
     openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
     openai_timeout_seconds: int = _env_int("OPENAI_TIMEOUT_SECONDS", 20)

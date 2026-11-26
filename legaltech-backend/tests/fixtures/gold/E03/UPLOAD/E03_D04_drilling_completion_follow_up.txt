@@ -1,0 +1,15 @@
+DOCUMENT ID: EM-003
+DOCUMENT TYPE: Email correspondence
+DATE: 2026-09-07
+TITLE: Drilling completion follow-up
+FROM / ISSUER: M. Iqbal <miqbal@redstone.example>
+STATUS: Sent
+PROJECT: East Rail Lands - Building C / ERL-C-26
+TO: Elena Ruiz <elena.ruiz@northfield.example>; Noah Patel <noah.patel@cedarquay.example>
+EMAIL SUBJECT: West wing BH-11-14 still outstanding
+
+[SYNTHETIC EVALUATION DOCUMENT - NOT AN ACTUAL PROJECT RECORD]
+
+MESSAGE
+The drill crew completed 10 of 14 specified holes. Four west wing boreholes are pending until the laydown area is cleared. Please do not treat the interim log as final coverage for west footing design.
+We can return 10 September if access is granted. The structural team requested footing release for 12 September. - M. Iqbal

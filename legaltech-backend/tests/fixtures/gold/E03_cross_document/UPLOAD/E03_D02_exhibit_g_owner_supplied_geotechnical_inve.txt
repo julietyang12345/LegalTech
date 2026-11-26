@@ -1,0 +1,29 @@
+DOCUMENT ID: EX-G-14
+DOCUMENT TYPE: Contract exhibit
+DATE: 2026-06-03
+TITLE: Exhibit G - Owner-Supplied Geotechnical Investigation Matrix
+FROM / ISSUER: Cedar Quay Developments Ltd.
+STATUS: Issued
+PROJECT: East Rail Lands - Building C / ERL-C-26
+
+[SYNTHETIC EVALUATION DOCUMENT - NOT AN ACTUAL PROJECT RECORD]
+
+SCHEDULE G-1 - INVESTIGATION LOCATIONS (CONTRACT REQUIREMENT)
+Area | Location identifier | Required investigation
+East wing footing line | BH-01 | Borehole log
+East wing footing line | BH-02 | Borehole log
+East wing footing line | BH-03 | Borehole log
+East wing footing line | BH-04 | Borehole log
+East wing footing line | BH-05 | Borehole log
+Central yard / parkade | BH-06 | Borehole log
+Central yard / parkade | BH-07 | Borehole log
+Central yard / parkade | BH-08 | Borehole log
+Central yard / parkade | BH-09 | Borehole log
+Central yard / parkade | BH-10 | Borehole log
+West wing footing line | BH-11 | Borehole log
+West wing footing line | BH-12 | Borehole log
+West wing footing line | BH-13 | Borehole log
+West wing footing line | BH-14 | Borehole log
+
+DELIVERABLE AND RELEASE CONDITION
+The investigations in Schedule G-1 shall be documented in a final signed geotechnical report before the related foundation design release. Any approved change to the investigation locations or technical substitution must be documented by the Owner and geotechnical consultant. This schedule identifies required locations, not actual testing completed.

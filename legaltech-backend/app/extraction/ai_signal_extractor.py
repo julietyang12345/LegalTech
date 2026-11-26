@@ -48,7 +48,26 @@ ALLOWED_SIGNAL_TYPES = {
     "work_performed",
     "work_planned",
     "pricing_unresolved",
+    # Required vs actual state, for any domain (investigations, inspections,
+    # tests, submittals, signoffs). The value is structured; see the prompt.
+    "required_quantity",
+    "completed_quantity",
+    # Records (logs, sheets, certificates) listed as attached/sent/available:
+    # document coverage, never proof that the physical work was done.
+    "record_coverage",
+    "required_deliverable",
+    "deliverable_status",
+    "scope_substitution",
+    "milestone_planned",
+    # A cost actually incurred is a fact; whether it is recoverable is not.
+    "cost_incurred",
+    "potential_damages_claim",
+    # Events that can trigger a contractual notice obligation.
+    "condition_encountered",
+    "delay_event",
 }
+
+TEMPORAL_STATUSES = {"completed", "planned", "conditional", "denied", "normative", "unknown"}
 
 
 SYSTEM_PROMPT = """You extract audit-ready evidence risk signals.
@@ -69,7 +88,57 @@ formal_change_document, written_notice, attachment_missing,
 attachment_unsigned, extra_work_detected, cost_communication, approval_denied,
 scheduling_only, notice_denied, project_number, po_number, project_mismatch,
 amount_mismatch, invoice_before_authorization, work_performed, work_planned,
-pricing_unresolved.
+pricing_unresolved, required_quantity, completed_quantity, record_coverage,
+required_deliverable, deliverable_status, scope_substitution, milestone_planned,
+cost_incurred, potential_damages_claim, condition_encountered, delay_event.
+Contract requirements vs project facts (this distinction matters more than any
+single label):
+- temporal_status "normative" marks a requirement, definition or rule: what
+  must, shall or would happen. A statement that something did or did not
+  happen ("No substitution has been approved", "None found") is a fact, not
+  normative ("All items shall be completed before release",
+  "Any approved substitution shall be documented"). A normative sentence is
+  never a signed change order, an approval, or completed work.
+- Requirements and observed state use structured values:
+  required_quantity (normative): {"item", "quantity", "work_items"}
+  completed_quantity: {"item", "completed", "required", "outstanding_items", "work_items"}
+    only when the source states how much work was physically done.
+  record_coverage: {"record_type", "work_items"} when the source lists records,
+    logs or sheets attached, sent or available, naming their items. This is
+    document coverage, NOT completed work: never turn a list of records into
+    completed_quantity or work_performed. polarity negative when the source
+    says records for named items are absent.
+  required_deliverable (normative): {"deliverable", "required_status"} e.g. "final signed"
+  deliverable_status: {"deliverable", "status"} with status one of final, signed,
+    final_signed, interim, draft, unsigned, preliminary, not_received (the
+    source says it has not been delivered or issued), not_found (it was not
+    found in the records or folder reviewed; that is not proof it does not exist)
+  scope_substitution: an approved revision of required scope; polarity negative
+    when the source says none was approved.
+  milestone_planned: {"milestone"} with event_at the planned date;
+    temporal_status completed only when the source says it took place.
+- work_items: identifiers of physical items or locations the fact concerns
+  (e.g. "P-17", "Room 204", "GL-4": item tags, rooms, grid lines),
+  exactly as written, with ranges expanded only when the document states the
+  range. Materials, quantities and descriptions are not work items.
+- location: the area as written, if stated. root_cause_category, optional: one
+  of E_UNEXPECTED_SITE_CONDITIONS when the fact concerns ground, groundwater,
+  contamination or other subsurface conditions, or the site or geotechnical
+  investigation of them (required test locations, logs, reports).
+- condition_encountered: the source says a physical condition was found or
+  recognised (ground, groundwater, contamination, existing structure) that may
+  differ from what was expected. delay_event: the source says work was delayed,
+  suspended or prevented. Not for requests, plans or coordination notes.
+  written_notice only for a notice actually given or received, not for an
+  ordinary email or a request.
+- Sending, attaching or forwarding documents is not work_performed.
+- cost_incurred is a cost the source says was actually spent (standby time,
+  receipts, records of expense). A price adjustment or amount in a change
+  order, approval or quote is approved_amount or estimate_amount, never
+  cost_incurred.
+  potential_damages_claim is a source asserting someone should bear a loss. Never
+  state that damages are recoverable.
+- extra_work_id: only an identifier written in the document. Never invent one.
 Decisions on price are the most important facts to capture; never skip one:
 - approval_denied (polarity negative): a decision-maker explicitly rejects or
   withholds approval of a proposed price, amount or change, in any wording
@@ -84,8 +153,8 @@ Decisions on price are the most important facts to capture; never skip one:
   reduced one. It is not approved_amount until the owner accepts it.
 source_text must be an exact excerpt from the document. Do not infer facts that
 are not supported by an excerpt. Use polarity affirmative, negative, or
-uncertain. Use temporal_status completed, planned, conditional, denied, or
-unknown. A phrase about signing in the future is planned, not signed. A
+uncertain. Use temporal_status completed, planned, conditional, denied,
+normative, or unknown. A phrase about signing in the future is planned, not signed. A
 contractual rule describing what would count as approval is normative context,
 not a project-specific denial. Use pricing_unresolved for language that says
 price, cost, numbers, or amount is not yet determined; do not label that as
@@ -163,7 +232,7 @@ def _confidence(value: Any) -> float | None:
     """Accept numeric or verbal confidence; models often answer "high".
 
     Dropping an otherwise source-verified fact because confidence was a word
-    silently removes evidence (CO-05: every email lost its signals).
+    silently removes evidence (every signal of such a document is lost).
     """
     if isinstance(value, str):
         word = value.strip().lower().rstrip("%")
@@ -186,8 +255,18 @@ _MONTHS = {name: index for index, name in enumerate(
 _DOCUMENT_DATE = re.compile(r"^\s*(?:date(?: sent)?|sent)\s*:\s*([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})", re.IGNORECASE | re.MULTILINE)
 
 
+_DOCUMENT_ISO_DATE = re.compile(r"^\s*(?:date(?: sent)?|sent)\s*:\s*(\d{4})-(\d{2})-(\d{2})\b", re.IGNORECASE | re.MULTILINE)
+
+
 def document_date(text: str) -> date | None:
-    """The date stated in the document's own header ("Date: April 10, 2026")."""
+    """The date stated in the document's own header ("Date: April 10, 2026"
+    or "DATE: 2026-09-07")."""
+    iso = _DOCUMENT_ISO_DATE.search(text[:2000])
+    if iso:
+        try:
+            return date(int(iso.group(1)), int(iso.group(2)), int(iso.group(3)))
+        except ValueError:
+            return None
     match = _DOCUMENT_DATE.search(text[:2000])
     if not match or match.group(1).lower() not in _MONTHS:
         return None
@@ -218,6 +297,64 @@ def resolve_weekday_event_at(source_text: str, text: str, temporal_status: str |
     return min(resolved).isoformat()
 
 
+def _stated_identifier(value: Any, text: str) -> str | None:
+    """Keep an identifier only if the document itself states it."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value.strip() if value.strip().lower() in text.lower() else None
+
+
+# Identifier-shaped: a short letter prefix and a number ("P-17", "TP01", "ROOM 204", "GL-4A").
+_IDENTIFIER = re.compile(r"^[A-Z]{1,6}[- ]?\d{1,4}[A-Z]?$")
+_RANGE = re.compile(r"\b([A-Z]{1,6})-(\d{1,4})\s*(?:to|through|–|—|-)\s*(?:\1-)?(\d{1,4})\b")
+
+
+def stated_work_items(candidates: Any, text: str) -> list[str]:
+    """Work items the model named that the document states, directly or in a
+    range it writes out ("P-11 to P-14", "P-11-14"). Anything else is dropped."""
+    if not isinstance(candidates, list):
+        return []
+    in_ranges: set[str] = set()
+    for match in _RANGE.finditer(text):
+        prefix, start, end = match.group(1), int(match.group(2)), int(match.group(3))
+        if start <= end and end - start <= 200:
+            width = len(match.group(2))
+            in_ranges.update(f"{prefix}-{number:0{width}d}" for number in range(start, end + 1))
+    lowered = text.lower()
+    kept: list[str] = []
+    for item in candidates:
+        if not isinstance(item, str) or not item.strip():
+            continue
+        name = item.strip().upper()
+        if not _IDENTIFIER.match(name):
+            # Materials and descriptions ("TWO VALVES", "18 FEET OF PIPE") are
+            # not identities; matching events on them merges unrelated work.
+            continue
+        if (name.lower() in lowered or name in in_ranges) and name not in kept:
+            kept.append(name)
+    return kept
+
+
+def _grounded_value(item: dict, text: str) -> Any:
+    value = item.get("value")
+    if not isinstance(value, dict):
+        extras = {key: item[key] for key in ("work_items", "location", "root_cause_category") if key in item}
+        if not extras:
+            return value
+        value = {"value": value, **extras}
+    value = dict(value)
+    for key in ("work_items", "outstanding_items"):
+        if key in value or (key == "work_items" and "work_items" in item):
+            value[key] = stated_work_items(value.get(key, item.get(key)), text)
+    if "location" not in value and isinstance(item.get("location"), str):
+        value["location"] = item["location"]
+    if isinstance(value.get("location"), str) and value["location"].lower() not in text.lower():
+        value.pop("location")
+    if "root_cause_category" not in value and item.get("root_cause_category"):
+        value["root_cause_category"] = item["root_cause_category"]
+    return value
+
+
 def _candidate_from_item(item: Any, text: str) -> SignalCandidate | None:
     if not isinstance(item, dict):
         return None
@@ -240,17 +377,17 @@ def _candidate_from_item(item: Any, text: str) -> SignalCandidate | None:
         temporal_status = str(item.get("temporal_status") or "unknown").lower()
         if polarity not in {"affirmative", "negative", "uncertain", "unknown"}:
             return None
-        if temporal_status not in {"completed", "planned", "conditional", "denied", "unknown"}:
+        if temporal_status not in TEMPORAL_STATUSES:
             return None
         return SignalCandidate(
             signal_type=signal_type,
-            value=item.get("value"),
+            value=_grounded_value(item, text),
             actor=item.get("actor"),
             source_text=source_text.strip(),
             confidence=normalized_confidence,
             polarity=polarity,
             temporal_status=temporal_status,
-            extra_work_id=item.get("extra_work_id"),
+            extra_work_id=_stated_identifier(item.get("extra_work_id"), text),
             event_at=resolve_weekday_event_at(source_text, text, item.get("temporal_status")) or item.get("event_at"),
         )
     except ValidationError:

@@ -1,0 +1,18 @@
+DOCUMENT ID: EX-G-14
+DOCUMENT TYPE: Contract exhibit
+DATE: 2026-06-03
+TITLE: Exhibit G - Owner-Supplied Geotechnical Investigation Matrix
+FROM / ISSUER: Cedar Quay Developments Ltd.
+STATUS: Issued
+PROJECT: East Rail Lands - Building C / ERL-C-26
+
+[SYNTHETIC EVALUATION DOCUMENT - NOT AN ACTUAL PROJECT RECORD]
+
+REQUIRED INVESTIGATION
+Area | Required boreholes | Purpose
+East wing footing line | BH-01 to BH-05 (5) | Foundation bearing
+Central yard / parkade | BH-06 to BH-10 (5) | Excavation conditions
+West wing footing line | BH-11 to BH-14 (4) | Foundation bearing & groundwater
+
+DELIVERABLE
+All fourteen holes shall be completed and recorded in a final signed report before the related foundation design release. Any approved substitution shall be documented by the Owner and geotechnical consultant.

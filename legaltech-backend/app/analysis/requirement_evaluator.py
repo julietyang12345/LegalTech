@@ -8,13 +8,18 @@ from app.domain_contracts.recording import record_assertion_link, record_evidenc
 from app.domain_contracts.schemas import (
     AssertionRelationType,
     AssessmentStatus,
+    CheckPattern,
     ConflictClassification,
+    DETERMINISTIC_PATTERNS,
     EvidenceAssertion,
     EvidenceOutcome,
     EvidenceRelationType,
     EvidenceRole,
     EvidenceStatus,
     ExecutableRuleSpec,
+    GapBasis,
+    MilestoneCheck,
+    QuantityComparison,
     Provenance,
     RequirementCheck,
     RequirementReviewStatus,
@@ -25,20 +30,22 @@ from app.domain_contracts.schemas import (
 )
 from app.analysis.semantic_evaluator import PROMPT_VERSION, judge_requirement
 from app.analysis.text_semantics import is_negative_statement
-from app.analysis.text_semantics import is_conditional_statement, is_explicit_denial
+from app.analysis.text_semantics import is_conditional_statement, is_explicit_denial, is_not_found_statement
 from app.analysis.conflict_classifier import classify_conflict, validate_ai_relationship
 from app.analysis.evidence_matching import matches_queries
 from app.analysis.event_time import parse_event_date
 
 
 AI_METHODS = {"AI_SEMANTIC", "AI_AND_LAWYER_REVIEW"}
-APPROVAL_REQUIREMENTS = {"owner_approved_additional_cost", "approval_documented"}
-# Requirements whose legal effect depends on ordering against work start.
-TEMPORAL_REQUIREMENTS = {"cost_impact_communicated", *APPROVAL_REQUIREMENTS}
-# Requirements satisfied by the act of communicating, which code can verify
+# Behaviour is declared on each requirement as CheckPatterns (see
+# default_rules); the evaluator never branches on a requirement id.
+# COMMUNICATION_ACT: met by sending a communication, which code can verify
 # from the document itself: a priced statement in a letter or email to a named
 # recipient was communicated, whatever the model thinks of its wording.
-COMMUNICATION_REQUIREMENTS = {"cost_impact_communicated"}
+
+
+def _has(requirement, pattern: CheckPattern) -> bool:
+    return pattern in (requirement.patterns or [])
 # Reasons that always route a check to human review, whatever the outcome.
 REVIEW_REASONS = {
     UncertaintyReason.analysis_incomplete,
@@ -109,7 +116,22 @@ def evaluate_requirements(
     ]
     excluded_ids = {a.id for a in excluded}
     project_assertions = [a for a in project_assertions if a.id not in excluded_ids]
+    normative_assertions = [
+        a for a in assertions
+        if a.evidence_role == EvidenceRole.normative_rule
+        and (not extra_work_id or assertion_scope(a) == extra_work_id)
+    ]
     for requirement in rule.requirements:
+        if set(requirement.patterns or []) & DETERMINISTIC_PATTERNS:
+            check = _evaluate_pattern(
+                requirement=requirement, rule=rule, facts=project_assertions,
+                requirements=normative_assertions, prior_checks=checks,
+                tenant_id=tenant_id, matter_id=matter_id, analysis_run_id=analysis_run_id,
+                pipeline_version=pipeline_version, extra_work_id=extra_work_id,
+            )
+            if check is not None:
+                checks.append(check)
+            continue
         retrieval = _latest_retrieval(search_attempts, requirement.id, tenant_id, matter_id, extra_work_id)
         retrieved_ids = set(retrieval.candidate_assertion_ids) if retrieval else set()
         semantic_only_ids = set(retrieval.semantic_candidate_ids) if retrieval else set()
@@ -138,7 +160,7 @@ def evaluate_requirements(
         }
         superseded, unordered_changes, relationship_classifications = _record_changes(
             candidates=candidates, semantic=usable_semantic, classified=classified,
-            requirement_id=requirement.id, tenant_id=tenant_id, matter_id=matter_id,
+            requirement=requirement, tenant_id=tenant_id, matter_id=matter_id,
             extra_work_id=extra_work_id,
         )
         active = [a for a in candidates if a.id in classified and a.id not in superseded]
@@ -220,6 +242,7 @@ def evaluate_requirements(
             excluded_evidence_ids=sorted(excluded_ids),
             analysis_complete=analysis_complete,
             search_attempt_ids=[s.id for s in matching_searches],
+            gap_basis=_search_gap_basis(result, supporting, contrary, matching_searches, analysis_complete),
             explanation=explanation,
             requires_lawyer_review=review_status == RequirementReviewStatus.required,
             uncertainty_reason=reasons[0] if reasons else None,
@@ -323,7 +346,7 @@ def _admit(judged, assertion, requirement, semantic_only=False) -> _Classified:
         return _Classified(EvidenceRelationType.context_only, method, judged.rationale)
     if relation == "UNCERTAIN" and eligible:
         return _Classified(EvidenceRelationType.uncertain, method, judged.rationale)
-    if relation == "CONTEXT" and supporting_type and requirement.id in COMMUNICATION_REQUIREMENTS:
+    if relation == "CONTEXT" and supporting_type and _has(requirement, CheckPattern.communication_act):
         return _communication_fallback(assertion, judged)
     return _Classified(EvidenceRelationType.context_only, method, judged.rationale)
 
@@ -373,7 +396,8 @@ def _deterministic(assertion, requirement) -> _Classified:
     return _Classified(EvidenceRelationType.context_only, method)
 
 
-def _record_changes(*, candidates, semantic, classified, requirement_id, tenant_id, matter_id, extra_work_id):
+def _record_changes(*, candidates, semantic, classified, requirement, tenant_id, matter_id, extra_work_id):
+    requirement_id = requirement.id
     """Validate model-proposed change edges and return (superseded ids, unordered?).
 
     Code checks: both ends are candidates, same Matter/EW scope, and the
@@ -406,12 +430,12 @@ def _record_changes(*, candidates, semantic, classified, requirement_id, tenant_
             relation_type=AssertionRelationType(judged.change_type),
             requirement_id=requirement_id, rationale=judged.rationale,
         )
-        if _displaces(classified[source_id], source, target, requirement_id):
+        if _displaces(classified[source_id], source, target, requirement):
             superseded.add(target_id)
     return superseded, unordered, classifications
 
 
-def _displaces(label: "_Classified", source, target, requirement_id: str) -> bool:
+def _displaces(label: "_Classified", source, target, requirement) -> bool:
     """Whether a validated change edge removes its target from this check.
 
     The edge is always recorded for audit; only the evaluation is affected.
@@ -426,7 +450,7 @@ def _displaces(label: "_Classified", source, target, requirement_id: str) -> boo
       subject to signing"). Another party's conditional offer, or unknown
       authors, leave the earlier decision in force and visible.
     """
-    if requirement_id in COMMUNICATION_REQUIREMENTS:
+    if _has(requirement, CheckPattern.communication_act):
         return False
     if label.relation in {EvidenceRelationType.supports, EvidenceRelationType.contradicts}:
         return True
@@ -511,7 +535,7 @@ def _uncertainty_reasons(
         elif analysis_complete:
             if matching_searches:
                 reasons.append(UncertaintyReason.search_no_match)
-            elif requirement.id in APPROVAL_REQUIREMENTS:
+            elif _has(requirement, CheckPattern.approval):
                 reasons.append(UncertaintyReason.no_explicit_approval_found)
             else:
                 reasons.append(UncertaintyReason.partial_evidence_set)
@@ -519,7 +543,7 @@ def _uncertainty_reasons(
         if timing and timing.status == TimingStatus.after_work_start:
             reasons.append(
                 UncertaintyReason.approval_after_work_start
-                if requirement.id in APPROVAL_REQUIREMENTS
+                if _has(requirement, CheckPattern.approval)
                 else UncertaintyReason.cost_communication_after_work_start
             )
         if timing and timing.status == TimingStatus.undetermined and timing.work_start_date:
@@ -554,7 +578,7 @@ def _timing(requirement, supporting, all_assertions) -> TimingAssessment | None:
     (SUPPORTED) and still have been given after work began. Only supporting
     evidence counts as the fact; an invoice is not a pre-work notice.
     """
-    if requirement.id not in TEMPORAL_REQUIREMENTS or not supporting:
+    if not _has(requirement, CheckPattern.before_work_start) or not supporting:
         return None
     fact_date, fact_ids = _earliest(supporting)
     work = [a for a in all_assertions if any(term in a.assertion_type for term in _WORK_TYPE_TERMS)]
@@ -682,6 +706,412 @@ def _is_negative_or_denial(assertion: EvidenceAssertion) -> bool:
         or is_explicit_denial(assertion.statement)
         or assertion.assertion_type in {"approval_denied", "authorization_denial", "notice_denied"}
     )
+
+
+# --- Required state vs observed state ---------------------------------------
+# Contract documents state what is required (normative assertions); project
+# documents state what exists (facts). Code compares the two. Nothing here is
+# specific to one trade: an "item" is whatever the sources count.
+
+FINAL_STATUSES = {"final", "signed", "final_signed", "issued_final"}
+NOT_FINAL_STATUSES = {"interim", "draft", "unsigned", "preliminary", "not_received", "incomplete", "pending"}
+NOT_FOUND_STATUSES = {"not_found", "missing", "not_located", "not_on_file"}
+GAP_RESULTS = {AssessmentStatus.not_satisfied, AssessmentStatus.insufficient_information, AssessmentStatus.lawyer_review_required}
+
+
+def _evaluate_pattern(*, requirement, rule, facts, requirements, prior_checks, tenant_id, matter_id,
+                      analysis_run_id, pipeline_version, extra_work_id) -> RequirementCheck | None:
+    """A deterministic check, or None when the pattern has nothing to compare
+    (no requirement and no observation of it in this event)."""
+    revision_status, revision_ids = _scope_revision(facts)
+    if _has(requirement, CheckPattern.quantity_completeness):
+        outcome = _quantity(facts, requirements, revision_status, revision_ids)
+    elif _has(requirement, CheckPattern.required_document_final):
+        outcome = _deliverable(facts, requirements, revision_status, revision_ids)
+    else:
+        outcome = _milestone(facts, requirements, prior_checks)
+    if outcome is None:
+        return None
+    result, explanation, comparison, milestone, cited, next_action = outcome
+    review = (
+        RequirementReviewStatus.required
+        if result != AssessmentStatus.satisfied or requirement.lawyer_review_required
+        else RequirementReviewStatus.not_required
+    )
+    linked = [a for a in [*facts, *requirements] if a.id in set(cited)]
+    provenance = record_provenance(Provenance(
+        tenant_id=tenant_id, matter_id=matter_id,
+        source_document_ids=sorted({a.source_document_id for a in linked}),
+        source_span_ids=sorted({a.source_span_id for a in linked if a.source_span_id}),
+        analysis_run_id=analysis_run_id, pipeline_version=pipeline_version,
+        method="DETERMINISTIC_REQUIRED_VS_OBSERVED",
+        rationale=f"Requirement evaluation for rule {rule.id} v{rule.version}.",
+    ))
+    check = RequirementCheck(
+        requirement_id=requirement.id,
+        extra_work_id=extra_work_id,
+        evidence_outcome=(
+            EvidenceOutcome.supported if result == AssessmentStatus.satisfied
+            else EvidenceOutcome.insufficient_information if result == AssessmentStatus.insufficient_information
+            else EvidenceOutcome.unknown
+        ),
+        review_status=review,
+        result=result,
+        evidence_status=EvidenceStatus.reconstructable if cited else EvidenceStatus.not_found,
+        supporting_evidence_ids=list(dict.fromkeys(cited)),
+        explanation=explanation,
+        requires_lawyer_review=review == RequirementReviewStatus.required,
+        next_action=next_action,
+        comparison=comparison,
+        milestone=milestone,
+        gap_basis=_pattern_gap_basis(result, comparison, milestone, prior_checks),
+        provenance=provenance,
+    )
+    for assertion_id in check.supporting_evidence_ids:
+        record_evidence_link(
+            tenant_id=tenant_id, matter_id=matter_id, extra_work_id=extra_work_id,
+            requirement_check_id=check.id, assertion_id=assertion_id,
+            relation_type=EvidenceRelationType.supports, method="DETERMINISTIC",
+            rationale="Cited in a required-vs-observed comparison.",
+        )
+    return check
+
+
+def _value(assertion) -> dict:
+    return assertion.value if isinstance(assertion.value, dict) else {}
+
+
+def _number(value) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(str(value).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _stem(name) -> str:
+    words = re.findall(r"[a-z]+", str(name or "").lower())
+    word = words[-1] if words else ""
+    return word[:-1] if word.endswith("s") else word
+
+
+def _same_item(left, right) -> bool:
+    a, b = _stem(left), _stem(right)
+    return bool(a and b) and (a.endswith(b) or b.endswith(a))
+
+
+def _latest(assertions):
+    """Most recent observations; several on the same latest date are all kept."""
+    dated = [(_assertion_date(a) or date.min, a) for a in assertions]
+    if not dated:
+        return []
+    newest = max(value for value, _a in dated)
+    return [a for value, a in dated if value == newest]
+
+
+def _scope_revision(facts) -> tuple[str, list[str]]:
+    revisions = [a for a in facts if a.assertion_type == "scope_substitution"]
+    approved = [a for a in revisions if _is_affirmative_fact(a) and not _is_conditional(a)]
+    if approved:
+        return "APPROVED", [a.id for a in approved]
+    if revisions:
+        return "EXPLICITLY_NONE", [a.id for a in revisions]
+    return "NONE_IDENTIFIED", []
+
+
+def _revision_note(status: str) -> str:
+    return {
+        "APPROVED": "An approved scope revision was identified; confirm it is authorized and technically supported.",
+        "EXPLICITLY_NONE": "The sources state that no scope revision has been approved.",
+        "NONE_IDENTIFIED": "No approved scope revision was identified.",
+    }[status]
+
+
+def _items_text(items: list[str]) -> str:
+    items = sorted(items)
+    if len(items) > 3:
+        return f"{items[0]} to {items[-1]}"
+    return ", ".join(items)
+
+
+def _quantity(facts, requirements, revision_status, revision_ids):
+    required = [
+        a for a in requirements if a.assertion_type == "required_quantity"
+        and (_number(_value(a).get("quantity")) is not None or _value(a).get("work_items"))
+    ]
+    observed = [a for a in facts if a.assertion_type == "completed_quantity" and _number(_value(a).get("completed")) is not None]
+    inventories = [a for a in facts if a.assertion_type == "record_coverage" and _value(a).get("work_items")]
+    if not required and not observed and not inventories:
+        return None
+    if not required:
+        if not observed:
+            return None
+        item = _value(observed[0]).get("item") or "items"
+        comparison = QuantityComparison(item=str(item), completed=_number(_value(observed[0]).get("completed")), observed_evidence_ids=[a.id for a in observed])
+        return (AssessmentStatus.insufficient_information,
+                f"Completed {item} were recorded, but the required quantity was not identified in the contract documents.",
+                comparison, None, [a.id for a in observed], "Locate the contract requirement for this scope.")
+    requirement = max(required, key=lambda a: (_number(_value(a).get("quantity")) or 0, len(_value(a).get("work_items") or [])))
+    item = str(_value(requirement).get("item") or "items")
+    required_items = _work_items(requirement)
+    needed = _number(_value(requirement).get("quantity"))
+    if needed is None:
+        needed = float(len(required_items))
+    matching = [a for a in observed if _same_item(_value(a).get("item"), item)]
+    if not matching:
+        # No stated count: compare the required items with the records that
+        # list them, item by item.
+        outcome = _record_coverage(requirement, item, required_items, inventories, revision_status, revision_ids)
+        if outcome is not None:
+            return outcome
+        comparison = QuantityComparison(item=item, required=needed, requirement_evidence_ids=[requirement.id],
+                                        scope_revision=revision_status, revision_evidence_ids=revision_ids)
+        return (AssessmentStatus.insufficient_information,
+                f"{needed:g} {item} are required; neither a stated completion count nor records for the required items were identified.",
+                comparison, None, [requirement.id], f"Obtain the completion records for the required {item}.")
+    latest = _latest(matching)
+    counts = {_number(_value(a).get("completed")) for a in latest}
+    outstanding_items = sorted({str(x) for a in latest for x in (_value(a).get("outstanding_items") or [])})
+    completed = min(counts)
+    comparison = QuantityComparison(
+        item=item, required=needed, completed=completed, outstanding=max(needed - completed, 0),
+        outstanding_items=outstanding_items, scope_revision=revision_status,
+        requirement_evidence_ids=[requirement.id], observed_evidence_ids=[a.id for a in matching],
+        revision_evidence_ids=revision_ids,
+        completion_status="COMPLETE" if completed >= needed else "SHORTFALL_STATED",
+    )
+    cited = [requirement.id, *[a.id for a in matching], *revision_ids]
+    if len(counts) > 1:
+        return (AssessmentStatus.lawyer_review_required,
+                f"Sources of the same date disagree on completed {item} ({', '.join(f'{c:g}' for c in sorted(counts))}).",
+                comparison, None, cited, f"Reconcile the completion records for {item}.")
+    if completed >= needed:
+        return (AssessmentStatus.satisfied, f"{completed:g} of {needed:g} required {item} completed.",
+                comparison, None, cited, None)
+    remaining = f" ({_items_text(outstanding_items)})" if outstanding_items else ""
+    explanation = f"{completed:g} of {needed:g} required {item} completed; {needed - completed:g} outstanding{remaining}. {_revision_note(revision_status)}"
+    if revision_status == "APPROVED":
+        return (AssessmentStatus.lawyer_review_required, explanation, comparison, None, cited,
+                "Confirm the approved scope revision is authorized and technically supported.")
+    return (AssessmentStatus.not_satisfied, explanation, comparison, None, cited,
+            f"Complete the outstanding {item}{remaining}, or document an authorized and technically supported revision of the required scope.")
+
+
+def _deliverable_status(assertion) -> str:
+    status = str(_value(assertion).get("status") or "").lower().replace(" ", "_")
+    if status in FINAL_STATUSES:
+        return status
+    # "Not in the release folder" is not-found, whatever label the model chose.
+    if status in NOT_FOUND_STATUSES or is_not_found_statement(assertion.statement):
+        return "not_found"
+    return status
+
+
+def _work_items(assertion) -> list[str]:
+    return sorted({str(x).upper() for x in (_value(assertion).get("work_items") or []) if x}, key=_item_order)
+
+
+def _item_order(name: str):
+    match = re.match(r"^([A-Z ]*?)[- ]?(\d+)([A-Z]?)$", name)
+    return (match.group(1), int(match.group(2)), match.group(3)) if match else (name, 0, "")
+
+
+def _record_coverage(requirement, item, required_items, inventories, revision_status, revision_ids):
+    """Required items vs the items records are listed for.
+
+    A listed record shows a record exists, not that the work was done; an item
+    with no record is unverified, not proven undone. Negative statements ("no
+    records for X") are cited as absence of records, nothing more."""
+    if not required_items or not inventories:
+        return None
+    required = set(required_items)
+    listed = [a for a in inventories if _value(a).get("polarity") != "negative"]
+    absent = [a for a in inventories if _value(a).get("polarity") == "negative"]
+    documented = sorted(required & {x for a in listed for x in _work_items(a)}, key=_item_order)
+    if not documented and not absent:
+        return None
+    unverified = sorted(required - set(documented), key=_item_order)
+    relevant = [a for a in listed if set(_work_items(a)) & required]
+    comparison = QuantityComparison(
+        item=item, required=float(len(required)), documented=float(len(documented)),
+        documented_items=documented, unverified_items=unverified,
+        completion_status="RECORDS_COMPLETE" if not unverified else "COMPLETION_UNVERIFIED",
+        scope_revision=revision_status, requirement_evidence_ids=[requirement.id],
+        observed_evidence_ids=[a.id for a in relevant], absent_record_evidence_ids=[a.id for a in absent],
+        revision_evidence_ids=revision_ids,
+    )
+    cited = [requirement.id, *[a.id for a in relevant], *[a.id for a in absent], *revision_ids]
+    if not unverified:
+        return (AssessmentStatus.satisfied,
+                f"Records were identified for all {len(required)} required {item} ({_items_text(documented)}).",
+                comparison, None, cited, None)
+    explanation = (
+        f"Records were identified for {len(documented)} of {len(required)} required {item}"
+        + (f" ({_items_text(documented)})" if documented else "")
+        + f"; none was identified for {_items_text(unverified)}. Whether that work was done is unverified: "
+        f"a missing record does not establish it was not done. {_revision_note(revision_status)}"
+    )
+    action = (
+        f"Reconcile the required {item} with the field records: verify whether {_items_text(unverified)} "
+        "were done and obtain their records, or complete them, or document an authorized and technically "
+        "supported revision of the required scope."
+    )
+    if revision_status == "APPROVED":
+        return (AssessmentStatus.lawyer_review_required, explanation, comparison, None, cited,
+                "Confirm the approved scope revision is authorized and technically supported.")
+    return (AssessmentStatus.insufficient_information, explanation, comparison, None, cited, action)
+
+
+def _deliverable(facts, requirements, revision_status, revision_ids):
+    required = [a for a in requirements if a.assertion_type == "required_deliverable"]
+    observed = [a for a in facts if a.assertion_type == "deliverable_status"]
+    if not required and not observed:
+        return None
+    requirement = required[0] if required else None
+    name = str(_value(requirement).get("deliverable") if requirement else _value(observed[0]).get("deliverable") or "deliverable")
+    required_status = str(_value(requirement).get("required_status") or "final").replace("_", " ") if requirement else None
+    # "final signed report" already carries its status; don't say it twice.
+    described = name if required_status and required_status.lower() in name.lower() else f"{required_status} {name}" if required_status else name
+    needs_signature = "sign" in (required_status or "").lower()
+    statuses = [(a, _deliverable_status(a)) for a in observed]
+    latest_ids = {a.id for a in _latest(observed)}
+    current = [status for a, status in statuses if a.id in latest_ids]
+    comparison = QuantityComparison(
+        item=name, required_status=required_status, observed_status=", ".join(sorted(set(current))) or None,
+        scope_revision=revision_status, requirement_evidence_ids=[requirement.id] if requirement else [],
+        observed_evidence_ids=[a.id for a in observed], revision_evidence_ids=revision_ids,
+    )
+    cited = [*([requirement.id] if requirement else []), *[a.id for a in observed], *revision_ids]
+    if requirement is None:
+        return (AssessmentStatus.insufficient_information,
+                f"A {name} status was recorded, but the contract requirement for it was not identified.",
+                comparison, None, cited, "Locate the contract requirement for this deliverable.")
+    met = any(
+        status in FINAL_STATUSES and (not needs_signature or status in {"signed", "final_signed"})
+        for status in current
+    ) and not any(status in NOT_FINAL_STATUSES for status in current)
+    as_of = _as_of([*facts, *requirements])
+    comparison.as_of = as_of.isoformat() if as_of else None
+    if met:
+        comparison.deliverable_state = "DELIVERED"
+        return (AssessmentStatus.satisfied, f"The {described} is on file.",
+                comparison, None, cited, None)
+    # A source saying it is draft/unsigned/not delivered states the gap; one
+    # saying it was not found in the reviewed records only shows it was not
+    # located there, which is weaker.
+    stated = [status for status in current if status in NOT_FINAL_STATUSES]
+    as_of_text = f" as of {as_of:%B} {as_of.day}, {as_of.year}" if as_of else ""
+    if stated:
+        comparison.deliverable_state = "NOT_DELIVERED_AS_OF"
+        explanation = f"The contract requires a {described}; the latest record{as_of_text} is {(', '.join(sorted(set(stated)))).replace('_', ' ')}. {_revision_note(revision_status)}"
+        result = AssessmentStatus.not_satisfied
+    else:
+        comparison.deliverable_state = "NOT_FOUND_IN_REVIEWED_RECORDS"
+        explanation = (
+            f"The contract requires a {described}; it was not found in the records reviewed{as_of_text}. "
+            f"That does not establish it does not exist. {_revision_note(revision_status)}"
+        )
+        result = AssessmentStatus.insufficient_information
+    if revision_status == "APPROVED":
+        return (AssessmentStatus.lawyer_review_required, explanation, comparison, None, cited,
+                "Confirm the approved scope revision is authorized and technically supported.")
+    return (result, explanation, comparison, None, cited,
+            f"Obtain the {described}" + (" or confirm where it is filed." if result == AssessmentStatus.insufficient_information else "."))
+
+
+def _milestone(facts, requirements, prior_checks):
+    milestones = [a for a in facts if a.assertion_type == "milestone_planned"]
+    if not milestones or not prior_checks:
+        return None
+    as_of = _as_of([*facts, *requirements])
+    dated = [(_assertion_date(a), a) for a in milestones]
+    upcoming = sorted([(d, a) for d, a in dated if d and as_of and d >= as_of], key=lambda pair: pair[0])
+    passed = sorted([(d, a) for d, a in dated if d and as_of and d < as_of], key=lambda pair: pair[0])
+    with_date = sorted([(d, a) for d, a in dated if d], key=lambda pair: pair[0])
+    chosen = upcoming[0] if upcoming else passed[-1] if passed else with_date[0] if with_date else (None, milestones[0])
+    when, assertion = chosen
+    name = str(_value(assertion).get("milestone") or assertion.statement)
+    # Without an as-of date the milestone keeps its date but cannot be called
+    # upcoming or passed.
+    status = "UPCOMING" if upcoming else "PASSED" if passed else "DATED" if when else "UNDATED"
+    gaps = [check for check in prior_checks if check.result in GAP_RESULTS]
+    met = not gaps
+    # A planned date is not evidence the milestone happened; only a source
+    # saying it took place makes open prerequisites "not met".
+    occurred = any(_value(a).get("temporal_status") == "completed" for a in milestones)
+    readiness = "MET" if met else "NOT_MET" if occurred else "AT_RISK" if status == "UPCOMING" else "REQUIRES_VERIFICATION"
+    milestone = MilestoneCheck(
+        milestone=name, date=when.isoformat() if when else None, as_of=as_of.isoformat() if as_of else None,
+        status=status, prerequisites_met=met, readiness=readiness, evidence_ids=[assertion.id],
+    )
+    when_text = f"{when:%B} {when.day}, {when.year}" if when else None
+    if met:
+        return (AssessmentStatus.satisfied, f"Prerequisites are met before {name}" + (f" ({when_text})." if when_text else "."),
+                None, milestone, [assertion.id], None)
+    # Unverified prerequisites are not shown to be missing; say which it is.
+    state = "unverified" if all(check.result == AssessmentStatus.insufficient_information for check in gaps) else "outstanding"
+    open_text = f"{len(gaps)} prerequisite{'s' if len(gaps) != 1 else ''} {state}"
+    action = (f"Confirm the prerequisites before {name}" if state == "unverified" else f"Resolve the outstanding prerequisites before {name}") + (f" on {when_text}." if when_text else ".")
+    if readiness == "NOT_MET":
+        return (AssessmentStatus.not_satisfied, f"{open_text}; a source states {name} took place.",
+                None, milestone, [assertion.id], f"Review the effect of proceeding with {name} while prerequisites were outstanding.")
+    if readiness == "AT_RISK":
+        return (AssessmentStatus.lawyer_review_required, f"At risk: {open_text}; {name} is planned for {when_text}.",
+                None, milestone, [assertion.id], action)
+    timing = f"was planned for {when_text}" if status == "PASSED" else f"is planned for {when_text}" if when_text else "has no stated date"
+    return (AssessmentStatus.lawyer_review_required,
+            f"{open_text}; {name} {timing}. Whether it has taken place was not identified.",
+            None, milestone, [assertion.id],
+            f"Verify whether {name} has taken place. " + action)
+
+
+def _pattern_gap_basis(result, comparison, milestone, prior_checks) -> GapBasis | None:
+    """Deterministic checks compare every extracted fact of the event, so a gap
+    is either stated by a source or not identified in the supplied records."""
+    if result == AssessmentStatus.satisfied:
+        return None
+    if milestone is not None:
+        bases = {check.gap_basis for check in prior_checks if check.result in GAP_RESULTS}
+        for basis in (GapBasis.search_incomplete, GapBasis.not_identified, GapBasis.explicit_negative):
+            if basis in bases:
+                return basis
+        return GapBasis.not_identified
+    if comparison is not None and comparison.completion_status == "COMPLETION_UNVERIFIED":
+        return GapBasis.not_identified
+    if comparison is not None and comparison.deliverable_state == "NOT_FOUND_IN_REVIEWED_RECORDS":
+        return GapBasis.not_identified
+    if comparison is not None and comparison.requirement_evidence_ids and comparison.observed_evidence_ids:
+        return GapBasis.explicit_negative
+    return GapBasis.not_identified
+
+
+def _search_gap_basis(result, supporting, contrary, searches, analysis_complete) -> GapBasis | None:
+    if result == AssessmentStatus.satisfied:
+        return None
+    if contrary:
+        return GapBasis.explicit_negative
+    if supporting:
+        return None  # evidence exists; what is open is review, not absence
+    if not analysis_complete or not searches or any(search.coverage_status in {"PARTIAL", "UNKNOWN"} for search in searches):
+        return GapBasis.search_incomplete
+    return GapBasis.not_identified
+
+
+def _as_of(assertions) -> date | None:
+    """The analysis date: the latest date any supplied document states.
+    Deterministic (never the wall clock), so re-running gives the same result."""
+    from app.repositories.memory import store
+
+    dates = []
+    for assertion in assertions:
+        document = store.documents.get(assertion.source_document_id)
+        stated = document.metadata.get("document_date") if document else None
+        if stated:
+            dates.append(date.fromisoformat(stated))
+    return max(dates) if dates else None
 
 
 __all__ = ["evaluate_requirements"]

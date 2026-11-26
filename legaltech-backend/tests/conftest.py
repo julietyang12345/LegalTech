@@ -10,4 +10,5 @@ import os
 
 os.environ["AI_EXTRACTION_ENABLED"] = "false"
 os.environ["AI_RULE_DISCOVERY_ENABLED"] = "false"
+os.environ["AI_RISK_DISCOVERY_ENABLED"] = "false"
 os.environ["OPENAI_API_KEY"] = ""

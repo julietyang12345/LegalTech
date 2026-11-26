@@ -1,0 +1,18 @@
+DOCUMENT ID: DES-0908
+DOCUMENT TYPE: Design coordination memo
+DATE: 2026-09-08
+TITLE: Foundation Design Release Readiness Log
+FROM / ISSUER: Northfield Construction Partners Ltd.
+STATUS: Issued
+PROJECT: East Rail Lands - Building C / ERL-C-26
+
+[SYNTHETIC EVALUATION DOCUMENT - NOT AN ACTUAL PROJECT RECORD]
+
+READINESS REVIEW
+Decision | Status | Implication
+West wing geotechnical signoff | Not received | Foundation release hold requested
+BH-11 to BH-14 completion | Open | 4 required locations remain
+Owner change to investigation scope | None found | Original Exhibit G governs
+
+ACTION
+Project team requested access clearance and a revised investigation completion date; no supporting report for the four west stations is on file.

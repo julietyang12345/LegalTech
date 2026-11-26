@@ -1,0 +1,22 @@
+DOCUMENT ID: EM-003
+DOCUMENT TYPE: Email correspondence
+DATE: 2026-09-07
+TITLE: Drilling completion follow-up
+FROM / ISSUER: M. Iqbal <miqbal@redstone.example>
+STATUS: Sent
+PROJECT: East Rail Lands - Building C / ERL-C-26
+TO: Elena Ruiz <elena.ruiz@northfield.example>; Noah Patel <noah.patel@cedarquay.example>
+EMAIL SUBJECT: Field logs transmitted / west wing access coordination
+
+[SYNTHETIC EVALUATION DOCUMENT - NOT AN ACTUAL PROJECT RECORD]
+
+MESSAGE
+Elena and Noah,
+
+We sent the draft field log sheets from the east wing and parkade investigation locations to the design team this morning. The files sent cover BH-01, BH-02, BH-03, BH-04, BH-05, BH-06, BH-07, BH-08, BH-09 and BH-10.
+
+The temporary laydown area is still creating access coordination difficulties at the west wing. We can send the drill crew back on 10 September if that area is cleared. Could you confirm whether separate field records exist for the west wing points, or whether those points still need to be scheduled? I do not have their signed logs in this email package.
+
+The structural team requested footing design release for 12 September. Please do not treat the interim sheets as the final geotechnical report for that release.
+
+M. Iqbal

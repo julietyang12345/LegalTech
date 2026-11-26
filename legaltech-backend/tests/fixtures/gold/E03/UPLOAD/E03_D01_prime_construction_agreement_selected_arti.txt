@@ -1,0 +1,35 @@
+DOCUMENT ID: AGR-ERL-C-2026-017
+DOCUMENT TYPE: Executed agreement excerpt
+DATE: 2026-06-03
+TITLE: Prime Construction Agreement - Selected Articles
+FROM / ISSUER: Cedar Quay Developments Ltd. / Northfield Construction Partners Ltd.
+STATUS: Executed - illustrative extract
+PROJECT: East Rail Lands - Building C / ERL-C-26
+
+[SYNTHETIC EVALUATION DOCUMENT - NOT AN ACTUAL PROJECT RECORD]
+
+PARTIES, PROJECT, AND CONTRACT SUM
+Owner: Cedar Quay Developments Ltd.. Construction Manager / General Contractor: Northfield Construction Partners Ltd.. Project: East Rail Lands - Building C / ERL-C-26. Location: Lot C, East Rail Lands (fictional site), Calgary, Alberta. Agreement executed June 3, 2026. Original contract sum: CAD 31,800,000. Target substantial completion: March 31, 2028.
+This is a synthetic excerpt prepared for testing. It is not a standard-form contract or a statement of applicable law.
+
+ARTICLE 2.04 - BASE EARTHWORKS SCOPE
+Base scope includes ordinary excavation, haulage of non-contaminated soils within approved disposal classifications, and foundation preparation to the tender drawings. Hazardous-material remediation, off-site disposal of regulated contaminated soils, and redesign for materially unforeseen subsurface conditions are not included in the base schedule of values unless expressly stated in a signed change.
+
+ARTICLE 4.10 - SITE INFORMATION, RELIANCE, AND INVESTIGATION
+Owner delivers its available preconstruction site studies. Contractor shall review them and promptly identify gaps known to it. Owner carries responsibility for the investigations expressly listed in Exhibit G (Site Investigation Matrix). Furnished historical assessments are not guaranteed to characterize every subsurface location. Responsibility for an unanticipated condition must be evaluated against this Agreement and the facts; discovering it does not itself establish price entitlement.
+
+ARTICLE 6.11 - DIFFERING OR SUSPECT SITE CONDITIONS
+Contractor shall give written notice within two business days after recognition of a materially differing condition, identify location and potential impacts, preserve evidence, and avoid disturbing suspected contamination except as required for immediate safety. Owner may direct investigation or interim stabilization. Entitlement, time, and compensation remain subject to other provisions and written records.
+
+ARTICLE 6.13 - CHANGE AUTHORIZATION
+An agreed change in scope and price is recorded by a Change Order identifying the work item, location, cost, time impact, and signatures of the Owner Authorized Representative and Contractor Authorized Representative. An instruction to investigate or protect the site is not, by itself, acceptance of a quoted amount. If authorized emergency stabilization is unavoidable, parties shall keep separate time/material records and promptly seek documented commercial resolution.
+
+ARTICLE 6.14 - DELEGATED AUTHORITY
+Owner Authorized Representative: Maya Chen, Director of Development. Owner project manager: Noah Patel may coordinate site activities and request field protection but may not sign a binding scope-and-price Change Order. Contractor Authorized Representative: Elena Ruiz, Project Executive. Site foremen and subcontractors have no delegated authority to approve an Owner Change Order.
+
+ARTICLE 9.02 - RECORDS AND PAYMENT
+Change requests require itemized supporting quotations. Invoices are claims for payment, not evidence of Owner approval by themselves. Payment application line items must reference a valid approved Change Order or be marked as disputed/pending. Work item/location identifiers govern the scope of any approval.
+
+EXECUTION
+For Owner: Maya Chen, Director of Development [synthetic signed record: 03 Jun 2026].
+For General Contractor: Elena Ruiz, Project Executive [synthetic signed record: 03 Jun 2026].

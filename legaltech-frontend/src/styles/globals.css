@@ -131,6 +131,8 @@
 .event-timeline time { color: #4c5965; font-size: .74rem; font-weight: 600; white-space: nowrap; }
 .event-timeline li > div { display: grid; gap: 4px; padding-left: 20px; }
 .event-timeline strong { color: #344250; font-size: .77rem; }
+.event-timeline li > div > span:not(.source-link) { color: #6b7782; font-size: .72rem; line-height: 1.45; }
+.event-timeline .timeline-modality { color: #919ba4; font-size: .64rem; letter-spacing: .06em; text-transform: uppercase; }
 .event-timeline p { color: #6b7782; font-size: .72rem; line-height: 1.45; }
 .event-timeline .source-link { margin-left: 4px; padding: 0; border: 0; background: none; }
 .event-timeline small { color: #919ba4; font-size: .7rem; }
@@ -159,3 +161,40 @@
 .document-delete { flex: 0 0 auto; color: #9aa3ab; }
 .document-delete:hover:not(:disabled) { color: #b5524c; background: #fdebea; }
 .document-delete:disabled { opacity: .45; cursor: not-allowed; }
+.category-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.category-tag { padding: 1px 7px; border-radius: 999px; font-size: .64rem; font-weight: 600; line-height: 1.6; }
+.category-tag.root { color: #6b4e16; background: #fbf1dc; }
+.category-tag.impact { color: #3d5466; background: #e9f0f5; }
+.unassessed-findings { border: 1px dashed #d8dcd6; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; }
+.unassessed-findings h3 small { display: block; color: #87929c; font-size: .66rem; font-weight: 500; }
+.match-suggestions { border: 1px solid #e7dcc3; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; background: #fffcf5; }
+.match-suggestions h3 small { display: block; color: #87929c; font-size: .66rem; font-weight: 500; }
+.match-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: flex-start; }
+@media (max-width: 640px) { .match-suggestions .legal-issue-row { flex-direction: column; } }
+.gap-basis { display: block; margin-top: 4px; color: #87929c; font-size: .68rem; }
+.event-timeline .timeline-details summary { width: fit-content; color: #2f7f71; font-size: .7rem; cursor: pointer; }
+.event-timeline .timeline-details[open] summary { margin-bottom: 4px; }
+.event-timeline .timeline-details p { margin: 0 0 4px; overflow-wrap: anywhere; }
+
+/* Level 1: conclusion first */
+.issue-conclusion { display: grid; gap: 12px; }
+.conclusion-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.conclusion-head strong { color: #26333f; font-size: .9rem; line-height: 1.4; }
+.conclusion-lines { display: grid; gap: 4px; margin: 0; padding-left: 18px; color: #4c5965; font-size: .76rem; line-height: 1.5; }
+.key-facts { display: grid; gap: 4px; padding: 10px 12px; border-left: 3px solid #d7e3df; background: #f7faf9; }
+.key-facts p { margin: 0; color: #5b6772; font-size: .73rem; line-height: 1.45; overflow-wrap: anywhere; }
+.conclusion-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.conclusion-footer small { flex: 1 1 280px; color: #87929c; font-size: .68rem; }
+/* Level 2: evidence and reasoning */
+.evidence-reasoning { display: grid; gap: 14px; padding-top: 14px; border-top: 1px solid #eef0ed; }
+.reasoning-check { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid #eef0ed; border-radius: 8px; }
+.reasoning-steps { display: grid; grid-template-columns: 96px 1fr; gap: 6px 12px; margin: 0; font-size: .73rem; line-height: 1.45; }
+.reasoning-steps dt { color: #87929c; font-size: .66rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; padding-top: 2px; }
+.reasoning-steps dd { margin: 0; color: #4c5965; min-width: 0; overflow-wrap: anywhere; }
+.reasoning-steps .requirement-sources { margin: 0; }
+@media (max-width: 560px) { .reasoning-steps { grid-template-columns: 1fr; } .reasoning-steps dd { margin-bottom: 6px; } }
+/* Level 3: original source */
+.source-text-block { display: grid; gap: 6px; margin: 12px 0; }
+.source-text { max-height: 60vh; overflow: auto; margin: 0; padding: 12px; border: 1px solid #eef0ed; border-radius: 8px; background: #fbfcfb; color: #3d4955; font: .72rem/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.source-text mark { background: #ffe9a8; color: inherit; border-radius: 2px; }
+.signal-list summary { cursor: pointer; color: #2f7f71; font-size: .74rem; margin: 6px 0; }

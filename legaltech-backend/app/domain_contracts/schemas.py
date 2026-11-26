@@ -21,6 +21,34 @@ class ContractModel(BaseModel):
 class IssueType(str, Enum):
     notice = "NOTICE"
     change_order = "CHANGE_ORDER"
+    # A contractual precondition (required work, document, or signoff) that
+    # must be met before a dependent milestone. Not a change order.
+    precondition = "PRECONDITION"
+
+
+class CheckPattern(str, Enum):
+    """Reusable requirement checks. A requirement declares which apply; the
+    evaluator dispatches on the pattern, never on a requirement id."""
+
+    # Compare the requirement's supporting fact date with the work start.
+    before_work_start = "BEFORE_WORK_START"
+    # The requirement is met by sending a communication to the other party.
+    communication_act = "COMMUNICATION_ACT"
+    # The requirement is an approval by the other party.
+    approval = "APPROVAL"
+    # Required quantity (contract) vs completed quantity (project fact).
+    quantity_completeness = "QUANTITY_COMPLETENESS"
+    # A required deliverable exists in its final / signed form.
+    required_document_final = "REQUIRED_DOCUMENT_FINAL"
+    # Prerequisites are met before a dependent milestone date.
+    prerequisite_before_milestone = "PREREQUISITE_BEFORE_MILESTONE"
+
+
+DETERMINISTIC_PATTERNS = {
+    CheckPattern.quantity_completeness,
+    CheckPattern.required_document_final,
+    CheckPattern.prerequisite_before_milestone,
+}
 
 
 class WorkflowStatus(str, Enum):
@@ -192,6 +220,7 @@ class RuleRequirement(BaseModel):
     price_bearing_assertion_types: list[str] = Field(default_factory=list)
     deterministic_fields: list[str] = Field(default_factory=list)
     lawyer_review_required: bool = False
+    patterns: list[CheckPattern] = Field(default_factory=list)
 
 
 class ExecutableRuleSpec(ContractModel):
@@ -203,10 +232,25 @@ class ExecutableRuleSpec(ContractModel):
     approval_status: RuleApprovalStatus = RuleApprovalStatus.draft
     applicability: RuleApplicability
     discovery_triggers: list[str] = Field(default_factory=list)
+    # A trigger counts only when the matter's contract states a matching
+    # obligation: a sentence containing every ``obligation_terms`` word and, for
+    # that trigger type, any of ``trigger_obligation_terms[type]`` (empty: any).
+    # This lets an event that should have been notified activate the check even
+    # when no notice was given, without a stray word activating it.
+    obligation_terms: list[str] = Field(default_factory=list)
+    trigger_obligation_terms: dict[str, list[str]] = Field(default_factory=dict)
+    # The rule is about something that must have happened or been proposed: at
+    # least one affirmative project fact of these types must exist (e.g. an
+    # actual or proposed change for a change-order rule). A contract clause
+    # describing how changes are approved is not such a fact.
+    requires_fact_types: list[str] = Field(default_factory=list)
     assessment_preconditions: list[str] = Field(default_factory=list)
     requirements: list[RuleRequirement] = Field(default_factory=list)
     exceptions_to_check: list[str] = Field(default_factory=list)
     review_policy: ReviewPolicy = ReviewPolicy.lawyer_required
+    # Taxonomy codes (app.legal_knowledge.taxonomy) this rule's issues bear on.
+    # Always POTENTIAL impacts: a label never establishes an entitlement.
+    impact_categories: list[str] = Field(default_factory=list)
     provenance: Provenance
 
 
@@ -233,6 +277,18 @@ class ExtraWork(ContractModel):
     approved_amount: float | None = None
     currency: str | None = None
     status: str = "identified"
+    # Event identity. ``id`` is internal; ``external_id`` is the canonical key
+    # used for scoping (an EW number, or a generated EVT- key when the sources
+    # carry no identifier). ``aliases`` are other identifiers for the same event.
+    aliases: list[str] = Field(default_factory=list)
+    event_type: str | None = None
+    location: str | None = None
+    work_items: list[str] = Field(default_factory=list)
+    root_cause_categories: list[str] = Field(default_factory=list)
+    identity_status: str = "CONFIRMED"
+    document_ids: list[str] = Field(default_factory=list)
+    # Set (with status "merged") when a reviewer merged this event into another.
+    merged_into_id: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -259,6 +315,57 @@ class TimingAssessment(BaseModel):
     work_evidence_ids: list[str] = Field(default_factory=list)
 
 
+class QuantityComparison(BaseModel):
+    """Required (contract) vs observed (project fact) state for one item."""
+
+    item: str
+    required: float | None = None
+    completed: float | None = None
+    outstanding: float | None = None
+    outstanding_items: list[str] = Field(default_factory=list)
+    # Records listed for required items (logs, sheets). Documented is not
+    # completed: items without a record are unverified, not proven undone.
+    documented: float | None = None
+    documented_items: list[str] = Field(default_factory=list)
+    unverified_items: list[str] = Field(default_factory=list)
+    absent_record_evidence_ids: list[str] = Field(default_factory=list)
+    # COMPLETE / SHORTFALL_STATED / COMPLETION_UNVERIFIED / RECORDS_COMPLETE
+    completion_status: str | None = None
+    # DELIVERED / NOT_DELIVERED_AS_OF / NOT_FOUND_IN_REVIEWED_RECORDS
+    deliverable_state: str | None = None
+    as_of: str | None = None
+    required_status: str | None = None
+    observed_status: str | None = None
+    # APPROVED / EXPLICITLY_NONE / NONE_IDENTIFIED
+    scope_revision: str = "NONE_IDENTIFIED"
+    requirement_evidence_ids: list[str] = Field(default_factory=list)
+    observed_evidence_ids: list[str] = Field(default_factory=list)
+    revision_evidence_ids: list[str] = Field(default_factory=list)
+
+
+class MilestoneCheck(BaseModel):
+    milestone: str
+    date: str | None = None
+    as_of: str | None = None
+    # UPCOMING / PASSED / DATED / UNDATED: the date against the as-of date
+    status: str
+    prerequisites_met: bool | None = None
+    # MET: prerequisites met. AT_RISK: open prerequisites, milestone still
+    # ahead. NOT_MET: a source says the milestone took place with prerequisites
+    # open. REQUIRES_VERIFICATION: otherwise (a planned date passed, or no
+    # as-of date), since a planned date is not evidence that it happened.
+    readiness: str = "REQUIRES_VERIFICATION"
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class GapBasis(str, Enum):
+    """How an open requirement was established."""
+
+    explicit_negative = "EXPLICIT_NEGATIVE_EVIDENCE"  # a source states the shortfall or absence
+    not_identified = "NOT_IDENTIFIED_IN_SEARCHED_RECORDS"  # looked for, not found
+    search_incomplete = "SEARCH_INCOMPLETE"  # not enough was searched to say
+
+
 class RequirementCheck(BaseModel):
     id: str = Field(default_factory=lambda: new_id("REQCHECK"))
     requirement_id: str
@@ -270,6 +377,9 @@ class RequirementCheck(BaseModel):
     supporting_evidence_ids: list[str] = Field(default_factory=list)
     contrary_evidence_ids: list[str] = Field(default_factory=list)
     search_attempt_ids: list[str] = Field(default_factory=list)
+    # Set on open checks: whether the gap is stated by a source, not found, or
+    # not searched for well enough to say.
+    gap_basis: GapBasis | None = None
     explanation: str
     requires_lawyer_review: bool = False
     uncertainty_reason: UncertaintyReason | None = None
@@ -286,6 +396,8 @@ class RequirementCheck(BaseModel):
     conflict_classification: ConflictClassification | None = None
     # Set for requirements whose effect depends on ordering against work start.
     timing: TimingAssessment | None = None
+    comparison: QuantityComparison | None = None
+    milestone: MilestoneCheck | None = None
     provenance: Provenance
 
 
@@ -372,6 +484,10 @@ class EvidenceAssertion(ContractModel):
     source_document_id: str
     conversation_id: str | None = None
     extra_work_id: str | None = None
+    # Internal identity of the event (ExtraWork.id). ``extra_work_id`` is the
+    # event's canonical external key; it can change when events are merged,
+    # the internal id of the surviving event cannot.
+    event_id: str | None = None
     evidence_role: EvidenceRole = EvidenceRole.project_fact
     source_span_id: str | None = None
     assertion_type: str
@@ -408,6 +524,10 @@ class Issue(ContractModel):
     rule_ids: list[str] = Field(default_factory=list)
     issue_scope: str | None = None
     extra_work_id: str | None = None
+    event_id: str | None = None
+    # Set when a reviewer merged this issue's event into another event. The
+    # issue stays for audit but is no longer presented or re-assessed.
+    merged_into_event_id: str | None = None
     workflow_status: WorkflowStatus = WorkflowStatus.discovered
     evidence_status: EvidenceStatus = EvidenceStatus.not_found
     current_assessment_id: str | None = None

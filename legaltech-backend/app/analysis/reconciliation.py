@@ -16,6 +16,7 @@ from app.domain_contracts.schemas import (
     SearchAttempt,
     TimingStatus,
     WorkflowStatus,
+    DETERMINISTIC_PATTERNS,
 )
 from app.analysis.requirement_evaluator import evaluate_requirements
 from app.analysis.evidence_relationships import assertion_scope
@@ -134,6 +135,10 @@ def _assess(
 ) -> tuple[AssessmentStatus, EvidenceStatus, str]:
     if checks:
         return _assess_requirement_checks(checks, rule)
+    if rule and rule.requirements and all(req.patterns and set(req.patterns) <= DETERMINISTIC_PATTERNS for req in rule.requirements):
+        return AssessmentStatus.insufficient_information, EvidenceStatus.not_found, (
+            "No requirement and observation of the same item were identified to compare."
+        )
     if not assertions:
         coverage = EvidenceStatus.existence_only if searches else EvidenceStatus.not_found
         return AssessmentStatus.insufficient_information, coverage, (
@@ -176,6 +181,8 @@ def _assess_change_order(assertions: list[EvidenceAssertion]) -> tuple[Assessmen
 
 
 def _assess_requirement_checks(checks: list, rule: ExecutableRuleSpec | None) -> tuple[AssessmentStatus, EvidenceStatus, str]:
+    if any(check.comparison or check.milestone for check in checks):
+        return _assess_required_vs_observed(checks, rule)
     labels = {requirement.id: requirement.label for requirement in (rule.requirements if rule else [])}
     missing = [labels.get(check.requirement_id, check.requirement_id) for check in checks if check.result == AssessmentStatus.insufficient_information]
     timing = _timing_findings(checks, labels)
@@ -197,6 +204,19 @@ def _assess_requirement_checks(checks: list, rule: ExecutableRuleSpec | None) ->
             "All requirements have supporting evidence.", *timing, "Contract applicability remains subject to review.",
         )
     return AssessmentStatus.satisfied, EvidenceStatus.reconstructable, _join("All executable-rule requirements were supported by the available evidence.", *timing)
+
+
+def _assess_required_vs_observed(checks: list, rule: ExecutableRuleSpec | None) -> tuple[AssessmentStatus, EvidenceStatus, str]:
+    """Conclusion assembled from each check's own comparison sentence."""
+    open_checks = [check for check in checks if check.result != AssessmentStatus.satisfied]
+    if not open_checks:
+        return AssessmentStatus.satisfied, EvidenceStatus.reconstructable, _join(
+            *(check.explanation for check in checks), "Contract applicability remains subject to review.",
+        )
+    order = [AssessmentStatus.not_satisfied, AssessmentStatus.lawyer_review_required, AssessmentStatus.insufficient_information]
+    status = next(state for state in order if any(check.result == state for check in open_checks))
+    evidence = EvidenceStatus.partial if status == AssessmentStatus.insufficient_information else EvidenceStatus.reconstructable
+    return status, evidence, _join(*(check.explanation for check in open_checks))
 
 
 def _timing_findings(checks: list, labels: dict[str, str]) -> list[str]:
